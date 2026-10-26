@@ -225,13 +225,89 @@ test('Laden: Sonne + Speicher mit einem Speicher, den VoltPilot nur beobachtet',
   expect(fehler).toEqual([]);
 });
 
-test('Laden: „bis Abstecken“ bleibt im Knopf (Schnell-Blatt)', async ({ page }) => {
+test('Laden: „bis Abstecken“ bleibt im Knopf und nennt seinen Deckel (Schnell-Blatt, Audit W-10)', async ({ page }) => {
   await oeffnen(page, LADEN);
   await page.getByRole('region', { name: 'Wallbox Werkstatt' }).getByRole('button', { name: /^Schnell/ }).click();
-  const knopf = page.getByRole('dialog').getByRole('button', { name: 'bis Abstecken' });
+  const dialog = page.getByRole('dialog');
+  const knopf = dialog.getByRole('button', { name: 'bis Abstecken, höchstens 4 Std' });
   await expect(knopf).toBeVisible();
   const ragt = await knopf.evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(ragt).toBeLessThanOrEqual(0);
+  // ⚠ Die Box beendet den Eingriff nach 240 Minuten - die Folge sagt es (13:10 + 4 h).
+  await knopf.click();
+  await expect(dialog).toContainText('Läuft bis zum Abstecken, spätestens 17:10');
+  await expect(dialog).not.toContainText('Läuft bis zum Abstecken.');
+});
+
+// Audit vp-ocpp-haushalt: die Haushalts-Fälle an der Wallbox Werkstatt (`?wallbox=`).
+const lpKarte = (page: Page) => page.getByRole('region', { name: 'Wallbox Werkstatt' });
+const modusKnoepfe = (page: Page) => lpKarte(page).getByRole('group', { name: 'Lademodus' }).getByRole('button');
+
+test('Laden W-01: Box ab Werk - die Karte sagt, dass VoltPilot nicht regelt, und sperrt die Eingriffe', async ({ page }) => {
+  const fehler = await oeffnen(page, '/e2e/steuerung.html?wallbox=werk#/anlage/help-site/laden');
+  await expect(lpKarte(page).getByRole('status')).toContainText('VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung.');
+  for (const knopf of await modusKnoepfe(page).all()) await expect(knopf).toBeDisabled();
+  // Keine Ladeankündigung, solange die Box nicht regelt.
+  await expect(lpKarte(page)).not.toContainText('Lädt ab');
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(await ueberstehend(page)).toEqual([]);
+  expect(fehler).toEqual([]);
+});
+
+test('Cockpit W-01: Box ab Werk - die Kachel „Laden“ sagt es groß', async ({ page }) => {
+  await oeffnen(page, '/e2e/steuerung.html?wallbox=werk#/anlage/help-site/steuerung');
+  await page.goto('/e2e/steuerung.html?wallbox=werk#/anlage/help-site');
+  const kachel = page.locator('[data-kachel="laden"]');
+  await expect(kachel).toContainText('VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung.');
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+});
+
+test('Laden W-05: die Säule hält die Grenze nicht - „nimmt keine Ladegrenzen an“, Wahl gesperrt', async ({ page }) => {
+  await oeffnen(page, '/e2e/steuerung.html?wallbox=abweichend#/anlage/help-site/laden');
+  await expect(lpKarte(page).getByRole('status')).toContainText('Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern.');
+  for (const knopf of await modusKnoepfe(page).all()) await expect(knopf).toBeDisabled();
+  // „Womit laden“ ist nur noch Anzeige - eine Wahl hätte keine Wirkung.
+  await expect(lpKarte(page).getByRole('button', { name: /Womit laden/ })).toHaveCount(0);
+});
+
+test('Laden W-12: Wallbox getrennt - nicht „angesteckt · mit Sonne“, Knöpfe gesperrt, letzter Kontakt', async ({ page }) => {
+  const fehler = await oeffnen(page, '/e2e/steuerung.html?wallbox=offline#/anlage/help-site/laden');
+  const karte = lpKarte(page);
+  await expect(karte.getByRole('status')).toContainText('Wallbox nicht erreichbar seit 11:10 Uhr.');
+  await expect(karte).toContainText('Ob ein Auto steckt, ist gerade unbekannt');
+  await expect(karte).toContainText('keine Verbindung');
+  await expect(karte).not.toContainText('angesteckt seit');
+  await expect(karte).not.toContainText('mit Sonne');
+  for (const knopf of await modusKnoepfe(page).all()) await expect(knopf).toBeDisabled();
+  expect(await ueberstehend(page)).toEqual([]);
+  expect(fehler).toEqual([]);
+});
+
+test('Cockpit W-12: eine getrennte Wallbox - die Kachel sagt nicht „Kein Auto eingesteckt“', async ({ page }) => {
+  await oeffnen(page, '/e2e/steuerung.html?wallbox=offline#/anlage/help-site/steuerung');
+  await page.goto('/e2e/steuerung.html?wallbox=offline#/anlage/help-site');
+  const kachel = page.locator('[data-kachel="laden"]');
+  await expect(kachel).toContainText('Eine Säule getrennt');
+  await expect(kachel).toContainText('Wallbox Werkstatt: Säule getrennt');
+  await expect(kachel).not.toContainText('Kein Auto eingesteckt');
+});
+
+test('Laden W-21: Auto voll - das Vektor-Wort statt „wartet“, keine Ladeankündigung', async ({ page }) => {
+  await oeffnen(page, '/e2e/steuerung.html?wallbox=voll#/anlage/help-site/laden');
+  const karte = lpKarte(page);
+  await expect(karte).toContainText('Auto pausiert · voll oder Auto-Timer');
+  await expect(karte.locator('.lp-kw')).toContainText('Auto pausiert');
+  await expect(karte).not.toContainText('Lädt ab');
+});
+
+test('Laden W-14: Einspeisung - keine negative Hauslast, „frei“ höchstens der Anschluss', async ({ page }) => {
+  await oeffnen(page, '/e2e/steuerung.html?wallbox=einspeisung#/anlage/help-site/laden');
+  const netz = page.getByRole('region', { name: 'Netzanschluss' });
+  await expect(netz).toContainText('Ihre Anlage speist gerade 1,5 kW ein');
+  await expect(netz).not.toContainText('Haus -');
+  await expect(netz).not.toContainText('Haus −');
+  const frei = await netz.locator('b').first().textContent();
+  expect(Number((frei ?? '').replace(/[^\d,]/g, '').replace(',', '.'))).toBeLessThanOrEqual(22);
 });
 
 test('Regeln: Satzbaukasten mit Probelauf, Folgen und Aktivieren', async ({ page }) => {

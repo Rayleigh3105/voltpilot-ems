@@ -32,8 +32,11 @@ export function LadenKachel({
 }) {
   if (kachel) {
     const band = view.band;
-    // Der wichtigste Ladepunkt: der ladende, sonst der erste.
-    const haupt = view.zeilen.find((z) => z.kw != null && z.kw > 0.05) ?? view.zeilen[0] ?? null;
+    // Der wichtigste Ladepunkt: der ladende, sonst - steckt nirgends ein Auto -
+    // der getrennte (über ihn spricht der Kopf, Audit W-12), sonst der erste.
+    const haupt = view.zeilen.find((z) => z.kw != null && z.kw > 0.05)
+      ?? (view.ladend === 0 && view.steckt === 0 ? view.zeilen.find((z) => z.kind === 'getrennt') : undefined)
+      ?? view.zeilen[0] ?? null;
     return (
       <Kachel
         id="laden"
@@ -64,13 +67,16 @@ export function LadenKachel({
             )}
             {haupt && (
               <p className="vp-k-zustand">
-                {haupt.label} {haupt.word.charAt(0).toLowerCase() + haupt.word.slice(1)}
+                {/* ⚠ Das Wort bleibt, wie die Vektoren es schreiben: klein
+                    geschrieben hiesse es „säule getrennt“, „auto pausiert“. */}
+                {haupt.label}: {haupt.word}
                 {haupt.note ? ` · ${haupt.note}` : ''}
               </p>
             )}
           </div>
         </div>
         {view.zeilen.length > 1 && <p className="vp-k-sub">{view.unterzeile ?? `${view.zeilen.length} Ladepunkte`}</p>}
+        <Hinweise view={view} />
         {band && band.headline != null && (
           <div className="vp-laden-fuss">
             <span className="vp-laden-fuss-kopf">
@@ -107,8 +113,21 @@ export function LadenKachel({
         )}
       </div>
 
+      <Hinweise view={view} />
       <LadenInhalt view={view} />
     </section>
+  );
+}
+
+/** Die Säulen, an denen VoltPilot gerade nichts bewirkt - je ein Satz. */
+function Hinweise({ view }: { view: LadenKachelView }) {
+  if (view.hinweise.length === 0) return null;
+  return (
+    <>
+      {view.hinweise.map((h) => (
+        <p key={h} className="vp-laden-hinweis" role="status">{h}</p>
+      ))}
+    </>
   );
 }
 

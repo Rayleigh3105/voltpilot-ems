@@ -1942,6 +1942,20 @@
       "nachher": "8dcc705a16021d82cac5f5301bcf3c3ae9e22210391310ec2e2760ea6a1ed7f4",
       "commit": "fm/vp-anlage-flow-paket2-3",
       "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), F9: „Später einrichten“ räumt den Entwurf des Flusses ab (anlageEntwurf.ts) - nichts bleibt als Geisterzustand; Text und Ziel unverändert."
+    },
+    {
+      "datei": "components/LadesaeuleAnbinden.tsx",
+      "vorher": "4a2bd7dd0d3e194b6573bab8c5cca5948895a6dc0ce89d50cd8609961e0971b2",
+      "nachher": "1c38e5558721721e67fe49afba5376bae97e5c318f7987aa3e29f2cc6ab7f9ef",
+      "commit": "fm/vp-ocpp-start-portal",
+      "grund": "Audit vp-ocpp-haushalt W-02 (Zusatz Paket Cloud, Inbox 001): „Kennung eintragen“ sperrt zusätzlich, solange die Nennleistung ungültig ist (`nenn.mangel`); Beschriftung, Handler und bisherige Sperren bleiben erhalten."
+    },
+    {
+      "datei": "components/LadesaeuleAnbinden.tsx",
+      "vorher": "ab1308a157972508d2486f8f7a0577c66d5bbc6f0a254f839b89380d89c453af",
+      "nachher": "608da9db688bf35e0ecf92e0395c2382b0886b8878597e3a662eb395d6c7dfe9",
+      "commit": "fm/vp-ocpp-start-portal",
+      "grund": "Audit vp-ocpp-haushalt W-02 (Zusatz Paket Cloud, Inbox 001): der Knopf an einer schon eingetragenen Kennung speichert jetzt Anschluss ODER Nennleistung und heißt deshalb „Änderung speichern“ statt „Anschluss speichern“; er sperrt bei ungültiger Nennleistung, Handler unverändert."
     }
   ],
   "assistentZusammenfuehrung": {

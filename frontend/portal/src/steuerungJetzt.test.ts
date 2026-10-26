@@ -327,6 +327,27 @@ describe('Zone ① Jetzt — eine Zeile je LADEPUNKT (Verbrauchsmanagement v1 §
     return { budget: null, chargers } as unknown as SiteCharging;
   }
 
+  // Audit vp-ocpp-haushalt W-01/W-05: an einer Wallbox, die VoltPilot gar
+  // nicht regelt, bewirkt kein Eingriff etwas - der Schalter weicht dem Grund.
+  it('⚠ W-01 · Box ab Werk: keine Eingriffe, der Grund steht statt des Schalters', () => {
+    const mitBudget = (budget: Record<string, unknown>, cp: Record<string, unknown> = {}) =>
+      ({ budget: { deviceId: 'd-1', enabled: true, connectorCount: 1, surplusActive: true, ...budget }, chargers: [saeule(cp)] } as unknown as SiteCharging);
+    const frei = ladepunktZeilen(mitBudget({ controlEnabled: true })).zeilen[0];
+    expect(frei.aktionen.length).toBeGreaterThan(0);
+    const werk = ladepunktZeilen(mitBudget({ controlEnabled: false })).zeilen[0];
+    expect(werk.aktionen).toEqual([]);
+    expect(werk.keinEingriff).toBe('VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung. Bis die Steuerung an Ihrer VoltPilot-Box freigegeben ist, wirkt keine Ladewahl.');
+    // W-05: abgelehntes Sicherheitsprofil
+    const ohneGrenzen = ladepunktZeilen(mitBudget({ controlEnabled: true }, { ready: false, note: 'Sicherheitsprofil abgelehnt (NotSupported)' })).zeilen[0];
+    expect(ohneGrenzen.aktionen).toEqual([]);
+    expect(ohneGrenzen.keinEingriff).toContain('Diese Wallbox nimmt keine Ladegrenzen an');
+    // Der Rückweg eines schon laufenden Eingriffs bleibt.
+    const mitBoost = ladepunktZeilen(mitBudget({ controlEnabled: false }, {
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 7.4, boost: true }],
+    })).zeilen[0];
+    expect(mitBoost.aktionen).toEqual(['resume']);
+  });
+
   it('nennt Name, Zustand mit Leistung und die übergebene Steuerart', () => {
     const { zeilen } = ladepunktZeilen(charging([saeule()]), () => 'Überschuss (Sonne zuerst)');
     expect(zeilen).toHaveLength(1);

@@ -9,7 +9,8 @@ function saeule(over: Partial<ChargePoint> & { chargePointId: string }): ChargeP
     label: over.label ?? null,
     priority: false,
     connected: over.connected ?? true,
-    ready: true,
+    ready: over.ready ?? true,
+    note: over.note ?? null,
     lastSeen: over.lastSeen ?? '2026-08-28T09:41:00Z',
     entityId: null,
     reportedAt: '2026-08-28T09:41:00Z',
@@ -242,8 +243,11 @@ describe('flussKnoten · der Knoten „Laden" des Energieflusses (Konzept §6)',
   it('⚠ sind ALLE Säulen getrennt, sagt er das - über ein Auto daran wissen wir nichts', () => {
     expect(flussKnoten(k([getrennt('CP1')]))!.wort).toBe('Säule getrennt');
     expect(flussKnoten(k([getrennt('CP1'), getrennt('CP2')]))!.wort).toBe('Säulen getrennt');
-    // Eine verbundene daneben genügt, damit die Aussage wieder über Autos geht.
-    expect(flussKnoten(k([getrennt('CP1'), frei('CP2')]))!.wort).toBe('kein Auto');
+    // ⚠ Eine freie, verbundene daneben macht daraus KEIN „kein Auto": über den
+    // Stecker der getrennten weiß niemand etwas (Audit W-12).
+    expect(flussKnoten(k([getrennt('CP1'), frei('CP2')]))!.wort).toBe('Säule getrennt');
+    // Steckt nebenan ein Auto, ist DAS die Aussage.
+    expect(flussKnoten(k([getrennt('CP1'), steckt('CP2')]))!.wort).toBe('Auto eingesteckt');
   });
 
   it('lässt die Speiche laufen, auch wenn die Leistung nicht messbar ist', () => {
@@ -301,5 +305,42 @@ describe('ladeFlussKnoten · Abzweig vom Haus und eigener Anschluss (Konzept §6
   it('leitet jede Hälfte aus DERSELBEN Kachel-Sicht ab', () => {
     const nur = k([eigen('CP2', 4)]);
     expect(j([laedt('CP1', 11), eigen('CP2', 4)]).eigen).toEqual(flussKnoten(nur));
+  });
+});
+
+// Audit vp-ocpp-haushalt: die Cockpit-Kachel eines Haushalts mit Wallbox.
+describe('ladenKachel · Audit vp-ocpp-haushalt', () => {
+  const werkstatt = (over: Partial<ChargePoint> = {}) => saeule({
+    chargePointId: 'CP-WERKSTATT', label: 'Wallbox Werkstatt',
+    connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11 }],
+    ...over,
+  });
+  const carport = saeule({
+    chargePointId: 'CP-CARPORT', label: 'Ladepunkt Carport',
+    connectors: [{ connectorId: 1, status: 'Available', charging: false, powerKw: null }],
+  });
+
+  it('⚠ W-01 · Box ab Werk: die Kachel sagt groß, dass VoltPilot nicht regelt', () => {
+    const v = k([werkstatt()], { ...BUDGET, controlEnabled: false, controlNote: 'Die Verbrauchersteuerung ist an dieser Box noch nicht freigegeben.' });
+    expect(v.hinweise).toEqual(['VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung.']);
+    // Zwei Säulen: der Satz nennt, welche.
+    const zwei = k([werkstatt(), carport], { ...BUDGET, controlEnabled: false });
+    expect(zwei.hinweise[0]).toBe('Wallbox Werkstatt: VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung.');
+    // Eine freigegebene Box mit eingerichteter Säule: kein Hinweis.
+    expect(k([werkstatt()], BUDGET).hinweise).toEqual([]);
+  });
+
+  it('W-05 · Säule nimmt keine Ladegrenzen an: Hinweis in der Kachel', () => {
+    const v = k([werkstatt({ ready: false, note: 'Ladesäule nicht eingerichtet: das Sicherheitsprofil wurde abgelehnt (NotSupported)' })], BUDGET);
+    expect(v.hinweise).toEqual(['Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern.']);
+  });
+
+  it('⚠ W-12 · eine getrennte Säule neben einer freien: kein „Kein Auto eingesteckt"', () => {
+    const v = k([werkstatt({ connected: false, lastSeen: '2026-09-29T09:10:00Z' }), carport], BUDGET);
+    expect(v.kopf).toBe('Eine Säule getrennt');
+    expect(v.kopf).not.toBe('Kein Auto eingesteckt');
+    expect(v.unterzeile).toBe('1 frei · 1 getrennt');
+    // Der Hinweis gilt den verbundenen - die getrennte sagt ihr Wort selbst.
+    expect(v.hinweise).toEqual([]);
   });
 });

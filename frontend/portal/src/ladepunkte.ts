@@ -350,19 +350,23 @@ export function budgetBand(budget: ChargingBudget | null): BudgetBand | null {
   const laden = num(budget.measuredKw) ?? num(budget.allocatedKw) ?? 0;
   const house = num(budget.siteLoadKw);
   const margin = limit != null && budget.marginPct ? (limit * budget.marginPct) / 100 : 0;
+  // ⚠ Der Rest der Box ist `Netz − Laden` MIT Vorzeichen: bei Einspeisung ist
+  // er negativ. Er belegt dann nichts am Anschluss - als Gebäude-Anteil
+  // gerechnet machte er „frei" größer als die ganze Grenze (Audit W-14).
+  const belegt = Math.max(house ?? 0, 0);
   const segments: BandSegment[] = [];
-  if (house != null) segments.push({ id: 'gebaeude', label: 'Gebäude', kw: Math.max(house, 0) });
+  if (house != null) segments.push({ id: 'gebaeude', label: 'Gebäude', kw: belegt });
   segments.push({ id: 'laden', label: 'Laden', kw: Math.max(laden, 0) });
   if (margin > 0) {
     segments.push({ id: 'abstand', label: 'Sicherheitsabstand', kw: margin, hatched: true });
   }
   if (limit != null) {
-    const used = (house ?? 0) + Math.max(laden, 0) + margin;
+    const used = belegt + Math.max(laden, 0) + margin;
     if (limit - used > 0.05) {
       segments.push({ id: 'frei', label: 'Frei', kw: limit - used });
     }
   }
-  const shown = (house ?? 0) + Math.max(laden, 0);
+  const shown = belegt + Math.max(laden, 0);
   return {
     limitKw: limit,
     segments,
@@ -382,7 +386,25 @@ function bandLine(budget: ChargingBudget, house: number | null, laden: number): 
   if (house == null) {
     return `Ihre Ladepunkte beziehen gerade ${KW(laden)}. Was das Gebäude zieht, misst diese Anlage noch nicht - das Ladebudget rechnet deshalb mit den hinterlegten Zahlen.`;
   }
+  if (house < 0) {
+    const ein = einspeisungKw(house, laden);
+    return ein != null && ein > 0.05
+      ? `Ihr Anschluss ist geschützt: Ihre Anlage speist gerade ${KW(ein)} ein, ${KW(laden)} Laden bleiben unter Ihrer Grenze.`
+      : `Ihr Anschluss ist geschützt: Ihr Haus bezieht gerade keinen Netzstrom, ${KW(laden)} Laden bleiben unter Ihrer Grenze.`;
+  }
   return `Ihr Anschluss ist geschützt: ${KW(house)} Gebäude und ${KW(laden)} Laden bleiben unter Ihrer Grenze.`;
+}
+
+/**
+ * Was die Anlage gerade ins Netz speist - aus dem Rest der Box (`Netz − Laden`,
+ * mit Vorzeichen) und der Ladeleistung zurückgerechnet: Netz = Rest + Laden.
+ * `null`, solange der Rest nicht negativ ist (dann ist er wirklich Hauslast);
+ * 0, wenn das Laden den Überschuss ganz aufnimmt.
+ */
+export function einspeisungKw(restKw: number | null | undefined, ladenKw: number): number | null {
+  const rest = num(restKw);
+  if (rest == null || rest >= 0) return null;
+  return Math.max(0, -(rest + Math.max(ladenKw, 0)));
 }
 
 // ---------------------------------------------------------------------------
@@ -543,7 +565,7 @@ export function ladeZustand(
       : ZUSTAND_WORT[kind];
   let detail = ZUSTAND_DETAIL[kind] ?? null;
   if (kind === 'getrennt') {
-    const seen = point?.lastSeen ? clock(point.lastSeen) : '';
+    const seen = point?.lastSeen ? zeitpunktKurz(point.lastSeen, nowMs) : '';
     detail = seen === '' ? null : `zuletzt ${seen}`;
   } else if (messwertAlter(con, nowMs) === 'veraltet') {
     // ⚠ Die Lücke wird BENANNT, nicht verschwiegen: ohne diesen Satz sähe eine
@@ -681,10 +703,17 @@ export interface LadevorgangRow {
    * begründet nichts.
    */
   reasonCode: string | null;
-  /** Gemessene Leistung; null = die Säule meldet keine (nie eine 0). */
+  /** Unser Zusatz zum Zustand („voll oder Auto-Timer", „Leistung veraltet · zuletzt 10:40"). */
+  detail: string | null;
+  /**
+   * Gemessene Leistung; null = die Säule meldet keine (nie eine 0) ODER der
+   * Messwert ist veraltet - dieselbe Altersregel wie Kachel und Karte
+   * (`aktuelleLeistung`, Audit W-13).
+   */
   powerKw: number | null;
   /** Zugeteilt; null = dieser Stecker ist nicht Teil der Entscheidung. */
   allocatedKw: number | null;
+  /** Ladestand des Autos; null = nicht gemeldet oder so alt wie ein veralteter Messwert. */
   socPct: number | null;
   /** „seit 10:41" - null ohne laufende Sitzung. */
   since: string | null;
@@ -733,7 +762,10 @@ function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): Ladevorga
   // ⚠ EINE Wortquelle: Wort, Ton und Grund kommen aus `ladeZustand`, damit
   // Ladevorgänge-Seite und Cockpit über dieselbe Sekunde nie Verschiedenes
   // behaupten können.
-  const z = ladeZustand(con, c);
+  const z = ladeZustand(con, c, nowMs);
+  // ⚠ Ein veralteter Messwert steht nicht neben „Leistung nicht messbar" wie
+  // ein neuer: Leistung UND Ladestand reisen mit demselben Stempel (`meteredAt`).
+  const veraltet = messwertAlter(con, nowMs) === 'veraltet';
   return {
     key: `${c.chargePointId}#${con.connectorId}`,
     title: `${chargerName(c)} · ${connectorName(con.connectorId)}`,
@@ -743,9 +775,10 @@ function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): Ladevorga
     tone: z.tone,
     reason: z.reason,
     reasonCode: z.reasonCode,
-    powerKw: num(con.powerKw),
+    detail: z.detail,
+    powerKw: aktuelleLeistung(con, nowMs),
     allocatedKw: num(con.allocatedKw),
-    socPct: num(con.socPct),
+    socPct: veraltet ? null : num(con.socPct),
     since: con.sessionSince ? `seit ${clock(con.sessionSince)}` : null,
     nextTurn: turnIn(con.nextTurn, nowMs),
     priority: c.priority === true,
@@ -795,15 +828,23 @@ export interface ChargerView {
 }
 
 export function chargerView(c: ChargePoint): ChargerView {
-  if (c.connected) {
+  if (c.connected && c.ready) {
     return {
       state: 'angemeldet',
       word: 'angemeldet',
       tone: 'laedt',
-      detail: c.ready
-        ? 'Die Säule ist verbunden und hat ihr Sicherheitsprofil bestätigt.'
-        : text(c.note) ??
-          'Die Säule ist verbunden; ihr Sicherheitsprofil wird gerade hinterlegt.',
+      detail: 'Die Säule ist verbunden und hat ihr Sicherheitsprofil bestätigt.',
+    };
+  }
+  if (c.connected) {
+    // ⚠ Verbunden ist nicht eingerichtet: ohne bestätigtes Sicherheitsprofil
+    // ist die Säule nicht grün (Audit W-05) - der Satz der Box sagt, warum.
+    const note = text(c.note);
+    return {
+      state: 'angemeldet',
+      word: note ? 'nimmt keine Ladegrenzen an' : 'wird eingerichtet',
+      tone: note ? 'stoerung' : 'ruhig',
+      detail: note ?? 'Die Säule ist verbunden; ihr Sicherheitsprofil wird gerade hinterlegt.',
     };
   }
   if (!c.lastSeen) {
@@ -822,6 +863,91 @@ export function chargerView(c: ChargePoint): ChargerView {
     detail:
       'Die Verbindung zu dieser Säule steht gerade nicht. Sie lädt weiter, begrenzt sich dabei aber selbst auf ihr hinterlegtes Sicherheitsprofil.',
   };
+}
+
+// ---------------------------------------------------------------------------
+// Regelt VoltPilot diese Säule gerade? (Audit vp-ocpp-haushalt W-01/W-05/W-12)
+// ---------------------------------------------------------------------------
+
+/**
+ * Warum VoltPilot an einer Säule gerade NICHTS bewirkt - in der Reihenfolge, in
+ * der die Gründe einander schlagen:
+ *
+ * - `nie_gemeldet` / `getrennt`: die Säule schweigt. `connected=false` gewinnt
+ *   vor jedem Status (Vektor-Fall `getrennt`) - was sie tut, weiß niemand.
+ * - `nicht_freigegeben`: die BOX schreibt keine Ladegrenzen
+ *   (`ChargingBudget.controlEnabled=false`, ab Werk) - die Säule lädt voll.
+ * - `keine_grenzen`: die Säule hat ihr Sicherheitsprofil abgelehnt oder hält
+ *   die Grenze nicht (`ready=false` mit Satz der Box, Rücklesung `abweichend`).
+ * - `wird_eingerichtet`: verbunden, das Sicherheitsprofil ist noch nicht
+ *   bestätigt (`ready=false` ohne Satz) - auch dann wirkt noch keine Grenze.
+ */
+export type LadepunktSperreKind =
+  | 'nie_gemeldet'
+  | 'getrennt'
+  | 'nicht_freigegeben'
+  | 'keine_grenzen'
+  | 'wird_eingerichtet';
+
+export interface LadepunktSperre {
+  kind: LadepunktSperreKind;
+  /** Der eine Satz über der Karte, ohne Schlusspunkt. */
+  satz: string;
+  /** Was daraus folgt - zugleich der Grund an den gesperrten Knöpfen. */
+  folge: string;
+}
+
+/** Die Sätze der Sperre - EINE Quelle für Laden-Karte, Cockpit, Geräteseite und Assistent. */
+export const SPERRE_SATZ = {
+  nie_gemeldet: 'Die Wallbox hat sich noch nicht gemeldet',
+  getrennt: 'Wallbox nicht erreichbar',
+  nicht_freigegeben: 'VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung',
+  keine_grenzen: 'Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern',
+  wird_eingerichtet: 'Die Wallbox wird gerade eingerichtet – VoltPilot steuert sie noch nicht',
+} as const satisfies Record<LadepunktSperreKind, string>;
+
+const SPERRE_FOLGE: Record<LadepunktSperreKind, string> = {
+  nie_gemeldet: 'Sobald sie sich bei Ihrer VoltPilot-Box meldet, erscheint hier ihr Zustand.',
+  getrennt: 'Was sie gerade tut, weiß VoltPilot nicht – ein Eingriff käme nicht an.',
+  nicht_freigegeben: 'Bis die Steuerung an Ihrer VoltPilot-Box freigegeben ist, wirkt keine Ladewahl.',
+  keine_grenzen: 'Ladewahl und Eingriffe wirken an dieser Wallbox nicht.',
+  wird_eingerichtet: 'Sobald sie ihr Sicherheitsprofil bestätigt hat, wirkt Ihre Ladewahl.',
+};
+
+/** Das Budget der Box, an der diese Säule hängt (`budgets`), sonst die Bestandssicht. */
+export function budgetFuer(
+  charging: Pick<SiteCharging, 'budget' | 'budgets'> | null | undefined,
+  cp: Pick<ChargePoint, 'deviceId'>,
+): ChargingBudget | null {
+  return (charging?.budgets ?? []).find((b) => b.deviceId === cp.deviceId) ?? charging?.budget ?? null;
+}
+
+/**
+ * Regelt VoltPilot diese Säule gerade? `null` = ja, soweit gemeldet.
+ *
+ * ⚠ Ohne Budget-Block (eine Box, die noch nichts gemeldet hat) behauptet diese
+ * Funktion keine fehlende Freigabe - fehlend ist kein `false`.
+ */
+export function ladepunktSperre(
+  cp: Pick<ChargePoint, 'connected' | 'ready' | 'note' | 'lastSeen' | 'connectors'>,
+  budget: Pick<ChargingBudget, 'controlEnabled'> | null | undefined,
+  nowMs?: number,
+): LadepunktSperre | null {
+  const sperre = (kind: LadepunktSperreKind, satz: string = SPERRE_SATZ[kind]): LadepunktSperre => ({
+    kind,
+    satz,
+    folge: SPERRE_FOLGE[kind],
+  });
+  if (!cp.connected) {
+    if (!text(cp.lastSeen)) return sperre('nie_gemeldet');
+    const seit = zeitpunktKurz(cp.lastSeen as string, nowMs);
+    return sperre('getrennt', seit ? `${SPERRE_SATZ.getrennt} seit ${seit} Uhr` : SPERRE_SATZ.getrennt);
+  }
+  if (budget && budget.controlEnabled === false) return sperre('nicht_freigegeben');
+  const abweichend = (cp.connectors ?? []).some((con) => con.readback === 'abweichend');
+  if (abweichend || (!cp.ready && text(cp.note))) return sperre('keine_grenzen');
+  if (!cp.ready) return sperre('wird_eingerichtet');
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -966,7 +1092,7 @@ export function boostFolgen(): string[] {
     'Dieser Ladevorgang lädt ab sofort mit voller verfügbarer Leistung - auch mit Netzstrom.',
     'Ihre Überschuss-Priorität bleibt für alle anderen Ladevorgänge unverändert.',
     'Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten weiter - daran ändert dieser Knopf nichts.',
-    'Gilt, bis das Fahrzeug voll ist, längstens 4 Stunden - danach gilt wieder Ihre Priorität.',
+    `Gilt, bis das Fahrzeug voll ist, längstens ${LADEPUNKT_DECKEL_MIN / 60} Stunden - danach gilt wieder Ihre Priorität.`,
   ];
 }
 
@@ -1001,10 +1127,31 @@ export const LADEPUNKT_LABEL: Record<LadepunktAktion, string> = {
   resume: 'Automatik fortsetzen',
 };
 
+/**
+ * Der Deckel der Box für einen Ladepunkt-Eingriff (Vertrag
+ * `mqtt-charging-boost.schema.json`, `minutes`: ABWESEND = 240 Minuten, jeder
+ * größere Wunsch wird geklemmt). „Bis Abstecken" endet also spätestens hier -
+ * jede Fläche sagt das, statt ein Ende beim Abstecken zu versprechen (Audit
+ * W-10). Trägt der Vertrag einmal einen längeren Deckel (`until_unplug`),
+ * ändert sich NUR diese Zahl.
+ */
+export const LADEPUNKT_DECKEL_MIN = 240;
+
+/** „4 Std" - der Deckel im Wort der Dauer-Chips. */
+export const LADEPUNKT_DECKEL_TEXT = `${LADEPUNKT_DECKEL_MIN / 60} Std`;
+
+/** Die Wahl „bis Abstecken" - mit ihrem Deckel, nie ohne. */
+export const BIS_ABSTECKEN = `bis Abstecken, höchstens ${LADEPUNKT_DECKEL_TEXT}`;
+
+/** Das Ende eines Eingriffs ohne Dauer: „zum Abstecken, spätestens 15:10". */
+export function bisAbsteckenSatz(spaetestens: string): string {
+  return `zum Abstecken, spätestens ${spaetestens}`;
+}
+
 /** Die zweite Zeile je Menü-Eintrag - sie sagt die FOLGE, nicht die Tatsache. */
 export const LADEPUNKT_HINWEIS: Record<LadepunktAktion, string> = {
-  voll_laden: 'Netzstrom erlaubt. Endet spätestens beim Abstecken.',
-  laden_pausieren: 'Bis Sie fortsetzen oder das Auto absteckt.',
+  voll_laden: `Netzstrom erlaubt. Endet beim Abstecken, spätestens nach ${LADEPUNKT_DECKEL_TEXT}.`,
+  laden_pausieren: `Bis Sie fortsetzen oder das Auto absteckt, höchstens ${LADEPUNKT_DECKEL_TEXT}.`,
   resume: 'Für diese Ladung gilt danach wieder Ihre Priorität.',
 };
 
@@ -1028,7 +1175,7 @@ export const LADEPUNKT_DAUERN: LadepunktDauer[] = [
   { key: '1h', label: '1 h', minutes: 60 },
   { key: '2h', label: '2 h', minutes: 120 },
   { key: '4h', label: '4 h', minutes: 240 },
-  { key: 'abstecken', label: 'bis Abstecken', minutes: null },
+  { key: 'abstecken', label: BIS_ABSTECKEN, minutes: null },
 ];
 
 /** Die Vorauswahl - der `on`-Chip des abgenommenen Mockups. */
@@ -1135,7 +1282,7 @@ export function ladepunktBanner(name: string, eingriff: LadepunktEingriff): stri
   const was = eingriff === 'pausiert'
     ? 'pausiert (nur diese Ladung)'
     : 'lädt voll (nur diese Ladung)';
-  return `Handeingriff läuft: ${name} ${was} · endet spätestens beim Abstecken`;
+  return `Handeingriff läuft: ${name} ${was} · endet beim Abstecken, spätestens nach ${LADEPUNKT_DECKEL_TEXT}`;
 }
 
 // --- Die Folgen-Karte ------------------------------------------------------
@@ -1208,7 +1355,7 @@ export function boostFolgenKarte(
           // gilt allein der Vertrags-Deckel der Box (4 Stunden), und eine
           // Zahl daneben wäre eine zweite, erfundene Frist.
           dauer.minutes == null
-            ? 'Endet beim Abstecken, längstens nach 4 Stunden - danach gilt wieder Ihre Priorität.'
+            ? `Endet beim Abstecken, längstens nach ${LADEPUNKT_DECKEL_MIN / 60} Stunden - danach gilt wieder Ihre Priorität.`
             : `Endet beim Abstecken, längstens nach ${dauer.label} - danach gilt wieder Ihre Priorität.`,
           'Sie können jederzeit früher „Automatik fortsetzen" wählen.',
         ],
@@ -1256,7 +1403,7 @@ export function pauseFolgenKarte(dauer: LadepunktDauer): LadepunktFolgen {
         titel: 'Ende / Rücknahme',
         zeilen: [
           dauer.minutes == null
-            ? 'Endet beim Abstecken, längstens nach 4 Stunden - danach lädt dieser Ladevorgang wieder nach Ihrer Priorität.'
+            ? `Endet beim Abstecken, längstens nach ${LADEPUNKT_DECKEL_MIN / 60} Stunden - danach lädt dieser Ladevorgang wieder nach Ihrer Priorität.`
             : `Endet beim Abstecken, längstens nach ${dauer.label} - danach lädt dieser Ladevorgang wieder nach Ihrer Priorität.`,
           'Sie können jederzeit früher „Automatik fortsetzen" wählen.',
         ],
@@ -1438,6 +1585,19 @@ function clock(iso: string): string {
   return Number.isNaN(t.getTime())
     ? ''
     : new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' }).format(t);
+}
+
+/**
+ * „09:12" am selben Tag, sonst „28.09. 09:12" - eine Uhrzeit ohne Datum
+ * behauptete über eine Säule, die seit gestern schweigt, sie sei heute noch
+ * da gewesen (Audit W-12).
+ */
+export function zeitpunktKurz(iso: string, nowMs?: number): string {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return '';
+  const tag = (d: Date) => new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d);
+  if (tag(t) === tag(new Date(nowMs ?? Date.now()))) return clock(iso);
+  return `${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(t)} ${clock(iso)}`;
 }
 
 export const __test = { KW, clock };

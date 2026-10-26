@@ -117,6 +117,61 @@ const STATUS: Record<string, [string, string | null]> = {
   ziel: ['fulfilled', null],
 };
 
+/**
+ * `?wallbox=werk|abweichend|offline|voll|einspeisung`: die Haushalts-Fälle des Audits
+ * `vp-ocpp-haushalt` an der Wallbox Werkstatt - was die Box in diesem Zustand meldet.
+ *
+ * - `werk` (W-01): Box mit Werkseinstellung, die Steuerung ist nicht freigegeben; das Auto zieht 11 kW.
+ * - `abweichend` (W-05): die Säule hält die Grenze nicht (Rücklesung `abweichend`), lädt 11 kW bei „Nur Sonne".
+ * - `offline` (W-12): die Wallbox seit 2 h getrennt, ihr letzter Stand „Charging 7,4 kW".
+ * - `voll` (W-21): das Auto ist voll (SuspendedEV, 0 kW).
+ * - `einspeisung` (W-14): sonniger Mittag, der Rest der Box (`Netz − Laden`) ist negativ.
+ */
+const WALLBOX_FALL = new URLSearchParams(location.search).get('wallbox');
+
+function wallboxFall(
+  charging: { budget: Record<string, unknown>; chargers: Record<string, unknown>[] },
+  rahmen: Record<string, unknown>,
+) {
+  const wb = charging.chargers.find((c) => c.chargePointId === 'CP-WERKSTATT')!;
+  const con = (wb.connectors as Record<string, unknown>[])[0];
+  const vor = (min: number) => new Date(Date.parse(JETZT) - min * 60_000).toISOString();
+  const laedt = (kw: number) => {
+    Object.assign(charging.budget, { measuredKw: kw, allocatedKw: kw });
+    Object.assign(rahmen, { verteiltKw: kw });
+    Object.assign(con, { status: 'Charging', charging: true, powerKw: kw, allocatedKw: kw, reason: 'laedt', reasonText: 'lädt' });
+  };
+  switch (WALLBOX_FALL) {
+    case 'werk':
+      Object.assign(charging.budget, { controlEnabled: false,
+        controlNote: 'Die Verbrauchersteuerung ist an dieser Box noch nicht freigegeben. Die Ladesäulen halten ihr hinterlegtes Sicherheitsprofil.' });
+      laedt(11);
+      Object.assign(con, { allocatedKw: null, readback: null, commandStatus: null });
+      break;
+    case 'abweichend':
+      laedt(11);
+      Object.assign(con, { allocatedKw: 0, readback: 'abweichend', readbackNote: 'Die Säule hält 0 kW nicht ein.',
+        reason: 'kein_ueberschuss', reasonText: 'wartet auf Sonnenstrom' });
+      break;
+    case 'offline':
+      laedt(7.4);
+      Object.assign(wb, { connected: false, lastSeen: vor(120) });
+      Object.assign(con, { meteredAt: vor(120) });
+      break;
+    case 'voll':
+      Object.assign(con, { status: 'SuspendedEV', charging: false, powerKw: 0, allocatedKw: 11, sessionKwh: 18.2,
+        sessionSince: vor(240), reason: null, reasonText: null });
+      break;
+    case 'einspeisung':
+      laedt(2.5);
+      Object.assign(charging.budget, { siteLoadKw: -4, siteGridKw: -1.5 });
+      Object.assign(rahmen, { hausLastKw: -4 });
+      break;
+    default:
+      break;
+  }
+}
+
 export function installSteuerungFixtures() {
   installHelpFixtures();
   const result = (value: unknown) => async () => structuredClone(value);
@@ -210,6 +265,7 @@ export function installSteuerungFixtures() {
     { deviceId: 'help-box', chargePointId: 'CP-CARPORT', entityId: eid('lp'), label: 'Ladepunkt Carport', priority: false, connected: true, ready: true, vendor: 'KEBA', model: 'P30', lastSeen: JETZT, reportedAt: JETZT,
       quelle: bahn(DEFS[1].steuerart), quelleUebernommen: true as boolean | null, connectors: [connector('lp', false)] },
   ] };
+  wallboxFall(charging, rahmen);
   const consumerPlan = { planId: 'st-plan', generatedAt: JETZT, slotMinutes: 15,
     entities: GESTEUERT.map((d) => ({ entityId: eid(d.id), name: d.name,
       slots: Array.from({ length: 192 - J - 1 }, (_, k) => ({ time: ts(J + 1 + k), command: 'setpoint_kw', targetValue: KW[d.id][J + 1 + k] ?? 0, reasonCode: null, requirementId: null })) })) };

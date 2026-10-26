@@ -35,6 +35,12 @@ import {
   anschlussSoll,
   anschlussWahl,
   anschlussZumSenden,
+  NENNLEISTUNG_AUSWAHL_KW,
+  NENNLEISTUNG_FRAGE,
+  NENNLEISTUNG_HILFE,
+  nennleistungFeld,
+  nennleistungSoll,
+  nennleistungText,
 } from '../ladesaeuleAnbinden';
 import { ConfirmDialog } from './ConfirmDialog';
 import './LadesaeuleAnbinden.css';
@@ -76,6 +82,8 @@ export function LadesaeuleAnbinden({
    * Vorgabe (`anschlussWahl`). Erst ein Klick macht daraus eine eigene Wahl.
    */
   const [anschluss, setAnschluss] = useState<ChargerConnection | null>(null);
+  /** Die getippte Nennleistung; `null` = unberührt, dann gilt das Gespeicherte oder die Vorgabe. */
+  const [nennEingabe, setNennEingabe] = useState<string | null>(null);
   const [config, setConfig] = useState<ChargingConfig | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [busy, setBusy] = useState(false);
@@ -160,6 +168,8 @@ export function LadesaeuleAnbinden({
   // Anzeige, solange der Kunde nichts angeklickt hat.
   const soll = anschlussSoll(config?.chargePoints, kennung);
   const wahl = anschluss ?? anschlussWahl(soll);
+  const nenn = nennleistungFeld(nennEingabe, nennleistungSoll(config?.chargePoints, kennung), istEingetragen);
+  const aenderung = anschlussZumSenden(wahl, soll) !== undefined || nenn.senden !== undefined;
 
   function setzeName(v: string) {
     setName(v);
@@ -178,8 +188,10 @@ export function LadesaeuleAnbinden({
         // Aussage über die Bilanz einer Anlage. Beim ERSTEN Eintragen reist
         // die Wahl dagegen immer mit - der Kunde hat sie gesehen.
         connection: anschlussZumSenden(wahl, soll),
+        ratedKw: nenn.senden,
         deviceId: boxId ?? undefined,
       });
+      setNennEingabe(null);
       setConfig(c);
       onChanged?.();
     } catch (e) {
@@ -272,6 +284,32 @@ export function LadesaeuleAnbinden({
             setKennung(e.target.value);
           }}
         />
+        {/* Die Nennleistung: ohne sie plant VoltPilot „Günstig“ und Ladeziele
+            nicht. Vorgabe 11 kW, die üblichen Stufen als Knöpfe, frei änderbar. */}
+        <fieldset className="vp-anbinden-choice">
+          <legend>{NENNLEISTUNG_FRAGE}</legend>
+          <div className="vp-anbinden-stufen" role="group" aria-label="Übliche Nennleistungen">
+            {NENNLEISTUNG_AUSWAHL_KW.map((kw) => (
+              <button
+                type="button"
+                key={kw}
+                aria-pressed={nenn.wert === kw}
+                disabled={busy}
+                onClick={() => setNennEingabe(nennleistungText(kw))}
+              >
+                {nennleistungText(kw)} kW
+              </button>
+            ))}
+          </div>
+          <Input
+            label="Nennleistung in kW"
+            value={nenn.text}
+            inputMode="decimal"
+            error={nenn.mangel}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setNennEingabe(e.target.value)}
+          />
+          <p className="vp-anbinden-hint">{NENNLEISTUNG_HILFE}</p>
+        </fieldset>
         {/* ⚠ Die Ortsfrage steht VOR dem Eintragen und bleibt danach sichtbar:
             sie ist eine Tatsache der Anlage, die ein Kunde später korrigieren
             können muss - anders als `label`/`priority` überschreibt genau
@@ -304,15 +342,15 @@ export function LadesaeuleAnbinden({
             {/* Ein geänderter Anschluss ist eine echte Änderung an einer schon
                 eingetragenen Kennung - dafür braucht es einen Knopf, sonst
                 verschluckt die Fläche die Wahl, die der Kunde gerade traf. */}
-            {anschlussZumSenden(wahl, soll) !== undefined && (
-              <Recht aktion="ladepunkt.anbinden"><Button size="sm" disabled={busy} onClick={() => void eintragen()}>
-                {busy ? 'Wird gespeichert …' : 'Anschluss speichern'}
+            {aenderung && (
+              <Recht aktion="ladepunkt.anbinden"><Button size="sm" disabled={busy || !!nenn.mangel} onClick={() => void eintragen()}>
+                {busy ? 'Wird gespeichert …' : 'Änderung speichern'}
               </Button></Recht>
             )}
           </div>
         ) : (
           <div className="vp-anbinden-actions">
-            <Recht aktion="ladepunkt.anbinden"><Button size="sm" disabled={!!mangel || boxWahlFehlt || busy} onClick={() => void eintragen()}>
+            <Recht aktion="ladepunkt.anbinden"><Button size="sm" disabled={!!mangel || !!nenn.mangel || boxWahlFehlt || busy} onClick={() => void eintragen()}>
               {busy ? 'Wird eingetragen …' : 'Kennung eintragen'}
             </Button></Recht>
           </div>
@@ -360,7 +398,7 @@ export function LadesaeuleAnbinden({
       <div className="vp-anbinden-step">
         <h3 className="vp-anbinden-h">3 · Säule meldet sich</h3>
         <p className={`vp-anbinden-status is-${m.ton}`}>
-          <Icon name={m.gemeldet ? 'check' : 'wifi'} /> {m.wort}
+          <Icon name={m.ton === 'warn' ? 'alert-triangle' : m.ton === 'ok' ? 'check' : 'wifi'} /> {m.wort}
         </p>
         <p className="vp-anbinden-sub">{m.satz}</p>
         {istEingetragen && <p className="vp-anbinden-note">{abschluss(m.gemeldet)}</p>}

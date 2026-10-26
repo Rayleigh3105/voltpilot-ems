@@ -242,3 +242,72 @@ describe('Jetzt', () => {
     expect(kopfsatz(leereReihen(), 80, [], 52).vor).toBe('Für diese Viertelstunde liegen keine Werte vor.');
   });
 });
+
+// Die Fälle der Audit-Bühne `vp-ocpp-haushalt` (Haushalt mit einer Wallbox) an
+// der Laden-Karte - je Befund das, was die Karte vorher behauptete.
+describe('Ladepunkt im Haushalt (Audit vp-ocpp-haushalt)', () => {
+  const JETZT = NOW.toISOString();
+  const vor = (min: number) => new Date(NOW.getTime() - min * 60_000).toISOString();
+  const wallbox = eintrag({
+    entityId: 'wb', name: 'Wallbox Garage', typ: 'ev-charger', typLabel: 'Wallbox', ladepunkt: true,
+    chargePointId: 'WB-1', steuerart: { quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' },
+  } as Partial<VerbraucherEintrag> & { entityId: string });
+  type Lp = NonNullable<Parameters<typeof geraete>[0]['charging']>;
+  const charging = (cp: Partial<Lp['chargers'][number]> = {}, con: Record<string, unknown> = {}, budget: Record<string, unknown> = {}): Lp => ({
+    budget: { deviceId: 'box', enabled: true, controlEnabled: true, connectorCount: 1, ...budget } as Lp['budget'],
+    chargers: [{
+      deviceId: 'box', chargePointId: 'WB-1', priority: false, connected: true, ready: true, lastSeen: JETZT, reportedAt: JETZT,
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11, meteredAt: JETZT, sessionSince: vor(95), ...con }],
+      ...cp,
+    }] as Lp['chargers'],
+  });
+  const bildVon = (c: Lp) => geraete({
+    raster: r, reihen: leereReihen(), charging: c,
+    verbraucher: { verbraucher: [wallbox], ladepunkte: { standard: null, standardFolger: 0, gesamt: 1, rahmen: null }, rangliste: [] },
+  })[0];
+
+  it('regelt VoltPilot alles, steht keine Sperre an der Karte', () => {
+    const g = bildVon(charging());
+    expect(g.ladepunkt?.sperre).toBeNull();
+    expect(g.ladepunkt?.angesteckt).toBe(true);
+    expect(g.an).toBe(true);
+  });
+
+  it('W-01 · Box ab Werk: die Karte sagt, dass VoltPilot nicht regelt', () => {
+    const g = bildVon(charging({}, {}, { controlEnabled: false, controlNote: 'Die Verbrauchersteuerung ist an dieser Box noch nicht freigegeben.' }));
+    expect(g.ladepunkt?.sperre?.kind).toBe('nicht_freigegeben');
+    expect(g.ladepunkt?.sperre?.satz).toBe('VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung');
+  });
+
+  it('W-05 · Säule hält die Grenze nicht (Rücklesung abweichend): nicht steuerbar', () => {
+    const g = bildVon(charging({}, { readback: 'abweichend', readbackNote: 'Die Säule hält 0 kW nicht ein.' }));
+    expect(g.ladepunkt?.sperre?.kind).toBe('keine_grenzen');
+    expect(g.ladepunkt?.sperre?.satz).toBe('Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern');
+  });
+
+  it('W-05 · Sicherheitsprofil abgelehnt (ready=false mit Satz der Box): nicht steuerbar', () => {
+    const g = bildVon(charging({ ready: false, note: 'Ladesäule nicht eingerichtet: das Sicherheitsprofil wurde abgelehnt (NotSupported)' }));
+    expect(g.ladepunkt?.sperre?.kind).toBe('keine_grenzen');
+  });
+
+  it('⚠ W-12 · Wallbox seit 2 h getrennt: nicht „angesteckt", nicht „lädt", Sperre mit letztem Kontakt', () => {
+    const g = bildVon(charging({ connected: false, lastSeen: vor(120) }, { powerKw: 7.4, meteredAt: vor(120) }));
+    expect(g.ladepunkt?.angesteckt).toBe(false);
+    expect(g.ladepunkt?.laedt).toBe(false);
+    expect(g.ladepunkt?.sitzungSeit).toBeNull();
+    expect(g.an).toBeNull();
+    expect(g.jetztKw).toBeNull();
+    expect(g.pill).toEqual(['stale', 'keine Verbindung']);
+    expect(g.ladepunkt?.sperre?.kind).toBe('getrennt');
+    expect(g.ladepunkt?.sperre?.satz).toMatch(/^Wallbox nicht erreichbar seit \d{2}:\d{2} Uhr$/);
+    expect(g.warum).toBe(g.ladepunkt?.sperre?.satz);
+  });
+
+  it('⚠ W-21 · Auto voll (SuspendedEV): das Vektor-Wort, nie „wartet"', () => {
+    const g = bildVon(charging({}, { status: 'SuspendedEV', charging: false, powerKw: 0, allocatedKw: 11 }));
+    expect(g.ladepunkt?.zustand?.kind).toBe('auto_pausiert');
+    expect(g.pill).toEqual(['wait', 'Auto pausiert']);
+    expect(g.warum).toBe('Auto pausiert · voll oder Auto-Timer');
+    expect(g.ladepunkt?.sperre).toBeNull();
+  });
+});

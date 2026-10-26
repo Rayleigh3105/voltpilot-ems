@@ -235,6 +235,50 @@ describe('OcppWallboxPage integration', () => {
     expect(within(steuerung).getByRole('radio', { name: /Sofort laden/ })).toBeInTheDocument();
   });
 
+  // Audit vp-ocpp-haushalt W-01/W-05: eine verbundene Wallbox, an der VoltPilot
+  // nichts bewirkt, sieht nicht steuerbar aus - die Bühne sagt es, der Schalter fehlt.
+  it('⚠ W-05 · eine Wallbox ohne Ladegrenzen sagt es groß und bietet keinen Schalter an', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" charger={{
+      deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: false,
+      note: 'Ladesäule nicht eingerichtet: das Sicherheitsprofil wurde abgelehnt (NotSupported)',
+      lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11, meteredAt: new Date().toISOString() }],
+    }} budget={{ deviceId: 'd', enabled: true, controlEnabled: true, connectorCount: 1, surplusActive: true }} />);
+
+    expect(await screen.findByText('Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern.')).toBeVisible();
+    const steuerung = screen.getByTestId('geraet-steuerung');
+    expect(within(steuerung).queryByRole('radio', { name: /Sofort laden/ })).toBeNull();
+    expect(within(steuerung).getByText('Ladewahl und Eingriffe wirken an dieser Wallbox nicht.')).toBeVisible();
+  });
+
+  it('⚠ W-01 · Box ab Werk: „VoltPilot regelt diese Wallbox noch nicht“ an der Bühne', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" charger={{
+      deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+      lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11, meteredAt: new Date().toISOString() }],
+    }} budget={{ deviceId: 'd', enabled: true, controlEnabled: false, connectorCount: 1 }} />);
+    expect(await screen.findByText('VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung.')).toBeVisible();
+    expect(within(screen.getByTestId('geraet-steuerung')).queryByRole('radio', { name: /Pausieren/ })).toBeNull();
+  });
+
+  // Audit W-13: die Geräteseite lud ihre OCPP-Daten nur beim Öffnen; nach
+  // fünf Minuten galt alles als veraltet, obwohl die Wallbox weiter lud.
+  it('⚠ W-13 · fragt die Gerätedaten alle 30 Sekunden neu', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
+    await zustandsSatz(/lädt/);
+    const vorher = vi.mocked(api.ocppStations).mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    await waitFor(() => expect(vi.mocked(api.ocppStations).mock.calls.length).toBeGreaterThan(vorher));
+    expect(vi.mocked(api.ocppMeterValues).mock.calls.length).toBeGreaterThan(1);
+  });
+
   it('keeps a stale connector out of status, reason and connector settings despite a fresh heartbeat', async () => {
     vi.mocked(api.ocppStations).mockResolvedValue([{
       ...station,

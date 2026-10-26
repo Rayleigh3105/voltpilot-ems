@@ -77,6 +77,8 @@ describe('LadesaeuleAnbinden', () => {
         // Cockpit Phase 1 / C1: beim ERSTEN Eintragen reist die Wahl mit -
         // der Kunde hat sie gesehen und stehen lassen.
         connection: 'haus',
+        // Audit W-02: die Nennleistung reist mit - Vorgabe 11 kW.
+        ratedKw: 11,
         deviceId: 'd1',
       }),
     );
@@ -139,6 +141,26 @@ describe('LadesaeuleAnbinden', () => {
     expect(screen.getByText(/keine Leerzeichen/)).toBeTruthy();
   });
 
+  it('schickt die gewählte Nennleistung mit (Audit W-02, Paket Cloud)', async () => {
+    mount();
+    fireEvent.change(screen.getByLabelText(/Name der Säule/), { target: { value: 'Garage' } });
+    expect((screen.getByLabelText('Nennleistung in kW') as HTMLInputElement).value).toBe('11');
+    fireEvent.click(screen.getByRole('button', { name: '22 kW' }));
+    expect(screen.getByRole('button', { name: '22 kW' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Kennung eintragen' }));
+    await waitFor(() =>
+      expect(admitChargePoint).toHaveBeenCalledWith('s1', expect.objectContaining({ chargePointId: 'garage', ratedKw: 22 })),
+    );
+  });
+
+  it('sperrt das Eintragen bei einer ungültigen Nennleistung und sagt warum', () => {
+    mount();
+    fireEvent.change(screen.getByLabelText(/Name der Säule/), { target: { value: 'Garage' } });
+    fireEvent.change(screen.getByLabelText('Nennleistung in kW'), { target: { value: '0' } });
+    expect(screen.getByText(/größer als 0 kW/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Kennung eintragen' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('meldet Vollzug erst, wenn die SÄULE sich gemeldet hat', async () => {
     chargingConfig.mockResolvedValue({
       ...LEER,
@@ -148,9 +170,39 @@ describe('LadesaeuleAnbinden', () => {
     // Box würde sie also annehmen - benutzt hat sie noch keine Säule.
     const erster = mount();
     fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'hof-nord' } });
-    expect(await screen.findByText('Wartet auf die Säule')).toBeTruthy();
+    expect(await screen.findByText('Wartet auf die Wallbox')).toBeTruthy();
     expect(screen.queryByText('Verbunden')).toBeNull();
     erster.unmount();
+
+    // ⚠ Audit W-04: die Box führt die eingetragene Kennung in ihrer Liste,
+    // auch wenn nie eine Wallbox darunter angerufen hat (`connected:false`,
+    // kein `lastSeen`) - das ist noch KEINE Meldung.
+    siteChargers.mockResolvedValue(
+      charging({
+        chargers: [
+          {
+            deviceId: 'd1',
+            chargePointId: 'hof-nord',
+            priority: false,
+            connected: false,
+            ready: false,
+            lastSeen: null,
+            note: 'Diese Ladesäule hat sich noch nicht gemeldet.',
+            connectors: [],
+          } as SiteCharging['chargers'][number],
+        ],
+      }),
+    );
+    const zweiter = mount();
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'hof-nord' } });
+    // Schritt 3 UND die Zeile in der Liste - auch nachdem die Box ihre Liste geliefert hat.
+    await waitFor(() => expect(screen.getByText(/Prüfen Sie Adresse und Kennung/)).toBeTruthy());
+    expect(screen.getAllByText('Wartet auf die Wallbox')).toHaveLength(2);
+    expect(screen.queryByText('Hat sich gemeldet')).toBeNull();
+    expect(screen.getByText(/Prüfen Sie Adresse und Kennung/)).toBeTruthy();
+    // Kein Vollzug und kein Verweis aufs Cockpit, solange sie nie angerufen hat.
+    expect(screen.queryByText(/Im Cockpit finden Sie/)).toBeNull();
+    zweiter.unmount();
 
     siteChargers.mockResolvedValue(
       charging({
@@ -168,7 +220,7 @@ describe('LadesaeuleAnbinden', () => {
     mount();
     fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'hof-nord' } });
     // Beide sagen dasselbe: der Schritt-3-Zustand UND die Zeile in der Liste.
-    expect(await screen.findAllByText('Verbunden')).toHaveLength(2);
+    expect(await screen.findAllByText('Bereit zum Steuern')).toHaveLength(2);
   });
 
   it('sagt, ab wann eine Rücknahme wirkt', async () => {
@@ -184,7 +236,7 @@ describe('LadesaeuleAnbinden', () => {
     mount();
     expect(await screen.findByText('Halle')).toBeTruthy();
     expect(screen.getByText('halle')).toBeTruthy();
-    expect(screen.getAllByText('Wartet auf die Säule').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Wartet auf die Wallbox').length).toBeGreaterThan(0);
   });
 
   it('entfernt eine Kennung erst NACH der Rückfrage - und nennt vorher die Folgen', async () => {
@@ -246,6 +298,7 @@ describe('LadesaeuleAnbinden · Anschluss', () => {
         chargePointId: 'strasse',
         label: 'Straße',
         connection: 'eigen',
+        ratedKw: 11,
         deviceId: 'd1',
       }),
     );
@@ -264,7 +317,9 @@ describe('LadesaeuleAnbinden · Anschluss', () => {
         true,
       ),
     );
-    expect(screen.queryByRole('button', { name: /Anschluss speichern/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /speichern/ })).toBeNull();
+    // ⚠ Ohne gespeicherte Nennleistung steht KEINE erfundene 11 im Feld.
+    expect((screen.getByLabelText('Nennleistung in kW') as HTMLInputElement).value).toBe('');
     expect(admitChargePoint).not.toHaveBeenCalled();
   });
 
@@ -277,7 +332,7 @@ describe('LadesaeuleAnbinden · Anschluss', () => {
     fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'strasse' } });
     await waitFor(() => expect(screen.getByLabelText(/Eigener Netzanschluss/)).toBeTruthy());
     fireEvent.click(screen.getByLabelText(/Eigener Netzanschluss/));
-    fireEvent.click(await screen.findByRole('button', { name: 'Anschluss speichern' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Änderung speichern' }));
     await waitFor(() =>
       expect(admitChargePoint).toHaveBeenCalledWith('s1', {
         chargePointId: 'strasse',
@@ -285,6 +340,22 @@ describe('LadesaeuleAnbinden · Anschluss', () => {
         connection: 'eigen',
         deviceId: 'd1',
       }),
+    );
+  });
+
+  it('speichert eine geänderte Nennleistung auf einer schon eingetragenen Kennung', async () => {
+    chargingConfig.mockResolvedValue({
+      ...LEER,
+      chargePoints: [{ chargePointId: 'strasse', label: 'Straße', connection: 'haus', ratedKw: 11 }],
+    });
+    mount();
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'strasse' } });
+    await waitFor(() => expect((screen.getByLabelText('Nennleistung in kW') as HTMLInputElement).value).toBe('11'));
+    expect(screen.queryByRole('button', { name: 'Änderung speichern' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Nennleistung in kW'), { target: { value: '7,4' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Änderung speichern' }));
+    await waitFor(() =>
+      expect(admitChargePoint).toHaveBeenCalledWith('s1', expect.objectContaining({ chargePointId: 'strasse', ratedKw: 7.4 })),
     );
   });
 

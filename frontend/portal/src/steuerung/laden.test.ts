@@ -5,7 +5,7 @@ import type { Netzanschluss } from '../api';
 import { LADEQUELLE } from '../glossar';
 import type { GeraetBild } from './bild';
 import {
-  FREIGABE_STUFE_TEXT, OPTION_SONNE_SPEICHER, UEBERSCHUSS_MODUS, grenzePruefung, hatSpeicherGrenze,
+  FREIGABE_STUFE_TEXT, OPTION_SONNE_SPEICHER, UEBERSCHUSS_MODUS, band, grenzePruefung, hatSpeicherGrenze,
   heutigerAnschluss, ladeQuelle, ladeWahl, ladebudgetKw, lokalesDatum, smartSchritte, speicherZeile,
 } from './laden';
 
@@ -207,5 +207,27 @@ describe('Sonne + Speicher: das Band der Untergrenze', () => {
     expect(hatSpeicherGrenze(undefined, 0, 4)).toBe(false);
     expect(hatSpeicherGrenze(g, 0, 2)).toBe(false);
     expect(hatSpeicherGrenze(g, 0, 3)).toBe(true);
+  });
+});
+
+// Audit vp-ocpp-haushalt W-14: der Rest der Box ist `Netz − Laden` mit Vorzeichen.
+describe('Netzanschluss bei Einspeisung (Audit W-14)', () => {
+  const n = () => Array.from({ length: 96 }, () => null as number | null);
+  const reihenOhneAnteil = { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), bezug: n(), einspeise: n(), temp: n(), abgeregelt: n(), gemessenBis: 0, morgenBekannt: false };
+  const wallbox = { jetztKw: 2.5, kurz: 'Werkstatt' } as unknown as GeraetBild;
+
+  it('⚠ nennt negativen Rest nicht „Haus" und macht „frei" nie größer als den Anschluss', () => {
+    const b = band({ netzanschlussKw: 22, hausLastKw: -4, sicherheitsabstandPct: 0 }, [wallbox], reihenOhneAnteil, 0)!;
+    expect(b.hausKw).toBeNull();
+    expect(b.einspeisungKw).toBeCloseTo(1.5, 5);
+    expect(b.freiKw).toBeLessThanOrEqual(22);
+    expect(b.teile.find((t) => t.k === 'haus')?.kw).toBe(0);
+    expect(b.teile.every((t) => t.kw >= 0)).toBe(true);
+  });
+
+  it('lässt eine echte Hauslast wie bisher', () => {
+    const b = band({ netzanschlussKw: 22, hausLastKw: 0.6, sicherheitsabstandPct: 0 }, [wallbox], reihenOhneAnteil, 0)!;
+    expect(b.hausKw).toBe(0.6);
+    expect(b.einspeisungKw).toBeNull();
   });
 });

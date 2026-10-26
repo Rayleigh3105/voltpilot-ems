@@ -10,6 +10,7 @@ import { liste } from './liste';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Recht } from '../components/Recht';
 import { LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
+import { BIS_ABSTECKEN, LADEPUNKT_DECKEL_MIN, bisAbsteckenSatz } from '../ladepunkte';
 import { ladeQuelle } from './laden';
 import { useRollen } from '../rollen';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
@@ -127,9 +128,13 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
     </button>
   );
   const dauern: [number | null, string][] = [...DAUERN];
-  if (lp) dauern.push([null, 'bis Abstecken']);
+  // ⚠ „bis Abstecken" endet spätestens am Deckel der Box (Audit W-10) - der
+  // Chip und der Knopf sagen beides.
+  if (lp) dauern.push([null, BIS_ABSTECKEN]);
   const bisMs = minuten == null ? null : bild.raster.nowMs + minuten * 60_000;
-  const bisText = bisMs == null ? 'zum Abstecken' : uhrVon(bild.raster, bisMs);
+  const bisText = bisMs == null
+    ? bisAbsteckenSatz(uhrVon(bild.raster, bild.raster.nowMs + LADEPUNKT_DECKEL_MIN * 60_000))
+    : uhrVon(bild.raster, bisMs);
   // Die Ruhe sperrt für alle und sagt ihren Grund; die Knöpfe selbst folgen dem Recht (AP-03 IP-12).
   return (
     <>
@@ -212,16 +217,19 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
   const busy = k.busy === g.id;
 
   const folge = (art: 'aus' | 'an', minuten: number | null): string => {
-    const bis = minuten == null ? N : Math.min(N, r.jetzt + Math.ceil(minuten / 15));
+    // „bis Abstecken" rechnet bis zum Deckel der Box - länger läuft der Eingriff nie.
+    const dauer = minuten ?? LADEPUNKT_DECKEL_MIN;
+    const bis = Math.min(N, r.jetzt + Math.ceil(dauer / 15));
+    const ende = minuten == null ? bisAbsteckenSatz(uhrVon(r, r.nowMs + dauer * 60_000)) : uhrVon(r, r.nowMs + dauer * 60_000);
     if (art === 'an') {
       const kw = g.nennKw;
-      if (kw == null) return `Läuft bis ${minuten == null ? 'zum Abstecken' : uhrVon(r, r.nowMs + minuten * 60_000)}.`;
+      if (kw == null) return `Läuft bis ${ende}.`;
       const f = laufFolge(bild.reihen, r.jetzt, bis, kw);
-      return `Läuft bis ${minuten == null ? 'zum Abstecken' : uhrVon(r, r.nowMs + minuten * 60_000)}: ≈ ${fKwh(f.kwh)}, davon aus dem Netz ≈ ${fKwh(f.netzKwh)}${f.eur != null && f.eur > 0.005 ? ` (≈ ${fEur(f.eur)})` : ''}.`;
+      return `Läuft bis ${ende}: ≈ ${fKwh(f.kwh)}, davon aus dem Netz ≈ ${fKwh(f.netzKwh)}${f.eur != null && f.eur > 0.005 ? ` (≈ ${fEur(f.eur)})` : ''}.`;
     }
     let entfaellt = 0;
     for (let t = r.jetzt; t < bis; t++) entfaellt += (g.kw[t] ?? 0) / 4;
-    return `Bleibt aus bis ${minuten == null ? 'zum Abstecken' : uhrVon(r, r.nowMs + minuten * 60_000)}${entfaellt > 0.05 ? `; entfallen ≈ ${fKwh(entfaellt)} laut Plan.` : '.'}`;
+    return `Bleibt aus bis ${ende}${entfaellt > 0.05 ? `; entfallen ≈ ${fKwh(entfaellt)} laut Plan.` : '.'}`;
   };
 
   // Heute: gemessen bis jetzt.
