@@ -68,9 +68,11 @@ import org.testcontainers.utility.DockerImageName;
  * Hand) — mit dem Demo-Kundenbereich des Dev-Seeds.
  *
  * <ol>
- *   <li><b>Partner ohne wirksame Unterstützung: 404 auf jeder Kundenroute</b>, jede Methode, in acht Varianten (ohne
- *       Kopf, fremder/kaputter Kopf, {@code X-Tenant-Id}, beendete Unterstützung, Unterstützung in einem ANDEREN
- *       Kundenbereich, Plattform mit {@code X-Kundenbereich} ohne Unterstützung).</li>
+ *   <li><b>Partner ohne wirksame Unterstützung: 404 auf jeder Kundenroute</b>, jede Methode, in sieben Varianten
+ *       (ohne Kopf, fremder/kaputter Kopf, {@code X-Tenant-Id}, beendete Unterstützung, Unterstützung in einem
+ *       ANDEREN Kundenbereich). Die Plattform mit {@code X-Kundenbereich} ohne Unterstützung gehört seit dem
+ *       26.10.2026 nicht mehr dazu: bei offenem Umschalter (hier Profil {@code local}) kommt sie hinein wie über
+ *       {@code X-Tenant-Id} - siehe die Einstellungen je Anfrage.</li>
  *   <li><b>Die Einstellungen je Anfrage</b> über eine Test-Route, die {@code current_setting} liest: jeder Aufrufer
  *       sieht seine eigenen, auch abwechselnd hintereinander (der Pool gibt Verbindungen weiter).</li>
  *   <li><b>Bestand: jedes heutige Konto sieht auf jeder lesenden Kundenroute dasselbe wie vor IP-4.</b> „Vorher" ist
@@ -240,7 +242,6 @@ class ZugriffZaunApiTest {
         Authentication ohne = konto("sub-zaun-partner-ohne", null, "partner");
         Authentication beendet = konto(PARTNER_BEENDET, null, "partner");
         Authentication gewaehrt = konto(PARTNER_GEWAEHRT, null, "partner");
-        Authentication plattform = konto("sub-zaun-plattform", null, "platform-admin");
         List<Konto> varianten = List.of(
                 new Konto("Partner ohne Kopf", ohne, new String[0]),
                 new Konto("Partner, X-Kundenbereich ohne Unterstützung", ohne,
@@ -251,9 +252,7 @@ class ZugriffZaunApiTest {
                 new Konto("Partner, X-Tenant-Id", ohne, new String[] {TENANT, DEMO.toString()}),
                 new Konto("Partner, Unterstützung beendet", beendet, new String[] {KUNDENBEREICH, DEMO.toString()}),
                 new Konto("Partner, Unterstützung nur in einem anderen Kundenbereich", gewaehrt,
-                        new String[] {KUNDENBEREICH, NORDWIND.toString()}),
-                new Konto("Plattform, X-Kundenbereich ohne Unterstützung neben X-Tenant-Id", plattform,
-                        new String[] {KUNDENBEREICH, DEMO.toString(), TENANT, DEMO.toString()}));
+                        new String[] {KUNDENBEREICH, NORDWIND.toString()}));
 
         Map<String, List<String>> nicht404 = new TreeMap<>();
         for (Route r : routen) {
@@ -278,6 +277,10 @@ class ZugriffZaunApiTest {
                 new String[] {TENANT, DEMO.toString()});
         Konto plattformOhne = new Konto("Plattform ohne Kopf", konto("sub-zaun-plattform", null, "platform-admin"),
                 new String[0]);
+        // Der Sprung der Plattform-Administration (26.10.2026): das Portal schickt X-Kundenbereich, offen gilt er
+        // ohne Unterstützung wie der Umschalter - der ganze Kundenbereich.
+        Konto sprung = new Konto("Plattform, X-Kundenbereich ohne Unterstützung",
+                konto("sub-zaun-plattform", null, "platform-admin"), new String[] {KUNDENBEREICH, DEMO.toString()});
         Konto ka = new Konto("Kundenadministrator", konto(KUNDE_KA, DEMO, "operator"), new String[0]);
         Konto leser = new Konto("Leser", konto(KUNDE_LESER, DEMO), new String[0]);
         Konto ohne = new Konto("Kundenkonto ohne wirksame Zuweisung", konto(KUNDE_OHNE, DEMO), new String[0]);
@@ -291,6 +294,7 @@ class ZugriffZaunApiTest {
             assertThat(sitzung(partner)).isEqualTo(List.of(DEMO.toString(), "standorte", ids));
             assertThat(sitzung(leser)).isEqualTo(List.of(DEMO.toString(), "standorte", ids));
             assertThat(sitzung(umschalter)).isEqualTo(List.of(DEMO.toString(), "unternehmen", "{}"));
+            assertThat(sitzung(sprung)).isEqualTo(List.of(DEMO.toString(), "unternehmen", "{}"));
             // AP-03 IP-9: ein Konto, dessen einzige Zuweisung vorbei ist, kommt gar nicht mehr bis zur Route —
             // der Entzug wirkt mit der nächsten Anfrage, und sie sagt auch, warum (A6).
             assertThat(beendet(ohne)).isEqualTo("zugriff_beendet");

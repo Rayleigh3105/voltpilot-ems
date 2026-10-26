@@ -123,20 +123,20 @@ class UnterstuetzungWiringTest {
     }
 
     /**
-     * <b>Der Mandanten-Umschalter ist AUS</b> (AP-03 W3): dieses Paket baut den sichtbaren Weg (Anfrage,
-     * Notfall-Zugriff). Seit IP-15 ist die Produktionsvorgabe AUS; das lokale Profil behält die alte
-     * Vorgabe ausdrücklich für Kompatibilitätsnachweise.
-     * Dass er BEISST, prüft {@code UnterstuetzungApiTest} an der Datenbank.
+     * <b>Der Mandanten-Umschalter ist AN</b> (AP-03 W3): von IP-15 bis zum 26.10.2026 war die Vorgabe AUS; seither
+     * springt die Plattform-Administration nach der Entscheidung des Betreibers wieder in jeden Kundenbereich (alle
+     * Kunden haben eingewilligt). AUS bleibt der Not-Aus über die Umgebungsvariable.
+     * Was er öffnet und was nicht (Partner), prüft {@code UnterstuetzungApiTest} an der Datenbank.
      */
     @Test
     @SuppressWarnings("unchecked")
-    void derMandantenUmschalterIstInProduktionSeitIp15Aus() throws Exception {
+    void derMandantenUmschalterIstSeitDem26Oktober2026An() throws Exception {
         Map<String, Object> yml;
         try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
             yml = (Map<String, Object>) new Yaml().loadAll(in).iterator().next();
         }
         assertThat(at(yml, "voltpilot", "uems", "unterstuetzung", "umschalter-enabled"))
-                .isEqualTo("${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:false}");
+                .isEqualTo("${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:true}");
         assertThat(Files.readString(Path.of("pom.xml"))).as("im Testlauf NICHT übersteuert")
                 .doesNotContain(UMSCHALTER);
     }

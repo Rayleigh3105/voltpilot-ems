@@ -167,15 +167,15 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
     expect(document.body.textContent).not.toContain('Kontext-Umschalter');
   });
 
-  it('verspricht keinen freien Sprung mehr: Seite und Dialog nennen Unterstützung oder Notfall-Zugriff als Bedingung', async () => {
+  it('verspricht den Sprung wieder ohne Bedingung: Seite und Dialog nennen den Umschalter, keine Unterstützung', async () => {
     openDetail();
     const drawer = await screen.findByRole('dialog', { name: TENANT.name });
-    // Seit der Umschalter geschlossen ist (AP-03 IP-15), führt weder er noch der Knopf ohne Unterstützung hinein.
-    expect(document.body.textContent).not.toContain('über den Mandanten-Umschalter');
-    expect(document.body.textContent).not.toContain('Über den Mandanten-Umschalter');
-    expect(screen.getByText(/öffnet sich nur mit bestätigter Unterstützung oder Notfall-Zugriff/)).toBeInTheDocument();
-    expect(within(drawer).getByText(/öffnet sich nur mit einer Unterstützung, die ein Kundenadministrator bestätigt\s+hat, oder mit einem Notfall-Zugriff/)).toBeInTheDocument();
-    // Der Knopf selbst bleibt, wie er war - die Karte nach dem Sprung fängt den Fall ohne Unterstützung auf.
+    // Seit dem 26.10.2026 ist der Umschalter wieder offen: die Plattform springt ohne Unterstützung hinein.
+    expect(screen.getByText(/oben über den Mandanten-Umschalter in die Ansicht eines Mandanten springen/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Über den Mandanten-Umschalter oben \(oder den Knopf unten\) sehen Sie Anlagen/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Eine Unterstützung oder ein Notfall-Zugriff ist dafür\s+nicht nötig/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('öffnet sich nur');
+    expect(document.body.textContent).not.toContain('beschränkt auf die Standorte Ihrer Unterstützung');
     expect(within(drawer).getByRole('button', { name: /In Mandanten-Ansicht springen/ })).toBeEnabled();
   });
 });

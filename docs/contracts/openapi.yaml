@@ -341,8 +341,10 @@ tags:
   - name: zugriff
     description: >
       UEMS AP-03 Rollen und Standortrechte. `GET /api/v1/me` ist die Selbstauskunft (IP-4). Partner- und
-      Plattform-Konten wählen den Kundenbereich mit `X-Kundenbereich`, angenommen nur gegen eine wirksame
-      Unterstützung - sonst 404 auf jeder Kundenroute.
+      Plattform-Konten wählen den Kundenbereich mit `X-Kundenbereich`. Ein Partner braucht dafür immer eine
+      wirksame Unterstützung - sonst 404 auf jeder Kundenroute. Die Plattform kommt bei offenem
+      Mandanten-Umschalter (`voltpilot.uems.unterstuetzung.umschalter-enabled`, Vorgabe AN seit 26.10.2026) auch
+      ohne sie hinein; ist er aus, gilt für sie dasselbe wie für einen Partner.
   - name: energiemanagement
     description: >
       UEMS AP-19 Dokumentation und Managementabläufe. VoltPilot hält fest, der Kunde entscheidet, und jede Zeile
@@ -18307,10 +18309,12 @@ paths:
         aus `rechte-vectors.json`. Der Kundenbereich des Kundenkontos kommt aus dem Token; Partner- und
         Plattform-Konten wählen ihn mit `X-Kundenbereich`, der nur gegen eine wirksame Unterstützung gilt (Partner:
         Installateur, Plattform: VoltPilot oder Notfall-Zugriff). Ohne sie antwortet diese Route mit dem eigenen Konto
-        allein (`kundenbereich` null), jede andere Kundenroute mit 404. Die Plattform erreicht Kundenbereiche
-        weiterhin über `X-Tenant-Id` (`zugang` = `umschalter`), solange
-        `voltpilot.uems.unterstuetzung.umschalter-enabled` an ist (nur lokale Kompatibilität; Produktionsvorgabe AUS seit IP-15); ist er aus,
-        gilt für sie dasselbe wie für einen Partner ohne Gewährung.
+        allein (`kundenbereich` null), jede andere Kundenroute mit 404. Ausnahme ist die Plattform, solange
+        `voltpilot.uems.unterstuetzung.umschalter-enabled` an ist (Vorgabe AN seit 26.10.2026, Entscheidung des
+        Betreibers; von IP-15 bis dahin AUS): sie erreicht jeden Kundenbereich über `X-Tenant-Id` oder - ohne
+        wirksame Unterstützung - über `X-Kundenbereich`, beides mit `zugang` = `umschalter` und dem ganzen
+        Kundenbereich. Eine wirksame Unterstützung geht vor (`zugang` = `unterstuetzung`). Ist der Schalter aus,
+        gilt für die Plattform dasselbe wie für einen Partner ohne Gewährung.
       parameters:
         - $ref: "#/components/parameters/Kundenbereich"
       responses:
@@ -22140,7 +22144,7 @@ components:
           type: string
           nullable: true
           enum: [konto, unterstuetzung, umschalter]
-          description: "`umschalter` = Plattform über `X-Tenant-Id` (bis AP-03 IP-8); null ohne Kundenbereich."
+          description: "`umschalter` = Plattform am offenen Mandanten-Umschalter (`X-Tenant-Id`, oder `X-Kundenbereich` ohne wirksame Unterstützung); null ohne Kundenbereich."
         rollen:
           type: array
           items: { type: string }

@@ -40,12 +40,13 @@ it('Kundenkonten erhalten keine Plattformaktionen', () => {
   vi.mocked(isPlatformAdmin).mockReturnValue(false); render(<UnterstuetzungAdmin tenantId="kunde" name="Ahrenberg" />);
   expect(screen.queryByRole('button')).toBeNull(); expect(fleetApi.fleet).not.toHaveBeenCalled();
 });
-it('Mandant ohne Standort: der Kasten sagt vor jedem Formular, dass und warum die Mandanten-Ansicht nicht aufgeht', async () => {
+it('Mandant ohne Standort: der Kasten sagt vor jedem Formular, warum keine Unterstützung geht - und dass der Sprung trotzdem geht', async () => {
   render(<UnterstuetzungAdmin tenantId="ohne-standort" name="Sonnenhof Beispiel" />);
   const hinweis = await screen.findByRole('note');
   expect(hinweis).toHaveTextContent('Dieser Mandant hat noch keinen Standort.');
   expect(hinweis).toHaveTextContent('gelten immer für Standorte, nie für das ganze Unternehmen');
-  expect(hinweis).toHaveTextContent('kann die Mandanten-Ansicht deshalb zurzeit nicht öffnen');
+  expect(hinweis).toHaveTextContent('„In Mandanten-Ansicht springen“ öffnet sie trotzdem');
+  expect(hinweis).not.toHaveTextContent('zurzeit nicht öffnen');
   // Die Regel bleibt, wie sie ist: beide Wege stehen weiter da, nichts wird versteckt oder gesperrt.
   expect(screen.getByRole('button', { name: 'Unterstützung anfragen' })).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Notfall-Zugriff', exact: true })).toBeEnabled();

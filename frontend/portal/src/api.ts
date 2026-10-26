@@ -2645,7 +2645,7 @@ export interface Selbstauskunft {
   zustand: 'angelegt' | 'aktiv' | 'gesperrt' | 'entfernt';
   /** `null` ohne angenommenen Kundenbereich (Partner ohne wirksame Unterstützung). */
   kundenbereich: SelbstauskunftKundenbereich | null;
-  /** `umschalter` = Plattform über `X-Tenant-Id` (bis AP-03 IP-8). */
+  /** `umschalter` = Plattform am offenen Mandanten-Umschalter (`X-Tenant-Id`, oder `X-Kundenbereich` ohne Unterstützung). */
   zugang: 'konto' | 'unterstuetzung' | 'umschalter' | null;
   rollen: string[];
   unternehmensweit: boolean;

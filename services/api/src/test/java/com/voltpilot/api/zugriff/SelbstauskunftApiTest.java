@@ -142,7 +142,17 @@ class SelbstauskunftApiTest {
             JsonNode me = me(w, in);
             faelle.add(fall);
 
-            boolean dritter = !"benutzer".equals(in.path("benutzer").path("konto").asText());
+            String kontoart = in.path("benutzer").path("konto").asText();
+            boolean dritter = !"benutzer".equals(kontoart);
+            if ("plattform".equals(kontoart) && soll.path("standorte").isEmpty()) {
+                // Der Vertrag rechnet, was eine Unterstützung zeigt - ohne wirksame nichts. Bei offenem Umschalter
+                // (Profil local, Vorgabe seit 26.10.2026) nimmt die API die Plattform trotzdem an, als Umschalter mit
+                // dem ganzen Kundenbereich; den geschlossenen Weg prüft UnterstuetzungApiTest (Umschalter AUS).
+                assertThat(me.path("zugang").asText()).as(fall).isEqualTo("umschalter");
+                assertThat(me.path("kundenbereich").path("id").asText()).as(fall).isEqualTo(w.tenant().toString());
+                assertThat(me.path("unternehmensweit").asBoolean()).as(fall).isTrue();
+                continue;
+            }
             if (dritter && soll.path("standorte").isEmpty()) {
                 // Ohne wirksame Unterstützung wird der Kundenbereich nicht angenommen — über ihn steht nichts in der
                 // Antwort, auch nicht die Zahl seiner Standorte, die der Vertrag in der Teilansicht mitführt.
@@ -344,6 +354,37 @@ class SelbstauskunftApiTest {
     }
 
     // ------------------------------------------------------------------ Welt
+
+    /**
+     * Der Sprung der Plattform-Administration (26.10.2026): das Portal schickt auch für sie {@code X-Kundenbereich}.
+     * Bei offenem Umschalter (Profil {@code local}, Vorgabe AN) sieht sie ohne Unterstützung dasselbe wie über
+     * {@code X-Tenant-Id} - auch in einem Kundenbereich ohne Standort, der dann unternehmensweit leer ist (kein
+     * „Kein Standort zugewiesen“). Ein Partner ohne Gewährung bleibt beim eigenen Konto.
+     */
+    @Test
+    void diePlattformSpringtUeberXKundenbereichOhneUnterstuetzungWieAmUmschalter() throws Exception {
+        Welt w = welt(ahrenberg());
+        kundenadministratoren(w, ahrenberg(), null);
+        JsonNode me = ruf(w.tenant(), "sub-lena-sprung", "Lena Voss", "plattform", w.tenant());
+        assertThat(me.path("konto").asText()).isEqualTo("plattform");
+        assertThat(me.path("zugang").asText()).isEqualTo("umschalter");
+        assertThat(me.path("kundenbereich").path("id").asText()).isEqualTo(w.tenant().toString());
+        assertThat(me.path("unternehmensweit").asBoolean()).isTrue();
+        assertThat(texte(me.path("standorte"), "kennzeichen")).isEqualTo(new ArrayList<>(w.standorte().keySet()));
+
+        UUID ohneStandort = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class,
+                "Ohne Standort #" + NR.incrementAndGet());
+        JsonNode leer = ruf(ohneStandort, "sub-lena-sprung", "Lena Voss", "plattform", ohneStandort);
+        assertThat(leer.path("zugang").asText()).isEqualTo("umschalter");
+        assertThat(leer.path("kundenbereich").path("id").asText()).isEqualTo(ohneStandort.toString());
+        assertThat(leer.path("unternehmensweit").asBoolean()).isTrue();
+        assertThat(leer.path("standorte")).isEmpty();
+        assertThat(leer.path("text").isNull()).as("kein Satz „Kein Standort zugewiesen“").isTrue();
+
+        JsonNode partner = ruf(w.tenant(), "sub-partner-sprung", "Thomas Brunner", "partner", w.tenant());
+        assertThat(partner.path("kundenbereich").isNull()).as("Partner ohne Gewährung").isTrue();
+        assertThat(partner.path("zugang").isNull()).isTrue();
+    }
 
     private static JsonNode ahrenberg() {
         for (JsonNode c : vertrag.path("cases")) {
