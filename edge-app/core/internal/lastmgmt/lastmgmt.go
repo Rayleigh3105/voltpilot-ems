@@ -116,6 +116,18 @@ func TextFor(reason string, policy SurplusPolicy) string {
 	return base + " (Ihre Priorität: " + PolicyText(policy) + ")"
 }
 
+// AllocationText is TextFor for one allocation: a vehicle the sun cannot
+// START names what it needs (W-11, Audit vp-ocpp-haushalt-audit) - „kein
+// Überschuss" over 2 kW of sun reads like a defect when the wallbox simply
+// needs 4,1 kW. The machine word stays `kein_ueberschuss`, so every surface
+// that keys on it is unchanged; only the sentence says more.
+func AllocationText(a Allocation, policy SurplusPolicy) string {
+	if a.Reason == ReasonNoSurplus && a.NeedKw > 0 {
+		return "wartet — für die Wallbox reicht die Sonne gerade nicht (braucht " + kwText(a.NeedKw) + " kW)"
+	}
+	return TextFor(a.Reason, policy)
+}
+
 // Session is ONE claimant on the budget: one connector with a live
 // transaction. One connector = one vehicle (Konzept §3.5).
 type Session struct {
@@ -129,6 +141,15 @@ type Session struct {
 	MinKw float64
 	// MaxKw is this connector's ceiling (station rating, cable, operator cap).
 	MaxKw float64
+	// FloorKw is the PHYSICAL lowest charging power of this connector: 6 A on
+	// every wired phase (ChargeFloorKw - 1,4 kW single-phase, 4,1 kW
+	// three-phase). Below it an AC vehicle does not charge slower, it does
+	// not charge at all - or the station takes 6 A anyway and the rest comes
+	// from the grid (W-11, Audit vp-ocpp-haushalt-audit). It binds ON TOP of
+	// MinKw / the site minimum and is never clamped away by them. 0 = not
+	// known, and then the configured minimum alone applies (byte-for-byte
+	// the behaviour before).
+	FloorKw float64
 	// Since is when this session became a claimant. It is the fairness anchor:
 	// the queue order is by arrival, then rotated.
 	Since time.Time
@@ -392,7 +413,31 @@ const (
 	// lesson, generalised — never hammer a device).
 	DefaultMinChangeKw = 1.0
 	DefaultMinHoldTime = 30 * time.Second
+	// DefaultSourceMinRun / DefaultSourceMinPause: Mindestlauf 5 min,
+	// Mindestpause 2 min (W-11, see Pacing.MinRun).
+	DefaultSourceMinRun   = 5 * time.Minute
+	DefaultSourceMinPause = 2 * time.Minute
+	// FloorCurrentA is the lowest current an AC vehicle charges with
+	// (IEC 61851-1) - the twin of ocppcontrol.MinChargeCurrentA, repeated
+	// because this package imports nothing of OCPP.
+	FloorCurrentA = 6.0
+	// FloorVoltageV is the nominal line-neutral voltage of ChargeFloorKw when
+	// the operator declared none.
+	FloorVoltageV = 230.0
 )
+
+// ChargeFloorKw is the physical floor of a connector: FloorCurrentA on each of
+// `phases` wired phases (6 A × 230 V × 3 = 4,14 kW; single-phase 1,38 kW). A
+// voltage <= 0 means the nominal 230 V; phases <= 0 = not known, floor 0.
+func ChargeFloorKw(phases int, voltageV float64) float64 {
+	if phases <= 0 {
+		return 0
+	}
+	if voltageV <= 0 {
+		voltageV = FloorVoltageV
+	}
+	return math.Round(FloorCurrentA*voltageV*float64(phases)) / 1000
+}
 
 // WithDefaults fills the unset knobs. It never invents a GridLimitKw: without
 // a configured connection limit the honest budget is zero.
@@ -448,6 +493,16 @@ type Allocation struct {
 	// decisions; the executor refreshes the profile on its own cadence
 	// regardless (the dead-man's switch needs the refresh).
 	ChangedAt time.Time `json:"changed_at,omitzero"`
+	// HoldUntil is the instant before which the SOURCE lane may not switch
+	// this session (W-11, Pacing.MinRun / MinPause): set when the lane starts
+	// a charge (+MinRun) or stops a run it started (+MinPause), carried while
+	// that state lasts - also once it passed. Zero = nothing held - an exempt
+	// session, a pause with another reason, a site without a lane.
+	HoldUntil time.Time `json:"hold_until,omitzero"`
+	// NeedKw is the minimum a session paused for ReasonNoSurplus would need
+	// while SOME surplus is there, just not enough (W-11). 0 = no sun at
+	// all, or another reason. AllocationText names it.
+	NeedKw float64 `json:"need_kw,omitempty"`
 }
 
 // Plan is one decision over the whole site.
@@ -496,6 +551,18 @@ type Pacing struct {
 	// MinHold: how long a value is held before a small increase is accepted
 	// anyway.
 	MinHold time.Duration
+	// MinRun / MinPause damp the SOURCE lane's on/off (W-11): a charge the sun
+	// started keeps its minimum for MinRun even when a cloud takes the surplus
+	// away, and a charge the missing sun paused waits MinPause before the sun
+	// may start it again. Without them a passing cloud switched a vehicle on
+	// and off every 20 s.
+	//
+	// ⚠ Only the ECONOMIC pause is damped. Budget, §14a, a cap of the plan or
+	// a rule, a Handeingriff and the failsafe go through at once - a
+	// protection you postpone is not one. During MinRun the minimum may come
+	// from the grid, at most MinRun after the start (Captain-Entscheid W-11).
+	MinRun   time.Duration
+	MinPause time.Duration
 }
 
 // WithDefaults fills the unset pacing knobs.
@@ -505,6 +572,12 @@ func (p Pacing) WithDefaults() Pacing {
 	}
 	if p.MinHold <= 0 {
 		p.MinHold = DefaultMinHoldTime
+	}
+	if p.MinRun <= 0 {
+		p.MinRun = DefaultSourceMinRun
+	}
+	if p.MinPause <= 0 {
+		p.MinPause = DefaultSourceMinPause
 	}
 	return p
 }
@@ -685,8 +758,58 @@ func Decide(in Input) Plan {
 	// showing them as a boost would claim a full charge nobody asked for.
 	exemptOf := map[string]bool{}
 	boostOf := map[string]bool{}
+	need := map[string]float64{}
 	rest, srcRest, aboveRest := budget, srcBudget, aboveBudget
 	belowRest, storageRest := belowBudget, storageBudget
+
+	// The source lane's on/off damping (W-11, Pacing.MinRun/MinPause), read
+	// from the previous decision - like pace(), so it needs no state of its own.
+	prevOf := func(key string) (Allocation, bool) {
+		if in.Previous == nil {
+			return Allocation{}, false
+		}
+		return in.Previous.Get(key)
+	}
+	// ⚠ No Mindestlauf on a BLIND lane (without a measurement there is no sun
+	// to claim, and missing PV never releases solar-only charging) and none
+	// for a plug with phase bands: it has its own switch pacer and goes down
+	// to one phase instead of holding three from the grid.
+	runHeld := func(s Session) bool {
+		old, ok := prevOf(s.Key)
+		return ok && !in.SourceBlind && !s.Ranges.Any() && !old.Paused && old.Kw > 0 &&
+			in.Now.Before(old.HoldUntil)
+	}
+	pauseHeld := func(s Session) (Allocation, bool) {
+		old, ok := prevOf(s.Key)
+		return old, ok && old.Paused && old.Reason == ReasonNoSurplus && in.Now.Before(old.HoldUntil)
+	}
+	// holdOf sets the next decision's hold. ⚠ Only the LANE's own switching
+	// is held: a boost, a K3 holder or „Schnell laden" (exempt) never leave a
+	// hold behind, so „Automatik fortsetzen" after a boost pauses at once, and
+	// a vehicle that never ran (just plugged in, the lane still blind) starts
+	// the moment the sun is there. A run the lane started keeps its HoldUntil
+	// after it passed - that past stamp is what marks the run as the lane's
+	// own, so only ITS stop earns a Mindestpause; a run of „Schnell laden"
+	// that a newly chosen „Nur Sonne" stops (or a blind lane) restarts as soon
+	// as the sun allows.
+	holdOf := func(s Session, a Allocation, exempt bool) time.Time {
+		if !srcActive || exempt || s.Ranges.Any() {
+			return time.Time{}
+		}
+		old, ok := prevOf(a.Key)
+		switch {
+		case ok && old.Paused == a.Paused:
+			if a.Paused && a.Reason != ReasonNoSurplus {
+				return time.Time{}
+			}
+			return old.HoldUntil
+		case !a.Paused:
+			return in.Now.Add(pacing.MinRun)
+		case a.Reason == ReasonNoSurplus && ok && !old.Paused && !old.HoldUntil.IsZero() && !in.SourceBlind:
+			return in.Now.Add(pacing.MinPause)
+		}
+		return time.Time{}
+	}
 
 	// sourceRest is the lane a session may reach into: the site reading, or -
 	// for a station the customer put ABOVE the battery - the whole surplus.
@@ -781,13 +904,23 @@ func Decide(in Input) Plan {
 				// session's minimum. Saying "wait" would promise a turn that
 				// never comes.
 				pausedReason[s.Key] = ReasonBelowMinimum
+			case s.FloorKw > 0 && !s.Ranges.Any() && s.capped()+1e-9 < s.FloorKw:
+				// W-11: the ceiling lies below the physical floor - any value
+				// under it is a pause at the station, so it is one here, named
+				// after whoever set the ceiling.
+				pausedReason[s.Key] = ReasonBelowMinimum
+				if s.CapKw != nil && *s.CapKw+1e-9 < s.FloorKw {
+					pausedReason[s.Key] = s.capReason()
+				}
 			case avail+1e-9 < minKw:
 				// ⚠ The "Sonne zuerst"-concession: the SOURCE is short but the
 				// connection is not, and the customer's policy allows a
 				// running vehicle to keep its minimum from the grid rather
 				// than stand still. It consumes the whole remaining source
 				// lane and takes the rest from the physical budget.
-				if !exempt && srcActive && allowsMinimum(s, in) && rest+1e-9 >= minKw {
+				// ⚠ The Mindestlauf (W-11) takes the SAME path: a charge the
+				// sun started within MinRun keeps its minimum through a cloud.
+				if !exempt && srcActive && (allowsMinimum(s, in) || runHeld(s)) && rest+1e-9 >= minKw {
 					takeSource(minKw)
 					rest -= minKw
 					give[s.Key] = minKw
@@ -799,10 +932,25 @@ func Decide(in Input) Plan {
 					// own source priority does not. A different lever, so a
 					// different word.
 					pausedReason[s.Key] = ReasonNoSurplus
+					// W-11: SOME sun, just not enough - the sentence names
+					// what the vehicle needs instead of „kein Überschuss".
+					if avail > 1e-9 {
+						need[s.Key] = minKw
+					}
 					continue
 				}
 				pausedReason[s.Key] = ReasonBudget
 			default:
+				// The Mindestpause (W-11): a charge the missing sun paused
+				// waits MinPause before the sun may start it again, and keeps
+				// the sentence that explained the pause.
+				if !exempt && srcActive {
+					if old, held := pauseHeld(s); held {
+						pausedReason[s.Key] = ReasonNoSurplus
+						need[s.Key] = old.NeedKw
+						continue
+					}
+				}
 				rest -= minKw
 				if !exempt && srcActive {
 					takeSource(minKw)
@@ -940,6 +1088,9 @@ func Decide(in Input) Plan {
 			if a.Reason == "" {
 				a.Reason = ReasonBudget
 			}
+			if a.Reason == ReasonNoSurplus {
+				a.NeedKw = round3(need[s.Key])
+			}
 			if a.Reason == ReasonBudget {
 				// ⚠ The turn is estimated within the session's OWN rank: the
 				// rotation only ever turns that group, so a queue position
@@ -953,6 +1104,7 @@ func Decide(in Input) Plan {
 			}
 		}
 		a = pace(a, in.Previous, pacing, in.Now)
+		a.HoldUntil = holdOf(s, a, exemptOf[s.Key])
 		total += a.Kw
 		if !exemptOf[s.Key] {
 			sourceTotal += a.Kw
@@ -1167,6 +1319,12 @@ func effectiveMin(s Session, set Settings) float64 {
 	// down to 5 - the minimum IS the promise that a started charge is useful.
 	if max := s.capped(); max > 0 && m > max {
 		m = max
+	}
+	// ⚠ The PHYSICAL floor (W-11) is not a policy and is never clamped: a
+	// ceiling below it leaves no charge at all, which Decide names instead of
+	// allocating a value the station turns into a pause.
+	if s.FloorKw > m {
+		m = s.FloorKw
 	}
 	return m
 }

@@ -132,12 +132,13 @@ func TestSonneSpeicherFallsBackToNurSonneOnEveryUnknown(t *testing.T) {
 			a := ocppAgent(t, nil)
 			releaseHome(t, a, lastmgmt.StorageBeforeCars)
 			s1 := releaseStation(t, a, "WALLBOX-1")
+			// 5 kW of sun: above the three-phase floor of 4,14 kW (W-11).
 			for i := 0; i < 3; i++ {
 				releaseFacts(a, c.plan(time.Now().UTC()), c.soc, c.ready)
-				measureSurplus(t, a, 1, 4, 0, s1)
+				measureSurplus(t, a, 1, 6, 0, s1)
 				a.ocppStep(context.Background())
 			}
-			nearKwSoon(t, "only the sun, like „Nur Sonne“", drawOf(s1, 1), 3)
+			nearKwSoon(t, "only the sun, like „Nur Sonne“", drawOf(s1, 1), 5)
 			info := a.State.Get().Ocpp
 			if info.StorageReleaseActive || info.StorageReleaseMode != string(c.mode) || info.StorageReleaseNote == "" {
 				t.Fatalf("mode %q / %q, want %q", info.StorageReleaseMode, info.StorageReleaseNote, c.mode)
@@ -151,13 +152,14 @@ func TestAtItsFloorTheBatteryIsServedFirstEvenOnACarsFirstSite(t *testing.T) {
 	releaseHome(t, a, lastmgmt.CarsBeforeStorage)
 	s1 := releaseStation(t, a, "WALLBOX-1")
 	floor := 30.0
-	// PV 6, house 1, the battery takes 2 of the 5 kW surplus.
+	// PV 8, house 1, the battery takes 2 of the 7 kW surplus - and the car's 5
+	// kW left lie above its three-phase floor of 4,14 kW (W-11).
 	for i := 0; i < 4; i++ {
 		releaseFacts(a, releasePlan(time.Now().UTC(), &floor), 30.5, true)
-		measureSurplus(t, a, 1, 6, 2, s1)
+		measureSurplus(t, a, 1, 8, 2, s1)
 		a.ocppStep(context.Background())
 	}
-	nearKwSoon(t, "the car gets what the battery leaves, not the whole surplus", drawOf(s1, 1), 3)
+	nearKwSoon(t, "the car gets what the battery leaves, not the whole surplus", drawOf(s1, 1), 5)
 	if v, _ := a.ocpp.release.Last(); !v.StorageFirst || v.Mode != lastmgmt.ReleaseAtFloor {
 		t.Fatalf("verdict %+v", v)
 	}

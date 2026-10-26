@@ -28,7 +28,7 @@ func TestEdgeLightPilotReleasesItsObservedDeye(t *testing.T) {
 		// held=false: Edge Light's Layer 1 sends no readback at all.
 		observedTick(t, a, s1, 80, false, selfConsumption)
 	}
-	nearKwSoon(t, "3 kW sun + 5 kW from the observed Deye", drawOf(s1, 1), 8)
+	nearKwSoon(t, "5 kW sun + 5 kW from the observed Deye", drawOf(s1, 1), 10)
 
 	if snap := a.State.Get(); snap.Control != nil {
 		t.Fatalf("precondition: no readback on Edge Light, got %+v", *snap.Control)

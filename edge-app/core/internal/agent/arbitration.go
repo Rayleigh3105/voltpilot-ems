@@ -357,7 +357,7 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 			if !ok {
 				continue
 			}
-			cmds = consumerCommandsFor(*ent, cmds)
+			cmds = a.consumerCommands(*ent, cmds)
 			ttl := v2.ReceivedAt.Add(plan2.StaleAfter).Sub(now)
 			if ttl < time.Second {
 				continue
@@ -418,15 +418,83 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 // would do on its own, and every guard behind the arbiter binds it exactly
 // like a setpoint. A consumer that declares `setpoint_kw` keeps the word
 // unchanged, and nothing else is ever rewritten.
-func consumerCommandsFor(e entities.Entity, c entities.Commands) entities.Commands {
-	if c.SetpointKw == nil || c.LimitKw != nil || e.Category() != "consumer" ||
-		e.Supports(entities.CmdSetpointKw) || !e.Supports(entities.CmdLimitKw) {
+//
+// The SAME holds for the switching word `on_off` (W-02, Audit
+// vp-ocpp-haushalt-audit): the cloud gives a station whose profile carries the
+// Regelart „Ein/Aus" exactly that word, and the capability gate refused it -
+// no holder, the station's lane alone decided, „Günstig" and „Ziel bis
+// Uhrzeit" never arrived. „aus" is a limit of 0; „an" is the station's own
+// ceiling `onKw` (its nameplate, else the box's commissioning ceiling - see
+// consumerOnKw), so it charges as far as budget and physics allow. Without a
+// known ceiling „an" is not translated: a number made up here would be a limit
+// nobody set.
+func consumerCommandsFor(e entities.Entity, c entities.Commands, onKw float64) entities.Commands {
+	if c.LimitKw != nil || e.Category() != "consumer" || !e.Supports(entities.CmdLimitKw) {
 		return c
 	}
-	v := *c.SetpointKw
-	c.LimitKw = &v
-	c.SetpointKw = nil
+	if c.SetpointKw != nil && !e.Supports(entities.CmdSetpointKw) {
+		v := *c.SetpointKw
+		c.LimitKw = &v
+		c.SetpointKw = nil
+		return c
+	}
+	if c.OnOff != nil && c.SetpointKw == nil && !e.Supports(entities.CmdOnOff) {
+		kw := 0.0
+		if *c.OnOff {
+			kw = limitOnlyRatingKw(e)
+			if kw <= 0 {
+				kw = onKw
+			}
+			if kw <= 0 || math.IsNaN(kw) || math.IsInf(kw, 0) {
+				return c
+			}
+		}
+		c.LimitKw = &kw
+		c.OnOff = nil
+	}
 	return c
+}
+
+// limitOnlyRatingKw is the nameplate the registry declares for a limit-only
+// consumer: the `limit_kw` capability's maximum, else its consumption guard.
+// 0 = the registry does not say.
+func limitOnlyRatingKw(e entities.Entity) float64 {
+	for _, cap := range e.Capabilities.Actuate {
+		if cap.Command == entities.CmdLimitKw && cap.Max != nil && *cap.Max > 0 {
+			return *cap.Max
+		}
+	}
+	if v := e.Guards.Limits.MaxConsumptionKw; v != nil && *v > 0 {
+		return *v
+	}
+	return 0
+}
+
+// consumerCommands is consumerCommandsFor with the box's own knowledge of the
+// component: for an OCPP station the ceiling the box commissions it with
+// (rating × connectors, else the planable connection budget). Caller must not
+// hold entMu.
+func (a *Agent) consumerCommands(e entities.Entity, c entities.Commands) entities.Commands {
+	return consumerCommandsFor(e, c, a.consumerOnKw(e))
+}
+
+// consumerOnKw is what „an" means for a station the registry gives no
+// nameplate (the API composes an ev-charger without one): the SAME ceiling
+// ocppCommission installs as the station's TxDefault maximum. 0 = no station
+// behind this entity, or nothing honest is known (no connection limit).
+func (a *Agent) consumerOnKw(e entities.Entity) float64 {
+	rt := a.ocpp
+	if rt == nil || e.ChargePointID == "" {
+		return 0
+	}
+	set := rt.currentSettings().WithDefaults()
+	planable := set.GridLimitKw * (1 - set.MarginPct/100)
+	for _, c := range rt.srv.Snapshot().Chargers {
+		if c.ID == e.ChargePointID {
+			return ocppStationCeilingKw(c, planable)
+		}
+	}
+	return 0
 }
 
 // v1Injection names what the v1 plan executor last injected for the battery

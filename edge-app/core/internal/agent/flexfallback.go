@@ -180,6 +180,7 @@ func (a *Agent) runFlexFallback(now time.Time) {
 
 	a.arbMu.Lock()
 	v2 := a.curPlan2
+	planHeld := a.planHeld
 	a.arbMu.Unlock()
 	planFresh := v2.Fresh(now)
 
@@ -187,10 +188,11 @@ func (a *Agent) runFlexFallback(now time.Time) {
 		var active *flexfallback.Requirement
 		var activeVerdict flexfallback.Verdict
 		reason := flexfallback.ReasonOutsideWindow
+		served := planFresh && a.planServes(entityID, planHeld)
 		for i := range reqs {
 			r := reqs[i]
 			inst, inWindow := r.CurrentInstance(now)
-			in := flexfallback.Input{Now: now, PlanFresh: planFresh}
+			in := flexfallback.Input{Now: now, PlanFresh: served}
 			if inWindow {
 				in.Progress = a.flexProgressFor(entityID, r.ID, inst.Key)
 				in.ProgressKnown = a.flexEvidenceFresh(entityID, now)
@@ -210,11 +212,16 @@ func (a *Agent) runFlexFallback(now time.Time) {
 			a.logFlexTransition(entityID, flexfallback.ReasonRun, active.ID, activeVerdict)
 			cmds := active.Commands()
 			a.entMu.Lock()
-			if ent := a.entRegistry.Find(entityID); ent != nil {
-				// Eine OCPP-Säule kennt nur limit_kw (consumerCommandsFor).
-				cmds = consumerCommandsFor(*ent, cmds)
+			ent := a.entRegistry.Find(entityID)
+			var e entities.Entity
+			if ent != nil {
+				e = *ent
 			}
 			a.entMu.Unlock()
+			if ent != nil {
+				// Eine OCPP-Säule kennt nur limit_kw (consumerCommandsFor).
+				cmds = a.consumerCommands(e, cmds)
+			}
 			a.arb.SubmitInternal(&desired.Desired{
 				EntityID:  entityID,
 				RequestID: "flex-fallback:" + activeVerdict.Instance.Key,
@@ -249,6 +256,27 @@ func (a *Agent) runFlexFallback(now time.Time) {
 
 	a.saveFlexStateThrottled(now)
 }
+
+// planServes reports whether the fresh v2 plan COMMANDS this component right
+// now: the plan executor injected a slot for it on this tick and the arbiter
+// let it hold (or something above the plan does).
+//
+// ⚠ JE KOMPONENTE, NICHT JE ANLAGE (W-02, Audit vp-ocpp-haushalt-audit): a plan
+// that only knows the battery is fresh, too - and until here it silenced the
+// deadline of a charge point the plan never mentioned, so „+30 kWh bis 7:00"
+// stayed empty exactly when the cloud planned anything at all. A slot the gate
+// refused holds nothing either, so the holder's rank is the second half:
+// below market (60) the plan is not what decides this component.
+func (a *Agent) planServes(entityID string, planHeld map[string]string) bool {
+	if planHeld[entityID] != "v2" || a.arb == nil {
+		return false
+	}
+	dec, ok := a.arb.DecisionFor(entityID)
+	return ok && dec.HolderRank >= planHolderRank
+}
+
+// planHolderRank is the rank of the plan's class (desired.ClassMarket).
+const planHolderRank = 60
 
 // logFlexTransition logs a decision-reason CHANGE per entity - once, never
 // per tick (a refusal must be visible, the OTA blocker lesson; steady state

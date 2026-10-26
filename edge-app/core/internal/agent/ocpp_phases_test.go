@@ -30,6 +30,8 @@ func goeRig(t *testing.T, switching, stationCanSwitch bool) (*Agent, *ocppsim.St
 	a.ocpp.mu.Lock()
 	a.ocpp.settings = set
 	a.ocpp.phaseDwell, a.ocpp.phasePause = rigPhaseWait, rigPhaseWait
+	// W-11: the source lane's Mindestlauf / Mindestpause, shortened alike.
+	a.ocpp.sourceRun, a.ocpp.sourcePause = rigPhaseWait, rigPhaseWait
 	a.ocpp.mu.Unlock()
 	if err := a.ocpp.store.Save(set); err != nil {
 		t.Fatal(err)

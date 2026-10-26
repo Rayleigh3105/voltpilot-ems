@@ -14,6 +14,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppcontrol"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -120,6 +121,9 @@ type ocppRuntime struct {
 	// phaseDwell / phasePause shorten the switch pacing for the rig only
 	// (0 = lastmgmt's defaults).
 	phaseDwell, phasePause time.Duration
+	// sourceRun / sourcePause shorten the source lane's Mindestlauf /
+	// Mindestpause (W-11) for the rig only (0 = lastmgmt's defaults).
+	sourceRun, sourcePause time.Duration
 	// release is the „Sonne + Speicher" gate (hysteresis + effect latch,
 	// internal/lastmgmt/release.go). The zero value is ready to use.
 	release lastmgmt.ReleaseGate
@@ -176,7 +180,7 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 	rt := &ocppRuntime{
 		srv: srv, store: store, settings: set,
 		budget:          lastmgmt.NewBudgetTracker(),
-		boosts:          newBoostStore(),
+		boosts:          loadBoostStore(a.Cfg.DataDir, time.Now().UTC()),
 		wake:            make(chan struct{}, 1),
 		commissioned:    map[string]string{},
 		commissionRetry: map[string]ocppCommissionRetry{},
@@ -382,6 +386,9 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	// lift a session out of the source lane entirely, so whatever the profile
 	// chose can never outrank a human or the plan.
 	ocppApplyVehicleProfiles(sessions, byKey, set.VehicleProfiles)
+	// W-10: an override „bis Abstecken" ends with ITS session, also on the
+	// surface and in the pause file - not only where a plug still charges.
+	rt.boosts.endSessions(snap)
 	ocppApplyBoosts(rt, sessions, byKey, now)
 	// K3: the arbitration bridge - the plan, a rule, a Handeingriff or a due
 	// deadline reaches the charge point through the SAME machine every other
@@ -393,6 +400,10 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	control := rt.srv.ControlPolicy()
 	for i := range sessions {
 		if claim, ok := byKey[sessions[i].Key]; ok {
+			// W-11: the physical floor of THIS plug - no limit below 6 A.
+			if c, ok := snap.ChargerByID(claim.chargerID); ok {
+				sessions[i].FloorKw = ocppFloorKw(control, c, claim.connectorID)
+			}
 			physical := control.PhaseCaps(claim.chargerID, claim.connectorID, sessions[i].MaxKw)
 			cap := control.LimitKw(claim.chargerID, claim.connectorID, now, physical)
 			if cap < sessions[i].MaxKw && (sessions[i].CapKw == nil || cap < *sessions[i].CapKw) {
@@ -423,6 +434,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 		SourceAllowsMinimum: lastmgmt.NormalizePolicy(set.SurplusPolicy) == lastmgmt.PolicySolarFirst,
 		Policy:              set.SurplusPolicy,
 		SourceBlind:         surplus.Blind,
+		Pacing:              lastmgmt.Pacing{MinRun: rt.sourceRun, MinPause: rt.sourcePause},
 		Previous:            rt.previousPlan(), Now: now,
 	}
 	// „Sonne + Speicher" (ocpp_release.go): one more reading of the same
@@ -598,19 +610,7 @@ func (a *Agent) ocppCommission(ctx context.Context, c csms.ChargerState, planabl
 	if !safe.Computable {
 		return // nothing honest to install yet; the snapshot carries the reason
 	}
-	maxKw := planableKw
-	if c.RatedKw > 0 {
-		n := len(c.Connectors)
-		if c.Connectors2Declared() > n {
-			n = c.Connectors2Declared()
-		}
-		if n < 1 {
-			n = 1
-		}
-		if r := c.RatedKw * float64(n); r < maxKw || maxKw <= 0 {
-			maxKw = r
-		}
-	}
+	maxKw := ocppStationCeilingKw(c, planableKw)
 	// The fingerprint includes the BOOT generation, so a station that rebooted
 	// and may have lost its profiles is set up again. The connection is
 	// deliberately not in it (W-07): a station that only lost its socket kept
@@ -647,6 +647,51 @@ func (a *Agent) ocppCommission(ctx context.Context, c csms.ChargerState, planabl
 	rt.commissioned[c.ID] = fp
 	delete(rt.commissionRetry, c.ID)
 	rt.mu.Unlock()
+}
+
+// ocppStationCeilingKw is the station's TxDefault maximum: its declared rating
+// across all its connectors, never above the planable connection budget; the
+// budget alone without a rating. Shared with consumerOnKw, so a plan's „an"
+// means exactly what the station was set up with.
+func ocppStationCeilingKw(c csms.ChargerState, planableKw float64) float64 {
+	maxKw := planableKw
+	if c.RatedKw > 0 {
+		n := len(c.Connectors)
+		if c.Connectors2Declared() > n {
+			n = c.Connectors2Declared()
+		}
+		if n < 1 {
+			n = 1
+		}
+		if r := c.RatedKw * float64(n); r < maxKw || maxKw <= 0 {
+			maxKw = r
+		}
+	}
+	return maxKw
+}
+
+// ocppFloorKw is the physical floor of one plug (W-11, Audit
+// vp-ocpp-haushalt-audit): 6 A on every phase the operator wired
+// (`ocppcontrol.Electrical`), at its declared voltage. Without a wiring entry
+// the plug counts as THREE-phase - the household 11/22 kW wallbox - unless its
+// rating lies below the three-phase floor, which only a single-phase station
+// can have.
+//
+// ⚠ Three-phase is the conservative guess for „Nur Sonne": a single-phase
+// station read as three-phase waits for 4,1 kW of sun instead of 1,4 kW (sun
+// lost), the other way round it would be handed limits under 6 A and fill the
+// gap from the grid (the promise broken). The wiring entry ends the guess.
+func ocppFloorKw(control ocppcontrol.Policy, c csms.ChargerState, connector int) float64 {
+	phases, volts := 3, lastmgmt.FloorVoltageV
+	if e, ok := control.Wiring(c.ID, connector); ok && len(e.Phases) > 0 {
+		phases = len(e.Phases)
+		if e.VoltageV > 0 {
+			volts = e.VoltageV
+		}
+	} else if c.RatedKw > 0 && c.RatedKw+1e-9 < lastmgmt.ChargeFloorKw(3, volts) {
+		phases = 1
+	}
+	return lastmgmt.ChargeFloorKw(phases, volts)
 }
 
 // ocppApply writes the live allocation and REFRESHES it every tick.
@@ -1173,7 +1218,9 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 					// ⚠ The station's OWN lane (P5): a plug on „Nur Sonnenstrom" at a
 					// site defaulting to „Schnell laden" must not read „(Ihre
 					// Priorität: Schnell laden)".
-					ocn.ReasonText = lastmgmt.TextFor(alloc.Reason,
+					// W-11: AllocationText names what a vehicle the sun cannot
+					// start needs („braucht 4,1 kW").
+					ocn.ReasonText = lastmgmt.AllocationText(alloc,
 						lastmgmt.NormalizePolicy(lastmgmt.SurplusPolicy(c.SourceOrSite(string(set.SurplusPolicy)))))
 					ocn.Boost = alloc.Boost
 					if !alloc.NextTurnAt.IsZero() {
