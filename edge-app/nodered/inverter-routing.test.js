@@ -329,6 +329,61 @@ test('route keeps explicit kostal connection values and gates unknown families i
   assert.match(idle.reason, /Kostal-Familie/);
 });
 
+// --- Huawei SUN2000 + LUNA2000 (huawei_modbus) -------------------------------
+
+const huaweiDecode = require('./huawei/huawei-decode');
+
+function huaweiConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'huawei',
+      label: 'Huawei · SUN2000-M1',
+      family: 'huawei_sun2000_luna',
+      communication: 'huawei_modbus',
+      connection: { ip: '192.168.0.40', port: 502, unit_id: 0 },
+      updated_at: '2026-10-26T10:00:00Z',
+    },
+    overrides,
+  );
+}
+
+test('parseConfig accepts a huawei_modbus selection', () => {
+  const sel = routing.parseConfig(huaweiConfig());
+  assert.ok(sel);
+  assert.strictEqual(sel.communication, routing.COMM_HUAWEI_MODBUS);
+  assert.strictEqual(sel.family, 'huawei_sun2000_luna');
+});
+
+test('route maps huawei_modbus onto the sourced read plan with vendor default 502/0', () => {
+  const plan = routing.route(routing.parseConfig(huaweiConfig({
+    connection: { ip: '192.168.0.40' }, // port/unit omitted -> defaults
+  })));
+  assert.strictEqual(plan.adapter, 'huawei_modbus');
+  assert.strictEqual(plan.family, 'huawei_sun2000_luna');
+  assert.strictEqual(plan.target, '192.168.0.40:502');
+  assert.strictEqual(plan.connection.port, 502);
+  assert.strictEqual(plan.connection.unit_id, 0);
+  assert.strictEqual(plan.connection.invert_grid_sign, false);
+  assert.strictEqual(plan.connection.invert_batt_sign, false);
+  // The read plan is EXACTLY the decode module's (one truth for the blocks).
+  assert.deepStrictEqual(plan.reads, huaweiDecode.planReads({ family: 'huawei_sun2000_luna' }));
+});
+
+test('route keeps explicit huawei connection values and gates unknown families idle-safe', () => {
+  const plan = routing.route(routing.parseConfig(huaweiConfig({
+    connection: { ip: '10.0.0.8', port: 503, unit_id: 1, invert_grid_sign: true, invert_batt_sign: true },
+  })));
+  assert.strictEqual(plan.target, '10.0.0.8:503');
+  assert.strictEqual(plan.connection.unit_id, 1);
+  assert.strictEqual(plan.connection.invert_grid_sign, true);
+  assert.strictEqual(plan.connection.invert_batt_sign, true);
+  // Unknown family -> idle with a named reason, never a fabricated plan.
+  const idle = routing.route(routing.parseConfig(huaweiConfig({ family: 'kostal_plenticore' })));
+  assert.strictEqual(idle.adapter, 'idle');
+  assert.match(idle.reason, /Huawei-Familie/);
+});
+
 // --- die GERÄTE-EIGENE Einspeisegrenze („Grenzen & Wächter" Stufe 0) ---------
 
 test('exportLimitRegister kennt hybrid_3p und AUSDRÜCKLICH nicht hybrid_1p', () => {

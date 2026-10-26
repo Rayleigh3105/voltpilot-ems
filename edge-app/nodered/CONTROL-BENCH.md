@@ -807,6 +807,80 @@ Zwei Schritte, in dieser Reihenfolge:
 EMS über die Vendor-Modelle 64201-64204 (Zustandsmaschine, Lade-/Entladekennlinie,
 Pflicht-Watchdog 60 s) — ein eigener Bau mit eigener Untersuchung.
 
+## Checkliste Huawei SUN2000 + LUNA2000 — VORBEREITET und GESPERRT, nichts ist gemessen
+
+Wie KACO: die Register-Lage ist **dokumentiert** (Herstellerquelle „SUN2000MA
+Modbus Interface Definitions" Issue 08 + Feldquellen), aber an keinem
+Huawei-Gerät hat jemand von uns je etwas gemessen. Lesepfade + Registerkarte:
+[`HUAWEI.md`](HUAWEI.md); Analyse: firstmate `data/vp-kundenanlage-huawei-s1`.
+
+⚠ **Die Sperre ist genauso hart wie bei KACO.** `writes` bleibt in
+`huaweiControl` leer **unabhängig von der Freigabe** — eine First-Light-Karte
+öffnet hier nichts, die Sperre fällt erst mit einer bewussten Code-Änderung an
+`inverter-control-routing.js`. **Ohne dieses Programm gibt es also gar keine
+Möglichkeit, versehentlich zu schreiben.**
+
+### Vorbereitung
+
+1. **Installateur-Konto** besorgen und Modbus TCP am Gerät freischalten — ohne
+   diese Freischaltung antwortet das Gerät gar nicht.
+2. **Smart Dongle oder nur internes WLAN?** Entscheidet, ob Modbus parallel zur
+   FusionSolar-App läuft. Nur EIN Modbus-Client gleichzeitig.
+3. **Firmware-Stand notieren** (Installateur-Login/App) — Firmware-Bedingung,
+   Schreibbudget und Dämpfung sind in `huawei.json` komplett unbelegt
+   (Sicherheit D).
+4. **Smart Power Sensor** (DTSU666-H/DDSU666-H) am Netzanschlusspunkt
+   verbaut? Entscheidet, ob eine Netzmessung überhaupt möglich ist.
+
+### Messprogramm (Forcible Charge/Discharge, Register 47075–47249)
+
+⚠ **Höheres Risiko als die Abregelung**: ein falsches Vorzeichen oder eine
+falsche Skala bewegt eine echte Batterie.
+
+1. **Nur lesen.** 37765/37766 (Batterie-Lade-/Entladeleistung) und
+   37760 (SoC) gegen die FusionSolar-App prüfen; **Vorzeichen kalibrieren** -
+   die Feldquelle sagt „+ Laden", das deckt sich schon mit VoltPilots eigener
+   Konvention, aber unbelegt ist unbelegt.
+2. **Istwert von 47086 (Arbeitsmodus) notieren** vor dem Eingriff, damit die
+   Rücknahme belegbar ist.
+3. **Kleiner Sollwert in BEIDE Richtungen** (±0,5–1 kW) aus ruhiger Baseline:
+   47100 = 1 (Laden) bzw. 2 (Entladen), 47246 = 0 (Dauer-Modus, NIEMALS 1),
+   47247/47249 = ±W, 47083 = Minuten. Zurücklesen **und** 37765/37766 muss sich
+   in Befehlsrichtung bewegen.
+4. **⚠ DIE WICHTIGSTE MESSUNG: der geräteeigene Totmann.** `huawei.json`
+   `totmann` behauptet „endet nach 47083 Minuten im Dauer-Modus (47246 = 0),
+   flüchtig" (Sicherheit C, Feldquelle) - am Gerät NIE gemessen:
+   - 47083 auf eine kurze Zeit setzen, dann **aufhören zu schreiben**. Endet
+     die Zwangssteuerung tatsächlich nach Ablauf der Minuten? Wie exakt?
+   - 47246 = 1 (SoC-Modus) NICHT in Produktion ausprobieren (keine
+     dokumentierte Rückfallzeit) - nur falls der Zertifizierungslauf das
+     Firmwareverhalten explizit klären soll, mit sofortiger manueller
+     Rücknahme (47100 = 0) bereitstehend.
+   - **Hängende Zwangsentladung (evcc #26917) gezielt prüfen:** nach dem
+     dokumentierten Totmann-Ablauf 47100 zurücklesen - steht wirklich 0, oder
+     bleibt ein Sollwert stehen? Das ist das genau bekannte Feldproblem.
+5. **SoC-Fenster.** Entladebefehl an der Untergrenze ⇒ `guards.Clamp` liefert 0
+   ⇒ Gerät verharrt; Ladebefehl an der Obergrenze analog.
+6. **Selbstregel-Fenster (47075/47077).** Lade-/Entladegrenze setzen,
+   Wirkung auf die AC-Leistung beobachten, Rücknahme auf 0/0 prüfen - das ist
+   der Pfad ohne erzwungenen Sollwert (E/E_laden/E_decken/E_gedrosselt/H).
+7. **Netzladen-Freigabe (47087).** Nur auf einer Anlage ohne EEG-Einschränkung
+   prüfen; 47087 nach dem Test wieder auf 0.
+
+### Freigabe
+
+Zwei Schritte, in dieser Reihenfolge:
+
+1. **Die Adapter-Sperre lösen** (`inverter-control-routing.js`,
+   `huaweiControl`): `writes` darf erst dann dem üblichen Freigabe-Tor folgen.
+   Das ist eine bewusste Code-Änderung mit Review, kein Klick.
+2. Danach Freigabe **pro Gerät** über die First-Light-Karte, inklusive der
+   Pflicht-Bench-Prüfung „Überschuss mit kurzen Verbrauchern" (oben,
+   `TestSurplusWithShortConsumers`/`TestShortConsumersInEverySlotKind`) mit den
+   am Gerät gemessenen Einschwingzeit-/Messtakt-Werten statt der Vorgabe
+   15 s/25 s. Die flottenweite Aufnahme in `VP_CONTROL_CERTIFIED_FAMILIES` /
+   `CERTIFIED_CONTROL_FAMILIES` erst, wenn die Modellklasse belegt ist.
+
 ## OCPP-Ladepunkt (Ladesäule) — SIMULATOR-BEWIESEN, Bench steht aus
 
 Die Software-Seite ist vollständig und am Simulator bewiesen

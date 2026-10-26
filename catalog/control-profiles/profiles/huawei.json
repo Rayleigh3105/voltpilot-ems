@@ -48,6 +48,7 @@
       "wie": "47086 = 2."
     },
     "E_decken": {
+      "adapter_folge": "decken",
       "beleg": null,
       "hebel": "geraet",
       "quellen": [
@@ -131,6 +132,7 @@
       "wie": "Einspeisebegrenzung am Gerät über den Smart Power Sensor (Einstellung); per Modbus unbelegt."
     },
     "H": {
+      "adapter_folge": "halten",
       "beleg": null,
       "hebel": "geraet",
       "quellen": [
@@ -157,6 +159,7 @@
       "wie": "47075 = 47077 = 0."
     },
     "N": {
+      "adapter_folge": "netzladen",
       "beleg": null,
       "hebel": "sollwert",
       "quellen": [
@@ -207,8 +210,163 @@
       "wie": "47247 = W, 47083 = Minuten, 47246 = 0, 47100 = 1; Netzladen 47087 = 1."
     }
   },
-  "adapter": null,
-  "bindung": null,
+  "adapter": {
+    "abweichungen": [
+      "Schreiben ist im Adapter hart gesperrt: writes bleibt leer, auch mit Zertifikat - kein Huawei-Gerät wurde je gemessen.",
+      "Die Folge „laden_gedrosselt“ vereint die Absichten E_laden (47086+47077) und E_gedrosselt (47075): aus dem gegebenen Sollwert allein lässt sich ohne weiteres Signal nicht unterscheiden, welche gemeint ist - der Adapter schreibt beide Register, was beide Absichten abdeckt.",
+      "Absicht A (Verkaufen, erzwungener Export über 47249/47100 = 2) ist in der Landkarte dokumentiert, aber nicht verdrahtet: es gibt noch kein Upstream-Signal, das diese Absicht von E_decken unterscheidet (anders als bei N, das `grid_charge_allowed` hat).",
+      "47083 (Dauer, Minuten) wird im Adapter immer auf die kürzeste Einheit (1) gesetzt und auf jedem Tick neu geschrieben - der robuste Failsafe tritt an die Stelle einer am Gerät gemessenen Dauer."
+    ],
+    "ausfuehrbar": false,
+    "datei": "edge-app/nodered/inverter-control-routing.js",
+    "folgen": {
+      "decken": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "speicher": "unbelegt",
+            "wert": 2,
+            "ziel": {
+              "register": 47086
+            }
+          },
+          {
+            "hinweis": "max. Laden",
+            "speicher": "dauerspeicher",
+            "wert": 0,
+            "ziel": {
+              "register": 47075
+            }
+          }
+        ]
+      },
+      "halten": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "speicher": "dauerspeicher",
+            "wert": 0,
+            "ziel": {
+              "register": 47075
+            }
+          },
+          {
+            "speicher": "dauerspeicher",
+            "wert": 0,
+            "ziel": {
+              "register": 47077
+            }
+          }
+        ]
+      },
+      "laden_gedrosselt": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "speicher": "unbelegt",
+            "wert": 2,
+            "ziel": {
+              "register": 47086
+            }
+          },
+          {
+            "hinweis": "max. Entladen",
+            "speicher": "dauerspeicher",
+            "wert": 0,
+            "ziel": {
+              "register": 47077
+            }
+          },
+          {
+            "speicher": "dauerspeicher",
+            "wert": "planwert",
+            "ziel": {
+              "register": 47075
+            }
+          }
+        ]
+      },
+      "netzladen": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "hinweis": "Netzladen",
+            "speicher": "unbelegt",
+            "wert": 1,
+            "ziel": {
+              "register": 47087
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": "W",
+            "ziel": {
+              "register": 47247
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": "Minuten",
+            "ziel": {
+              "register": 47083
+            }
+          },
+          {
+            "hinweis": "Dauer-Modus",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 47246
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "register": 47100
+            }
+          }
+        ]
+      },
+      "rueckgabe": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "hinweis": "Stopp",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 47100
+            }
+          },
+          {
+            "speicher": "dauerspeicher",
+            "wert": 0,
+            "ziel": {
+              "register": 47075
+            }
+          },
+          {
+            "speicher": "dauerspeicher",
+            "wert": 0,
+            "ziel": {
+              "register": 47077
+            }
+          }
+        ]
+      }
+    },
+    "planer": "controlRoute → huaweiControl",
+    "schreibabstand_s": 0
+  },
+  "bindung": [
+    {
+      "marke": "huawei",
+      "modelle": null,
+      "registerfamilie": "huawei_sun2000_luna",
+      "steuerpfad": null
+    }
+  ],
   "daempfung": {
     "box_regelt": true,
     "einschwingzeit_s": null,
@@ -243,7 +401,7 @@
   "freigabe": "keine",
   "hersteller": "Huawei",
   "id": "huawei",
-  "im_repo": "nicht angebunden",
+  "im_repo": "Lesepfad gebunden (Telemetrie, nodered/huawei/huawei-decode.js); Steuer-Adapter gebaut, Schreiben hart gesperrt (bench_pending)",
   "modelle": [
     "SUN2000-L1",
     "SUN2000-M1",
