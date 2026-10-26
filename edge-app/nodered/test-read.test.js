@@ -25,10 +25,11 @@ const discovery = require('./sunspec/model-discovery');
 const goe = require('./goe/goe-api');
 const kostal = require('./kostal/kostal-decode');
 const kacoSerial = require('./kaco/kaco-serial-decode');
+const huawei = require('./huawei/huawei-decode');
 
 function deps(extra) {
   return Object.assign(
-    { deye, modbus, fronius, solarman, sunspec, discovery, goe, kostal, kacoSerial, net, http, https },
+    { deye, modbus, fronius, solarman, sunspec, discovery, goe, kostal, kacoSerial, huawei, net, http, https },
     extra || {},
   );
 }
@@ -489,6 +490,69 @@ test('kostal_modbus: refused connect classifies unreachable, garbage as invalid_
   const { server, port } = await startGarbageServer();
   try {
     const res = await readOnce(kostalSelection('127.0.0.1', port));
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.error_code, 'invalid_response');
+  } finally {
+    server.close();
+  }
+});
+
+// --- Huawei SUN2000 + LUNA2000 (huawei_modbus) -------------------------------
+
+// Absolute register image of a healthy SUN2000 + LUNA2000: PV 3.00 kW (DC-side
+// input power), AC active power 2.50 kW (meta only, NOT published), grid import
+// 0.50 kW (Smart Power Sensor), SoC 65.3 %, battery charging 0.50 kW (field
+// source "+ charging" - no negation by default).
+function huaweiImage() {
+  const regs = {};
+  const putI32 = (addr, value) => {
+    const buf = Buffer.alloc(4);
+    buf.writeInt32BE(value, 0);
+    regs[addr] = buf.readUInt16BE(0);
+    regs[addr + 1] = buf.readUInt16BE(2);
+  };
+  putI32(huawei.REG.INPUT_POWER_W, 3000);
+  putI32(huawei.REG.ACTIVE_POWER_W, 2500);
+  putI32(huawei.REG.METER_ACTIVE_POWER_W, 500);
+  regs[huawei.REG.BATTERY_SOC_PCT_X10] = 653;
+  regs[huawei.REG.BATTERY_RUNNING_STATUS] = 2;
+  putI32(huawei.REG.BATTERY_CHARGE_DISCHARGE_POWER_W, 500);
+  return regs;
+}
+
+function huaweiSelection(ip, port) {
+  return {
+    communication: 'huawei_modbus', family: 'huawei_sun2000_luna',
+    connection: { ip, port, unit_id: 0 },
+  };
+}
+
+test('huawei_modbus: reads + decodes a live SUN2000 -> ok with pv/grid/SoC', async () => {
+  const { server, port } = await startModbusServer(huaweiImage());
+  try {
+    const readOnce = testRead.makeReadOnce(deps());
+    const res = await readOnce(huaweiSelection('127.0.0.1', port));
+    assert.strictEqual(res.ok, true, JSON.stringify(res));
+    // pv_power_kw MUST come from the DC-side input power (32064), never the AC
+    // active power (32080) - the same lesson documented for the KACO hybrid NH3.
+    assert.strictEqual(res.reading.pv_kw, 3);
+    assert.strictEqual(res.reading.grid_kw, 0.5);
+    assert.strictEqual(res.reading.soc_pct, 65.3);
+    // No load channel - the core derives it from the house balance.
+    assert.strictEqual(res.reading.load_kw, undefined);
+  } finally {
+    server.close();
+  }
+});
+
+test('huawei_modbus: refused connect classifies unreachable, garbage as invalid_response', async () => {
+  const readOnce = testRead.makeReadOnce(deps({ connectTimeoutMs: 500, readTimeoutMs: 500 }));
+  const refused = await readOnce(huaweiSelection('127.0.0.1', 1));
+  assert.strictEqual(refused.ok, false);
+  assert.strictEqual(refused.error_code, 'unreachable');
+  const { server, port } = await startGarbageServer();
+  try {
+    const res = await readOnce(huaweiSelection('127.0.0.1', port));
     assert.strictEqual(res.ok, false);
     assert.strictEqual(res.error_code, 'invalid_response');
   } finally {

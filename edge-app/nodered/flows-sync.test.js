@@ -1426,6 +1426,7 @@ test('flow test-read embeds the current test-read.js + decode module sources', (
     'sunspec/sunspec-live.js',
     'goe/goe-api.js',
     'kostal/kostal-decode.js',
+    'huawei/huawei-decode.js',
   ];
   for (const rel of embeds) {
     const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
@@ -1435,7 +1436,7 @@ test('flow test-read embeds the current test-read.js + decode module sources', (
     );
   }
   // And it wires the embedded modules into makeReadOnce the intended way.
-  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC, goe: __GOE, kostal: __KOSTAL'));
+  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC, goe: __GOE, kostal: __KOSTAL, kaco: __KACO, aiswei: __AISWEI, kacoSerial: __KACOSERIAL, huawei: __HUAWEI'));
 });
 
 // The "Fronius SunSpec lesen" node (auto-sunspec) carries EMBEDDED verbatim
