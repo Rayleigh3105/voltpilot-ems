@@ -28,6 +28,7 @@ Ohne Root-Rechte, ohne Bildschirm. Gebaut und geprüft auf Debian 13 mit Python 
 | build123d | 0.13.0 (zieht den Geometriekern `cadquery-ocp-novtk` nach, geprüft mit 8.0.1.1.0) | `anforderungen.txt` |
 | lib3mf | 2.5.0 | `anforderungen.txt` |
 | numpy, shapely, pillow, cairosvg | 2.5.3, 2.2.0, 12.2.0, 2.9.1 | `anforderungen.txt` |
+| qrcode, zxing-cpp | 8.2 (QR-Code der Kennung, wie für die Vektoren des Portals), 3.1.1 (liest ihn aus dem G-Code zurück) | `anforderungen.txt` |
 | scikit-image | 0.26.0 (nur für `werkzeug/logo_vektor.py`) | `anforderungen.txt` |
 | Bambu Studio | 02.08.02.61, AppImage für Ubuntu 24.04, SHA-256 `d501b103fac5424513ec0e8d6bc145fb30719de2c7d94d7320d723740c81a7fd` | `werkzeug/bambu_einrichten.sh` |
 
@@ -40,6 +41,7 @@ es der Schritt `abgleich` (und die Prüfung über den festgehaltenen Stand der g
 ./bauen.sh                     # alles
 ./bauen.sh entwurf pruefung    # einzelne Schritte
 ./bauen.sh --hilfe             # Liste der Schritte
+./bauen.sh --referenz edge-…   # das Gehäuse einer Box mit Referenz und QR-Code (Kennung)
 ```
 
 | Schritt | Ergebnis unter `aus/` |
@@ -48,16 +50,21 @@ es der Schritt `abgleich` (und die Prüfung über den festgehaltenen Stand der g
 | `probeplatte` | `probe-platte/`: Platte 60 × 60 mm für Farben, Strichbreiten und Schwund |
 | `passproben` | `passproben/`: Schablone, Steckerwand, Schachtprobe, je 3MF, STL und Bild |
 | `schriftprobe` | `schriftprobe/`: die Wörter des Deckels in 4,5, 3,8 und 3,0 mm, zwei Plättchen in einer 3MF |
-| `entwurf` | `gehaeuse-v04/`: Unterteil, Deckel (Schrift 3,8 mm), beide zusammen in einer 3MF, Zubehör; der Deckel in den anderen Schriftgrößen; in `vergleich/` der Deckel ohne Beschriftung; Ansichten, Zeichnungen der Beschriftung, Schnitte durch den Lichtschacht |
-| `pruefung` | `pruefung/pruefbericht.md`: Durchdringungen, Regeln, Stege je Druckschicht, Logo, Varianten, Gedrucktes gegen den festgehaltenen Stand, Lichtschacht, Beschriftung |
-| `bambu` | `pruefung/bambu.md`: jede 3MF durch Bambu Studio (kommen Teile und Farbplätze an? Zeit, Wechsel, Abfall; druckt der Slicer den Fuß des Lichtschachts und jedes Zeichen als geschlossene Bahn?). Wird übersprungen, wenn Bambu Studio nicht eingerichtet ist |
+| `entwurf` | `gehaeuse-v04/`: Unterteil, Deckel (Schrift 3,8 mm), beide zusammen in einer 3MF, Zubehör; der Deckel in den anderen Schriftgrößen; in `vergleich/` der Deckel ohne Beschriftung; Ansichten, Zeichnungen der Beschriftung, Schnitte durch den Lichtschacht. `kennung/edge-wrk7abg/`: das Unterteil mit Kennung für die erfundene Probe-Referenz |
+| `pruefung` | `pruefung/pruefbericht.md`: Durchdringungen, Regeln, Stege je Druckschicht, Logo, Varianten, Gedrucktes gegen den festgehaltenen Stand, Lichtschacht, Beschriftung, Kennung (Inhalt gleich dem Portal, Abstände am Netz) |
+| `bambu` | `pruefung/bambu.md`: jede 3MF durch Bambu Studio (kommen Teile und Farbplätze an? Zeit, Wechsel, Abfall; druckt der Slicer den Fuß des Lichtschachts und jedes Zeichen als geschlossene Bahn? liest sich der QR-Code der Kennung aus dem G-Code?). Wird übersprungen, wenn Bambu Studio nicht eingerichtet ist |
 | `abgleich` | `pruefung/abgleich.md`: Gehören die eingecheckten 3MF unter `druck/`, ihre Prüfsummen und die Tabelle `docs/massmodell-tabelle.md` noch zum Programm? |
 
 `./bauen.sh` endet mit **Rückgabewert 1**, wenn ein Schritt einen Fehler meldet: Durchdringung,
 verletzte Regel, Steg schmaler als eine Bahn, ein gedrucktes Teil weicht vom festgehaltenen Stand
 ab, ein Wort der Beschriftung passt nicht an seinen Platz, eine 3MF kommt im Slicer nicht an wie
-geschrieben, der Slicer fährt ein Zeichen nicht sauber, oder Eingechecktes gehört nicht mehr zum
-Programm.
+geschrieben, der Slicer fährt ein Zeichen nicht sauber, die Kennung weicht vom Portal ab, stößt an
+oder ist aus dem G-Code nicht lesbar, oder Eingechecktes gehört nicht mehr zum Programm.
+
+`./bauen.sh --referenz edge-…` baut nur das Gehäuse dieser einen Box nach `aus/kennung/<referenz>/`
+und prüft es wie die Probe-Referenz (Inhalt, Abstände, Bambu Studio, QR-Code aus dem G-Code); Bericht
+`pruefung.md` daneben. Rückgabewert 1 bei einem Fehler und, wenn Bambu Studio fehlt. Einzelheiten:
+[Kennung](kennung.md).
 
 Die Maschine nicht überlasten: Bauen und Slicen einzeln, nicht parallel. Die Schritte laufen mit
 niedriger Priorität.
@@ -68,12 +75,13 @@ niedriger Priorität.
 |---|---|
 | `gehaeuse/massmodell.py` | Maße der Platine als Daten, jede Zahl mit Herkunft ([Maßmodell](massmodell.md)) |
 | `gehaeuse/parameter.py` | Stellgrößen des Gehäuses: Wände, Luft, Spiel, Schwund je Material, Wandmontage, Füße, Lüftung, LED-Anzeige und Lichtschacht, Etikett, Logo, Clip, die Wörter der Beschriftung und ihre Schrift; dazu die Sätze von Schaltern für die Varianten |
-| `gehaeuse/entwurf.py` | Unterteil, Deckel samt Beschriftung, Bohrlehre, Clip als Körper |
+| `gehaeuse/entwurf.py` | Unterteil, Deckel samt Beschriftung, Bohrlehre, Clip als Körper; das Unterteil mit Kennung |
+| `gehaeuse/kennung.py` | Inhalt der Kennung einer Box wie im Portal: Prüfung der Referenz, Klarschrift, Link, QR-Code; Abgleich mit `docs/contracts/werkstatt-beschriftung.json` |
 | `gehaeuse/schrift.py`, `schriftprobe.py` | die Strichschrift der Beschriftung und die Schriftprobe |
 | `gehaeuse/passproben.py`, `passproben_gedruckt.json` | Passproben als Ausschnitte von Unterteil und Deckel; der festgehaltene Stand der gedruckten Teile |
 | `gehaeuse/platine.py` | die Platine als Körper, zum Einlegen und Prüfen |
 | `gehaeuse/pruefung.py` | Durchdringung, Abstände, Regeln, Stege je Druckschicht, Zahlen zum Lichtschacht |
-| `gehaeuse/bambu.py` | Läufe durch Bambu Studio, Kontrolle des G-Codes |
+| `gehaeuse/bambu.py` | Läufe durch Bambu Studio, Kontrolle des G-Codes, QR-Code aus dem G-Code lesen |
 | `gehaeuse/abgleich.py` | Eingechecktes gegen den Bau |
 | `gehaeuse/logo.py`, `logo/logo-vektor.svg` | das Logo als Flächen; die SVG ist die einzige Quelle |
 | `gehaeuse/ausgabe.py`, `mehrfarb_3mf.py`, `vorschau.py`, `formen.py` | Netz, Drucklage, STL, 3MF mit benannten Teilen und Farbplätzen, Bilder ohne Grafikkarte |

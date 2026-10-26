@@ -700,6 +700,151 @@ def _beschriftung_md(b, p):
     return md
 
 
+# ---- 9: Kennung auf der Unterseite ----------------------------------------
+
+def pruefe_kennung(p, ref):
+    """Prüft das Unterteil einer Box mit Kennung (Entscheid 8): Inhalt gleich dem Portal, Lage und
+    Abstände am Netz gemessen, Schrift, Stege in den Schichten der Einlage, nichts außer der Standfläche
+    geändert, und das Bild der Unterseite (aus bau.bau_kennung) liest sich als Code mit dem Link.
+    Rückgabe dict mit "fehler"."""
+    from . import kennung as kennung_
+    from .bau import kennung_ordner
+    fehler = []
+    vektoren, f = kennung_.pruefe_vektoren()
+    fehler += f
+    inhalt = kennung_.inhalt(ref)
+    k = entwurf.kennung_unten(p, inhalt)
+    modul = p.qr_modul
+
+    # Die Standfläche am Netz des Unterteils ohne Etikettfeld: was eben ist (knapp über der Platte) und
+    # wo das Teil endet (über der Fase). Löcher in der Ebene sind Mulden, Schlüssellöcher, Kernlöcher.
+    e, d = netz(entwurf.unterteil(p.mit(etikett="keins")))
+    eben = scheibe(e, d, p.z_rueck + 0.001)
+    eben = max(getattr(eben, "geoms", [eben]), key=lambda g: g.area)
+    umriss = scheibe(e, d, p.z_rueck + p.fase_unten + 0.05)
+    umriss = max(getattr(umriss, "geoms", [umriss]), key=lambda g: g.area)
+    loecher = [Polygon(r) for r in eben.interiors]
+    dunkel = lambda g: min([Polygon(umriss.exterior).exterior.distance(g), *(l.distance(g) for l in loecher)])
+    qr = box(*k.qr_rahmen)
+    zahlen = {"modul": modul, "module": len(inhalt["module"]), "seite": round(len(inhalt["module"]) * modul, 2),
+              "qr_rahmen": [round(v, 2) for v in k.qr_rahmen],
+              "qr_eben": round(Polygon(eben.exterior).exterior.distance(qr) if Polygon(eben.exterior).contains(qr)
+                               else -1.0, 2),
+              "qr_loch": round(min(l.distance(qr) for l in loecher), 2),
+              "qr_rand": round(Polygon(umriss.exterior).exterior.distance(qr), 2),
+              "qr_auf_ebene": eben.contains(qr)}
+    zahlen["qr_ruhe"] = round(dunkel(qr), 2)
+    zahlen["qr_ruhe_module"] = round(dunkel(qr) / modul, 2)
+    zeilen = []
+    for z in k.zeilen:
+        g = z["form"]
+        zeilen.append({"text": z["text"], "rahmen": [round(v, 2) for v in g.bounds],
+                       "breite": round(g.bounds[2] - g.bounds[0], 2), "auf_ebene": eben.contains(g),
+                       "frei": round(eben.boundary.distance(g), 2), "zum_code": round(qr.distance(g), 2)})
+    zeichen = {}
+    for c in kennung_.ALPHABET.upper() + "-":
+        z = schrift.zeichenweise(c, p.schrift_hoehe, p.schrift_strich, p.schrift_luft, p.schrift_abstand,
+                                 p.schrift_form)[0]
+        zeichen[c] = {"zugelaufen": round(100 * z["zugelaufen"], 1), "geschlossen": z["geschlossen"]}
+    zu = [c for c, z in zeichen.items() if z["geschlossen"] or z["zugelaufen"] > 100 * ZUGELAUFEN]
+
+    # Körper: Weiß und Schwarz zusammen sind das Unterteil ohne Etikettfeld; das Schwarz liegt nur in
+    # den Schichten der Einlage; gegenüber dem gedruckten Unterteil fehlt nur das Etikettfeld.
+    teile = entwurf.unterteil_mit_kennung(p, inhalt)
+    weiss, schwarz = teile["gehaeuse_weiss"], teile[p.beschriftung_farbe]
+    ohne_feld = entwurf.unterteil(p.mit(etikett="keins")).volume
+    gedruckt = entwurf.unterteil(p).volume
+    b = schwarz.bounding_box()
+    koerper = {"weiss": round(weiss.volume, 1), "schwarz": round(schwarz.volume, 1),
+               "ohne_etikettfeld": round(ohne_feld, 1), "gedruckt": round(gedruckt, 1),
+               "etikettfeld": round(ohne_feld - gedruckt, 1),
+               "etikettfeld_soll": round(p.etikett_groesse[0] * p.etikett_groesse[1] * p.etikett_tiefe, 1),
+               "schwarz_z": [round(b.min.Z - p.z_rueck, 3), round(b.max.Z - p.z_rueck, 3)],
+               "weiss_ein_koerper": len(weiss.solids()) == 1}
+    # Stege in den Schichten der Einlage, Weiß und Schwarz
+    steg = {}
+    for name, koerper_ in (("weiß", weiss), ("schwarz", schwarz)):
+        e_, d_ = netz(koerper_, 0.01, 0.2)
+        for i in range(round(p.einlage / SCHICHT)):
+            form = scheibe(e_, d_, p.z_rueck + (i + 0.5) * SCHICHT)
+            steg[f"{name}, Schicht {i + 1}"] = {str(br): len(duenne_stellen(form, br)) for br in (BAHN, 2 * BAHN)}
+    # Das Bild der Unterseite (Zeichnung des Modells von unten): Liest zxing-cpp den Code, nicht gespiegelt?
+    from PIL import Image
+
+    from .bambu import lies_qr
+    pfad = kennung_ordner(ref) / f"unterseite-{ref}.png"
+    bild = lies_qr(Image.open(pfad)) if pfad.exists() else None
+
+    e9 = 1e-9
+    regeln = [
+        ("Inhalt gleich dem Portal (werkstatt-beschriftung.json, edge-ref-vectors.json)", "alle Fälle gleich",
+         f"{sum(v['gleich'] for v in vektoren)} von {len(vektoren)}", not f),
+        ("QR-Code: Modul", "mindestens 2 Bahnen (0,84)", modul, modul >= 2 * BAHN - e9),
+        ("QR-Code: ganz auf der ebenen Standfläche, Abstand zur Fase, zu Mulden und Löchern",
+         "mindestens 2 Bahnen (0,84)", zahlen["qr_eben"] if zahlen["qr_auf_ebene"] else "nein",
+         zahlen["qr_auf_ebene"] and min(zahlen["qr_eben"], zahlen["qr_loch"]) >= 2 * BAHN - e9),
+        ("QR-Code: Ruhezone bis Loch, Mulde oder Rand des Teils",
+         f"mindestens {zahl(p.qr_ruhe_min)} Module ({zahl(p.qr_ruhe_min * modul)} mm); ISO/IEC 18004: 4",
+         f"{zahl(zahlen['qr_ruhe_module'])} Module ({zahl(zahlen['qr_ruhe'])} mm)",
+         zahlen["qr_ruhe_module"] >= p.qr_ruhe_min - e9),
+        ("Klarschrift: auf der ebenen Standfläche, frei von Fase, Mulden und Schlüssellöchern",
+         f"mindestens {zahl(p.beschriftung_frei)} mm", min(z["frei"] for z in zeilen) if all(
+             z["auf_ebene"] for z in zeilen) else "nein",
+         all(z["auf_ebene"] for z in zeilen) and min(z["frei"] for z in zeilen) >= p.beschriftung_frei - e9),
+        ("Klarschrift: außerhalb der Ruhezone des Codes", f"mindestens {zahl(p.qr_ruhe_min * modul)} mm",
+         min(z["zum_code"] for z in zeilen), min(z["zum_code"] for z in zeilen) >= p.qr_ruhe_min * modul - e9),
+        ("Klarschrift: kein Zeichen der Referenzen läuft zu (Alphabet der Box und Bindestrich)",
+         f"jede Öffnung bleibt, je Zeichen höchstens {zahl(100 * ZUGELAUFEN)} %",
+         "ja" if not zu else "nein: " + ", ".join(zu), not zu),
+        ("Einlage: nur in den ersten drei Schichten", f"0 bis {zahl(p.einlage)} mm über der Standfläche",
+         f"{zahl(koerper['schwarz_z'][0])} bis {zahl(koerper['schwarz_z'][1])}",
+         abs(koerper["schwarz_z"][0]) < 1e-3 and abs(koerper["schwarz_z"][1] - p.einlage) < 1e-3),
+        ("Weiß und Schwarz zusammen sind das Unterteil ohne Etikettfeld", "Volumen gleich (± 0,5 mm³)",
+         f"{zahl(koerper['weiss'] + koerper['schwarz'])} / {zahl(koerper['ohne_etikettfeld'])} mm³",
+         abs(weiss.volume + schwarz.volume - ohne_feld) < 0.5 and koerper["weiss_ein_koerper"]),
+        ("Gegenüber dem gedruckten Unterteil fehlt nur das Etikettfeld", f"{zahl(koerper['etikettfeld_soll'])} mm³",
+         f"{zahl(koerper['etikettfeld'])} mm³", abs(koerper["etikettfeld"] - koerper["etikettfeld_soll"]) < 0.5),
+        ("Einlage: kein Steg schmaler als eine Bahn (Weiß und Schwarz, Schichten 1 bis 3)", "keiner",
+         sum(v[str(BAHN)] for v in steg.values()), not any(v[str(BAHN)] for v in steg.values())),
+        ("Zeichnung der Unterseite von unten: zxing-cpp liest den Link, nicht gespiegelt", inhalt["link"],
+         "nicht gebaut" if bild is None else (", ".join(t + (" (gespiegelt)" if s else "") for t, s in bild)
+                                              or "nichts gelesen"),
+         bild == [(inhalt["link"], False)]),
+    ]
+    regeln = [(a, b_, zahl(c) if isinstance(c, (int, float)) else c, bool(ok)) for a, b_, c, ok in regeln]
+    fehler += [f"Kennung {ref}: Regel verletzt: {a} (Soll {b_}, Ist {c})" for a, b_, c, ok in regeln
+               if not ok and not a.startswith("Inhalt")]
+    return {"referenz": ref, "klartext": inhalt["klartext"], "link": inhalt["link"], "fassung": inhalt["fassung"],
+            "maske": inhalt["maske"], "zahlen": zahlen, "zeilen": zeilen, "koerper": koerper, "stege": steg,
+            "zeichen": zeichen, "vektoren": vektoren, "regeln": regeln, "fehler": fehler}
+
+
+def kennung_md(daten, p):
+    z = daten["zahlen"]
+    md = [f"Referenz `{daten['referenz']}`: Klarschrift „{daten['klartext']}“, QR-Code mit `{daten['link']}` "
+          f"(Fassung {daten['fassung']}, {z['module']} × {z['module']} Module, Fehlerkorrektur M, Maske "
+          f"{daten['maske']}). Modul {zahl(z['modul'])} mm, Code {zahl(z['seite'])} × {zahl(z['seite'])} mm. "
+          "Gemessen am Netz des Unterteils: die ebene Standfläche knapp über der Platte, der Rand des Teils "
+          "über der Fase. Koordinaten wie im Maßmodell; gelesen wird von unten, die Netzwerk-Seite unten.", "",
+          f"- Code: x {zahl(z['qr_rahmen'][0])} bis {zahl(z['qr_rahmen'][2])}, y {zahl(z['qr_rahmen'][1])} bis "
+          f"{zahl(z['qr_rahmen'][3])}. Abstand zur Kante der Ebene (Fase) {zahl(z['qr_eben'])} mm, zum nächsten "
+          f"Loch oder zur nächsten Mulde {zahl(z['qr_loch'])} mm, zum Rand des Teils {zahl(z['qr_rand'])} mm. "
+          f"Ruhezone (bis Dunklem) {zahl(z['qr_ruhe'])} mm = {zahl(z['qr_ruhe_module'])} Module."]
+    md += [f"- Zeile „{l['text']}“: {zahl(l['breite'])} mm breit, x {zahl(l['rahmen'][0])} bis "
+           f"{zahl(l['rahmen'][2])}, y {zahl(l['rahmen'][1])} bis {zahl(l['rahmen'][3])}; frei {zahl(l['frei'])} mm, "
+           f"zum Code {zahl(l['zum_code'])} mm" for l in daten["zeilen"]]
+    k = daten["koerper"]
+    md += [f"- Körper: Weiß {zahl(k['weiss'])} mm³, Schwarz {zahl(k['schwarz'])} mm³; das gedruckte Unterteil "
+           f"hat {zahl(k['gedruckt'])} mm³, ohne Etikettfeld {zahl(k['ohne_etikettfeld'])} mm³.",
+           "- Stege in den Schichten der Einlage (Stellen schmaler als eine / zwei Bahnen): "
+           + "; ".join(f"{n}: {v[str(BAHN)]} / {v[str(2 * BAHN)]}" for n, v in daten["stege"].items()) + ".",
+           "- Inhalt gegen das Portal: " + ", ".join(
+               f"{v['referenz']} {'gleich' if v['gleich'] else '**weicht ab**'}" for v in daten["vektoren"]) + ".", "",
+           "| Regel | Soll | Ist | erfüllt |", "|---|---|---|---|"]
+    md += [f"| {a} | {b} | {c} | {'ja' if ok else '**nein**'} |" for a, b, c, ok in daten["regeln"]]
+    return md + [""]
+
+
 def pruefe(p=STANDARD, name=None):
     from .bau import NAME
     name = name or NAME
@@ -761,6 +906,9 @@ def pruefe(p=STANDARD, name=None):
     for v in stell:
         if not v["ein_koerper"] or v["schnitt"] > 1e-3 or not v["beschriftung_frei"]:
             fehler.append(f"Variante „{v['variante']}“ baut nicht sauber")
+    from .kennung import probe_referenz
+    kenn = pruefe_kennung(p, probe_referenz())
+    fehler += kenn["fehler"]
 
     md = [f"# Prüfbericht {name}", "",
           f"Material: {p.stoff.name}, Schwundausgleich {zahl(p.stoff.schwund * 100)} %. "
@@ -844,12 +992,17 @@ def pruefe(p=STANDARD, name=None):
         md += _beschriftung_md(g["zahlen"], q)
         md += ["| Regel | Soll | Ist | erfüllt |", "|---|---|---|---|"]
         md += [f"| {a} | {b} | {c} | {'ja' if ok else '**nein**'} |" for a, b, c, ok in g["regeln"]] + [""]
+    md += ["## 9. Kennung auf der Unterseite (Probe-Referenz)", "",
+           "Das Unterteil einer Box mit Referenz und QR-Code (Entscheid 8), gebaut für die erfundene Referenz aus "
+           "`docs/contracts/werkstatt-beschriftung.json`; jede echte Referenz prüft `./bauen.sh --referenz` "
+           "genauso. Ob der Code aus dem G-Code lesbar ist, steht im Bericht von Bambu Studio.", ""]
+    md += kennung_md(kenn, p)
     (ordner / "pruefbericht.md").write_text("\n".join(md), encoding="utf-8")
     daten = {"fehler": fehler, "platine": zeilen, "paare": paare, "unterseite": unten, "schacht": sch,
              "beschriftung": schild, "beschriftung_groessen": groessen,
              "wandmontage": wand, "passproben": proben, "stellgroessen": stell,
              "regeln": regel, "stege": {n: {str(b): s for b, s in f.items()} for n, f in steg.items()},
-             "logo": logo}
+             "logo": logo, "kennung": kenn}
     (ordner / "pruefung.json").write_text(json.dumps(daten, indent=1, ensure_ascii=False),
                                           encoding="utf-8")
     return daten

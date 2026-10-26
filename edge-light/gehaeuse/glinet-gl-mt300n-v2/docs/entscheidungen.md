@@ -15,6 +15,7 @@ Drucken, wörtlich, und stehen nur dort, wo sie ein Maß oder eine Entscheidung 
 | 10.10.2026 | v0.3 | „kannst du außerdem auf der seite auf der das VoltPilot Logo aufgedruckt ist auch die anschlüsse beschriften?“ | WAN, LAN, 5V, USB vor ihrem Anschluss, 4,5 mm hoch, schwarz und bündig eingelegt in den Schichten des Logos, also ohne zusätzlichen Farbwechsel. Eigene Strichschrift |
 | 11.10.2026 | v0.4 | ganzes Gehäuse v0.2 gedruckt: „es sitzt perfekt. Licht passt auch.“ Zur Beschriftung: „1. ja, 2. 5V, 3. mit USB, 4. nein, 5. nicht beschriften, 6. richtig so, 7. wenns geht lieber kleiner und schwarz ist gut“ | Schrift 3,8 statt 4,5 mm, mit offeneren Buchstabenformen (A als Bogen, S, 5, W, N). Reset und LEDs bleiben ohne Wort, der Schalter verdeckt. Unterteil und Körper des Deckels unverändert |
 | 12.10.2026 | v0.4, vorerst fertig | „gedruckt - 1. wir nehmen 3,8 2. ja - damit ist das gehäuse erst mal final.“ | nichts am Modell. Das Gehäuse kommt mit Druckdateien und dieser Dokumentation ins Repository |
+| 26.10.2026 | v0.4 mit Kennung | Entscheid 8: „ich würde gerne die beschriftung und qr code per 3d-Drucker aufs gehäuse drucken keinen aufkleber mehr zu brauchen“ | Je Box ein Unterteil mit Referenz und QR-Code als schwarze Einlage in der Standfläche (`./bauen.sh --referenz`, [Kennung](kennung.md)); dort entfällt das Etikettfeld. Sonst ist es das gedruckte Unterteil; `druck/` unverändert |
 
 ## Entscheidungen und ihre Gründe
 
@@ -32,6 +33,7 @@ Drucken, wörtlich, und stehen nur dort, wo sie ein Maß oder eine Entscheidung 
 | Beschriftung WAN, LAN, 5V, USB; Reset, LEDs und Schalter ohne Wort | Antworten vom 11.10.2026 | v0.4 |
 | Schrift 3,8 mm, Strich zwei Bahnen | kleinste Schrift, die ohne Einstellung im Slicer druckt; gewählt am 12.10.2026 | v0.4 |
 | Etikettfeld auf der Unterseite | Auf dem Deckel konkurriert es mit Logo und Beschriftung; die Originalschale trägt ihr Typenschild an derselben Stelle. Bleibt ein Schalter | v0.1 |
+| Kennung je Box auf der Unterseite: QR-Code zwischen den Mulden der LED-Seite, Referenz in zwei Zeilen an der Netzwerk-Seite | Entscheid 8 (kein Aufkleber). Der Code (24,36 mm bei 0,84 mm je Modul) passt nicht ins Etikettfeld, die Referenz in 3,8 mm nicht in eine Zeile; Inhalt aus dem Portal, gegen denselben Vektor geprüft | 26.10.2026 |
 | Kein fremdes Druckmodell übernommen | Lizenzen; das Gehäuse entsteht ohnehin aus dem eigenen Maßmodell | Grundlagen |
 
 Verworfen und nur noch als Schalter baubar: die Form mit Schraublaschen (v0), der kurze Lichtschacht
@@ -43,20 +45,12 @@ Deckel ohne „USB“.
 
 - **Produktsicherheit und CE.** Klärt der Betreiber selbst (09.10.2026: „CE und Produktsicherheit
   kümmere ich mich noch“). Dieses Verzeichnis trifft dazu keine Aussage, auch nicht zum Material.
-- **Etikett.** Inhalt entschieden am 26.10.2026 („ich würde gerne die beschriftung und qr code per
-  3d-Drucker aufs gehäuse drucken keinen aufkleber mehr zu brauchen“): die Referenz der Box in
-  Klarschrift und ein QR-Code mit dem Direktlink ins Portal, gedruckt statt geklebt. Den Inhalt je Box
-  zeigt die Werkstatt-Seite im Portal ([Werkstatt](../../../../docs/werkstatt.md)). **Offen ist die
-  Druckdatei je Box:** ein Schritt im Programm, der QR-Code und Referenz als schwarze Einlage in die
-  ersten drei Schichten der Unterseite legt (das Unterteil liegt mit ihr auf der Platte). Das
-  Etikettfeld von 40 × 14 mm ist dafür zu klein: Der Code (Fassung 3, 29 × 29 Module) misst bei
-  0,84 mm je Modul (zwei Bahnen) 24,4 mm, mit zwei Modulen Ruhezone auf der Fläche 27,7 mm. Zwischen
-  den Mulden der LED-Seite und den Schlitzen der Schlüssellöcher sind rund 31 × 28 mm eben (aus den
-  Stellgrößen gerechnet, nicht gemessen); die Klarschrift muss dann woanders hin, etwa zwischen die
-  Schlüssellöcher. Bei 0,63 mm je Modul misst der Code 18,3 mm. Das ändert das gedruckte Unterteil.
-  Eine Druckprobe am Slicer (Platten mit dem Code in beiden Größen, Bambu Studio 02.08.02.61, ASA) liest
-  sich aus dem G-Code zurück; gedruckt ist sie nicht. Das Feld bleibt bis dahin
-  ein Schalter (`etikett`); mit der Originalschale bleibt das Typenschild des Herstellers zurück.
+- **Kennung im Druck.** Referenz und QR-Code sind seit dem 26.10.2026 baubar und geprüft
+  (`./bauen.sh --referenz`, [Kennung](kennung.md)): Der Code liest sich aus dem G-Code zurück, auch wie
+  eine Kamera ihn sähe. **Gedruckt ist noch keine Kennung.** Offen ist der Probedruck: Liest das
+  Telefon des Betreibers den Code, ist die Referenz auf der rauen Unterseite lesbar? Bis dahin gilt
+  das Unterteil mit Kennung als nicht bestätigt. Mit der Originalschale bleibt das Typenschild des
+  Herstellers zurück.
 - **Material und Blau.** Gerechnet ist mit ASA und dem Zeichen in ABS „Azure“; die Alternative ist
   alles in PETG ([Druckanleitung](drucken.md#farben)). Womit gedruckt wurde und ob der Farbton
   genügt, ist nicht gemeldet.

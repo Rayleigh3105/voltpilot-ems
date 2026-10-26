@@ -36,7 +36,8 @@ import math
 from dataclasses import dataclass
 
 from build123d import Axis, Circle, Compound, Pos, chamfer, extrude
-from shapely.geometry import Polygon
+from shapely.geometry import LineString, Point, Polygon, box
+from shapely.ops import unary_union
 
 from . import massmodell as m, schrift
 from .formen import (aus_huelle, kegel, langloch, prisma, quader, rechteck, rundquader, zylinder,
@@ -651,6 +652,130 @@ def deckel(p=STANDARD):
         weiss = weiss + list(einlage(worte, p.z_deckel - UEBER, p.beschriftung_tiefe + UEBER).solids())
     weiss = weiss.cut(*[s for e in einlagen.values() for s in e.solids()])
     return {"gehaeuse_weiss": weiss, **einlagen}
+
+
+# ---- Kennung auf der Unterseite (Entscheid 8 vom 26.10.2026) --------------
+#
+# Referenz und QR-Code werden mit dem Unterteil gedruckt: eine schwarze Einlage in den
+# ersten drei Schichten, wie Logo und Schrift des Deckels. Die Standfläche liegt beim
+# Druck auf der Platte; sie ist die Sichtseite. Man liest sie von unten, mit der
+# Netzwerk-Seite unten wie den Deckel und wie an der Wand: Dort zeigt nach rechts +x
+# und nach oben -y. Deshalb steht beides in Platinenkoordinaten gespiegelt (y = -oben).
+
+# Kleine Zugabe je Modul: Module, die sich nur an einer Ecke berühren, gäben Flächen
+# mit Berührpunkten, die der Geometriekern nicht annimmt; so wird daraus eine Brücke
+# weit unter jeder Druckauflösung.
+QR_ZUGABE = 0.002
+
+
+@dataclass(frozen=True)
+class Kennung:
+    """Was auf der Standfläche einer Box liegt (Platinenkoordinaten, von unten gelesen)."""
+    inhalt: dict       # kennung.inhalt(ref): referenz, klartext, link, fassung, maske, module
+    qr: object         # Fläche der dunklen Module (shapely)
+    qr_rahmen: tuple   # (x0, y0, x1, y1) des Codes ohne Ruhezone
+    zeilen: tuple      # je Zeile dict(text, form, zeichen, laenge)
+
+    @property
+    def form(self):
+        return unary_union([self.qr, *(z["form"] for z in self.zeilen)])
+
+
+def standflaeche(p):
+    """Die Standfläche ohne Fase und was auf ihr liegt: (ebene Fläche, Umriss des Teils,
+    {Name: Fläche}) als shapely-Flächen, aus den Stellgrößen. Die Prüfung misst dasselbe
+    noch einmal am Netz (pruefung.pruefe_kennung)."""
+    r = p.eckradius
+    umriss = box(p.xa0 + r, p.ya0 + r, p.xa1 - r, p.ya1 - r).buffer(r)
+    belegt = {"Mulde für einen Fuß": unary_union([Point(x, y).buffer(p.fuss_d / 2) for x, y in p.fussmulden])}
+    if p.wandmontage:
+        belegt["Schlüsselloch"] = unary_union(
+            [Point(x, y + p.wand_hub).buffer(p.wand_einstieg_d / 2) for x, y in p.wandschrauben]
+            + [LineString([(x, y), (x, y + p.wand_hub)]).buffer(p.wand_schlitz / 2) for x, y in p.wandschrauben])
+    return umriss.buffer(-p.fase_unten), umriss, belegt
+
+
+def _dunkel_abstand(p, form):
+    """Abstand einer Fläche der Standfläche zum nächsten Dunklen: Loch, Mulde, Rand des Teils."""
+    _, umriss, belegt = standflaeche(p)
+    return min([umriss.exterior.distance(form), *(g.distance(form) for g in belegt.values())])
+
+
+def _qr_form(module, x0, y0, modul):
+    """Die dunklen Module als Fläche, Zeile 0 bei y0 (oben, von unten gelesen), Spalte 0 bei x0."""
+    teile = []
+    for zeile, reihe in enumerate(module):
+        x = 0
+        while x < len(reihe):
+            if reihe[x] != "1":
+                x += 1
+                continue
+            a = x
+            while x < len(reihe) and reihe[x] == "1":
+                x += 1
+            y = y0 + zeile * modul
+            teile.append(box(x0 + a * modul - QR_ZUGABE, y - QR_ZUGABE, x0 + x * modul + QR_ZUGABE,
+                             y + modul + QR_ZUGABE))
+    return unary_union(teile)
+
+
+def _von_unten(form, breite, mitte_x, grundlinie):
+    """Setzt eine Textfläche (Schriftkoordinaten: x nach rechts, y nach oben, ab 0) so auf die
+    Standfläche, dass man sie von unten liest: mittig über ``mitte_x``, Grundlinie bei y =
+    ``grundlinie``, nach oben ist -y."""
+    from shapely import affinity
+    return affinity.affine_transform(form, [1, 0, 0, -1, mitte_x - breite / 2, grundlinie])
+
+
+def kennung_unten(p, inhalt):
+    """Lage von QR-Code und Klarschrift auf der Standfläche: ``Kennung``.
+
+    Der Code steht mittig zwischen den Mulden der LED-Seite, in y dort, wo sein Abstand zum
+    Rand des Teils und zu den Schlüssellöchern am größten ist. Die Klarschrift steht in zwei
+    Zeilen an der Netzwerk-Seite: "EDGE-" zwischen den Schlüssellöchern, darunter der Rest,
+    mit ``beschriftung_frei`` Abstand zur Fase."""
+    assert p.wandmontage and p.fuesse, "Die Kennung ist für die Unterseite mit Schlüssellöchern und Mulden gelegt"
+    n = len(inhalt["module"])
+    seite = n * p.qr_modul
+    cx = p.mitte[0]
+    y_unten = p.ya0 + seite / 2
+    y_oben = p.wand_y
+    schritte = round((y_oben - y_unten) / 0.01)
+    cy = max((y_unten + i * (y_oben - y_unten) / schritte for i in range(schritte + 1)),
+             key=lambda y: round(_dunkel_abstand(p, box(cx - seite / 2, y - seite / 2,
+                                                        cx + seite / 2, y + seite / 2)), 3))
+    x0, y0 = cx - seite / 2, cy - seite / 2
+    qr = _qr_form(inhalt["module"], x0, y0, p.qr_modul)
+
+    text = inhalt["klartext"]
+    teile = [text[:len("EDGE-")], text[len("EDGE-"):]]
+    satz = lambda t: (t, p.schrift_hoehe, p.schrift_strich, p.schrift_luft)
+    grundlinie = None
+    zeilen = []
+    for t in reversed(teile):   # von der Netzwerk-Seite her
+        wort, breite, _ = schrift.flaeche(*satz(t), p.schrift_abstand, p.schrift_form)
+        if grundlinie is None:   # der Schwanz des Q reicht unter die Grundlinie
+            grundlinie = p.ya1 - p.fase_unten - p.beschriftung_frei + min(0.0, wort.bounds[1])
+        setze = lambda g, b=breite, gl=grundlinie: _von_unten(g, b, cx, gl)
+        zeichen = tuple({**z, "form": setze(z["form"]), "linien": setze(z["linien"])}
+                        for z in schrift.zeichenweise(*satz(t), p.schrift_abstand, p.schrift_form))
+        zeilen.insert(0, {"text": schrift.pruefe_text(t, p.schrift_form), "form": setze(wort), "zeichen": zeichen,
+                          "laenge": schrift.laenge(*satz(t), p.schrift_form)})
+        grundlinie -= p.schrift_hoehe + p.kennung_zeilenabstand
+    return Kennung(inhalt, qr, (x0, y0, x0 + seite, y0 + seite), tuple(zeilen))
+
+
+def unterteil_mit_kennung(p, inhalt):
+    """Das Unterteil einer Box mit ihrer Kennung: {"gehaeuse_weiss", "schrift_schwarz"}.
+
+    Gegenüber dem gedruckten Unterteil ändert sich nur die Standfläche: Das Etikettfeld
+    (0,2 mm tief) entfällt, und QR-Code und Klarschrift liegen als schwarze Einlage in den
+    ersten drei Schichten. Alles darüber ist dasselbe Teil."""
+    k = kennung_unten(p, inhalt)
+    weiss = unterteil(p.mit(etikett="keins"))
+    schwarz = einlage(schrift.flaechen(k.form), p.z_rueck, p.einlage)
+    weiss = weiss.cut(*schwarz.solids())
+    return {"gehaeuse_weiss": weiss, p.beschriftung_farbe: schwarz}
 
 
 # ---- Wandmontage: Schrauben und Bohrlehre ---------------------------------

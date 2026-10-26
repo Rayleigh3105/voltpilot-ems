@@ -10,6 +10,9 @@ Für jede Datei mit eingelegter Beschriftung (daneben liegt <name>-schrift.json
 aus dem Bau): Fährt der Slicer in jeder Schicht der Einlage jedes Zeichen mit
 der Farbe der Schrift ab, als geschlossene Bahn und ohne zu viel Kunststoff?
 Dazu das Bild der ersten Schicht (<name>-bahnen.png): Sie ist die Sichtfläche.
+Für jede Datei mit Kennung auf der Unterseite (daneben liegt <name>-kennung.json):
+Liest zxing-cpp den QR-Code aus den gezeichneten Schichten der Einlage, auch wie
+eine Kamera ihn sieht, und liefert er genau den Link (``qr_im_gcode``)?
 """
 import json
 import math
@@ -24,7 +27,7 @@ from shapely import affinity, wkt
 
 from . import entwurf
 from .ausgabe import AUS
-from .bau import DECKEL_DATEIEN, NAME
+from .bau import DECKEL_DATEIEN, NAME, kennung_ordner
 from .massmodell import zahl
 from .parameter import BAHN, SCHICHT, STANDARD
 
@@ -52,6 +55,15 @@ LAEUFE = [  # (Name des Laufs, Datei unter aus/, Filamente, erwartete Teile je O
     ("hutschienen-clip", f"{NAME}/hutschienen-clip.3mf", ASA, {"hutschienen-clip": 1}),
     ("bohrlehre", f"{NAME}/bohrlehre.3mf", ASA, {"bohrlehre": 1}),
 ]
+
+
+def kennung_laeufe(ref):
+    """Die Läufe für das Unterteil einer Box mit Kennung (bau.bau_kennung): allein und mit dem Deckel."""
+    o, ordner = f"unterteil-{ref}", kennung_ordner(ref).relative_to(AUS)
+    return [(o, f"{ordner}/{o}.3mf", ASA, {o: 2}),
+            (f"gehaeuse-{ref}", f"{ordner}/gehaeuse-{ref}.3mf", ASA, {o: 2, "deckel": 3})]
+
+
 # Läufe, deren oberste Schichten der Fuß des Lichtschachts sind
 SCHACHTFUSS = ("schachtprobe", "deckel", *(d for d, (_, unter) in DECKEL_DATEIEN.items() if not unter))
 SOLL_PLATZ = {"gehaeuse_weiss": 1, "schrift_schwarz": 2, "zeichen_hellblau": 3}
@@ -307,6 +319,101 @@ def bahnbild(geslict, plan, pfad, schicht=1, massstab=40, rahmen=None, halb_gedr
     (bild.rotate(180) if halb_gedreht else bild).save(pfad)
 
 
+GRAU = (139, 141, 148)   # kein Kunststoff in den gezeichneten Schichten: Loch, Mulde, neben dem Teil
+QR_RAND = 6              # so viele Module Umgebung zeigt das Bild um den Code: Ruhezone und was dahinter liegt
+QR_KAMERA = (8, 5, 3)    # Bildpunkte je Modul, wie eine Telefonkamera den Code aus der Nähe bis von weiter weg sieht
+
+
+def sichtbild(geslict, plan, schichten, massstab=40):
+    """Die Standfläche um den QR-Code, wie man sie von unten sieht, aus dem G-Code gezeichnet: jede Bahn
+    der Schichten ``schichten`` bis 1 in ihrer geförderten Breite, die Einlage schwarz, Weiß weiß, grau, wo
+    nichts liegt. Die erste Schicht liegt oben; durch ihre Lücken sieht man auf die zweite und dritte.
+    Netzwerk-Seite unten, wie die Unterseite gelesen wird. ``plan``: <name>-kennung.json."""
+    from PIL import Image, ImageDraw
+    bahnen = bahnen_mit_breite(geslict)
+    bett = objekte_auf_dem_bett(geslict, bahnen, plan["einlage_schichten"])
+    mx, my = _mitte(bett[plan["objekt"]])
+    rand = QR_RAND * plan["modul"]
+    r = plan["rahmen"]
+    x0, y0, x1, y1 = r[0] + mx - rand, r[1] + my - rand, r[2] + mx + rand, r[3] + my + rand
+    bild = Image.new("RGB", (round((x1 - x0) * massstab), round((y1 - y0) * massstab)), GRAU)
+    stift = ImageDraw.Draw(bild)
+    px = lambda x, y: ((x - x0) * massstab, (y - y0) * massstab)   # von unten gesehen: y wie auf dem Bett, nach unten
+    for s_ in range(schichten, 0, -1):
+        b = np.array(bahnen.get(s_, []))
+        if not len(b):
+            continue
+        b = b[(np.maximum(b[:, 0], b[:, 2]) > x0 - 1) & (np.minimum(b[:, 0], b[:, 2]) < x1 + 1)
+              & (np.maximum(b[:, 1], b[:, 3]) > y0 - 1) & (np.minimum(b[:, 1], b[:, 3]) < y1 + 1)]
+        for xa, ya, xb, yb, fil, breite, _ in b[::-1]:
+            farbe = (16, 16, 16) if int(fil) == plan["filament"] else (243, 243, 239)
+            a, e, w = px(xa, ya), px(xb, yb), max(breite, 0.05) * massstab
+            stift.line([a, e], fill=farbe, width=max(1, round(w)))
+            for c in (a, e):
+                stift.ellipse([c[0] - w / 2, c[1] - w / 2, c[0] + w / 2, c[1] + w / 2], fill=farbe)
+    return bild
+
+
+def lies_qr(bild):
+    """Was zxing-cpp im Bild findet: Liste (Text, gespiegelt)."""
+    import zxingcpp
+    return [(t.text, bool(getattr(t, "is_mirrored", False))) for t in zxingcpp.read_barcodes(bild)
+            if "QR" in str(t.format)]
+
+
+def kamera(bild, px_je_modul, modul, massstab=40, seed=7):
+    """Das Bild, wie eine Kamera es aufnimmt: verkleinert auf ``px_je_modul`` Bildpunkte je Modul,
+    unscharf, mit Rauschen ±25 (fest gesät: gleiches Bild, gleiches Ergebnis)."""
+    import random
+    from PIL import Image, ImageFilter
+    grau = bild.convert("L")
+    f = px_je_modul / (modul * massstab)
+    klein = grau.resize((max(1, round(grau.width * f)), max(1, round(grau.height * f))), Image.BILINEAR)
+    klein = klein.filter(ImageFilter.GaussianBlur(radius=0.6))
+    zufall = random.Random(seed)
+    werte = [max(0, min(255, v + zufall.randint(-25, 25))) for v in klein.getdata()]
+    klein.putdata(werte)
+    return klein
+
+
+def qr_im_gcode(geslict, plan, ordner, name):
+    """Liest den QR-Code aus dem G-Code, so wie er gedruckt wird.
+
+    Gezeichnet wird die Sichtfläche aus den drei Schichten der Einlage (``sichtbild``); gelesen mit
+    zxing-cpp in voller Auflösung (das Grau, wo nichts liegt, einmal hell und einmal dunkel: Wie eine
+    Lücke wirkt, hängt am Licht) und wie eine Kamera mit 8, 5 und 3 Bildpunkten je Modul, unscharf und
+    verrauscht. Bestanden ist sie, wenn jeder Fall genau den Link liefert, nicht gespiegelt. Die erste
+    Schicht allein wird zum Vergleich auch gelesen; sie entscheidet nicht."""
+    soll, modul = plan["link"], plan["modul"]
+    sicht = sichtbild(geslict, plan, plan["einlage_schichten"])
+    sicht.save(ordner / f"{name}-qr-sicht.png")
+    erste = sichtbild(geslict, plan, 1)
+    erste.save(ordner / f"{name}-qr-schicht1.png")
+
+    def faelle(bild):
+        grau = bild.convert("L")
+        aus = {"voll, Lücken hell": grau.point(lambda v: 255 if v > 100 else 0),
+               "voll, Lücken dunkel": grau.point(lambda v: 255 if v > 200 else 0)}
+        for n in QR_KAMERA:
+            aus[f"{n} Bildpunkte je Modul, unscharf, Rauschen"] = kamera(bild, n, modul)
+        return aus
+
+    def lies(bilder):
+        e = {}
+        for fall, b in bilder.items():
+            gelesen = lies_qr(b)
+            e[fall] = {"gelesen": [t for t, _ in gelesen], "gespiegelt": any(s for _, s in gelesen),
+                       "richtig": [t for t, _ in gelesen] == [soll] and not any(s for _, s in gelesen)}
+        return e
+
+    sichtfaelle = faelle(sicht)
+    kamera(sicht, QR_KAMERA[-1], modul).save(ordner / f"{name}-qr-kamera-{QR_KAMERA[-1]}px.png")
+    ergebnis = {"link": soll, "modul": modul, "bild": f"{name}-qr-sicht.png",
+                "drei_schichten": lies(sichtfaelle), "erste_schicht": lies(faelle(erste))}
+    ergebnis["lesbar"] = all(f["richtig"] for f in ergebnis["drei_schichten"].values())
+    return ergebnis
+
+
 def _zuordnung_stimmt(ergebnis, erwartet):
     objekte = {name: teile for name, teile in ergebnis.get("objekte", [])}
     if set(objekte) != set(erwartet):
@@ -315,14 +422,20 @@ def _zuordnung_stimmt(ergebnis, erwartet):
                for o, n in erwartet.items())
 
 
-def pruefe():
-    ordner = AUS / "pruefung" / "bambu"
+def pruefe(laeufe=None, ziel=None):
+    """Alle Läufe (Vorgabe: ``LAEUFE`` und die Unterseite mit der Kennung der Probe-Referenz) durch Bambu
+    Studio; Bericht nach <ziel>/bambu.md (Vorgabe aus/pruefung)."""
+    from . import kennung
+    if laeufe is None:
+        laeufe = [*LAEUFE, *kennung_laeufe(kennung.probe_referenz())]
+    ziel = ziel or AUS / "pruefung"
+    ordner = ziel / "bambu"
     ordner.mkdir(parents=True, exist_ok=True)
     if not vorhanden():
         print("Bambu Studio fehlt (werkzeug/bambu_einrichten.sh): Schritt übersprungen.")
         return None
     aus, fehler = {}, []
-    for name, datei, filamente, erwartet in LAEUFE:
+    for name, datei, filamente, erwartet in laeufe:
         pfad = AUS / datei
         if not pfad.exists():
             continue
@@ -361,18 +474,23 @@ def pruefe():
                     if not z["gedruckt"] and not (e["gegenprobe"] and w["wandgenerator"] != "klassisch"):
                         fehler.append(f"{name}: Der Slicer druckt das Zeichen {z['zeichen']!r} von "
                                       f"{w['name']!r} nicht sauber ({z['schichten']})")
+        plan = pfad.with_name(pfad.stem + "-kennung.json")
+        if e.get("erfolg") and plan.exists() and geslict.exists():
+            e["qr"] = q = qr_im_gcode(geslict, json.loads(plan.read_text(encoding="utf-8")), pfad.parent, name)
+            if not q["lesbar"]:
+                schlecht = [f for f, r in q["drei_schichten"].items() if not r["richtig"]]
+                fehler.append(f"{name}: Der QR-Code ist aus dem G-Code nicht sicher lesbar ({', '.join(schlecht)})")
         aus[name] = e
         # Das geslicte 3MF ist groß und nur für die Auswertung da.
         geslict.unlink(missing_ok=True)
     daten = {"laeufe": aus, "fehler": fehler}
-    (AUS / "pruefung" / "bambu.json").write_text(json.dumps(daten, indent=1, ensure_ascii=False),
-                                                 encoding="utf-8")
-    (AUS / "pruefung" / "bambu.md").write_text(bericht_md(daten), encoding="utf-8")
+    (ziel / "bambu.json").write_text(json.dumps(daten, indent=1, ensure_ascii=False), encoding="utf-8")
+    (ziel / "bambu.md").write_text(bericht_md(daten), encoding="utf-8")
     return daten
 
 
 def bericht_md(daten):
-    md = ["## 9. Bambu Studio 02.08.02.61, Kommandozeile", "",
+    md = ["## 10. Bambu Studio 02.08.02.61, Kommandozeile", "",
           "P1S mit 0,4-mm-Düse, Profil „0.20mm Standard“, strukturierte PEI-Platte, Spülturm an. "
           "Zeiten, Wechsel und Mengen sind Schätzungen des Slicers.", "",
           "| Lauf | Datei | Filamente | geladen und geslict | Teile und Filamentplätze | Druckzeit "
@@ -424,6 +542,22 @@ def bericht_md(daten):
         md.append("")
         md.append("Bahn in den ersten vier Schichten: "
                   + ", ".join(f"{zahl(v)} m" for v in s_["bahn_je_schicht_m"].values()) + ".")
+    for name, e in daten["laeufe"].items():
+        q = e.get("qr")
+        if not q:
+            continue
+        md += ["", f"**QR-Code im G-Code, {name}:** `{q['link']}`, Modul {zahl(q['modul'])} mm. Gezeichnet aus den "
+               "Bahnen der drei Schichten der Einlage, von unten gesehen (Bild "
+               f"`{q['bild']}`), gelesen mit zxing-cpp. Voll: das Bild in 40 Bildpunkten je mm, das Grau ohne "
+               "Kunststoff (Loch, Mulde, neben dem Teil) einmal hell, einmal dunkel. Kamera: verkleinert, unscharf, "
+               "Rauschen ±25. Zum Vergleich die erste Schicht allein.", "",
+               "| Fall | drei Schichten | erste Schicht allein |", "|---|---|---|"]
+        for fall, r in q["drei_schichten"].items():
+            s1 = q["erste_schicht"][fall]
+            md.append(f"| {fall} | {'richtig gelesen' if r['richtig'] else '**nicht gelesen**: ' + str(r['gelesen'])} "
+                      f"| {'richtig gelesen' if s1['richtig'] else 'nicht gelesen: ' + str(s1['gelesen'])} |")
+        md.append("")
+        md.append("Urteil: " + ("**lesbar** in allen Fällen." if q["lesbar"] else "**nicht sicher lesbar.**"))
     md += ["", "Die Oberfläche von Bambu Studio ist damit nicht geprüft: Beim Öffnen einer fremden "
            "3MF kann sie fragen, ob nur die Geometrie geladen werden soll, und die Filamentplätze "
            "zurücksetzen. Das zeigt erst das Öffnen in der Oberfläche.", ""]

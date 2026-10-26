@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { FernwartungFenster, FernwartungServer } from './adminFernwartung';
+import { qrCode } from './qrCode';
 import {
   abnahmeSperre,
   beschriftung,
@@ -207,6 +208,28 @@ describe('Beschriftung und Versand', () => {
       link: 'https://portal.voltpilot.de/k/edge-wrk7abg',
     });
   });
+
+  // Dasselbe liest das Gehäuse-Programm (edge-light/gehaeuse/glinet-gl-mt300n-v2, gehaeuse/kennung.py): Was auf
+  // die Unterseite gedruckt wird, ist Modul für Modul, was diese Seite zeigt.
+  const vektor = JSON.parse(
+    readFileSync(resolve(__dirname, '../../../docs/contracts/werkstatt-beschriftung.json'), 'utf8'),
+  ) as {
+    faelle: { referenz: string; klartext: string; link: string; fassung: number; korrektur: string; maske: number; module: string[] }[];
+  };
+  it.each(vektor.faelle.map((f) => [f.referenz, f] as const))(
+    'trägt auf dem Gehäuse denselben Inhalt wie werkstatt-beschriftung.json: %s',
+    (ref, f) => {
+      const b = beschriftung(ref);
+      expect(b).toEqual({ klartext: f.klartext, link: f.link });
+      const q = qrCode(b.link);
+      expect({ fassung: q.fassung, korrektur: q.korrektur, maske: q.maske }).toEqual({
+        fassung: f.fassung,
+        korrektur: f.korrektur,
+        maske: f.maske,
+      });
+      expect(q.module.map((r) => r.map((m) => (m ? '1' : '0')).join(''))).toEqual(f.module);
+    },
+  );
 
   it('sagt am Ende, dass keine Box mit Stufe 1 an einen Kunden geht (Entscheid 5c)', () => {
     expect(VERSAND_SATZ).toMatch(/^Nicht versenden\./);

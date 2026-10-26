@@ -93,8 +93,10 @@ Der Hersteller gibt für den Router 0 bis 40 °C Umgebungstemperatur an.
 - **Kein Metall an die LED-Seite.** Beide Antennen sind Leiterbahnen an der LED-Kante. Alle
   Schrauben des Gehäuses sitzen deshalb in der Hälfte der Netzwerkbuchsen; das soll beim Befestigen
   so bleiben (keine Metallschelle, kein Metallwinkel über der LED-Seite).
-- **Etikettfeld** auf der Unterseite, 40 × 14 mm, eine Schicht vertieft. Es reicht bis unter eine
-  Antenne: kein Etikett mit Metallfolie. Seit dem 26.10.2026 gilt: kein Aufkleber, Referenz und
-  QR-Code werden mitgedruckt; die Druckdatei dafür fehlt noch ([offen: Etikett](entscheidungen.md#offen)).
+- **Kennung statt Etikett.** Seit dem 26.10.2026 gilt: kein Aufkleber. Referenz und QR-Code werden
+  mit dem Unterteil der Box gedruckt (`./bauen.sh --referenz edge-…`, [Kennung](kennung.md)); auf
+  diesem Unterteil entfällt das Etikettfeld. Das Unterteil ohne Kennung (`druck/unterteil.3mf`)
+  behält sein Etikettfeld, 40 × 14 mm, eine Schicht vertieft; es reicht bis unter eine Antenne: kein
+  Etikett mit Metallfolie.
 - **Lüftung:** Schlitze von 2 mm an LED- und Netzwerk-Seite, hängend oben und unten, sodass Luft
   durchzieht. Die Wärme im geschlossenen Gehäuse ist nicht gemessen.
