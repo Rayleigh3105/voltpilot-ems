@@ -106,14 +106,15 @@ Neue Boxen bekommen ihren Tunnel nicht mehr im alten Service-VPN, sondern auf de
 
 Für eine neue Box:
 
+0. **Programm einspielen und einmal starten**, damit die Box ihre Referenz hat. Nach dem Aufspielen von OpenWrt hat die Box einen neuen Host-Schlüssel; der eigene Rechner kennt unter `192.168.1.1` noch den alten und verweigert die Anmeldung. Deshalb zuerst `ssh-keygen -R 192.168.1.1`, dann `edge-light/openwrt/install.sh root@192.168.1.1`, `ssh root@192.168.1.1 /etc/init.d/vp-edge-light restart` und `ssh root@192.168.1.1 'cat /etc/vp-edge-light/ref'`. `install.sh` endet mit „Pruefsumme auf dem Geraet bestaetigt“. Der erste `restart` meldet einmal `Command failed: ubus call service delete { "name": "vp-edge-light" } (Not found)`: Der Dienst lief noch nie, die Zeile ist harmlos.
 1. `edge-light/openwrt/service-tunnel.sh root@192.168.1.1 key` gibt öffentlichen Schlüssel und Box-Referenz aus.
 2. Im Portal unter **Geräte › Fernwartung › Tunnel-Schlüssel hinterlegen** eintragen. Das Portal teilt die Adresse zu und zeigt die fertige Befehlszeile.
-3. Die Befehlszeile ausführen, mit der Box als Ziel. Sie richtet den Tunnel, SSH auf 2222 mit Fenster-Schlüsseln und die Web-App auf 8484 ein. Ein weiterer Aufruf je Techniker ist nicht nötig, und kein Techniker-Schlüssel muss auf die Box. Die letzten Zeilen sagen, wer sich anmelden darf und ob der Wartungsserver schon Schlüssel ausgibt.
+3. Die Befehlszeile ausführen, mit der Box als Ziel. Sie richtet den Tunnel, SSH auf 2222 mit Fenster-Schlüsseln und die Web-App auf 8484 ein. Ein weiterer Aufruf je Techniker ist nicht nötig, und kein Techniker-Schlüssel muss auf die Box. Die letzten Zeilen sagen, wer sich anmelden darf und ob der Wartungsserver schon Schlüssel ausgibt. Beim ersten Lauf steht dazwischen „netifd kennt wireguard noch nicht - Netzwerk-Neustart in 2 s“; LAN und WLAN sind dann kurz weg. Ältere Stände des Skripts meldeten beim ersten Lauf außerdem `schluessel-holen.sh: line 277: can't open /etc/vp-wartung/keys/authorized_keys: no such file`; harmlos, die Datei gibt es da noch nicht.
 4. Prüfen: `service-tunnel.sh <ziel> status` zeigt den Handshake, `Web-App 8484 im Tunnel: Techniker-Netz 10.10.32.0/24`, `SSH 2222 ausserhalb der Tunnel: abgewiesen` und `Fenster-Schluessel: Abholer laeuft` mit der letzten gültigen Antwort des Servers. Von der Box aus antwortet `ping 10.10.32.1`.
 5. Im Portal ein Fenster öffnen, für einen Zugang mit SSH-Schlüssel. Solange es offen ist, erreicht der Techniker `ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@<adresse>` und `http://<adresse>:8484`. Das Portal zeigt an der Box „Box verbunden“ und am Fenster „Alles bereit“, sobald die Box den Schlüssel abgeholt hat ([Rückmeldung](../../docs/fernwartung.md#rückmeldung-des-tunnel-dienstes)).
 6. Die [Werkstatt-Regel](#bevor-eine-box-die-werkstatt-verlässt) abarbeiten, bevor die Box verpackt wird.
 
-Das Skript meldet sich mit `ssh` an der Box an. `VP_SSH_KEY=~/.ssh/<schlüssel>` vor dem Aufruf nennt die Schlüsseldatei; ohne die Variable entscheidet `~/.ssh/config`.
+Beide Skripte, `install.sh` und `service-tunnel.sh`, melden sich mit `ssh` an der Box an. `VP_SSH_KEY=~/.ssh/<schlüssel>` vor dem Aufruf nennt die Schlüsseldatei; ohne die Variable entscheidet `~/.ssh/config`. `VP_LIGHT_ARCH` wählt bei `install.sh` die Bauart (`mipsle` für die Mango, `arm64`, `amd64`); `install.sh` trägt sie auf der Box ein (`uci get vp-edge-light.main.arch`), damit der Loader die passende lokale Kopie startet.
 
 Beide Tunnel können nebeneinander laufen: Die Zone `service` umfasst alle Tunnel-Schnittstellen, und jede bekommt ihre eigene Dropbear-Instanz und ihren eigenen Wächter. `service-tunnel.sh <ziel> abbauen <schnittstelle>` entfernt einen Tunnel vollständig und verweigert das, solange die SSH-Sitzung über genau diesen Tunnel läuft. `service-tunnel.sh <ziel> status` zeigt beide.
 
@@ -124,10 +125,10 @@ Beide Tunnel können nebeneinander laufen: Die Zone `service` umfasst alle Tunne
 | # | Schritt | Woran man es sieht |
 |---|---|---|
 | 1 | **Root-Passwort setzen:** an der Box `passwd`. Das Passwort gehört in die Passwortablage, nicht in dieses Repository | danach verlangt `ssh root@192.168.1.1` (Port 22, LAN) ein Passwort oder einen Schlüssel. Ohne Passwort lässt die Mango im LAN jeden ohne beides hinein |
-| 2 | **Dauerhafter Schlüssel:** genau einer, der [Notfall-Schlüssel](#dauerhafte-schlüssel-ein-notfall-schlüssel) | `wc -l < /etc/dropbear/authorized_keys` nennt `1` |
+| 2 | **Dauerhafter Schlüssel:** genau einer, der [Notfall-Schlüssel](#dauerhafte-schlüssel-ein-notfall-schlüssel): `ssh root@192.168.1.1 'cat >> /etc/dropbear/authorized_keys' < voltpilot-notfall.pub` | `ssh root@192.168.1.1 'cat /etc/dropbear/authorized_keys' \| ssh-keygen -lf -` nennt genau eine Zeile, und ihr Fingerabdruck ist der des Notfall-Schlüssels aus der Passwortablage. Die Zahl der Zeilen allein (`wc -l`) beweist nicht, welcher Schlüssel es ist |
 | 3 | **Tunnel einrichten** (Schritte 1 bis 4 oben) | `service-tunnel.sh <ziel> status`: Handshake, `SSH 2222 ausserhalb der Tunnel: abgewiesen`, `Fenster-Schluessel: Abholer laeuft` mit einer gültigen Antwort |
-| 4 | **Anmeldeprobe über Portal und Tunnel:** im Portal ein Fenster für den eigenen Zugang öffnen (15 Minuten, Grund „Werkstatt-Probe“) und sich von einem Techniker-Gerät anmelden, das **keinen** dauerhaften Schlüssel auf der Box hat: `ssh -i ~/.ssh/id_rsa_voltpilot -o IdentitiesOnly=yes -p 2222 root@<adresse>` | im Portal am Fenster „Alles bereit“; die Anmeldung gelingt; auf der Box nennt `logread -e dropbear \| grep 'Pubkey auth' \| tail -1` den Fingerabdruck aus dem Portal |
-| 5 | **Host-Schlüssel notieren:** den Fingerabdruck, den `ssh` bei der ersten Anmeldung zeigt, zur Box-Referenz ins Übergabeprotokoll | beim Kunden bestätigt der Techniker ihn nicht mehr blind |
+| 4 | **Anmeldeprobe über Portal und Tunnel:** im Portal ein Fenster für den eigenen Zugang öffnen (30 Minuten, die kürzeste Dauer, die das Portal anbietet; Grund „Werkstatt-Probe“) und sich von einem Techniker-Gerät anmelden, das **keinen** dauerhaften Schlüssel auf der Box hat: `ssh -i ~/.ssh/id_rsa_voltpilot -o IdentitiesOnly=yes -p 2222 root@<adresse>` | im Portal am Fenster „Alles bereit“; die Anmeldung gelingt; auf der Box nennt `logread -e dropbear \| grep 'Pubkey auth' \| tail -1` den Fingerabdruck aus dem Portal |
+| 5 | **Host-Schlüssel notieren:** im offenen Fenster `ssh-keyscan -t rsa -p 2222 <adresse> \| ssh-keygen -lf -` oder im LAN `ssh root@192.168.1.1 'dropbearkey -y -f /etc/dropbear/dropbear_rsa_host_key \| grep Fingerprint'`, den Fingerabdruck zur Box-Referenz ins Übergabeprotokoll. Die Rückfrage von `ssh` bei der ersten Anmeldung taugt dafür nicht: Kennt der Rechner die Adresse schon, fragt `ssh` nicht | beide Befehle nennen denselben Fingerabdruck; beim Kunden bestätigt der Techniker ihn nicht mehr blind |
 | 6 | **Fenster schließen** und den Versuch wiederholen | die Sitzung endet, der neue Versuch endet mit `Connection timed out`; im Portal steht kein offenes Fenster mehr; auf der Box nennt `logread -e vp-wartung \| grep 'Sitzung beendet'` die Sitzung von eben |
 
 Scheitert Schritt 4, sagt das Portal am Fenster, woran: „Box nicht verbunden“ (Tunnel, Schritt 3), „Schlüssel noch nicht abgeholt“ (Abholer oder Schlüsselausgabe des Servers), „Kein SSH-Schlüssel am Zugang“ (im Portal hinterlegen) oder „Stand unbekannt“ (der Tunnel-Dienst meldet nicht). Die Box bleibt in der Werkstatt, bis die Probe gelingt.
@@ -383,6 +384,7 @@ Am Mango gemessen (25.12.5, 09.10.2026):
 
 #### Belegt
 
+- **Im Container** mit `edge-light/test/install-probe.sh` gegen OpenWrt 25.12.5 (procd, uci, ohne Netz, amd64-Programm): `install.sh` verweigert eine unbekannte Bauart und eine fehlende Schlüsseldatei, bevor etwas auf die Box geht; mit `VP_SSH_KEY` bekommt jeder `ssh`-Aufruf die Schlüsseldatei; die Bauart steht danach auf der Box, und der Loader startet ihre lokale Kopie (26.10.2026).
 - **Im Container** mit `edge-light/test/service-tunnel-probe.sh` gegen OpenWrt 24.10 (procd, netifd, fw4, Dropbear, cron, Kernel-WireGuard): Altbestand, neuer Tunnel daneben, Wiederholbarkeit ohne Neustart der Schnittstelle, geänderte Gegenstelle, Reihenfolge von Schnittstelle und Dropbear, Schutz beim Abbauen, alten Tunnel abbauen, Web-App für das Techniker-Netz und je Adresse, `VP_SSH_KEY`.
 - **Am Mango unter 25.12.5 gegen den echten Wartungsserver** (Labor-Box `edge-5t2dcy6`, 08./09.10.2026): Handshake; im offenen Fenster kommen SSH auf 2222 und die Web-App an der Box an; das Fenster läuft ab. Mit dem Skript vom 09.10.: Einrichten wie bei einer neuen Box und erneuter Lauf ohne Dropbear-Meldung und ohne Unterbrechung von WAN und LAN; die Web-App nimmt eine Adresse des Techniker-Netzes an, die auf der Box nie eingetragen wurde (`10.10.32.1`), und weist 8887 von derselben Adresse ab.
 - **Im Container unter OpenWrt 25.12.5** (Dropbear 2025.89, WAN und LAN getrennt) mit `edge-light/test/wartung-anmeldung-probe.sh`, gegen den Tunnel-Dienst aus dem Repo, mit echter SSH-Anmeldung durch einen echten Tunnel: die Fenster-Schlüssel von der Einrichtung über einen heutigen Zugang bis zum Abbauen, die Störfälle (Lücke in der Server-Firewall, Server und Abholer weg, Neustart der Box, falscher Server, Laufzeit statt Uhr) und SSH 2222 außerhalb des Tunnels bei Tunnel oben und unten. Dazu, dass der Tunnel-Dienst den Schlüssel als abgeholt meldet, sobald das Box-Skript ihn übernommen hat (Schritt 1).
@@ -470,7 +472,7 @@ Zwei Lücken für den Pilot, beide am Gerät gefunden:
 
 | Messung | Ergebnis |
 |---|---|
-| Programmgröße `linux/mipsle`, softfloat, ohne Symbole | 13,8 MB (arm64: 12,4 MB); 07.10.2026 nach dem Merge von `main`: 13,9 MiB (14 614 743 B), gzip -9 4 679 121 B |
+| Programmgröße `linux/mipsle`, softfloat, ohne Symbole | 13,8 MB (arm64: 12,4 MB); 07.10.2026 nach dem Merge von `main`: 13,9 MiB (14 614 743 B), gzip -9 4 679 121 B; 26.10.2026 (`edge-light-gfdaa013fc`): 14,6 MiB (15 270 103 B), gzip -9 4 851 221 B, also rund 168 KiB weniger freier Flash als am 07.10. |
 | … komprimiert | gzip -9: 4,4 MB · xz -9e: 3,0 MB |
 | Start unter MIPS-Emulation | Web-App, lokaler Bus, OCPP-Server, Schlüsselerzeugung laufen; kein Absturz |
 | Arbeitsspeicher des Cores (amd64, Simulator) | ca. 10 MB; Node-RED (entfällt) belegte 80–105 MB |
@@ -490,7 +492,7 @@ Der Loader startet einen Download nur bei mindestens 40 MB freiem Speicher (`min
 
 ## Lokale Kopie im Flash (gebaut, am Gerät geprüft 03.10.2026)
 
-`install.sh` legt das Programm gepackt nach `/usr/share/vp-edge-light/` (4,4 MB gzip + `.sha256` des ungepackten Programms, auf dem Gerät nachgeprüft). Der Loader nimmt: Download (nur mit `base_url`) → die schon geladene Fassung im RAM → die lokale Kopie. Geschrieben wird die Kopie nur bei einer Installation, also selten. Flash danach: 4,9 MB frei.
+`install.sh` legt das Programm gepackt nach `/usr/share/vp-edge-light/` (4,4 MB gzip am 03.10.2026, 4,6 MiB am 26.10.2026, + `.sha256` des ungepackten Programms, auf dem Gerät nachgeprüft). Der Loader nimmt: Download (nur mit `base_url`) → die schon geladene Fassung im RAM → die lokale Kopie. Geschrieben wird die Kopie nur bei einer Installation, also selten. Flash danach: 4,9 MB frei (03.10.2026); jede größere Fassung zieht das ab.
 
 | Test am Mango | Ergebnis |
 |---|---|
@@ -509,7 +511,7 @@ NOR-Flash verträgt Dauerschreiben schlecht. Deshalb liegen im RAM (`boot.sh`, `
 - `ocpp-journal` – OCPP-Ereignisse vor dem Hochladen,
 - `ota` – der Core schreibt `ota/core-signal.json` **alle 2 s**; Stufe 1 hält dort nichts Dauerhaftes (Stufe 2 muss Trust-Set und `current.json` in den Flash legen).
 
-Im Flash bleiben Identität, Zertifikat, Auswahl, Freigaben, Fahrplan-Cache (alle 15 min) und das OCPP-Befehlsbuch (Sicherheit: höchstens einmal ausführen, auch über einen Neustart). Außerhalb des Programms schreibt die Fernwartung ihre [Ereignisliste](#protokoll-der-box-wer-wann-auf-einer-box-war) in den Flash: nur, wenn ein Ereignis dazukam, höchstens 250 Zeilen.
+Im Flash bleiben Identität, Zertifikat, Auswahl, Freigaben, Fahrplan-Cache (alle 15 min), das OCPP-Befehlsbuch (Sicherheit: höchstens einmal ausführen, auch über einen Neustart) und die Box-Ereignisse vor dem Hochladen (`box-event-outbox`, seit dem Stand vom 10.10.2026; geschrieben bei einem Ereignis wie dem Neustart der Box). Ob sie in den RAM wandern, ist nicht entschieden; `boot.sh` nennt sie bisher nicht. Außerhalb des Programms schreibt die Fernwartung ihre [Ereignisliste](#protokoll-der-box-wer-wann-auf-einer-box-war) in den Flash: nur, wenn ein Ereignis dazukam, höchstens 250 Zeilen.
 
 **Folge:** Ein Stromausfall verliert Messwerte, die noch nicht in der Cloud sind, und noch nicht hochgeladene OCPP-Ereignisse. Bei einem Cloud-Ausfall puffert die Box weiter, solange sie läuft. Die Lücke wird heute nicht als solche gemeldet – das gehört in Stufe 2 (Lückenmeldung beim Start, wenn der Puffer leer statt erwartet gefüllt ist).
 

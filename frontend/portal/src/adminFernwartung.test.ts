@@ -585,9 +585,10 @@ describe('SSH-Schlüssel des Technikers (Fenster-Schlüssel, Schritt 1)', () => 
     expect(SSH_ERZEUGEN[1].anzeigen).toBe('cat ~/.ssh/id_rsa_voltpilot.pub');
   });
 
-  it('baut die fertigen Befehle für SSH und für die Web-App über SSH', () => {
+  it('baut die fertigen Befehle für SSH und für die Web-App, direkt und über SSH', () => {
     expect(sshBefehle('10.10.16.2')).toEqual({
       ssh: 'ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.2',
+      webDirekt: 'http://10.10.16.2:8484',
       webApp: 'ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 -L 8484:127.0.0.1:8484 root@10.10.16.2',
       webAdresse: 'http://127.0.0.1:8484',
     });

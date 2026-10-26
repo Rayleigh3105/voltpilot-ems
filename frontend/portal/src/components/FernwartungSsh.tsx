@@ -197,6 +197,9 @@ export function BoxAnmeldungBlock({ anmeldung, boxRef }: { anmeldung: BoxAnmeldu
       <div className="vp-fw-anmeldung-zeile">
         <span className="vp-fw-anmeldung-was">Web-App</span>
         <div className="vp-fw-anmeldung-web">
+          <span className="vp-cell-sub">direkt im Browser, solange das Fenster offen ist:</span>
+          <Befehl text={anmeldung.befehle.webDirekt} was="Adresse der Web-App" />
+          <span className="vp-cell-sub">oder über die SSH-Anmeldung, wenn der Tunnel der Box älter ist:</span>
           <Befehl text={anmeldung.befehle.webApp} was="Befehl für die Web-App" />
           <span className="vp-cell-sub">
             danach im Browser: <code>{anmeldung.befehle.webAdresse}</code>
