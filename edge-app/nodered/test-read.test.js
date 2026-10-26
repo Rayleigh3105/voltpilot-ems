@@ -24,9 +24,13 @@ const sunspec = require('./sunspec/sunspec-live');
 const discovery = require('./sunspec/model-discovery');
 const goe = require('./goe/goe-api');
 const kostal = require('./kostal/kostal-decode');
+const kacoSerial = require('./kaco/kaco-serial-decode');
 
 function deps(extra) {
-  return Object.assign({ deye, modbus, fronius, solarman, sunspec, discovery, goe, kostal, net, http, https }, extra || {});
+  return Object.assign(
+    { deye, modbus, fronius, solarman, sunspec, discovery, goe, kostal, kacoSerial, net, http, https },
+    extra || {},
+  );
 }
 
 // Build a SunSpec float-113 register image (Map addr->word) for the reader tests.
@@ -623,4 +627,123 @@ test('P4: ohne BMS und ohne 0x024C bleibt der Befund unveraendert `unplausibel`'
   } finally {
     server.close();
   }
+});
+
+// --- KACO Powador, seriell ueber einen RS485-zu-Ethernet-Wandler (kaco_serial) ---
+//
+// Der Wandler reicht die seriellen Bytes 1:1 durch einen TCP-Raw-Socket; dieser
+// In-Prozess-Server SIMULIERT genau das Protokoll (siehe kaco/kaco-serial-decode.js):
+// `#<2-stellige Adresse>0\r` -> ein Kommando-"0"-Frame mit korrekter Pruefsumme.
+
+function padR(value, width) {
+  const s = String(value);
+  return ' '.repeat(width - s.length) + s;
+}
+
+function buildKacoSerialFrame(f) {
+  const body = '*' + padR(f.address, 2) + '0' + ' ' +
+    padR(f.status, 3) + ' ' + padR(f.dcVoltageV, 5) + ' ' + padR(f.dcCurrentA, 5) + ' ' +
+    padR(f.dcPowerW, 5) + ' ' + padR(f.acVoltageV, 5) + ' ' + padR(f.acCurrentA, 5) + ' ' +
+    padR(f.acPowerW, 5) + ' ' + padR(f.temperatureC, 3) + ' ' + padR(f.dailyYieldWh, 6) + ' ';
+  const bodyBytes = Buffer.from(body, 'ascii');
+  const checksum = kacoSerial.kacoChecksum(bodyBytes);
+  return Buffer.concat([
+    Buffer.from([0x0a]), bodyBytes, Buffer.from([checksum]), Buffer.from(' 3200\r', 'ascii'),
+  ]);
+}
+
+const KACO_SERIAL_EXAMPLE = {
+  address: 0, status: 5, dcVoltageV: '310.0', dcCurrentA: '9.50', dcPowerW: 2945,
+  acVoltageV: '231.0', acCurrentA: '12.40', acPowerW: 2864, temperatureC: 28,
+  dailyYieldWh: 9120,
+};
+
+function startKacoSerialServer(frame) {
+  return new Promise((resolve) => {
+    const server = net.createServer((sock) => {
+      sock.on('data', () => sock.write(frame));
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+function startKacoSerialSilentServer() {
+  return new Promise((resolve) => {
+    const server = net.createServer(() => { /* nimmt an, antwortet nie */ });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+function startKacoSerialGarbageServer() {
+  return new Promise((resolve) => {
+    const server = net.createServer((sock) => {
+      sock.on('data', () => sock.write(Buffer.from('nicht das erwartete Protokoll\r')));
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+test('kaco_serial: liest + dekodiert einen simulierten Wandler -> ok mit Messwerten', async () => {
+  const { server, port } = await startKacoSerialServer(buildKacoSerialFrame(KACO_SERIAL_EXAMPLE));
+  try {
+    const readOnce = testRead.makeReadOnce(deps());
+    const res = await readOnce({
+      communication: 'kaco_serial', family: 'kaco_serial',
+      connection: { ip: '127.0.0.1', port, address: 0 },
+    });
+    assert.strictEqual(res.ok, true, JSON.stringify(res));
+    assert.strictEqual(res.reading.pv_kw, 2.864);
+  } finally {
+    server.close();
+  }
+});
+
+test('kaco_serial: unreachable - ein abgewiesener Connect', async () => {
+  const readOnce = testRead.makeReadOnce(deps({ connectTimeoutMs: 500 }));
+  const res = await readOnce({
+    communication: 'kaco_serial', family: 'kaco_serial',
+    connection: { ip: '127.0.0.1', port: 1, address: 0 },
+  });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.error_code, testRead.ERR_INVALID_RESPONSE);
+});
+
+test('kaco_serial: ein stiller Wandler liefert invalid_response statt haengenzubleiben', async () => {
+  const { server, port } = await startKacoSerialSilentServer();
+  try {
+    const readOnce = testRead.makeReadOnce(deps({ readTimeoutMs: 400 }));
+    const res = await readOnce({
+      communication: 'kaco_serial', family: 'kaco_serial',
+      connection: { ip: '127.0.0.1', port, address: 0 },
+    });
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.error_code, testRead.ERR_INVALID_RESPONSE);
+  } finally {
+    server.close();
+  }
+});
+
+test('kaco_serial: Muell statt eines Frames liest als invalid_response, nie als Messwert', async () => {
+  const { server, port } = await startKacoSerialGarbageServer();
+  try {
+    const readOnce = testRead.makeReadOnce(deps());
+    const res = await readOnce({
+      communication: 'kaco_serial', family: 'kaco_serial',
+      connection: { ip: '127.0.0.1', port, address: 0 },
+    });
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.error_code, testRead.ERR_INVALID_RESPONSE);
+  } finally {
+    server.close();
+  }
+});
+
+test('kaco_serial: eine Adresse ausserhalb 0..31 bleibt idle-sicher (invalid_request)', async () => {
+  const readOnce = testRead.makeReadOnce(deps());
+  const res = await readOnce({
+    communication: 'kaco_serial', family: 'kaco_serial',
+    connection: { ip: '127.0.0.1', port: 8899, address: 99 },
+  });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.error_code, testRead.ERR_INVALID_REQUEST);
 });

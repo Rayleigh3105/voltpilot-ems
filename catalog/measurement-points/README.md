@@ -12,7 +12,7 @@ flowchart LR
 ```
 
 Das aktuelle, kanonische Artefakt ist
-[`dist/measurement-point-catalog-2026.10.21.1.json`](dist/measurement-point-catalog-2026.10.21.1.json).
+[`dist/measurement-point-catalog-2026.10.26.1.json`](dist/measurement-point-catalog-2026.10.26.1.json).
 Es wird ohne Netz- oder Gerätezugriff ausschließlich aus den unter `sources/`
 eingecheckten Snapshots erzeugt. `sources/manifest.json` pinnt Commit bzw.
 Dokumentationsstand und SHA-256. Das Artefakt enthält keinen Erzeugungszeitstempel;
@@ -283,14 +283,19 @@ und zeigt deshalb den Laufzeitstand (`MeasurementCatalog.version()`).
   `V20261021234700__measurement_catalog_metadata_runtime_2026_10_21_1.sql`, wirksam mit dem Box-Release, das
   diese Palette trägt). Laufzeit- und Inhaltsstand sind wieder gleich; die Kernspiegel führen den Stand in
   `runtime_catalog_versions`.
+  Danach **2026.10.26.1** (nur Inhaltsstand): die dritte KACO-Plattform (`kaco_serial`, Powador-Altgeräte
+  seriell über einen RS485-zu-Ethernet-Wandler, 9 Punkte) kommt dazu, aber ohne Box-Leser im generischen
+  Mess-Runtime — der Laufzeitstand bleibt 2026.10.21.1 (nächster Abschnitt).
 
 ### Familien noch nicht an der Box
 
 Eine neue Quelle, deren Punkte keine ausgelieferte Box lesen kann, gehört in den Inhaltsstand, nicht in
 den Laufzeitstand. `NOCH_NICHT_AN_DER_BOX` in `tools/cataloglib.py` nennt solche Familien mit Grund
-(heute keine; `wago.pm494`/`wago.pm495` standen dort, bis sie mit dem Laufzeitstand 2026.09.23.3 an die Box
+(`wago.pm494`/`wago.pm495` standen dort, bis sie mit dem Laufzeitstand 2026.09.23.3 an die Box
 gingen — UEMS AP-05 IP-6b —, `voltpilot.erzeuger_registerbild_v1` vom Inhaltsstand 2026.10.21.1 (UEMS EZ-6) bis
-zum Laufzeitstand 2026.10.21.1 mit dem Box-Leser aus EZ-5; beide wirksam mit dem Box-Release):
+zum Laufzeitstand 2026.10.21.1 mit dem Box-Leser aus EZ-5; beide wirksam mit dem Box-Release. Heute dort:
+`kaco_serial` — der Kern-Lesepfad liest die Powador-Altgeräte bereits fest verdrahtet, der generische
+Mess-Runtime-Adapter für die Einzelpunkt-Auswahl fehlt noch):
 
 - Ihre Punkte stehen im Artefakt (`families[].an_der_box: false`), fehlen aber in der Box-Sicht
   (`runtime_projection`), in der Palette-`catalog.json` und in der Metadaten-Migration — `validate.py` und
@@ -359,6 +364,9 @@ unter `API_KEYS_FIRMWARE/`.
   abgerufen 10.09.2026) — noch an keiner Box.
 - Erzeuger: VoltPilot-Registerbild Erzeuger v1, schlanke Fassung (Konzept-Fassung 12, 21.10.2026), 26 feste
   Punkte und 7 Vorlagen je Einheit — noch an keiner Box.
+- KACO seriell (`kaco_serial`): KACO Standard Protocol series "00" (APL_RS485protocol_KACO
+  §2.1/2.2.1/2.3), g4bri3lDev/kaco-rs485 `protocol.py` gegen echte Powador 6400xi/8000xi-Aufzeichnungen
+  verifiziert, 9 Punkte — noch an keiner Box.
 
 Die mitkopierten Lizenzdateien gelten für Deye, SunSpec und OCPP. go-e- und
 Shelly-Dateien werden als unveränderte bzw. quellennahe Fakten-Snapshots mit URL,

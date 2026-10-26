@@ -6313,7 +6313,7 @@
       "rated_kw": 6,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "6 kW · Hybrid · 3-phasig · Hochvolt-Speicher (BYD HVS/HVM, Pylontech Force H1) · 2 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "6 kW · Hybrid · 3-phasig · Hochvolt-Speicher (BYD HVS/HVM, Pylontech Force H1) · 2 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-hybrid-8.0-nh3-m3",
@@ -6373,7 +6373,7 @@
       "rated_kw": 8,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "8 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "8 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-hybrid-10.0-nh3-m3",
@@ -6433,7 +6433,7 @@
       "rated_kw": 10,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "10 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "10 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-hybrid-12.0-nh3-m3",
@@ -6493,7 +6493,7 @@
       "rated_kw": 12,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "12 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "12 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-3.0-nx1-m2",
@@ -6553,7 +6553,7 @@
       "rated_kw": 3,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "3 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "3 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-3.7-nx1-m2",
@@ -6613,7 +6613,7 @@
       "rated_kw": 3.7,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "3,7 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "3,7 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-4.0-nx1-m2",
@@ -6673,7 +6673,7 @@
       "rated_kw": 4,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "4 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "4 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-5.0-nx1-m2",
@@ -6733,7 +6733,7 @@
       "rated_kw": 5,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "5 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "5 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-3.0-nx3-m2",
@@ -6793,7 +6793,7 @@
       "rated_kw": 3,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "3 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "3 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-5.0-nx3-m2",
@@ -6853,7 +6853,7 @@
       "rated_kw": 5,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "5 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "5 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-8.0-nx3-m2",
@@ -6913,7 +6913,7 @@
       "rated_kw": 8,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "8 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "8 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-10.0-nx3-m2",
@@ -6973,7 +6973,7 @@
       "rated_kw": 10,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "10 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "10 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-12.0-nx3-m2",
@@ -7033,7 +7033,7 @@
       "rated_kw": 12,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "12 kW · String · 3-phasig · nur Erzeugung · Regionalvariante (nicht im deutschen Portfolio) · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "12 kW · String · 3-phasig · nur Erzeugung · Regionalvariante (nicht im deutschen Portfolio) · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-15.0-nx3-m2",
@@ -7093,7 +7093,7 @@
       "rated_kw": 15,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "15 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "15 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-20.0-nx3-m2",
@@ -7153,7 +7153,7 @@
       "rated_kw": 20,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "20 kW · String · 3-phasig · 4 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "20 kW · String · 3-phasig · 4 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-25.0-nx3-m3",
@@ -7213,7 +7213,7 @@
       "rated_kw": 25,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "25 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "25 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-30.0-nx3-m3",
@@ -7273,7 +7273,7 @@
       "rated_kw": 30,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "30 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "30 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-33.0-nx3-m3",
@@ -7333,7 +7333,7 @@
       "rated_kw": 33,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "33 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "33 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-50.0-nx3-m5",
@@ -7393,7 +7393,7 @@
       "rated_kw": 50,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "50 kW · String · 3-phasig · 5 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "50 kW · String · 3-phasig · 5 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-60.0-nx3-m5",
@@ -7453,7 +7453,7 @@
       "rated_kw": 60,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "60 kW · String · 3-phasig · 5 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "60 kW · String · 3-phasig · 5 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:kaco-nx-generic",
@@ -7513,7 +7513,7 @@
       "rated_kw": null,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "Weiteres NX1-/NX3-Modell hinter der Kommunikationseinheit, Nennleistung unbekannt · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "Weiteres NX1-/NX3-Modell hinter der Kommunikationseinheit, Nennleistung unbekannt · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-3.0-tl3",
@@ -7604,7 +7604,7 @@
       "rated_kw": 3,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "3 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "3 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-4.0-tl3",
@@ -7695,7 +7695,7 @@
       "rated_kw": 4,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "4 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "4 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-5.0-tl3",
@@ -7786,7 +7786,7 @@
       "rated_kw": 5,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "5 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "5 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-6.5-tl3",
@@ -7877,7 +7877,7 @@
       "rated_kw": 6.5,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "6,5 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "6,5 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-7.5-tl3",
@@ -7968,7 +7968,7 @@
       "rated_kw": 7.5,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "7,5 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "7,5 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-8.6-tl3",
@@ -8059,7 +8059,7 @@
       "rated_kw": 8.6,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "8,6 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "8,6 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-9.0-tl3",
@@ -8150,7 +8150,7 @@
       "rated_kw": 9,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "9 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "9 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-10.0-tl3",
@@ -8241,7 +8241,7 @@
       "rated_kw": 10,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "10 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "10 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-15.0-tl3",
@@ -8332,7 +8332,7 @@
       "rated_kw": 15,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "15 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "15 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-20.0-tl3",
@@ -8423,7 +8423,7 @@
       "rated_kw": 20,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "20 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "20 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-29.0-tl3",
@@ -8514,7 +8514,7 @@
       "rated_kw": 29,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "29 kW · String · 3-phasig · nur Erzeugung · Weboberfläche (M1) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "29 kW · String · 3-phasig · nur Erzeugung · Weboberfläche (M1) KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-50.0-tl3",
@@ -8605,7 +8605,7 @@
       "rated_kw": 50,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "50 kW · String · 3-phasig · nur Erzeugung · Varianten M1/M3/S/RPonly KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "50 kW · String · 3-phasig · nur Erzeugung · Varianten M1/M3/S/RPonly KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-60.0-tl3",
@@ -8696,7 +8696,7 @@
       "rated_kw": 60,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "60 kW · String · 3-phasig · nur Erzeugung · Varianten M1/M3 KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "60 kW · String · 3-phasig · nur Erzeugung · Varianten M1/M3 KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-87.0-tl3",
@@ -8787,7 +8787,7 @@
       "rated_kw": 87,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "87 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "87 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-92.0-tl3",
@@ -8878,7 +8878,7 @@
       "rated_kw": 92,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "92 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "92 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-100-tl3",
@@ -8969,7 +8969,7 @@
       "rated_kw": 100,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "100 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "100 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-105-tl3",
@@ -9060,7 +9060,7 @@
       "rated_kw": 105,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "105 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "105 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-110-tl3",
@@ -9151,7 +9151,7 @@
       "rated_kw": 110,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "110 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "110 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-125-tl3",
@@ -9242,7 +9242,7 @@
       "rated_kw": 125,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "125 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "125 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-137-tl3",
@@ -9333,7 +9333,7 @@
       "rated_kw": 137,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "137 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "137 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-150-tl3",
@@ -9424,7 +9424,7 @@
       "rated_kw": 150,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "150 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "150 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-155-tl3",
@@ -9515,7 +9515,7 @@
       "rated_kw": 155,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "155 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "155 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-165-tl3",
@@ -9606,7 +9606,7 @@
       "rated_kw": 165,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "165 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "165 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-2.0-tl1",
@@ -9697,7 +9697,7 @@
       "rated_kw": 2,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "2 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "2 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-2.6-tl1",
@@ -9788,7 +9788,7 @@
       "rated_kw": 2,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "2,6 kW (AC-Nennleistung 2,0 kW) · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "2,6 kW (AC-Nennleistung 2,0 kW) · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-3.0-tl1",
@@ -9879,7 +9879,7 @@
       "rated_kw": 3,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "3 kW · String · 1-phasig · nur Erzeugung · Ethernet (M1/M2) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "3 kW · String · 1-phasig · nur Erzeugung · Ethernet (M1/M2) KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-3.5-tl1",
@@ -9970,7 +9970,7 @@
       "rated_kw": 3.5,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "3,5 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "3,5 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-3.7-tl1",
@@ -10061,7 +10061,7 @@
       "rated_kw": 3.68,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "3,7 kW (AC-Nennleistung 3,68 kW) · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "3,7 kW (AC-Nennleistung 3,68 kW) · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-4.0-tl1",
@@ -10152,7 +10152,7 @@
       "rated_kw": 4,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "4 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "4 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-4.6-tl1",
@@ -10243,7 +10243,7 @@
       "rated_kw": 4.6,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "4,6 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "4,6 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-5.0-tl1",
@@ -10334,7 +10334,7 @@
       "rated_kw": 5,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "5 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "5 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-100-nx3-m8",
@@ -10425,7 +10425,7 @@
       "rated_kw": 100,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "100 kW · String · 3-phasig · 8 MPPT · nur Erzeugung · Weboberfläche KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "100 kW · String · 3-phasig · 8 MPPT · nur Erzeugung · Weboberfläche KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-125-nx3-m10",
@@ -10516,7 +10516,7 @@
       "rated_kw": 125,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "125 kW · String · 3-phasig · 10 MPPT · nur Erzeugung · Weboberfläche KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "125 kW · String · 3-phasig · 10 MPPT · nur Erzeugung · Weboberfläche KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-10.0-tl3",
@@ -10607,7 +10607,7 @@
       "rated_kw": 10,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "10 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "10 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-12.0-tl3",
@@ -10698,7 +10698,7 @@
       "rated_kw": 10,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "12 kW (AC-Nennleistung 10 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "12 kW (AC-Nennleistung 10 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-14.0-tl3",
@@ -10789,7 +10789,7 @@
       "rated_kw": 12,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "14 kW (AC-Nennleistung 12 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "14 kW (AC-Nennleistung 12 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-18.0-tl3",
@@ -10880,7 +10880,7 @@
       "rated_kw": 15,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "18 kW (AC-Nennleistung 15 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "18 kW (AC-Nennleistung 15 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-20.0-tl3",
@@ -10971,7 +10971,7 @@
       "rated_kw": 17,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "20 kW (AC-Nennleistung 17 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "20 kW (AC-Nennleistung 17 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-30.0-tl3-m1",
@@ -11062,7 +11062,7 @@
       "rated_kw": 25,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "30 kW (AC-Nennleistung 25 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "30 kW (AC-Nennleistung 25 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision) KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-36.0-tl3-m1",
@@ -11153,7 +11153,7 @@
       "rated_kw": 30,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "36 kW (AC-Nennleistung 30 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "36 kW (AC-Nennleistung 30 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision) KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-39.0-tl3-m1",
@@ -11244,7 +11244,7 @@
       "rated_kw": 33.3,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "39 kW (AC-Nennleistung 33,3 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "39 kW (AC-Nennleistung 33,3 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision) KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-48.0-tl3",
@@ -11335,7 +11335,7 @@
       "rated_kw": 40,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "48 kW (AC-Nennleistung 40 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "48 kW (AC-Nennleistung 40 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-60.0-tl3",
@@ -11426,7 +11426,7 @@
       "rated_kw": 49.9,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "60 kW (AC-Nennleistung 49,9 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "60 kW (AC-Nennleistung 49,9 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:powador-72.0-tl3",
@@ -11517,7 +11517,7 @@
       "rated_kw": 60,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "72 kW (AC-Nennleistung 60 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "72 kW (AC-Nennleistung 60 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-gridsave-50.0-tl3-s",
@@ -11608,7 +11608,7 @@
       "rated_kw": 50,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "50 kW · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "50 kW · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-gridsave-92.0-tl3-s",
@@ -11699,7 +11699,7 @@
       "rated_kw": 92,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "92 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "92 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-gridsave-110-tl3-s",
@@ -11790,7 +11790,7 @@
       "rated_kw": 110,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "110 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "110 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:bp-gridsave-137-tl3-s",
@@ -11881,7 +11881,7 @@
       "rated_kw": 137,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "137 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "137 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:kaco:kaco-sunspec-generic",
@@ -11972,7 +11972,93 @@
       "rated_kw": null,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "Weiteres KACO-Gerät mit SunSpec Modbus TCP, Nennleistung unbekannt KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+      "note": "Weiteres KACO-Gerät mit SunSpec Modbus TCP, Nennleistung unbekannt KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-3200-int",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-3200-int",
+      "model_label": "Powador 3200 - INT",
+      "device_type": "inverter",
+      "family": "kaco_serial",
+      "family_label": "Powador (seriell, vor der Ethernet-Generation)",
+      "communication": "kaco_serial",
+      "communication_label": "Seriell über einen RS485-zu-Ethernet-Wandler",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des RS485-zu-Ethernet-Wandlers",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des Wandlers im lokalen Netz (z. B. 192.168.0.50) - NICHT die des Wechselrichters, der hat keinen eigenen Netzwerk-Anschluss. Der Wandler muss im transparenten TCP-Server-Modus laufen (9600 8N1, keine Protokoll-Umsetzung)."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8899,
+          "help": "TCP-Port des Wandlers im Server-Modus. Herstellerabhängig (z. B. 8899 oder 4196) - am Wandler selbst nachsehen."
+        },
+        {
+          "key": "address",
+          "label": "RS485-Adresse des Wechselrichters",
+          "type": "number",
+          "default": 0,
+          "help": "Die Busadresse (0-31), auf die der Wechselrichter am Display bzw. per DIP-Schalter eingestellt ist. Bei genau einem Gerät am Bus ist die Werksvorgabe meist 0."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 3.2,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "3,2 kW · String · 1-phasig · nur Erzeugung · seriell (RS232/RS485), kein eigener Netzwerk-Anschluss KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
+    },
+    {
+      "template_ref": "builtin:kaco:kaco-serial-generic",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "kaco-serial-generic",
+      "model_label": "Anderes Powador-Altgerät (seriell)",
+      "device_type": "inverter",
+      "family": "kaco_serial",
+      "family_label": "Powador (seriell, vor der Ethernet-Generation)",
+      "communication": "kaco_serial",
+      "communication_label": "Seriell über einen RS485-zu-Ethernet-Wandler",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des RS485-zu-Ethernet-Wandlers",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des Wandlers im lokalen Netz (z. B. 192.168.0.50) - NICHT die des Wechselrichters, der hat keinen eigenen Netzwerk-Anschluss. Der Wandler muss im transparenten TCP-Server-Modus laufen (9600 8N1, keine Protokoll-Umsetzung)."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8899,
+          "help": "TCP-Port des Wandlers im Server-Modus. Herstellerabhängig (z. B. 8899 oder 4196) - am Wandler selbst nachsehen."
+        },
+        {
+          "key": "address",
+          "label": "RS485-Adresse des Wechselrichters",
+          "type": "number",
+          "default": 0,
+          "help": "Die Busadresse (0-31), auf die der Wechselrichter am Display bzw. per DIP-Schalter eingestellt ist. Bei genau einem Gerät am Bus ist die Werksvorgabe meist 0."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "Weiteres Powador-Altgerät mit KACOs seriellem ASCII-Protokoll (RS232/RS485, 9600 8N1), Nennleistung unbekannt KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt."
     },
     {
       "template_ref": "builtin:huawei:sun2000-l1",

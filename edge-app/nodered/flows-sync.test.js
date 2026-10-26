@@ -189,6 +189,53 @@ test('flow router matches inverter-routing.route() for kaco_modbus (NH3-Register
   assert.strictEqual(outMsg.aiswei.conn.unit_id, expected.connection.unit_id);
 });
 
+test('flow router matches inverter-routing.route() for kaco_serial (seriell ueber RS485-zu-Ethernet-Wandler)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kaco', label: 'KACO · Powador 3200 - INT',
+    family: 'kaco_serial', communication: 'kaco_serial',
+    connection: { ip: '192.168.0.40', port: 8899, address: 3 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret.find((r) => r && r.kacoSerial);
+  assert.ok(outMsg, 'der KACO-seriell-Ausgang traegt die Nachricht');
+  const expected = routing.route(routing.parseConfig(JSON.stringify(sel)));
+  assert.strictEqual(outMsg.kacoSerial.target, expected.target);
+  assert.strictEqual(outMsg.kacoSerial.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.kacoSerial.conn.port, expected.connection.port);
+  assert.strictEqual(outMsg.kacoSerial.conn.address, expected.connection.address);
+  assert.strictEqual(outMsg.kacoSerial.family, expected.family);
+  // Die anderen Ausgaenge bleiben null auf diesem Weg.
+  for (let i = 0; i < ret.length; i++) {
+    if (ret[i] === outMsg) continue;
+    assert.strictEqual(ret[i], null, 'Ausgang ' + i);
+  }
+});
+
+test('flow router refuses an out-of-range RS485-Adresse, idle-safe', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kaco', label: 'KACO · Powador 3200 - INT',
+    family: 'kaco_serial', communication: 'kaco_serial',
+    connection: { ip: '192.168.0.40', port: 8899, address: 99 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[ret.length - 1];
+  assert.ok(outMsg && outMsg.idle, 'der Idle-Ausgang traegt die Nachricht');
+  assert.match(outMsg.idle, /0 und 31/);
+});
+
+// Die "KACO Powador seriell lesen"-Node (auto-kaco-serial) traegt eine
+// EINGEBETTETE woertliche Kopie von kaco/kaco-serial-decode.js. Drift-Waechter:
+// wer das Modul aendert, ohne build-flows.js neu laufen zu lassen, bekommt hier
+// eine rote Probe statt einen stillen veralteten Leser auszuliefern.
+test('flow auto-kaco-serial embeds the current kaco/kaco-serial-decode.js source', () => {
+  const func = byId['auto-kaco-serial'].func;
+  const src = fs.readFileSync(path.join(__dirname, 'kaco/kaco-serial-decode.js'), 'utf8');
+  assert.ok(
+    func.includes(src),
+    'flows.json auto-kaco-serial node is out of sync with kaco/kaco-serial-decode.js - re-run build-flows.js',
+  );
+});
+
 test('flow router matches inverter-routing.route() for kostal_modbus', () => {
   const sel = {
     schema_version: '1.0', brand: 'kostal', label: 'KOSTAL · PLENTICORE BI 10/26',

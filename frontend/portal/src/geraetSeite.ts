@@ -357,6 +357,7 @@ const COMM_WORT: Record<string, string> = {
   sunspec_tcp: 'SunSpec über das Netzwerk',
   kaco_http: 'App-Schnittstelle über das Netzwerk',
   kaco_modbus: 'Modbus über das Netzwerk',
+  kaco_serial: 'Seriell über einen RS485-zu-Ethernet-Wandler',
   kostal_modbus: 'Modbus über das Netzwerk',
   fronius_solar_api: 'Solar-API über das Netzwerk',
   goe_http_api: 'go-e über das Netzwerk',

@@ -61,6 +61,22 @@ class BestandAnschlussTest {
                 .isEqualTo("http://192.168.0.30:8484");
     }
 
+    /** KACO-Powador-Altgeräte über den RS485-zu-Ethernet-Wandler: die Geräte-ID ist die Busadresse, 0 gültig. */
+    @Test
+    void kacoSeriellLiestWandlerHostPortUndRs485Adresse() {
+        assertThat(BestandAnschluss.aus("kaco_serial", "{\"ip\":\"192.168.0.40\",\"port\":8899,\"address\":7}"))
+                .isEqualTo(new Anschluss("kaco_serial", "192.168.0.40:8899", 7, null));
+        // Fehlende Felder: die Vorgaben des Treibers (Port 8899, Adresse 0).
+        assertThat(BestandAnschluss.aus("kaco_serial", "{\"ip\":\"192.168.0.41\"}"))
+                .isEqualTo(new Anschluss("kaco_serial", "192.168.0.41:8899", 0, null));
+        // Adresse 0 ist GÜLTIG (anders als eine Modbus-Unit-ID) - keine Umdeutung zur Vorgabe.
+        assertThat(BestandAnschluss.aus("kaco_serial", "{\"ip\":\"192.168.0.41\",\"address\":0}").geraeteId())
+                .isZero();
+        // Eine Adresse ausserhalb 0..31 ist keine - die Vorgabe des Treibers gilt.
+        assertThat(BestandAnschluss.aus("kaco_serial", "{\"ip\":\"192.168.0.41\",\"address\":99}").geraeteId())
+                .isZero();
+    }
+
     /** Der Standard-Port der Tabelle ist die Vorgabe der Vorlage im Katalog — sonst läse die Box woanders. */
     @Test
     void dieStandardPortsSindDieDesKatalogs() throws Exception {

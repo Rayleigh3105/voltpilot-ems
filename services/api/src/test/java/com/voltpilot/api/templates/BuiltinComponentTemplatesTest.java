@@ -61,8 +61,8 @@ class BuiltinComponentTemplatesTest {
                 .filter(t -> "kaco".equals(t.brand())).toList();
         assertThat(kaco).as("KACO-Modelle").hasSizeGreaterThanOrEqualTo(60);
         for (BuiltinTemplate t : kaco) {
-            assertThat(t.communication()).isIn("sunspec_tcp", "kaco_http");
-            assertThat(t.family()).isIn("sunspec_live", "kaco_http", "kaco_http_hybrid");
+            assertThat(t.communication()).isIn("sunspec_tcp", "kaco_http", "kaco_serial");
+            assertThat(t.family()).isIn("sunspec_live", "kaco_http", "kaco_http_hybrid", "kaco_serial");
             assertThat(t.brandLabel()).isEqualTo("KACO");
             // Keine einzige KACO-Zeile darf „Fronius" nennen - der ganze Grund
             // für die brand-neutrale Kennung `sunspec_tcp`.
@@ -75,6 +75,10 @@ class BuiltinComponentTemplatesTest {
                 .isEqualTo("kaco_http_hybrid");
         assertThat(find("builtin:kaco:bp-10.0-nx3-m2").family()).isEqualTo("kaco_http");
         assertThat(find("builtin:kaco:bp-4.6-tl1").family()).isEqualTo("sunspec_live");
+        // Die dritte Plattform: Powador-Altgeräte ohne Netzwerk-Anschluss, seriell
+        // über einen RS485-zu-Ethernet-Wandler - kein Modbus, keine Discovery.
+        assertThat(find("builtin:kaco:powador-3200-int").communication()).isEqualTo("kaco_serial");
+        assertThat(find("builtin:kaco:powador-3200-int").family()).isEqualTo("kaco_serial");
     }
 
     @Test

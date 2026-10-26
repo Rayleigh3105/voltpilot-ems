@@ -735,7 +735,7 @@ Programm gibt es also gar keine Möglichkeit, versehentlich zu schreiben.**
 
 ### Vorbereitung
 
-1. **Die Kunden-Termin-Checkliste** aus `KACO.md` §12 abarbeiten — sie klärt
+1. **Die Kunden-Termin-Checkliste** aus `KACO.md` §13 abarbeiten — sie klärt
    Plattform, Firmware, Unit-ID, Modell-Liste, Vorzeichen und ob die
    App-Schnittstelle oder Modbus der Weg ist. Ohne sie fehlt jede Grundlage.
 2. **Firmware-Stufe feststellen** (SunSpec Modell 1 `Version`). Für die

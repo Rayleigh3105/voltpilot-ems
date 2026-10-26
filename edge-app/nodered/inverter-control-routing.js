@@ -89,6 +89,11 @@ const COMM_KACO_HTTP = 'kaco_http';
 // KOSTAL. See huaweiControl below + catalog/control-profiles/profiles/huawei.json
 // + the scout report data/vp-kundenanlage-huawei-s1.
 const COMM_HUAWEI_MODBUS = 'huawei_modbus';
+// KACO Powador-Altgeraete, seriell ueber einen RS485-zu-Ethernet-Wandler:
+// diese Geraetegeneration hat GAR KEINEN Steuerweg (kein Modbus, keine
+// dokumentierte Fernsteuerung) - nicht einmal gesperrt vorbereitet, siehe
+// unten.
+const COMM_KACO_SERIAL = 'kaco_serial';
 
 // Control tiers - the battery-control PRIMITIVE, decoupled from the read transport
 // (design data/vp-battery-control-deepdive/report.md §1). Mirrors the Go
@@ -426,6 +431,11 @@ function controlRoute(selection, setpoint, opts = {}) {
       // Ehrlich: ueber die App-Schnittstelle gibt es keinen dokumentierten
       // Steuerweg. Kein Plan, keine erfundene Adresse - nur der Grund.
       return idle('KACO App-Schnittstelle: kein Steuerweg (nur lesen)');
+    }
+    if (comm === COMM_KACO_SERIAL) {
+      // Powador-Altgeraete: kein Modbus, keine dokumentierte Fernsteuerung -
+      // ehrlich kein Plan statt eine erfundene Adresse.
+      return idle('KACO Powador (seriell): kein Steuerweg (Altgeraete-Generation ohne Fernsteuerung, nur lesen)');
     }
   }
   return idle('unbekannte Kommunikationsmethode');
@@ -3358,6 +3368,7 @@ module.exports = {
   COMM_KACO_MODBUS,
   COMM_KACO_HTTP,
   COMM_HUAWEI_MODBUS,
+  COMM_KACO_SERIAL,
   // KACO: vorbereitet + GESPERRT (writes bleibt leer, unabhaengig von certified)
   KACO_NH3_CONTROL_REG,
   KACO_NOT_CERTIFIED_REASON,

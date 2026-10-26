@@ -808,8 +808,10 @@ class WagoQuelleTest(unittest.TestCase):
         # mehr zurückgehalten.
         families = {f["family"]: f["an_der_box"] for f in self.catalog["families"]}
         self.assertEqual({name: families[name] for name in self.KARTEN}, {"wago.pm494": True, "wago.pm495": True})
-        self.assertEqual({name for name, an in families.items() if not an}, set())
-        self.assertEqual(set(cataloglib.NOCH_NICHT_AN_DER_BOX), set())
+        # kaco_serial (Powador-Altgeräte, seriell): der Kern-Lesepfad kennt diese Familie bereits,
+        # der generische Mess-Runtime-Adapter fehlt noch - siehe NOCH_NICHT_AN_DER_BOX.
+        self.assertEqual({name for name, an in families.items() if not an}, {"kaco_serial"})
+        self.assertEqual(set(cataloglib.NOCH_NICHT_AN_DER_BOX), {"kaco_serial"})
         self.assertEqual(self.catalog["runtime_catalog_version"], "2026.10.21.1")
         karten = [p for p in runtime_projection(self.catalog, "2026.10.21.1") if p["family"].startswith("wago.")]
         self.assertEqual(len(karten), 54)

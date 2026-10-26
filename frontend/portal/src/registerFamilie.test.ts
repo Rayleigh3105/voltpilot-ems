@@ -36,8 +36,9 @@ describe('KATALOG_FAMILIEN ist eine geprüfte Kopie, keine zweite Wahrheit', () 
   });
 
   it('lässt die Familien weg, die noch an keine Box gehen - sonst stünde dort ein leerer Kasten', () => {
-    // Seit EZ-5 (Laufzeitstand 2026.10.21.1) ist auch das Erzeuger-Registerbild an der Box: heute keine.
-    expect(nochNichtAnDerBox).toEqual([]);
+    // Seit dem Inhaltsstand 2026.10.26.1: kaco_serial (Powador-Altgeräte, seriell) - der
+    // Kern-Lesepfad kennt sie, der generische Mess-Runtime-Adapter fehlt noch.
+    expect(nochNichtAnDerBox).toEqual(['kaco_serial']);
     expect(KATALOG_FAMILIEN.filter((f) => nochNichtAnDerBox.includes(f))).toEqual([]);
   });
 

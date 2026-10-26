@@ -460,3 +460,66 @@ test('an unknown communication is still refused (the alias widens nothing)', () 
     connection: { ip: '192.168.0.9' },
   })), null);
 });
+
+// --- KACO Powador-Altgeraete, seriell ueber RS485-zu-Ethernet-Wandler (kaco_serial) ---
+
+const kacoSerialDecode = require('./kaco/kaco-serial-decode');
+
+function kacoSerialConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'kaco',
+      label: 'KACO · Powador 3200 - INT',
+      family: 'kaco_serial',
+      communication: 'kaco_serial',
+      connection: { ip: '192.168.0.40', port: 8899, address: 1 },
+      updated_at: '2026-10-26T10:00:00Z',
+    },
+    overrides,
+  );
+}
+
+test('parseConfig accepts a kaco_serial selection', () => {
+  const sel = routing.parseConfig(kacoSerialConfig());
+  assert.ok(sel);
+  assert.strictEqual(sel.communication, routing.COMM_KACO_SERIAL);
+  assert.strictEqual(sel.family, 'kaco_serial');
+});
+
+test('route maps kaco_serial onto a TCP target + the exact request frame, with defaults 8899/Adresse 0', () => {
+  const plan = routing.route(routing.parseConfig(kacoSerialConfig({
+    connection: { ip: '192.168.0.40' }, // port/address omitted -> defaults
+  })));
+  assert.strictEqual(plan.adapter, 'kaco_serial');
+  assert.strictEqual(plan.family, 'kaco_serial');
+  assert.strictEqual(plan.target, '192.168.0.40:8899');
+  assert.strictEqual(plan.connection.port, 8899);
+  assert.strictEqual(plan.connection.address, 0);
+  assert.strictEqual(plan.request, '#000\r');
+});
+
+test('route keeps an explicit RS485-Adresse and Port', () => {
+  const plan = routing.route(routing.parseConfig(kacoSerialConfig({
+    connection: { ip: '10.0.0.5', port: 4196, address: 7 },
+  })));
+  assert.strictEqual(plan.target, '10.0.0.5:4196');
+  assert.strictEqual(plan.connection.address, 7);
+  assert.strictEqual(plan.request, '#070\r');
+});
+
+test('route refuses an out-of-range RS485-Adresse and an unknown family, idle-safe', () => {
+  const outOfRange = routing.route(routing.parseConfig(kacoSerialConfig({
+    connection: { ip: '10.0.0.5', address: 99 },
+  })));
+  assert.strictEqual(outOfRange.adapter, 'idle');
+  assert.match(outOfRange.reason, /0 und 31/);
+
+  const idle = routing.route(routing.parseConfig(kacoSerialConfig({ family: 'kaco_http' })));
+  assert.strictEqual(idle.adapter, 'idle');
+  assert.match(idle.reason, /KACO-Familie/);
+});
+
+test('kaco_serial shares exactly one family with kaco-serial-decode.js (no second register of the name)', () => {
+  assert.deepStrictEqual(Object.keys(kacoSerialDecode.FAMILIES), ['kaco_serial']);
+});

@@ -41,6 +41,7 @@ const kostalDecode = require('./kostal/kostal-decode');
 const kacoHttp = require('./kaco/kaco-http');
 const aisweiDecode = require('./kaco/aiswei-decode');
 const huaweiDecode = require('./huawei/huawei-decode');
+const kacoSerialDecode = require('./kaco/kaco-serial-decode');
 
 const SCHEMA_VERSION = '1.0';
 
@@ -85,6 +86,13 @@ const COMM_KACO_MODBUS = 'kaco_modbus';
 // Smart Power Sensor) the grid point - the LUNA2000 has no communication path
 // of its own. See huawei/huawei-decode.js.
 const COMM_HUAWEI_MODBUS = 'huawei_modbus';
+// KACO Powador-Altgeraete (vor der TL3/Ethernet-Generation): KACOs eigenes
+// serielles ASCII-Protokoll (RS232/RS485, 9600 8N1, Adresspolling 0-31) ueber
+// einen TRANSPARENTEN RS485-zu-Ethernet-Wandler. Keine Modbus-Registerkarte,
+// kein Discovery-Walk - EIN TCP-Raw-Socket zum Wandler, der die seriellen
+// Bytes 1:1 durchreicht. Nur lesen - diese Geraetegeneration hat keine
+// Fernsteuerung. Siehe kaco/kaco-serial-decode.js + KACO.md.
+const COMM_KACO_SERIAL = 'kaco_serial';
 
 const DEFAULT_SOLARMAN_PORT = 8899;
 const DEFAULT_MODBUS_PORT = 502;
@@ -98,6 +106,7 @@ const DEFAULT_KACO_MODBUS_PORT = aisweiDecode.DEFAULT_PORT; // 502
 const DEFAULT_KACO_MODBUS_UNIT_ID = aisweiDecode.DEFAULT_UNIT_ID; // 1
 const DEFAULT_HUAWEI_PORT = huaweiDecode.DEFAULT_PORT; // 502
 const DEFAULT_HUAWEI_UNIT_ID = huaweiDecode.DEFAULT_UNIT_ID; // 0
+const DEFAULT_KACO_SERIAL_PORT = kacoSerialDecode.DEFAULT_PORT; // 8899 (RS485-zu-Ethernet-Wandler)
 
 // The one register-profile id the SunSpec-live read path uses (mirrors how the
 // Deye family / Modbus profile names the decode). Discovery is dynamic, so there
@@ -130,6 +139,8 @@ const HUAWEI_FAMILIES = Object.keys(huaweiDecode.FAMILIES);
 // SOURCE, see kaco/kaco-http.js FAMILIES) and the NH3 register card.
 const KACO_HTTP_FAMILIES = Object.keys(kacoHttp.FAMILIES);
 const KACO_MODBUS_FAMILIES = Object.keys(aisweiDecode.FAMILIES);
+// Die eine Familie der seriellen Powador-Altgeraete-Plattform.
+const KACO_SERIAL_FAMILIES = Object.keys(kacoSerialDecode.FAMILIES);
 
 function isObject(v) {
   return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -165,7 +176,8 @@ function parseConfig(input) {
       communication !== COMM_FRONIUS && !isSunSpecTcp(communication) &&
       communication !== COMM_GOE && communication !== COMM_KOSTAL &&
       communication !== COMM_KACO_HTTP && communication !== COMM_KACO_MODBUS &&
-      communication !== COMM_HUAWEI_MODBUS) return null;
+      communication !== COMM_HUAWEI_MODBUS &&
+      communication !== COMM_KACO_SERIAL) return null;
 
   const family = typeof obj.family === 'string' ? obj.family.trim() : '';
   if (!family) return null;
@@ -519,6 +531,35 @@ function route(sel) {
     };
   }
 
+  if (sel.communication === COMM_KACO_SERIAL) {
+    // Powador-Altgeraete: kein Discovery-Walk, keine Modbus-Registerkarte -
+    // EIN Request/Reply-Zyklus (`#<adr>0\r`) ueber einen TCP-Raw-Socket zum
+    // transparenten RS485-zu-Ethernet-Wandler. Gate auf die bekannte Familie
+    // (es gibt nur eine) - eine unbekannte Familie bleibt idle-sicher.
+    if (!KACO_SERIAL_FAMILIES.includes(sel.family)) {
+      return { adapter: 'idle', reason: 'unbekannte KACO-Familie: ' + sel.family };
+    }
+    const port = num(conn.port, DEFAULT_KACO_SERIAL_PORT);
+    const address = num(conn.address, 0);
+    if (address < kacoSerialDecode.MIN_ADDRESS || address > kacoSerialDecode.MAX_ADDRESS) {
+      return { adapter: 'idle', reason: 'RS485-Adresse muss zwischen 0 und 31 liegen' };
+    }
+    return {
+      adapter: COMM_KACO_SERIAL,
+      family: sel.family,
+      target: ip + ':' + port,
+      connection: {
+        ip,
+        port,
+        // Die Bus-Adresse des Wechselrichters (0-31, Adresspolling) - NICHT
+        // zu verwechseln mit einer Modbus-Unit-ID. Vorgabe 0: ein einzelnes
+        // Geraet am Wandler antwortet ueblich auf die Werksadresse 0.
+        address,
+      },
+      request: kacoSerialDecode.buildRequest(address, kacoSerialDecode.CMD_MEASURE).toString('ascii'),
+    };
+  }
+
   if (sel.communication === COMM_GOE) {
     // go-e Charger local HTTP API v2: ONE HTTP GET to /api/status returns the
     // charging power. Self-describing (one family), so gate on the known set for
@@ -548,6 +589,7 @@ module.exports = {
   COMM_SUNSPEC_TCP,
   COMM_KACO_HTTP,
   COMM_KACO_MODBUS,
+  COMM_KACO_SERIAL,
   isSunSpecTcp,
   COMM_GOE,
   COMM_KOSTAL,
@@ -565,6 +607,7 @@ module.exports = {
   DEFAULT_KACO_MODBUS_UNIT_ID,
   DEFAULT_HUAWEI_PORT,
   DEFAULT_HUAWEI_UNIT_ID,
+  DEFAULT_KACO_SERIAL_PORT,
   DEYE_EXPORT_LIMIT,
   EXPORT_LIMIT_INTERVAL_MS,
   exportLimitRegister,

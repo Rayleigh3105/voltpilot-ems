@@ -38,8 +38,16 @@ RUNTIME_FIELDS = EDGE_FIELDS + ("long_term_cadence_s",)
 # ⚠ Nie eine Familie eintragen, die schon an einer Box ist (`validate.py` lehnt das ab).
 # `wago.pm494`/`wago.pm495` gingen mit dem Laufzeitstand 2026.09.23.3 an die Box (UEMS AP-05 IP-6b),
 # `voltpilot.erzeuger_registerbild_v1` mit dem Laufzeitstand 2026.10.21.1 (EZ-5, der Box-Leser) - beide
-# wirksam mit dem Box-Release, das diese Palette trägt. Heute leer, der Mechanismus bleibt.
-NOCH_NICHT_AN_DER_BOX: dict[str, str] = {}
+# wirksam mit dem Box-Release, das diese Palette trägt.
+NOCH_NICHT_AN_DER_BOX: dict[str, str] = {
+    # KACO Powador-Altgeräte (seriell über einen RS485-zu-Ethernet-Wandler, kaco-serial-decode.js):
+    # der Kern-Lesepfad (edge/inverter/config -> inverter-routing.js) liest Status/Spannung/Strom/
+    # Leistung/Temperatur/Tagesertrag bereits fest verdrahtet (Powador-Anbindung vp-kaco-rs485-anbindung-w1),
+    # aber der GENERISCHE Mess-Runtime (edge-app/nodered/measurements/) hat noch keinen Adapter, der
+    # diese Punkte EINZELN per Messauswahl abrufen könnte - sie fehlen deshalb in der Box-Sicht, im
+    # Palette-Katalog und in der Metadaten-Migration, bis ein eigener Edge-Release das traegt.
+    "kaco_serial": "kein generischer Mess-Runtime-Adapter fuer die serielle Plattform",
+}
 
 # Cloud-only fact for UEMS AP-06 IP-21.  Family metadata is deliberately not part of
 # EDGE_FIELDS/runtime_projection: deciding whether two boxes may read the same physical device is
