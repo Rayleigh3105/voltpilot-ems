@@ -1353,8 +1353,9 @@ function UnifiedPortal() {
   // Ein Plattform-Konto hat keinen Standort (/me: konto „plattform“, standorte leer) - die Plattform-Seiten
   // brauchen keinen und bleiben erreichbar, wie schon im Lade-Zweig unten.
   const leer = ohneStandort(selbst) && !(isAdmin && PLATFORM_PAGES.some((p) => p.id === page));
-  // Die Plattform hat einen Mandanten gewählt, aber /me nimmt ihn nicht an (`kundenbereich` null): es gibt dort
-  // keine wirksame Unterstützung. Das ist kein fehlender Standort - die Karte nennt den Grund und den Weg.
+  // Die Plattform hat einen Mandanten gewählt, aber /me nimmt ihn nicht an (`kundenbereich` null): der Sprung ist in
+  // dieser Umgebung abgeschaltet und es gibt dort keine wirksame Unterstützung. Das ist kein fehlender Standort - die
+  // Karte nennt den Grund und den Weg. Bei offenem Umschalter (Vorgabe seit 26.10.2026) kommt sie nicht vor.
   const ohneUnterstuetzung = leer && isAdmin && tenantId != null && selbst?.kundenbereich == null;
   const rechteStandort = route.standortId ?? orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null;
   // Avatar-Menü „Funktionen“ (AP-01 E5 = A): nur, wo die Landung eine Ebene mit der Karte ist. Die Anlage- und die
@@ -1908,22 +1909,25 @@ function LoadErrorNotice({ onRetry }: { onRetry: () => void }) {
 }
 
 /**
- * Die Plattform ist in einen Mandanten gesprungen, für den sie keine wirksame Unterstützung hat: die API nimmt den
- * Kundenbereich nicht an (404 auf jeder Kundenroute, /me ohne Kundenbereich). Die Karte öffnet nichts - sie sagt
- * nur, warum die Ansicht leer ist und wo der Zugriff entsteht.
+ * Die Plattform ist in einen Mandanten gesprungen, und die API nimmt den Kundenbereich nicht an (404 auf jeder
+ * Kundenroute, /me ohne Kundenbereich). Seit dem 26.10.2026 heißt das: der Sprung ist in dieser Umgebung abgeschaltet
+ * (Not-Aus `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED=false`), und es gibt keine wirksame Unterstützung. Die
+ * Karte öffnet nichts - sie sagt nur, warum die Ansicht leer ist und welcher Weg dann noch bleibt.
  */
 function OhneUnterstuetzungNotice({ mandant, onMandanten }: { mandant: string | null; onMandanten: () => void }) {
   return (
     <Card padding="lg" radius="lg">
       <h1>Kein Zugriff auf diesen Kundenbereich</h1>
       <p>
-        Für {mandant ? <b>{mandant}</b> : 'diesen Mandanten'} besteht keine wirksame Unterstützung. VoltPilot sieht
-        die Ansicht eines Mandanten nur mit einer Unterstützung, die der Kundenadministrator bestätigt hat, oder
-        mit einem Notfall-Zugriff.
+        Die Ansicht von {mandant ? <b>{mandant}</b> : 'diesem Mandanten'} hat sich nicht geöffnet. Der Sprung der
+        Plattform in die Mandanten-Ansicht ist in dieser Umgebung abgeschaltet, und für diesen Mandanten besteht
+        keine wirksame Unterstützung.
       </p>
       <p>
-        Beides beginnt unter Plattform › Mandanten im Dialog des Mandanten: „Unterstützung anfragen“ oder
-        „Notfall-Zugriff“ (24 Stunden, Grund Pflicht, die Kundenadministratoren erhalten einen Hinweis).
+        Solange der Sprung abgeschaltet ist, öffnet sich die Ansicht nur mit einer Unterstützung, die der
+        Kundenadministrator bestätigt hat, oder mit einem Notfall-Zugriff. Beides beginnt unter Plattform › Mandanten
+        im Dialog des Mandanten: „Unterstützung anfragen“ oder „Notfall-Zugriff“ (24 Stunden, Grund Pflicht, die
+        Kundenadministratoren erhalten einen Hinweis).
       </p>
       <Button variant="primary" onClick={onMandanten}>Zu den Mandanten</Button>
     </Card>
@@ -1944,9 +1948,7 @@ function PickTenantNotice({
         <h3>Mandanten wählen</h3>
         <p>
           Diese Seite zeigt Kundendaten. Wählen Sie oben im Mandanten-Umschalter einen
-          Mandanten (oder hier direkt). Seine Ansicht öffnet sich nur, wenn Sie dort eine
-          bestätigte Unterstützung oder einen Notfall-Zugriff haben; beides beginnt unter
-          Plattform › Mandanten im Dialog des Mandanten.
+          Mandanten (oder hier direkt), um dessen Ansicht zu sehen.
         </p>
         <div style={{ display: 'flex', gap: 'var(--vp-space-3)', justifyContent: 'center', flexWrap: 'wrap' }}>
           {tenants.slice(0, 6).map((t) => (

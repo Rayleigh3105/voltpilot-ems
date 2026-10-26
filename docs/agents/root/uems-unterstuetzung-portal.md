@@ -30,24 +30,31 @@ Ein Hinweis behauptet eine E-Mail nur mit `email_versandt_am`. Passwortantworten
 `X-Tenant-Id`-Kontext. Beide Kontexte gehören in die Schlüssel laufender/gecachter Anfragen und in
 Prüfungen verspäteter Entzugsantworten. Beim Bereichswechsel verwirft `App` Daten und Rechte.
 
-Die Produktionsvorgabe `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED` ist seit IP-15 **false**.
-Das Profil `local` hält die alte Vorgabe explizit für die bisherigen Kompatibilitätsnachweise;
-Die beiden Ortsstruktur-Bestandstests ohne dieses Profil wählen die Kompatibilität ebenfalls explizit.
-`UnterstuetzungApiTest` setzt **false** und prüft den geschlossenen Kundenweg. Ein extern gesetztes
-Deployment-Override kann die Vorgabe übersteuern; bei der UEMS-Auslieferung darf es nicht auf true stehen.
+Die Vorgabe `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED` ist seit dem 26.10.2026 wieder **true**
+(von IP-15 bis dahin false). Entscheidung des Betreibers: die Plattform-Administration springt wieder in
+jeden Kundenbereich; alle Kunden haben eingewilligt. Das Portal schickt auf Kundenrouten weiter
+`X-Kundenbereich`; offen nimmt die API das für die Plattform auch ohne Unterstützung an (Zugang
+`umschalter`, ganzer Kundenbereich, auch ohne Standort: `/me` unternehmensweit, dann Anlage oder Portfolio
+wie beim Kunden). Für Partner ändert der Schalter nichts. Der Wert der Produktion steht ausdrücklich in
+GitOps (`apps/voltpilot/base/api/api.env`) und übersteuert die Vorgabe; dort muss er auf `true` stehen,
+sonst bleibt der Sprung zu. `UnterstuetzungApiTest` läuft mit **false** (Not-Aus) und prüft daneben mit
+einem offenen Lader den Sprung der Plattform und den geschlossenen Weg des Partners.
 Keine Migration, keine Änderung der Rechte-Matrix oder der Rechte-Architekturwächter.
 
 ## Plattform ohne wirksame Unterstützung
 
-Wählt oder springt die Plattform in einen Mandanten, den die API nicht annimmt (`/me.kundenbereich` ist `null`,
-obwohl ein Mandant gewählt ist), zeigt `App` die Karte „Kein Zugriff auf diesen Kundenbereich“ mit Grund und Weg -
-nicht den Kundenzweig „Kein Standort zugewiesen“. Der Sprung-Knopf bleibt ohne Bedingung; kein Text des Portals
-verspricht die Mandanten-Ansicht ohne Unterstützung oder Notfall-Zugriff. `UnterstuetzungAdmin` lädt die
-Standorte der Flotte schon mit dem Mandanten-Dialog und sagt bei einem Mandanten ohne Standort, dass die
-Plattform ihn zurzeit nicht betreten kann (Anfrage und Notfall enden dort mit `standort_fehlt`). Fehlt das Feld
-oder scheitert der Abruf, ist das unbekannt und kein „kein Standort“. Nachweise:
-`mandantenSprungOhneUnterstuetzung.test.tsx`, `UnterstuetzungAdmin.test.tsx` und `e2e/mandantensprung.spec.ts`
-(ganzer `App`, gefälschter `fetch` im Wirt `e2e/mandantensprung.tsx`).
+Seit dem 26.10.2026 landet der Sprung (Dialog, Umschalter in der Kopfzeile, Flotte, Geräte, Updates, gemerkter
+Mandant) in der Ansicht des Mandanten; Kopftext der Mandanten-Seite, Hinweis im Dialog und Karte „Mandanten
+wählen“ versprechen ihn wieder ohne Bedingung. Nimmt die API den Mandanten trotzdem nicht an (`/me.kundenbereich`
+ist `null`, obwohl ein Mandant gewählt ist: Not-Aus `umschalter-enabled=false` und keine Unterstützung), zeigt
+`App` die Karte „Kein Zugriff auf diesen Kundenbereich“ mit Grund und dem Weg über Unterstützung oder
+Notfall-Zugriff - nicht den Kundenzweig „Kein Standort zugewiesen“. `UnterstuetzungAdmin` lädt die Standorte der
+Flotte schon mit dem Mandanten-Dialog und sagt bei einem Mandanten ohne Standort, dass Anfrage und Notfall dort
+nicht gehen (`standort_fehlt`), der Sprung aber schon. Fehlt das Feld oder scheitert der Abruf, ist das unbekannt
+und kein „kein Standort“. Die Portaltexte setzen den offenen Schalter voraus. Nachweise:
+`mandantenSprungOhneUnterstuetzung.test.tsx` (offen, ohne Standort, Not-Aus), `MandantenPage.test.tsx`,
+`UnterstuetzungAdmin.test.tsx` und `e2e/mandantensprung.spec.ts` (ganzer `App`, gefälschter `fetch` im Wirt
+`e2e/mandantensprung.tsx`, `?schalter=aus` = Not-Aus).
 
 ## Nachweise
 

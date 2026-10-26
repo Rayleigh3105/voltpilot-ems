@@ -1402,7 +1402,7 @@ ausdrücklich in gitops, wie W10 (AP-14, entschieden am 18.09.2026) es vor G1 ve
 | `VOLTPILOT_UEMS_TAGESMENGE_NACHTRAG_ENABLED` | `true` | den Start-Lauf, der für vor AP-08 endgültige Tage ohne Menge eine Korrektur `menge_nachgetragen` vorschlägt (Freigabe von Hand) |
 | `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED` | `true` | den täglichen Abruf des Wetter-Archivs um 06:10 (Tagesmittel → Gradtage mit Herkunft `bezogen`, holt 60 Tage nach); Quelle, Adresse und Schlüssel: `VOLTPILOT_UEMS_WETTER_ARCHIV_QUELLE` (`open-meteo`), `…_BASIS_URL`, `…_SCHLUESSEL` (optional) — kommt mit dem Nachtrag in PR 37 |
 | `VOLTPILOT_UEMS_UNTERSTUETZUNG_ENABLED` | `true` | Protokoll abgelaufener Unterstützung und Erinnerung vor Ablauf |
-| `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED` | **`false`** | (alter `X-Tenant-Id`-Umschalter bleibt aus) |
+| `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED` | **`false`** am Rollout-Tag; seit 26.10.2026 **`true`** (siehe unten) | den Sprung der Plattform-Administration in die Kundenbereiche ohne Unterstützung (`X-Tenant-Id` und `X-Kundenbereich`); Partner betrifft er nie |
 | `VOLTPILOT_UEMS_VIERTELSTUNDE_ENABLED` | `true` | Fünfminutentakt und die einmalige 90-Tage-Rückrechnung |
 | `VOLTPILOT_UEMS_KENNZAHLEN_ENABLED` | `true` | den Kennzahl-Schritt im Stundenlauf |
 | `VOLTPILOT_UEMS_ENDGUELTIGKEIT_ENABLED` | `true` | stündlich Endgültigkeit, Tag/Periode, berechnete Messstellen, Kennzahlen |
@@ -1416,6 +1416,16 @@ ausdrücklich in gitops, wie W10 (AP-14, entschieden am 18.09.2026) es vor G1 ve
 | `VOLTPILOT_UEMS_VORBEHALT_VIERTELSTUNDE_ENABLED` | `true` | nur das Erhöhen des Vorbehalts im Viertelstunden-Takt; der Tageslauf bleibt |
 | `VOLTPILOT_UEMS_LADEPARK_GRENZE_ENABLED` | `true` | den stündlichen Abgleich je Anlage mit Ladepark-Rahmen und die Neuzustellung des Ladepark-Dokuments bei Unterschied |
 | `VOLTPILOT_UEMS_DATA_SOURCE_STATUS_MQTT_LISTENER_ENABLED` | `true` | die Verarbeitung von Quellenstatus aus MQTT |
+
+> **Nachtrag 26.10.2026 — der Umschalter ist wieder offen.** Am Rollout-Tag galt: dieser Schalter darf
+> bei der Auslieferung nicht `true` sein. Der Betreiber hat das am 26.10.2026 aufgehoben: die
+> Plattform-Administration springt wieder ohne Unterstützung in jeden Kundenbereich; nach seiner
+> Aussage haben alle Kunden dafür eingewilligt. Die Vorgabe in `application.yml` ist seither `true`.
+> Weil gitops den Wert ausdrücklich setzt, wirkt das in Produktion erst, wenn in
+> `apps/voltpilot/base/api/api.env` die Zeile `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED=false`
+> auf `true` steht (Commit, Sync, die api startet neu). `false` bleibt der Not-Aus. Für die Proben in
+> §11 heißt das: F6.3 und F6.5 gelten für einen Partner unverändert; ein Plattform-Konto kommt bei
+> offenem Schalter auch nach dem Ende seiner Unterstützung hinein.
 
 Dazu `VOLTPILOT_METRICS_UEMS_ENABLED=true`: **nicht** abschalten, um etwas anzuhalten —
 das nimmt der Überwachung nur die Sicht. Ein abgeschalteter Läufer exportiert kein Alter

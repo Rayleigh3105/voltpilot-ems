@@ -15,6 +15,7 @@ import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.zugriff.ZugriffContext;
 import com.voltpilot.api.zugriff.ZugriffKontextLader;
 import com.voltpilot.api.zugriff.ZugriffRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -551,28 +552,53 @@ class UnterstuetzungApiTest {
     }
 
     /**
-     * <b>IP-15:</b> der Mandanten-Umschalter der Plattform ({@code X-Tenant-Id}) ist in Produktion geschlossen.
-     * Mit {@code umschalter-enabled=false} wird eine Anfrage ohne Gewährung abgewiesen (der
-     * {@code ZugriffFilter} macht daraus die 404 jeder Kundenroute, wie für einen Partner ohne Gewährung),
-     * während eine gewährte Unterstützung sie weiterhin hereinlässt.
+     * <b>Der Sprung der Plattform (Entscheidung vom 26.10.2026):</b> mit offenem Mandanten-Umschalter
+     * (Vorgabe AN) kommt die Plattform-Administration ohne Unterstützung in den Kundenbereich, über
+     * {@code X-Kundenbereich} (den Kopf, den das Portal schickt) wie über {@code X-Tenant-Id} - mit dem Zugang
+     * {@code umschalter} und darum mit demselben Urheber im Protokoll wie am Umschalter. Ein Partner braucht
+     * weiterhin eine Gewährung; eine wirksame Unterstützung der Plattform geht vor.
      */
     @Test
-    void derMandantenUmschalterIstSeitIp15Geschlossen() throws Exception {
-        Authentication support = plattform("sub-u8-umschalter");
-        assertThat(ruf(get("/api/v1/sites"), support, 404, TENANT, DEMO.toString())).as("IP-15: ohne Unterstützung kein Kundenweg").isNotNull();
-
-        String sub = "sub-u8-umschalter-gewaehrt";
-        gewaehreDirekt(sub, "Umschalter-Probe", vorTagen(1), heute().plusDays(10));
-        ZugriffKontextLader ohneUmschalter = new ZugriffKontextLader(zugriffe, new SimpleMeterRegistry(), false);
+    void diePlattformSpringtBeiOffenemUmschalterOhneUnterstuetzungEinPartnerNicht() throws Exception {
+        String partnerSub = "sub-u8-sprung-partner";
+        gewaehreDirekt(partnerSub, "Sprung-Probe", vorTagen(1), heute().plusDays(10));
+        Authentication notfall = plattform("sub-u8-sprung-notfall");
+        ruf(post("/api/v1/admin/tenants/" + DEMO + "/unterstuetzung/notfall", Map.of("standorte",
+                List.of(standort.toString()), "umfang", "einrichten_und_bedienen", "grund", "Sprung-Probe")),
+                notfall, 201);
+        Authentication admin = plattform("sub-u8-sprung-admin");
+        ZugriffKontextLader offen = new ZugriffKontextLader(zugriffe, new SimpleMeterRegistry(), true);
         try {
+            ZugriffKontextLader.Ergebnis perKopf = offen.laden(admin, DEMO.toString());
+            assertThat(perKopf.abgewiesen()).as("Plattform, X-Kundenbereich ohne Unterstützung").isFalse();
+            assertThat(perKopf.zugriff().zugang()).isEqualTo(ZugriffContext.Zugang.UMSCHALTER);
+            assertThat(perKopf.zugriff().kundenbereich()).isEqualTo(DEMO);
+            assertThat(perKopf.zugriff().modus()).as("der ganze Kundenbereich").isEqualTo(ZugriffContext.Modus.UNTERNEHMEN);
+            assertThat(TenantContext.get()).as("der Kundenbereich der Anfrage").isEqualTo(DEMO);
+            TenantContext.clear();
+
             TenantContext.set(DEMO);
-            assertThat(ohneUmschalter.laden(support, null).abgewiesen()).as("ohne Gewährung abgewiesen").isTrue();
-            TenantContext.set(DEMO);
-            assertThat(ohneUmschalter.laden(partner(sub), DEMO.toString()).abgewiesen())
-                    .as("mit Gewährung weiterhin herein").isFalse();
+            assertThat(offen.laden(admin, null).zugriff().zugang()).as("Plattform, X-Tenant-Id")
+                    .isEqualTo(ZugriffContext.Zugang.UMSCHALTER);
+            TenantContext.clear();
+
+            assertThat(offen.laden(admin, "kein-mandant").abgewiesen()).as("keine Kennung im Kopf").isTrue();
+            assertThat(offen.laden(partner("sub-u8-sprung-fremd"), DEMO.toString()).abgewiesen())
+                    .as("Partner ohne Gewährung bleibt draußen, auch bei offenem Umschalter").isTrue();
+            assertThat(offen.laden(partner(partnerSub), DEMO.toString()).zugriff().zugang())
+                    .as("Partner mit Gewährung").isEqualTo(ZugriffContext.Zugang.UNTERSTUETZUNG);
+            assertThat(offen.laden(notfall, DEMO.toString()).zugriff().zugang())
+                    .as("eine wirksame Unterstützung der Plattform geht vor").isEqualTo(ZugriffContext.Zugang.UNTERSTUETZUNG);
         } finally {
             TenantContext.clear();
         }
+
+        // Der Not-Aus: dieser Testlauf hat den Umschalter AUS - dann gilt für die Plattform wieder nur die
+        // Unterstützung, auf beiden Köpfen.
+        assertThat(ruf(get("/api/v1/sites"), admin, 404, KUNDENBEREICH, DEMO.toString())).isNotNull();
+        assertThat(ruf(get("/api/v1/sites"), admin, 404, TENANT, DEMO.toString())).isNotNull();
+        assertThat(ruf(get("/api/v1/sites"), notfall, 200, KUNDENBEREICH, DEMO.toString())).isNotNull();
+        assertThat(ruf(get("/api/v1/sites"), partner(partnerSub), 200, KUNDENBEREICH, DEMO.toString())).isNotNull();
     }
 
     // ================================================================= Helfer

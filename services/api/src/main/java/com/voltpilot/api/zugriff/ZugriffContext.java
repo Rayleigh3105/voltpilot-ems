@@ -46,7 +46,10 @@ public final class ZugriffContext {
         KONTO("konto"),
         /** Partner- oder Plattform-Konto: {@code X-Kundenbereich}, angenommen gegen eine wirksame Unterstützung. */
         UNTERSTUETZUNG("unterstuetzung"),
-        /** Plattform-Konto: der heutige Mandanten-Umschalter {@code X-Tenant-Id} — bis IP-8 (AP-03 W3). */
+        /**
+         * Plattform-Konto am Mandanten-Umschalter (AP-03 W3): {@code X-Tenant-Id}, oder {@code X-Kundenbereich} ohne
+         * wirksame Unterstützung — beides nur, solange {@code umschalter-enabled} offen ist.
+         */
         UMSCHALTER("umschalter");
 
         private final String code;

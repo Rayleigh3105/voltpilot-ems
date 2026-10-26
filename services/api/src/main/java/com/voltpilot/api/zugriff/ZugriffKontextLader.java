@@ -30,15 +30,18 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li><b>Kundenkonto</b> ({@code KONTO_benutzer}): der Kundenbereich bleibt der aus dem Token; geladen werden die
  *       wirksamen Zuweisungen. Ein Kundenkonto wird hier NIE abgewiesen — noch setzt niemand durch (IP-5 ff.).</li>
- *   <li><b>Partner und Plattform mit {@code X-Kundenbereich}</b>: angenommen NUR gegen eine wirksame Unterstützung
+ *   <li><b>Partner und Plattform mit {@code X-Kundenbereich}</b>: angenommen gegen eine wirksame Unterstützung
  *       des Kontos in genau diesem Kundenbereich — Partner: Installateur; Plattform: VoltPilot oder Notfall-Zugriff.
- *       Dann ist er der Kundenbereich der Anfrage ({@code TenantContext}); sonst abgewiesen.</li>
+ *       Dann ist er der Kundenbereich der Anfrage ({@code TenantContext}). Ohne sie wird ein Partner IMMER
+ *       abgewiesen; eine Plattform nur, solange der Umschalter zu ist — offen nimmt sie den Kundenbereich wie am
+ *       Umschalter an (Zugang {@code umschalter}, siehe unten). Eine wirksame Unterstützung geht dabei vor.</li>
  *   <li><b>Partner ohne den Kopf</b>: abgewiesen.</li>
  *   <li><b>Plattform ohne den Kopf</b>: der Mandanten-Umschalter {@code X-Tenant-Id} — mit ihm der Kundenbereich,
- *       ohne ihn keiner. <b>Er ist seit IP-8 abschaltbar</b> ({@code voltpilot.uems.unterstuetzung.umschalter-enabled},
- *       Vorgabe AUS seit IP-15): AUS wird eine Plattform ohne wirksame Unterstützung auf jeder
- *       Kundenroute abgewiesen wie ein Partner ohne Gewährung — das ist der Satz aus A5 („nicht der heutige
- *       {@code X-Tenant-Id}-Vollzugriff"). Die Portal-Umstellung (IP-15) verwendet diesen Weg auch für die Plattform.</li>
+ *       ohne ihn keiner. <b>Er ist seit IP-8 abschaltbar</b> ({@code voltpilot.uems.unterstuetzung.umschalter-enabled}).
+ *       Von IP-15 bis zum 26.10.2026 war die Vorgabe AUS (A5: „nicht der heutige {@code X-Tenant-Id}-Vollzugriff");
+ *       seither ist sie AN, nach der Entscheidung des Betreibers, dass die Plattform-Administration wieder in jeden
+ *       Kundenbereich springt (alle Kunden haben eingewilligt). AUS bleibt der Not-Aus: eine Plattform ohne wirksame
+ *       Unterstützung wird dann auf jeder Kundenroute abgewiesen wie ein Partner ohne Gewährung.</li>
  * </ul>
  *
  * <p>Die Kontoart kommt allein aus {@code KONTO_*} des {@link KeycloakRealmRoleConverter}. Ein Lesefehler bei der
@@ -59,13 +62,13 @@ public class ZugriffKontextLader {
     private volatile Clock uhr = Clock.systemUTC();
 
     public ZugriffKontextLader(ZugriffRepository zugriffe, MeterRegistry metriken,
-            @Value("${voltpilot.uems.unterstuetzung.umschalter-enabled:false}") boolean umschalter) {
+            @Value("${voltpilot.uems.unterstuetzung.umschalter-enabled:true}") boolean umschalter) {
         this.zugriffe = zugriffe;
         this.metriken = metriken;
         this.umschalter = umschalter;
     }
 
-    /** Gilt der Mandanten-Umschalter {@code X-Tenant-Id} auf Kundenrouten noch? (AP-03 W3, IP-8) */
+    /** Gilt der Mandanten-Umschalter der Plattform auf Kundenrouten? (AP-03 W3, IP-8; offen seit 26.10.2026) */
     public boolean umschalterGilt() {
         return umschalter;
     }
@@ -270,6 +273,13 @@ public class ZugriffKontextLader {
             } else {
                 TenantContext.set(vorher);
             }
+        }
+        if (zeilen.isEmpty() && konto == Konto.PLATTFORM && umschalter) {
+            // Der Sprung der Plattform-Administration (Entscheidung vom 26.10.2026): das Portal schickt auch für
+            // sie X-Kundenbereich. Ohne Unterstützung gilt bei offenem Umschalter derselbe Zugang wie über
+            // X-Tenant-Id - ganzer Kundenbereich, derselbe Urheber im Protokoll. Ein Partner kommt hier nie hin.
+            TenantContext.set(kandidat);
+            return Ergebnis.mit(new Zugriff(sub, konto, kandidat, Zugang.UMSCHALTER, List.of(), jetzt));
         }
         if (zeilen.isEmpty()) {
             zaehle("abgewiesen");

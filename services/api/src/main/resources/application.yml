@@ -609,12 +609,14 @@ voltpilot:
     # `enabled` ist der Not-Aus - Vorgabe AN, im Testlauf AUS (surefire).
     unterstuetzung:
       enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_ENABLED:true}
-      # AP-03 W3: gilt der Mandanten-Umschalter X-Tenant-Id auf KUNDENrouten noch?
-      # IP-15: Produktion AUS. Kundenflächen verlangen gewährte Unterstützung oder
-      # Notfall-Zugriff über X-Kundenbereich. Nur das lokale Kompatibilitätsprofil
-      # behält den alten Umschalter ausdrücklich für Bestandsnachweise.
+      # AP-03 W3: gilt der Mandanten-Umschalter der Plattform auf KUNDENrouten?
+      # AN seit 26.10.2026 (Entscheidung des Betreibers, alle Kunden haben eingewilligt):
+      # die Plattform-Administration springt wieder in jeden Kundenbereich, über
+      # X-Tenant-Id oder X-Kundenbereich, auch ohne Unterstützung (ZugriffKontextLader).
+      # IP-15 bis 26.10.2026 war die Vorgabe AUS. AUS bleibt der Not-Aus: dann nur mit
+      # gewährter Unterstützung oder Notfall-Zugriff. Partner betrifft der Schalter nie.
       # /api/v1/admin/** (Plattform-Betrieb) ist davon nie betroffen.
-      umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:false}
+      umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:true}
     # UEMS AP-07 IP-12: der VERDICHTUNGS-LAUF der Speicherklasse Viertelstunden-
     # werte - alle fuenf Minuten bildet er aus der Menge der Rohwerte der
     # Arbeitsliste die vorlaeufigen Intervalle (E6: JEDE Reihe) und faehrt
