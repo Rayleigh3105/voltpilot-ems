@@ -48,6 +48,19 @@ const (
 	ocppReadbackInterval = 60 * time.Second
 	// ocppCallTimeout bounds a single request to a station.
 	ocppCallTimeout = 10 * time.Second
+	// ocppCommissionTimeout bounds a WHOLE set-up run (W-08). Every request in
+	// it has its own deadline (csms.CallTimeout); one deadline around all of
+	// them failed a station that answers in 1.3 s, because a set-up is eight to
+	// two dozen requests. The pass blocks for the run, so it stays below the
+	// dead man's switch of the other stations (csms.TxProfileDuration, 120 s)
+	// minus one tick.
+	ocppCommissionTimeout = 90 * time.Second
+	// ocppCommissionRetryMin / Max pace a set-up that failed: the first retry
+	// waits one tick, every further one twice as long, at most five minutes.
+	// Without it a failing station was set up again on every change signal -
+	// every meter value, every status.
+	ocppCommissionRetryMin = ocppTickInterval
+	ocppCommissionRetryMax = 5 * time.Minute
 	// ocppLogInterval rate-limits the repeated-failure log line: a station
 	// that has been unreachable for an hour must not write 180 lines about it
 	// (the OTA-blocker lesson - log on CHANGE, then rarely).
@@ -85,10 +98,13 @@ type ocppRuntime struct {
 	// of a sample the park has not decided on yet (bezugswaechter_anteil.go).
 	planStichprobe time.Time
 	// commissioned fingerprints what a station was last set up WITH, so a
-	// reconnect or a changed site limit re-commissions and nothing else does.
+	// reboot or a changed site limit re-commissions and nothing else does - a
+	// reconnect without a reboot keeps the station's profiles (W-07).
 	commissioned map[string]string
-	lastReadback map[string]time.Time
-	lastErrLog   map[string]time.Time
+	// commissionRetry holds the backoff of a set-up that failed (W-08).
+	commissionRetry map[string]ocppCommissionRetry
+	lastReadback    map[string]time.Time
+	lastErrLog      map[string]time.Time
 	// active tracks which connectors held a live profile last tick, so a
 	// session that ended gets its profile CLEARED instead of leaving a limit
 	// the next vehicle would inherit.
@@ -159,15 +175,16 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 	}
 	rt := &ocppRuntime{
 		srv: srv, store: store, settings: set,
-		budget:       lastmgmt.NewBudgetTracker(),
-		boosts:       newBoostStore(),
-		wake:         make(chan struct{}, 1),
-		commissioned: map[string]string{},
-		lastReadback: map[string]time.Time{},
-		lastErrLog:   map[string]time.Time{},
-		active:       map[string]int{},
-		phases:       map[string]*lastmgmt.PhasePacer{},
-		phaseAsked:   map[string]time.Time{},
+		budget:          lastmgmt.NewBudgetTracker(),
+		boosts:          newBoostStore(),
+		wake:            make(chan struct{}, 1),
+		commissioned:    map[string]string{},
+		commissionRetry: map[string]ocppCommissionRetry{},
+		lastReadback:    map[string]time.Time{},
+		lastErrLog:      map[string]time.Time{},
+		active:          map[string]int{},
+		phases:          map[string]*lastmgmt.PhasePacer{},
+		phaseAsked:      map[string]time.Time{},
 	}
 	a.ocpp = rt
 	// Protocol events have their own durable queue: a WAN outage must not erase
@@ -557,8 +574,25 @@ func ocppAllocatable(v lastmgmt.BudgetVerdict, reservedKw float64) float64 {
 	return 0
 }
 
+// ocppCommissionRetry is the backoff of one station's failed set-up: which
+// set-up failed, how often in a row, and when the next attempt may run.
+type ocppCommissionRetry struct {
+	fp    string
+	fails int
+	next  time.Time
+}
+
+// ocppCommissionBackoff is the wait after the n-th failure in a row.
+func ocppCommissionBackoff(fails int) time.Duration {
+	d := ocppCommissionRetryMin
+	for i := 1; i < fails && d < ocppCommissionRetryMax; i++ {
+		d *= 2
+	}
+	return min(d, ocppCommissionRetryMax)
+}
+
 // ocppCommission installs the two permanent profiles when the station is new,
-// reconnected, or the site's numbers moved.
+// rebooted, or the site's numbers moved.
 func (a *Agent) ocppCommission(ctx context.Context, c csms.ChargerState, planableKw float64, safe lastmgmt.SafeDefault, now time.Time) {
 	rt := a.ocpp
 	if !safe.Computable {
@@ -577,26 +611,41 @@ func (a *Agent) ocppCommission(ctx context.Context, c csms.ChargerState, planabl
 			maxKw = r
 		}
 	}
-	// The fingerprint includes the CONNECTION generation, so a station that
-	// rebooted and may have lost its profiles is set up again.
-	fp := fmt.Sprintf("%d|%d|%s|%.3f|%.3f", c.ConnectedAt.UnixNano(), c.BootedAt.UnixNano(), rt.srv.ControlPolicy().SafetyKey(), maxKw, safe.PerConnectorKw)
+	// The fingerprint includes the BOOT generation, so a station that rebooted
+	// and may have lost its profiles is set up again. The connection is
+	// deliberately not in it (W-07): a station that only lost its socket kept
+	// its profiles, and setting it up again would cap its car at 0 W first.
+	fp := fmt.Sprintf("%d|%s|%.3f|%.3f", c.BootedAt.UnixNano(), rt.srv.ControlPolicy().SafetyKey(), maxKw, safe.PerConnectorKw)
 	rt.mu.Lock()
-	same := rt.commissioned[c.ID] == fp
+	same := rt.commissioned[c.ID] == fp && c.ProfilesInForce()
+	retry := rt.commissionRetry[c.ID]
 	rt.mu.Unlock()
 	if same {
 		return
 	}
+	if retry.fp != fp {
+		retry = ocppCommissionRetry{fp: fp}
+	} else if now.Before(retry.next) {
+		return
+	}
 
-	cctx, cancel := context.WithTimeout(ctx, ocppCallTimeout)
+	cctx, cancel := context.WithTimeout(ctx, ocppCommissionTimeout)
 	defer cancel()
 	if err := rt.srv.Commission(cctx, c.ID, maxKw, safe.PerConnectorKw, csms.DefaultMeterInterval); err != nil {
+		retry.fails++
+		retry.next = now.Add(ocppCommissionBackoff(retry.fails))
+		rt.mu.Lock()
+		rt.commissionRetry[c.ID] = retry
+		rt.mu.Unlock()
 		rt.logThrottled("commission:"+c.ID, now, func() {
-			slog.Warn("Ladesäule konnte nicht eingerichtet werden", "charge_point_id", c.ID, "err", err)
+			slog.Warn("Ladesäule konnte nicht eingerichtet werden", "charge_point_id", c.ID, "err", err,
+				"fails", retry.fails, "retry_in", ocppCommissionBackoff(retry.fails).String())
 		})
 		return
 	}
 	rt.mu.Lock()
 	rt.commissioned[c.ID] = fp
+	delete(rt.commissionRetry, c.ID)
 	rt.mu.Unlock()
 }
 
@@ -1046,7 +1095,7 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 		oc := state.OcppCharger{
 			ID: c.ID, Label: c.Label, Priority: c.Priority, Connected: c.Connected,
 			Vendor: c.Vendor, Model: c.Model, Firmware: c.Firmware,
-			Ready: !c.CommissionedAt.IsZero() && c.Connected && !c.CommissionedAt.Before(c.BootedAt) && !c.CommissionedAt.Before(c.ConnectedAt), Note: c.CommissionError,
+			Ready: c.ProfilesInForce(), Note: c.CommissionError,
 			// Der AUFGELÖSTE Wert (abwesend = hinter dem Haus): die Karte und
 			// der Herzschlag sollen nicht beide dieselbe Vorgabe-Regel führen.
 			Connection: c.ConnectionOrHaus(),
@@ -1234,6 +1283,7 @@ func (a *Agent) OcppSaveSettings(req lastmgmt.SettingsRequest) (lastmgmt.Setting
 	}
 	rt.settings = next
 	rt.commissioned = map[string]string{}
+	rt.commissionRetry = map[string]ocppCommissionRetry{}
 	rt.mu.Unlock()
 
 	if err := rt.store.Save(next); err != nil {
@@ -1249,6 +1299,7 @@ func (a *Agent) ocppForget(id string) {
 	rt := a.ocpp
 	rt.mu.Lock()
 	delete(rt.commissioned, id)
+	delete(rt.commissionRetry, id)
 	rt.mu.Unlock()
 }
 

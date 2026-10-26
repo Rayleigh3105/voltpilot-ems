@@ -44,6 +44,9 @@ type Config struct {
 	RejectFullConfiguration bool
 	// MeterInterval is how often it reports meter values. 0 = 10 s.
 	MeterInterval time.Duration
+	// ReplyDelay makes the station answer every configuration and
+	// Smart-Charging request this late - a firmware on a slow WLAN. 0 = at once.
+	ReplyDelay time.Duration
 	// Now is the clock (injectable, so a rig can compress time).
 	Now func() time.Time
 }
@@ -328,7 +331,15 @@ func (s *Station) PublishMeterValues() error {
 
 // --- OCPP handlers ---
 
+// answerLate holds a reply for Config.ReplyDelay.
+func (s *Station) answerLate() {
+	if s.cfg.ReplyDelay > 0 {
+		time.Sleep(s.cfg.ReplyDelay)
+	}
+}
+
 func (s *Station) OnSetChargingProfile(r *smartcharging.SetChargingProfileRequest) (*smartcharging.SetChargingProfileConfirmation, error) {
+	s.answerLate()
 	p := r.ChargingProfile
 	amps := p.ChargingSchedule != nil && p.ChargingSchedule.ChargingRateUnit == types.ChargingRateUnitAmperes
 	if s.cfg.AmpsOnly && (s.cfg.AmpsVoltageV <= 0 || !amps) {
@@ -366,6 +377,7 @@ func (s *Station) OnSetChargingProfile(r *smartcharging.SetChargingProfileReques
 }
 
 func (s *Station) OnClearChargingProfile(r *smartcharging.ClearChargingProfileRequest) (*smartcharging.ClearChargingProfileConfirmation, error) {
+	s.answerLate()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if r.Id == nil {
@@ -379,6 +391,7 @@ func (s *Station) OnClearChargingProfile(r *smartcharging.ClearChargingProfileRe
 }
 
 func (s *Station) OnGetCompositeSchedule(r *smartcharging.GetCompositeScheduleRequest) (*smartcharging.GetCompositeScheduleConfirmation, error) {
+	s.answerLate()
 	s.mu.Lock()
 	list := s.profileList()
 	s.mu.Unlock()
@@ -395,6 +408,7 @@ func (s *Station) OnGetCompositeSchedule(r *smartcharging.GetCompositeScheduleRe
 }
 
 func (s *Station) OnGetConfiguration(r *core.GetConfigurationRequest) (*core.GetConfigurationConfirmation, error) {
+	s.answerLate()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(r.Key) == 0 && s.cfg.RejectFullConfiguration {
@@ -423,6 +437,7 @@ func (s *Station) OnGetConfiguration(r *core.GetConfigurationRequest) (*core.Get
 }
 
 func (s *Station) OnChangeConfiguration(r *core.ChangeConfigurationRequest) (*core.ChangeConfigurationConfirmation, error) {
+	s.answerLate()
 	s.mu.Lock()
 	s.config[r.Key] = r.Value
 	s.mu.Unlock()

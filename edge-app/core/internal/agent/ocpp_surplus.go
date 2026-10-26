@@ -119,9 +119,28 @@ func (a *Agent) ocppSurplus(now time.Time, set lastmgmt.Settings) lastmgmt.Surpl
 
 // ocppSurplusFor is the same derivation under an EXPLICIT lane policy (P5): the
 // site default, or the most restrictive source any station declared for itself.
+//
+// ⚠ A blind lane names the wallbox when a charging station reports no power
+// (W-06): the lane's own sentence blames the connection point, and a customer
+// whose grid meter works would look for the fault in the wrong place.
 func (a *Agent) ocppSurplusFor(now time.Time, set lastmgmt.Settings,
 	lane lastmgmt.SurplusPolicy) lastmgmt.SurplusVerdict {
-	return a.ocpp.budget.Surplus(now, lane, set.StoragePriority)
+	v := a.ocpp.budget.Surplus(now, lane, set.StoragePriority)
+	if v.Blind && a.ocpp.srv.Snapshot().PowerUnreported(now, ocppMeterMaxAge) {
+		v.Reason = ocppPowerUnreportedReason(v.Active)
+	}
+	return v
+}
+
+// ocppPowerUnreportedReason is the blind lane's sentence when the wallbox is
+// the gap; solarOnly mirrors the lane's own two sentences.
+func ocppPowerUnreportedReason(solarOnly bool) string {
+	if solarOnly {
+		return "Die Wallbox meldet keine Leistung — ohne diesen Messwert lässt sich kein " +
+			"Sonnenüberschuss belegen, bei „Nur Sonnenstrom“ wird dann nicht geladen."
+	}
+	return "Die Wallbox meldet keine Leistung — ohne diesen Messwert lässt sich der " +
+		"Sonnenanteil nicht belegen, es gilt allein Ihre Anschlussgrenze."
 }
 
 // ocppLanePolicy is the policy the SITE lane is derived under (P5).

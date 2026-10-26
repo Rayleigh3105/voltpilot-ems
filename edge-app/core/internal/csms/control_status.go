@@ -79,7 +79,7 @@ func (s *Server) ControlStatus(enabled bool, now time.Time) ControlStatus {
 	for _, declared := range list {
 		c := s.chargers[declared.ID]
 		station := ControlStation{ID: c.ID, Connected: c.Connected, CapabilitiesRead: c.Capabilities.Read,
-			ProfilesAccepted: c.Connected && !c.CommissionedAt.IsZero() && !c.CommissionedAt.Before(c.BootedAt) && !c.CommissionedAt.Before(c.ConnectedAt),
+			ProfilesAccepted: c.ProfilesInForce(),
 			Note:             c.CommissionError, Connectors: []ControlConnector{},
 			PhaseSwitchSupported: cloneBool(c.Capabilities.PhaseSwitch)}
 		for _, con := range c.Connectors {

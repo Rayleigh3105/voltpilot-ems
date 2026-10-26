@@ -23,9 +23,22 @@ import (
 	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/firmware"
+	"github.com/lorenzodonini/ocpp-go/ocpp1.6/remotetrigger"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/smartcharging"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/lorenzodonini/ocpp-go/ws"
+)
+
+// Websocket liveness (W-07). The library closes a socket after its read wait
+// without any frame, and as a server it never pings unless told to. An idle
+// station (no car, nothing to meter) whose firmware pings rarely or never was
+// therefore dropped every minute, reconnected and was set up again. The box
+// now pings every station itself; any RFC 6455 stack answers with a pong, and
+// every pong, message or ping of the station re-arms the read wait. Variables
+// only so a test can compress them.
+var (
+	socketPingPeriod = 30 * time.Second
+	socketPongWait   = 60 * time.Second
 )
 
 // transport owns the ocpp-go central system and its websocket server.
@@ -49,6 +62,8 @@ func newTransport(s *Server, port int, path string) *transport {
 	upstream := ws.NewServer()
 	timeouts := ws.NewServerTimeoutConfig()
 	timeouts.WriteWait = commandSocketWriteWait
+	timeouts.PingWait = socketPongWait
+	timeouts.PingPeriod, timeouts.PongWait = socketPingPeriod, socketPongWait
 	upstream.SetTimeoutConfig(timeouts)
 	wsrv := &journalWsServer{Server: upstream, journal: s.journal}
 	cs := ocpp16.NewCentralSystem(nil, wsrv)
@@ -296,6 +311,7 @@ func (h *coreHandler) OnAuthorize(id string, req *core.AuthorizeRequest) (*core.
 // OnStartTransaction opens a session and hands back its id.
 func (h *coreHandler) OnStartTransaction(id string, req *core.StartTransactionRequest) (*core.StartTransactionConfirmation, error) {
 	h.srv.authorized(req.IdTag) // also observes the pseudonym; admission is atomic below
+	h.srv.observeStationClock(id, req.Timestamp.Time, h.srv.opts.Now())
 	txID := h.srv.onStartTransaction(id, req.ConnectorId, req.IdTag, req.MeterStart, req.Timestamp.Time)
 	if txID == 0 {
 		if !h.srv.authorized(req.IdTag) || !h.srv.startReady(id) {
@@ -307,12 +323,20 @@ func (h *coreHandler) OnStartTransaction(id string, req *core.StartTransactionRe
 }
 
 // OnStopTransaction closes the session and folds in the final meter values.
+// The stop time is the station's "now" and anchors its clock (W-09).
 func (h *coreHandler) OnStopTransaction(id string, req *core.StopTransactionRequest) (*core.StopTransactionConfirmation, error) {
 	now := h.srv.opts.Now()
+	var stoppedAt time.Time
+	if req.Timestamp != nil {
+		stoppedAt = req.Timestamp.Time
+	}
+	clock := newStationClock(stoppedAt, now)
+	h.srv.observeStationClock(id, stoppedAt, now)
 	for _, mv := range req.TransactionData {
 		samples := mapSamples(mv.SampledValue)
-		h.srv.emitLiveSampledValues(samples, mv.Timestamp.Time, now)
-		h.srv.onMeterSample(id, connectorOfTransaction(h.srv, id, req.TransactionId), ParseMeterValues(samples), mv.Timestamp.Time, now, &req.TransactionId)
+		at := clock.boxTime(dateTime(mv.Timestamp))
+		h.srv.emitLiveSampledValues(samples, at, now)
+		h.srv.onMeterSample(id, connectorOfTransaction(h.srv, id, req.TransactionId), ParseMeterValues(samples), at, now, &req.TransactionId)
 	}
 	if err := h.srv.onStopTransaction(id, req.TransactionId, now); err != nil {
 		return nil, err
@@ -321,19 +345,37 @@ func (h *coreHandler) OnStopTransaction(id string, req *core.StopTransactionRequ
 }
 
 // OnMeterValues folds a sampled reading into the connector it belongs to.
+// The newest sample anchors the station's clock (W-09).
 func (h *coreHandler) OnMeterValues(id string, req *core.MeterValuesRequest) (*core.MeterValuesConfirmation, error) {
 	now := h.srv.opts.Now()
+	var newest time.Time
+	for _, mv := range req.MeterValue {
+		if t := dateTime(mv.Timestamp); t.After(newest) {
+			newest = t
+		}
+	}
+	clock := newStationClock(newest, now)
+	h.srv.observeStationClock(id, newest, now)
 	for _, mv := range req.MeterValue {
 		samples := mapSamples(mv.SampledValue)
-		h.srv.emitLiveSampledValues(samples, mv.Timestamp.Time, now)
+		at := clock.boxTime(dateTime(mv.Timestamp))
+		h.srv.emitLiveSampledValues(samples, at, now)
 		r := ParseMeterValues(samples)
 		if r.Dropped > 0 {
 			h.srv.log.Debug("Messwerte einer Ladesäule teilweise verworfen",
 				"charge_point_id", id, "connector", req.ConnectorId, "dropped", r.Dropped)
 		}
-		h.srv.onMeterSample(id, req.ConnectorId, r, mv.Timestamp.Time, now, req.TransactionId)
+		h.srv.onMeterSample(id, req.ConnectorId, r, at, now, req.TransactionId)
 	}
 	return core.NewMeterValuesConfirmation(), nil
+}
+
+// dateTime is the time of an optional OCPP timestamp; zero when absent.
+func dateTime(t *types.DateTime) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	return t.Time
 }
 
 // OnDataTransfer refuses with UnknownVendorId — deliberately.
@@ -404,6 +446,8 @@ func (s *Server) emitLiveSampledValues(samples []SampledReading, sampled, receiv
 // or a timeout — never an open end.
 
 func await[T any](ctx context.Context, send func(cb func(T, error)) error) (T, error) {
+	ctx, cancel := context.WithTimeout(ctx, CallTimeout)
+	defer cancel()
 	var zero T
 	type result struct {
 		v   T
@@ -600,6 +644,21 @@ func (t *transport) getConfiguration(ctx context.Context, id string, keys []stri
 		}
 	}
 	return values, conf.UnknownKey, nil
+}
+
+// triggerHeartbeat asks the station for a Heartbeat; its answer carries the
+// box clock, which the station sets its own clock by (W-09).
+func (t *transport) triggerHeartbeat(ctx context.Context, id string) (string, error) {
+	conf, err := await(ctx, func(cb func(*remotetrigger.TriggerMessageConfirmation, error)) error {
+		return t.cs.TriggerMessage(id, cb, remotetrigger.MessageTrigger(core.HeartbeatFeatureName))
+	})
+	if err != nil {
+		return "", err
+	}
+	if conf == nil {
+		return "", errors.New("leere Antwort auf TriggerMessage")
+	}
+	return string(conf.Status), nil
 }
 
 func (t *transport) changeConfiguration(ctx context.Context, id, key, value string) (string, error) {

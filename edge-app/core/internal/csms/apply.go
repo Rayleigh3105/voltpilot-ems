@@ -1,6 +1,7 @@
 package csms
 
 import (
+	"context"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppcontrol"
 	"time"
 )
@@ -148,10 +149,109 @@ func (s *Server) onStatus(id string, connectorID int, status, errorCode string, 
 	}
 }
 
+// MaxStationClockSkew is how far a station's clock may be off the box clock
+// and its messages still count as live (W-09). A station's clock is its own:
+// two seconds ahead used to drop every meter value as "from the future". Within
+// the skew a message's times are moved onto the box clock (stationClock), so
+// every freshness rule downstream measures in ONE clock.
+const MaxStationClockSkew = 120 * time.Second
+
+// stationClock maps the times of ONE station message onto the box clock. The
+// anchor is the message's newest station time; it was "now" at the station
+// when the message left, so the offset between anchor and arrival is the
+// station clock's error, and every time in the message moves by it. Relative
+// ages inside the message survive, so an older sample in a batch stays older.
+type stationClock struct {
+	offset time.Duration
+	ok     bool
+}
+
+func newStationClock(anchor, received time.Time) stationClock {
+	if anchor.IsZero() {
+		return stationClock{}
+	}
+	off := anchor.Sub(received)
+	if off < -MaxStationClockSkew || off > MaxStationClockSkew {
+		return stationClock{}
+	}
+	return stationClock{offset: off, ok: true}
+}
+
+// boxTime is t on the box clock; zero when the message is not live (no
+// anchor, or the station clock is further off than MaxStationClockSkew).
+func (c stationClock) boxTime(t time.Time) time.Time {
+	if !c.ok || t.IsZero() {
+		return time.Time{}
+	}
+	return t.Add(-c.offset)
+}
+
+// startBoxTime is the box-clock time of a StartTransaction. A start within the
+// skew, or AHEAD of the box clock however far, began now: a station clock that
+// runs hours ahead (no clock after a power cut, local time without a zone)
+// must not date a session into the future. A start further in the past is one
+// the station queued while offline and keeps its own time.
+func startBoxTime(stationAt, received time.Time) time.Time {
+	if stationAt.IsZero() {
+		return time.Time{}
+	}
+	if received.Sub(stationAt) > MaxStationClockSkew {
+		return stationAt
+	}
+	return received
+}
+
+// clockResyncSkew is the station clock error from which the box asks the
+// station to set its clock again; clockResyncEvery paces the asking per
+// station. A second of skew is the wire's own rounding, not an error.
+const (
+	clockResyncSkew  = 5 * time.Second
+	clockResyncEvery = 10 * time.Minute
+)
+
+// observeStationClock compares a station's own "now" with the box clock and,
+// when they differ, has the station set its clock from a Heartbeat answer
+// (W-09). A station that sends meter values keeps skipping its heartbeat
+// (OCPP allows that), so the heartbeat interval alone does not correct it.
+// Asynchronous and best-effort: a station without RemoteTrigger just says so.
+func (s *Server) observeStationClock(id string, stationNow, received time.Time) {
+	if stationNow.IsZero() {
+		return
+	}
+	skew := stationNow.Sub(received)
+	if skew < clockResyncSkew && skew > -clockResyncSkew {
+		return
+	}
+	s.mu.Lock()
+	if last, ok := s.clockResyncAt[id]; ok && received.Sub(last) < clockResyncEvery {
+		s.mu.Unlock()
+		return
+	}
+	s.clockResyncAt[id] = received
+	s.mu.Unlock()
+	s.log.Info("Uhr der Ladesäule weicht von der Box ab — die Säule wird gebeten, sie zu stellen",
+		"charge_point_id", id, "skew", skew.Round(time.Second).String())
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), CallTimeout)
+		defer cancel()
+		t, err := s.liveTransport(id)
+		if err != nil {
+			return
+		}
+		if st, err := t.triggerHeartbeat(ctx, id); err != nil || st != "Accepted" {
+			s.log.Info("Ladesäule stellt ihre Uhr nicht auf Anfrage — sie folgt erst dem nächsten Herzschlag",
+				"charge_point_id", id, "status", st, "err", err)
+		}
+	}()
+}
+
 // onStartTransaction opens a session and returns the transaction id assigned.
 // Ids are monotonic and PERSISTED, so a box reboot never re-issues an id a
-// station still holds for a running session.
-func (s *Server) onStartTransaction(id string, connectorID int, idTag string, meterStartWh int, now time.Time) int {
+// station still holds for a running session. stationAt is the station's own
+// start time: it identifies a repeated start, while the session and the
+// start watermark run on the box clock (W-09).
+func (s *Server) onStartTransaction(id string, connectorID int, idTag string, meterStartWh int, stationAt time.Time) int {
+	at := startBoxTime(stationAt, s.opts.Now())
 	s.mu.Lock()
 	c, ok := s.chargers[id]
 	if !ok || connectorID < 1 || connectorID > maxConnectors {
@@ -159,10 +259,13 @@ func (s *Server) onStartTransaction(id string, connectorID int, idTag string, me
 		return 0
 	}
 	con := c.connector(connectorID)
+	key := ocppcontrol.Key(id, connectorID)
+	previousStart := s.startWatermarks[key]
 	if tx := con.Session; tx != nil {
 		// A repeated StartTransaction (lost confirmation / reconnect) keeps
 		// its durable ID. Different evidence cannot silently replace a live car.
-		if tx.StartedAt.Equal(now) && tx.MeterStartWh == meterStartWh && tx.TagRef == s.tagRefOf(idTag) {
+		// The live session's start is the connector's watermark.
+		if previousStart.stationTime().Equal(stationAt) && tx.MeterStartWh == meterStartWh && tx.TagRef == s.tagRefOf(idTag) {
 			txID := tx.TransactionID
 			s.mu.Unlock()
 			return txID
@@ -174,19 +277,17 @@ func (s *Server) onStartTransaction(id string, connectorID int, idTag string, me
 		s.mu.Unlock()
 		return 0
 	}
-	key := ocppcontrol.Key(id, connectorID)
-	previousStart := s.startWatermarks[key]
-	if now.IsZero() || now.Before(previousStart.At) || (now.Equal(previousStart.At) && previousStart.MeterStartWh == meterStartWh && previousStart.TagRef == s.tagRefOf(idTag)) {
+	if at.IsZero() || at.Before(previousStart.At) || (stationAt.Equal(previousStart.stationTime()) && previousStart.MeterStartWh == meterStartWh && previousStart.TagRef == s.tagRefOf(idTag)) {
 		s.mu.Unlock()
 		return 0
 	}
-	s.startWatermarks[key] = startWatermark{At: now, MeterStartWh: meterStartWh, TagRef: s.tagRefOf(idTag)}
+	s.startWatermarks[key] = startWatermark{At: at, StationAt: stationAt, MeterStartWh: meterStartWh, TagRef: s.tagRefOf(idTag)}
 	txID := s.nextTxID
 	s.nextTxID++
 	con.Session = &Session{
 		TransactionID: txID,
 		IDTag:         idTag,
-		StartedAt:     now,
+		StartedAt:     at,
 		MeterStartWh:  meterStartWh,
 		// The pseudonym is minted HERE, where the privacy key lives, so no
 		// caller ever needs the plaintext to recognise a returning card (P7).
@@ -253,6 +354,7 @@ func (s *Server) onMeterValues(id string, connectorID int, r MeterReading, now t
 
 // MaxLiveMeterAge bounds admission into the realtime loop. The protocol
 // journal still retains every original sample, including historical batches.
+// The sample time is on the box clock (stationClock), never the station's.
 const MaxLiveMeterAge = 30 * time.Second
 
 func liveMeterTime(sampled, received time.Time) bool {
