@@ -63,8 +63,12 @@ Websocket, Station oder Container beweisbar.
   **Einzige Ausnahme ist die Quellen-Bahn selbst (W-11):** eine Ladung, die
   die Bahn gestartet hat, behält 5 min ihre Mindestleistung (`Pacing.MinRun`,
   das Minimum darf dann aus dem Netz kommen), eine Ladung, die die fehlende
-  Sonne nach einem Lauf gestoppt hat, startet frühestens nach 2 min wieder
-  (`MinPause`), getragen über `Allocation.HoldUntil`. Budget, §14a, Deckel,
+  Sonne nach einem Lauf DER BAHN gestoppt hat, startet frühestens nach 2 min
+  wieder (`MinPause`), getragen über `Allocation.HoldUntil` (der Stempel bleibt
+  nach Ablauf stehen und kennzeichnet so den Lauf der Bahn). Stoppt eine neu
+  gewählte Bahn einen Lauf von „Schnell laden" oder ist sie blind, gibt es
+  keine Mindestpause (Rig L15b: sonst nahm der niedrigere Rang 2 min lang die
+  Sonne). Budget, §14a, Deckel,
   Handeingriff und Ausfall-Profil wirken weiter sofort; ein Boost oder ein
   K3-Halter hinterlässt keine Haltezeit. **⚠ Kein Mindestlauf bei blinder
   Bahn** (ohne Messung keine Sonne behaupten) **und keiner an einer Säule mit
