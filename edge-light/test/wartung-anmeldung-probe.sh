@@ -479,6 +479,9 @@ bx 'grep -c "schluessel-holen.sh frist # vp-wartung-frist$" /etc/crontabs/root' 
 bx "grep -c 'ssh-rsa' $KEYS" | grep -qx 1 && bx "grep -q ' werkstatt\$' $KEYS" && ok "der dauerhafte Schluessel gilt im Tunnel weiter (steht in der Schluesseldatei)" || falsch "dauerhafter Schluessel in der Schluesseldatei"
 [ "$(bx 'md5sum < /etc/dropbear/authorized_keys')" = "$SUMME_DAUER" ] && ok "/etc/dropbear/authorized_keys unveraendert" || falsch "/etc/dropbear/authorized_keys unveraendert"
 grep -q 'Wartungsserver:     antwortet' "$ARBEIT/einrichten.1" && ok "Abschluss: der Wartungsserver antwortet" || falsch "Abschluss: der Wartungsserver antwortet"
+# Erster Lauf des Abholers: die Schluesseldatei gibt es noch nicht, und das ist keine Fehlzeile wert.
+! grep -q "can't open /etc/vp-wartung/keys/authorized_keys" "$ARBEIT/einrichten.1" &&
+  ok "erster Lauf des Abholers ohne Fehlzeile zur noch fehlenden Schluesseldatei" || falsch "erster Lauf des Abholers: Fehlzeile \"can't open /etc/vp-wartung/keys/authorized_keys\""
 grep -q "im offenen Fenster: der SSH-Schluessel, der im Portal am Techniker-Zugang hinterlegt ist" "$ARBEIT/einrichten.1" &&
   grep -q "ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.2" "$ARBEIT/einrichten.1" &&
   grep -q "dauerhaft:          1 Schluessel aus /etc/dropbear/authorized_keys" "$ARBEIT/einrichten.1" &&

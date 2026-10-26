@@ -376,6 +376,9 @@ describe('FernwartungPage', () => {
         within(anmeldung).getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 -L 8484:127.0.0.1:8484 root@10.10.16.2'),
       ).toBeInTheDocument();
       expect(within(anmeldung).getByText('http://127.0.0.1:8484')).toBeInTheDocument();
+      // Der direkte Weg: service-tunnel.sh gibt die Web-App für das Techniker-Netz frei.
+      expect(within(anmeldung).getByText('http://10.10.16.2:8484')).toBeInTheDocument();
+      expect(within(anmeldung).getByRole('button', { name: 'Adresse der Web-App kopieren' })).toBeEnabled();
       expect(within(anmeldung).getByRole('button', { name: 'SSH-Befehl kopieren' })).toBeEnabled();
       expect(within(anmeldung).getByRole('button', { name: 'Befehl für die Web-App kopieren' })).toBeEnabled();
       expect(within(anmeldung).getByTestId('fw-anmeldung-vorhanden')).toHaveTextContent(

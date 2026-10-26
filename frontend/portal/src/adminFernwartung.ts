@@ -645,6 +645,8 @@ export const SSH_ERZEUGEN: SshErzeugen[] = [
 export interface SshBefehle {
   /** Anmeldung an der Box. */
   ssh: string;
+  /** Die Web-App der Box direkt im Tunnel, ohne Anmeldung an der Box. */
+  webDirekt: string;
   /** Dieselbe Anmeldung, die zusätzlich die Web-App der Box auf den eigenen Rechner holt. */
   webApp: string;
   /** Wo die Web-App dann im Browser des Technikers liegt. */
@@ -653,13 +655,16 @@ export interface SshBefehle {
 
 /**
  * Die fertigen Befehle für ein offenes Fenster. `~` löst der SSH-Client selbst
- * auf, deshalb gilt dieselbe Zeile unter Windows und Linux. Die Web-App der Box
- * ist im Tunnel nicht direkt offen; sie kommt über die SSH-Anmeldung.
+ * auf, deshalb gilt dieselbe Zeile unter Windows und Linux. `service-tunnel.sh`
+ * gibt die Web-App beim Einrichten des Tunnels für das Techniker-Netz frei
+ * (docs/fernwartung.md, Web-App der Box im Fenster); der Weg über `ssh -L`
+ * bleibt für Boxen, deren Tunnel älter ist.
  */
 export function sshBefehle(boxAdresse: string): SshBefehle {
   const basis = `ssh -i ~/.ssh/${SSH_DATEI} -p ${BOX_SSH_PORT}`;
   return {
     ssh: `${basis} root@${boxAdresse}`,
+    webDirekt: `http://${boxAdresse}:${BOX_WEB_PORT}`,
     webApp: `${basis} -L ${BOX_WEB_PORT}:127.0.0.1:${BOX_WEB_PORT} root@${boxAdresse}`,
     webAdresse: `http://127.0.0.1:${BOX_WEB_PORT}`,
   };

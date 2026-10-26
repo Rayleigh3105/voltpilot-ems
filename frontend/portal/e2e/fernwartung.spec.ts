@@ -201,6 +201,7 @@ test('Fernwartung: ein offenes Fenster zeigt die fertigen Befehle, ohne SSH-Schl
     mit.getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 -L 8484:127.0.0.1:8484 root@10.10.16.2', { exact: true }),
   ).toBeVisible();
   await expect(mit).toContainText('danach im Browser: http://127.0.0.1:8484');
+  await expect(mit.getByText('http://10.10.16.2:8484', { exact: true })).toBeVisible();
   await expect(mit.getByTestId('fw-anmeldung-vorhanden')).toContainText(
     '„Alex (Laptop)“: Die Box ist verbunden und hat den SSH-Schlüssel SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc',
   );

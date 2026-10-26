@@ -274,7 +274,7 @@ schluesseldatei() {
   # liegt, BEVOR die Datei getauscht wird.
   sd_weg="$({
     printf '%s\n' "$s_fenster" | fenster_in | sed 's/^/n /'
-    fenster_in <"$KEYS" 2>/dev/null | sed 's/^/a /'
+    { fenster_in <"$KEYS"; } 2>/dev/null | sed 's/^/a /'
   } | awk '$1 == "n" { n[$2] = 1 } $1 == "a" && !($2 in n) { w++ } END { print w + 0 }')"
   if [ "$sd_weg" != 0 ]; then
     streichen=ja
@@ -300,7 +300,7 @@ sitzungen() {
   [ -n "$si_lauscher" ] || si_lauscher="$(cat "$PIDDATEI" 2>/dev/null)"
   for si_p in $si_alle; do
     [ "$si_p" != "$si_lauscher" ] || continue
-    si_cmd="$(tr '\0' ' ' <"/proc/$si_p/cmdline" 2>/dev/null)"
+    si_cmd="$({ tr '\0' ' ' <"/proc/$si_p/cmdline"; } 2>/dev/null)"
     case "$si_cmd" in dropbear\ * | */dropbear\ *) ;; *) continue ;; esac
     case "$si_cmd" in *" -D $KEYDIR "*) echo "$si_p" ;; esac
   done
@@ -317,7 +317,7 @@ urteil() {
   for u_k in $(pgrep -P "$1" 2>/dev/null); do
     # Zeilenumbrueche in Werten zu Leerzeichen: sonst koennte ein Wert (TERM
     # kommt vom Techniker) eine eigene Zeile SSH_PUBKEYINFO vortaeuschen.
-    u_m="$(tr '\n\0' ' \n' <"/proc/$u_k/environ" 2>/dev/null | sed -n 's/^SSH_PUBKEYINFO=//p')"
+    u_m="$({ tr '\n\0' ' \n' <"/proc/$u_k/environ"; } 2>/dev/null | sed -n 's/^SSH_PUBKEYINFO=//p')"
     u_art=unbekannt
     if ist_kennzahl "${u_m#vp?-}"; then
       case "$NL$MARKEN$NL" in
@@ -727,7 +727,7 @@ case "$ART" in
       echo "  im Fenster: keine"
     fi
     # Wer gerade angemeldet ist, und mit welcher Art von Schluessel.
-    MARKEN="$(marken <"$KEYS" 2>/dev/null)"
+    MARKEN="$({ marken <"$KEYS"; } 2>/dev/null)"
     st_d=0
     st_f=0
     st_g=0
