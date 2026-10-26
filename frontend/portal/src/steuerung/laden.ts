@@ -11,7 +11,7 @@
  */
 import type { Netzanschluss } from '../api';
 import { KW, zahl as ergebnisZahl } from '../uemsErgebnis';
-import { messwertAlter, type SpeicherFreigabe } from '../ladepunkte';
+import { einspeisungKw, messwertAlter, type SpeicherFreigabe } from '../ladepunkte';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import { quellenAnteil, type GeraetBild, type Reihen } from './bild';
 
@@ -166,7 +166,13 @@ export function hatSpeicherGrenze(grenze: (number | null)[] | undefined, von: nu
 export interface Band {
   anschlussKw: number;
   teile: { k: 'haus' | 'lp' | 'frei' | 'res'; kw: number; label: string }[];
+  /** Was das Haus gerade aus dem Netz zieht; null = nicht gemeldet ODER die Anlage speist ein. */
   hausKw: number | null;
+  /**
+   * Was die Anlage gerade einspeist (Audit W-14) - null, solange der Rest der
+   * Box positiv ist (dann ist er Hauslast). 0 = das Laden nimmt den Überschuss ganz.
+   */
+  einspeisungKw: number | null;
   ladenNetzKw: number;
   freiKw: number;
   ladenKw: number;
@@ -189,7 +195,11 @@ export function band(rahmen: LadeparkRahmen | null | undefined, lp: GeraetBild[]
     ladenNetz += netz;
     if (netz > 0.05) lps.push({ k: 'lp', kw: netz, label: g.kurz });
   }
-  const haus = rahmen?.hausLastKw ?? null;
+  // ⚠ Der Rest der Box ist `Netz − Laden` MIT Vorzeichen - bei Einspeisung
+  // negativ. Er heißt dann nicht „Haus" und macht „frei" nie größer als den
+  // Anschluss (Audit W-14).
+  const rest = rahmen?.hausLastKw ?? null;
+  const haus = rest != null && rest < 0 ? null : rest;
   const frei = Math.max(0, anschluss - abstand - (haus ?? 0) - ladenNetz);
   return {
     anschlussKw: anschluss,
@@ -200,6 +210,7 @@ export function band(rahmen: LadeparkRahmen | null | undefined, lp: GeraetBild[]
       { k: 'res', kw: abstand, label: 'Abstand' },
     ],
     hausKw: haus,
+    einspeisungKw: einspeisungKw(rest, laden),
     ladenNetzKw: ladenNetz,
     freiKw: frei,
     ladenKw: laden,

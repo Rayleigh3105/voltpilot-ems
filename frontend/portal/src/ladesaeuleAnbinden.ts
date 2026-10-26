@@ -24,17 +24,23 @@
  * **⚠ 3. Eingetragen ≠ gemeldet.** Dass eine Kennung in der Liste steht heißt,
  * dass die Box sie ANNEHMEN würde — nicht, dass eine Säule sie benutzt hat. Der
  * Abschluss wird deshalb ausschließlich aus dem gelesen, was die Box über
- * tatsächlich gesehene Säulen berichtet.
+ * tatsächlich gesehene Säulen berichtet. Auch die Box führt eine eingetragene,
+ * nie verbundene Kennung in ihrer Liste (`connected=false`, ohne `lastSeen`) -
+ * „in der Liste" ist also noch kein „gemeldet" (Audit W-04).
  */
 
 import type { Device } from './api';
-import type {
-  AllowedChargePoint,
-  ChargePoint,
-  ChargerConnection,
-  SiteCharging,
+import {
+  budgetFuer,
+  ladepunktSperre,
+  zeitpunktKurz,
+  type AllowedChargePoint,
+  type ChargePoint,
+  type ChargerConnection,
+  type SiteCharging,
 } from './ladepunkte';
 import { privateLanAddress } from './geraetSeite';
+import { zahl } from './zahl';
 
 // ---------------------------------------------------------------------------
 // Schritt 1: die Kennung
@@ -200,49 +206,182 @@ export function endpunkt(
 // Schritt 3: hat sie sich gemeldet?
 // ---------------------------------------------------------------------------
 
-/** Der Zustand des Wartens — er behauptet nie mehr, als gemeldet ist. */
+/**
+ * Der Zustand des Wartens — er behauptet nie mehr, als gemeldet ist.
+ *
+ * Drei Stufen (Audit W-04): „Wartet auf die Wallbox" (eingetragen, nie
+ * verbunden) · „Verbunden" (die Wallbox hat angerufen) · „Bereit zum Steuern"
+ * (Sicherheitsprofil bestätigt, und die Box darf Grenzen schreiben). Dazu
+ * „Getrennt" für eine, die schon da war, und `warn`, wo VoltPilot an einer
+ * verbundenen Wallbox nichts bewirkt.
+ */
 export interface MeldungSicht {
+  /** Hat sich die Wallbox unter dieser Kennung je gemeldet? */
   gemeldet: boolean;
   wort: string;
   satz: string;
-  ton: 'ok' | 'warten';
+  ton: 'ok' | 'warten' | 'warn';
 }
 
 /**
  * Hat sich die Säule bei der Box gemeldet?
  *
  * **⚠ Gelesen wird ausschließlich das GEMELDETE** (die Säulen-Liste des
- * Herzschlags), nie der eigene Eintrag — siehe Regel 3 oben.
+ * Herzschlags), nie der eigene Eintrag — siehe Regel 3 oben. Und auch in der
+ * Liste der Box zählt erst eine Säule, die wirklich angerufen hat.
  */
-export function meldung(charging: SiteCharging | null, kennung: string): MeldungSicht {
+export function meldung(charging: SiteCharging | null, kennung: string, nowMs?: number): MeldungSicht {
   const id = String(kennung ?? '').trim();
   const cp = id ? (charging?.chargers ?? []).find((c) => c.chargePointId === id) : undefined;
-  if (!cp) {
+  if (!cp || (!cp.connected && !cp.lastSeen)) {
     return {
       gemeldet: false,
-      wort: 'Wartet auf die Säule',
-      satz: 'Sobald sich die Säule unter dieser Kennung meldet, erscheint sie hier — mit Modell und Steckern, die sie selbst mitbringt.',
+      wort: 'Wartet auf die Wallbox',
+      satz: cp
+        ? 'Die VoltPilot-Box kennt diese Kennung, die Wallbox hat darunter aber noch nie angerufen. Prüfen Sie Adresse und Kennung in der Wallbox — beide müssen Zeichen für Zeichen stimmen.'
+        : 'Sobald sich die Wallbox unter dieser Kennung meldet, erscheint sie hier — mit Modell und Steckern, die sie selbst mitbringt.',
       ton: 'warten',
+    };
+  }
+  const sperre = ladepunktSperre(cp, budgetFuer(charging, cp), nowMs);
+  if (!cp.connected) {
+    return { gemeldet: true, wort: 'Getrennt', satz: `${sperre?.satz ?? 'Wallbox nicht erreichbar'}.`, ton: 'warten' };
+  }
+  if (sperre?.kind === 'wird_eingerichtet') {
+    return { gemeldet: true, wort: 'Verbunden', satz: `${verbundenSatz(cp, nowMs)} Ihr Sicherheitsprofil wird gerade hinterlegt.`, ton: 'warten' };
+  }
+  if (sperre) {
+    // ⚠ Erst hier sieht der Techniker vor Ort, ob die Wallbox steuerbar ist
+    // (Entscheid DZ-4: nur voll steuerbar anbinden) - der Satz der Box hängt an.
+    const note = String(cp.note ?? '').trim();
+    return {
+      gemeldet: true,
+      wort: 'Verbunden – nicht steuerbar',
+      satz: `${verbundenSatz(cp, nowMs)} ${sperre.satz}.${note && sperre.kind === 'keine_grenzen' ? ` ${note}` : ''}`,
+      ton: 'warn',
     };
   }
   return {
     gemeldet: true,
-    wort: cp.connected ? 'Verbunden' : 'Hat sich gemeldet',
-    satz: meldungsSatz(cp),
+    wort: 'Bereit zum Steuern',
+    satz: `${verbundenSatz(cp, nowMs)} Sie hat ihr Sicherheitsprofil bestätigt.`,
     ton: 'ok',
   };
 }
 
-function meldungsSatz(cp: ChargePoint): string {
+function verbundenSatz(cp: ChargePoint, nowMs?: number): string {
   const teile: string[] = [];
   const name = [cp.vendor, cp.model].filter(Boolean).join(' ').trim();
   if (name) teile.push(name);
   const stecker = (cp.connectors ?? []).length;
   if (stecker > 0) teile.push(stecker === 1 ? '1 Stecker' : `${stecker} Stecker`);
   const zusatz = teile.length ? ` (${teile.join(' · ')})` : '';
-  return cp.connected
-    ? `Die Säule ist verbunden${zusatz}.`
-    : `Die Säule hat sich gemeldet${zusatz}, ist gerade aber nicht verbunden.`;
+  const seit = cp.lastSeen ? zeitpunktKurz(cp.lastSeen, nowMs) : '';
+  return `Die Wallbox ist verbunden${zusatz}${seit ? `, zuletzt gemeldet ${seit} Uhr` : ''}.`;
+}
+
+// ---------------------------------------------------------------------------
+// Schritt 1c: die Nennleistung (Audit W-02, Zusatz aus dem Paket Cloud)
+// ---------------------------------------------------------------------------
+
+/**
+ * Die Frage nach der Nennleistung. Ohne sie plant die Cloud „Günstig“ und
+ * Ladeziele für diese Wallbox nicht - sie lässt sie dann ehrlich aus. Der Wert
+ * reist als `ratedKw` über die Anbinde-Route (`POST …/charging-config/
+ * charge-points`), die Box liest ihn als `rated_kw` im Ladesäulen-Eintrag.
+ */
+export const NENNLEISTUNG_FRAGE = 'Nennleistung je Stecker';
+
+export const NENNLEISTUNG_HILFE =
+  'Steht auf dem Typenschild der Wallbox. Mit ihr plant VoltPilot „Günstig“ und Ladeziele - ohne sie bleiben beide ungeplant.';
+
+/** Die Vorgabe: die übliche Haushalts-Wallbox. */
+export const NENNLEISTUNG_VORGABE_KW = 11;
+
+/** Die üblichen Stufen (einphasig 16 A, zweiphasig, dreiphasig 16 A und 32 A). */
+export const NENNLEISTUNG_AUSWAHL_KW: readonly number[] = [3.7, 7.4, 11, 22];
+
+/** Dieselbe Obergrenze wie der Server (`ChargingConfigService.MAX_RATED_KW`). */
+const NENNLEISTUNG_MAX_KW = 1000;
+
+/** „3,7" / „11" - die Zahl, wie sie im Feld steht. */
+export function nennleistungText(kw: number): string {
+  return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1, useGrouping: false }).format(kw);
+}
+
+/** Der Wert des Feldes in kW, oder `null`, solange er nicht gültig ist. */
+export function nennleistungWert(eingabe: string): number | null {
+  const kw = zahl(eingabe);
+  return kw != null && kw > 0 && kw <= NENNLEISTUNG_MAX_KW ? kw : null;
+}
+
+/** Was am Feld fehlt - `null`, wenn es gültig ist. */
+export function nennleistungFehler(eingabe: string): string | null {
+  if (!eingabe.trim()) return 'Bitte die Nennleistung in kW eintragen, z. B. 11.';
+  const kw = zahl(eingabe);
+  if (kw == null) return 'Bitte eine Zahl in kW eintragen, z. B. 11 oder 7,4.';
+  if (kw <= 0) return 'Die Nennleistung muss größer als 0 kW sein.';
+  if (kw > NENNLEISTUNG_MAX_KW) return `Mehr als ${NENNLEISTUNG_MAX_KW.toLocaleString('de-DE')} kW nimmt VoltPilot nicht an.`;
+  return null;
+}
+
+/** Die gespeicherte Nennleistung einer schon eingetragenen Kennung (`null` = keine). */
+export function nennleistungSoll(
+  eingetragen: AllowedChargePoint[] | null | undefined,
+  kennung: string,
+): number | null {
+  const id = String(kennung ?? '').trim();
+  const kw = (eingetragen ?? []).find((c) => c.chargePointId === id)?.ratedKw;
+  return typeof kw === 'number' && Number.isFinite(kw) && kw > 0 ? kw : null;
+}
+
+/**
+ * Was mitgeschickt wird - dieselbe Regel wie beim Anschluss: beim ERSTEN
+ * Eintragen immer (der Kunde hat die Vorgabe gesehen und stehen lassen), auf
+ * einer schon eingetragenen Kennung nur eine Änderung. Ein ungültiges Feld
+ * schickt nichts - der Knopf ist dann ohnehin gesperrt.
+ */
+export function nennleistungZumSenden(
+  wert: number | null,
+  soll: number | null,
+  schonEingetragen: boolean,
+): number | undefined {
+  if (wert == null) return undefined;
+  return schonEingetragen && soll === wert ? undefined : wert;
+}
+
+export interface NennleistungFeld {
+  /** Was im Feld steht. */
+  text: string;
+  wert: number | null;
+  /** Was am Feld fehlt; `null` = nichts (oder noch nichts zu prüfen). */
+  mangel: string | null;
+  /** Was mitreist (`ratedKw`); `undefined` = nichts. */
+  senden: number | undefined;
+}
+
+/**
+ * Das Feld als Ganzes. Eine NEUE Kennung startet mit der Vorgabe (11 kW).
+ * Eine schon eingetragene zeigt, was gespeichert ist - und hat sie keine
+ * Nennleistung, bleibt das Feld LEER statt 11 kW vorzutäuschen: unbekannt ist
+ * nicht falsch, geprüft wird erst, was jemand eintippt.
+ *
+ * @param eingabe die getippte Zahl; `null` = unberührt
+ */
+export function nennleistungFeld(
+  eingabe: string | null,
+  soll: number | null,
+  schonEingetragen: boolean,
+): NennleistungFeld {
+  const text = eingabe
+    ?? (soll != null ? nennleistungText(soll) : schonEingetragen ? '' : nennleistungText(NENNLEISTUNG_VORGABE_KW));
+  const wert = nennleistungWert(text);
+  return {
+    text,
+    wert,
+    mangel: eingabe == null && schonEingetragen ? null : nennleistungFehler(text),
+    senden: nennleistungZumSenden(wert, soll, schonEingetragen),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -414,7 +553,7 @@ export interface EingetrageneZeile {
   kennung: string;
   name: string;
   zustand: string;
-  ton: 'ok' | 'warten';
+  ton: MeldungSicht['ton'];
   /**
    * WO sie hängt — Soll (die Wahl des Kunden) und, wenn die Box etwas ANDERES
    * meldet, der Nachsatz dazu (Cockpit Phase 1 / C1).

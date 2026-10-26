@@ -9,7 +9,7 @@ import { api, type ChargingConfig } from '../api';
 import { Recht } from '../components/Recht';
 import { LADEPUNKT_UNGESTEUERT, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
 import { useRollen } from '../rollen';
-import type { SpeicherFreigabe } from '../ladepunkte';
+import { LADEPUNKT_DECKEL_TEXT, type LadepunktSperre, type SpeicherFreigabe } from '../ladepunkte';
 import type { FahrzeugWunsch, SiteFahrzeuge } from '../fahrzeugProfile';
 import { fahrzeugName, fahrzeugZeilen, kartenKurz } from '../fahrzeugProfile';
 import type { LadeparkRahmen } from '../verbraucherZone';
@@ -111,8 +111,11 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
           ))}
         </div>
         <p className="leise">
-          Aus dem Netz gerade: Haus {b.hausKw != null ? fKw(b.hausKw) : 'nicht gemeldet'}
-          {b.ladenNetzKw > 0.05 ? `, Laden ${fKw(b.ladenNetzKw)}` : ''}. Für Autos frei: <b style={{ color: 'var(--c-fg)' }}>{fKw(b.freiKw)}</b>. Laden mit Sonnenstrom belastet den Anschluss nicht.
+          {b.einspeisungKw != null
+            ? <>{b.einspeisungKw > 0.05 ? `Ihre Anlage speist gerade ${fKw(b.einspeisungKw)} ein` : 'Ihr Haus bezieht gerade keinen Netzstrom'}
+              {b.ladenNetzKw > 0.05 ? `; aus dem Netz lädt gerade ${fKw(b.ladenNetzKw)}` : ''}</>
+            : <>Aus dem Netz gerade: Haus {b.hausKw != null ? fKw(b.hausKw) : 'nicht gemeldet'}
+              {b.ladenNetzKw > 0.05 ? `, Laden ${fKw(b.ladenNetzKw)}` : ''}</>}. Für Autos frei: <b style={{ color: 'var(--c-fg)' }}>{fKw(b.freiKw)}</b>. Laden mit Sonnenstrom belastet den Anschluss nicht.
           {b.ladenKw > 0.05 ? ` Es laden gerade ${fKw(b.ladenKw)}.` : ''}
         </p>
       </div>
@@ -135,15 +138,21 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
   // Der Anlagen-Standard eines Ladepunkts, dessen Kunde nie gewählt hat (E5=A): ehrlich „immer sofort voll“.
   const ungesteuert = !g.eingriff && g.steuerart?.quelle === 'sofort';
   const karte = l?.karte ? liste(fahrzeuge?.fahrzeuge).find((f) => f.tagRef === l.karte) ?? null : null;
+  // Regelt VoltPilot diese Wallbox gerade gar nicht? (Audit W-01/W-05/W-12)
+  const sperre = l?.sperre ?? null;
+  const stumm = sperre?.kind === 'getrennt' || sperre?.kind === 'nie_gemeldet';
+  // ⚠ Ein volles Auto (SuspendedEV) bekommt keine Ladeankündigung (Audit W-21).
+  const autoPausiert = l?.zustand?.kind === 'auto_pausiert' ? l.zustand : null;
   let sub: string;
-  if (l?.angesteckt) {
+  if (stumm) sub = 'Ob ein Auto steckt, ist gerade unbekannt';
+  else if (l?.angesteckt) {
     const kurzKarte = l.karte ? kartenKurz(l.karte) : '';
     const wer = [karte?.name?.trim() || null, kurzKarte ? `Karte ${kurzKarte}…` : null].filter(Boolean).join(' · ') || (karte ? fahrzeugName(karte) : 'Ein Auto');
     sub = `${wer}${l.sitzungSeit ? ` · angesteckt seit ${uhrVon(r, Date.parse(l.sitzungSeit))}` : ''}`;
   } else sub = 'Kein Auto angesteckt';
   const platz = bild.rang.indexOf(g.id) + 1;
   const ansage = wahl === 'aus'
-    ? `Pausiert${g.eingriff?.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ' bis zum Abstecken'}. Danach wieder Smart.`
+    ? `Pausiert${g.eingriff?.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ` bis zum Abstecken, höchstens ${LADEPUNKT_DECKEL_TEXT}`}. Danach wieder Smart.`
     : wahl === 'schnell' && !ungesteuert
       ? 'Lädt so schnell es geht, nur für diese Ladung. Netzstrom erlaubt.'
       : null;
@@ -165,10 +174,11 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
     if (geplant) {
       for (let t = r.jetzt; t < zielBis; t++) if ((g.kw[t] ?? 0) > 0.02) fertig = t + 1;
     } else if (l?.angesteckt && vor?.vorschau.schafft) fertig = vor.vorschau.fertig;
-    zielSub = fertig != null ? `fertig voraussichtlich ${uhrTag(fertig)}` : !l?.angesteckt ? 'sobald ein Auto ansteckt' : 'reicht laut Schätzung nicht ganz';
+    zielSub = sperre ? 'wirkt gerade nicht' : fertig != null ? `fertig voraussichtlich ${uhrTag(fertig)}` : !l?.angesteckt ? 'sobald ein Auto ansteckt' : 'reicht laut Schätzung nicht ganz';
   }
   const saetze = vor ? vorschauSaetze(vor.vorschau, vor.abfahrt) : null;
-  const darf = rollen.darf('betriebsweise.aendern');
+  // ⚠ Nimmt die Wallbox keine Ladegrenzen an, ist jede Ladewahl eine leere Zusage (Audit W-05).
+  const darf = rollen.darf('betriebsweise.aendern') && sperre?.kind !== 'keine_grenzen';
   const oeffneWahl = (e: { currentTarget: HTMLElement }) => { e.currentTarget.focus(); oeffne({ art: 'womit', id: g.id }); };
   const zeilen = gesendet ? rueckmeldung(l, gesendet, r.nowMs, (ms) => uhrVon(r, ms)) : null;
   return (
@@ -181,7 +191,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
         </span>
         <span className="lp-kw">
           {an && g.jetztKw != null ? fKw(g.jetztKw) : '—'}
-          <small>{an ? herkunftWort(bild, r.jetzt) : l?.angesteckt ? g.pill[1] : 'kein Auto'}</small>
+          <small>{an ? herkunftWort(bild, r.jetzt) : stumm ? 'keine Verbindung' : l?.angesteckt ? g.pill[1] : 'kein Auto'}</small>
         </span>
       </div>
       <Recht aktion="handeingriff.setzen"><div className="lmodes" role="group" aria-label="Lademodus" style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
@@ -191,7 +201,8 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
             key={k}
             data-m={k}
             aria-pressed={wahl === k}
-            disabled={busy || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))}
+            // ⚠ Unter einer Sperre bleibt nur der Rückweg eines laufenden Eingriffs („Smart“).
+            disabled={busy || (sperre != null && !(k === 'smart' && g.eingriff)) || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))}
             onClick={(e) => {
               e.currentTarget.focus();
               if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
@@ -204,6 +215,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
           </button>
         ))}
       </div></Recht>
+      {sperre && <SperreHinweis sperre={sperre} />}
       {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
       {ansage && <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>}
       {ungesteuert && (
@@ -237,14 +249,22 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
                 <QuelleZeichen q={q} klein />
                 <span className="lq-t"><b>{LADEQUELLE[q]}</b><small>{LADEQUELLE_VERSPRECHEN[q]}</small></span>
                 {darf && <span className="lq-chev" aria-hidden="true"><Ic n="chevR" s={18} /></span>}
-                <span className="lq-mini">
-                  <VorschauBand v={vor.vorschau} abfahrt={vor.abfahrt} maxKw={g.nennKw ?? 11} h={36} preis={q === 'guenstig'}
-                    label={`${LADEQUELLE[q]}: geschätzte Ladeleistung bis ${uhrKurz(vor.abfahrt)} Uhr nach Herkunft`} />
-                </span>
-                <span className="lq-satz">
-                  {mitAuto(saetze.jetzt, !!l?.angesteckt)}
-                  {saetze.dann && <small>{saetze.dann} · Schätzung</small>}
-                </span>
+                {/* Die Vorschau ist eine Zusage - sie entfällt, solange VoltPilot
+                    nichts bewirkt oder das Auto selbst nichts nimmt. */}
+                {!sperre && !autoPausiert && (
+                  <span className="lq-mini">
+                    <VorschauBand v={vor.vorschau} abfahrt={vor.abfahrt} maxKw={g.nennKw ?? 11} h={36} preis={q === 'guenstig'}
+                      label={`${LADEQUELLE[q]}: geschätzte Ladeleistung bis ${uhrKurz(vor.abfahrt)} Uhr nach Herkunft`} />
+                  </span>
+                )}
+                {!sperre && (
+                  <span className="lq-satz">
+                    {autoPausiert
+                      ? [autoPausiert.word, autoPausiert.detail].filter(Boolean).join(' · ')
+                      : mitAuto(saetze.jetzt, !!l?.angesteckt)}
+                    {saetze.dann && !autoPausiert && <small>{saetze.dann} · Schätzung</small>}
+                  </span>
+                )}
               </WahlZeile>
             ) : (
               <WahlZeile darf={darf} label="Womit laden: noch nicht gewählt. Wählen" onClick={oeffneWahl}>
@@ -279,6 +299,16 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
         </ol>
       )}
     </section>
+  );
+}
+
+/** Warum VoltPilot an dieser Wallbox gerade nichts bewirkt - der Satz und seine Folge (Audit W-01/W-05/W-12). */
+function SperreHinweis({ sperre }: { sperre: LadepunktSperre }) {
+  return (
+    <div className="konflikt lq-sperre" role="status" data-sperre={sperre.kind}>
+      <Ic n="alert" s={18} />
+      <span><b>{sperre.satz}.</b> {sperre.folge}</span>
+    </div>
   );
 }
 

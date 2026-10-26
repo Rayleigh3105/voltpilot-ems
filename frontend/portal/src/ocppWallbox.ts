@@ -387,11 +387,17 @@ export function stationConnection(
     : stationFresh ? 'station' : 'none';
   const online = source === 'edge' ? fallback!.connected
     : source === 'station' ? Boolean(station?.connected) : false;
+  // ⚠ `reportedAt` ist die Uhr der BOX: sie belegt, dass die Meldung frisch ist,
+  // nicht, wann die Wallbox zuletzt da war. Meldet die Box die Wallbox als
+  // getrennt, ist ihr letzter Kontakt `lastSeen` (Audit W-12).
+  const edgeLastSeen = fallback?.connected
+    ? fallback.reportedAt ?? fallback.lastSeen ?? null
+    : fallback?.lastSeen ?? null;
   const lastSeen = source === 'edge'
-    ? fallback?.reportedAt ?? fallback?.lastSeen ?? null
+    ? edgeLastSeen
     : source === 'station'
       ? station?.connected ? station.lastSeen : station?.disconnectedAt ?? station?.lastSeen ?? null
-      : station?.lastSeen ?? fallback?.reportedAt ?? fallback?.lastSeen ?? null;
+      : station?.lastSeen ?? edgeLastSeen;
   const sendable = online && Boolean(station?.connected) && stationFresh;
 
   if (source === 'edge' && online) return {
@@ -491,6 +497,15 @@ export function wallboxConnectorSnapshot(
   };
 }
 
+/** „um 09:10 Uhr" am selben Tag, sonst „am 28.09. um 09:10 Uhr" (Audit W-12). */
+function kontaktZeit(iso: string, now: number): string {
+  const t = new Date(iso);
+  const uhr = t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return t.toDateString() === new Date(now).toDateString()
+    ? `um ${uhr} Uhr`
+    : `am ${t.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })} um ${uhr} Uhr`;
+}
+
 /** Customer-language state for one physical wallbox; raw OCPP stays secondary. */
 export function wallboxState(
   station: OcppStation | null,
@@ -534,7 +549,7 @@ export function wallboxState(
     kind: 'offline', tone: 'off', badge: 'Offline',
     sentence: 'Wallbox nicht erreichbar.',
     detail: connection.lastSeen
-      ? `Letzter Kontakt um ${new Date(connection.lastSeen).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr. Ein lokaler Ladevorgang kann an der Wallbox weiterlaufen.`
+      ? `Letzter Kontakt ${kontaktZeit(connection.lastSeen, now)}. Ein lokaler Ladevorgang kann an der Wallbox weiterlaufen.`
       : 'Ein lokaler Ladevorgang kann an der Wallbox weiterlaufen.',
     connectorId, connectorStatus: rawStatus, action: null, actionLabel: null,
   };

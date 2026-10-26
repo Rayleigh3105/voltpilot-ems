@@ -64,8 +64,10 @@ import {
   ladepunktBanner,
   chargerName,
   connectorName,
+  budgetFuer,
   ladepunktAktionen,
   ladepunktKeinEingriff,
+  ladepunktSperre,
   ladevorgangRows,
   type ChargePoint,
   type LadeZustandKind,
@@ -524,9 +526,14 @@ export function ladepunktZeilen(
       continue;
     }
     const quelleText = steuerart?.(c.entityId) ?? null;
+    // ⚠ Regelt VoltPilot diese Säule gar nicht (Box nicht freigegeben, Säule
+    // nimmt keine Grenzen an), bewirkt kein Eingriff etwas - der Schalter
+    // weicht dem Grund (Audit W-01/W-05). Nur der Rückweg eines schon
+    // laufenden Eingriffs bleibt.
+    const sperre = ladepunktSperre(c, budgetFuer(charging, c), nowMs);
     for (const row of rows) {
       const name = ladepunktName(c, row.connectorId);
-      const aktionen = ladepunktAktionen(budget, row);
+      const aktionen = sperre && !row.boost && !row.handeingriff ? [] : ladepunktAktionen(budget, row);
       const con = (c.connectors ?? []).find((k) => k.connectorId === row.connectorId);
       const kw = con ? aktuelleLeistung(con, nowMs) : null;
       const leer = ohneAuto(row.kind);
@@ -558,7 +565,9 @@ export function ladepunktZeilen(
         bis: null,
         ton: row.tone === 'stoerung' ? 'warn' : row.tone === 'laedt' ? 'ok' : 'off',
         aktionen,
-        keinEingriff: aktionen.length > 0 ? null : ladepunktKeinEingriff(budget, row),
+        keinEingriff: aktionen.length > 0
+          ? null
+          : sperre ? `${sperre.satz}. ${sperre.folge}` : ladepunktKeinEingriff(budget, row),
         // ⚠ Nur an einer LAUFENDEN Ladung: „Dienstwagen" über einem freien
         // Stecker wäre eine Aussage über ein Auto, das nicht da ist.
         fahrzeug: leer ? null : fahrzeug?.(row.tagRef) ?? null,

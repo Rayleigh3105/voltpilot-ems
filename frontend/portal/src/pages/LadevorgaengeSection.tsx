@@ -195,9 +195,12 @@ export function LadevorgaengeSection({
                   )}
                   {r.since && <span className="vp-lade-row-since">{r.since}</span>}
                 </span>
-                {(r.reason || r.nextTurn) && (
+                {/* ⚠ Der Zusatz benennt eine Lücke („Leistung veraltet · zuletzt
+                    10:40") - ohne ihn sähe eine verstummte Messung aus wie eine
+                    Säule ohne Messung ab Werk (Audit W-13). */}
+                {(r.reason || r.detail || r.nextTurn) && (
                   <span className="vp-lade-row-reason">
-                    {[r.reason, r.nextTurn].filter(Boolean).join(' · ')}
+                    {[r.reason, r.detail, r.nextTurn].filter(Boolean).join(' · ')}
                   </span>
                 )}
                 {/* ⚠ Der Weg vom Ladevorgang zum Fahrzeug-Profil (P7). Er

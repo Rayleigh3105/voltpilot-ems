@@ -41,6 +41,12 @@ import {
   surplusLine,
   turnIn,
   ueberschussVerfuegbar,
+  BIS_ABSTECKEN,
+  bisAbsteckenSatz,
+  budgetFuer,
+  einspeisungKw,
+  LADEPUNKT_DECKEL_MIN,
+  ladepunktSperre,
   type ChargePoint,
   type ChargingBudget,
 } from './ladepunkte';
@@ -295,14 +301,17 @@ describe('ladeZustand - der OCPP-Status entscheidet das Wort', () => {
   });
 
   it('behauptet über eine getrennte Säule nichts als ihren letzten Kontakt', () => {
-    const z = ladeZustand(con({ status: 'Charging', charging: true, powerKw: 11 }), {
-      connected: false,
-      lastSeen: '2026-08-20T09:12:00Z',
-    });
+    const punkt = { connected: false, lastSeen: '2026-08-20T09:12:00Z' };
+    const z = ladeZustand(con({ status: 'Charging', charging: true, powerKw: 11 }), punkt,
+      Date.parse('2026-08-20T10:00:00Z'));
     expect(z.kind).toBe('getrennt');
     expect(z.word).toBe('Säule getrennt');
     expect(z.tone).toBe('stoerung');
     expect(z.detail).toMatch(/^zuletzt \d{2}:\d{2}$/);
+    // ⚠ An einem anderen Tag trägt der letzte Kontakt sein Datum - „zuletzt
+    // 11:12" über eine Säule, die seit gestern schweigt, läse wie heute (W-12).
+    expect(ladeZustand(con({ status: 'Charging' }), punkt, Date.parse('2026-08-22T10:00:00Z')).detail)
+      .toMatch(/^zuletzt 20\.08\. \d{2}:\d{2}$/);
     // Ohne letzten Kontakt wird keine Uhrzeit erfunden.
     expect(ladeZustand(con({}), { connected: false, lastSeen: null }).detail).toBeNull();
   });
@@ -908,7 +917,7 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
 
   it('führt genau die Dauern des Mockups, Vorauswahl 2 h', () => {
     expect(LADEPUNKT_DAUERN.map((d) => d.label))
-      .toEqual(['30 min', '1 h', '2 h', '4 h', 'bis Abstecken']);
+      .toEqual(['30 min', '1 h', '2 h', '4 h', 'bis Abstecken, höchstens 4 Std']);
     // ⚠ „bis Abstecken" hat KEINE Minutenzahl: sie wäre eine Zusage über eine
     // Abfahrt, die niemand kennt.
     expect(LADEPUNKT_DAUERN[4].minutes).toBeNull();
@@ -918,8 +927,11 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
   it('beschriftet die Einträge wörtlich wie das abgenommene Mockup', () => {
     expect(LADEPUNKT_LABEL.voll_laden).toBe('Jetzt voll laden (nur diese Ladung)');
     expect(LADEPUNKT_LABEL.resume).toBe('Automatik fortsetzen');
+    // ⚠ Die Box klemmt jeden Eingriff auf 4 Stunden (Vertrag
+    // `mqtt-charging-boost`) - „bis Abstecken" ohne Deckel wäre eine Zusage,
+    // die nachts um zehn bricht (Audit W-10).
     expect(LADEPUNKT_HINWEIS.voll_laden)
-      .toBe('Netzstrom erlaubt. Endet spätestens beim Abstecken.');
+      .toBe('Netzstrom erlaubt. Endet beim Abstecken, spätestens nach 4 Std.');
   });
 
   it('trägt in der Folgen-Karte die vier Blöcke des Haus-Musters', () => {
@@ -957,7 +969,7 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
     const t = boostBanner('Chef-Parkplatz');
     expect(t).toBe(
       'Handeingriff läuft: Chef-Parkplatz lädt voll (nur diese Ladung) · '
-      + 'endet spätestens beim Abstecken',
+      + 'endet beim Abstecken, spätestens nach 4 Std',
     );
     // ⚠ Der Herzschlag meldet je Stecker nur `boost: true|false`, kein Ende -
     // „noch 1:12 h" wäre erfunden.
@@ -1044,13 +1056,13 @@ describe('Ladepunkt pausieren (P3b)', () => {
 
   it('beschriftet den Eintrag wörtlich wie das abgenommene Mockup', () => {
     expect(LADEPUNKT_LABEL.laden_pausieren).toBe('Laden pausieren');
-    expect(LADEPUNKT_HINWEIS.laden_pausieren).toBe('Bis Sie fortsetzen oder das Auto absteckt.');
+    expect(LADEPUNKT_HINWEIS.laden_pausieren).toBe('Bis Sie fortsetzen oder das Auto absteckt, höchstens 4 Std.');
   });
 
   it('sagt im Banner, WELCHE Richtung läuft', () => {
     expect(ladepunktBanner('Wallbox Garage', 'pausiert'))
       .toBe('Handeingriff läuft: Wallbox Garage pausiert (nur diese Ladung) · '
-        + 'endet spätestens beim Abstecken');
+        + 'endet beim Abstecken, spätestens nach 4 Std');
     // Der Boost-Banner bleibt Zeichen für Zeichen der von vorher.
     expect(boostBanner('Wallbox Garage')).toBe(ladepunktBanner('Wallbox Garage', 'voll_laden'));
   });
@@ -1065,7 +1077,7 @@ describe('Ladepunkt pausieren (P3b)', () => {
     const offen = pauseFolgenKarte(LADEPUNKT_DAUERN[4]);
     expect(offen.bloecke.find((b) => b.key === 'ende')?.zeilen[0])
       .toContain('längstens nach 4 Stunden');
-    expect(offen.bestaetigen).toBe('Laden pausieren - bis Abstecken');
+    expect(offen.bestaetigen).toBe('Laden pausieren - bis Abstecken, höchstens 4 Std');
   });
 
   it('beschreibt die RÜCKNAHME je Richtung verschieden', () => {
@@ -1076,5 +1088,134 @@ describe('Ladepunkt pausieren (P3b)', () => {
       .toBe('Sie beenden die volle Ladung für diesen einen Ladevorgang.');
     // Ohne Angabe bleibt es zeichengleich beim Boost - ältere Aufrufer.
     expect(boostEndeKarte()).toEqual(boostEndeKarte('voll_laden'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audit vp-ocpp-haushalt: ein Haushalt mit einer Wallbox (W-01, W-05, W-10,
+// W-12, W-13, W-14) - die Fälle der Audit-Bühne als dauerhafte Regeln.
+// ---------------------------------------------------------------------------
+
+describe('ladepunktSperre · regelt VoltPilot diese Wallbox gerade?', () => {
+  const t = Date.parse('2026-09-29T11:10:00Z');
+  const box = { controlEnabled: true };
+
+  it('regelt eine verbundene, eingerichtete Wallbox an einer freigegebenen Box', () => {
+    expect(ladepunktSperre(saeule(), box, t)).toBeNull();
+    // ⚠ Ohne Budget-Block wird keine fehlende Freigabe behauptet.
+    expect(ladepunktSperre(saeule(), null, t)).toBeNull();
+  });
+
+  it('W-01 · Box ab Werk (controlEnabled=false): „regelt noch nicht – lädt mit voller Leistung"', () => {
+    const s = ladepunktSperre(saeule(), { controlEnabled: false }, t)!;
+    expect(s.kind).toBe('nicht_freigegeben');
+    expect(s.satz).toBe('VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung');
+    expect(s.folge).toContain('keine Ladewahl');
+  });
+
+  it('W-05 · abgelehntes Sicherheitsprofil oder abweichende Rücklesung: „nimmt keine Ladegrenzen an"', () => {
+    const abgelehnt = ladepunktSperre(saeule({ ready: false, note: 'Ladesäule nicht eingerichtet: das Sicherheitsprofil wurde abgelehnt (NotSupported)' }), box, t)!;
+    expect(abgelehnt.kind).toBe('keine_grenzen');
+    expect(abgelehnt.satz).toBe('Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern');
+    const abweichend = ladepunktSperre(saeule({ connectors: [{ connectorId: 1, charging: true, readback: 'abweichend' }] }), box, t)!;
+    expect(abweichend.kind).toBe('keine_grenzen');
+    // Noch ohne Urteil der Box: eingerichtet wird gerade, nicht abgelehnt.
+    expect(ladepunktSperre(saeule({ ready: false, note: null }), box, t)?.kind).toBe('wird_eingerichtet');
+    expect(ladepunktSperre(saeule({ connectors: [{ connectorId: 1, charging: true, readback: 'ok' }] }), box, t)).toBeNull();
+  });
+
+  it('⚠ W-12 · connected=false gewinnt vor jeder anderen Aussage, mit Datum am anderen Tag', () => {
+    const heute = ladepunktSperre(saeule({ connected: false, lastSeen: '2026-09-29T09:10:00Z' }), { controlEnabled: false }, t)!;
+    expect(heute.kind).toBe('getrennt');
+    expect(heute.satz).toMatch(/^Wallbox nicht erreichbar seit \d{2}:\d{2} Uhr$/);
+    const gestern = ladepunktSperre(saeule({ connected: false, lastSeen: '2026-09-28T09:10:00Z' }), box, t)!;
+    expect(gestern.satz).toMatch(/^Wallbox nicht erreichbar seit 28\.09\. \d{2}:\d{2} Uhr$/);
+    expect(ladepunktSperre(saeule({ connected: false, lastSeen: null }), box, t)?.kind).toBe('nie_gemeldet');
+  });
+
+  it('nimmt das Budget der Box, an der die Säule hängt', () => {
+    const zwei = {
+      budget: { ...budget, deviceId: 'd1', controlEnabled: true },
+      budgets: [{ ...budget, deviceId: 'd1', controlEnabled: true }, { ...budget, deviceId: 'd2', controlEnabled: false }],
+      chargers: [],
+    };
+    expect(budgetFuer(zwei, { deviceId: 'd2' })?.controlEnabled).toBe(false);
+    expect(budgetFuer({ budget, chargers: [] }, { deviceId: 'd9' })).toBe(budget);
+  });
+});
+
+describe('chargerView · Audit W-05', () => {
+  it('⚠ eine verbundene Säule mit abgelehntem Sicherheitsprofil ist nicht grün „angemeldet"', () => {
+    const view = chargerView(saeule({ ready: false, note: 'Ladesäule nicht eingerichtet: das Sicherheitsprofil wurde abgelehnt (NotSupported)' }));
+    expect(view.tone).toBe('stoerung');
+    expect(view.word).toBe('nimmt keine Ladegrenzen an');
+    expect(view.detail).toContain('NotSupported');
+    expect(chargerView(saeule({ ready: false, note: null })).tone).toBe('ruhig');
+    expect(chargerView(saeule()).tone).toBe('laedt');
+  });
+});
+
+describe('ladevorgangRows · Audit W-13 (alte Werte stehen nicht da wie neue)', () => {
+  it('⚠ zeigt bei einem 30 min alten Messwert weder die alte Leistung noch den alten Ladestand', () => {
+    const jetzt = Date.parse('2026-09-29T11:10:00Z');
+    const [row] = ladevorgangRows([saeule({
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11, socPct: 80,
+        meteredAt: '2026-09-29T10:40:00Z', sessionSince: '2026-09-29T09:35:00Z' }],
+    })], jetzt);
+    expect(row.word).toBe('Lädt — Leistung nicht messbar');
+    expect(row.powerKw).toBeNull();
+    expect(row.socPct).toBeNull();
+    expect(row.detail).toMatch(/^Leistung veraltet · zuletzt \d{2}:\d{2}$/);
+  });
+
+  it('lässt einen frischen Messwert stehen', () => {
+    const jetzt = Date.parse('2026-09-29T11:10:00Z');
+    const [row] = ladevorgangRows([saeule({
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 11, socPct: 80, meteredAt: '2026-09-29T11:09:00Z' }],
+    })], jetzt);
+    expect(row.powerKw).toBe(11);
+    expect(row.socPct).toBe(80);
+    expect(row.detail).toBeNull();
+  });
+});
+
+describe('budgetBand · Audit W-14 (Einspeisung ist keine negative Hauslast)', () => {
+  const sonnig: ChargingBudget = { ...budget, gridLimitKw: 22, effLimitKw: 22, marginPct: 0, siteLoadKw: -4, measuredKw: 2.5, allocatedKw: 2.5 };
+
+  it('⚠ macht „frei" nie größer als den Anschluss und sagt „speist ein" statt „−4 kW Gebäude"', () => {
+    const band = budgetBand(sonnig)!;
+    const frei = band.segments.find((x) => x.id === 'frei')!;
+    expect(frei.kw).toBeCloseTo(19.5, 5);
+    expect(band.segments.reduce((sum, x) => sum + x.kw, 0)).toBeLessThanOrEqual(22 + 1e-9);
+    expect(band.headline).toBe('2,5 kW von 22 kW');
+    expect(band.line).toBe('Ihr Anschluss ist geschützt: Ihre Anlage speist gerade 1,5 kW ein, 2,5 kW Laden bleiben unter Ihrer Grenze.');
+    expect(band.line).not.toMatch(/-|−/);
+  });
+
+  it('rechnet die Einspeisung aus dem Rest der Box zurück (Netz = Rest + Laden)', () => {
+    expect(einspeisungKw(-4, 2.5)).toBeCloseTo(1.5, 5);
+    // Das Laden nimmt den Überschuss ganz: nichts geht ins Netz.
+    expect(einspeisungKw(-2, 3)).toBe(0);
+    // Ein positiver Rest ist Hauslast, keine Einspeisung; fehlend bleibt fehlend.
+    expect(einspeisungKw(1.2, 0)).toBeNull();
+    expect(einspeisungKw(null, 0)).toBeNull();
+    expect(budgetBand({ ...sonnig, siteLoadKw: -2, measuredKw: 3 })!.line).toContain('bezieht gerade keinen Netzstrom');
+  });
+});
+
+describe('Der Deckel eines Ladepunkt-Eingriffs · Audit W-10', () => {
+  it('⚠ „bis Abstecken" nennt seinen Deckel - der Vertrag klemmt auf 240 Minuten', () => {
+    expect(LADEPUNKT_DECKEL_MIN).toBe(240);
+    expect(BIS_ABSTECKEN).toBe('bis Abstecken, höchstens 4 Std');
+    expect(LADEPUNKT_DAUERN.find((d) => d.minutes == null)?.label).toBe(BIS_ABSTECKEN);
+    expect(bisAbsteckenSatz('15:10')).toBe('zum Abstecken, spätestens 15:10');
+    // Kein Satz verspricht mehr ein Ende allein beim Abstecken.
+    for (const satz of Object.values(LADEPUNKT_HINWEIS)) expect(satz).not.toMatch(/Abstecken\.$|absteckt\.$/);
+  });
+
+  it('liest den Deckel aus dem Vertrag selbst', () => {
+    const vertrag = JSON.parse(readFileSync(resolve(process.cwd(), '../../docs/contracts/mqtt-charging-boost.schema.json'), 'utf8'));
+    const minutes = JSON.stringify(vertrag).match(/"minutes":\{[^}]*"maximum":(\d+)/);
+    expect(Number(minutes?.[1])).toBe(LADEPUNKT_DECKEL_MIN);
   });
 });

@@ -115,6 +115,7 @@ export function GeraetBuehne({
   chips = [],
   zeilen = [],
   hinweis,
+  warnung = null,
   markiert,
   aktion,
 }: {
@@ -127,6 +128,8 @@ export function GeraetBuehne({
   chips?: HeldKachel[];
   zeilen?: string[];
   hinweis?: string | null;
+  /** Ein Satz, den der Kunde nicht übersehen darf (z. B. „VoltPilot regelt diese Wallbox noch nicht“). */
+  warnung?: string | null;
   /**
    * Die angesprungene Kachel (`?kachel=speicher`): die Batterie hat keine
    * eigene Seite, ihr Absprung aus dem Anlagen-Modell markiert sie HIER.
@@ -160,6 +163,7 @@ export function GeraetBuehne({
           {satz && (
             <p className={`vp-buehne-satz is-${satzTon}`} data-testid="geraet-heldsatz">{satz}</p>
           )}
+          {warnung && <p className="vp-buehne-warnung" role="status">{warnung}</p>}
         </div>
       )}
       {grafik && (

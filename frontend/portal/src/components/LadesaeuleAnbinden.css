@@ -90,6 +90,11 @@
   color: var(--vp-text-muted, #64748b);
 }
 
+/* Verbunden, aber VoltPilot bewirkt nichts (Audit W-04/W-05). */
+.vp-anbinden-status.is-warn {
+  color: var(--vp-warn-ink, #b45309);
+}
+
 /* --- Die Liste ----------------------------------------------------------- */
 
 .vp-anbinden-list {
@@ -136,6 +141,10 @@
 
 .vp-anbinden-zustand.is-warten {
   color: var(--vp-text-muted, #64748b);
+}
+
+.vp-anbinden-zustand.is-warn {
+  color: var(--vp-warn-ink, #b45309);
 }
 
 /* WO die Säule hängt (Cockpit Phase 1 / C1).
@@ -196,6 +205,32 @@
 .vp-anbinden-radio span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Die üblichen Nennleistungen als Knöpfe über dem freien Feld. */
+.vp-anbinden-stufen {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0.35rem 0 0.6rem;
+}
+
+.vp-anbinden-stufen button {
+  min-height: 44px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-surface, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vp-anbinden-stufen button[aria-pressed='true'] {
+  border-color: var(--vp-action, #2c5282);
+  background: var(--vp-paleblue-start, #f0f4ff);
+  color: var(--vp-action, #2c5282);
 }
 
 .vp-anbinden-hint {

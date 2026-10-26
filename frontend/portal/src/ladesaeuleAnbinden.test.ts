@@ -22,6 +22,14 @@ import {
   anschlussSoll,
   anschlussWahl,
   anschlussZumSenden,
+  NENNLEISTUNG_AUSWAHL_KW,
+  NENNLEISTUNG_VORGABE_KW,
+  nennleistungFehler,
+  nennleistungFeld,
+  nennleistungSoll,
+  nennleistungText,
+  nennleistungWert,
+  nennleistungZumSenden,
 } from './ladesaeuleAnbinden';
 
 const BOX: Device = {
@@ -58,6 +66,12 @@ function saeule(over: Partial<ChargePoint> = {}): ChargePoint {
     ...over,
   } as ChargePoint;
 }
+
+/** Der Herzschlag-Eintrag einer eingetragenen, nie verbundenen Kennung (Audit W-04). */
+const nieVerbundenHalle = saeule({
+  chargePointId: 'saeule-halle', connected: false, ready: false, lastSeen: null,
+  note: 'Diese Ladesäule hat sich noch nicht gemeldet.', connectors: [],
+});
 
 describe('Kennung', () => {
   it('nennt bei einer Ablehnung den ERLAUBTEN Satz, nie nur „ungültig"', () => {
@@ -188,17 +202,67 @@ describe('Meldung', () => {
     };
     const m = meldung(c, 'saeule-hof-nord');
     expect(m.gemeldet).toBe(true);
-    expect(m.wort).toBe('Verbunden');
+    expect(m.wort).toBe('Bereit zum Steuern');
     expect(m.satz).toContain('ABL eMH1');
     expect(m.satz).toContain('2 Stecker');
   });
 
-  it('unterscheidet „hat sich gemeldet" von „verbunden"', () => {
-    const c = { ...laden(), chargers: [saeule({ connected: false })] };
-    const m = meldung(c, 'saeule-hof-nord');
-    expect(m.wort).toBe('Hat sich gemeldet');
-    expect(m.satz).toContain('nicht verbunden');
-    expect(m.ton).toBe('ok');
+  // Audit W-04: die Box führt jede EINGETRAGENE Kennung in ihrer Liste - auch
+  // eine, unter der nie eine Wallbox angerufen hat. Genau dieser Herzschlag-
+  // Eintrag (`core/agent/ocpp.go`, ohne `lastSeen`) war vorher grün.
+  const nieVerbunden = saeule({
+    connected: false,
+    ready: false,
+    lastSeen: null,
+    note: 'Diese Ladesäule hat sich noch nicht gemeldet.',
+    connectors: [],
+  });
+
+  it('⚠ eingetragen, nie verbunden: „Wartet auf die Wallbox" - nicht „Hat sich gemeldet" (W-04)', () => {
+    const m = meldung({ ...laden(), chargers: [nieVerbunden] }, 'saeule-hof-nord');
+    expect(m.gemeldet).toBe(false);
+    expect(m.wort).toBe('Wartet auf die Wallbox');
+    expect(m.ton).toBe('warten');
+    // Der Techniker erfährt, was er prüfen muss.
+    expect(m.satz).toContain('Prüfen Sie Adresse und Kennung');
+    expect(schritte(true, m.gemeldet).find((x) => x.id === 'melden')?.erledigt).toBe(false);
+  });
+
+  it('verbunden, Sicherheitsprofil noch offen: „Verbunden" mit Zeitpunkt (W-04)', () => {
+    const m = meldung(
+      { ...laden(), chargers: [saeule({ ready: false, lastSeen: '2026-10-26T09:10:00Z' })] },
+      'saeule-hof-nord',
+      Date.parse('2026-10-26T09:11:00Z'),
+    );
+    expect(m.gemeldet).toBe(true);
+    expect(m.wort).toBe('Verbunden');
+    expect(m.ton).toBe('warten');
+    expect(m.satz).toMatch(/zuletzt gemeldet \d{2}:\d{2} Uhr/);
+    expect(m.satz).toContain('Sicherheitsprofil wird gerade hinterlegt');
+  });
+
+  it('⚠ verbunden, aber nicht steuerbar: abgelehntes Profil oder Box ohne Freigabe (W-04/W-05/W-01)', () => {
+    const abgelehnt = meldung(
+      { ...laden(), chargers: [saeule({ ready: false, note: 'Ladesäule nicht eingerichtet: das Sicherheitsprofil wurde abgelehnt (NotSupported)' })] },
+      'saeule-hof-nord',
+    );
+    expect(abgelehnt).toMatchObject({ gemeldet: true, wort: 'Verbunden – nicht steuerbar', ton: 'warn' });
+    expect(abgelehnt.satz).toContain('Diese Wallbox nimmt keine Ladegrenzen an');
+    expect(abgelehnt.satz).toContain('NotSupported');
+
+    const werk = meldung({ ...laden({ controlEnabled: false }), chargers: [saeule()] }, 'saeule-hof-nord');
+    expect(werk).toMatchObject({ wort: 'Verbunden – nicht steuerbar', ton: 'warn' });
+    expect(werk.satz).toContain('VoltPilot regelt diese Wallbox noch nicht');
+  });
+
+  it('schon einmal da gewesen, jetzt getrennt: „Getrennt" mit letztem Kontakt', () => {
+    const m = meldung(
+      { ...laden(), chargers: [saeule({ connected: false, lastSeen: '2026-10-25T09:10:00Z' })] },
+      'saeule-hof-nord',
+      Date.parse('2026-10-26T09:10:00Z'),
+    );
+    expect(m).toMatchObject({ gemeldet: true, wort: 'Getrennt', ton: 'warten' });
+    expect(m.satz).toMatch(/^Wallbox nicht erreichbar seit 25\.10\. \d{2}:\d{2} Uhr\.$/);
   });
 
   it('behauptet ohne Kennung gar nichts', () => {
@@ -268,10 +332,11 @@ describe('Liste der Eingetragenen', () => {
         { chargePointId: 'saeule-hof-nord', label: 'Hof Nord' },
         { chargePointId: 'saeule-halle' },
       ],
-      { ...laden(), chargers: [saeule()] },
+      { ...laden(), chargers: [saeule(), { ...nieVerbundenHalle }] },
     );
-    expect(zeilen[0]).toMatchObject({ name: 'Hof Nord', zustand: 'Verbunden', ton: 'ok' });
-    expect(zeilen[1]).toMatchObject({ name: 'saeule-halle', ton: 'warten' });
+    expect(zeilen[0]).toMatchObject({ name: 'Hof Nord', zustand: 'Bereit zum Steuern', ton: 'ok' });
+    // ⚠ Die Box führt die Halle, aber sie hat nie angerufen (W-04).
+    expect(zeilen[1]).toMatchObject({ name: 'saeule-halle', zustand: 'Wartet auf die Wallbox', ton: 'warten' });
   });
 
   it('kommt ohne Allowlist zurecht', () => {
@@ -409,7 +474,56 @@ describe('Liste der Eingetragenen · Anschluss', () => {
       [{ chargePointId: 'saeule-hof-nord', label: 'Hof Nord' }],
       { ...laden(), chargers: [saeule()] },
     );
-    expect(zeilen[0]).toMatchObject({ name: 'Hof Nord', zustand: 'Verbunden', ton: 'ok' });
+    expect(zeilen[0]).toMatchObject({ name: 'Hof Nord', zustand: 'Bereit zum Steuern', ton: 'ok' });
     expect(zeilen[0].anschluss).toEqual({ wort: 'Hinter dem Hausanschluss', hinweis: null });
+  });
+});
+
+describe('Nennleistung (Audit W-02, Zusatz aus dem Paket Cloud)', () => {
+  it('schlägt 11 kW vor und bietet die üblichen Stufen an', () => {
+    expect(NENNLEISTUNG_VORGABE_KW).toBe(11);
+    expect(NENNLEISTUNG_AUSWAHL_KW.map(nennleistungText)).toEqual(['3,7', '7,4', '11', '22']);
+  });
+
+  it('liest die deutsche Eingabe und sagt, was fehlt', () => {
+    expect(nennleistungWert('7,4')).toBe(7.4);
+    expect(nennleistungWert(' 22 ')).toBe(22);
+    expect(nennleistungFehler('11')).toBeNull();
+    expect(nennleistungWert('')).toBeNull();
+    expect(nennleistungFehler('')).toContain('Nennleistung');
+    expect(nennleistungWert('elf')).toBeNull();
+    expect(nennleistungFehler('elf')).toContain('Zahl');
+    // ⚠ Fehlend ist nie 0 - und 0 ist keine Nennleistung.
+    expect(nennleistungWert('0')).toBeNull();
+    expect(nennleistungFehler('0')).toContain('größer als 0');
+    expect(nennleistungWert('1001')).toBeNull();
+  });
+
+  it('liest die gespeicherte Nennleistung einer eingetragenen Kennung', () => {
+    const liste = [{ chargePointId: 'saeule-hof-nord', ratedKw: 22 }, { chargePointId: 'saeule-halle', ratedKw: null }];
+    expect(nennleistungSoll(liste, 'saeule-hof-nord')).toBe(22);
+    expect(nennleistungSoll(liste, 'saeule-halle')).toBeNull();
+    expect(nennleistungSoll(null, 'saeule-hof-nord')).toBeNull();
+  });
+
+  it('schickt sie beim ersten Eintragen immer, danach nur eine Änderung', () => {
+    expect(nennleistungZumSenden(11, null, false)).toBe(11);
+    expect(nennleistungZumSenden(11, 11, true)).toBeUndefined();
+    expect(nennleistungZumSenden(22, 11, true)).toBe(22);
+    // Eine ältere Kennung ohne Nennleistung bekommt sie, sobald jemand sie eintippt.
+    expect(nennleistungZumSenden(11, null, true)).toBe(11);
+    expect(nennleistungZumSenden(null, null, false)).toBeUndefined();
+  });
+
+  it('⚠ täuscht an einer älteren Kennung ohne Nennleistung keine 11 kW vor', () => {
+    // Neue Kennung: die Vorgabe steht da und reist mit.
+    expect(nennleistungFeld(null, null, false)).toEqual({ text: '11', wert: 11, mangel: null, senden: 11 });
+    // Eingetragen mit Wert: der gespeicherte Wert, nichts zu senden.
+    expect(nennleistungFeld(null, 22, true)).toEqual({ text: '22', wert: 22, mangel: null, senden: undefined });
+    // Eingetragen ohne Wert: leer, kein Fehler, nichts zu senden - unbekannt ist nicht falsch.
+    expect(nennleistungFeld(null, null, true)).toEqual({ text: '', wert: null, mangel: null, senden: undefined });
+    // Erst eine Eingabe wird geprüft.
+    expect(nennleistungFeld('', null, true).mangel).toContain('Nennleistung');
+    expect(nennleistungFeld('7,4', null, true).senden).toBe(7.4);
   });
 });

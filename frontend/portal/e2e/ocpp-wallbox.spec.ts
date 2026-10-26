@@ -226,6 +226,27 @@ test('edge-only charging stays compact when no power or transaction has arrived'
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 });
 
+// Audit vp-ocpp-haushalt W-05/W-01: eine verbundene Wallbox, an der VoltPilot nichts
+// bewirkt, sieht auf ihrer Geräteseite nicht steuerbar aus.
+for (const [fall, satz] of [
+  ['ohne-grenzen', 'Diese Wallbox nimmt keine Ladegrenzen an – VoltPilot kann sie nicht steuern.'],
+  ['werk', 'VoltPilot regelt diese Wallbox noch nicht – sie lädt mit voller Leistung.'],
+] as const) {
+  test(`Geräteseite ${fall}: der Satz steht an der Bühne, der Schalter weicht seiner Folge`, async ({ page }, testInfo) => {
+    if (testInfo.project.name === 'desktop-chromium') await page.setViewportSize({ width: 1440, height: 1000 });
+    if (testInfo.project.name === 'mobile-chromium') await page.setViewportSize({ width: 375, height: 900 });
+    await mock(page, { edgeOnly: true });
+    await page.goto(`/e2e/ocpp-wallbox.html?edge-only&${fall}`);
+    await expect(page.locator('.vp-buehne-warnung')).toHaveText(satz);
+    const steuerung = page.getByTestId('geraet-steuerung');
+    await expect(steuerung.getByRole('radio', { name: /Sofort laden/ })).toHaveCount(0);
+    await expect(steuerung.getByRole('radio', { name: /Pausieren/ })).toHaveCount(0);
+    // Der Satz steht nur einmal auf dem Bildschirm - unter dem Schalter die Folge.
+    await expect(page.getByText(satz)).toHaveCount(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+  });
+}
+
 test('hard action requires the server phrase and never overflows its sheet', async ({ page }) => {
   await mock(page); await page.goto('/e2e/ocpp-wallbox.html');
   await technikOeffnen(page);

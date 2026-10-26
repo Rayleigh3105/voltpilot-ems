@@ -17,8 +17,10 @@ import type { ChargingNodeOpts } from './adaptiveFlow';
 import { fmtNum } from './format';
 import {
   budgetBand,
+  budgetFuer,
   chargerName,
   connectorName,
+  ladepunktSperre,
   ladeZustand,
   type BudgetBand,
   type ChargePoint,
@@ -76,6 +78,12 @@ export interface LadenKachel {
   ruhendText: string | null;
   /** Das Netzanschluss-Band als Fußzeile - der Block zieht in diese Kachel. */
   band: BudgetBand | null;
+  /**
+   * Regelt VoltPilot eine verbundene Säule gar nicht (Box nicht freigegeben,
+   * Säule nimmt keine Grenzen an), steht es HIER - groß, nicht grau auf einer
+   * Unterseite (Audit W-01/W-05). Leer, solange VoltPilot jede regelt.
+   */
+  hinweise: string[];
   /** Der Sprung des Kopfes (die Seite „Ladevorgänge"). */
   href: string | null;
   /** Σ kW der ladenden Stecker; `null`, wenn keiner misst. */
@@ -130,8 +138,15 @@ export function ladenKachel(input: LadenKachelInput): LadenKachel | null {
   let getrennt = 0;
   let ladenKw: number | null = null;
   let ersteLadung: { label: string; note: string | null } | null = null;
+  const hinweise: string[] = [];
 
   for (const c of chargers) {
+    // ⚠ Eine getrennte Säule sagt ihr Zeilenwort selbst; der Hinweis gilt den
+    // verbundenen, an denen VoltPilot trotzdem nichts bewirkt.
+    const sperre = c.connected ? ladepunktSperre(c, budgetFuer(input.charging, c)) : null;
+    if (sperre && sperre.kind !== 'wird_eingerichtet') {
+      hinweise.push(chargers.length > 1 ? `${chargerName(c)}: ${sperre.satz}.` : `${sperre.satz}.`);
+    }
     const cons = c.connectors ?? [];
     const href = links.charger?.(c.chargePointId) ?? null;
     if (cons.length === 0) {
@@ -201,6 +216,7 @@ export function ladenKachel(input: LadenKachelInput): LadenKachel | null {
     zeilen: sichtbar,
     ruhendText: ruhend > 0 ? ruhendSatz(ruhend) : null,
     band: budgetBand(input.charging?.budget ?? null),
+    hinweise,
     href: links.uebersicht?.() ?? null,
     ladenKw,
     ladend,
@@ -235,7 +251,9 @@ export function flussKnoten(view: LadenKachel | null | undefined): ChargingNodeO
         : 'Säulen getrennt'
       : view.steckt > 0
         ? 'Auto eingesteckt'
-        : 'kein Auto';
+        : view.getrennt > 0
+          ? 'Säule getrennt'
+          : 'kein Auto';
   return {
     // Ein ladender Stecker OHNE Messwert lässt die Speiche laufen, aber die
     // Zahl bleibt ein Strich - es fliesst nachweislich etwas, wir wissen nur
@@ -313,7 +331,11 @@ function kopfSatz(
     return stecker === 1 ? 'Säule getrennt' : 'Säulen getrennt';
   }
   if (ladend === 0) {
-    return steckt > 0 ? 'Eingesteckt · lädt gerade nicht' : 'Kein Auto eingesteckt';
+    if (steckt > 0) return 'Eingesteckt · lädt gerade nicht';
+    // ⚠ „Kein Auto" wäre eine Aussage auch über die getrennte Säule - über
+    // deren Stecker weiß niemand etwas (Audit W-12).
+    if (getrennt > 0) return getrennt === 1 ? 'Eine Säule getrennt' : `${getrennt} Säulen getrennt`;
+    return 'Kein Auto eingesteckt';
   }
   const zahl = kw == null ? 'Leistung nicht messbar' : fmtNum(kw, 'kW');
   if (stecker === 1) return `Lädt · ${zahl}`;

@@ -39,8 +39,8 @@ import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { CONSUMER_REASON_TEXT, CONSUMER_STATE_TEXT, STATUS_UNKNOWN_TEXT } from '../consumers/status';
 import type { ManualOverride } from '../consumers/fulfillment';
 import { LADEQUELLE } from '../glossar';
-import type { ChargePoint, ChargeConnector, SiteCharging } from '../ladepunkte';
-import { ladeZustand, aktuelleLeistung } from '../ladepunkte';
+import type { ChargePoint, ChargeConnector, LadepunktSperre, LadeZustand, SiteCharging } from '../ladepunkte';
+import { budgetFuer, ladepunktSperre, ladeZustand, aktuelleLeistung } from '../ladepunkte';
 import type {
   RanglisteEintrag,
   SiteVerbraucher,
@@ -272,6 +272,10 @@ export interface LadepunktBezug {
   uebernommen: boolean | null;
   /** Wann die Box die Säule zuletzt gemeldet hat (ISO). */
   gemeldetAm: string | null;
+  /** Das Zustandswort der EINEN Quelle (`ladeZustand`, Vektoren) - null ohne Stecker. */
+  zustand: LadeZustand | null;
+  /** Warum VoltPilot an dieser Säule gerade nichts bewirkt (Audit W-01/W-05/W-12), sonst null. */
+  sperre: LadepunktSperre | null;
 }
 
 export interface GeraetBild {
@@ -542,7 +546,11 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
     // --- Jetzt
     let jetztKw: number | null = null;
     let an: boolean | null = null;
-    if (lp?.con) {
+    if (lp?.con && !lp.cp.connected) {
+      // ⚠ Eine getrennte Säule: was ihr Stecker tut, weiß niemand - weder
+      // „lädt" noch „aus" (Vektor-Fall `getrennt`, Audit W-12).
+      an = null;
+    } else if (lp?.con) {
       jetztKw = aktuelleLeistung(lp.con, nowMs);
       an = lp.con.charging === true;
     } else if (st) {
@@ -600,16 +608,20 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
         ? {
             chargePointId: lp.cp.chargePointId,
             connectorId: lp.con?.connectorId ?? 1,
-            angesteckt: !!lp.con && lp.con.status != null && !/available|unavailable|faulted/i.test(lp.con.status),
-            sitzungSeit: lp.con?.sessionSince ?? null,
+            // ⚠ `connected=false` gewinnt vor jedem Status: der letzte Status
+            // einer stummen Säule ist keine Aussage über ein Auto (Audit W-12).
+            angesteckt: lp.cp.connected && !!lp.con && lp.con.status != null && !/available|unavailable|faulted/i.test(lp.con.status),
+            sitzungSeit: lp.cp.connected ? lp.con?.sessionSince ?? null : null,
             sitzungKwh: num(lp.con?.sessionKwh),
             karte: lp.con?.tagRef ?? null,
-            laedt: lp.con?.charging === true,
+            laedt: lp.cp.connected && lp.con?.charging === true,
             leistungKw: num(lp.con?.powerKw),
             gemessenAm: lp.con?.meteredAt ?? null,
             grund: ladepunktPausenGrund(s?.quelle, lp.con?.reason) ?? lp.con?.reasonText ?? null,
             uebernommen: lp.cp.quelleUebernommen ?? null,
             gemeldetAm: lp.cp.reportedAt ?? null,
+            zustand: lp.con ? ladeZustand(lp.con, lp.cp, nowMs) : null,
+            sperre: ladepunktSperre(lp.cp, budgetFuer(i.charging, lp.cp), nowMs),
           }
         : null,
       gemessen,
@@ -678,18 +690,26 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
   if (z.pausiert) return { pill: ['lock', 'Pause'], kurz: 'Automatik pausiert', lang: 'Die Automatik ist pausiert; das Gerät ist in seinem sicheren Zustand.' };
   // --- Ladepunkt: das Wort der Säule.
   if (z.lp) {
-    if (!z.lp.cp.connected) return { pill: ['stale', 'keine Verbindung'], kurz: 'Ladepunkt meldet sich nicht', lang: 'Der Ladepunkt meldet sich gerade nicht bei der Box.' };
+    if (!z.lp.cp.connected) {
+      const satz = ladepunktSperre(z.lp.cp, null, z.r.nowMs)?.satz ?? 'Wallbox nicht erreichbar';
+      return { pill: ['stale', 'keine Verbindung'], kurz: satz, lang: `${satz}. Was sie gerade tut, weiß VoltPilot nicht.` };
+    }
     if (!z.lp.con) return { pill: ['stale', 'unbekannt'], kurz: STATUS_UNKNOWN_TEXT, lang: STATUS_UNKNOWN_TEXT };
     const lz = ladeZustand(z.lp.con, z.lp.cp, z.r.nowMs);
     const grund = ladepunktPausenGrund(z.e.steuerart?.quelle, lz.reasonCode ?? z.lp.con.reason) ?? lz.reason ?? z.lp.con.reasonText ?? null;
-    const kurz = grund && grund !== lz.word ? `${lz.word} · ${grund}` : lz.word;
+    // ⚠ Ein volles Auto wartet nicht auf VoltPilot: das Wort und sein Zusatz
+    // kommen aus den geteilten Vektoren („Auto pausiert · voll oder
+    // Auto-Timer", Audit W-21), nie „wartet".
+    const zusatz = lz.kind === 'auto_pausiert' ? lz.detail : null;
+    const kurz = [lz.word, grund && grund !== lz.word ? grund : null, zusatz].filter(Boolean).join(' · ');
     const pill: [PillArt, string] =
       lz.kind === 'laedt' || lz.kind === 'laedt_ohne_messung' || lz.kind === 'startet' ? ['on', 'lädt']
         : lz.kind === 'getrennt' || lz.kind === 'frei' ? ['off', 'kein Auto']
           : lz.kind === 'beendet' ? ['done', 'fertig']
             : lz.kind === 'stoerung' || lz.kind === 'nicht_verfuegbar' ? ['lock', 'Störung']
               : lz.kind === 'reserviert' ? ['off', 'reserviert']
-                : ['wait', 'wartet'];
+                : lz.kind === 'auto_pausiert' ? ['wait', 'Auto pausiert']
+                  : ['wait', 'wartet'];
     return { pill, kurz, lang: `${kurz}.` };
   }
   // --- Verbraucher: Zustand und Grund, wie die Box sie meldet.

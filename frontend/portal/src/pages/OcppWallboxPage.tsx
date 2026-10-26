@@ -25,6 +25,7 @@ import {
   boostFolgenKarte,
   LADEPUNKT_DAUER_VORGABE,
   LADEPUNKT_DAUERN,
+  ladepunktSperre,
   pauseFolgenKarte,
   type ChargePoint,
   type ChargingBudget,
@@ -68,7 +69,8 @@ import { ladepunktSteuerung, type SegmentAktion } from '../geraetSteuerung';
 import type { Zeile } from '../geraetSeite';
 import './OcppWallboxPage.css';
 // Uhr: nie seltener als der Live-Takt (sonst behauptet sie ein altes Alter).
-import { LIVE_POLL_MS } from '../pollCadence';
+import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
+import { useFreshnessPoll } from '../useFreshnessPoll';
 import { fokusAusloeser, sperreSeitenScroll } from '../../designsystem/components/shell/ueberlagerung';
 
 const DATA_AREAS = [
@@ -234,6 +236,11 @@ export function OcppWallboxPage({
     return () => { active = false; controller.abort(); };
   }, [siteId, chargePointId, reload]);
 
+  // ⚠ Die Gerätedaten altern sichtbar (Frischefenster 5 min): ohne neuen Abruf
+  // meldete eine offene Seite nach fünf Minuten „keine Leistung" und ließ die
+  // Knöpfe verschwinden, obwohl die Wallbox weiter lädt (Audit W-13).
+  useFreshnessPoll(() => setReload((n) => n + 1), LIST_POLL_MS);
+
   const shouldPoll = data?.actions.some((action) => actionNeedsPolling(action)) ?? false;
 
   // Response and observed effect are separate. A bounded timeout-afterrun keeps
@@ -359,6 +366,11 @@ export function OcppWallboxPage({
   const detailSatz = connectorEvidenceCurrent
     ? chargerConnector?.reasonText?.trim() || state.detail
     : state.detail;
+  // Regelt VoltPilot diese Wallbox gerade gar nicht? Die stumme Wallbox sagt
+  // es schon ihr Zustand („Wallbox nicht erreichbar"); hier stehen die Fälle,
+  // in denen sie verbunden ist und trotzdem nichts wirkt (Audit W-01/W-05).
+  const sperreRoh = charger ? ladepunktSperre(charger, budget, now) : null;
+  const sperre = sperreRoh && sperreRoh.kind !== 'getrennt' && sperreRoh.kind !== 'nie_gemeldet' ? sperreRoh : null;
   const buehne: BausteinInhalt = {
     inhalt: (
       <div className="vp-ocpp-jetzt" aria-live="polite" data-state={state.kind}>
@@ -383,6 +395,7 @@ export function OcppWallboxPage({
           // ⚠ Den Grund sagt die Steuerung darunter - derselbe Satz zweimal
           // auf einem Bildschirm war der Befund („Ladevorgang läuft.").
           hinweis={detailSatz && detailSatz !== ladeZeile?.grund ? detailSatz : null}
+          warnung={sperre ? `${sperre.satz}.` : null}
           aktion={ladeZeile ? null : hauptaktion}
         />
       </div>
@@ -390,7 +403,11 @@ export function OcppWallboxPage({
   };
 
   // --- Steuerung: Automatik · Sofort laden · Pausieren ---------------------
-  const steuerungView = ladeZeile ? ladepunktSteuerung(ladeZeile) : null;
+  const steuerungRoh = ladeZeile ? ladepunktSteuerung(ladeZeile) : null;
+  // Die Sperre steht schon groß in der Bühne - unter dem Schalter nur ihre Folge.
+  const steuerungView = steuerungRoh && sperre && steuerungRoh.segmente.length === 0
+    ? { ...steuerungRoh, keinEingriff: sperre.folge }
+    : steuerungRoh;
   const steuerung: BausteinInhalt | null = steuerungView
     ? {
       kopfRechts: steuerungView.zeile.quelle === 'handeingriff' ? 'Handeingriff' : null,
@@ -567,7 +584,9 @@ export function OcppWallboxPage({
                     <dl>
                       <div><dt>Fehlercode</dt><dd>{connector.errorCode ? redactSensitiveText(connector.errorCode) : 'Kein Fehler gemeldet'}</dd></div>
                       <div><dt>Letzte Nachricht</dt><dd>{time(connector.reportedAt)}</dd></div>
-                      <div><dt>Steuerung</dt><dd>{data.permissions.actions.RemoteStartTransaction ? 'steuerbar' : 'nur gelesen'}</dd></div>
+                      {/* ⚠ Das ist das Recht des Kontos auf Fernbefehle - nicht, ob die
+                          Wallbox Ladegrenzen annimmt (Audit W-05). */}
+                      <div><dt>Fernbefehle</dt><dd>{data.permissions.actions.RemoteStartTransaction ? 'erlaubt' : 'nur lesen'}</dd></div>
                     </dl>
                     {(connector.info || connector.vendorId || connector.vendorErrorCode) && (
                       <details><summary>Herstellerangaben</summary><p>{connector.vendorId ? redactSensitiveText(connector.vendorId) : 'Vendor unbekannt'} · {connector.vendorErrorCode ? redactSensitiveText(connector.vendorErrorCode) : 'kein Vendor-Fehler'} · {connector.info ? redactSensitiveText(connector.info) : 'keine Zusatzinfo'}</p></details>

@@ -27,7 +27,7 @@ import {
   type UemsDatenquelle,
   type UemsGeraet,
 } from '../api';
-import { ausfallSchutz, type SiteCharging } from '../ladepunkte';
+import { ausfallSchutz, budgetFuer, type SiteCharging } from '../ladepunkte';
 import {
   chargePointIdOf,
   geraetSeite,
@@ -870,6 +870,8 @@ function GeraetSeiteKern({
     () => ladeparkZeilen(charging, geraetId),
     [charging, geraetId],
   );
+  /** Die Wallbox dieser Seite, wie die Box sie meldet (`null` = keine Säule). */
+  const wallbox = (charging?.chargers ?? []).find((item) => item.chargePointId === chargePointIdOf(geraetId)) ?? null;
 
   /**
    * Ein Gerät ohne Modbus-Register kann trotzdem MESSWERTE beobachten (D3):
@@ -1255,10 +1257,8 @@ function GeraetSeiteKern({
           backHref={komponentenHref}
           siteHref={anlageHref}
           settingsHref={hashForRoute(anlageRoute(site.id, 'ladevorgaenge'))}
-          charger={(charging?.chargers ?? []).find(
-            (item) => item.chargePointId === chargePointIdOf(geraetId),
-          ) ?? null}
-          budget={charging?.budget ?? null}
+          charger={wallbox}
+          budget={wallbox ? budgetFuer(charging, wallbox) : charging?.budget ?? null}
           onRename={chargerRenameTarget ? () => {
             setEditNotice(null);
             setEditError(null);

@@ -26,23 +26,31 @@ const boxes = [
   },
 ] satisfies Device[];
 
-let config: ChargingConfig = { gridLimitKw: null, priorityChargePointIds: [], chargePoints: [] };
+// `?nie-verbunden` (Audit vp-ocpp-haushalt W-04): die Kennung ist eingetragen und die Box
+// führt sie in ihrer Liste - aber unter ihr hat nie eine Wallbox angerufen.
+const nieVerbunden = new URLSearchParams(location.search).has('nie-verbunden');
+let config: ChargingConfig = { gridLimitKw: null, priorityChargePointIds: [], chargePoints: nieVerbunden
+  ? [{ chargePointId: 'wallbox-garage', label: 'Wallbox Garage', ratedKw: 11 }]
+  : [] };
 const charging: SiteCharging = {
   budget: null,
   budgets: [
     { deviceId: boxes[0].id, connectorCount: 0, ocppPort: 8887, ocppUrlPath: '/ocpp' },
     { deviceId: boxes[1].id, connectorCount: 0, ocppPort: 8890, ocppUrlPath: '/ocpp' },
   ],
-  chargers: [],
+  chargers: nieVerbunden
+    ? [{ deviceId: boxes[0].id, chargePointId: 'wallbox-garage', label: 'Wallbox Garage', priority: false, connected: false,
+      ready: false, lastSeen: null, reportedAt: new Date().toISOString(), note: 'Diese Ladesäule hat sich noch nicht gemeldet.', connectors: [] }]
+    : [],
 };
 
 Object.assign(api, {
   chargingConfig: async () => structuredClone(config),
   siteChargers: async () => structuredClone(charging),
-  admitChargePoint: async (_siteId: string, body: { chargePointId: string; label?: string }) => {
+  admitChargePoint: async (_siteId: string, body: { chargePointId: string; label?: string; ratedKw?: number }) => {
     config = {
       ...config,
-      chargePoints: [{ chargePointId: body.chargePointId, label: body.label ?? null }],
+      chargePoints: [{ chargePointId: body.chargePointId, label: body.label ?? null, ratedKw: body.ratedKw ?? null }],
     };
     return structuredClone(config);
   },
