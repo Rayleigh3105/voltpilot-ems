@@ -66,7 +66,12 @@ Websocket, Station oder Container beweisbar.
   Sonne nach einem Lauf gestoppt hat, startet frühestens nach 2 min wieder
   (`MinPause`), getragen über `Allocation.HoldUntil`. Budget, §14a, Deckel,
   Handeingriff und Ausfall-Profil wirken weiter sofort; ein Boost oder ein
-  K3-Halter hinterlässt keine Haltezeit.
+  K3-Halter hinterlässt keine Haltezeit. **⚠ Kein Mindestlauf bei blinder
+  Bahn** (ohne Messung keine Sonne behaupten) **und keiner an einer Säule mit
+  Phasenbändern** (sie hat ihren eigenen Taktgeber und geht auf eine Phase,
+  statt drei aus dem Netz zu halten). Der Netzanteil des Mindestlaufs unter
+  „Nur Sonnenstrom" ist die bewusste Ausnahme von „kauft nie Netzstrom",
+  höchstens Untergrenze × 5 min je Start (Captain-Wahl W-11, 26.10.2026).
 - **Einstellungen** in `lastmgmt.json` (das `despike.json`/`balance.json`-Muster,
   tmp+rename, PATCH-Semantik: ein abwesendes Feld BEHÄLT den Wert). Ohne
   hinterlegte Anschlussgrenze ist das Budget 0 und es lädt nichts — der

@@ -121,6 +121,9 @@ type ocppRuntime struct {
 	// phaseDwell / phasePause shorten the switch pacing for the rig only
 	// (0 = lastmgmt's defaults).
 	phaseDwell, phasePause time.Duration
+	// sourceRun / sourcePause shorten the source lane's Mindestlauf /
+	// Mindestpause (W-11) for the rig only (0 = lastmgmt's defaults).
+	sourceRun, sourcePause time.Duration
 	// release is the „Sonne + Speicher" gate (hysteresis + effect latch,
 	// internal/lastmgmt/release.go). The zero value is ready to use.
 	release lastmgmt.ReleaseGate
@@ -431,6 +434,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 		SourceAllowsMinimum: lastmgmt.NormalizePolicy(set.SurplusPolicy) == lastmgmt.PolicySolarFirst,
 		Policy:              set.SurplusPolicy,
 		SourceBlind:         surplus.Blind,
+		Pacing:              lastmgmt.Pacing{MinRun: rt.sourceRun, MinPause: rt.sourcePause},
 		Previous:            rt.previousPlan(), Now: now,
 	}
 	// „Sonne + Speicher" (ocpp_release.go): one more reading of the same

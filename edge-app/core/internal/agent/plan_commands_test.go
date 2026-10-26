@@ -12,6 +12,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flexfallback"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppsim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan2"
 )
 
@@ -313,5 +314,49 @@ func TestTheDeadlineFallbackOnlyYieldsToAPlanThatCommandsTheStation(t *testing.T
 	a.flexMu.Unlock()
 	if reason != flexfallback.ReasonPlanFresh {
 		t.Fatalf("der Notnagel nennt seinen Grund %q, erwartet %q", reason, flexfallback.ReasonPlanFresh)
+	}
+}
+
+// Dasselbe AN DER SÄULE gemessen, mit der Komponente, wie die API sie anlegt
+// (kein Typenschild im Registry): ohne Sonne und auf „Nur Sonne" lädt die
+// Säule, sobald der Plan „an" sagt - bis zu ihrer eingerichteten Obergrenze -,
+// und pausiert bei „aus".
+func TestPlanOnOffReachesTheStationAsItsLimit(t *testing.T) {
+	a := ocppAgent(t, nil)
+	ocppSite(t, a, 167)
+	a.ocpp.mu.Lock()
+	set := a.ocpp.settings
+	set.SurplusPolicy = lastmgmt.PolicySolarOnly
+	a.ocpp.settings = set
+	a.ocpp.mu.Unlock()
+	st := ocppStation(t, a, "SAEULE-1", 1, 22)
+	if err := st.Plug(1, ocppsim.Vehicle{DemandKw: 22, MinKw: 5}); err != nil {
+		t.Fatalf("plug: %v", err)
+	}
+	measureSite(t, a, 40, st) // der Standort bezieht: keine Sonne
+	waitUntil(t, "ohne Sonne pausiert die Säule", func() bool { return findProfileSoft(st, "TxProfile") < 1 })
+
+	reg := chargePointEntity("lp-1", "SAEULE-1", 22)
+	reg.Entities[0].Capabilities.Actuate = []entities.ActuateCap{{Command: entities.CmdLimitKw}}
+	reg.Entities[0].Guards.Limits.MaxConsumptionKw = nil
+	bindStation(a, reg)
+	plan := func(on bool) {
+		now := time.Now().UTC()
+		a.arbMu.Lock()
+		a.curPlan2 = &plan2.Plan{PlanID: "p-onoff", ReceivedAt: now, SlotMinutes: 15,
+			Entities: []plan2.Entity{{ID: "lp-1", Slots: []plan2.Slot{{
+				Start: now.Truncate(15 * time.Minute), Commands: entities.Commands{OnOff: &on}}}}}}
+		a.arbMu.Unlock()
+		a.runPlanExecutors(now)
+		a.arb.Tick()
+		measureSite(t, a, 40, st)
+	}
+
+	plan(true)
+	waitUntil(t, "„an“ lädt die Säule ohne Sonne", func() bool { return findProfileSoft(st, "TxProfile") > 20_000 })
+	plan(false)
+	waitUntil(t, "„aus“ pausiert sie", func() bool { return findProfileSoft(st, "TxProfile") < 1 })
+	if alloc, ok := a.ocpp.previousPlan().Get("SAEULE-1#1"); !ok || alloc.Reason != lastmgmt.ReasonPlan {
+		t.Fatalf("die Pause nennt den Plan: %+v (ok=%v)", alloc, ok)
 	}
 }

@@ -276,3 +276,26 @@ func TestTheVectorCarriesTheBoxSentence(t *testing.T) {
 	}
 	t.Fatal("der Vektor-Fall wartet_sonne_reicht_nicht fehlt")
 }
+
+// Ohne Messung gibt es keine Sonne zu behaupten: eine blinde Bahn hält keinen
+// Mindestlauf, und eine Säule mit Phasenumschaltung hat ihren eigenen
+// Taktgeber (sie geht auf eine Phase, statt drei aus dem Netz zu halten).
+func TestNoMinimumRunOnABlindLaneOrAPlugWithBands(t *testing.T) {
+	s := garage(ChargeFloorKw(3, 0))
+	start := sunOnly(s, 5, base, nil)
+	blind := Decide(Input{
+		Settings: household(), Sessions: []Session{s},
+		SourceBudgetKw: kwp(0), Policy: PolicySolarOnly, SourceBlind: true,
+		Previous: &start, Now: base.Add(20 * time.Second),
+	})
+	if a := alloc(t, blind, s.Key); !a.Paused {
+		t.Fatalf("eine blinde Bahn hält keinen Mindestlauf: %+v", a)
+	}
+
+	banded := s
+	banded.Ranges = BandsOf([]PowerRange{{Phases: 1, MinKw: 1.38, MaxKw: 3.68}, {Phases: 3, MinKw: 4.14, MaxKw: 11}})
+	start = sunOnly(banded, 5, base, nil)
+	if a := alloc(t, start, s.Key); a.Paused || !a.HoldUntil.IsZero() {
+		t.Fatalf("eine Säule mit Bändern trägt keine Haltezeit: %+v", a)
+	}
+}

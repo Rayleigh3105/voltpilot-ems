@@ -24,7 +24,10 @@ import (
 
 // observedTick is one pass of both executors: the battery tick reports its
 // readiness, then the charge-point pass decides. SoC socPct against a 30-%
-// floor, PV 4 kW, house 1 kW; battKw is what the inverter is measured doing.
+// floor, PV 6 kW, house 1 kW; battKw is what the inverter is measured doing.
+//
+// ⚠ 5 kW of sun, not 3 (W-11): the wallbox is three-phase, and 6 A on three
+// phases are 4,14 kW - 3 kW of sun cannot start it at all.
 func observedTick(t *testing.T, a *Agent, s1 *ocppsim.Station, socPct float64, held bool,
 	battKw func(carKw float64) float64) {
 	t.Helper()
@@ -32,7 +35,7 @@ func observedTick(t *testing.T, a *Agent, s1 *ocppsim.Station, socPct float64, h
 	now := time.Now().UTC()
 	a.mu.Lock()
 	a.currentPlan = releasePlan(now, &floor)
-	a.lastReading = guards.Reading{SocPct: socPct, PvKw: 4, LoadKw: 1, GridLimitKw: guards.Unknown()}
+	a.lastReading = guards.Reading{SocPct: socPct, PvKw: 6, LoadKw: 1, GridLimitKw: guards.Unknown()}
 	a.lastReadingAt = now
 	a.mu.Unlock()
 	if held {
@@ -41,15 +44,15 @@ func observedTick(t *testing.T, a *Agent, s1 *ocppsim.Station, socPct float64, h
 		})
 	}
 	a.applySetpoint(now)
-	measureSurplus(t, a, 1, 4, battKw(drawOf(s1, 1)()), s1)
+	measureSurplus(t, a, 1, 6, battKw(drawOf(s1, 1)()), s1)
 	a.ocppStep(context.Background())
 }
 
 // selfConsumption is an inverter in its own self-consumption regulation: it
-// covers whatever the car takes beyond the 3 kW of sun.
+// covers whatever the car takes beyond the 5 kW of sun.
 func selfConsumption(carKw float64) float64 {
-	if carKw > 3.5 {
-		return -(carKw - 3)
+	if carKw > 5.5 {
+		return -(carKw - 5)
 	}
 	return 0
 }
@@ -76,16 +79,16 @@ func TestSonneSpeicherReleasesAnObservedBatteryAndKeepsTheCommandedRule(t *testi
 		wantKw   float64
 		wantNote string
 	}{
-		"Docker-Box: gesteuert, Rücklesung bestätigt": {nil, true, lastmgmt.ReleaseActive, 8,
+		"Docker-Box: gesteuert, Rücklesung bestätigt": {nil, true, lastmgmt.ReleaseActive, 10,
 			"darf bis 30 % entladen"},
-		"gesteuert, aber ohne bestätigte Rücklesung": {nil, false, lastmgmt.ReleaseBatteryPath, 3,
+		"gesteuert, aber ohne bestätigte Rücklesung": {nil, false, lastmgmt.ReleaseBatteryPath, 5,
 			"ohne bestätigte Rückmeldung"},
 		// Deye without device approval, only read, no readback: the
 		// Edge-Light pilot, TestEdgeLightPilotReleasesItsObservedDeye.
 		// A readback that arrives anyway (Node-RED reads back on a Docker
 		// box) does not make an unapproved battery a commanded one.
 		"Docker-Box ohne Gerätefreigabe, Rücklesung vorhanden": {uncommandedDeye, true,
-			lastmgmt.ReleaseObserved, 8, "beobachtet"},
+			lastmgmt.ReleaseObserved, 10, "beobachtet"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -118,14 +121,14 @@ func TestAnObservedBatteryIsTakenBackAtItsFloor(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		observedTick(t, a, s1, 80, false, selfConsumption)
 	}
-	nearKwSoon(t, "3 kW sun + 5 kW observed battery", drawOf(s1, 1), 8)
+	nearKwSoon(t, "5 kW sun + 5 kW observed battery", drawOf(s1, 1), 10)
 
 	// The battery reaches its floor: from the next pass on, the car gets the
 	// sun only, and the battery is served first.
 	for i := 0; i < 4; i++ {
 		observedTick(t, a, s1, 30.4, false, selfConsumption)
 	}
-	nearKwSoon(t, "only the sun at the floor", drawOf(s1, 1), 3)
+	nearKwSoon(t, "only the sun at the floor", drawOf(s1, 1), 5)
 	v, _ := a.ocpp.release.Last()
 	if v.Active || !v.StorageFirst || v.Mode != lastmgmt.ReleaseAtFloor {
 		t.Fatalf("at the floor: %+v", v)
@@ -140,10 +143,10 @@ func TestAnObservedReleaseIsWithdrawnWhenTheSiteImports(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		observedTick(t, a, s1, 80, false, selfConsumption)
 	}
-	nearKwSoon(t, "released", drawOf(s1, 1), 8)
+	nearKwSoon(t, "released", drawOf(s1, 1), 10)
 
-	// The inverter stops covering the car: the box MEASURES the import (8 kW
-	// car + 1 kW house − 4 kW sun = 5 kW from the grid), and this pass starts
+	// The inverter stops covering the car: the box MEASURES the import (10 kW
+	// car + 1 kW house − 6 kW sun = 5 kW from the grid), and this pass starts
 	// the effect window through the real wiring (ocppObserveReleaseEffect).
 	observedTick(t, a, s1, 80, false, notCovering)
 	now := time.Now().UTC()
@@ -163,7 +166,7 @@ func TestAnObservedReleaseIsWithdrawnWhenTheSiteImports(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		observedTick(t, a, s1, 80, false, notCovering)
 	}
-	nearKwSoon(t, "back to the sun only", drawOf(s1, 1), 3)
+	nearKwSoon(t, "back to the sun only", drawOf(s1, 1), 5)
 	v, _ := a.ocpp.release.Last()
 	if v.Active || v.Mode != lastmgmt.ReleaseEffectLatch {
 		t.Fatalf("latched: %+v", v)

@@ -770,9 +770,14 @@ func Decide(in Input) Plan {
 		}
 		return in.Previous.Get(key)
 	}
+	// ⚠ No Mindestlauf on a BLIND lane (without a measurement there is no sun
+	// to claim, and missing PV never releases solar-only charging) and none
+	// for a plug with phase bands: it has its own switch pacer and goes down
+	// to one phase instead of holding three from the grid.
 	runHeld := func(s Session) bool {
 		old, ok := prevOf(s.Key)
-		return ok && !old.Paused && old.Kw > 0 && in.Now.Before(old.HoldUntil)
+		return ok && !in.SourceBlind && !s.Ranges.Any() && !old.Paused && old.Kw > 0 &&
+			in.Now.Before(old.HoldUntil)
 	}
 	pauseHeld := func(s Session) (Allocation, bool) {
 		old, ok := prevOf(s.Key)
@@ -783,8 +788,8 @@ func Decide(in Input) Plan {
 	// hold behind, so „Automatik fortsetzen" after a boost pauses at once, and
 	// a vehicle that never ran (just plugged in, the lane still blind) starts
 	// the moment the sun is there.
-	holdOf := func(a Allocation, exempt bool) time.Time {
-		if !srcActive || exempt {
+	holdOf := func(s Session, a Allocation, exempt bool) time.Time {
+		if !srcActive || exempt || s.Ranges.Any() {
 			return time.Time{}
 		}
 		old, ok := prevOf(a.Key)
@@ -1095,7 +1100,7 @@ func Decide(in Input) Plan {
 			}
 		}
 		a = pace(a, in.Previous, pacing, in.Now)
-		a.HoldUntil = holdOf(a, exemptOf[s.Key])
+		a.HoldUntil = holdOf(s, a, exemptOf[s.Key])
 		total += a.Kw
 		if !exemptOf[s.Key] {
 			sourceTotal += a.Kw
