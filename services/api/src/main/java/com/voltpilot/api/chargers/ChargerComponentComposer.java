@@ -1,5 +1,6 @@
 package com.voltpilot.api.chargers;
 
+import com.voltpilot.api.consumers.ConsumerRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
@@ -48,6 +49,11 @@ import org.springframework.stereotype.Component;
  * Löscht ein Kunde die Komponente bewusst, wird sie NICHT beim nächsten
  * Herzschlag neu erfunden - dieselbe Zusage, die eine bewusst gelöschte
  * komponierte Entität schon heute hat.
+ *
+ * <p><b>Die Nennleistung zieht jeder Lauf nach</b> (Audit W-02): ein
+ * Steuerprofil der Säule ohne Nennleistung bekommt die des Ladesäulen-Dokuments
+ * ({@link ConsumerRepository#ladepunktNennleistungNachziehen}) - ohne sie plant
+ * der Optimierer kein Ziel und kein „Günstig". Eine gepflegte bleibt stehen.
  */
 @Component
 public class ChargerComponentComposer {
@@ -59,11 +65,13 @@ public class ChargerComponentComposer {
 
     private final DeviceChargerStatusRepository chargerStatus;
     private final EntityRegistryService registry;
+    private final ConsumerRepository consumers;
 
     public ChargerComponentComposer(DeviceChargerStatusRepository chargerStatus,
-            EntityRegistryService registry) {
+            EntityRegistryService registry, ConsumerRepository consumers) {
         this.chargerStatus = chargerStatus;
         this.registry = registry;
+        this.consumers = consumers;
     }
 
     /**
@@ -86,6 +94,16 @@ public class ChargerComponentComposer {
         } catch (Exception e) {
             // Nie werfend: der Ladevorgang zählt, der Modell-Eintrag holt auf.
             log.warn("Ladepunkt-Komponenten der Anlage {} konnten nicht angelegt werden: {}",
+                    siteId, e.toString());
+        }
+        try {
+            int nachgezogen = consumers.ladepunktNennleistungNachziehen(siteId, deviceId);
+            if (nachgezogen > 0) {
+                log.info("Nennleistung für {} Ladepunkt-Profil(e) der Anlage {} aus dem "
+                        + "Ladesäulen-Dokument übernommen", nachgezogen, siteId);
+            }
+        } catch (Exception e) {
+            log.warn("Nennleistung der Ladepunkte der Anlage {} nicht nachgezogen: {}",
                     siteId, e.toString());
         }
     }

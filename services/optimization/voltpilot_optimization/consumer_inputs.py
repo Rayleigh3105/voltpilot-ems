@@ -458,7 +458,9 @@ JOIN consumer_policy pol
 JOIN measurement_point mp ON mp.id = cp.entity_id
 WHERE cp.site_id = %s
   AND cp.enabled
-  AND (mp.edge_source_id IS NOT NULL OR mp.device_id IS NOT NULL)
+  AND (mp.edge_source_id IS NOT NULL OR mp.device_id IS NOT NULL
+       OR EXISTS (SELECT 1 FROM device_charge_point dcp
+                  WHERE dcp.entity_id = cp.entity_id AND dcp.site_id = cp.site_id))
 ORDER BY cp.entity_id
 """
 
@@ -473,7 +475,12 @@ def load_consumer_entities(
 ) -> tuple[ControllableLoadEntity, ...]:
     """Every solver-relevant consumer of one site: ENABLED profile, ACTIVE
     policy, CONNECTED entity (§17) - compiled against this horizon. One bad
-    document never sinks the cycle (log + skip, the engine's discipline)."""
+    document never sinks the cycle (log + skip, the engine's discipline).
+
+    An OCPP charge point is connected through its box binding
+    (``device_charge_point.entity_id``): the platform composes it without a
+    source pin or device id, so the §17 test alone never planned it (Audit
+    W-02). A profile without rated power is skipped WITH its reason."""
     import psycopg  # lazy: optional [db] extra
 
     entities: list[ControllableLoadEntity] = []
@@ -496,6 +503,19 @@ def load_consumer_entities(
             max_starts,
             document,
         ) = row
+        if rated is None or float(rated) <= 0:
+            # Audit W-02: ohne Nennleistung gibt es keine Leistung zu planen -
+            # die Komponente fällt mit Grund aus dem Lauf, statt mit einem
+            # TypeError aus float(None). An einer OCPP-Säule fehlt sie, bis
+            # das Ladesäulen-Dokument sie trägt.
+            logger.warning(
+                "consumer.compile_failed",
+                extra={"context": {
+                    "entity_id": entity_id,
+                    "error": "Nennleistung fehlt (rated_power_kw) - Verbraucher nicht geplant",
+                }},
+            )
+            continue
         try:
             if isinstance(document, str):
                 document = json.loads(document)
