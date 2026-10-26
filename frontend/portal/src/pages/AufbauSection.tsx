@@ -74,6 +74,7 @@ import {
   ohneAufbauNeu,
   ohneModellBearbeiten,
   parseAufbauAn,
+  parseAufbauRef,
   parseAufbauNeu,
   parseKomponente,
   type AufbauNeu,
@@ -612,6 +613,11 @@ export function AufbauSection({
   const [neuAn, setNeuAn] = useState<string | null>(() =>
     typeof window === 'undefined' ? null : parseAufbauAn(window.location.hash),
   );
+  // `?neu=box&ref=` (Direktlink vom Gehäuse, `koppelLink.ts`): die Referenz steht in „Box hinzufügen“ im Feld.
+  const [neuRef, setNeuRef] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : parseAufbauRef(window.location.hash),
+  );
+  const [boxVorschlag, setBoxVorschlag] = useState<string | null>(null);
   const [neuHinweis, setNeuHinweis] = useState<string | null>(null);
   useEffect(() => {
     const onHash = () => {
@@ -619,6 +625,7 @@ export function AufbauSection({
       if (n) {
         setNeu(n);
         setNeuAn(parseAufbauAn(window.location.hash));
+        setNeuRef(parseAufbauRef(window.location.hash));
       }
     };
     window.addEventListener('hashchange', onHash);
@@ -630,7 +637,11 @@ export function AufbauSection({
     replaceCurrentNavigation(ohneAufbauNeu(window.location.hash));
     setNeu(null);
     setNeuAn(null);
-    if (neu === 'box') setBoxAnmelden(true);
+    setNeuRef(null);
+    if (neu === 'box') {
+      setBoxVorschlag(neuRef);
+      setBoxAnmelden(true);
+    }
     else if (neu === 'anlage') setAnlageAnlegen(true);
     else if (portalManaged) {
       // „Gerät an diesem Gateway hinzufügen" (GE-5): an der Box, die das Gateway liest.
@@ -928,7 +939,11 @@ export function AufbauSection({
         title="VoltPilot-Box hinzufügen"
         // Eine Box gehört genau EINER Anlage; hier stehen alle Anlagen dieses Standorts zur Wahl, die offene zuerst.
         sites={anlagenDesBaums}
-        onClose={() => setBoxAnmelden(false)}
+        vorschlag={boxVorschlag}
+        onClose={() => {
+          setBoxAnmelden(false);
+          setBoxVorschlag(null);
+        }}
         onClaimed={() => onReload?.(site.id)}
       />
 

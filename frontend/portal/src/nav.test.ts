@@ -42,6 +42,10 @@ import {
   boxSeiteHash,
   fernwartungHash,
   parseFernwartungBox,
+  werkstattHash,
+  aufbauHash,
+  parseAufbauRef,
+  ohneAufbauNeu,
   zustellwegBestaetigenToken,
 } from './nav';
 import { anlageSidebar } from './ebenenNav';
@@ -509,11 +513,12 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
     expect(isGeraeteBereich('optimizer')).toBe(false);
   });
 
-  it('nennt die drei Tabs in Lese-Reihenfolge und führt mit dem Wirt', () => {
+  it('nennt die vier Tabs in Lese-Reihenfolge und führt mit dem Wirt', () => {
     expect(GERAETE_BEREICH.tabs.map((t) => [t.id, t.label])).toEqual([
       ['edge-updates', 'Updates'],
       ['geraete-registry', 'Registrierung'],
       ['fernwartung', 'Fernwartung'],
+      ['werkstatt', 'Werkstatt'],
     ]);
     // Der Wirt IST einer der Tabs - sonst wäre der Bereich ohne Auswahl leer.
     expect(GERAETE_BEREICH.tabs.some((t) => t.id === GERAETE_BEREICH.host)).toBe(true);
@@ -610,6 +615,25 @@ describe('parseGeraetRef (der Deep-Link-Vertrag)', () => {
     expect(parseFernwartungBox(fernwartungHash('edge-k7m2xq3'))).toBe('edge-k7m2xq3');
     expect(parseFernwartungBox('#/fernwartung')).toBeNull();
     expect(parseRoute('#/fernwartung?box=edge-k7m2xq3')).toEqual(route('fernwartung'));
+  });
+
+  it('trägt die Box der Werkstatt als ?box= wie die Fernwartung; die Werkstatt ist ein Tab des Geräte-Bereichs', () => {
+    expect(werkstattHash('edge-wrk7abg')).toBe('#/werkstatt?box=edge-wrk7abg');
+    expect(werkstattHash(' ')).toBe('#/werkstatt');
+    expect(parseFernwartungBox(werkstattHash('edge-wrk7abg'))).toBe('edge-wrk7abg');
+    expect(parseRoute('#/werkstatt?box=edge-wrk7abg')).toEqual(route('werkstatt'));
+    expect(isGeraeteBereich('werkstatt')).toBe(true);
+    expect(navPageFor('werkstatt')).toBe('edge-updates');
+    expect(PLATFORM_TAB_PAGES.find((p) => p.id === 'werkstatt')?.adminOnly).toBe(true);
+  });
+
+  it('trägt beim Direktlink die Referenz für „Box hinzufügen“ als ?ref= und nimmt sie mit ?neu= wieder heraus', () => {
+    expect(aufbauHash('s1', 'box', { ref: 'edge-wrk7abg' })).toBe('#/anlage/s1/modell?neu=box&ref=edge-wrk7abg');
+    // Nur zu „Box hinzufügen“: an einem Gerät oder einer Anlage hat die Referenz nichts zu suchen.
+    expect(aufbauHash('s1', 'geraet', { ref: 'edge-wrk7abg' })).toBe('#/anlage/s1/modell?neu=geraet');
+    expect(parseAufbauRef('#/anlage/s1/modell?neu=box&ref=edge-wrk7abg')).toBe('edge-wrk7abg');
+    expect(parseAufbauRef('#/anlage/s1/modell?neu=box')).toBeNull();
+    expect(ohneAufbauNeu('#/anlage/s1/modell?neu=box&ref=edge-wrk7abg&x=1')).toBe('#/anlage/s1/modell?x=1');
   });
 
   // ⚠ Der No-Orphan-Wächter: der frühere SCHREIBER ist ersatzlos entfallen.

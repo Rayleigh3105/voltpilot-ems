@@ -64,6 +64,7 @@ export function AddDeviceDrawer({
   sites,
   onClaimed,
   nachfolgerVon = null,
+  vorschlag = null,
   datenquellen = [],
   // EIN Name je Handlung: eine Box anmelden heißt überall „VoltPilot-Box hinzufügen“ — „Gerät hinzufügen“
   // ist der Gerätekatalog (Zähler, Wechselrichter, Ladesäule hinter der Box).
@@ -75,6 +76,8 @@ export function AddDeviceDrawer({
   onClaimed: (device: Device) => void;
   /** Auf der Box-Seite: dieselbe Claim-Strecke, danach eine getrennte Bestätigung des Tauschs. */
   nachfolgerVon?: Device | null;
+  /** Die Referenz aus dem Direktlink vom Gehäuse (`koppelLink.ts`): steht beim Öffnen im Feld. */
+  vorschlag?: string | null;
   datenquellen?: UemsDatenquelle[];
   /** Titel und Knopf; der Aufbau nennt die Box beim Namen („VoltPilot-Box hinzufügen"). */
   title?: string;
@@ -93,6 +96,10 @@ export function AddDeviceDrawer({
   useEffect(() => {
     if (!siteId && sites[0]) setSiteId(sites[0].id);
   }, [sites, siteId]);
+
+  useEffect(() => {
+    if (open && vorschlag) setExternalRef(vorschlag);
+  }, [open, vorschlag]);
 
   const siteName = (id: string) => sites.find((s) => s.id === id)?.name ?? id.slice(0, 8);
 

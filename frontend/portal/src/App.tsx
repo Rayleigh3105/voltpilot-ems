@@ -72,6 +72,7 @@ import {
   transitionKind,
   type PageId,
   type Route,
+  werkstattHash,
 } from './nav';
 import { PAGE_CHUNK } from './pageChunks';
 import { darfEnergieeinsaetzeSehen, darfEnergiemanagementSehen, darfVerbesserungSehen } from './bereichSicht';
@@ -124,6 +125,7 @@ import { PortfolioTabs } from './components/PortfolioTabs';
 import { EbenenTabs } from './components/EbenenTabs';
 import { helpForRoute } from './help/context';
 import { useEntscheidFokus } from './useEntscheidFokus';
+import { koppelZiel, offeneKoppelRef, vergissKoppelRef } from './koppelLink';
 const HelpPage = lazy(PAGE_CHUNK.hilfe);
 // „Konto erstellen“: nur die Registrierung braucht es, nie das erste Bild (Bündel-Wächter, Anlage-Flow a1).
 // Keine Seite (kein Eintrag in PAGE_CHUNK, nichts vorzuladen): das Stück lädt, wenn das Formular rendert.
@@ -1260,6 +1262,31 @@ function UnifiedPortal() {
   }, [isAdmin, loaded, error, tenantReady, darf, setOnboardingDismissed]);
   const showOnboarding = !isAdmin && !onboardingDismissed && (onboardingGewollt || onboardingOffen);
 
+  // Der Direktlink vom Gehäuse (`koppelLink.ts`, Plan D3): die beim Start gemerkte Referenz dorthin, wo
+  // eine Box verbunden wird. Ohne Anlage bietet sie der Einrichtungs-Assistent an und vergisst sie an
+  // seinem Ende; mit Anlage öffnet der Aufbau „Box hinzufügen“ mit ihr im Feld; ein VoltPilot-Admin
+  // landet in der Werkstatt bei genau dieser Box. Verbunden wird nie von selbst.
+  const [koppelRef, setKoppelRef] = useState<string | null>(() => offeneKoppelRef());
+  useEffect(() => {
+    if (!koppelRef) return;
+    if (!isAdmin && (!loaded || error != null || !tenantReady)) return;
+    const ziel = koppelZiel(koppelRef, {
+      admin: isAdmin,
+      siteIds: sites.map((s) => s.id),
+      darfAnlegen: darf('anlage.verwalten'),
+      aufbau: (siteId, ref) => aufbauHash(siteId, 'box', { ref }),
+      werkstatt: (ref) => werkstattHash(ref),
+    });
+    if (ziel.art === 'assistent') {
+      setOnboardingDismissed(false);
+      setOnboardingOffen(true);
+      return;
+    }
+    vergissKoppelRef();
+    setKoppelRef(null);
+    if (ziel.art === 'adresse') window.location.hash = ziel.hash;
+  }, [koppelRef, isAdmin, loaded, error, tenantReady, sites, darf, setOnboardingDismissed]);
+
   // The always-visible shell action for the one case with no obvious entry
   // point: a customer with exactly one Anlage (no Übersicht, no Anlagen-Liste).
   const showAddAnlage = darf('anlage.verwalten') && showAddAnlageButton({
@@ -1273,6 +1300,8 @@ function UnifiedPortal() {
   function finishOnboarding(ziel?: Route) {
     setOnboardingDismissed(true);
     setOnboardingOffen(false);
+    vergissKoppelRef();
+    setKoppelRef(null);
     void reload();
     // Modus „nur messen“ (`anlegeNurMessen.ts`): das Ende nennt „Standort › Messstellen“ als Ziel.
     if (ziel) navigate(ziel);
@@ -1462,6 +1491,7 @@ function UnifiedPortal() {
         <LazyBoundary fallback={null}>
           <OnboardingWizard
             sites={sites}
+            vorschlagKennung={koppelRef}
             // B1: die neue Anlage steht sofort in der Liste - nie „Noch keine Anlage" neben einer angelegten.
             onSiteCreated={(s) => void reload(s.id, { background: true })}
             onDone={(ziel) => finishOnboarding(ziel)}

@@ -308,6 +308,9 @@ const EXCLUDED = [
   '/adminVorlagen.ts',
   '/adminKomponentenFlotte.ts',
   '/adminGeraet.ts',
+  // Die reine Schicht der Admin-Seite „Geräte › Werkstatt" (`pages/admin/Werkstatt*`): Sie nennt die
+  // Box-Arten beim technischen Namen („Edge Light", „Docker-Box") und spricht Werkstatt-Vokabular.
+  '/werkstatt.ts',
   // Die reine Schicht der Admin-Seite „Geräte & Updates" (`pages/admin/BoxVersions`,
   // einziger Importeur) — sie spricht legitim Betreiber-Vokabular (Release, Version).
   '/boxVersions.ts',
@@ -845,6 +848,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'boxVersions',
       // UEMS AP-15 IP-24: das Betreiber-Blatt der Gemeinsamen Steuerung.
       'adminGemeinsameSteuerung',
+      // Geräte › Werkstatt (26.10.2026).
+      'werkstatt',
     ];
     // PR 1f (Anlagen-Zentrale Stufe 1): die Plattform-Sicht wohnt seither
     // ADDITIV auf der KUNDEN-Geräteseite - hinter dem EINEN Rollen-Tor

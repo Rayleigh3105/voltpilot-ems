@@ -19,6 +19,7 @@ import { BOOT_TIMEOUT_MS, BootTimeoutError, bootOutcome, withTimeout } from './b
 import { BootErrorBoundary, BootSplash } from './components/Boot';
 import { ZustellwegBestaetigenScreen } from './components/ZustellwegBestaetigenScreen';
 import { initInstallApp } from './installApp';
+import { koppelLinkAnnehmen } from './koppelLink';
 import { isRegisterRoute, zustellwegBestaetigenToken } from './nav';
 import { registerServiceWorker } from './serviceWorker';
 
@@ -70,6 +71,11 @@ const AUTO_LOGIN_GUARD = 'vp.auth.autoLoginRedirect';
 // White-page fix, part 1: something is on screen from the first frame on -
 // whatever initAuth() does afterwards can only ever REPLACE this splash.
 render(<BootSplash />);
+
+// Der Direktlink vom Gehäuse (`#/k/<referenz>`, nginx leitet `/k/<referenz>` hierher): die Referenz
+// in den sessionStorage dieses Tabs und aus der Adresse, BEVOR die Anmeldung die Adresse mitnimmt.
+// So übersteht sie Keycloak und das Neuladen nach der Selbstregistrierung; die App bietet sie an.
+koppelLinkAnnehmen(window.location, (url) => window.history.replaceState(window.history.state, '', url));
 
 // The confirmation-mail link (`#/zustellweg/bestaetigen?token=...`, §6.6):
 // its API endpoint takes no login, so this short-circuits BEFORE initAuth()

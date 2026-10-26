@@ -94,6 +94,7 @@ Der Hersteller gibt für den Router 0 bis 40 °C Umgebungstemperatur an.
   Schrauben des Gehäuses sitzen deshalb in der Hälfte der Netzwerkbuchsen; das soll beim Befestigen
   so bleiben (keine Metallschelle, kein Metallwinkel über der LED-Seite).
 - **Etikettfeld** auf der Unterseite, 40 × 14 mm, eine Schicht vertieft. Es reicht bis unter eine
-  Antenne: kein Etikett mit Metallfolie. Format und Inhalt des Etiketts sind offen.
+  Antenne: kein Etikett mit Metallfolie. Seit dem 26.10.2026 gilt: kein Aufkleber, Referenz und
+  QR-Code werden mitgedruckt; die Druckdatei dafür fehlt noch ([offen: Etikett](entscheidungen.md#offen)).
 - **Lüftung:** Schlitze von 2 mm an LED- und Netzwerk-Seite, hängend oben und unten, sodass Luft
   durchzieht. Die Wärme im geschlossenen Gehäuse ist nicht gemessen.

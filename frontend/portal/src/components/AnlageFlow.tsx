@@ -78,6 +78,7 @@ export function AnlageFlow({
   kopf,
   standortId: vorwahl = null,
   zurueck = false,
+  vorschlagKennung = null,
 }: {
   /** Wer den Fluss zeigt - der Entwurf (F9) gilt nur für denselben Wirt. */
   wirt: EntwurfWirt;
@@ -116,6 +117,11 @@ export function AnlageFlow({
    * „Messanlage anlegen“): das Ende kehrt ohne Ziel dorthin zurück, der Wirt nimmt den Kunden wieder auf.
    */
   zurueck?: boolean;
+  /**
+   * Die Referenz aus dem Direktlink vom Gehäuse (`koppelLink.ts`): steht im Schritt „Box“ im Feld,
+   * solange kein Entwurf eine andere getippte Kennung mitbringt. Verbunden wird erst auf Knopfdruck.
+   */
+  vorschlagKennung?: string | null;
 }) {
   // F9 (Paket 3): der Entwurf dieses Tabs - nach Neuladen oder Anmeldung geht es am selben Schritt weiter,
   // mit denselben Eingaben. Ein Entwurf, dessen Anlage es nicht mehr gibt, gilt nicht.
@@ -129,7 +135,7 @@ export function AnlageFlow({
   });
   const [wiederhergestellt, setWiederhergestellt] = useState(start != null);
   const [adressEntwurf, setAdressEntwurf] = useState<AdressEntwurf | null>(start?.e.adresse ?? null);
-  const [kennungEntwurf, setKennungEntwurf] = useState(start?.e.kennung ?? '');
+  const [kennungEntwurf, setKennungEntwurf] = useState(start?.e.kennung || vorschlagKennung || '');
   const [teileEntwurf, setTeileEntwurf] = useState<TeileEntwurf | null>(start?.e.teile ?? null);
 
   // Wiedereinstieg: eine Anlage ohne Box setzt bei der Box fort, eine mit Box bei Schritt 3.
