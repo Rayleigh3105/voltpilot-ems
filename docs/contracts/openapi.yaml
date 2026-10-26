@@ -361,6 +361,13 @@ tags:
       (/api/v1/fernwartung/rueckmeldung). Die Rückmeldung ist Anzeige und
       fließt nie in den Soll-Stand. Der Kunde sieht nichts davon (O3). Siehe
       docs/fernwartung.md.
+  - name: werkstatt
+    description: >
+      Werkstatt (Entscheid vom 26.10.2026): das Register der Boxen vor dem
+      Versand, die Schritte des Ablaufs, das LAN-Netz (Entscheid 6a) und die
+      Abnahme nach der Werkstatt-Regel unter /api/v1/admin/werkstatt (nur
+      `platform-admin`). Tunnel-Schlüssel und Fenster laufen über die Routen
+      der Fernwartung; keine Route nimmt ein Passwort an. Siehe docs/werkstatt.md.
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -6936,6 +6943,144 @@ paths:
                 items: { $ref: "#/components/schemas/FernwartungProtokollEintrag" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/werkstatt/grundlagen:
+    get:
+      tags: [werkstatt]
+      summary: Die Kennungen der Prüfungen (Vektor docs/contracts/werkstatt-pruefungen.json) und der Vorschlag fürs LAN.
+      responses:
+        "200":
+          description: Grundlagen.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pruefungen, lanNetzVorschlag]
+                properties:
+                  pruefungen: { type: array, items: { type: string } }
+                  lanNetzVorschlag: { type: string, example: 10.213.0.1/24 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/werkstatt/boxen:
+    get:
+      tags: [werkstatt]
+      summary: Das Register, zuletzt geänderte Box zuerst, je Box Schritte und Abnahmen.
+      responses:
+        "200":
+          description: Boxen.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/WerkstattBox" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [werkstatt]
+      summary: Eine Box ins Register aufnehmen (201 neu, 200 schon da und unverändert).
+      description: >
+        Die Referenz wird wie bei der Kopplung kanonisiert; `edge-` mit falschem
+        Prüfzeichen oder eine der Plattform unbekannte Referenz ohne Prüfzeichen
+        ist 422. `schritte`: was vor dem Aufnehmen schon erledigt war.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [edgeRef]
+              properties:
+                edgeRef: { type: string, example: edge-wrk7abg }
+                boxArt: { type: string, enum: [edge-light, edge-app], default: edge-light }
+                schritte: { type: array, items: { type: string, pattern: "^[a-z][a-z0-9_]{1,39}$" } }
+                notiz: { type: string, maxLength: 500, nullable: true }
+      responses:
+        "200": { description: Schon im Register., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattBox" } } } }
+        "201": { description: Aufgenommen., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattBox" } } } }
+        "400": { description: Unbekannte Box-Art oder Schritt-Kennung. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: Falsches Prüfzeichen oder unbekannte Referenz. }
+  /api/v1/admin/werkstatt/boxen/{ref}:
+    get:
+      tags: [werkstatt]
+      summary: Eine Box des Registers; 404, wenn sie nicht darin steht.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Die Box., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattBox" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Nicht im Register. }
+  /api/v1/admin/werkstatt/boxen/{ref}/schritte/{schritt}:
+    put:
+      tags: [werkstatt]
+      summary: Einen Schritt abhaken oder den Haken entfernen (idempotent).
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+        - { name: schritt, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9_]{1,39}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [erledigt], properties: { erledigt: { type: boolean } } }
+      responses:
+        "200": { description: Die Box., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattBox" } } } }
+        "400": { description: Keine gültige Schritt-Kennung. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Nicht im Register. }
+  /api/v1/admin/werkstatt/boxen/{ref}/lan-netz:
+    put:
+      tags: [werkstatt]
+      summary: Das LAN-Netz der Box festhalten (Entscheid 6a).
+      description: >
+        Adresse der Box mit Präfix (/16 bis /28), privat nach RFC 1918, eine
+        Host-Adresse, kein übliches Heimnetz (192.168.0/1/2/8/178.x, 10.0.0.x)
+        und keine Überschneidung mit den Netzen des Wartungsservers; sonst 422
+        mit Grund.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [lanNetz], properties: { lanNetz: { type: string, example: 10.213.0.1/24 } } }
+      responses:
+        "200": { description: Die Box., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattBox" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Nicht im Register. }
+        "422": { description: Netz abgelehnt, mit Grund. }
+  /api/v1/admin/werkstatt/boxen/{ref}/abnahme:
+    post:
+      tags: [werkstatt]
+      summary: Das Abnahmeprotokoll nach der Werkstatt-Regel anlegen (append-only).
+      description: >
+        Nur für ein Edge Light im Register, mit jeder Prüfung der geschlossenen
+        Liste, Host-Schlüssel `SHA256:` + 43 Zeichen, einer Fassung, einem
+        LAN-Netz, einem hinterlegten Tunnel-Schlüssel und dem Fenster der
+        Werkstatt-Probe an dieser Box, das offen war und jetzt zu ist. Das
+        Protokoll hält fest, was die Fernwartung zu dem Fenster wusste.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hostSchluessel: { type: string, example: "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc" }
+                fassung: { type: string, example: edge-light-g9c3368e3a }
+                pruefungen: { type: array, items: { type: string } }
+                probeFensterId: { type: string, format: uuid }
+                notiz: { type: string, maxLength: 500, nullable: true }
+      responses:
+        "201": { description: Angelegt., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattAbnahme" } } } }
+        "400": { description: Unbekannte Prüfung. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Nicht im Register. }
+        "409": { description: Kein LAN-Netz, kein Tunnel oder das Fenster der Probe ist noch offen. }
+        "422": { description: Prüfung fehlt, Form von Host-Schlüssel oder Fassung, falsches Fenster oder Docker-Box. }
   /api/v1/fernwartung/soll:
     get:
       tags: [fernwartung]
@@ -27183,6 +27328,51 @@ components:
         technikerName: { type: string, nullable: true }
         fensterId: { type: string, format: uuid, nullable: true }
         details: { type: object, additionalProperties: true }
+    WerkstattAbnahme:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        edgeRef: { type: string }
+        hostSchluessel: { type: string }
+        fassung: { type: string }
+        tunnelAdresse: { type: string }
+        lanNetz: { type: string }
+        pruefungen: { type: array, items: { type: string } }
+        probe:
+          type: object
+          description: >
+            Das Fenster der Werkstatt-Probe und was der Tunnel-Dienst dazu gemeldet
+            hatte; `schluesselAbgeholtUm`/`gemeldetAm` null = keine Meldung nannte es.
+          properties:
+            fensterId: { type: string, format: uuid }
+            technikerName: { type: string }
+            grund: { type: string }
+            beginn: { type: string, format: date-time }
+            ende: { type: string, format: date-time }
+            geschlossenAm: { type: string, format: date-time, nullable: true }
+            geschlossenVon: { type: string, nullable: true }
+            schluesselAbgeholtUm: { type: string, format: date-time, nullable: true }
+            gemeldetAm: { type: string, format: date-time, nullable: true }
+        notiz: { type: string, nullable: true }
+        erfasstAm: { type: string, format: date-time }
+        erfasstVon: { type: string }
+    WerkstattBox:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        edgeRef: { type: string }
+        boxArt: { type: string, enum: [edge-light, edge-app] }
+        lanNetz: { type: string, nullable: true }
+        schritte:
+          type: object
+          additionalProperties:
+            type: object
+            properties: { am: { type: string, format: date-time }, von: { type: string } }
+        notiz: { type: string, nullable: true }
+        angelegtAm: { type: string, format: date-time }
+        angelegtVon: { type: string }
+        geaendertAm: { type: string, format: date-time }
+        abnahmen: { type: array, items: { $ref: "#/components/schemas/WerkstattAbnahme" } }
     FernwartungSoll:
       type: object
       required: [version, erzeugtAm, boxNetz, technikerNetz, peers, fenster]

@@ -145,7 +145,7 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
 /**
  * `anlagen` fehlt mit Absicht: ohne Anlage ist es die Umleitungs-Adresse der
  * Flotten-Ebene, mit Anlage das Cockpit — beides ohne eigenes Stück.
- * Geräte-Registry, Edge-Updates und Fernwartung teilen sich `GeraeteBereich`.
+ * Geräte-Registry, Edge-Updates, Fernwartung und Werkstatt teilen sich `GeraeteBereich`.
  */
 const PAGE_LOADER: Partial<Record<PageId, Loader>> = {
   hilfe: PAGE_CHUNK.hilfe,
@@ -171,6 +171,7 @@ const PAGE_LOADER: Partial<Record<PageId, Loader>> = {
   'geraete-registry': PAGE_CHUNK['geraete-registry'],
   'edge-updates': PAGE_CHUNK['geraete-registry'],
   fernwartung: PAGE_CHUNK['geraete-registry'],
+  werkstatt: PAGE_CHUNK['geraete-registry'],
   optimizer: PAGE_CHUNK.optimizer,
   flows: PAGE_CHUNK.flows,
   'steuerungs-freigabe': PAGE_CHUNK['steuerungs-freigabe'],

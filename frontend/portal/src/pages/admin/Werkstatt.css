@@ -1,0 +1,239 @@
+/* Werkstatt (Plattform → Geräte → Werkstatt). Baut auf Fernwartung.css auf (Lage, Befehl, Abschnitte). */
+
+.vp-ws-versand {
+  margin: 0 0 var(--vp-space-3);
+}
+
+.vp-ws-spalte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-ws-werkzeug {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+/* Ein Werkzeug als Spalte: links bündig wie der Text des Schritts, Felder nicht über die ganze Breite. */
+.vp-ws-werkzeug.vp-ws-spalte {
+  align-items: stretch;
+}
+
+.vp-ws-feld {
+  width: 100%;
+  max-width: 32rem;
+}
+
+.vp-ws-werkzeug > .vp-muted {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+/* Einmal vorbereiten: aufklappbar, damit die Liste oben bleibt. */
+.vp-ws-vorbereitung {
+  margin-top: var(--vp-space-4);
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: 12px;
+  background: var(--vp-surface);
+}
+
+.vp-ws-vorbereitung > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.vp-ws-vorbereitung[open] > summary {
+  margin-bottom: var(--vp-space-3);
+}
+
+/* Die Schritte: eine nummerierte Liste aus aufklappbaren Karten. */
+.vp-ws-schritte {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+
+.vp-ws-schritt {
+  border: 1px solid var(--vp-border);
+  border-radius: 12px;
+  background: var(--vp-surface);
+  min-width: 0;
+}
+
+.vp-ws-schritt > details > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  padding: var(--vp-space-3);
+  cursor: pointer;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-ws-schritt > details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-ws-nummer {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--vp-bg-light);
+  font-size: var(--vp-text-meta);
+  font-weight: 700;
+}
+
+.vp-ws-fertig .vp-ws-nummer {
+  color: var(--vp-ok-ink);
+}
+
+.vp-ws-titel {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-fertig .vp-ws-titel {
+  color: var(--vp-text-muted);
+}
+
+.vp-ws-inhalt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  padding: 0 var(--vp-space-3) var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-ws-sehen {
+  margin: 0;
+  color: var(--vp-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-haken {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.vp-ws-haken > input {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0.15rem 0 0;
+}
+
+.vp-ws-haken > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-karte h3 {
+  margin: 0 0 var(--vp-space-3);
+  font-size: 1.05rem;
+}
+
+.vp-ws-pruefungen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.vp-ws-pruefungen > legend {
+  margin-bottom: var(--vp-space-2);
+  padding: 0;
+  font-weight: 600;
+}
+
+.vp-ws-sperre {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--vp-text-muted);
+}
+
+/* Die Beschriftung: der QR-Code neben dem Text, am Telefon darüber. */
+.vp-ws-beschriftung {
+  display: grid;
+  grid-template-columns: minmax(0, 11rem) minmax(0, 1fr);
+  gap: var(--vp-space-4);
+  align-items: start;
+}
+
+.vp-ws-etikett {
+  margin: 0;
+  padding: var(--vp-space-2);
+  border: 1px solid var(--vp-border);
+  border-radius: 8px;
+  background: #fff;
+  color: #000;
+  text-align: center;
+}
+
+.vp-ws-etikett > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.vp-ws-klartext {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-protokoll {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem var(--vp-space-3);
+  margin: 0;
+}
+
+.vp-ws-protokoll > dt {
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-ws-protokoll > dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .vp-ws-beschriftung {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vp-ws-etikett {
+    max-width: 12rem;
+  }
+
+  .vp-ws-protokoll {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vp-ws-protokoll > dd {
+    margin-bottom: var(--vp-space-2);
+  }
+}

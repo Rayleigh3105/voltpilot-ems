@@ -19,6 +19,7 @@ import type {
   FernwartungTechnikerAntwort,
   FernwartungUebersicht,
 } from '../adminFernwartung';
+import type { BoxArt, WerkstattAbnahme, WerkstattBox, WerkstattGrundlagen } from '../werkstatt';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -620,4 +621,45 @@ export const adminApi = {
       `/api/v1/admin/fernwartung/protokoll${qs ? `?${qs}` : ''}`,
     );
   },
+
+  /** Die Fenster einer Box, neueste zuerst - auch geschlossene (die Werkstatt sucht darin ihre Probe). */
+  fernwartungFenster: (box: string, limit = 50) =>
+    request<FernwartungFenster[]>(
+      `/api/v1/admin/fernwartung/fenster?box=${encodeURIComponent(box)}&limit=${limit}`,
+    ),
+
+  // ── Werkstatt (Entscheid vom 26.10.2026): Boxen vor dem Versand ──────────
+  // Das Register, die Schritte, das LAN-Netz und die Abnahme. Tunnel-Schlüssel
+  // und Fenster laufen über die Routen der Fernwartung. Kein Aufruf trägt ein
+  // Passwort: das Root-Passwort einer Box bleibt im Browser.
+
+  werkstattGrundlagen: () => request<WerkstattGrundlagen>('/api/v1/admin/werkstatt/grundlagen'),
+
+  werkstattBoxen: () => request<WerkstattBox[]>('/api/v1/admin/werkstatt/boxen'),
+
+  /** 201 neu, 200 schon im Register (unverändert). */
+  werkstattBoxAnlegen: (input: { edgeRef: string; boxArt?: BoxArt; schritte?: string[]; notiz?: string | null }) =>
+    request<WerkstattBox>('/api/v1/admin/werkstatt/boxen', { method: 'POST', body: JSON.stringify(input) }),
+
+  werkstattSchritt: (ref: string, schritt: string, erledigt: boolean) =>
+    request<WerkstattBox>(
+      `/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/schritte/${encodeURIComponent(schritt)}`,
+      { method: 'PUT', body: JSON.stringify({ erledigt }) },
+    ),
+
+  /** 422 mit Begründung, wenn das Netz üblich ist oder sich mit dem Wartungsserver überschneidet. */
+  werkstattLanNetz: (ref: string, lanNetz: string) =>
+    request<WerkstattBox>(`/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/lan-netz`, {
+      method: 'PUT',
+      body: JSON.stringify({ lanNetz }),
+    }),
+
+  werkstattAbnahme: (
+    ref: string,
+    input: { hostSchluessel: string; fassung: string; pruefungen: string[]; probeFensterId: string; notiz?: string | null },
+  ) =>
+    request<WerkstattAbnahme>(`/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/abnahme`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 };

@@ -12,11 +12,14 @@ import { AnlageFlow } from './components/AnlageFlow';
  */
 export function OnboardingWizard({
   sites,
+  vorschlagKennung = null,
   onSiteCreated,
   onDone,
   onSkip,
 }: {
   sites: Site[];
+  /** Die Referenz aus dem Direktlink vom Gehäuse (`koppelLink.ts`): steht im Schritt „Box“ im Feld. */
+  vorschlagKennung?: string | null;
   /** B1 (Anlage-Flow a1): die neue Anlage steht sofort in der Anlagenliste des Wirts. */
   onSiteCreated?: (site: Site) => void;
   /** Das Ziel am Ende: das Cockpit der neuen Anlage, im Modus „nur messen“ ihre Messstellen. */
@@ -30,6 +33,7 @@ export function OnboardingWizard({
         <AnlageFlow
           wirt="assistent"
           sites={sites}
+          vorschlagKennung={vorschlagKennung}
           onSiteCreated={onSiteCreated}
           onDone={onDone}
           onSkipAll={onSkip}

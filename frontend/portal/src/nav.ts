@@ -42,6 +42,7 @@ export type PageId =
   | 'geraete-registry'
   | 'edge-updates'
   | 'fernwartung'
+  | 'werkstatt'
   | 'optimizer'
   | 'vorlagen'
   | 'komponenten-flotte'
@@ -447,6 +448,9 @@ export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
     // Wartungstunnel der Boxen (Entscheid E5): Fenster, Techniker-Zugänge,
     // Protokoll. Nur Plattform-Admins; der Kunde sieht davon nichts (O3).
     { id: 'fernwartung', label: 'Fernwartung' },
+    // Boxen vor dem Versand (Entscheid vom 26.10.2026): der Ablauf als
+    // geführte Schritte, das Register und die Abnahme nach der Werkstatt-Regel.
+    { id: 'werkstatt', label: 'Werkstatt' },
   ],
 };
 
@@ -460,6 +464,7 @@ export const PLATFORM_TAB_PAGES: PageDef[] = [
   // Existing registration links remain valid, including ?geraet= references.
   { id: 'geraete-registry', label: 'Registrierung', icon: 'plus', adminOnly: true },
   { id: 'fernwartung', label: 'Fernwartung', icon: 'lock', adminOnly: true },
+  { id: 'werkstatt', label: 'Werkstatt', icon: 'sliders', adminOnly: true },
 ];
 
 /**
@@ -986,10 +991,16 @@ const AUFBAU_NEU: ReadonlySet<string> = new Set<AufbauNeu>(['box', 'geraet', 'an
  * `#/anlage/{id}/modell?neu=box|geraet|anlage`. `an` nennt beim Gerät den Weg, an dem es hinzukommt
  * (`?neu=geraet&an=DQ-3`, „Gerät an diesem Gateway hinzufügen", GE-5) — sein Kennzeichen, nie eine Adresse.
  */
-export function aufbauHash(siteId: string, neu?: AufbauNeu | null, opts: { an?: string | null } = {}): string {
+export function aufbauHash(
+  siteId: string,
+  neu?: AufbauNeu | null,
+  opts: { an?: string | null; ref?: string | null } = {},
+): string {
   const params = new URLSearchParams();
   if (neu) params.set('neu', neu);
   if (neu === 'geraet' && opts.an) params.set('an', opts.an);
+  // Der Direktlink vom Gehäuse (`koppelLink.ts`): die Referenz, die „Box hinzufügen“ vorausfüllt.
+  if (neu === 'box' && opts.ref) params.set('ref', opts.ref);
   const q = params.toString();
   return `#/anlage/${siteId}/modell${q ? `?${q}` : ''}`;
 }
@@ -1012,6 +1023,11 @@ export function parseAufbauNeu(hash: string): AufbauNeu | null {
   return wert && AUFBAU_NEU.has(wert) ? (wert as AufbauNeu) : null;
 }
 
+/** Die Referenz aus `?ref=`, die „Box hinzufügen“ vorausfüllt (Direktlink vom Gehäuse); sonst null. */
+export function parseAufbauRef(hash: string): string | null {
+  return befehleParam(hash, 'ref');
+}
+
 /** Der Weg aus `?an=` (das Kennzeichen „DQ-3"), an dem ein neues Gerät hinzukommt; sonst null. */
 export function parseAufbauAn(hash: string): string | null {
   return befehleParam(hash, 'an');
@@ -1022,13 +1038,14 @@ export function parseAufbauAnlage(hash: string): string | null {
   return befehleParam(hash, 'anlage');
 }
 
-/** Dieselbe Adresse ohne `?neu=` (und sein `an=`) — nach dem Öffnen des Dialogs, damit ein Neuladen ihn nicht erneut öffnet. */
+/** Dieselbe Adresse ohne `?neu=` (und sein `an=`/`ref=`) — nach dem Öffnen des Dialogs, damit ein Neuladen ihn nicht erneut öffnet. */
 export function ohneAufbauNeu(hash: string): string {
   const [path, ...rest] = hash.split('?');
   if (rest.length === 0) return hash;
   const params = new URLSearchParams(rest.join('?'));
   params.delete('neu');
   params.delete('an');
+  params.delete('ref');
   const query = params.toString();
   return `${path}${query ? `?${query}` : ''}`;
 }
@@ -1404,6 +1421,11 @@ export function parseKomponente(hash: string): string | null {
  */
 export function fernwartungHash(ref?: string | null): string {
   return ref && ref.trim() ? `#/fernwartung?box=${encodeURIComponent(ref.trim())}` : '#/fernwartung';
+}
+
+/** Die Werkstatt, auf Wunsch bei einer Box: `#/werkstatt?box=<referenz>` (dasselbe Muster wie die Fernwartung). */
+export function werkstattHash(ref?: string | null): string {
+  return ref && ref.trim() ? `#/werkstatt?box=${encodeURIComponent(ref.trim())}` : '#/werkstatt';
 }
 
 /** Die Box aus einem `?box=`-Hash, oder null. */

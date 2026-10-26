@@ -1,0 +1,45 @@
+{
+  "beschreibung": "Die Prüfungen der Werkstatt-Regel (edge-light/docs/mango.md, Abschnitt „Bevor eine Box die Werkstatt verlässt“) und der Entscheide 3a und 6a vom 26.10.2026, als geschlossene Liste. Die Abnahme einer Box nimmt die API nur an, wenn jede Kennung abgehakt ist (AdminWerkstattController, POST /api/v1/admin/werkstatt/boxen/{ref}/abnahme). Zwillinge: WerkstattPruefungen.java (API) und werkstatt.ts (Portal); beide Tests lesen diese Datei.",
+  "pruefungen": [
+    {
+      "id": "root_passwort",
+      "regel": "Werkstatt-Regel 1, Entscheid 3a",
+      "text": "Root-Passwort gesetzt: je Box ein eigenes, zufällig erzeugt, in der Passwortablage"
+    },
+    {
+      "id": "notfall_schluessel",
+      "regel": "Werkstatt-Regel 2",
+      "text": "Genau ein dauerhafter Schlüssel auf der Box, und sein Fingerabdruck ist der des Notfall-Schlüssels"
+    },
+    {
+      "id": "tunnel_status",
+      "regel": "Werkstatt-Regel 3",
+      "text": "Tunnel eingerichtet: Handshake, SSH 2222 außerhalb der Tunnel abgewiesen, Abholer läuft"
+    },
+    {
+      "id": "anmeldeprobe",
+      "regel": "Werkstatt-Regel 4",
+      "text": "Anmeldung über Portal und Tunnel im Fenster der Werkstatt-Probe gelungen"
+    },
+    {
+      "id": "host_schluessel",
+      "regel": "Werkstatt-Regel 5",
+      "text": "Host-Schlüssel auf zwei Wegen gelesen und gleich"
+    },
+    {
+      "id": "fenster_zu",
+      "regel": "Werkstatt-Regel 6",
+      "text": "Fenster geschlossen, der neue Versuch endet mit Connection timed out"
+    },
+    {
+      "id": "lan_netz",
+      "regel": "Entscheid 6a",
+      "text": "LAN der Box auf ein unübliches Netz gestellt"
+    },
+    {
+      "id": "neustart",
+      "regel": "Ablauf Schritt 13",
+      "text": "Neustart-Probe: Tunnel wieder oben, dieselbe Referenz, ein dauerhafter Schlüssel"
+    }
+  ]
+}

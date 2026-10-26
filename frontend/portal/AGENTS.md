@@ -41,6 +41,7 @@ React/Vite/TypeScript. [Bedienmodell](../../docs/portal.md), [Hilfe bearbeiten](
 - Auth-Token-Store bleibt tabbezogen. `initAuth` validiert gespeicherte Tokens vor Initialisierung; keycloak-js nicht zweimal initialisieren.
 - Anonyme Registrierung darf nicht über einen Request-Wrapper laufen, der Token-Refresh und Login erzwingt.
 - Referenznormalisierung mit API/Go-Prüfungen synchron halten; gemeinsame Texte aus `anlageFlow.ts` wiederverwenden.
+- Direktlink vom Gehäuse `/k/<ref>`: `nginx.conf`, `koppelLink.ts` (angenommen in `main.tsx` vor `initAuth`, Ziel in `App.tsx`) und `werkstatt.ts` (`beschriftung`) gemeinsam ändern. Die Referenz liegt nur im `sessionStorage` und füllt ein Feld vor; verbunden wird nie von selbst.
 
 ## Maintaining this file
 

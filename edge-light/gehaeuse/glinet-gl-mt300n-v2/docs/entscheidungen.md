@@ -43,8 +43,20 @@ Deckel ohne „USB“.
 
 - **Produktsicherheit und CE.** Klärt der Betreiber selbst (09.10.2026: „CE und Produktsicherheit
   kümmere ich mich noch“). Dieses Verzeichnis trifft dazu keine Aussage, auch nicht zum Material.
-- **Etikett.** Format und Inhalt sind offen. Das Feld bleibt ein Schalter (`etikett`: Unterseite,
-  Deckel, Seite oder keins); mit der Originalschale bleibt das Typenschild des Herstellers zurück.
+- **Etikett.** Inhalt entschieden am 26.10.2026 („ich würde gerne die beschriftung und qr code per
+  3d-Drucker aufs gehäuse drucken keinen aufkleber mehr zu brauchen“): die Referenz der Box in
+  Klarschrift und ein QR-Code mit dem Direktlink ins Portal, gedruckt statt geklebt. Den Inhalt je Box
+  zeigt die Werkstatt-Seite im Portal ([Werkstatt](../../../../docs/werkstatt.md)). **Offen ist die
+  Druckdatei je Box:** ein Schritt im Programm, der QR-Code und Referenz als schwarze Einlage in die
+  ersten drei Schichten der Unterseite legt (das Unterteil liegt mit ihr auf der Platte). Das
+  Etikettfeld von 40 × 14 mm ist dafür zu klein: Der Code (Fassung 3, 29 × 29 Module) misst bei
+  0,84 mm je Modul (zwei Bahnen) 24,4 mm, mit zwei Modulen Ruhezone auf der Fläche 27,7 mm. Zwischen
+  den Mulden der LED-Seite und den Schlitzen der Schlüssellöcher sind rund 31 × 28 mm eben (aus den
+  Stellgrößen gerechnet, nicht gemessen); die Klarschrift muss dann woanders hin, etwa zwischen die
+  Schlüssellöcher. Bei 0,63 mm je Modul misst der Code 18,3 mm. Das ändert das gedruckte Unterteil.
+  Eine Druckprobe am Slicer (Platten mit dem Code in beiden Größen, Bambu Studio 02.08.02.61, ASA) liest
+  sich aus dem G-Code zurück; gedruckt ist sie nicht. Das Feld bleibt bis dahin
+  ein Schalter (`etikett`); mit der Originalschale bleibt das Typenschild des Herstellers zurück.
 - **Material und Blau.** Gerechnet ist mit ASA und dem Zeichen in ABS „Azure“; die Alternative ist
   alles in PETG ([Druckanleitung](drucken.md#farben)). Womit gedruckt wurde und ob der Farbton
   genügt, ist nicht gemeldet.
