@@ -29,7 +29,7 @@ class MeasurementCatalogFamiliesTest {
         assertThat(configured).containsExactlyInAnyOrder(
                 "string", "hybrid_1p", "hybrid_3p", "micro",
                 "sunspec", "sunspec_live", "fronius_solar_api",
-                "kaco_http", "kaco_http_hybrid", "kostal_plenticore",
+                "kaco_http", "kaco_http_hybrid", "kostal_plenticore", "kaco_serial",
                 "goe_http_api", "shelly_http", "ebyte_m31");
         for (String family : configured) {
             if (CORE_OWNED_WITHOUT_POINTS.contains(family)) {
@@ -39,6 +39,15 @@ class MeasurementCatalogFamiliesTest {
                 // travel as the device entity's di_k/do_k telemetry instead.
                 assertThat(MeasurementCatalogFamilies.expand(Set.of(family), catalog.families()))
                         .as("core-owned family %s offers no measurement points", family)
+                        .isEmpty();
+                continue;
+            }
+            if (catalog.familienNochNichtAnDerBox().contains(family)) {
+                // kaco_serial: der Kern-Lesepfad kennt die Familie, aber der generische
+                // Mess-Runtime-Adapter fehlt noch (NOCH_NICHT_AN_DER_BOX) - ihre Punkte
+                // fehlen deshalb in der Box-Sicht (catalog.families()) bis zum Edge-Release.
+                assertThat(MeasurementCatalogFamilies.expand(Set.of(family), catalog.families()))
+                        .as("family %s not yet at the box offers no measurement points", family)
                         .isEmpty();
                 continue;
             }
@@ -54,8 +63,9 @@ class MeasurementCatalogFamiliesTest {
     @Test
     void aWagoCardFamilyPassesLiterallyNowThatTheBoxReadsIt() {
         MeasurementCatalog catalog = new MeasurementCatalog(new ObjectMapper());
-        // Seit EZ-5 (Laufzeitstand 2026.10.21.1) ist auch das Erzeuger-Registerbild an der Box.
-        assertThat(catalog.familienNochNichtAnDerBox()).isEmpty();
+        // Seit EZ-5 (Laufzeitstand 2026.10.21.1) ist auch das Erzeuger-Registerbild an der Box;
+        // kaco_serial (Powador-Altgeräte, seriell) hat noch keinen generischen Mess-Runtime-Adapter.
+        assertThat(catalog.familienNochNichtAnDerBox()).containsExactly("kaco_serial");
         assertThat(MeasurementCatalogFamilies.expand(Set.of("wago.pm494", "wago.pm495"), catalog.families()))
                 .containsExactlyInAnyOrder("wago.pm494", "wago.pm495");
         assertThat(MeasurementCatalogFamilies.expand(Set.of("wago.pm495"), Set.of("wago.pm495")))

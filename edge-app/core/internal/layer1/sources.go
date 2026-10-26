@@ -35,7 +35,7 @@ type sourceNote struct {
 // does not read yet instead of calling them unknown.
 var knownSourceComms = map[string]bool{
 	"modbus_tcp": true, "fronius_sunspec": true, "sunspec_tcp": true, "kaco_http": true,
-	"kaco_modbus": true, "goe_http_api": true, "solarman_v5": true, "fronius_solar_api": true,
+	"kaco_modbus": true, "kaco_serial": true, "goe_http_api": true, "solarman_v5": true, "fronius_solar_api": true,
 }
 
 // parseSourcesConfig is vp-sources-config (structural validation) followed by

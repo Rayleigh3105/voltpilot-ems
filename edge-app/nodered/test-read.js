@@ -79,6 +79,7 @@ function makeReadOnce(deps) {
   const kostal = deps.kostal;
   const kaco = deps.kaco;
   const aiswei = deps.aiswei;
+  const kacoSerial = deps.kacoSerial;
   const net = deps.net;
   const http = deps.http;
   const https = deps.https;
@@ -160,6 +161,11 @@ function makeReadOnce(deps) {
         adapter: 'kaco_modbus', ip, port: num(conn.port, 502), unitId: num(conn.unit_id, 1),
         invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign,
       };
+    }
+    if (sel.communication === 'kaco_serial') {
+      const address = num(conn.address, 1);
+      if (address < 1 || address > 32) return { adapter: 'idle', reason: 'RS485-Adresse muss zwischen 1 und 32 liegen' };
+      return { adapter: 'kaco_serial', ip, port: num(conn.port, 8899), address };
     }
     return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
   }
@@ -461,6 +467,20 @@ function makeReadOnce(deps) {
     });
   }
 
+  // readKacoSerial liest EINMAL ueber den RS485-zu-Ethernet-Wandler der
+  // Powador-Altgeraete-Plattform (embedded kaco/kaco-serial-decode.js). Der
+  // Reader oeffnet/schliesst seine eigene TCP-Verbindung und klassifiziert
+  // jeden Fehler selbst zu null - ein dead Wandler oder ein unbekanntes
+  // KACO-Protokoll (Kommando-Byte-Mismatch) liest deshalb als invalid_response
+  // statt zu werfen.
+  function readKacoSerial(plan, role) {
+    const read = kacoSerial.makeKacoSerialReader({ net, timeoutMs: READ_TIMEOUT_MS });
+    return read({ ip: plan.ip, port: plan.port, address: plan.address }).then((out) => {
+      if (!out || !out.reading) return { ok: false, error_code: ERR_INVALID_RESPONSE };
+      return { ok: true, reading: toReading(out.reading, role) };
+    }).catch(() => ({ ok: false, error_code: ERR_INVALID_RESPONSE }));
+  }
+
   return function readOnce(selection, role) {
     const plan = planFor(selection);
     if (plan.adapter === 'idle') return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST, message: plan.reason });
@@ -472,6 +492,7 @@ function makeReadOnce(deps) {
     if (plan.adapter === 'kostal_modbus') return readKostal(plan, role);
     if (plan.adapter === 'kaco_http') return readKaco(plan, role);
     if (plan.adapter === 'kaco_modbus') return readAiswei(plan, role);
+    if (plan.adapter === 'kaco_serial') return readKacoSerial(plan, role);
     return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST });
   };
 }

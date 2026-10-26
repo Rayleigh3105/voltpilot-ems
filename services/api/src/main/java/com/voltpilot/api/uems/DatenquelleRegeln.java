@@ -67,7 +67,9 @@ public final class DatenquelleRegeln {
         HTTP("http", "HTTP-Auskunft"),
         OCPP("ocpp", "OCPP-Station"),
         /** Deye über den Datenlogger: Modbus-RTU im Solarman-V5-Rahmen über TCP (IP-4, AP-06 Soll-Regel 8). */
-        SOLARMAN_V5("solarman_v5", "Solarman-Datenlogger");
+        SOLARMAN_V5("solarman_v5", "Solarman-Datenlogger"),
+        /** KACO-Powador-Altgeräte über einen RS485-zu-Ethernet-Wandler (serielles ASCII-Protokoll, kein Modbus). */
+        KACO_SERIAL("kaco_serial", "Serieller RS485-Wandler");
 
         private final String code;
         private final String kundenwort;

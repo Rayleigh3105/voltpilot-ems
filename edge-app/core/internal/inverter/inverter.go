@@ -105,6 +105,19 @@ const (
 	// both in parallel) - catalog/control-profiles/profiles/huawei.json `fallen`.
 	// See nodered/huawei/huawei-decode.js.
 	CommHuaweiModbus = "huawei_modbus"
+	// CommKacoSerial reads a KACO Powador device from BEFORE the TL3/Ethernet
+	// generation (e.g. 2500xi...8000xi and older non-"xi" single-phase models
+	// such as the Powador 3200 - INT) over KACO's own serial ASCII protocol
+	// (RS232/RS485, 9600 8N1, bus address 1-32) - NOT Modbus, no
+	// discovery walk. The device itself has no network port; VoltPilot
+	// reaches it through a TRANSPARENT RS485-to-Ethernet converter (e.g.
+	// Waveshare "RS485 TO ETH", USR-TCP232 class) in TCP-server mode: the
+	// converter passes the serial bytes through unchanged, so the adapter
+	// dials a plain TCP socket and speaks the exact same protocol it would
+	// over a local /dev/ttyUSB*. Read-only - this generation has no
+	// documented remote-control register at all. See
+	// nodered/kaco/kaco-serial-decode.js + nodered/KACO.md.
+	CommKacoSerial = "kaco_serial"
 )
 
 // IsSunSpecTCP reports whether a communication id names the SunSpec-live read
@@ -195,6 +208,8 @@ const (
 	defaultKacoNH3UnitID      = 1    // evcc `solplanet-modbus` reads the NH3 at unit 1
 	defaultHuaweiPort         = 502  // Huawei SUN2000 own Modbus-TCP server
 	defaultHuaweiUnitID       = 0    // Huawei factory slave id (direct WLAN/LAN); a Smart Dongle commonly uses 1
+	defaultKacoSerialPort     = 8899 // common TCP-server-mode port of RS485-to-Ethernet converters (not a KACO norm - the converter sets its own)
+	defaultKacoSerialAddress  = 1    // the lowest valid bus address (KACO operating manual 31001135-06: addresses are 1-32, never 0)
 )
 
 // Control tiers - the battery-control PRIMITIVE a brand exposes, decoupled from
@@ -579,6 +594,11 @@ const (
 	// connection to the inverter carries PV, battery and (optional Smart Power
 	// Sensor) grid readings - nodered/huawei/huawei-decode.js.
 	FamHuaweiSun2000Luna = "huawei_sun2000_luna"
+	// FamKacoSerial ist die dritte KACO-Plattform: die Powador-Altgeraete
+	// (vor TL3/Ethernet) ueber ihr eigenes serielles ASCII-Protokoll - kein
+	// Speicher, die AC-Ausgangsleistung IST die Erzeugung (dieselbe Lehre wie
+	// FamKacoHTTP). Siehe nodered/kaco/kaco-serial-decode.js.
+	FamKacoSerial = "kaco_serial"
 )
 
 // deyeFamilies is the register-map reference list (what each Model decodes with).
@@ -1067,6 +1087,8 @@ func kacoFamilies() []Family {
 			Note: "Wie oben, aber mit Speicher: die Erzeugung kommt von der DC-Seite, weil die AC-Leistung eines Hybriden die Entladung enthält"},
 		{ID: FamKacoNH3, Label: "KACO hybrid NH3 (Registerkarte)",
 			Note: "AISWEI-eigene Modbus-Registerkarte über den Ethernet-Port des Wechselrichters"},
+		{ID: FamKacoSerial, Label: "Powador (seriell, vor der Ethernet-Generation)",
+			Note: "KACOs eigenes serielles ASCII-Protokoll (RS232/RS485, 9600 8N1) über einen RS485-zu-Ethernet-Wandler"},
 	}
 }
 
@@ -1083,6 +1105,24 @@ func kacoTransports() []Transport {
 		{Communication: CommKacoModbus, Label: "Registerkarte über den Ethernet-Port (TCP 502)", Family: FamKacoNH3,
 			Note:   "Nur beim hybriden NH3: der Wechselrichter selbst hat einen Ethernet-Anschluss.",
 			Fields: kacoNH3Fields()},
+		{Communication: CommKacoSerial, Label: "Seriell über einen RS485-zu-Ethernet-Wandler", Family: FamKacoSerial,
+			Note:   "Nur für Powador-Altgeräte ohne eigenen Netzwerk-Anschluss. Braucht zusätzliche Hardware: einen transparenten RS485-zu-Ethernet-Wandler im TCP-Server-Modus (9600 8N1).",
+			Fields: kacoSerialFields()},
+	}
+}
+
+// kacoSerialFields beschreibt die Verbindung zum RS485-zu-Ethernet-Wandler
+// der Powador-Altgeraete-Plattform: die IP/den Port DES WANDLERS (nicht des
+// Wechselrichters - der hat gar keinen Netzwerk-Anschluss) und die
+// RS485-Bus-Adresse des Wechselrichters (1-32, je Geraet eindeutig einzustellen).
+func kacoSerialFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des RS485-zu-Ethernet-Wandlers", Type: "text", Required: true,
+			Help: "Die IP des Wandlers im lokalen Netz (z. B. 192.168.0.50) - NICHT die des Wechselrichters, der hat keinen eigenen Netzwerk-Anschluss. Der Wandler muss im transparenten TCP-Server-Modus laufen (9600 8N1, keine Protokoll-Umsetzung)."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultKacoSerialPort,
+			Help: "TCP-Port des Wandlers im Server-Modus. Herstellerabhängig (z. B. 8899 oder 4196) - am Wandler selbst nachsehen."},
+		{Key: "address", Label: "RS485-Adresse des Wechselrichters", Type: "number", Default: defaultKacoSerialAddress,
+			Help: "Die Busadresse (1-32), auf die der Wechselrichter im Einstellungsmenü eingestellt ist – jedes Gerät am Bus braucht eine eigene. Am Bus-Endgerät muss außerdem der Abschlusswiderstand aktiviert sein."},
 	}
 }
 
@@ -1139,11 +1179,13 @@ func kacoNH3Fields() []Field {
 //
 // ⚠ NICHT gelistet, mit Begruendung (Scout §2.9): blueplanet hybrid 10.0 TL3
 // (proprietaeres EDCOM-Protokoll mit Partner-Identkey, kein Modbus, kein
-// Webinterface), die Powador-Legacy-Reihen xi/supreme/2002 und Powador TR3
-// (RS232/RS485 mit KACO-ASCII-Protokoll, kein Modbus), Nordamerika-Varianten,
-// blueplanet 360 NX3 (Utility-Park, Transport unbelegt) und die Powador
-// 30.0-40.0 TL3 ERSTgeneration (laut KACOs Schnittstellen-Uebersicht nur
-// RS232/RS485 - erst mit Nachweis eines Ethernet-Ports listen).
+// Webinterface), Nordamerika-Varianten, blueplanet 360 NX3 (Utility-Park,
+// Transport unbelegt) und die Powador 30.0-40.0 TL3 ERSTgeneration (laut
+// KACOs Schnittstellen-Uebersicht nur RS232/RS485 - erst mit Nachweis eines
+// Ethernet-Ports listen). Die Powador-Legacy-Reihen xi/supreme/2002 und
+// Powador TR3 (RS232/RS485 mit KACO-ASCII-Protokoll, kein Modbus) sind NICHT
+// mehr ausgeschlossen - siehe kacoSerialModels() unten: sie sind ueber einen
+// RS485-zu-Ethernet-Wandler als eigene, dritte Plattform anbindbar.
 func kacoModels() []Model {
 	// ⚠ Jedes Modell der KACO-EIGENEN Linie nennt seinen Weg AUSDRUECKLICH.
 	// Ohne diese Angabe erbte es die Wege der MARKE - und deren Vorgabe ist die
@@ -1278,6 +1320,30 @@ func kacoAisweiModels() []Model {
 	}
 }
 
+// kacoSerialModels ist die Modell-Liste der dritten KACO-Plattform: die
+// Powador-Altgeraete VOR der TL3/Ethernet-Generation, die KACOs eigenes
+// serielles ASCII-Protokoll sprechen (RS232/RS485, 9600 8N1) - siehe
+// nodered/kaco/kaco-serial-decode.js + nodered/KACO.md.
+//
+// ⚠ Der Powador 3200 - INT ist der konkrete Anlass (Kundenanlage, Baujahr
+// Q1/2014): eine Altanlage ohne Netzwerk-Schnittstelle. Weitere Modelle dieser
+// Generation (z. B. die "xi"-Baureihe 2500xi...8000xi) sprechen nach
+// oeffentlicher Dokumentation dasselbe Kommando-"0"-Frame, sind aber NICHT
+// einzeln gelistet, solange kein Modell davon an einer echten Anlage
+// verifiziert wurde - der Auffang-Eintrag deckt sie ab, ohne eine
+// Nennleistung zu erfinden.
+func kacoSerialModels() []Model {
+	serial := []string{CommKacoSerial}
+	return []Model{
+		{ID: "powador-3200-int", Label: "Powador 3200 - INT", Family: FamKacoSerial,
+			Transports: serial, RatedKw: 3.2,
+			Note: "3,2 kW · String · 1-phasig · nur Erzeugung · seriell (RS232/RS485), kein eigener Netzwerk-Anschluss"},
+		{ID: "kaco-serial-generic", Label: "Anderes Powador-Altgerät (seriell)", Family: FamKacoSerial,
+			Transports: serial,
+			Note: "Weiteres Powador-Altgerät mit KACOs seriellem ASCII-Protokoll (RS232/RS485, 9600 8N1), Nennleistung unbekannt"},
+	}
+}
+
 // DefaultCatalog returns the built-in option tree.
 //
 // Der Baum hat seit der Katalog-Neustruktur (Konzept
@@ -1398,8 +1464,8 @@ func DefaultCatalog() Catalog {
 				ID:         BrandKaco,
 				Label:      "KACO",
 				DeviceType: DeviceTypeInverter,
-				Note:       "KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\").",
-				Models:     append(kacoAisweiModels(), kacoModels()...),
+				Note:       "KACO-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell: bei den SunSpec-Modellen muss Modbus TCP am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\"), bei den Powador-Altgeräten wird ein zusätzlicher RS485-zu-Ethernet-Wandler benötigt.",
+				Models:     append(append(kacoAisweiModels(), kacoModels()...), kacoSerialModels()...),
 				Families:   kacoFamilies(),
 				Transports: kacoTransports(),
 				// Tier 1: KACO dokumentiert die Wirkleistungsbegrenzung SELBST ueber
@@ -1838,6 +1904,13 @@ type Connection struct {
 	// never configured.
 	Channel int `json:"channel,omitempty"`
 
+	// kaco_serial: the RS485 bus address (1-32) of the Powador device behind
+	// the RS485-to-Ethernet converter - NOT a Modbus unit id (this platform
+	// has no Modbus). Per KACO's own operating manual (31001135-06), 0 is
+	// NEVER a valid address - unlike UnitID there is no "0 means absent"
+	// sentinel here; an absent/zero value falls back to defaultKacoSerialAddress.
+	Address int `json:"address,omitempty"`
+
 	// ebyte_modbus_tcp: the MAC the device answered with at setup
 	// ("00:54:2c:84:9b:90"). With DHCP an address proves no device identity;
 	// the core refuses to read or switch when another MAC answers. Empty =
@@ -2215,6 +2288,30 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.ControlWriteFc, conn.CurtailWriteFc = 0, 0
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
+	case CommKacoSerial:
+		// Powador-Altgeraete ueber den RS485-zu-Ethernet-Wandler: host + port
+		// DES WANDLERS + die RS485-Busadresse des Wechselrichters (1-32,
+		// KEINE Modbus-Unit-ID, dieses Protokoll kennt kein Modbus). Nur
+		// lesen - es gibt keinen Steuerweg, also auch keinen Sollwert-/
+		// Sollwert-Vorzeichen-Hatch.
+		if conn.Port == 0 {
+			conn.Port = defaultKacoSerialPort
+		}
+		if conn.Address == 0 {
+			conn.Address = defaultKacoSerialAddress
+		}
+		if conn.Address < 1 || conn.Address > 32 {
+			return Selection{}, invalid("Die RS485-Adresse muss zwischen 1 und 32 liegen.")
+		}
+		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
+		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
+		conn.InvertControlSign, conn.InvertBattSign = false, false
+		conn.ControlWriteFc = 0
+		conn.CurtailWriteFc = 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
+		conn.Channel = 0
+		conn.MAC = ""
 	case CommGoeHTTP:
 		// go-e HTTP API v2: host + port only. No serial, unit id, auth or sign
 		// escape hatch (charging power is unsigned load).
@@ -2439,6 +2536,11 @@ func (s Selection) BusPayload() []byte {
 		// invert_control_sign: the WRITE-path sign the future Tier-2 control
 		// adapter reads (published now so the control increment is JS-side only).
 		conn["invert_control_sign"] = s.Connection.InvertControlSign
+	case CommKacoSerial:
+		// The RS485 bus address (1-32) - the reader's one addressing field on
+		// this platform (no Modbus unit id, no serial, no sign hatch: the
+		// device has no battery and no control path).
+		conn["address"] = s.Connection.Address
 	}
 	payload := map[string]any{
 		"schema_version": SchemaVersion,

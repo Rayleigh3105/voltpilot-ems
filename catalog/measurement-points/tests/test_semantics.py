@@ -102,8 +102,10 @@ class SemanticsTest(unittest.TestCase):
         # die zwei Zählerstände der 750-494, deren Faktor zu erheben ist (noch an keiner Box). Seit dem
         # Laufzeitstand 2026.09.23.2 sprechen die 4 KACO-Zähler kWh und die 8 go-e-Zähler Wh. Seit UEMS EZ-6
         # das Erzeuger-Registerbild: zwei Vorgaben-Zähler ohne Einheit, ein Zählerstand je Einheit in kWh.
+        # Seit dem Inhaltsstand 2026.10.26.1: der eine Tagesertrags-Zähler der dritten KACO-Plattform
+        # (`kaco_serial`, seriell) spricht Wh direkt (noch an keiner Box).
         self.assertEqual((einheiten[None], einheiten["VAh"], einheiten["kWh"], einheiten["Wh"], einheiten["Wmin"]),
-                         (37, 25, 61, 55, 1))
+                         (37, 25, 61, 56, 1))
         self.assertFalse([unit for unit in einheiten if unit and unit[0].isdigit()], "a factor belongs to scale")
         # Scheinarbeit ist nie als Wirkarbeit getarnt; Wmin ist Wirkarbeit.
         self.assertEqual(anzeige["VAh"], "kVAh")

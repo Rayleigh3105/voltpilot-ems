@@ -1,18 +1,19 @@
 # KACO-Wechselrichter lesen - Referenz + Einrichtung
 
-Einrichtung und Grenzen der beiden Modellplattformen. Implementierung: [`kaco/`](kaco/) und [`sunspec/`](sunspec/). Die KACO-Schreibpfade sind vorbereitet, bleiben aber im Treiber gesperrt.
+Einrichtung und Grenzen der drei Modellplattformen. Implementierung: [`kaco/`](kaco/) und [`sunspec/`](sunspec/). Die KACO-Schreibpfade sind vorbereitet, bleiben aber im Treiber gesperrt - die seriellen Powador-Altgeräte (§11) haben gar keinen Schreibpfad.
 
-## 0. Das Wichtigste zuerst: KACO sind ZWEI Plattformen
+## 0. Das Wichtigste zuerst: KACO sind DREI Plattformen
 
 | Linie | Modelle | Wie sie gelesen wird |
 |---|---|---|
 | **KACO-eigen** (Neckarsulm) | blueplanet **TL1**, blueplanet **TL3**, **Powador TL3** (Ethernet-Generation), blueplanet **NX3 M8/M10**, **gridsave** | echtes **SunSpec Modbus TCP**, Port 502, Basisadresse 40001 |
 | **AISWEI/Solplanet-OEM** | blueplanet **NX1 M2**, **NX3 M2**, **NX3 M3/M5**, hybrid **NH3** | Kommunikationseinheit (WLAN-/LAN-Stick): HTTP-JSON auf Port 8484, AISWEI-Registerkarte, SunSpec über den Stick |
+| **Powador-Altgeräte** (vor TL3/Ethernet) | **Powador 3200 - INT** und verwandte Modelle ohne eigenen Netzwerk-Anschluss | KACOs eigenes serielles ASCII-Protokoll (RS232/RS485, 9600 8N1) über einen zusätzlichen **RS485-zu-Ethernet-Wandler**, nur lesen |
 
-Beide sind gebaut. §1-§7 beschreiben die **KACO-eigene** Linie (sie braucht
+Alle drei sind gebaut. §1-§7 beschreiben die **KACO-eigene** Linie (sie braucht
 keinen neuen Decoder - VoltPilot liest sie mit demselben SunSpec-Walker wie
 einen Fronius Eco, `nodered/sunspec/sunspec-live.js`), §8-§10 die
-**AISWEI-Plattform**.
+**AISWEI-Plattform**, §11 die **seriellen Powador-Altgeräte**.
 
 ## 1. Modbus TCP am Gerät einschalten (WICHTIG!)
 
@@ -92,8 +93,8 @@ Der Schalter „Schreibzugriff erlauben" am Gerät bleibt deshalb **aus** (§1).
 | Gerät | Warum |
 |---|---|
 | **blueplanet hybrid 10.0 TL3** | proprietäres **EDCOM**-Protokoll (Katek), ab Firmware 8.x nur mit Partner-Identkey; kein Modbus, kein Webinterface |
-| Powador **2500xi…8000xi**, **supreme**, **2002-6002**, **000xi** | RS232/RS485 mit KACOs ASCII-Protokoll (9600 8N1), kein Modbus |
-| Powador **16.0/18.0 TR3** | RS485/RS232 only |
+| Powador **000xi** (große Park-Wechselrichter) | antwortet laut öffentlicher Doku mit einem ANDEREN Kommando-Byte (`4` statt `0`) als die hier implementierte Standard-Serie „00" - nicht verifiziert, deshalb nicht gelistet (siehe §11) |
+| Powador **16.0/18.0 TR3** | RS485/RS232 only, mutmaßlich die CRC16-Generic-Protocol-Variante (Kommando-Byte `n`) statt der Serie „00" - nicht verifiziert |
 | Powador **30.0-40.0 TL3 Erstgeneration** (ohne „M1") | laut KACOs Schnittstellen-Übersicht nur RS232/RS485 - erst mit Nachweis eines Ethernet-Ports listen |
 | blueplanet **360 NX3**, Zentral-/Nordamerika-Geräte | außerhalb der Zielgruppe bzw. Transport unbelegt |
 
@@ -206,13 +207,123 @@ Kundengerät gehören diese Punkte auf die Liste:
    plausibel (gleiche Plattform). Neuere Dongles leiten auf **HTTPS** um - dafür
    gibt es den Haken „Selbstsigniertes Zertifikat akzeptieren".
 
-## 11. Der vorbereitete, gesperrte Steuerpfad
+## 11. Powador-Altgeräte: seriell über einen RS485-zu-Ethernet-Wandler
+
+Die dritte KACO-Plattform: Geräte **vor** der TL3/Ethernet-Generation (konkreter
+Anlass: ein **Powador 3200 - INT**, Baujahr Q1/2014, 3,2 kW, einphasig, beim
+Kunden ohne jede Netzwerk-Schnittstelle). Diese Geräteklasse spricht
+**RS232/RS485 mit KACOs eigenem seriellem ASCII-Protokoll** (9600 8N1,
+Busadresse 1-32) - **kein Modbus**, kein Discovery-Walk. Implementierung:
+[`kaco/kaco-serial-decode.js`](kaco/kaco-serial-decode.js).
+
+Das Protokoll ist öffentlich dokumentiert und gegen reale Powador-Geräte
+verifiziert (plieningerweb/kacors485 README mit Beispiel-Bytes; g4bri3lDev/
+kaco-rs485, das zusätzlich die Feldbreiten und die Prüfsumme gegen echte
+6400xi/8000xi-Aufzeichnungen belegt und auf KACOs eigenes
+„APL_RS485protocol_KACO"-Dokument verweist). Die physische Schnittstelle
+(RS232 UND RS485, Klemmen, Busadresse, Abschlusswiderstand) ist durch KACOs
+eigene Betriebsanleitung belegt (Powador 3200-6600, Dok. 31001135-06,
+[PDF](https://www.selectronic.com.au/manuals/31001135-06-130417_HB_3200_6600_Operating_Instructions_EN_Web.pdf)) -
+nur die Dekodierung der Momentanwerte selbst wurde an keinem echten Gerät
+dieser Anlage gemessen, siehe die VERIFY-on-device-Liste unten und
+[`kaco/POWADOR-RS485-CHECKLISTE.md`](kaco/POWADOR-RS485-CHECKLISTE.md).
+
+### 11.1 Anschluss am Gerät + Zusatzhardware: ein transparenter RS485-zu-Ethernet-Wandler
+
+Der Powador 3200-6600 hat laut Betriebsanleitung **RS232 UND RS485 fest
+verbaut**, beide auf der Kommunikationsplatine an der Türinnenseite.
+**RS485 ist der vorgesehene Monitoring-Weg**; RS232 dient nur als Referenz
+(ebenfalls 9600 8N1, unidirektionales ASCII ohne Fehlerprüfung - deckungsgleich
+mit der hier implementierten Protokollbasis).
+
+- **Klemmen**: `DATA+` (Ader **B**) / `DATA-` (Ader **A**) auf der
+  Kommunikationsplatine.
+- **Kabel**: verdrillte, geschirmte Zweidrahtleitung (z. B. **LI2YCY 2x2x0,5**),
+  Schirm einseitig auf Erde.
+- **Busadresse**: **1-32**, je Gerät **eindeutig** im Einstellungsmenü des
+  Wechselrichters zu vergeben - nicht geraten, siehe §11.5.
+- **Abschlusswiderstand**: am **Endgerät** des Busses im Menü bzw. an der
+  Klemmeneinheit **aktivieren**.
+- **Max. Buslänge**: 1200 m.
+
+Das Gerät selbst hat keinen Netzwerk-Anschluss. VoltPilot erreicht es über
+einen zusätzlichen, **separat zu beschaffenden** Wandler (z. B. Waveshare
+„RS485 TO ETH" oder ein USR-TCP232-ähnliches Gerät), der im **transparenten
+TCP-Server-Modus** läuft - er reicht die seriellen Bytes 1:1 durch einen
+TCP-Socket, OHNE eigene Protokoll-Umsetzung. Anforderungen an den Wandler:
+
+- **Serielle Parameter: 9600 8N1** (9600 Baud, 8 Datenbits, kein Paritätsbit,
+  1 Stoppbit) - exakt wie am Powador-RS485-Anschluss.
+- **TCP-Server-Modus** (nicht „Client"): der Wandler nimmt die Verbindung von
+  der Box an, nicht umgekehrt.
+- **Keine Protokoll-Übersetzung** (kein „Modbus-Gateway"-Modus) - das
+  Powador-Protokoll ist kein Modbus, eine solche Übersetzung würde es
+  zerstören.
+- Ein fester, bekannter **TCP-Port** (herstellerabhängig, z. B. 8899 oder
+  4196 - am Wandler selbst nachsehen). Das Verbindungsformular schlägt 8899
+  vor, ist aber frei editierbar.
+
+### 11.2 Verbindung einrichten (Portal/`:8484`)
+
+Marke **KACO**, Modell **„Powador 3200 - INT"** (oder „Anderes
+Powador-Altgerät (seriell)" für ein anderes Modell dieser Generation) wählen.
+Felder:
+
+| Feld | Bedeutung |
+|---|---|
+| IP-Adresse | die des **Wandlers**, nicht des Wechselrichters |
+| Port | TCP-Port des Wandlers im Server-Modus |
+| RS485-Adresse | die Busadresse des Wechselrichters (**1-32**, im Einstellungsmenü vergeben); **0 ist keine gültige Adresse** |
+
+### 11.3 Was gelesen wird
+
+Ein Request/Reply-Zyklus pro Poll (`#<Adresse>0\r`) liefert Status,
+Generatorspannung/-strom/-leistung, Netzspannung/-strom/-leistung,
+Gerätetemperatur und Tagesertrag. Reine String-Erzeugung ohne Speicher: die
+AC-Ausgangsleistung **IST** die Erzeugung (`pv_power_kw`), dieselbe Regel wie
+bei einem String-Gerät der AISWEI-HTTP-Plattform (§8.3).
+
+### 11.4 Grenzen
+
+- **NUR LESEN.** Diese Geräte-Generation hat **keine dokumentierte
+  Fernsteuerung** - keine Wirkleistungsbegrenzung, kein Sollwert, nicht
+  einmal gesperrt vorbereitet (anders als §12): es gibt nichts zu
+  bauen, weil es keinen Steuerweg gibt.
+- **Polling-Takt**: wie jeder TCP-Raw-Socket-Weg öffnet und schließt jeder
+  Zyklus seine eigene Verbindung - der Wandler bedient typischerweise nur
+  einen Client gleichzeitig.
+- **Buskollisionen**: auf einem geteilten RS485-Bus ist eine fehlerhafte
+  Prüfsumme nicht ungewöhnlich; der Decoder markiert sie (`checksum_ok`)
+  statt die Probe deshalb zu verwerfen - siehe `kaco-serial-decode.js`.
+- **Ein anderes KACO-Protokoll wird nicht geraten**: antwortet ein Gerät mit
+  einem anderen Kommando-Byte als dieser Serie „00" (z. B. der CRC16-Variante
+  neuerer blueplanet/TL/TR-Geräte, oder der „000xi"-Park-Wechselrichter-Serie),
+  erkennt der Decoder den Mismatch und verweigert die Dekodierung statt
+  plausibel aussehenden Unsinn zu liefern.
+
+### 11.5 ⚠ Am Gerät zu prüfen (VERIFY-on-device)
+
+Die physische Schnittstelle (RS232/RS485, Klemmen, Busadresse, Terminierung)
+ist durch KACOs eigene Betriebsanleitung belegt (§11.1) - unverifiziert bleibt
+nur die **Dekodierung der Momentanwerte**, nichts davon wurde an einem echten
+Gerät dieser Anlage gemessen:
+
+1. **Antwortet das Gerät überhaupt auf Kommando „0"** mit dem erwarteten
+   `LF *<Adresse>0 …`-Kopf - oder mit einem anderen Kommando-Byte (anderes
+   Protokoll, siehe §11.4)?
+2. **Vorzeichen/Plausibilität** der Momentanwerte am Typenschild gegenprüfen.
+3. **Die tatsächliche Busadresse** des Geräts (Einstellungsmenü) - nicht
+   raten.
+4. **Wandler-Konfiguration** wie in §11.1 beschrieben (9600 8N1, TCP-Server,
+   keine Protokoll-Übersetzung).
+
+## 12. Der vorbereitete, gesperrte Steuerpfad
 
 Für einmal ist die Register-Lage **dokumentiert** - anders als bei Deye, wo sie
 mühsam aus einer Fremdintegration rekonstruiert werden musste. Gemessen hat sie
 an einem KACO trotzdem niemand von uns. Deshalb ist alles gebaut und **gesperrt**.
 
-### 11.1 Was gesperrt heißt
+### 12.1 Was gesperrt heißt
 
 | | |
 |---|---|
@@ -226,7 +337,7 @@ an einem KACO trotzdem niemand von uns. Deshalb ist alles gebaut und **gesperrt*
 Zeilen bewusst geändert werden - nicht durch einen Klick. Ein Test nagelt genau
 das fest.
 
-### 11.2 KACO-eigene Linie: Wirkleistungsbegrenzung über SunSpec Model 123
+### 12.2 KACO-eigene Linie: Wirkleistungsbegrenzung über SunSpec Model 123
 
 KACO beschreibt sie selbst: App Note „blueplanet 100-125 NX3" §2.3.1 mit dem
 Beispiel **40295** (`WMaxLimPct`) / **40299** (`WMaxLim_Ena`), und das Handbuch
@@ -248,7 +359,7 @@ Zwei KACO-eigene Vorbehalte für den Prüfstand:
    Schreibbefehl an. Ohne die Modell-1-`Version` des Geräts ist das nicht
    entscheidbar - also wird es nicht entschieden.
 
-### 11.3 hybrid NH3: Batterie-Sollwert über die AISWEI-Registerkarte
+### 12.3 hybrid NH3: Batterie-Sollwert über die AISWEI-Registerkarte
 
 Belegt durch die OEM-Doku und evccs produktives `solplanet-modbus`-Template, das
 für „KACO Blueplanet Hybrid NH3" die Fähigkeit `battery-control` führt.
@@ -268,12 +379,12 @@ deshalb unserer sein:** laufend re-assertieren und bei Stille 41104 aktiv auf
 go-e-Executor fahren. Die Rücknahme ist als Plan gebaut; **dass sie am Gerät
 wirkt, ist Prüfstand-Pflicht, bevor je etwas geschrieben wird.**
 
-### 11.4 App-Schnittstelle: gar kein Steuerweg
+### 12.4 App-Schnittstelle: gar kein Steuerweg
 
 Über HTTP 8484 gibt es keinen dokumentierten Steuerweg. Der Adapter sagt das
 („kein Steuerweg (nur lesen)") statt eine Adresse zu raten.
 
-### 11.5 gridsave: ein eigenes Kapitel, nicht dieses
+### 12.5 gridsave: ein eigenes Kapitel, nicht dieses
 
 Ein gridsave braucht ein externes EMS und spricht dafür die KACO-Vendor-Modelle
 **64201-64204** - mit Zustandsmaschine, Lade-/Entladekennlinie und einem
@@ -281,7 +392,7 @@ Ein gridsave braucht ein externes EMS und spricht dafür die KACO-Vendor-Modelle
 sein; das ist ein eigener Bau mit eigener Untersuchung, kein Nebenprodukt dieser
 Stufe.
 
-## 12. Kunden-Termin-Checkliste
+## 13. Kunden-Termin-Checkliste
 
 Was **nur am echten Gerät** geht. Abzuarbeiten, bevor irgendeine Steuerung je
 scharf geschaltet wird.
@@ -324,6 +435,8 @@ Erst danach - und erst nach einer beaufsichtigten Prüfstand-Sitzung nach
 - `nodered/sunspec/sunspec-live.js` - der Walker + die Decodierung (geteilt mit Fronius)
 - `nodered/kaco/kaco-http.js` - die App-Schnittstelle (Port 8484)
 - `nodered/kaco/aiswei-decode.js` - die AISWEI-Registerkarte des NH3
+- `nodered/kaco/kaco-serial-decode.js` - die serielle Powador-Altgeräte-Plattform (RS485-zu-Ethernet-Wandler)
+- `nodered/kaco/POWADOR-RS485-CHECKLISTE.md` - die Feld-Checkliste für den Vor-Ort-Termin
 - `FRONIUS.md` §5b - derselbe Lesepfad aus der Fronius-Sicht
 - `edge-app/INVERTER-CONFIG.md` - der Vertrag der retained `edge/inverter/config`
 - `CONTROL-BENCH.md` → KACO - die Prüfstand-Checkliste

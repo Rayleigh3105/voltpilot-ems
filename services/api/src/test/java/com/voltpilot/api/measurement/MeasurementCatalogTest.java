@@ -118,10 +118,10 @@ class MeasurementCatalogTest {
      */
     @Test
     void theBoxKeepsItsRuntimeVersionWhileTheContentVersionCarriesQuantityAndDirection() {
-        // EZ-5: Laufzeit- und Inhaltsstand sind gleich - das Erzeuger-Registerbild ging mit seinem
-        // Box-Leser an die Box (wirksam mit dem Box-Release, das diese Palette trägt).
+        // Seit dem Inhaltsstand 2026.10.26.1 (die dritte KACO-Plattform, seriell) weichen Laufzeit-
+        // und Inhaltsstand wieder ab: ihr Lesepfad hat noch keinen generischen Mess-Runtime-Adapter.
         assertThat(catalog.version()).isEqualTo("2026.10.21.1");
-        assertThat(catalog.inhaltsstand()).isEqualTo("2026.10.21.1");
+        assertThat(catalog.inhaltsstand()).isEqualTo("2026.10.26.1");
 
         assertThat(catalog.semantik("sunspec.model_203.totwhimp"))
                 .isEqualTo(new MeasurementCatalog.Semantik("active_energy", "import"));
@@ -202,7 +202,8 @@ class MeasurementCatalogTest {
         }
         assertThat(wago).as("27 Punkte je Karte im Inhaltsstand").isEqualTo(54);
 
-        assertThat(catalog.familienNochNichtAnDerBox()).isEmpty();
+        // kaco_serial (Powador-Altgeräte, seriell): noch kein generischer Mess-Runtime-Adapter.
+        assertThat(catalog.familienNochNichtAnDerBox()).containsExactly("kaco_serial");
         assertThat(catalog.families()).contains("wago.pm494", "wago.pm495", "voltpilot.erzeuger_registerbild_v1");
         assertThat(catalog.resolve("wago.pm495.karte[*].energy_import_total")).isNotNull();
         assertThat(catalog.search("", Set.of("wago.pm494", "wago.pm495"), null, null, null, false, false,

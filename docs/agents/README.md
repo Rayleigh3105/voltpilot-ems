@@ -95,7 +95,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [In-slot load following: the DISCHARGE mirror of the trim (2026-07-30, P1)](root/in-slot-load-following-the-discharge-mir.md)
 - [In-slot surplus absorption: the only duty that RAISES a charge (2026-08-02)](root/in-slot-surplus-absorption-the-only-duty.md)
 - [Inverter control: physical execution + register-level readback (`vp-inverter-control`)](root/inverter-control-physical-execution-regi.md)
-- [KACO: EINE Marke, ZWEI Plattformen - und die brand-neutrale SunSpec-Kennung](root/kaco-eine-marke-zwei-plattformen-und-die.md)
+- [KACO: EINE Marke, DREI Plattformen - und die brand-neutrale SunSpec-Kennung](root/kaco-eine-marke-zwei-plattformen-und-die.md)
 - [Katalog-Neustruktur (Anlegen-Rework Stufe 1): Gerätetyp · Marke · Modell — und der WEG gehört dem Modell](root/katalog-neustruktur-anlegen-rework-stufe.md)
 - [Keyless data feeds: 15-min day-ahead prices + weather (portal widgets)](root/keyless-data-feeds-15-min-day-ahead-pric.md)
 - [Known future work (not yet built)](root/known-future-work-not-yet-built.md)

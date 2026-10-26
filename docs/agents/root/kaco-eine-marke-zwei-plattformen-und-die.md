@@ -1,16 +1,20 @@
-# KACO: EINE Marke, ZWEI Plattformen - und die brand-neutrale SunSpec-Kennung
+# KACO: EINE Marke, DREI Plattformen - und die brand-neutrale SunSpec-Kennung
 
-Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 153).
+Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 153). Um die dritte
+Plattform (seriell über einen RS485-zu-Ethernet-Wandler) ergänzt mit
+vp-kaco-rs485-anbindung-w1.
 
-
-Die KACO-Palette in Deye-Dichte (70 Modelle; Scout `data/vp-kaco-palette-y6`,
+Die KACO-Palette in Deye-Dichte (70+ Modelle; Scout `data/vp-kaco-palette-y6`,
 Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KACO).
 
-- **⚠ Zwei Geräte-Plattformen unter einem Markennamen**, und die Modelle nennen
+- **⚠ Drei Geräte-Plattformen unter einem Markennamen**, und die Modelle nennen
   ihren Weg deshalb SELBST (`Model.Transports`): die **KACO-eigene** Linie
   (blueplanet TL1/TL3, Powador TL3 Ethernet-Generation, NX3 M8/M10, gridsave)
   spricht echtes SunSpec Modbus TCP; die **AISWEI/Solplanet-OEM**-Linie
-  (NX1/NX3 M2/M3/M5, hybrid NH3) hängt an einer Kommunikationseinheit.
+  (NX1/NX3 M2/M3/M5, hybrid NH3) hängt an einer Kommunikationseinheit; die
+  **seriellen Powador-Altgeräte** (vor TL3/Ethernet, z. B. Powador 3200 - INT)
+  sprechen KACOs eigenes ASCII-Protokoll über einen zusätzlichen
+  RS485-zu-Ethernet-Wandler - nur lesen, kein Steuerweg (`KACO.md` §11).
 - **⚠ `CommSunSpecTCP = "sunspec_tcp"` ist die BRAND-NEUTRALE Kennung desselben
   Lesepfads, den Fronius unter `fronius_sunspec` fährt.** Beide Werte bleiben
   für immer nebeneinander: `fronius_sunspec` ist PERSISTIERT (die zwei Fronius
@@ -53,5 +57,5 @@ Betreiber-Doku `edge-app/nodered/KACO.md`, Prüfstand `CONTROL-BENCH.md` → KAC
 - **Nichts davon ist an einem KACO gemessen.** Die Annahmen (beide Vorzeichen,
   die Wort-Reihenfolge, die Modicon-Adressumrechnung `3xxxx`→FC4 −30001 /
   `4xxxx`→FC3 −40001) stehen als solche im Code UND als Termin-Liste in
-  `KACO.md` §12.
+  `KACO.md` §13.
 
