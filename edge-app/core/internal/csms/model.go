@@ -324,6 +324,17 @@ type ChargerState struct {
 	CommissionError string    `json:"commission_error,omitempty"`
 }
 
+// ProfilesInForce reports whether the two permanent profiles were confirmed
+// for the station's CURRENT boot and the station is on the websocket.
+//
+// ⚠ A reconnect is not a reboot (W-07): a station that only lost its socket
+// still holds every profile it stored, so the confirmation stands and nothing
+// is set up again. Only a BootNotification after the confirmation voids it -
+// a station that restarted may have lost its profiles.
+func (c ChargerState) ProfilesInForce() bool {
+	return c.Connected && !c.CommissionedAt.IsZero() && !c.CommissionedAt.Before(c.BootedAt)
+}
+
 // ConnectorByID returns the connector with the given id, or nil.
 func (c ChargerState) ConnectorByID(id int) *Connector {
 	for i := range c.Connectors {
@@ -550,6 +561,26 @@ func (s Snapshot) ChargingTotal(now time.Time, maxAge time.Duration) (kw float64
 		}
 	}
 	return kw, complete
+}
+
+// PowerUnreported reports whether a charging connector inside the site's
+// measurement has no FRESH power value although its station is connected: the
+// station meters only its energy register, or nothing at all (W-06). That is
+// the cause a blind source lane cannot name by itself - the connection point
+// may be measured perfectly well.
+func (s Snapshot) PowerUnreported(now time.Time, maxAge time.Duration) bool {
+	for _, c := range s.Chargers {
+		if !c.Connected || c.OwnConnection() {
+			continue
+		}
+		for _, con := range c.ActiveConnectors() {
+			if con.PowerKw == nil || con.MeteredAt.IsZero() ||
+				con.MeteredAt.After(now) || now.Sub(con.MeteredAt) > maxAge {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // DrawSettling reports whether a charge point inside the site's measurement is

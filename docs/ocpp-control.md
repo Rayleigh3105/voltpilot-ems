@@ -93,8 +93,11 @@ und am Mandanten-Umschalter der Plattform. `SetChargingProfile` und
   ebenso viel länger; das Ende bleibt gleich. Eine Säule, deren Uhr nachgeht, sieht
   eine Erneuerung so nie in ihrer Zukunft beginnen und fällt dazwischen nicht auf
   ihr dreiphasiges Default-Profil zurück.
-- Leistung, Energie und SoC haben getrennte Messuhren. Historische, zukünftige und
-  zurücklaufende Samples aktualisieren die Live-Regelung nicht. Das Protokolljournal
+- Leistung, Energie und SoC haben getrennte Messuhren. Zeiten der Säule zählen auf
+  der Box-Uhr: geht ihre Uhr bis 120 s falsch, wird die Meldung auf die Box-Uhr
+  verschoben; Startzeit und Start-Wasserzeichen führt die Box ebenso (W-09). Weiter
+  entfernte, historische und zurücklaufende Samples aktualisieren die Live-Regelung
+  nicht. Das Protokolljournal
   bewahrt ihre ursprünglichen Zeitstempel. Auch Komponenten-Telemetrie verwendet die
   jeweilige Messuhr; eine Energiemeldung verjüngt keine alte Leistung.
 - Netz- und Ladeleistung werden nur als Paar desselben Moments verrechnet. Nach einem

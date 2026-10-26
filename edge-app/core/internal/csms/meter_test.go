@@ -120,18 +120,102 @@ func TestPerPhasePowerIsNotTheTotal(t *testing.T) {
 	})
 	eq(t, "unphased wins", got.PowerKw, f(11))
 
-	// A phase-to-neutral / phase-to-phase label is NOT one of the three line
-	// phases and is left alone rather than summed into something meaningless.
+	// A phase-to-phase label is NOT one of the three line phases and is left
+	// alone rather than summed into something meaningless.
 	got = ParseMeterValues([]SampledReading{
-		{Value: "3600", Measurand: MeasurandPowerActiveImport, Unit: "W", Phase: "L1-N"},
+		{Value: "3600", Measurand: MeasurandPowerActiveImport, Unit: "W", Phase: "L1-L2"},
 	})
-	eq(t, "L1-N ignored", got.PowerKw, nil)
+	eq(t, "L1-L2 ignored", got.PowerKw, nil)
 
 	// A per-phase ENERGY register is not the connector's total either.
 	got = ParseMeterValues([]SampledReading{
 		{Value: "1000", Measurand: MeasurandEnergyImportRegister, Unit: "Wh", Phase: "L1"},
 	})
 	eq(t, "phased energy ignored", got.EnergyKwh, nil)
+}
+
+// TestLineToNeutralPowerIsThePhasePower is W-06 (audit probe A2b): many
+// stations meter each phase's power against neutral. "L1-N" IS phase 1 - the
+// old parser dropped the whole message's power, and „Nur Sonne" paused.
+func TestLineToNeutralPowerIsThePhasePower(t *testing.T) {
+	got := ParseMeterValues([]SampledReading{
+		{Value: "3600", Measurand: MeasurandPowerActiveImport, Unit: "W", Phase: "L1-N"},
+		{Value: "3700", Measurand: MeasurandPowerActiveImport, Unit: "W", Phase: "L2-N"},
+		{Value: "3700", Measurand: MeasurandPowerActiveImport, Unit: "W", Phase: "L3-N"},
+	})
+	eq(t, "L1-N+L2-N+L3-N", got.PowerKw, f(11.0))
+
+	// The same phase under both labels counts once, never twice.
+	got = ParseMeterValues([]SampledReading{
+		{Value: "3600", Measurand: MeasurandPowerActiveImport, Unit: "W", Phase: "L1"},
+		{Value: "3600", Measurand: MeasurandPowerActiveImport, Unit: "W", Phase: "L1-N"},
+	})
+	eq(t, "L1 = L1-N", got.PowerKw, f(3.6))
+}
+
+// TestPowerFromCurrentAndVoltage is W-06 (audit probe A2a): a station that
+// meters current and voltage but no power gets its power from them, phase by
+// phase - and NEVER from a guessed voltage.
+func TestPowerFromCurrentAndVoltage(t *testing.T) {
+	got := ParseMeterValues([]SampledReading{
+		{Value: "12345", Measurand: MeasurandEnergyImportRegister, Unit: "Wh"},
+		{Value: "16", Measurand: "Current.Import", Unit: "A", Phase: "L1"},
+		{Value: "16", Measurand: "Current.Import", Unit: "A", Phase: "L2"},
+		{Value: "15.5", Measurand: "Current.Import", Unit: "A", Phase: "L3"},
+		{Value: "230", Measurand: "Voltage", Unit: "V", Phase: "L1-N"},
+		{Value: "230", Measurand: "Voltage", Unit: "V", Phase: "L2-N"},
+		{Value: "230", Measurand: "Voltage", Unit: "V", Phase: "L3-N"},
+	})
+	eq(t, "Σ I×U", got.PowerKw, f(10.925))
+	eq(t, "energy kept", got.EnergyKwh, f(12.345))
+
+	// One phase charging, the unused phases at 0 A need no voltage of their own;
+	// an unphased voltage stands for every phase.
+	got = ParseMeterValues([]SampledReading{
+		{Value: "16", Measurand: "Current.Import", Phase: "L1"},
+		{Value: "0", Measurand: "Current.Import", Phase: "L2"},
+		{Value: "232", Measurand: "Voltage"},
+	})
+	eq(t, "one phase", got.PowerKw, f(3.712))
+
+	// Unphased current and voltage: a single-phase station.
+	got = ParseMeterValues([]SampledReading{
+		{Value: "10", Measurand: "Current.Import", Unit: "A"},
+		{Value: "230", Measurand: "Voltage", Unit: "V"},
+	})
+	eq(t, "unphased pair", got.PowerKw, f(2.3))
+
+	// A measured power always wins over the stand-in.
+	got = ParseMeterValues([]SampledReading{
+		{Value: "7000", Measurand: MeasurandPowerActiveImport, Unit: "W"},
+		{Value: "16", Measurand: "Current.Import", Unit: "A", Phase: "L1"},
+		{Value: "230", Measurand: "Voltage", Unit: "V", Phase: "L1-N"},
+	})
+	eq(t, "power wins", got.PowerKw, f(7))
+
+	// A phase with current but no voltage: no power - not 230 V by guess, and
+	// not the partial sum of the other phases.
+	got = ParseMeterValues([]SampledReading{
+		{Value: "12345", Measurand: MeasurandEnergyImportRegister, Unit: "Wh"},
+		{Value: "16", Measurand: "Current.Import", Unit: "A", Phase: "L1"},
+		{Value: "16", Measurand: "Current.Import", Unit: "A", Phase: "L2"},
+		{Value: "230", Measurand: "Voltage", Unit: "V", Phase: "L1-N"},
+	})
+	eq(t, "voltage missing", got.PowerKw, nil)
+	got = ParseMeterValues([]SampledReading{
+		{Value: "16", Measurand: "Current.Import", Unit: "A"},
+	})
+	eq(t, "current only", got.PowerKw, nil)
+
+	// A 0-V filler is no voltage, and is counted as dropped.
+	got = ParseMeterValues([]SampledReading{
+		{Value: "16", Measurand: "Current.Import", Unit: "A", Phase: "L1"},
+		{Value: "0", Measurand: "Voltage", Unit: "V", Phase: "L1-N"},
+	})
+	eq(t, "0 V filler", got.PowerKw, nil)
+	if got.Dropped != 1 {
+		t.Fatalf("0 V filler dropped = %d, want 1", got.Dropped)
+	}
 }
 
 // TestEmptyReading: a message that carried nothing we use must be recognisable

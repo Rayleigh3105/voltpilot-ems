@@ -39,12 +39,15 @@ func (m MeterReading) Empty() bool {
 }
 
 // OCPP 1.6 measurand + unit vocabulary this parser understands. Everything
-// else is ignored (not an error: a station may sample voltage, current,
-// temperature and frequency, all of which are simply none of our business).
+// else is ignored (not an error: a station may sample temperature and
+// frequency, which are simply none of our business). Current and voltage only
+// stand in for a missing power value (W-06).
 const (
 	MeasurandPowerActiveImport    = "Power.Active.Import"
 	MeasurandEnergyImportRegister = "Energy.Active.Import.Register"
 	MeasurandSoC                  = "SoC"
+	MeasurandCurrentImport        = "Current.Import"
+	MeasurandVoltage              = "Voltage"
 )
 
 // ParseMeterValues folds the sampled values of ONE MeterValues message into a
@@ -56,14 +59,23 @@ const (
 //   - an ABSENT unit means the spec default for the measurand (W for power,
 //     Wh for energy, Percent for SoC), never "kilo";
 //   - a PER-PHASE power sample is not the total: an unphased sample always
-//     wins, and only if there is none do L1+L2+L3 get summed (that sum IS the
-//     three-phase total; any other phase label is left alone);
+//     wins, and only if there is none do the three line phases get summed
+//     (that sum IS the three-phase total). "L1" and "L1-N" name the same
+//     phase - many stations meter phase power against neutral - and count
+//     once; "L1-L2" and "N" are left alone;
+//   - a station that reports no power at all but current AND voltage gets its
+//     power from them, phase by phase (W-06): Σ I × U. That is the apparent
+//     power, which an EV charger's near-unity power factor makes the active
+//     one. A phase without a voltage is NOT given a nominal 230 V - then there
+//     is no power, never a guessed one;
 //   - a later sample of the same measurand overwrites an earlier one;
 //   - a value that is not a finite number is DROPPED and counted, never
 //     stored as 0.
 func ParseMeterValues(samples []SampledReading) MeterReading {
 	var out MeterReading
 	phasePower := map[string]float64{}
+	phaseCurrent, phaseVoltage := map[string]float64{}, map[string]float64{}
+	var current, voltage *float64
 
 	for _, s := range samples {
 		measurand := strings.TrimSpace(s.Measurand)
@@ -76,13 +88,16 @@ func ParseMeterValues(samples []SampledReading) MeterReading {
 			// garbage temperature reading is not our problem.
 			if measurand == MeasurandPowerActiveImport ||
 				measurand == MeasurandEnergyImportRegister ||
-				measurand == MeasurandSoC {
+				measurand == MeasurandSoC ||
+				measurand == MeasurandCurrentImport ||
+				measurand == MeasurandVoltage {
 				out.Dropped++
 			}
 			continue
 		}
 		unit := strings.TrimSpace(s.Unit)
 		phase := strings.TrimSpace(s.Phase)
+		line, isLine := linePhase(phase)
 
 		switch measurand {
 		case MeasurandPowerActiveImport:
@@ -93,8 +108,31 @@ func ParseMeterValues(samples []SampledReading) MeterReading {
 			}
 			if phase == "" {
 				out.PowerKw = &kw
-			} else if isLinePhase(phase) {
-				phasePower[phase] = kw
+			} else if isLine {
+				phasePower[line] = kw
+			}
+		case MeasurandCurrentImport:
+			if (unit != "" && unit != "A") || v < 0 {
+				out.Dropped++
+				continue
+			}
+			if phase == "" {
+				a := v
+				current = &a
+			} else if isLine {
+				phaseCurrent[line] = v
+			}
+		case MeasurandVoltage:
+			// 0 V on a live phase is a firmware filler, not a measurement.
+			if (unit != "" && unit != "V") || v <= 0 {
+				out.Dropped++
+				continue
+			}
+			if phase == "" {
+				u := v
+				voltage = &u
+			} else if isLine {
+				phaseVoltage[line] = v
 			}
 		case MeasurandEnergyImportRegister:
 			kwh, ok := energyToKwh(v, unit)
@@ -133,13 +171,55 @@ func ParseMeterValues(samples []SampledReading) MeterReading {
 		}
 		out.PowerKw = &sum
 	}
+	if out.PowerKw == nil {
+		out.PowerKw = powerFromCurrent(current, voltage, phaseCurrent, phaseVoltage)
+	}
 	return out
 }
 
-// isLinePhase reports whether p is one of the three LINE phases whose powers
-// sum to the total. "L1-N"/"L1-L2"/"N" are deliberately excluded: summing
-// those double-counts or measures something else entirely.
-func isLinePhase(p string) bool { return p == "L1" || p == "L2" || p == "L3" }
+// powerFromCurrent is the W-06 stand-in: Σ I × U over the reported phases, or
+// I × U of the unphased pair. nil when any phase that carries current has no
+// voltage to go with it - a partial sum would understate the draw.
+func powerFromCurrent(current, voltage *float64, phaseCurrent, phaseVoltage map[string]float64) *float64 {
+	if len(phaseCurrent) > 0 {
+		sumW := 0.0
+		for line, a := range phaseCurrent {
+			if a == 0 {
+				continue
+			}
+			u, ok := phaseVoltage[line]
+			if !ok && voltage != nil {
+				u, ok = *voltage, true
+			}
+			if !ok {
+				return nil
+			}
+			sumW += a * u
+		}
+		kw := sumW / 1000
+		return &kw
+	}
+	if current != nil && voltage != nil {
+		kw := *current * *voltage / 1000
+		return &kw
+	}
+	return nil
+}
+
+// linePhase maps a phase label to the LINE phase it measures: "L1" and the
+// line-to-neutral "L1-N" are both phase 1. "L1-L2"/"N" are deliberately not a
+// line phase: summing those double-counts or measures something else entirely.
+func linePhase(p string) (string, bool) {
+	switch p {
+	case "L1", "L1-N":
+		return "L1", true
+	case "L2", "L2-N":
+		return "L2", true
+	case "L3", "L3-N":
+		return "L3", true
+	}
+	return "", false
+}
 
 // powerToKw converts an active-power sample to kW. The OCPP default unit for a
 // power measurand is W.

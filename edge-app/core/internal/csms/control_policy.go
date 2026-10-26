@@ -124,7 +124,7 @@ func (s *Server) startReadyLocked(id string) bool {
 		if c.ID != id && len(s.control.PhaseLimitsA) == 0 {
 			continue
 		}
-		if !c.Connected || c.CommissionedAt.IsZero() || c.CommissionedAt.Before(c.ConnectedAt) || c.CommissionedAt.Before(c.BootedAt) || c.SafetyKey != s.control.SafetyKey() {
+		if !c.ProfilesInForce() || c.SafetyKey != s.control.SafetyKey() {
 			return false
 		}
 	}

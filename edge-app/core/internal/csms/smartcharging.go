@@ -30,9 +30,15 @@ var ErrDisabled = errors.New("die Ladepunkt-Anbindung ist nicht eingeschaltet")
 //  3. block with a zero cap while reconciling foreign profile stacks;
 //  4. install the safe default, then replace the whole-station cap.
 //
-// ⚠ Steps 3 and 4 are what makes the box's own death harmless, so they run at
-// EVERY (re)connect, not once at pairing: a station that rebooted may have
-// lost them, and a station whose site limits changed must learn the new ones.
+// ⚠ Step 4 is what makes the box's own death harmless, so it runs after EVERY
+// reboot of the station, not once at pairing: a station that rebooted may have
+// lost its profiles, and a station whose site limits changed must learn the
+// new ones. A reconnect without a reboot is no reason (W-07).
+//
+// Step 3 runs once per station boot (W-08): a retry after a failure, or new
+// site limits in the same boot, resume behind it. The foreign stack is gone
+// by then, and capping a charging car at 0 W on every attempt is what kept a
+// slow station's car interrupted.
 //
 // A failure is recorded and RETURNED — it never leaves the station looking
 // commissioned. Step 2 is best-effort on purpose: a firmware that refuses the
@@ -51,6 +57,14 @@ func (s *Server) Commission(ctx context.Context, chargerID string, maxKw, defaul
 		return err
 	}
 	now := s.opts.Now()
+	s.mu.Lock()
+	var bootedAt time.Time
+	if c, ok := s.chargers[chargerID]; ok {
+		bootedAt = c.BootedAt
+	}
+	ownedBoot, owned := s.stackOwned[chargerID]
+	owned = owned && ownedBoot.Equal(bootedAt)
+	s.mu.Unlock()
 	// Previous acknowledgements are no evidence for this connection/setup.
 	s.recordCommission(chargerID, nil, nil, errors.New("Sicherheitsprofile werden geprüft"))
 
@@ -96,28 +110,35 @@ func (s *Server) Commission(ctx context.Context, chargerID string, maxKw, defaul
 			s.log.Info("Ladesäule nimmt den Messtakt nicht an — es wird mit ihrer eigenen Kadenz gearbeitet",
 				"charge_point_id", chargerID, "err", err)
 		}
+		s.configureSampledData(ctx, t, chargerID)
 	}
 
 	// Take ownership of the entire profile stack under a temporary zero cap.
 	// Old foreign IDs, connector-specific defaults and higher Tx stacks must
 	// not survive commissioning and defeat the 120-second fallback later.
-	guard := maximum
-	guard.LimitKw, guard.LimitA = 0, 0
-	guard.StackLevel = caps.MaxStackLevel
-	if st, err := t.setChargingProfile(ctx, chargerID, 0, guard); err != nil {
-		e := fmt.Errorf("die Höchstgrenze konnte nicht hinterlegt werden: %w", err)
-		s.recordCommission(chargerID, nil, nil, e)
-		return e
-	} else if st != "Accepted" {
-		e := fmt.Errorf("die Ladesäule hat die Höchstgrenze abgelehnt (%s)", st)
-		s.recordCommission(chargerID, nil, nil, e)
-		return e
-	}
-	for _, purpose := range []string{PurposeTx, PurposeTxDefault} {
-		if err := t.clearProfilePurpose(ctx, chargerID, purpose); err != nil {
-			s.recordCommission(chargerID, nil, nil, err)
-			return err
+	// Once per station boot: behind it the stack holds only our own profiles.
+	if !owned {
+		guard := maximum
+		guard.LimitKw, guard.LimitA = 0, 0
+		guard.StackLevel = caps.MaxStackLevel
+		if st, err := t.setChargingProfile(ctx, chargerID, 0, guard); err != nil {
+			e := fmt.Errorf("die Höchstgrenze konnte nicht hinterlegt werden: %w", err)
+			s.recordCommission(chargerID, nil, nil, e)
+			return e
+		} else if st != "Accepted" {
+			e := fmt.Errorf("die Ladesäule hat die Höchstgrenze abgelehnt (%s)", st)
+			s.recordCommission(chargerID, nil, nil, e)
+			return e
 		}
+		for _, purpose := range []string{PurposeTx, PurposeTxDefault} {
+			if err := t.clearProfilePurpose(ctx, chargerID, purpose); err != nil {
+				s.recordCommission(chargerID, nil, nil, err)
+				return err
+			}
+		}
+		s.mu.Lock()
+		s.stackOwned[chargerID] = bootedAt
+		s.mu.Unlock()
 	}
 
 	if st, err := t.setChargingProfile(ctx, chargerID, 0, fallback); err != nil {
@@ -213,6 +234,50 @@ func (s *Server) switchingAllowed(chargerID string) bool {
 	return false
 }
 
+// SampledDataLists is WHAT commissioning asks a station to meter (W-06), most
+// complete first. The cadence alone is not enough: many stations meter only
+// the energy register by default, and without a power value the loop is
+// blind. A station rejects the whole list when it lacks one measurand (an AC
+// station rarely knows the car's SoC; MeterValuesSampledDataMaxLength may be
+// short), so every refusal is answered with the next, shorter list.
+var SampledDataLists = []string{
+	"Power.Active.Import,Energy.Active.Import.Register,Current.Import,Voltage,SoC",
+	"Power.Active.Import,Energy.Active.Import.Register,Current.Import,Voltage",
+	"Power.Active.Import,Energy.Active.Import.Register",
+}
+
+// configureSampledData sets KeyMeterValuesSampledData and checks the answer.
+// Best-effort like the cadence: a station that refuses every list keeps its
+// own selection - then the box says that the wallbox reports no power rather
+// than guessing one. The Node-RED measurement plan owns the key once it set
+// one (measurement_configuration.go); commissioning never overrides it.
+func (s *Server) configureSampledData(ctx context.Context, t *transport, chargerID string) {
+	s.mu.Lock()
+	_, planned := s.measurementDesired.Values[KeyMeterValuesSampledData]
+	s.mu.Unlock()
+	if planned {
+		return
+	}
+	for _, list := range SampledDataLists {
+		st, err := t.changeConfiguration(ctx, chargerID, KeyMeterValuesSampledData, list)
+		switch {
+		case st == "":
+			s.log.Info("Ladesäule hat die Messgrößen nicht beantwortet — es bleibt bei ihrer eigenen Auswahl",
+				"charge_point_id", chargerID, "err", err)
+			return
+		case st == "RebootRequired":
+			s.log.Info("Ladesäule übernimmt die Messgrößen erst nach ihrem nächsten Neustart",
+				"charge_point_id", chargerID, "measurands", list)
+			return
+		case err == nil:
+			return
+		}
+		// Rejected / NotSupported: the next, shorter list.
+	}
+	s.log.Info("Ladesäule lehnt jede Messgrößen-Auswahl ab — meldet sie keine Leistung, bleibt die Sonnen-Steuerung blind",
+		"charge_point_id", chargerID)
+}
+
 func (s *Server) recordCommission(chargerID string, maxKw, defaultKw *float64, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -256,7 +321,7 @@ func (s *Server) ApplyLimitPhases(ctx context.Context, chargerID string, connect
 	}
 	s.mu.Lock()
 	c := s.chargers[chargerID]
-	ready := c != nil && !c.CommissionedAt.IsZero() && !c.CommissionedAt.Before(c.ConnectedAt) && !c.CommissionedAt.Before(c.BootedAt) && c.SafetyKey == s.control.SafetyKey() && s.startReadyLocked(chargerID)
+	ready := c != nil && c.ProfilesInForce() && c.SafetyKey == s.control.SafetyKey() && s.startReadyLocked(chargerID)
 	valid := ready && c.MaxKw != nil && limitKw >= 0 && !math.IsNaN(limitKw) && !math.IsInf(limitKw, 0)
 	if valid {
 		limitKw = math.Min(limitKw, *c.MaxKw)
