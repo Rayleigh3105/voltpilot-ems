@@ -220,7 +220,7 @@ test('flow router refuses an out-of-range RS485-Adresse, idle-safe', () => {
   const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
   const outMsg = ret[ret.length - 1];
   assert.ok(outMsg && outMsg.idle, 'der Idle-Ausgang traegt die Nachricht');
-  assert.match(outMsg.idle, /0 und 31/);
+  assert.match(outMsg.idle, /1 und 32/);
 });
 
 // Die "KACO Powador seriell lesen"-Node (auto-kaco-serial) traegt eine

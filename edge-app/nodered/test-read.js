@@ -163,8 +163,8 @@ function makeReadOnce(deps) {
       };
     }
     if (sel.communication === 'kaco_serial') {
-      const address = num(conn.address, 0);
-      if (address < 0 || address > 31) return { adapter: 'idle', reason: 'RS485-Adresse muss zwischen 0 und 31 liegen' };
+      const address = num(conn.address, 1);
+      if (address < 1 || address > 32) return { adapter: 'idle', reason: 'RS485-Adresse muss zwischen 1 und 32 liegen' };
       return { adapter: 'kaco_serial', ip, port: num(conn.port, 8899), address };
     }
     return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };

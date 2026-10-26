@@ -12006,8 +12006,8 @@
           "key": "address",
           "label": "RS485-Adresse des Wechselrichters",
           "type": "number",
-          "default": 0,
-          "help": "Die Busadresse (0-31), auf die der Wechselrichter am Display bzw. per DIP-Schalter eingestellt ist. Bei genau einem Gerät am Bus ist die Werksvorgabe meist 0."
+          "default": 1,
+          "help": "Die Busadresse (1-32), auf die der Wechselrichter im Einstellungsmenü eingestellt ist – jedes Gerät am Bus braucht eine eigene. Am Bus-Endgerät muss außerdem der Abschlusswiderstand aktiviert sein."
         }
       ],
       "channels": null,
@@ -12049,8 +12049,8 @@
           "key": "address",
           "label": "RS485-Adresse des Wechselrichters",
           "type": "number",
-          "default": 0,
-          "help": "Die Busadresse (0-31), auf die der Wechselrichter am Display bzw. per DIP-Schalter eingestellt ist. Bei genau einem Gerät am Bus ist die Werksvorgabe meist 0."
+          "default": 1,
+          "help": "Die Busadresse (1-32), auf die der Wechselrichter im Einstellungsmenü eingestellt ist – jedes Gerät am Bus braucht eine eigene. Am Bus-Endgerät muss außerdem der Abschlusswiderstand aktiviert sein."
         }
       ],
       "channels": null,

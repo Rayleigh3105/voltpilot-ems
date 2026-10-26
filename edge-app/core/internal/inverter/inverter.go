@@ -108,7 +108,7 @@ const (
 	// CommKacoSerial reads a KACO Powador device from BEFORE the TL3/Ethernet
 	// generation (e.g. 2500xi...8000xi and older non-"xi" single-phase models
 	// such as the Powador 3200 - INT) over KACO's own serial ASCII protocol
-	// (RS232/RS485, 9600 8N1, address polling 0-31) - NOT Modbus, no
+	// (RS232/RS485, 9600 8N1, bus address 1-32) - NOT Modbus, no
 	// discovery walk. The device itself has no network port; VoltPilot
 	// reaches it through a TRANSPARENT RS485-to-Ethernet converter (e.g.
 	// Waveshare "RS485 TO ETH", USR-TCP232 class) in TCP-server mode: the
@@ -209,7 +209,7 @@ const (
 	defaultHuaweiPort         = 502  // Huawei SUN2000 own Modbus-TCP server
 	defaultHuaweiUnitID       = 0    // Huawei factory slave id (direct WLAN/LAN); a Smart Dongle commonly uses 1
 	defaultKacoSerialPort     = 8899 // common TCP-server-mode port of RS485-to-Ethernet converters (not a KACO norm - the converter sets its own)
-	defaultKacoSerialAddress  = 0    // RS485 address polling default: a single device on the bus commonly answers at 0
+	defaultKacoSerialAddress  = 1    // the lowest valid bus address (KACO operating manual 31001135-06: addresses are 1-32, never 0)
 )
 
 // Control tiers - the battery-control PRIMITIVE a brand exposes, decoupled from
@@ -1114,7 +1114,7 @@ func kacoTransports() []Transport {
 // kacoSerialFields beschreibt die Verbindung zum RS485-zu-Ethernet-Wandler
 // der Powador-Altgeraete-Plattform: die IP/den Port DES WANDLERS (nicht des
 // Wechselrichters - der hat gar keinen Netzwerk-Anschluss) und die
-// RS485-Bus-Adresse des Wechselrichters (Adresspolling 0-31).
+// RS485-Bus-Adresse des Wechselrichters (1-32, je Geraet eindeutig einzustellen).
 func kacoSerialFields() []Field {
 	return []Field{
 		{Key: "ip", Label: "IP-Adresse des RS485-zu-Ethernet-Wandlers", Type: "text", Required: true,
@@ -1122,7 +1122,7 @@ func kacoSerialFields() []Field {
 		{Key: "port", Label: "Port", Type: "number", Default: defaultKacoSerialPort,
 			Help: "TCP-Port des Wandlers im Server-Modus. Herstellerabhängig (z. B. 8899 oder 4196) - am Wandler selbst nachsehen."},
 		{Key: "address", Label: "RS485-Adresse des Wechselrichters", Type: "number", Default: defaultKacoSerialAddress,
-			Help: "Die Busadresse (0-31), auf die der Wechselrichter am Display bzw. per DIP-Schalter eingestellt ist. Bei genau einem Gerät am Bus ist die Werksvorgabe meist 0."},
+			Help: "Die Busadresse (1-32), auf die der Wechselrichter im Einstellungsmenü eingestellt ist – jedes Gerät am Bus braucht eine eigene. Am Bus-Endgerät muss außerdem der Abschlusswiderstand aktiviert sein."},
 	}
 }
 
@@ -1904,12 +1904,11 @@ type Connection struct {
 	// never configured.
 	Channel int `json:"channel,omitempty"`
 
-	// kaco_serial: the RS485 address-polling bus address (0-31) of the
-	// Powador device behind the RS485-to-Ethernet converter - NOT a Modbus
-	// unit id (this platform has no Modbus). 0 is a legitimate real address
-	// (a single device on the bus commonly answers there), so unlike UnitID
-	// it has no "0 means absent/default" sentinel rule; the field is simply
-	// always present for this communication.
+	// kaco_serial: the RS485 bus address (1-32) of the Powador device behind
+	// the RS485-to-Ethernet converter - NOT a Modbus unit id (this platform
+	// has no Modbus). Per KACO's own operating manual (31001135-06), 0 is
+	// NEVER a valid address - unlike UnitID there is no "0 means absent"
+	// sentinel here; an absent/zero value falls back to defaultKacoSerialAddress.
 	Address int `json:"address,omitempty"`
 
 	// ebyte_modbus_tcp: the MAC the device answered with at setup
@@ -2291,15 +2290,18 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.ByteOrder = ""
 	case CommKacoSerial:
 		// Powador-Altgeraete ueber den RS485-zu-Ethernet-Wandler: host + port
-		// DES WANDLERS + die RS485-Busadresse des Wechselrichters (0-31,
+		// DES WANDLERS + die RS485-Busadresse des Wechselrichters (1-32,
 		// KEINE Modbus-Unit-ID, dieses Protokoll kennt kein Modbus). Nur
 		// lesen - es gibt keinen Steuerweg, also auch keinen Sollwert-/
 		// Sollwert-Vorzeichen-Hatch.
 		if conn.Port == 0 {
 			conn.Port = defaultKacoSerialPort
 		}
-		if conn.Address < 0 || conn.Address > 31 {
-			return Selection{}, invalid("Die RS485-Adresse muss zwischen 0 und 31 liegen.")
+		if conn.Address == 0 {
+			conn.Address = defaultKacoSerialAddress
+		}
+		if conn.Address < 1 || conn.Address > 32 {
+			return Selection{}, invalid("Die RS485-Adresse muss zwischen 1 und 32 liegen.")
 		}
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
@@ -2535,7 +2537,7 @@ func (s Selection) BusPayload() []byte {
 		// adapter reads (published now so the control increment is JS-side only).
 		conn["invert_control_sign"] = s.Connection.InvertControlSign
 	case CommKacoSerial:
-		// The RS485 bus address (0-31) - the reader's one addressing field on
+		// The RS485 bus address (1-32) - the reader's one addressing field on
 		// this platform (no Modbus unit id, no serial, no sign hatch: the
 		// device has no battery and no control path).
 		conn["address"] = s.Connection.Address

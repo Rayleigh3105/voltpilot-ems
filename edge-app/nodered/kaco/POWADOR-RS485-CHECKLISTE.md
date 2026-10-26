@@ -24,14 +24,24 @@ Hersteller an, sondern verlangt nur:
 
 ## 2. Verdrahtung an den Powador-RS485-Klemmen
 
+Belegt durch KACOs eigene Betriebsanleitung (Powador 3200-6600, Dok.
+31001135-06,
+[PDF](https://www.selectronic.com.au/manuals/31001135-06-130417_HB_3200_6600_Operating_Instructions_EN_Web.pdf)):
+der Powador 3200-6600 hat **RS232 UND RS485 fest verbaut**, beide auf der
+Kommunikationsplatine an der Türinnenseite. **RS485 ist der vorgesehene
+Monitoring-Weg**.
+
 - Typenschild fotografieren: exakter Modellname, Seriennummer, Baujahr.
-- Die RS485-Klemmen am Gerät finden (A/B bzw. +/-, je Handbuch des genauen
-  Baujahrs - es gibt über die Produktlebenszeit mehrere Klemmenbelegungen).
-  Beim Zweifel A/B einmal vertauscht probieren, bevor an der Software gesucht
-  wird - eine vertauschte Polung antwortet exakt wie ein stummes Gerät.
-- Kabel so kurz wie praktikabel, verdrillt, Schirm einseitig auf Erde (übliche
-  RS485-Praxis - lange ungeschirmte Strecken sind die häufigste Ursache für
-  Checksummenfehler auf einem ansonsten korrekt konfigurierten Bus).
+- Die RS485-Klemmen auf der Kommunikationsplatine finden: **`DATA+`
+  (Ader B) / `DATA-` (Ader A)**.
+- Kabel: **verdrillte, geschirmte Zweidrahtleitung** (z. B. **LI2YCY
+  2x2x0,5**), Schirm einseitig auf Erde. Max. Buslänge **1200 m**.
+- **Busadresse im Einstellungsmenü des Wechselrichters setzen** - **1-32**,
+  je Gerät am Bus **eindeutig** (0 ist keine gültige Adresse). Notieren,
+  nicht raten.
+- **Abschlusswiderstand am Endgerät des Busses aktivieren** (ebenfalls
+  Einstellungsmenü bzw. Klemmeneinheit) - bei nur einem Gerät am Bus ist
+  dieses Gerät das Endgerät.
 - **Nur EIN Wandler am Bus** für diese Anlage - kein zweiter RS485-Client
   (Datenlogger, Anzeige) gleichzeitig am selben Zweig, sonst Buskollisionen.
 
@@ -43,10 +53,9 @@ Hersteller an, sondern verlangt nur:
 2. Feste IP bzw. DHCP-Reservierung für den Wandler setzen - wie bei jedem
    anderen VoltPilot-Gerätepfad (Solarman-Logger, KACO-Kommunikationseinheit)
    empfohlen, damit die Anlage nach einem Neustart erreichbar bleibt.
-3. **Die RS485-Busadresse am Powador ablesen** (Display-Menü bzw.
-   DIP-Schalter, modellabhängig) - sie wird im VoltPilot-Verbindungsformular
-   eingetragen, NIE geraten. Bei genau einem Gerät am Bus ist die
-   Werksvorgabe meist 0.
+3. **Die im Einstellungsmenü vergebene Busadresse (1-32) notieren** - sie
+   wird im VoltPilot-Verbindungsformular eingetragen, NIE geraten. 0 ist
+   keine gültige Adresse.
 
 ## 4. In VoltPilot anlegen
 
@@ -58,7 +67,7 @@ RS485-zu-Ethernet-Wandler"**:
 |---|---|
 | IP-Adresse des RS485-zu-Ethernet-Wandlers | die IP des Wandlers (NICHT die des Wechselrichters) |
 | Port | der am Wandler konfigurierte TCP-Port |
-| RS485-Adresse des Wechselrichters | die in Schritt 3 abgelesene Busadresse (0-31) |
+| RS485-Adresse des Wechselrichters | die in Schritt 3 notierte Busadresse (1-32) |
 
 ## 5. Erste Probe
 

@@ -653,7 +653,7 @@ function buildKacoSerialFrame(f) {
 }
 
 const KACO_SERIAL_EXAMPLE = {
-  address: 0, status: 5, dcVoltageV: '310.0', dcCurrentA: '9.50', dcPowerW: 2945,
+  address: 1, status: 5, dcVoltageV: '310.0', dcCurrentA: '9.50', dcPowerW: 2945,
   acVoltageV: '231.0', acCurrentA: '12.40', acPowerW: 2864, temperatureC: 28,
   dailyYieldWh: 9120,
 };
@@ -689,7 +689,7 @@ test('kaco_serial: liest + dekodiert einen simulierten Wandler -> ok mit Messwer
     const readOnce = testRead.makeReadOnce(deps());
     const res = await readOnce({
       communication: 'kaco_serial', family: 'kaco_serial',
-      connection: { ip: '127.0.0.1', port, address: 0 },
+      connection: { ip: '127.0.0.1', port, address: 1 },
     });
     assert.strictEqual(res.ok, true, JSON.stringify(res));
     assert.strictEqual(res.reading.pv_kw, 2.864);
@@ -702,7 +702,7 @@ test('kaco_serial: unreachable - ein abgewiesener Connect', async () => {
   const readOnce = testRead.makeReadOnce(deps({ connectTimeoutMs: 500 }));
   const res = await readOnce({
     communication: 'kaco_serial', family: 'kaco_serial',
-    connection: { ip: '127.0.0.1', port: 1, address: 0 },
+    connection: { ip: '127.0.0.1', port: 1, address: 1 },
   });
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.error_code, testRead.ERR_INVALID_RESPONSE);
@@ -714,7 +714,7 @@ test('kaco_serial: ein stiller Wandler liefert invalid_response statt haengenzub
     const readOnce = testRead.makeReadOnce(deps({ readTimeoutMs: 400 }));
     const res = await readOnce({
       communication: 'kaco_serial', family: 'kaco_serial',
-      connection: { ip: '127.0.0.1', port, address: 0 },
+      connection: { ip: '127.0.0.1', port, address: 1 },
     });
     assert.strictEqual(res.ok, false);
     assert.strictEqual(res.error_code, testRead.ERR_INVALID_RESPONSE);
@@ -729,7 +729,7 @@ test('kaco_serial: Muell statt eines Frames liest als invalid_response, nie als 
     const readOnce = testRead.makeReadOnce(deps());
     const res = await readOnce({
       communication: 'kaco_serial', family: 'kaco_serial',
-      connection: { ip: '127.0.0.1', port, address: 0 },
+      connection: { ip: '127.0.0.1', port, address: 1 },
     });
     assert.strictEqual(res.ok, false);
     assert.strictEqual(res.error_code, testRead.ERR_INVALID_RESPONSE);
@@ -738,7 +738,7 @@ test('kaco_serial: Muell statt eines Frames liest als invalid_response, nie als 
   }
 });
 
-test('kaco_serial: eine Adresse ausserhalb 0..31 bleibt idle-sicher (invalid_request)', async () => {
+test('kaco_serial: eine Adresse ausserhalb 1..32 bleibt idle-sicher (invalid_request)', async () => {
   const readOnce = testRead.makeReadOnce(deps());
   const res = await readOnce({
     communication: 'kaco_serial', family: 'kaco_serial',

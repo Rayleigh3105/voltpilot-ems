@@ -87,7 +87,7 @@ const COMM_KACO_MODBUS = 'kaco_modbus';
 // of its own. See huawei/huawei-decode.js.
 const COMM_HUAWEI_MODBUS = 'huawei_modbus';
 // KACO Powador-Altgeraete (vor der TL3/Ethernet-Generation): KACOs eigenes
-// serielles ASCII-Protokoll (RS232/RS485, 9600 8N1, Adresspolling 0-31) ueber
+// serielles ASCII-Protokoll (RS232/RS485, 9600 8N1, Busadresse 1-32) ueber
 // einen TRANSPARENTEN RS485-zu-Ethernet-Wandler. Keine Modbus-Registerkarte,
 // kein Discovery-Walk - EIN TCP-Raw-Socket zum Wandler, der die seriellen
 // Bytes 1:1 durchreicht. Nur lesen - diese Geraetegeneration hat keine
@@ -540,9 +540,9 @@ function route(sel) {
       return { adapter: 'idle', reason: 'unbekannte KACO-Familie: ' + sel.family };
     }
     const port = num(conn.port, DEFAULT_KACO_SERIAL_PORT);
-    const address = num(conn.address, 0);
+    const address = num(conn.address, kacoSerialDecode.DEFAULT_ADDRESS);
     if (address < kacoSerialDecode.MIN_ADDRESS || address > kacoSerialDecode.MAX_ADDRESS) {
-      return { adapter: 'idle', reason: 'RS485-Adresse muss zwischen 0 und 31 liegen' };
+      return { adapter: 'idle', reason: 'RS485-Adresse muss zwischen 1 und 32 liegen' };
     }
     return {
       adapter: COMM_KACO_SERIAL,
@@ -551,9 +551,10 @@ function route(sel) {
       connection: {
         ip,
         port,
-        // Die Bus-Adresse des Wechselrichters (0-31, Adresspolling) - NICHT
-        // zu verwechseln mit einer Modbus-Unit-ID. Vorgabe 0: ein einzelnes
-        // Geraet am Wandler antwortet ueblich auf die Werksadresse 0.
+        // Die Bus-Adresse des Wechselrichters (1-32, je Geraet eindeutig
+        // einzustellen) - NICHT zu verwechseln mit einer Modbus-Unit-ID.
+        // KACOs eigene Betriebsanleitung (Powador 3200-6600) belegt den
+        // Bereich und dass 0 keine gueltige Adresse ist.
         address,
       },
       request: kacoSerialDecode.buildRequest(address, kacoSerialDecode.CMD_MEASURE).toString('ascii'),

@@ -32,8 +32,8 @@ import java.util.Set;
  *       mehrere Themen, gibt es keinen gemeinsamen Filter — keine Adresse.</li>
  *   <li>KACO seriell über einen RS485-zu-Ethernet-Wandler ({@code kaco_serial}): {@code ip:port}
  *       — des WANDLERS, nicht des Wechselrichters —, die Geräte-ID ist die RS485-Busadresse
- *       (0-31, {@code address}; KEINE Modbus-Unit-ID, dieses Protokoll kennt kein Modbus, und 0
- *       ist eine gültige Adresse — keine „fehlt"-Vorgabe wie bei {@code unit_id}).</li>
+ *       (1-32, {@code address}; KEINE Modbus-Unit-ID, dieses Protokoll kennt kein Modbus). 0 ist
+ *       hier NIE gültig und wird — wie bei {@code unit_id} — als „fehlt" gelesen.</li>
  *   <li>OCPP-Station ({@link #ocpp}): die Stations-Kennung.</li>
  *   <li>Die Tabelle ist VOLLSTÄNDIG: jedes Transport-Wort, das eine Bestandsanlage tragen kann
  *       (Vorlagen des Katalogs und des Admin-Werkzeugs, Selbstbau, Batterie-Anschluss, die
@@ -90,7 +90,7 @@ public final class BestandAnschluss {
             Map.entry("goe_http_api", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("shelly_http", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("ebyte_modbus_tcp", new Transport("modbus_tcp", 502, 1, Weg.MODBUS)),
-            Map.entry("kaco_serial", new Transport("kaco_serial", 8899, 0, Weg.KACO_SERIAL)),
+            Map.entry("kaco_serial", new Transport("kaco_serial", 8899, 1, Weg.KACO_SERIAL)),
             Map.entry("http_local", new Transport("http", null, null, Weg.HTTP_LOCAL)),
             Map.entry("mqtt_local", new Transport("mqtt", null, null, Weg.MQTT_LOCAL)));
 
@@ -217,9 +217,10 @@ public final class BestandAnschluss {
     }
 
     /**
-     * Die RS485-Busadresse der seriellen KACO-Plattform (Adresspolling 0-31). Anders als
-     * {@link #geraeteId}: 0 ist eine GÜLTIGE Adresse (ein einzelnes Gerät am Bus antwortet
-     * üblich darauf), nicht „fehlt" — es gibt also keine 0-als-Vorgabe-Umdeutung.
+     * Die RS485-Busadresse der seriellen KACO-Plattform (1-32, je Gerät eindeutig am Bus
+     * einzustellen — KACOs eigene Betriebsanleitung Powador 3200-6600, Dok. 31001135-06). 0
+     * ist hier NIE eine gültige Adresse (anders als bei Modbus gibt es keine Broadcast-Bedeutung)
+     * und wird deshalb — wie bei {@link #geraeteId} — als „fehlt" gelesen.
      */
     private static Integer serialAddress(JsonNode n, Integer vorgabe) {
         if (n == null || n.isNull() || (n.isTextual() && n.asText().isBlank())) {
@@ -231,7 +232,10 @@ public final class BestandAnschluss {
         } else if (n.isTextual() && n.asText().strip().matches("[0-9]{1,2}")) {
             v = Integer.parseInt(n.asText().strip());
         }
-        return (v == null || v < 0 || v > 31) ? vorgabe : v;
+        if (v != null && v == 0) {
+            return vorgabe;
+        }
+        return (v == null || v < 1 || v > 32) ? vorgabe : v;
     }
 
     private static Integer kadenz(JsonNode c) {

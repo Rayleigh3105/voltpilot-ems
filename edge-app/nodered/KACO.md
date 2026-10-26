@@ -213,18 +213,38 @@ Die dritte KACO-Plattform: Geräte **vor** der TL3/Ethernet-Generation (konkrete
 Anlass: ein **Powador 3200 - INT**, Baujahr Q1/2014, 3,2 kW, einphasig, beim
 Kunden ohne jede Netzwerk-Schnittstelle). Diese Geräteklasse spricht
 **RS232/RS485 mit KACOs eigenem seriellem ASCII-Protokoll** (9600 8N1,
-Adresspolling 0-31) - **kein Modbus**, kein Discovery-Walk. Implementierung:
+Busadresse 1-32) - **kein Modbus**, kein Discovery-Walk. Implementierung:
 [`kaco/kaco-serial-decode.js`](kaco/kaco-serial-decode.js).
 
 Das Protokoll ist öffentlich dokumentiert und gegen reale Powador-Geräte
 verifiziert (plieningerweb/kacors485 README mit Beispiel-Bytes; g4bri3lDev/
 kaco-rs485, das zusätzlich die Feldbreiten und die Prüfsumme gegen echte
 6400xi/8000xi-Aufzeichnungen belegt und auf KACOs eigenes
-„APL_RS485protocol_KACO"-Dokument verweist) - nichts davon wurde an einem
-echten Gerät dieser Anlage gemessen, siehe die VERIFY-on-device-Liste unten
-und [`kaco/POWADOR-RS485-CHECKLISTE.md`](kaco/POWADOR-RS485-CHECKLISTE.md).
+„APL_RS485protocol_KACO"-Dokument verweist). Die physische Schnittstelle
+(RS232 UND RS485, Klemmen, Busadresse, Abschlusswiderstand) ist durch KACOs
+eigene Betriebsanleitung belegt (Powador 3200-6600, Dok. 31001135-06,
+[PDF](https://www.selectronic.com.au/manuals/31001135-06-130417_HB_3200_6600_Operating_Instructions_EN_Web.pdf)) -
+nur die Dekodierung der Momentanwerte selbst wurde an keinem echten Gerät
+dieser Anlage gemessen, siehe die VERIFY-on-device-Liste unten und
+[`kaco/POWADOR-RS485-CHECKLISTE.md`](kaco/POWADOR-RS485-CHECKLISTE.md).
 
-### 11.1 Zusatzhardware: ein transparenter RS485-zu-Ethernet-Wandler
+### 11.1 Anschluss am Gerät + Zusatzhardware: ein transparenter RS485-zu-Ethernet-Wandler
+
+Der Powador 3200-6600 hat laut Betriebsanleitung **RS232 UND RS485 fest
+verbaut**, beide auf der Kommunikationsplatine an der Türinnenseite.
+**RS485 ist der vorgesehene Monitoring-Weg**; RS232 dient nur als Referenz
+(ebenfalls 9600 8N1, unidirektionales ASCII ohne Fehlerprüfung - deckungsgleich
+mit der hier implementierten Protokollbasis).
+
+- **Klemmen**: `DATA+` (Ader **B**) / `DATA-` (Ader **A**) auf der
+  Kommunikationsplatine.
+- **Kabel**: verdrillte, geschirmte Zweidrahtleitung (z. B. **LI2YCY 2x2x0,5**),
+  Schirm einseitig auf Erde.
+- **Busadresse**: **1-32**, je Gerät **eindeutig** im Einstellungsmenü des
+  Wechselrichters zu vergeben - nicht geraten, siehe §11.5.
+- **Abschlusswiderstand**: am **Endgerät** des Busses im Menü bzw. an der
+  Klemmeneinheit **aktivieren**.
+- **Max. Buslänge**: 1200 m.
 
 Das Gerät selbst hat keinen Netzwerk-Anschluss. VoltPilot erreicht es über
 einen zusätzlichen, **separat zu beschaffenden** Wandler (z. B. Waveshare
@@ -253,7 +273,7 @@ Felder:
 |---|---|
 | IP-Adresse | die des **Wandlers**, nicht des Wechselrichters |
 | Port | TCP-Port des Wandlers im Server-Modus |
-| RS485-Adresse | die Busadresse des Wechselrichters (0-31, am Display bzw. per DIP-Schalter eingestellt); bei genau einem Gerät am Bus meist 0 |
+| RS485-Adresse | die Busadresse des Wechselrichters (**1-32**, im Einstellungsmenü vergeben); **0 ist keine gültige Adresse** |
 
 ### 11.3 Was gelesen wird
 
@@ -283,14 +303,17 @@ bei einem String-Gerät der AISWEI-HTTP-Plattform (§8.3).
 
 ### 11.5 ⚠ Am Gerät zu prüfen (VERIFY-on-device)
 
-Nichts davon konnte an einem echten Gerät dieser Anlage gemessen werden:
+Die physische Schnittstelle (RS232/RS485, Klemmen, Busadresse, Terminierung)
+ist durch KACOs eigene Betriebsanleitung belegt (§11.1) - unverifiziert bleibt
+nur die **Dekodierung der Momentanwerte**, nichts davon wurde an einem echten
+Gerät dieser Anlage gemessen:
 
 1. **Antwortet das Gerät überhaupt auf Kommando „0"** mit dem erwarteten
    `LF *<Adresse>0 …`-Kopf - oder mit einem anderen Kommando-Byte (anderes
    Protokoll, siehe §11.4)?
 2. **Vorzeichen/Plausibilität** der Momentanwerte am Typenschild gegenprüfen.
-3. **Die tatsächliche RS485-Adresse** des Geräts (Display/DIP-Schalter) -
-   nicht raten.
+3. **Die tatsächliche Busadresse** des Geräts (Einstellungsmenü) - nicht
+   raten.
 4. **Wandler-Konfiguration** wie in §11.1 beschrieben (9600 8N1, TCP-Server,
    keine Protokoll-Übersetzung).
 

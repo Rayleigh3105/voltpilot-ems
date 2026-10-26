@@ -5,7 +5,7 @@
  * der TL3/Ethernet-Generation (z. B. Powador 2500xi...8000xi und die
  * aelteren, nicht-"xi" Einphaser wie der Powador 3200 - INT), die ihre
  * Messwerte NICHT ueber Modbus, sondern ueber ein eigenes, serielles
- * ASCII-Protokoll (RS232/RS485, 9600 8N1, Adresspolling 0-31) herausgibt.
+ * ASCII-Protokoll (RS232/RS485, 9600 8N1, Busadresse 1-32) herausgibt.
  *
  * Diese Geraete haben keinen Netzwerk-Anschluss. VoltPilot erreicht sie ueber
  * einen TRANSPARENTEN RS485-zu-Ethernet-Wandler (z. B. Waveshare "RS485 TO
@@ -24,6 +24,12 @@
  * VERIFY-on-device-Liste und die Feld-Checkliste
  * (POWADOR-RS485-CHECKLISTE.md).
  *
+ * Busadresse 1-32 und der Abschlusswiderstand am Endgeraet sind durch KACOs
+ * eigene Betriebsanleitung belegt (Powador 3200-6600, Dok. 31001135-06,
+ * https://www.selectronic.com.au/manuals/31001135-06-130417_HB_3200_6600_Operating_Instructions_EN_Web.pdf):
+ * RS232 UND RS485 sind auf der Kommunikationsplatine fest verbaut, RS485 ist
+ * der vorgesehene Monitoring-Weg (DATA+ = Ader B, DATA- = Ader A).
+ *
  * ⚠ NUR LESEN. Diese Geraetegeneration hat keine Fernsteuerung (keine
  * Wirkleistungsbegrenzung, kein Sollwert) - es gibt nichts zu schreiben, nicht
  * einmal gesperrt vorbereitet.
@@ -37,9 +43,14 @@
 
 // --- Protokoll-Konstanten -----------------------------------------------------
 
-/** Adresspolling: 0 bis 31 (5 Bit auf dem Bus). */
-const MIN_ADDRESS = 0;
-const MAX_ADDRESS = 31;
+/**
+ * Busadresse: 1 bis 32, je Geraet eindeutig am Bus einzustellen (KACOs eigene
+ * Betriebsanleitung, Powador 3200-6600 Dok. 31001135-06 - siehe oben). KEINE
+ * Adresse 0: anders als eine Modbus-Unit-ID gibt es hier keine "Broadcast"-
+ * oder "fehlt"-Bedeutung fuer 0.
+ */
+const MIN_ADDRESS = 1;
+const MAX_ADDRESS = 32;
 
 /** 9600 8N1 - informativ fuer die Doku/den Verbindungstest, kein Codepfad hier. */
 const SERIAL_PARAMS = { baud: 9600, dataBits: 8, parity: 'none', stopBits: 1 };
@@ -51,6 +62,9 @@ const SERIAL_PARAMS = { baud: 9600, dataBits: 8, parity: 'none', stopBits: 1 };
  * Feld im Formular frei editierbar und dies ist nur der Vorschlagswert.
  */
 const DEFAULT_PORT = 8899;
+
+/** Vorschlagswert des Formulars: die niedrigste gueltige Busadresse. */
+const DEFAULT_ADDRESS = MIN_ADDRESS;
 
 const LF = 0x0a;
 const CR = 0x0d;
@@ -103,14 +117,14 @@ function protocolMismatch(raw) {
 // --- Anfrage -------------------------------------------------------------------
 
 /**
- * buildRequest - `#<2-stellige Adresse><Kommando>\r`, z. B. `#000\r` fuer
- * Adresse 0, Kommando "Momentanwerte". Adresse 0..31 (Bus-Grenze), Kommando
+ * buildRequest - `#<2-stellige Adresse><Kommando>\r`, z. B. `#010\r` fuer
+ * Adresse 1, Kommando "Momentanwerte". Adresse 1..32 (Bus-Grenze), Kommando
  * genau ein ASCII-Zeichen.
  */
 function buildRequest(address, command) {
   if (typeof address !== 'number' || !Number.isInteger(address) ||
       address < MIN_ADDRESS || address > MAX_ADDRESS) {
-    throw new RangeError('address must be an integer 0..31, got ' + address);
+    throw new RangeError('address must be an integer 1..32, got ' + address);
   }
   if (typeof command !== 'string' || command.length !== 1) {
     throw new RangeError('command must be exactly one character, got ' + JSON.stringify(command));
@@ -356,7 +370,7 @@ function makeKacoSerialReader(deps) {
     target = target || {};
     const ip = typeof target.ip === 'string' ? target.ip.trim() : '';
     const port = Number(target.port) > 0 ? Number(target.port) : DEFAULT_PORT;
-    const address = Number.isInteger(target.address) ? target.address : 0;
+    const address = Number.isInteger(target.address) ? target.address : DEFAULT_ADDRESS;
     if (!ip || address < MIN_ADDRESS || address > MAX_ADDRESS) return Promise.resolve(null);
 
     let request;
@@ -419,6 +433,7 @@ module.exports = {
   MAX_ADDRESS,
   SERIAL_PARAMS,
   DEFAULT_PORT,
+  DEFAULT_ADDRESS,
   CMD_MEASURE,
   FAMILIES,
   CMD0_MIN_LEN,

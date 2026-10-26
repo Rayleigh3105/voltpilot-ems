@@ -487,7 +487,7 @@ test('parseConfig accepts a kaco_serial selection', () => {
   assert.strictEqual(sel.family, 'kaco_serial');
 });
 
-test('route maps kaco_serial onto a TCP target + the exact request frame, with defaults 8899/Adresse 0', () => {
+test('route maps kaco_serial onto a TCP target + the exact request frame, with defaults 8899/Adresse 1', () => {
   const plan = routing.route(routing.parseConfig(kacoSerialConfig({
     connection: { ip: '192.168.0.40' }, // port/address omitted -> defaults
   })));
@@ -495,8 +495,8 @@ test('route maps kaco_serial onto a TCP target + the exact request frame, with d
   assert.strictEqual(plan.family, 'kaco_serial');
   assert.strictEqual(plan.target, '192.168.0.40:8899');
   assert.strictEqual(plan.connection.port, 8899);
-  assert.strictEqual(plan.connection.address, 0);
-  assert.strictEqual(plan.request, '#000\r');
+  assert.strictEqual(plan.connection.address, 1);
+  assert.strictEqual(plan.request, '#010\r');
 });
 
 test('route keeps an explicit RS485-Adresse and Port', () => {
@@ -513,7 +513,15 @@ test('route refuses an out-of-range RS485-Adresse and an unknown family, idle-sa
     connection: { ip: '10.0.0.5', address: 99 },
   })));
   assert.strictEqual(outOfRange.adapter, 'idle');
-  assert.match(outOfRange.reason, /0 und 31/);
+  assert.match(outOfRange.reason, /1 und 32/);
+
+  // Adresse 0 ist bei dieser Plattform KEINE gueltige Vorgabe (anders als eine
+  // Modbus-Unit-ID) - KACOs eigene Betriebsanleitung nennt nur 1..32.
+  const zero = routing.route(routing.parseConfig(kacoSerialConfig({
+    connection: { ip: '10.0.0.5', address: 0 },
+  })));
+  assert.strictEqual(zero.adapter, 'idle');
+  assert.match(zero.reason, /1 und 32/);
 
   const idle = routing.route(routing.parseConfig(kacoSerialConfig({ family: 'kaco_http' })));
   assert.strictEqual(idle.adapter, 'idle');

@@ -60,14 +60,14 @@ const EXAMPLE = {
 // --- buildRequest --------------------------------------------------------------
 
 test('buildRequest: Adresse zweistellig, Kommando ein Zeichen, CR-terminiert', () => {
-  assert.deepStrictEqual(K.buildRequest(0, '0'), Buffer.from('#000\r', 'ascii'));
   assert.deepStrictEqual(K.buildRequest(1, '0'), Buffer.from('#010\r', 'ascii'));
-  assert.deepStrictEqual(K.buildRequest(31, '3'), Buffer.from('#313\r', 'ascii'));
+  assert.deepStrictEqual(K.buildRequest(32, '3'), Buffer.from('#323\r', 'ascii'));
 });
 
-test('buildRequest: Adresse ausserhalb 0..31 wird abgelehnt', () => {
+test('buildRequest: Adresse ausserhalb 1..32 wird abgelehnt', () => {
+  assert.throws(() => K.buildRequest(0, '0'), RangeError);
   assert.throws(() => K.buildRequest(-1, '0'), RangeError);
-  assert.throws(() => K.buildRequest(32, '0'), RangeError);
+  assert.throws(() => K.buildRequest(33, '0'), RangeError);
   assert.throws(() => K.buildRequest(1.5, '0'), RangeError);
 });
 
@@ -102,10 +102,10 @@ test('parseCmd0: dekodiert das dokumentierte Beispiel vollstaendig', () => {
   assert.strictEqual(out.checksumOk, true);
 });
 
-test('parseCmd0: Adresse 0 und der dekorative Typ-String sind optional', () => {
-  const raw = buildCmd0Frame({ ...EXAMPLE, address: 0 }, { type: '' });
+test('parseCmd0: die hoechste Busadresse (32) und der dekorative Typ-String sind optional', () => {
+  const raw = buildCmd0Frame({ ...EXAMPLE, address: 32 }, { type: '' });
   const out = K.parseCmd0(raw);
-  assert.strictEqual(out.address, 0);
+  assert.strictEqual(out.address, 32);
   assert.strictEqual(out.inverterType, '');
   assert.strictEqual(out.checksumOk, true);
 });
@@ -332,9 +332,10 @@ test('makeKacoSerialReader: eine Teilantwort (fehlender Typ-String) wird ueber d
   assert.strictEqual(out.reading.pv_power_kw, 5.72);
 });
 
-test('makeKacoSerialReader: ohne IP oder mit Adresse ausserhalb 0..31 wird gar nicht erst verbunden', async () => {
+test('makeKacoSerialReader: ohne IP oder mit Adresse ausserhalb 1..32 wird gar nicht erst verbunden', async () => {
   const net = fakeNet(() => { throw new Error('darf nicht verbinden'); });
   const read = K.makeKacoSerialReader({ net });
   assert.strictEqual(await read({ ip: '', port: 8899, address: 1 }), null);
+  assert.strictEqual(await read({ ip: '192.168.1.50', port: 8899, address: 0 }), null);
   assert.strictEqual(await read({ ip: '192.168.1.50', port: 8899, address: 99 }), null);
 });
