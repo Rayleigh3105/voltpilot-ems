@@ -236,6 +236,67 @@ test('flow auto-kaco-serial embeds the current kaco/kaco-serial-decode.js source
   );
 });
 
+test('flow router matches inverter-routing.route() for huawei_modbus (SUN2000 + LUNA2000)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'huawei', label: 'Huawei · SUN2000-3KTL-M1',
+    family: 'huawei_sun2000_luna', communication: 'huawei_modbus',
+    connection: { ip: '192.168.0.50', port: 502, unit_id: 0, invert_grid_sign: false, invert_batt_sign: false },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret.find((r) => r && r.huawei);
+  assert.ok(outMsg, 'der Huawei-Ausgang traegt die Nachricht');
+  const expected = routing.route(routing.parseConfig(JSON.stringify(sel)));
+  assert.strictEqual(outMsg.huawei.target, expected.target);
+  assert.strictEqual(outMsg.huawei.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.huawei.conn.port, expected.connection.port);
+  assert.strictEqual(outMsg.huawei.conn.unit_id, expected.connection.unit_id);
+  assert.strictEqual(outMsg.huawei.conn.invert_grid_sign, expected.connection.invert_grid_sign);
+  assert.strictEqual(outMsg.huawei.conn.invert_batt_sign, expected.connection.invert_batt_sign);
+  // The inline HUAWEI_READS block plan must equal the decode module's planReads
+  // (one truth for the register blocks - the DEYE_READS drift-guard discipline).
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(outMsg.huawei.reads)),
+    JSON.parse(JSON.stringify(expected.reads)));
+  // Die anderen Ausgaenge bleiben null auf diesem Weg.
+  for (let i = 0; i < ret.length; i++) {
+    if (ret[i] === outMsg) continue;
+    assert.strictEqual(ret[i], null, 'Ausgang ' + i);
+  }
+});
+
+test('flow router gates an unknown huawei_modbus family idle-safe', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'huawei', label: 'Huawei',
+    family: 'unbekannt', communication: 'huawei_modbus',
+    connection: { ip: '192.168.0.50', port: 502 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[ret.length - 1];
+  assert.ok(outMsg && outMsg.idle, 'der Idle-Ausgang traegt die Nachricht');
+  assert.match(outMsg.idle, /unbekannte Huawei-Familie/);
+});
+
+// Die "Huawei SUN2000 lesen"-Node (auto-huawei) traegt eine EINGEBETTETE
+// woertliche Kopie von huawei/huawei-decode.js. Drift-Waechter: wer das Modul
+// aendert, ohne build-flows.js neu laufen zu lassen, bekommt hier eine rote
+// Probe statt einen stillen veralteten Leser auszuliefern.
+test('flow auto-huawei embeds the current huawei/huawei-decode.js source', () => {
+  const func = byId['auto-huawei'].func;
+  const src = fs.readFileSync(path.join(__dirname, 'huawei/huawei-decode.js'), 'utf8');
+  assert.ok(
+    func.includes(src),
+    'flows.json auto-huawei node is out of sync with huawei/huawei-decode.js - re-run build-flows.js',
+  );
+  // Same discipline as the other Modbus-TCP reads: explicit timeouts, an
+  // overlap guard, and non-silent failures.
+  assert.ok(func.includes('__HUAWEI.makeHuaweiReader({ net: net, connectTimeoutMs: 8000, readTimeoutMs: 8000 })'));
+  assert.ok(func.includes("context.get('hw_busy_since')"), 'overlap guard (skip-if-busy) present');
+  assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
+  // The measured battery power rides the LOCAL bus only (field source "+
+  // charging" already matches VoltPilot's convention) - the node forwards
+  // battKw as battery_power_kw.
+  assert.ok(func.includes('reading.battery_power_kw = out.battKw'));
+});
+
 test('flow router matches inverter-routing.route() for kostal_modbus', () => {
   const sel = {
     schema_version: '1.0', brand: 'kostal', label: 'KOSTAL · PLENTICORE BI 10/26',
