@@ -36,6 +36,7 @@ Der Katalog bietet je nach Modell mehrere Kommunikationswege. Veraltete Regeln w
 | Fronius / `fronius_sunspec` | IP, Port, `unit_id`, `model_type` | [Fronius](nodered/FRONIUS.md) |
 | KOSTAL / `kostal_modbus` | IP, Port 1502, `unit_id` 71, Byte-Reihenfolge | [KOSTAL](nodered/KOSTAL.md) |
 | KACO | HTTP oder Modbus nach Modellfamilie | [KACO](nodered/KACO.md) |
+| Huawei / `huawei_modbus` | IP, Port 502, `unit_id` 0 | [Huawei](nodered/HUAWEI.md) |
 
 Ports und IDs sind vorbelegte Katalogwerte, keine Garantie für eine bereits umkonfigurierte Anlage. Deye benötigt die Seriennummer des Datenloggers, nicht die des Wechselrichters. Erfassungs- und Steuervorzeichen getrennt kalibrieren.
 

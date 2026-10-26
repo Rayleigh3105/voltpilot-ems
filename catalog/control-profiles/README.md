@@ -50,7 +50,7 @@ flowchart LR
   Herstellerdokument auseinanderliegen (Fronius GEN24).
 - **`bindung`**: wie die Box das Profil findet – Marke, Registerfamilie und Modelle aus
   `edge-app/core/internal/inverter`, Steuerpfad aus der Rückmeldung von Layer 1 (`remote`/`tou` am Deye). Nur die
-  im Repo angebundenen Familien sind gebunden; SMA, Fronius GEN24 und Huawei sind vollständig, aber ungebunden (K9).
+  im Repo angebundenen Familien sind gebunden; SMA und Fronius GEN24 sind vollständig, aber ungebunden (K9).
 - **`firmware_bedingung`**: immer vom Gerät gelesen (`"gelesen": true`), nie getippt – am Deye das Sonden-Urteil
   `remote-pr978` des Fernsteuer-Blocks.
 - **`daempfung`**: `box_regelt: false` schaltet den gedämpften Folger ab (Dauerspeicher-Hebel, Konzept §6.5);

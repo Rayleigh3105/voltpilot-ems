@@ -11975,6 +11975,281 @@
       "note": "Weiteres KACO-Gerät mit SunSpec Modbus TCP, Nennleistung unbekannt KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
     },
     {
+      "template_ref": "builtin:huawei:sun2000-l1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "huawei",
+      "brand_label": "Huawei",
+      "model": "sun2000-l1",
+      "model_label": "SUN2000-L1",
+      "device_type": "inverter",
+      "family": "huawei_sun2000_luna",
+      "family_label": "SUN2000 + LUNA2000",
+      "communication": "huawei_modbus",
+      "communication_label": "Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des SUN2000 im lokalen Netz (internes WLAN oder Smart Dongle). Modbus TCP muss am Gerät über ein Installateur-Konto freigeschaltet sein - ohne diese Freischaltung antwortet das Gerät nicht."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port des SUN2000, werksseitig 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 0,
+          "help": "Die Modbus-Adresse des Geräts. Werksseitig 0 bei direkter Verbindung (WLAN/LAN); hinter einem Smart Dongle vergibt der Hersteller häufig 1."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 2,
+      "certification_status": "builtin",
+      "note": "String-Wechselrichter, einphasig · mit LUNA2000-Speicher Huawei SUN2000 mit LUNA2000-Speicher. Modbus TCP muss am Wechselrichter über ein Installateur-Konto freigeschaltet sein."
+    },
+    {
+      "template_ref": "builtin:huawei:sun2000-m1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "huawei",
+      "brand_label": "Huawei",
+      "model": "sun2000-m1",
+      "model_label": "SUN2000-M1",
+      "device_type": "inverter",
+      "family": "huawei_sun2000_luna",
+      "family_label": "SUN2000 + LUNA2000",
+      "communication": "huawei_modbus",
+      "communication_label": "Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des SUN2000 im lokalen Netz (internes WLAN oder Smart Dongle). Modbus TCP muss am Gerät über ein Installateur-Konto freigeschaltet sein - ohne diese Freischaltung antwortet das Gerät nicht."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port des SUN2000, werksseitig 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 0,
+          "help": "Die Modbus-Adresse des Geräts. Werksseitig 0 bei direkter Verbindung (WLAN/LAN); hinter einem Smart Dongle vergibt der Hersteller häufig 1."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 2,
+      "certification_status": "builtin",
+      "note": "String-Wechselrichter, dreiphasig (z. B. 3KTL-M1) · mit LUNA2000-Speicher Huawei SUN2000 mit LUNA2000-Speicher. Modbus TCP muss am Wechselrichter über ein Installateur-Konto freigeschaltet sein."
+    },
+    {
+      "template_ref": "builtin:huawei:sun2000-mb0",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "huawei",
+      "brand_label": "Huawei",
+      "model": "sun2000-mb0",
+      "model_label": "SUN2000-MB0",
+      "device_type": "inverter",
+      "family": "huawei_sun2000_luna",
+      "family_label": "SUN2000 + LUNA2000",
+      "communication": "huawei_modbus",
+      "communication_label": "Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des SUN2000 im lokalen Netz (internes WLAN oder Smart Dongle). Modbus TCP muss am Gerät über ein Installateur-Konto freigeschaltet sein - ohne diese Freischaltung antwortet das Gerät nicht."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port des SUN2000, werksseitig 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 0,
+          "help": "Die Modbus-Adresse des Geräts. Werksseitig 0 bei direkter Verbindung (WLAN/LAN); hinter einem Smart Dongle vergibt der Hersteller häufig 1."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 2,
+      "certification_status": "builtin",
+      "note": "String-Wechselrichter, dreiphasig · mit LUNA2000-Speicher Huawei SUN2000 mit LUNA2000-Speicher. Modbus TCP muss am Wechselrichter über ein Installateur-Konto freigeschaltet sein."
+    },
+    {
+      "template_ref": "builtin:huawei:sun2000-map0",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "huawei",
+      "brand_label": "Huawei",
+      "model": "sun2000-map0",
+      "model_label": "SUN2000-MAP0",
+      "device_type": "inverter",
+      "family": "huawei_sun2000_luna",
+      "family_label": "SUN2000 + LUNA2000",
+      "communication": "huawei_modbus",
+      "communication_label": "Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des SUN2000 im lokalen Netz (internes WLAN oder Smart Dongle). Modbus TCP muss am Gerät über ein Installateur-Konto freigeschaltet sein - ohne diese Freischaltung antwortet das Gerät nicht."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port des SUN2000, werksseitig 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 0,
+          "help": "Die Modbus-Adresse des Geräts. Werksseitig 0 bei direkter Verbindung (WLAN/LAN); hinter einem Smart Dongle vergibt der Hersteller häufig 1."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 2,
+      "certification_status": "builtin",
+      "note": "String-Wechselrichter, dreiphasig · mit LUNA2000-Speicher Huawei SUN2000 mit LUNA2000-Speicher. Modbus TCP muss am Wechselrichter über ein Installateur-Konto freigeschaltet sein."
+    },
+    {
+      "template_ref": "builtin:huawei:huawei-sun2000-generic",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "huawei",
+      "brand_label": "Huawei",
+      "model": "huawei-sun2000-generic",
+      "model_label": "Anderes SUN2000-Modell",
+      "device_type": "inverter",
+      "family": "huawei_sun2000_luna",
+      "family_label": "SUN2000 + LUNA2000",
+      "communication": "huawei_modbus",
+      "communication_label": "Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des SUN2000 im lokalen Netz (internes WLAN oder Smart Dongle). Modbus TCP muss am Gerät über ein Installateur-Konto freigeschaltet sein - ohne diese Freischaltung antwortet das Gerät nicht."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port des SUN2000, werksseitig 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 0,
+          "help": "Die Modbus-Adresse des Geräts. Werksseitig 0 bei direkter Verbindung (WLAN/LAN); hinter einem Smart Dongle vergibt der Hersteller häufig 1."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 2,
+      "certification_status": "builtin",
+      "note": "Weiteres SUN2000-Modell derselben Registerkarte (Nennleistung unbekannt) Huawei SUN2000 mit LUNA2000-Speicher. Modbus TCP muss am Wechselrichter über ein Installateur-Konto freigeschaltet sein."
+    },
+    {
       "template_ref": "builtin:go-e:goe_http_api",
       "kind": "builtin",
       "version": 1,

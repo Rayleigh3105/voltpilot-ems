@@ -36,12 +36,12 @@ class BuiltinComponentTemplatesTest {
         List<BuiltinTemplate> all = builtin.all();
         assertThat(all).as("die Ressource ist nicht leer").isNotEmpty();
 
-        // Die neun Marken des Geräte-Katalogs (inverter.go DefaultCatalog).
+        // Die zehn Marken des Geräte-Katalogs (inverter.go DefaultCatalog).
         // Fällt eine weg, hat jemand den Katalog beschnitten, ohne es zu merken -
         // der Kunde bekäme im Assistenten weniger Geräte, als seine Box lesen kann.
         Set<String> brands = all.stream().map(BuiltinTemplate::brand).collect(Collectors.toSet());
         assertThat(brands).containsExactlyInAnyOrder("deye", "generic_modbus", "fronius",
-                "fronius_sunspec", "kostal", "kaco", "go-e", "shelly", "ebyte");
+                "fronius_sunspec", "kostal", "kaco", "huawei", "go-e", "shelly", "ebyte");
 
         // Die Deye-Modellreihe ist die grösste und der Grund, warum die Vorlage
         // je MODELL geschlüsselt ist (ein Registerprofil deckt mehrere Baureihen ab).

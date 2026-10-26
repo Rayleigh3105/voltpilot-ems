@@ -95,6 +95,16 @@ const (
 	// bypasses the stick, so it costs no cloud connection either.
 	// See nodered/kaco/aiswei-decode.js.
 	CommKacoModbus = "kaco_modbus"
+	// CommHuaweiModbus reads a Huawei SUN2000 (L1/M1/MB0/MAP0) over the vendor's
+	// own fixed Modbus-TCP register map (TCP 502; the LUNA2000 battery has no
+	// communication path of its own and rides the SAME connection's storage
+	// registers - one device, one socket). Modbus TCP must be enabled on the
+	// inverter via an installer account, and only ONE client may hold the
+	// connection at a time (the internal WiFi AP in particular drops the
+	// FusionSolar app while a Modbus client is attached; a Smart Dongle allows
+	// both in parallel) - catalog/control-profiles/profiles/huawei.json `fallen`.
+	// See nodered/huawei/huawei-decode.js.
+	CommHuaweiModbus = "huawei_modbus"
 )
 
 // IsSunSpecTCP reports whether a communication id names the SunSpec-live read
@@ -154,6 +164,17 @@ const (
 	// 502, while the NX1/NX3 M2/M3/M5 and hybrid NH3 lines are an AISWEI/
 	// Solplanet OEM behind a communication stick. See nodered/KACO.md.
 	BrandKaco = "kaco"
+	// BrandHuawei is Huawei's SUN2000 string inverter family (L1/M1/MB0/MAP0)
+	// with the LUNA2000 battery attached to it. It is a PRIMARY inverter: PV,
+	// battery SoC/power and (via an optional Huawei Smart Power Sensor) the
+	// grid point all read through the SAME Modbus-TCP connection to the
+	// inverter - the LUNA2000 has no communication path of its own. The
+	// register map is fully documented (Huawei's own "SUN2000MA Modbus
+	// Interface Definitions" Issue 08 + field sources, see huawei.json), but
+	// NO device has ever been measured, so control stays bench_pending/
+	// uncertified until a real-hardware certification run (scout report
+	// data/vp-kundenanlage-huawei-s1).
+	BrandHuawei = "huawei"
 )
 
 // Default ports per communication.
@@ -172,6 +193,8 @@ const (
 	defaultKacoHTTPPort       = 8484 // KACO/AISWEI communication unit, local HTTP-JSON API
 	defaultKacoNH3Port        = 502  // KACO hybrid NH3, own Ethernet port (AISWEI register map)
 	defaultKacoNH3UnitID      = 1    // evcc `solplanet-modbus` reads the NH3 at unit 1
+	defaultHuaweiPort         = 502  // Huawei SUN2000 own Modbus-TCP server
+	defaultHuaweiUnitID       = 0    // Huawei factory slave id (direct WLAN/LAN); a Smart Dongle commonly uses 1
 )
 
 // Control tiers - the battery-control PRIMITIVE a brand exposes, decoupled from
@@ -551,6 +574,11 @@ const (
 	// FamKacoNH3 ist die AISWEI-NATIVE Registerkarte des hybriden NH3
 	// (Input 31xxx / Holding 4xxxx) - nodered/kaco/aiswei-decode.js.
 	FamKacoNH3 = "kaco_nh3"
+	// FamHuaweiSun2000Luna is the single fixed register profile of the
+	// SUN2000 L1/M1/MB0/MAP0 family with an attached LUNA2000: one Modbus-TCP
+	// connection to the inverter carries PV, battery and (optional Smart Power
+	// Sensor) grid readings - nodered/huawei/huawei-decode.js.
+	FamHuaweiSun2000Luna = "huawei_sun2000_luna"
 )
 
 // deyeFamilies is the register-map reference list (what each Model decodes with).
@@ -898,6 +926,69 @@ func kostalModels() []Model {
 			Note: "5,5 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 13 A)"},
 		{ID: "kostal-plenticore-bi-generic", Label: "Anderes PLENTICORE-BI-Modell", Family: FamKostalPlenticore,
 			Note: "Weiteres Modell der Baureihe, auch G2 (Nennleistung unbekannt)"},
+	}
+}
+
+// --- Huawei --------------------------------------------------------------------
+//
+// SUN2000 (L1/M1/MB0/MAP0) + LUNA2000: one Modbus-TCP connection to the
+// inverter's own server (TCP 502) carries everything - PV, the LUNA2000
+// battery (it has no communication path of its own, it rides the inverter's
+// storage registers) and, if a Smart Power Sensor is installed, the grid
+// point. Register map: catalog/control-profiles/profiles/huawei.json
+// (Herstellerquelle `huawei_if`, Huawei "SUN2000MA Modbus Interface
+// Definitions" Issue 08); decode: nodered/huawei/huawei-decode.js.
+//
+// ⚠ NUR EINE MODBUS-VERBINDUNG GLEICHZEITIG. Ueber das interne WLAN
+// unterbricht ein Modbus-Client laut mehreren unabhaengigen Quellen die
+// FusionSolar-App; ein Smart Dongle (WLAN-FE/LAN/4G) erlaubt beide parallel.
+// Modbus TCP muss am Geraet ueber ein Installateur-Konto freigeschaltet
+// werden - ohne das antwortet das Geraet gar nicht.
+
+// huaweiFields beschreibt die Modbus-TCP-Verbindung zum SUN2000. Anders als
+// bei KOSTAL/KACO gibt es kein Byte-Order-Register am Geraet - die 32-Bit-
+// Register sind laut Herstellerquelle IMMER Big-Endian mit dem High-Word
+// zuerst (die in huawei.json dokumentierte Falle), deshalb kein Auswahlfeld
+// dafuer.
+func huaweiFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des Wechselrichters", Type: "text", Required: true,
+			Help: "Die IP des SUN2000 im lokalen Netz (internes WLAN oder Smart Dongle). Modbus TCP muss am Gerät über ein Installateur-Konto freigeschaltet sein - ohne diese Freischaltung antwortet das Gerät nicht."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultHuaweiPort,
+			Help: "Modbus-TCP-Port des SUN2000, werksseitig 502."},
+		{Key: "unit_id", Label: "Modbus-Unit-ID", Type: "number", Default: defaultHuaweiUnitID,
+			Help: "Die Modbus-Adresse des Geräts. Werksseitig 0 bei direkter Verbindung (WLAN/LAN); hinter einem Smart Dongle vergibt der Hersteller häufig 1."},
+		{Key: "invert_batt_sign", Label: "Batterie-Vorzeichen invertieren (Messung)", Type: "checkbox",
+			Help: "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."},
+		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
+			Help: "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."},
+	}
+}
+
+// huaweiFamilies ist die Registerkarten-Referenz der Marke - eine einzige, da
+// L1/M1/MB0/MAP0 dieselbe Karte teilen (huawei.json `modelle`).
+func huaweiFamilies() []Family {
+	return []Family{
+		{ID: FamHuaweiSun2000Luna, Label: "SUN2000 + LUNA2000", Note: "Feste Modbus-TCP-Registerkarte (Port 502); die LUNA2000-Batterie hat keinen eigenen Kommunikationsweg"},
+	}
+}
+
+// huaweiModels bietet die beim Kunden tatsaechlich vorkommenden Baureihen
+// einzeln an (huawei.json `modelle`), dazu einen Auffang-Eintrag. RatedKw
+// bleibt unbelegt: die L1/M1-Baureihe deckt mehrere Leistungsklassen (2-6 kTL)
+// ab, ohne dass huawei.json eine Zuordnung Modell -> Nennleistung dokumentiert.
+func huaweiModels() []Model {
+	return []Model{
+		{ID: "sun2000-l1", Label: "SUN2000-L1", Family: FamHuaweiSun2000Luna,
+			Note: "String-Wechselrichter, einphasig · mit LUNA2000-Speicher"},
+		{ID: "sun2000-m1", Label: "SUN2000-M1", Family: FamHuaweiSun2000Luna,
+			Note: "String-Wechselrichter, dreiphasig (z. B. 3KTL-M1) · mit LUNA2000-Speicher"},
+		{ID: "sun2000-mb0", Label: "SUN2000-MB0", Family: FamHuaweiSun2000Luna,
+			Note: "String-Wechselrichter, dreiphasig · mit LUNA2000-Speicher"},
+		{ID: "sun2000-map0", Label: "SUN2000-MAP0", Family: FamHuaweiSun2000Luna,
+			Note: "String-Wechselrichter, dreiphasig · mit LUNA2000-Speicher"},
+		{ID: "huawei-sun2000-generic", Label: "Anderes SUN2000-Modell", Family: FamHuaweiSun2000Luna,
+			Note: "Weiteres SUN2000-Modell derselben Registerkarte (Nennleistung unbekannt)"},
 	}
 }
 
@@ -1320,6 +1411,28 @@ func DefaultCatalog() Catalog {
 				// schreibt nie - genau wie bei Fronius heute. Scharf wird es erst
 				// nach einem Bench-Lauf am echten Geraet (CONTROL-BENCH.md).
 				ControlTier: ControlTierSunSpec,
+			},
+			{
+				ID:         BrandHuawei,
+				Label:      "Huawei",
+				DeviceType: DeviceTypeInverter,
+				Note:       "Huawei SUN2000 mit LUNA2000-Speicher. Modbus TCP muss am Wechselrichter über ein Installateur-Konto freigeschaltet sein.",
+				Models:     huaweiModels(),
+				Families:   huaweiFamilies(),
+				Transports: []Transport{{
+					Communication: CommHuaweiModbus,
+					Label:         "Modbus TCP (TCP 502)",
+					Fields:        huaweiFields(),
+				}},
+				// Tier 2: Huaweis "Forcible Charge/Discharge" ist ein echter
+				// forced-watts RAM-Sollwert (Register 47100/47247/47249, mit
+				// Dauer 47083/Modus 47246) - dieselbe Primitiv-Klasse wie
+				// KOSTAL/Sungrow/SolarEdge. Der Adapter ist vorbereitet und
+				// HART gesperrt (writes bleibt immer leer): kein Huawei-Geraet
+				// wurde je gemessen, siehe huawei.json `firmware_bedingung`/
+				// `schreibbudget`/`daempfung` (alle Sicherheit D) und den
+				// Scout-Bericht data/vp-kundenanlage-huawei-s1.
+				ControlTier: ControlTierVendorEMS,
 			},
 			{
 				ID:         BrandGoe,

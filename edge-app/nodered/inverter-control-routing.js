@@ -84,6 +84,11 @@ const COMM_KOSTAL = 'kostal_modbus';
 const COMM_SUNSPEC_TCP = 'sunspec_tcp';
 const COMM_KACO_MODBUS = 'kaco_modbus';
 const COMM_KACO_HTTP = 'kaco_http';
+// Huawei SUN2000 + LUNA2000: the vendor's own fixed Modbus-TCP register map
+// (TCP 502) - a second REALIZED Tier-2 (vendor external-EMS) surface, next to
+// KOSTAL. See huaweiControl below + catalog/control-profiles/profiles/huawei.json
+// + the scout report data/vp-kundenanlage-huawei-s1.
+const COMM_HUAWEI_MODBUS = 'huawei_modbus';
 
 // Control tiers - the battery-control PRIMITIVE, decoupled from the read transport
 // (design data/vp-battery-control-deepdive/report.md §1). Mirrors the Go
@@ -205,6 +210,7 @@ function inferTierFromCommunication(communication) {
     case COMM_MODBUS: return CONTROL_TIER.SUNSPEC;
     case COMM_FRONIUS: return CONTROL_TIER.SUNSPEC;
     case COMM_KOSTAL: return CONTROL_TIER.VENDOR_EMS;
+    case COMM_HUAWEI_MODBUS: return CONTROL_TIER.VENDOR_EMS;
     default: return CONTROL_TIER.READ_ONLY;
   }
 }
@@ -395,6 +401,9 @@ function controlRoute(selection, setpoint, opts = {}) {
     if (comm === COMM_KOSTAL) {
       return kostalControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw });
     }
+    if (comm === COMM_HUAWEI_MODBUS) {
+      return huaweiControl({ conn, ip, family, certified, controlEnabled, kw, setpoint });
+    }
     return vendorEmsControl({ conn, ip, family, certified, controlEnabled });
   }
   if (tier === CONTROL_TIER.SUNSPEC) {
@@ -548,6 +557,169 @@ function kostalControl({ conn, ip, family, certified, controlEnabled, calibratio
     out.pvLimitDroppedKw = pvLimitKw;
   }
   return out;
+}
+
+// --- Huawei SUN2000 Tier-2 control adapter (UNCERTIFIED - PREPARED and LOCKED) ---
+//
+// SAFETY (der ganze Punkt dieser Stufe, wie bei KACO NH3): Huawei steht in
+// KEINER Freigabeliste. Dieser Adapter gibt NIEMALS einen ausfuehrbaren
+// Schreibbefehl heraus (`writes: []`) und erfinden NIEMALS ein Rueckleseregister
+// (`readbacks: []`) - UNABHAENGIG von `certified`/`calibration`. Was er liefert,
+// ist der `planned`-Satz - das konkrete Artefakt, das eine Bench-Sitzung am
+// echten Geraet prueft (CONTROL-BENCH.md). Kein Huawei-Geraet wurde je
+// gemessen (huawei.json `firmware_bedingung`/`schreibbudget`/`daempfung`,
+// alle Sicherheit D); der Zertifizierungslauf ist ein spaeterer Feldschritt
+// am Kundengeraet (data/vp-kundenanlage-huawei-s1), ausdruecklich NICHT Teil
+// dieser Aenderung.
+//
+// QUELLE (Fakten, kein Code): Huaweis eigenes "SUN2000MA Modbus Interface
+// Definitions" Issue 08 (catalog/control-profiles/sources/manifest.json
+// `huawei_if`) + Feldquellen (`huawei_lib`, evcc) - siehe
+// catalog/control-profiles/profiles/huawei.json `absichten`.
+//
+// ⚠ ZWEI REGISTER-FAMILIEN, EIN GERAET (huawei.json):
+//   1. Das SELBSTREGEL-FENSTER (47075 max. Ladeleistung, 47077 max.
+//      Entladeleistung, beide U32 W): der Wechselrichter bleibt im
+//      Eigenverbrauchsmodus (47086 = 2) und regelt INNERHALB der von uns
+//      gesetzten Grenzen selbst - "der Wechselrichter regelt, die Box setzt
+//      Absicht und Grenzen" (Konzept vp-wechselrichter-eigenregelung-k1).
+//   2. Der ERZWUNGENE SOLLWERT ("Forcible Charge/Discharge", U16-Register
+//      47100 Richtung/47246 Modus/47083 Dauer + U32-Register 47247 Lade-/
+//      47249 Entladeleistung): ein echter, zeitlich begrenzter forced-watts
+//      Sollwert - nur fuer gezieltes Netzladen (Absicht N, hier verdrahtet).
+//
+// ⚠ DER AUSGEDACHTE TOTMANN IST FLUECHTIG UND NUR IM DAUER-MODUS WIRKSAM
+// (huawei.json `totmann`): Zwangsladen/-entladen endet nach 47083 Minuten -
+// ABER NUR wenn 47246 = 0 (Dauer-Modus). 47246 = 1 (SoC-Modus) hat laut
+// huawei.json KEINEN Zeit-Ruckfall - deshalb schreibt dieser Adapter 47246
+// NIEMALS auf 1. 47083 ist in MINUTEN (die groebste verfuegbare Aufloesung);
+// HUAWEI_FORCE_DURATION_MIN haelt die Dauer bewusst auf die kuerzeste Einheit
+// (1 Minute) und wird - wie jeder Sollwert hier - auf JEDEM Tick neu
+// geschrieben (`always: true`, `dwell_s: 0`). Das IST der robuste Failsafe,
+// den der Core nachbilden muss: solange die Box schreibt, laeuft die
+// Minute nie ab; verstummt sie, faellt das Geraet spaetestens nach der
+// laufenden Minute von selbst in seinen Eigenverbrauchsmodus zurueck - genauso
+// wie KOSTALs Webserver-Watchdog oder der Deye-Fernsteuer-Totmann, nur mit
+// Huaweis eigenem, flaschenhalsartig groben Register.
+//
+// ⚠ HAENGENDE ZWANGSENTLADUNG (evcc #26917, huawei.json `fallen`): ein fremdes
+// Projekt berichtet ein Geraet, das eine gesetzte Zwangsentladung nicht von
+// selbst beendet - die dokumentierte Abhilfe ist Ruecklesen + Neusetzen. Diese
+// Falle betrifft die Absicht A (Verkaufen, erzwungener Sollwert ueber
+// 47249/47100 = 2) und ist GENAU DESHALB hier NICHT verdrahtet (siehe unten) -
+// kein Code pfadiert zu ihr, bevor ein Bench-Lauf das Ruecklese-Verhalten
+// geprueft hat.
+//
+// ⚠ ABSICHT A (VERKAUFEN) IST DOKUMENTIERT, ABER NICHT VERDRAHTET: anders als
+// beim Laden (Absicht N, Flag `grid_charge_allowed`) gibt es heute in diesem
+// Projekt fuer KEINE Marke ein Signal, das "gezielt verkaufen" von "nur den
+// Hausverbrauch decken" unterscheidet (negativer Sollwert bedeutet bei jedem
+// bisherigen Adapter: ein fester Fensterwert, kein Leistungs-Ziel). Ein
+// negativer Sollwert laeuft deshalb auf dem FENSTER-Pfad (E_decken): die Box
+// sperrt das Laden (47075 = 0) und laesst den Wechselrichter selbst
+// entscheiden, wie viel er zur Lastdeckung entlaedt - niemals ein erzwungener
+// Export. Das Register 47249 bleibt in der Landkarte dokumentiert, der
+// Adapter nutzt es nicht.
+const HUAWEI_CONTROL_REG = {
+  // 47075/47077: Selbstregel-Fenster (U32 W) - huawei.json Absichten
+  // E_laden/E_decken/E_gedrosselt/H.
+  MAX_CHARGE_POWER_W: 47075,
+  MAX_DISCHARGE_POWER_W: 47077,
+  // 47086: Arbeitsmodus (U16 enum). 2 = "Maximise self consumption"
+  // (huawei.json `eigenmodus`) - der einzige hier benutzte Wert.
+  WORK_MODE: 47086,
+  WORK_MODE_SELF_CONSUMPTION: 2,
+  // 47087: Netzladen freigeben (U16 enum) - nur gesetzt, wenn die Absicht N
+  // (gezieltes Netzladen) tatsaechlich greift.
+  GRID_CHARGE_ENABLE: 47087,
+  // 47100/47246/47083/47247/47249: "Forcible Charge/Discharge" - der
+  // erzwungene Sollwert fuer Absicht N (Netzladen).
+  FORCE_DIRECTION: 47100, // U16 enum: 0 Stopp · 1 Laden · 2 Entladen
+  FORCE_DIRECTION_CHARGE: 1,
+  FORCE_MODE: 47246, // U16 enum: 0 Dauer-Modus (Zeit-Ruckfall) · 1 SoC-Modus (KEIN Ruckfall)
+  FORCE_MODE_DURATION: 0,
+  FORCE_DURATION_MIN: 47083, // U16 Minuten - der fluechtige Totmann im Dauer-Modus
+  FORCE_CHARGE_POWER_W: 47247, // U32 W
+  FORCE_DISCHARGE_POWER_W: 47249, // U32 W - dokumentiert, nicht verdrahtet (siehe oben)
+};
+// Re-asserted on EVERY tick (always:true, dwell_s:0) - the shortest unit the
+// duration register offers, so a silent box lets the forced grid-charge
+// revert within at most the current minute.
+const HUAWEI_FORCE_DURATION_MIN = 1;
+const HUAWEI_DEFAULT_PORT = 502;
+const HUAWEI_NOT_CERTIFIED_REASON = 'Steuerung für dieses Modell noch nicht freigegeben (Prüfstand ausstehend)';
+
+function huaweiControl({ conn, ip, family, certified, controlEnabled, kw, setpoint }) {
+  const port = Number(conn.port) > 0 ? Number(conn.port) : HUAWEI_DEFAULT_PORT;
+  const unitId = Number.isInteger(conn.unit_id) && conn.unit_id >= 0 ? Number(conn.unit_id) : 0;
+  const invert = conn.invert_control_sign === true;
+  const battKw = isFiniteNum(kw) ? (invert ? -kw : kw) : 0;
+  const sp = setpoint || {};
+  const gridChargeAllowed = sp.grid_charge_allowed === true;
+
+  let planned;
+  if (battKw > 0 && gridChargeAllowed) {
+    // Absicht N (Netzladen x): erzwungener Sollwert - genau die Reihenfolge aus
+    // huawei.json `absichten.N.schreibfolge` (`adapter.folgen.netzladen`).
+    const watts = Math.round(battKw * 1000);
+    planned = [
+      { role: 'grid_charge_enable', fc: 6, addr: HUAWEI_CONTROL_REG.GRID_CHARGE_ENABLE, value: 1, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, always: true, bench_pending: true },
+      { role: 'battery_power', fc: 16, addr: HUAWEI_CONTROL_REG.FORCE_CHARGE_POWER_W, value: watts, count: 2, encode: { kind: 'watts_u32_be', kw: battKw }, dwell_s: 0, min_change: 0, always: true, bench_pending: true },
+      { role: 'force_duration_min', fc: 6, addr: HUAWEI_CONTROL_REG.FORCE_DURATION_MIN, value: HUAWEI_FORCE_DURATION_MIN, encode: { kind: 'minutes' }, dwell_s: 0, min_change: 0, always: true, bench_pending: true },
+      { role: 'force_mode', fc: 6, addr: HUAWEI_CONTROL_REG.FORCE_MODE, value: HUAWEI_CONTROL_REG.FORCE_MODE_DURATION, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, always: true, bench_pending: true },
+      { role: 'force_direction', fc: 6, addr: HUAWEI_CONTROL_REG.FORCE_DIRECTION, value: HUAWEI_CONTROL_REG.FORCE_DIRECTION_CHARGE, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, always: true, bench_pending: true },
+    ];
+  } else if (battKw > 0) {
+    // Absichten E_laden + E_gedrosselt (nur Überschuss laden, optional auf x W
+    // gedrosselt): kein Netzladen erlaubt, also bleibt es beim Selbstregel-
+    // Fenster - Entladen gesperrt (47077 = 0, E_laden), Laden auf den
+    // Sollwert begrenzt (47075 = x W, E_gedrosselt). Siehe `adapter.folgen.
+    // laden_gedrosselt` + die Abweichung zur Vereinigung in huawei.json.
+    const watts = Math.round(battKw * 1000);
+    planned = [
+      { role: 'work_mode', fc: 6, addr: HUAWEI_CONTROL_REG.WORK_MODE, value: HUAWEI_CONTROL_REG.WORK_MODE_SELF_CONSUMPTION, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, bench_pending: true },
+      { role: 'max_discharge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_DISCHARGE_POWER_W, value: 0, count: 2, encode: { kind: 'watts_u32_be', kw: 0 }, dwell_s: 0, min_change: 0, bench_pending: true },
+      { role: 'max_charge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_CHARGE_POWER_W, value: watts, count: 2, encode: { kind: 'watts_u32_be', kw: battKw }, dwell_s: 0, min_change: 0, bench_pending: true },
+    ];
+  } else if (battKw < 0) {
+    // Absicht E_decken (nur Verbrauch decken, nicht laden): Laden gesperrt
+    // (47075 = 0), Entladen bleibt dem Eigenverbrauchsregler des Geräts
+    // überlassen - kein erzwungener Export (siehe Kopfkommentar zu Absicht A).
+    planned = [
+      { role: 'work_mode', fc: 6, addr: HUAWEI_CONTROL_REG.WORK_MODE, value: HUAWEI_CONTROL_REG.WORK_MODE_SELF_CONSUMPTION, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, bench_pending: true },
+      { role: 'max_charge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_CHARGE_POWER_W, value: 0, count: 2, encode: { kind: 'watts_u32_be', kw: 0 }, dwell_s: 0, min_change: 0, bench_pending: true },
+    ];
+  } else {
+    // Absicht H (Halten): beide Fenstergrenzen auf 0 - weder laden noch entladen.
+    planned = [
+      { role: 'max_charge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_CHARGE_POWER_W, value: 0, count: 2, encode: { kind: 'watts_u32_be', kw: 0 }, dwell_s: 0, min_change: 0, bench_pending: true },
+      { role: 'max_discharge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_DISCHARGE_POWER_W, value: 0, count: 2, encode: { kind: 'watts_u32_be', kw: 0 }, dwell_s: 0, min_change: 0, bench_pending: true },
+    ];
+  }
+
+  return {
+    adapter: 'huawei_modbus', family, tier: CONTROL_TIER.VENDOR_EMS,
+    target: ip + ':' + port,
+    connection: { ip, port, unit_id: unitId },
+    certified, controlEnabled,
+    writes: [], // gesperrt - siehe der Kopf dieses Abschnitts
+    readbacks: [],
+    planned,
+    reason: HUAWEI_NOT_CERTIFIED_REASON,
+  };
+}
+
+// huaweiReleasePlan - die Rücknahme: beide Fenstergrenzen auf 0 (Absicht H) UND
+// der erzwungene Sollwert auf Stopp (47100 = 0) - für den Fall, dass ein
+// vorangegangenes Netzladen (Absicht N) noch im laufenden Dauer-Modus-Fenster
+// steht. Der eigene, flüchtige Totmann (47083) ist der Failsafe letzter
+// Instanz; diese Folge ist die EXPLIZITE Rücknahme, bevor er abläuft.
+function huaweiReleasePlan() {
+  return [
+    { role: 'force_direction', fc: 6, addr: HUAWEI_CONTROL_REG.FORCE_DIRECTION, value: 0, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'max_charge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_CHARGE_POWER_W, value: 0, count: 2, encode: { kind: 'watts_u32_be', kw: 0 }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'max_discharge_power', fc: 16, addr: HUAWEI_CONTROL_REG.MAX_DISCHARGE_POWER_W, value: 0, count: 2, encode: { kind: 'watts_u32_be', kw: 0 }, dwell_s: 0, min_change: 0, bench_pending: true },
+  ];
 }
 
 // The controller-owned staleness window (report §5.5/§7.5): an edge/setpoint whose
@@ -733,6 +905,22 @@ function controlRelease(selection, opts = {}) {
       readbacks: releaseAllowed ? readbacks : [],
       planned,
       reason: releaseAllowed ? undefined : 'Modell noch nicht freigegeben',
+    };
+  }
+
+  if (tier === CONTROL_TIER.VENDOR_EMS && comm === COMM_HUAWEI_MODBUS) {
+    // ⚠ DIE RUECKNAHME IST HIER EIN TEIL DES FAILSAFE, NICHT DER GANZE: der
+    // Dauer-Modus-Totmann (47083, Minuten) laeuft ohnehin ab, sobald wir
+    // aufhoeren zu schreiben - diese Folge raeumt zusaetzlich SOFORT auf
+    // (Fenster auf 0/0, erzwungener Sollwert auf Stopp), falls ein Netzladen
+    // noch im laufenden Fenster steht.
+    const port = Number(conn.port) > 0 ? Number(conn.port) : HUAWEI_DEFAULT_PORT;
+    const unitId = Number.isInteger(conn.unit_id) && conn.unit_id >= 0 ? Number(conn.unit_id) : 0;
+    return {
+      adapter: 'huawei_modbus', family, tier, certified, controlEnabled, calibration, mode: 'release',
+      target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
+      writes: [], readbacks: [], planned: huaweiReleasePlan(),
+      reason: 'Huawei SUN2000: Steuerung nicht freigegeben',
     };
   }
 
@@ -3169,9 +3357,15 @@ module.exports = {
   COMM_SUNSPEC_TCP,
   COMM_KACO_MODBUS,
   COMM_KACO_HTTP,
+  COMM_HUAWEI_MODBUS,
   // KACO: vorbereitet + GESPERRT (writes bleibt leer, unabhaengig von certified)
   KACO_NH3_CONTROL_REG,
   KACO_NOT_CERTIFIED_REASON,
+  // Huawei: vorbereitet + GESPERRT (writes bleibt leer, unabhaengig von certified)
+  HUAWEI_CONTROL_REG,
+  HUAWEI_FORCE_DURATION_MIN,
+  HUAWEI_DEFAULT_PORT,
+  HUAWEI_NOT_CERTIFIED_REASON,
   // KOSTAL PLENTICORE Tier-2 (external battery management)
   KOSTAL_REG,
   KOSTAL_MGMT_EXTERNAL_MODBUS,

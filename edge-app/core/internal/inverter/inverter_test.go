@@ -419,6 +419,11 @@ func TestControlTierPerBrand(t *testing.T) {
 		// CERTIFIED_CONTROL_FAMILIES, also plant der Adapter hoechstens und
 		// schreibt nie (bench_pending, CONTROL-BENCH.md).
 		BrandKaco: ControlTierSunSpec,
+		// Huaweis "Forcible Charge/Discharge" ist ein echter forced-watts
+		// RAM-Sollwert (47100/47247/47249) - dieselbe Tier-2-Klasse wie
+		// KOSTAL. Der Adapter ist vorbereitet und HART gesperrt (writes bleibt
+		// immer leer): kein Huawei-Geraet wurde je gemessen.
+		BrandHuawei: ControlTierVendorEMS,
 	}
 	for _, b := range cat.Brands {
 		w, ok := want[b.ID]

@@ -40,6 +40,7 @@ const goeApi = require('./goe/goe-api');
 const kostalDecode = require('./kostal/kostal-decode');
 const kacoHttp = require('./kaco/kaco-http');
 const aisweiDecode = require('./kaco/aiswei-decode');
+const huaweiDecode = require('./huawei/huawei-decode');
 
 const SCHEMA_VERSION = '1.0';
 
@@ -79,6 +80,11 @@ const COMM_KACO_HTTP = 'kaco_http';
 // Ethernet port (TCP 502, unit 1). Mixes INPUT (FC4) and HOLDING (FC3) blocks -
 // the read plan carries the function code per block. See kaco/aiswei-decode.js.
 const COMM_KACO_MODBUS = 'kaco_modbus';
+// Huawei SUN2000 (L1/M1/MB0/MAP0) + LUNA2000 over the vendor's own Modbus-TCP
+// server (TCP 502). ONE connection covers PV, battery and (with an optional
+// Smart Power Sensor) the grid point - the LUNA2000 has no communication path
+// of its own. See huawei/huawei-decode.js.
+const COMM_HUAWEI_MODBUS = 'huawei_modbus';
 
 const DEFAULT_SOLARMAN_PORT = 8899;
 const DEFAULT_MODBUS_PORT = 502;
@@ -90,6 +96,8 @@ const DEFAULT_KOSTAL_UNIT_ID = kostalDecode.DEFAULT_UNIT_ID; // 71
 const DEFAULT_KACO_HTTP_PORT = kacoHttp.DEFAULT_PORT; // 8484
 const DEFAULT_KACO_MODBUS_PORT = aisweiDecode.DEFAULT_PORT; // 502
 const DEFAULT_KACO_MODBUS_UNIT_ID = aisweiDecode.DEFAULT_UNIT_ID; // 1
+const DEFAULT_HUAWEI_PORT = huaweiDecode.DEFAULT_PORT; // 502
+const DEFAULT_HUAWEI_UNIT_ID = huaweiDecode.DEFAULT_UNIT_ID; // 0
 
 // The one register-profile id the SunSpec-live read path uses (mirrors how the
 // Deye family / Modbus profile names the decode). Discovery is dynamic, so there
@@ -113,6 +121,10 @@ const GOE_FAMILIES = Object.keys(goeApi.FAMILIES);
 
 // The KOSTAL register-family set (one entry - the official map covers the BI line).
 const KOSTAL_FAMILIES = Object.keys(kostalDecode.FAMILIES);
+
+// The Huawei register-family set (one entry - the field map covers SUN2000
+// L1/M1/MB0/MAP0 with an attached LUNA2000).
+const HUAWEI_FAMILIES = Object.keys(huaweiDecode.FAMILIES);
 
 // The two KACO/AISWEI HTTP profiles (string vs hybrid - they differ in the PV
 // SOURCE, see kaco/kaco-http.js FAMILIES) and the NH3 register card.
@@ -152,7 +164,8 @@ function parseConfig(input) {
   if (communication !== COMM_SOLARMAN && communication !== COMM_MODBUS &&
       communication !== COMM_FRONIUS && !isSunSpecTcp(communication) &&
       communication !== COMM_GOE && communication !== COMM_KOSTAL &&
-      communication !== COMM_KACO_HTTP && communication !== COMM_KACO_MODBUS) return null;
+      communication !== COMM_KACO_HTTP && communication !== COMM_KACO_MODBUS &&
+      communication !== COMM_HUAWEI_MODBUS) return null;
 
   const family = typeof obj.family === 'string' ? obj.family.trim() : '';
   if (!family) return null;
@@ -477,6 +490,35 @@ function route(sel) {
     };
   }
 
+  if (sel.communication === COMM_HUAWEI_MODBUS) {
+    // Huawei SUN2000 + LUNA2000: fixed FC3 blocks per the sourced field map
+    // (huawei/huawei-decode.js planReads). Gate on the known family set (an
+    // unknown family stays idle-safe, never fabricates). Read-only.
+    if (!HUAWEI_FAMILIES.includes(sel.family)) {
+      return { adapter: 'idle', reason: 'unbekannte Huawei-Familie: ' + sel.family };
+    }
+    const reads = huaweiDecode.planReads({ family: sel.family });
+    if (!reads.length) {
+      return { adapter: 'idle', reason: sel.family + ': keine Messwert-Register' };
+    }
+    const port = num(conn.port, DEFAULT_HUAWEI_PORT);
+    return {
+      adapter: COMM_HUAWEI_MODBUS,
+      family: sel.family,
+      target: ip + ':' + port,
+      connection: {
+        ip,
+        port,
+        unit_id: num(conn.unit_id, DEFAULT_HUAWEI_UNIT_ID),
+        // Both signs are Sicherheit D (unconfirmed on a real device) -
+        // VERIFY-on-device escape hatches, like every other brand's.
+        invert_grid_sign: !!conn.invert_grid_sign,
+        invert_batt_sign: !!conn.invert_batt_sign,
+      },
+      reads,
+    };
+  }
+
   if (sel.communication === COMM_GOE) {
     // go-e Charger local HTTP API v2: ONE HTTP GET to /api/status returns the
     // charging power. Self-describing (one family), so gate on the known set for
@@ -509,6 +551,7 @@ module.exports = {
   isSunSpecTcp,
   COMM_GOE,
   COMM_KOSTAL,
+  COMM_HUAWEI_MODBUS,
   SUNSPEC_LIVE_PROFILE,
   DEFAULT_SOLARMAN_PORT,
   DEFAULT_MODBUS_PORT,
@@ -520,6 +563,8 @@ module.exports = {
   DEFAULT_KACO_HTTP_PORT,
   DEFAULT_KACO_MODBUS_PORT,
   DEFAULT_KACO_MODBUS_UNIT_ID,
+  DEFAULT_HUAWEI_PORT,
+  DEFAULT_HUAWEI_UNIT_ID,
   DEYE_EXPORT_LIMIT,
   EXPORT_LIMIT_INTERVAL_MS,
   exportLimitRegister,
