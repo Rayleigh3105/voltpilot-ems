@@ -119,6 +119,15 @@ class KundenbereichBeendetApiTest {
                 "Fernwartung einer Box — Befund: kein Kundenbereich-Zaun, erreicht auch Boxen beendeter Bereiche (Diagnose/Abbau)");
         m.put("PUT /api/v1/admin/fernwartung/boxen/{ref}/schluessel",
                 "Fernwartung einer Box — Befund: kein Kundenbereich-Zaun, erreicht auch Boxen beendeter Bereiche (Diagnose/Abbau)");
+        // Werkstatt (main 024ea8c12): das Register der Boxen VOR dem Versand - `werkstatt_box` trägt keinen
+        // Mandanten (Migration V20261026200000), die Box ist noch in keinem Kundenbereich.
+        m.put("POST /api/v1/admin/werkstatt/boxen", "Werkstatt-Register: Box vor dem Versand, noch in keinem Kundenbereich");
+        m.put("POST /api/v1/admin/werkstatt/boxen/{ref}/abnahme",
+                "Werkstatt-Abnahme: Box vor dem Versand, noch in keinem Kundenbereich");
+        m.put("PUT /api/v1/admin/werkstatt/boxen/{ref}/lan-netz",
+                "Werkstatt: LAN-Netz einer Box vor dem Versand, noch in keinem Kundenbereich");
+        m.put("PUT /api/v1/admin/werkstatt/boxen/{ref}/schritte/{schritt}",
+                "Werkstatt: Haken eines Schritts an einer Box vor dem Versand, noch in keinem Kundenbereich");
         return m;
     }
 
