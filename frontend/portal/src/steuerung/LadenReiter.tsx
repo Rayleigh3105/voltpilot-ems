@@ -1,23 +1,29 @@
 /**
- * Reiter „Laden“: alles rund um die Ladepunkte an einem Ort (Prototyp
- * `ui-laden.js`) - Netzanschluss, je Ladepunkt Aus · Smart · Schnell,
- * Womit laden, Ladeziel, Ladeplan, Vorrang vor dem Speicher, Fahrzeuge.
+ * Reiter „Laden“: der EINE Ort für jeden Ladepunkt (Konzept „Ein Ort fürs
+ * Laden" e1, Scheibe 1) - Netzanschluss, je Ladepunkt eine Bühne (Zustand und
+ * Herkunft in Klartext), Aus · Smart · Schnell (schaltet NUR hier), Womit
+ * laden, Ladeziel, Ladungen (kWh), Vorrang vor dem Speicher, Autos, eine
+ * Technik-Zeile zur Geräteseite.
  */
 import { liste } from './liste';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { api, type ChargingConfig } from '../api';
+import { api, type ChargingConfig, type Device, type OcppTransaction } from '../api';
 import { Recht } from '../components/Recht';
-import { LADEPUNKT_UNGESTEUERT, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
+import { GeraetBuehne } from '../components/GeraetBuehne';
+import { LADEPUNKT_MODUS, LADEPUNKT_UNGESTEUERT, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
 import { useRollen } from '../rollen';
 import { LADEPUNKT_ABSTECKEN_DECKEL_TEXT, type LadepunktSperre, type SpeicherFreigabe } from '../ladepunkte';
-import type { FahrzeugWunsch, SiteFahrzeuge } from '../fahrzeugProfile';
+import type { SiteFahrzeuge } from '../fahrzeugProfile';
 import { fahrzeugName, fahrzeugZeilen, kartenKurz } from '../fahrzeugProfile';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { parseDecimal } from '../zahl';
+import { boxRefOf, chargerGeraetId } from '../geraetAdresse';
+import { geraetSeiteHash } from '../nav';
 import { Blatt } from './Blatt';
 import type { BlattKontext } from './Blaetter';
 import { quellenAnteil, type GeraetBild } from './bild';
+import { letzteLadungen } from './ladungen';
 import { Ic } from './Ic';
 import {
   OPTION_SONNE_SPEICHER, band, grenzePruefung, heutigerAnschluss, kwVereinbart, ladebudgetKw,
@@ -30,6 +36,7 @@ import type { BlattZustand, SeitenBild } from './seite';
 import { TAG, fCt, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
 
 export interface LadenReiterProps {
+  siteId: string;
   bild: SeitenBild;
   rahmen: LadeparkRahmen | null;
   config: ChargingConfig | null;
@@ -50,16 +57,26 @@ export interface LadenReiterProps {
   anlage: VorschauAnlage;
   /** Je Ladepunkt die zuletzt gesendete Wahl dieser Sitzung (Rückmeldung in drei Schritten). */
   gesendet: Record<string, Gesendet>;
+  /** Für die Technik-Zeile (§4.3): der Weg zur Geräteseite der Wallbox. */
+  devices?: Device[];
+  /** Für „Ladungen" (§4.1 Punkt 5, Scheibe 1: nur die kWh): die beendeten OCPP-Ladevorgänge. */
+  transactions?: OcppTransaction[] | null;
 }
 
 export function LadenReiter(p: LadenReiterProps) {
   const { bild } = p;
   const lp = bild.ladepunkte;
+  const boxRef = boxRefOf(p.devices, p.siteId);
   return (
     <>
       <BudgetKarte bild={bild} rahmen={p.rahmen} oeffne={p.oeffne} />
       {lp.map((g) => (
-        <LadeKarte key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne} onSmart={p.onSmart} release={p.release ?? null} releaseGemeldet={p.releaseGemeldet ?? null} anlage={p.anlage} gesendet={p.gesendet[g.id] ?? null} />
+        <LadeKarte
+          key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne}
+          onSmart={p.onSmart} release={p.release ?? null} releaseGemeldet={p.releaseGemeldet ?? null}
+          anlage={p.anlage} gesendet={p.gesendet[g.id] ?? null} siteId={p.siteId} boxRef={boxRef}
+          transactions={p.transactions ?? null}
+        />
       ))}
       {!lp.length && (
         <section className="card">
@@ -123,11 +140,14 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
   );
 }
 
-function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, releaseGemeldet, anlage, gesendet }: {
+function LadeKarte({
+  g, bild, fahrzeuge, busy, oeffne, onSmart, release, releaseGemeldet, anlage, gesendet, siteId, boxRef, transactions,
+}: {
   g: GeraetBild; bild: SeitenBild; fahrzeuge: SiteFahrzeuge | null; busy: boolean;
   oeffne: (b: BlattZustand) => void; onSmart: (g: GeraetBild) => void;
   release: SpeicherFreigabe | null; releaseGemeldet: string | null;
   anlage: VorschauAnlage; gesendet: Gesendet | null;
+  siteId: string; boxRef: string | null; transactions: OcppTransaction[] | null;
 }) {
   const rollen = useRollen();
   const r = bild.raster;
@@ -181,8 +201,33 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
   const darf = rollen.darf('betriebsweise.aendern') && sperre?.kind !== 'keine_grenzen';
   const oeffneWahl = (e: { currentTarget: HTMLElement }) => { e.currentTarget.focus(); oeffne({ art: 'womit', id: g.id }); };
   const zeilen = gesendet ? rueckmeldung(l, gesendet, r.nowMs, (ms) => uhrVon(r, ms)) : null;
+  // ⚠ Die Bühne (Konzept „Ein Ort fürs Laden" e1, §4.1 Punkt 1): „der Strom
+  // läuft in der Farbe seiner Herkunft". Nur beim Laden selbst - pausiert/
+  // ohne Auto zeigt sie die ruhige Spur, nie eine erfundene Quelle.
+  const herkunft = an ? herkunftArt(bild, r.jetzt) : null;
+  const hw = herkunftWort(bild, r.jetzt);
+  const buehneSatz = stumm
+    ? sub
+    : !l?.angesteckt
+      ? 'Kein Auto angesteckt'
+      : an
+        ? (hw === 'lädt' ? 'Lädt' : `Lädt ${hw}`)
+        : wahl === 'aus'
+          ? 'Pausiert'
+          : 'Wartet';
+  const ladungen = letzteLadungen(transactions, l?.chargePointId ?? '', 3);
+  const technikHref = boxRef ? geraetSeiteHash(siteId, boxRef, chargerGeraetId(l?.chargePointId ?? '')) : null;
   return (
     <section className={`card lp-card${bild.funktion.angehalten ? ' matt' : ''}`} aria-label={g.name}>
+      {/* ⚠ Die Sperre sagt `SperreHinweis` gleich darunter mit Satz UND Folge als
+          EIGENER `role="status"` - die Bühne nennt sie hier nicht zusätzlich
+          (zwei Status-Flächen mit demselben Satz war der Befund). */}
+      <GeraetBuehne
+        zahl={an && g.jetztKw != null ? { zahl: String(Math.round(g.jetztKw * 10) / 10).replace('.', ','), einheit: 'kW', wort: null, ton: 'ok', key: 'kw' } : null}
+        satz={buehneSatz}
+        satzTon={sperre ? 'warn' : 'ok'}
+        grafik={{ art: 'wallbox', kw: g.jetztKw ?? null, laedt: an, herkunft, angesteckt: !!l?.angesteckt }}
+      />
       <div className="lp-h">
         <span className={`ico${an ? ' on' : ''}`}><Ic n="car" s={26} /></span>
         <span className="t">
@@ -195,7 +240,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
         </span>
       </div>
       <Recht aktion="handeingriff.setzen"><div className="lmodes" role="group" aria-label="Lademodus" style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
-        {([['aus', 'pause', 'Aus'], ['smart', 'sun', 'Smart'], ['schnell', 'rocket', 'Schnell']] as const).map(([k, i, label]) => (
+        {([['aus', 'pause', LADEPUNKT_MODUS.aus], ['smart', 'sun', LADEPUNKT_MODUS.smart], ['schnell', 'rocket', LADEPUNKT_MODUS.schnell]] as const).map(([k, i, label]) => (
           <button
             type="button"
             key={k}
@@ -302,8 +347,51 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
           ))}
         </ol>
       )}
+      {/* „Ladungen" (§4.1 Punkt 5, Scheibe 1): zuerst nur die kWh aus den
+          vorhandenen OCPP-Ladevorgängen - Herkunft, Euro und Sonnenanteil
+          kommen erst mit der Server-Route aus Scheibe 2. */}
+      <div className="blk">
+        <h3>Ladungen</h3>
+        {ladungen.length ? (
+          <ul className="lq-ladungen">
+            {ladungen.map((z) => (
+              <li key={z.key}>
+                <span>{ladungDatum(z.startedAt)}</span>
+                <b>{z.kwh != null ? fKwh(z.kwh) : '—'}</b>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="leise">Noch keine abgeschlossene Ladung.</p>
+        )}
+      </div>
+      {/* Technik-Zeile (§4.3): Kennung, Sicherheitsprofil und Ausfall-Schutz
+          wohnen an der Geräteseite - hier nur die ruhige Zeile, die hinführt. */}
+      {technikHref && (
+        <a className="lq-technik" href={technikHref}>
+          <Ic n="shield" s={16} />
+          <span>Anschluss geschützt <small>{g.name} verbunden · Technik</small></span>
+          <Ic n="chevR" s={16} />
+        </a>
+      )}
     </section>
   );
+}
+
+/** „26.10., 18:20" - das Datum einer Ladung, in Kundenworten. */
+function ladungDatum(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '—';
+  const d = new Date(t);
+  return `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}, ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/** Woher der Ladestrom gerade kommt - für die Farbe der Bühne (§4.1 Punkt 1). */
+function herkunftArt(bild: SeitenBild, t: number): 'sonne' | 'speicher' | 'netz' | null {
+  const a = quellenAnteil(bild.reihen, t);
+  if (!a) return null;
+  if (a.pv >= a.sp && a.pv >= a.netz) return 'sonne';
+  return a.sp >= a.netz ? 'speicher' : 'netz';
 }
 
 /** Warum VoltPilot an dieser Wallbox gerade nichts bewirkt - der Satz und seine Folge (Audit W-01/W-05/W-12). */
@@ -653,51 +741,6 @@ function useAnschluss(siteId: string): AnschlussStand {
   return stand;
 }
 
-export function FahrzeugBlatt({ k, tagRef, fahrzeuge, onSetzen }: {
-  k: BlattKontext; tagRef: string; fahrzeuge: SiteFahrzeuge | null;
-  onSetzen: (tagRef: string, w: FahrzeugWunsch) => Promise<boolean>;
-}) {
-  const f = liste(fahrzeuge?.fahrzeuge).find((x) => x.tagRef === tagRef);
-  const [name, setName] = useState(f?.name ?? '');
-  if (!f) return null;
-  const q = f.steuerart?.quelle ?? null;
-  const modus = f.steuerart?.ueberschussModus === 'mindestleistung' ? 'min' : 'sonne';
-  const minKw = f.steuerart?.mindestleistungKw ?? k.bild.ladepunkte[0]?.steuerart?.mindestleistungKw ?? 1.4;
-  const busy = k.busy === `fz:${tagRef}`;
-  return (
-    <Blatt
-      symbol="car"
-      titel={fahrzeugName(f)}
-      unter="Einstellung für diese Ladekarte"
-      onClose={k.zu}
-      fuss={
-        <Recht aktion="ladepunkt.betrieb"><button type="button" className="btn" disabled={busy} onClick={async () => {
-          if (name.trim() !== (f.name ?? '')) { if (await onSetzen(tagRef, { name: name.trim() })) k.zu(); } else k.zu();
-        }}>
-          Fertig
-        </button></Recht>
-      }
-    >
-      <div className="blk">
-        <h3>Name</h3>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="z. B. Familienauto"
-          aria-label="Name des Fahrzeugs"
-          style={{ minHeight: 46, borderRadius: 12, border: '1px solid var(--field)', padding: '0 12px', font: '600 16px var(--font)', width: '100%' }}
-        />
-      </div>
-      <div className="blk">
-        <h3>Wenn diese Karte lädt</h3>
-        <Recht aktion="ladepunkt.betrieb"><div className="chips">
-          <button type="button" aria-pressed={q == null} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: '' })}>wie der Ladepunkt</button>
-          <button type="button" aria-pressed={q === 'ueberschuss' && modus === 'sonne'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'ueberschuss', ueberschussModus: 'pausieren' })}>{LADEQUELLE.sonne}</button>
-          <button type="button" aria-pressed={q === 'ueberschuss' && modus === 'min'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'ueberschuss', ueberschussModus: 'mindestleistung', mindestleistungKw: minKw })}>{LADEQUELLE.min}</button>
-          <button type="button" aria-pressed={q === 'sofort'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'sofort' })}>Schnell</button>
-        </div></Recht>
-        <p>{LADEQUELLE.sonne}: {LADEQUELLE_VERSPRECHEN.sonne}. {LADEQUELLE.min}: {LADEQUELLE_VERSPRECHEN.min}. Schnell: sofort voll. Ohne Wahl gilt die Einstellung des Ladepunkts.</p>
-      </div>
-    </Blatt>
-  );
-}
+// `FahrzeugBlatt` ist entfallen (Konzept „Ein Ort fürs Laden" e1, Abschnitt 7
+// Punkt 6): „Autos" öffnet jetzt denselben `FahrzeugDialog` wie früher nur die
+// Ladevorgänge-Seite - zwei Dialoge über dieselbe Sache wären zwei Wahrheiten.

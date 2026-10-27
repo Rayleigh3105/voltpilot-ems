@@ -9,7 +9,7 @@
 import { liste } from './liste';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Recht } from '../components/Recht';
-import { LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
+import { LADEPUNKT_MODUS, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
 import { BIS_ABSTECKEN, LADEPUNKT_ABSTECKEN_DECKEL_MIN, bisAbsteckenSatz } from '../ladepunkte';
 import { ladeQuelle } from './laden';
 import { useRollen } from '../rollen';
@@ -86,7 +86,7 @@ type Art3 = 'aus' | 'smart' | 'an';
 
 export function dreiWorte(g: GeraetBild | null): [string, string, string] {
   if (!g) return ['Halten', 'Smart', 'Laden'];
-  if (g.eintrag.ladepunkt) return ['Aus', 'Smart', 'Schnell'];
+  if (g.eintrag.ladepunkt) return [LADEPUNKT_MODUS.aus, LADEPUNKT_MODUS.smart, LADEPUNKT_MODUS.schnell];
   if (g.form === 'freigabe') return ['Normal', 'Smart', 'Anheben'];
   return ['Aus', 'Smart', 'Ein'];
 }

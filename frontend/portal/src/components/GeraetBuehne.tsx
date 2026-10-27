@@ -103,7 +103,15 @@ export type BuehneGrafik =
   | { art: 'sonne'; werte: BuehneWerte }
   | { art: 'netz'; werte: BuehneWerte }
   | { art: 'verbraucher'; werte: BuehneWerte; freigabe: boolean }
-  | { art: 'wallbox'; kw: number | null; laedt: boolean }
+  | {
+    art: 'wallbox';
+    kw: number | null;
+    laedt: boolean;
+    /** Woher der Ladestrom gerade kommt - färbt die Fluss-Linie (Steuerung › Laden). `null` = Speicher-Farbe wie bisher. */
+    herkunft?: 'sonne' | 'speicher' | 'netz' | null;
+    /** Steckt ein Auto? `false` zeichnet es gestrichelt, „frei". Vorgabe `true` (bisheriges Verhalten). */
+    angesteckt?: boolean;
+  }
   | { art: 'box'; verbunden: boolean; geraete: number };
 
 export function GeraetBuehne({
@@ -243,7 +251,7 @@ function Grafik({ grafik }: { grafik: BuehneGrafik }) {
     case 'verbraucher':
       return <VerbraucherGrafik w={grafik.werte} freigabe={grafik.freigabe} />;
     case 'wallbox':
-      return <WallboxGrafik kw={grafik.kw} laedt={grafik.laedt} />;
+      return <WallboxGrafik kw={grafik.kw} laedt={grafik.laedt} herkunft={grafik.herkunft} angesteckt={grafik.angesteckt} />;
     case 'box':
       return <BoxGrafik verbunden={grafik.verbunden} geraete={grafik.geraete} />;
     default:
@@ -345,6 +353,7 @@ function Zeichen({
   size,
   color,
   strokeWidth = 2,
+  strokeDasharray,
 }: {
   pfad: 'mast' | 'auto' | 'stecker' | 'wolke' | 'schalter';
   x: number;
@@ -352,6 +361,7 @@ function Zeichen({
   size: number;
   color: string;
   strokeWidth?: number;
+  strokeDasharray?: string;
 }) {
   const d: Record<typeof pfad, ReactNode> = {
     mast: (
@@ -400,6 +410,7 @@ function Zeichen({
       fill="none"
       stroke="currentColor"
       strokeWidth={strokeWidth}
+      strokeDasharray={strokeDasharray}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -691,23 +702,34 @@ function VerbraucherGrafik({ w, freigabe }: { w: BuehneWerte; freigabe: boolean 
   );
 }
 
-/** Wallbox: Säule, Kabel, Auto - die Punkte laufen ins Auto, solange es lädt. */
-function WallboxGrafik({ kw: leistung, laedt }: { kw: number | null; laedt: boolean }) {
+/**
+ * Wallbox: Säule, Kabel, Auto - die Punkte laufen ins Auto, solange es lädt.
+ *
+ * `herkunft` färbt die Fluss-Linie nach der Quelle des Ladestroms (Steuerung ›
+ * Laden, Konzept e1 §4.1: „der Strom läuft in der Farbe seiner Herkunft");
+ * ohne sie bleibt es die bisherige Speicher-Farbe. `angesteckt=false` zeichnet
+ * das Auto gestrichelt - „frei", kein erfundenes Fahrzeug.
+ */
+function WallboxGrafik({ kw: leistung, laedt, herkunft = null, angesteckt = true }: {
+  kw: number | null; laedt: boolean; herkunft?: 'sonne' | 'speicher' | 'netz' | null; angesteckt?: boolean;
+}) {
   const ref = useRef<SVGSVGElement>(null);
   useFlowTempo(ref);
+  const flussFarbe = herkunft === 'sonne' ? FARBE.pv : herkunft === 'netz' ? FARBE.grid : FARBE.batt;
+  const autoFarbe = laedt ? FARBE.ink : FARBE.aus;
   return (
     <svg
       ref={ref}
       className="vp-buehne-svg"
       viewBox="0 0 320 150"
       role="img"
-      aria-label={laedt ? 'Die Wallbox lädt das Fahrzeug' : 'Die Wallbox lädt gerade nicht'}
+      aria-label={laedt ? 'Die Wallbox lädt das Fahrzeug' : angesteckt ? 'Die Wallbox lädt gerade nicht' : 'Kein Fahrzeug angesteckt'}
     >
-      <Fluss von={{ x: 78, y: 104 }} nach={{ x: 196, y: 104 }} farbe={FARBE.batt} kwWert={laedt ? leistung : null} />
+      <Fluss von={{ x: 78, y: 104 }} nach={{ x: 196, y: 104 }} farbe={flussFarbe} kwWert={laedt ? leistung : null} />
       <rect x="24" y="22" width="52" height="100" rx="12" fill={FARBE.battSoft} stroke={FARBE.battInk} strokeWidth={2.5} />
       <rect x="34" y="34" width="32" height="18" rx="4" fill="#fff" stroke={FARBE.battInk} strokeWidth={1.5} />
       <Zeichen pfad="stecker" x={50} y={78} size={24} color={FARBE.battInk} />
-      <Zeichen pfad="auto" x={246} y={88} size={104} color={laedt ? FARBE.ink : FARBE.aus} strokeWidth={1.25} />
+      <Zeichen pfad="auto" x={246} y={88} size={104} color={autoFarbe} strokeWidth={1.25} strokeDasharray={angesteckt ? undefined : '6 5'} />
     </svg>
   );
 }

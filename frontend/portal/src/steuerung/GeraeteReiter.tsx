@@ -61,6 +61,13 @@ export interface GeraeteReiterProps {
   /** Von außen gewünscht: die Reihenfolge ändern (aus einem Blatt). */
   reoStart: string | null;
   onReoGestartet: () => void;
+  /**
+   * Die Wallbox-Zeile führt auf den Reiter „Laden" statt auf das allgemeine
+   * Gerätblatt (Konzept „Ein Ort fürs Laden" e1, Abschnitt 4.2: alle Türen
+   * führen zur einzigen Schaltstelle) - hier allein noch zur Reihenfolge und
+   * zum Tagesbild geöffnet, nie zum Schalten.
+   */
+  zuLaden: () => void;
 }
 
 export function GeraeteReiter(p: GeraeteReiterProps) {
@@ -98,6 +105,7 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
         onReihenfolge={p.onReihenfolge}
         onAnlage={p.onAnlage}
         busy={p.busy === 'reihenfolge'}
+        zuLaden={p.zuLaden}
       />
       <ImmerKarte
         bild={bild}
@@ -605,6 +613,7 @@ interface ListeProps {
   onReihenfolge: (ids: string[]) => Promise<void>;
   onAnlage: (g: GeraetBild | null) => void;
   busy: boolean;
+  zuLaden: () => void;
 }
 
 const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
@@ -636,13 +645,13 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
         id === SPEICHER ? (
           <SpeicherKarte key={id} bild={bild} platz={i + 1} oeffne={p.oeffne} />
         ) : (
-          <GeraetKarte key={id} g={alle.find((g) => g.id === id)!} bild={bild} platz={i + 1} oeffne={p.oeffne} />
+          <GeraetKarte key={id} g={alle.find((g) => g.id === id)!} bild={bild} platz={i + 1} oeffne={p.oeffne} zuLaden={p.zuLaden} />
         ),
       )}
       {bild.rest.length > 0 && <div className="linie">nach Zeit, Frist oder Preis</div>}
       {bild.rest.map((id) => {
         const g = alle.find((x) => x.id === id);
-        return g ? <GeraetKarte key={id} g={g} bild={bild} platz={null} oeffne={p.oeffne} /> : null;
+        return g ? <GeraetKarte key={id} g={g} bild={bild} platz={null} oeffne={p.oeffne} zuLaden={p.zuLaden} /> : null;
       })}
       <OffenZeilen bild={bild} oeffne={p.oeffne} onAnlage={p.onAnlage} />
       {/* Steuern-Regel #779: an einer Anlage ohne Teilnahme kein Anstoß, ein Gerät anzubinden. */}
@@ -656,8 +665,11 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
   );
 });
 
-function GeraetKarte({ g, bild, platz, oeffne }: { g: GeraetBild; bild: SeitenBild; platz: number | null; oeffne: (b: BlattZustand) => void }) {
+function GeraetKarte({ g, bild, platz, oeffne, zuLaden }: {
+  g: GeraetBild; bild: SeitenBild; platz: number | null; oeffne: (b: BlattZustand) => void; zuLaden: () => void;
+}) {
   const r = bild.raster;
+  const lp = !!g.eintrag.ladepunkt;
   const t = r.jetzt;
   const an = g.an === true || (g.jetztKw ?? 0) > 0.02;
   let icoKlasse = '';
@@ -676,7 +688,7 @@ function GeraetKarte({ g, bild, platz, oeffne }: { g: GeraetBild; bild: SeitenBi
     ? <>Eingriff{g.eingriff.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ''} · dann wieder Smart</>
     : <>Smart: <em>{g.auftrag}</em></>;
   return (
-    <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id={`dev-${g.id}`} onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'geraet', id: g.id }); }}>
+    <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id={`dev-${g.id}`} onClick={(e) => { e.currentTarget.focus(); if (lp) zuLaden(); else oeffne({ art: 'geraet', id: g.id }); }}>
       <span className={`ico ${icoKlasse}`}>
         <Ic n={g.symbol} s={23} />
         {platz != null && <span className="rk">{platz}</span>}

@@ -103,8 +103,8 @@ export const controlArticles: HelpArticle[] = [
     keywords: ['Wallbox', 'Ladesäule', 'OCPP', 'Lastmanagement', 'Elektroauto', 'Ladepunkt', 'Priorität'],
     prerequisite: 'Eine Anlage mit angebundenen Ladepunkten.',
     sections: [
-      { id: 'ueberblick', title: 'Verbindung und Laden sind verschiedene Zustände', paragraphs: [
-        "Unter Steuerung → Laden steht jeder Ladepunkt mit seinem Zustand. Ein erreichbarer Ladepunkt lädt nicht automatisch: Fahrzeug, Freigabe oder Leistungsanforderung können fehlen. Lesen Sie Verbindungszustand, Ladezustand und Datenstand für den richtigen Anschluss.",
+      { id: 'ueberblick', title: 'Ein Ort für jeden Ladepunkt', paragraphs: [
+        "Unter Steuerung → Laden steht jeder Ladepunkt mit einer Bühne: Zustand, Leistung und - solange geladen wird - die Herkunft des Stroms (Sonne, Speicher oder Netz) in Klartext. Aus · Smart · Schnell schalten Sie nur hier; die Geräteseite und das Gerätblatt zeigen denselben Zustand nur noch an und führen mit einem Knopf zu dieser Seite. Ein erreichbarer Ladepunkt lädt nicht automatisch: Fahrzeug, Freigabe oder Leistungsanforderung können fehlen.",
       ], figure: 'ladepark' },
       { id: 'verteilung', title: 'Leistung innerhalb des Anschlusses verteilen', paragraphs: [
         "Oben zeigt „Netzanschluss“, wie sich die Grenze auf Haus und Ladepunkte verteilt. Das Lastmanagement bleibt innerhalb dieser Grenze; andere Verbraucher verkleinern den Spielraum. Vorrang beeinflusst die Verteilung, erweitert aber keine physische Grenze.",
@@ -113,6 +113,10 @@ export const controlArticles: HelpArticle[] = [
         "Je Ladepunkt wählen Sie „Womit laden“: „Nur Sonne“ (Nur Überschuss, sonst Pause), „Sonne + Minimum“ (Immer etwas, Sonne obendrauf), „Sonne + Speicher“ (Sonne, dazu der Speicher-Rest) oder „Günstig“ (Netzstrom, wenn er billig ist). Ein Tipp auf die Zeile öffnet das Blatt „Womit laden?“: Antippen ändert nur die Vorschau – ein Band bis zur Abfahrt nach Sonne, Speicher und Netz, dazu wie viel möglich ist, wie viel davon Netzstrom und was eine kWh im Schnitt kostet. Erst „So laden“ schickt die Wahl an die Box. Im selben Blatt setzen Sie ein Ladeziel wie „+20 kWh bis 7 Uhr“ und bei „Günstig“ die Preisgrenze für den Bezugspreis.",
         "Gewählt ist nicht geladen: Nach „So laden“ zeigt die Karte drei Schritte – gesendet, Box hat übernommen, Wirkung gemessen. Erst die Messung der Säule belegt, was am Auto ankommt. Ein neuer Ladepunkt lädt immer sofort voll, bis Sie unter „Womit laden einstellen“ eine Wahl treffen; vorgewählt ist dann „Sonne + Minimum“.",
         "„Sonne + Speicher“ gibt dem Auto zum Sonnenstrom, was der Speicher laut vorsichtiger Prognose bis zur nächsten Sonne nicht braucht. Die Untergrenze rechnet der Fahrplan je Viertelstunde neu; fehlt die Prognose oder ein aktueller Ladestand, lädt das Auto nur mit Sonnenstrom. Wie viel Reserve der Speicher zusätzlich behält, stellen Sie unter „Reserve für Sonne + Speicher“ ein. VoltPilot muss Ihren Speicher dafür nicht steuern: Steuert es ihn nicht, beobachtet die Box Ladestand und Speicherleistung, und Ihr Wechselrichter deckt die Wallbox selbst. Kommt dabei Strom aus dem Netz, nimmt die Box die Freigabe zurück.",
+      ] },
+      { id: 'ladungen-autos', title: 'Ladungen und Autos', paragraphs: [
+        "Unter „Ladungen“ stehen die letzten abgeschlossenen Ladevorgänge dieses Ladepunkts mit ihrer Menge in kWh. Unter „Autos“ geben Sie einer Ladekarte einen Namen und eine eigene Steuerart, falls sie anders laden soll als der Ladepunkt - derselbe Dialog wie auf der Seite Ladevorgänge.",
+        "Kennung, Sicherheitsprofil und Ausfall-Schutz der Wallbox stehen nicht mehr hier, sondern auf ihrer Geräteseite; eine ruhige Zeile führt dorthin.",
       ] },
     ], related: ['ladevorgaenge', 'geraete-steuern', 'probleme'],
   },

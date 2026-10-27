@@ -233,6 +233,18 @@ export const LADEPUNKT_UNGESTEUERT = {
 } as const;
 
 /**
+ * Die drei Worte des Lademodus (Aus · Smart · Schnell) - EIN Satz Wörter für
+ * jede Stelle, die ihn nennt (Konzept „Ein Ort fürs Laden" e1, Abschnitt 4:
+ * geschaltet wird nur noch auf „Laden"; andere Stellen zeigen den Zustand und
+ * nennen ihn mit denselben Wörtern, nie mit eigenen).
+ */
+export const LADEPUNKT_MODUS = {
+  aus: 'Aus',
+  smart: 'Smart',
+  schnell: 'Schnell',
+} as const;
+
+/**
  * Die SZENEN der Steuerung (Konzept „Steuerung neu", E6; Glossar-Nachtrag
  * „Szene"): ein Tipp pausiert mehrere Geräte, bis der Kunde die Szene beendet.
  * Das Vokabular ist geschlossen - dieselben Schlüssel hält der Server

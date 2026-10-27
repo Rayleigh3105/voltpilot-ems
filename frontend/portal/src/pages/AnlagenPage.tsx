@@ -795,6 +795,7 @@ function AnlagenSubPage({
             reiter={sub as 'steuerung' | 'laden' | 'regeln'}
             tabs={tabs}
             onOpenSub={onOpenSub}
+            devices={devices}
           />
         )}
         {sub === 'technik' && (
@@ -1653,7 +1654,8 @@ export function AnlageSeite({
       ladenKachel({
         charging,
         links: {
-          uebersicht: () => hashForRoute(anlageRoute(site.id, 'ladevorgaenge')),
+          // Konzept „Ein Ort fürs Laden" e1, §4.2: alle Türen führen zu „Laden".
+          uebersicht: () => hashForRoute(anlageRoute(site.id, 'laden')),
           charger: (id) =>
             boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null,
         },
@@ -2215,13 +2217,13 @@ export function AnlageSeite({
     // Die Steuerung steht als Steuerzeile IN der Bühne (am Telefon und am Rechner).
     steuerung: null,
     strompreis: inSeite('strompreis') ? null : strompreisKachel(false),
-    /* Die Kachel „Laden": reine Anzeige, der Kopf springt auf
-       „Ladevorgänge“, jede Zeile auf ihre Geräteseite. */
+    /* Die Kachel „Laden": reine Anzeige, der Kopf springt auf „Laden“
+       (Konzept „Ein Ort fürs Laden" e1, §4.2), jede Zeile auf ihre Geräteseite. */
     laden: ladenView ? (
       <KachelSpaet
         art="laden"
         view={ladenView}
-        kachel={{ groesse: 'breit', onOpen: () => onOpenSub('ladevorgaenge') }}
+        kachel={{ groesse: 'breit', onOpen: () => onOpenSub('laden') }}
       />
     ) : null,
     kacheln: (

@@ -397,7 +397,19 @@ export function OcppWallboxPage({
           // auf einem Bildschirm war der Befund („Ladevorgang läuft.").
           hinweis={detailSatz && detailSatz !== ladeZeile?.grund ? detailSatz : null}
           warnung={sperre ? `${sperre.satz}.` : null}
-          aktion={ladeZeile ? null : hauptaktion}
+          aktion={(
+            <>
+              {ladeZeile ? null : hauptaktion}
+              {/* Konzept „Ein Ort fürs Laden" e1, §4.2: alle Türen führen zu
+                  „Laden" - hier, prominent, oben auf der Geräteseite. */}
+              {settingsHref && (
+                <a className="vp-btn vp-btn--outline vp-btn--md" href={settingsHref}>
+                  <Icon name="car" size={16} />
+                  Laden steuern
+                </a>
+              )}
+            </>
+          )}
         />
       </div>
     ),

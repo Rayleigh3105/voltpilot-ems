@@ -254,6 +254,39 @@ describe('OcppWallboxPage integration', () => {
     expect(link).toHaveAttribute('href', '#/anlage/s-1/laden');
   });
 
+  // Konzept „Ein Ort fürs Laden" e1, §4.2: alle Türen führen zu „Laden" - ein
+  // prominenter Knopf oben auf der Geräteseite, nicht nur die leise Zeile.
+  it('„Laden steuern": ein Knopf oben auf der Bühne führt zu „Laden"', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back"
+      settingsHref="#/anlage/s-1/laden"
+      charger={{
+        deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+        lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+        connectors: [{ connectorId: 1, status: 'Charging', charging: true }],
+      }} />);
+
+    const buehne = (await screen.findByTestId('geraet-held'));
+    const link = within(buehne).getByRole('link', { name: 'Laden steuern' });
+    expect(link).toHaveAttribute('href', '#/anlage/s-1/laden');
+  });
+
+  it('ohne settingsHref gibt es keinen erfundenen Weg', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" charger={{
+      deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+      lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+      connectors: [{ connectorId: 1, status: 'Charging', charging: true }],
+    }} />);
+
+    const buehne = await screen.findByTestId('geraet-held');
+    expect(within(buehne).queryByRole('link', { name: 'Laden steuern' })).not.toBeInTheDocument();
+  });
+
   // Audit vp-ocpp-haushalt W-01/W-05: eine verbundene Wallbox, an der VoltPilot
   // nichts bewirkt, sieht nicht steuerbar aus - die Bühne sagt es, der Schalter fehlt.
   it('⚠ W-05 · eine Wallbox ohne Ladegrenzen sagt es groß und bietet keinen Schalter an', async () => {

@@ -127,6 +127,7 @@ beforeEach(() => {
   vi.spyOn(api, 'siteEntities').mockResolvedValue({ registry: null, entities: [], localSetup: [], staleOnDevice: [] });
   vi.spyOn(api, 'suggestionStates').mockResolvedValue({ states: [] });
   vi.spyOn(api, 'scene').mockResolvedValue({ scene: null, offen: [], message: null });
+  vi.spyOn(api, 'ocppTransactions').mockResolvedValue([]);
   vi.spyOn(api, 'entityHistory').mockRejectedValue(new Error('nicht da'));
   // Ohne Antwort von `/funktionen` behauptet die Seite nichts über „Steuern & Optimieren“.
   vi.spyOn(api, 'funktionen').mockRejectedValue(new Error('nicht da'));
@@ -153,8 +154,8 @@ const TABS = [
   { key: 'regeln', label: 'Regeln', sub: 'regeln' as const },
 ];
 
-function zeige(reiter: 'steuerung' | 'laden' | 'regeln' = 'steuerung', onOpenSub = vi.fn()) {
-  render(<SteuerungSection site={site} reiter={reiter} tabs={TABS} onOpenSub={onOpenSub} />);
+function zeige(reiter: 'steuerung' | 'laden' | 'regeln' = 'steuerung', onOpenSub = vi.fn(), devices?: import('../api').Device[]) {
+  render(<SteuerungSection site={site} reiter={reiter} tabs={TABS} onOpenSub={onOpenSub} devices={devices} />);
   return onOpenSub;
 }
 
@@ -206,6 +207,17 @@ describe('Steuerung · Reiter Geräte', () => {
     expect(within(liste).getByText('nach Zeit, Frist oder Preis')).toBeInTheDocument();
     // In der Anlage, aber nicht steuerbar: mit Grund, nie als Knopf ohne Wirkung.
     expect(within(liste).getByText('Misst nur. Schalten ist noch nicht freigegeben.')).toBeInTheDocument();
+  });
+
+  // Konzept „Ein Ort fürs Laden" e1, §4.2: die Wallbox-Zeile führt zum Reiter
+  // Laden - nicht zum allgemeinen Gerätblatt mit einem zweiten Schalter.
+  it('die Wallbox-Zeile führt auf den Reiter „Laden" statt ein Gerätblatt zu öffnen', async () => {
+    const open = zeige();
+    const liste = await screen.findByRole('region', { name: 'Geräte und Reihenfolge' });
+    const zeile = await within(liste).findByText('Wallbox Werkstatt');
+    fireEvent.click(zeile.closest('button')!);
+    expect(open).toHaveBeenCalledWith('laden');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('fragt bei einem neu verbundenen Gerät und übernimmt den Vorschlag', async () => {
@@ -392,6 +404,64 @@ describe('Steuerung · Reiter Laden', () => {
     const body = boost.mock.calls[0][1];
     expect(body).toEqual(expect.objectContaining({ action: 'voll', minutes: 120 }));
     expect(body).not.toHaveProperty('untilUnplug');
+  });
+
+  // Konzept „Ein Ort fürs Laden" e1, §4.1 Punkt 1: die Bühne zeigt den Zustand in Klartext.
+  it('Bühne: zeigt „Lädt" und die Leistung, solange die Säule lädt', async () => {
+    zeige('laden');
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    expect(await within(karte).findByText(/^Lädt/)).toBeInTheDocument();
+    expect(within(karte).getByTestId('geraet-held')).toHaveTextContent('3,2');
+  });
+
+  // §4.1 Punkt 5, Scheibe 1: zuerst nur die kWh aus den vorhandenen OCPP-Ladevorgängen.
+  it('Ladungen: zeigt die letzten beendeten Ladevorgänge dieses Ladepunkts mit kWh', async () => {
+    vi.spyOn(api, 'ocppTransactions').mockResolvedValue([
+      { deviceId: 'd', chargePointId: 'CP-1', transactionId: 1, connectorId: 1, startedAt: '2026-10-20T08:00:00Z', stoppedAt: '2026-10-20T10:00:00Z', meterStart: 1000, meterStop: 8400, stopReason: null, startIdTagRef: null, stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null, startAuthStatus: null, stopAuthStatus: null, parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null },
+      // Ein anderer Ladepunkt - gehört nicht in diese Karte.
+      { deviceId: 'd', chargePointId: 'CP-ANDERE', transactionId: 2, connectorId: 1, startedAt: '2026-10-20T08:00:00Z', stoppedAt: '2026-10-20T10:00:00Z', meterStart: 0, meterStop: 5000, stopReason: null, startIdTagRef: null, stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null, startAuthStatus: null, stopAuthStatus: null, parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null },
+    ]);
+    zeige('laden');
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    expect(await within(karte).findByText('7,4 kWh')).toBeInTheDocument();
+    expect(within(karte).queryByText('5,0 kWh')).not.toBeInTheDocument();
+  });
+
+  it('Ladungen: ohne beendete Ladung ein ehrlicher Leertext statt einer erfundenen Zahl', async () => {
+    zeige('laden');
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    expect(await within(karte).findByText('Noch keine abgeschlossene Ladung.')).toBeInTheDocument();
+  });
+
+  // §4.3: die Technik-Zeile führt zur Geräteseite - nur, wo sie eindeutig ist.
+  it('Technik-Zeile: führt zur Geräteseite der führenden Box', async () => {
+    zeige('laden', vi.fn(), [
+      { id: 'd-1', siteId: 's-1', externalRef: 'edge-abc123', kind: 'inverter', name: null, status: 'active', lastSeenAt: null, createdAt: null },
+    ]);
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    const link = await within(karte).findByRole('link', { name: /Anschluss geschützt/ });
+    expect(link).toHaveAttribute('href', '#/anlage/s-1/geraet/edge-abc123/cp-CP-1');
+  });
+
+  it('Technik-Zeile: ohne eindeutige Box kein erfundener Weg', async () => {
+    zeige('laden');
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    expect(within(karte).queryByRole('link', { name: /Anschluss geschützt/ })).not.toBeInTheDocument();
+  });
+
+  // Abschnitt 7 Punkt 6: EIN Dialog statt des früheren Fahrzeug-Blatts.
+  it('Autos: öffnet denselben Fahrzeug-Dialog wie die Ladevorgänge-Seite', async () => {
+    vi.spyOn(api, 'siteFahrzeuge').mockResolvedValue({
+      fahrzeuge: [{ tagRef: 'tagref_abcd1234', name: 'Familienauto', steuerart: { quelle: 'ueberschuss', herkunft: 'ohne', ueberschussModus: 'pausieren' } }],
+    });
+    const setzeFahrzeug = vi.spyOn(api, 'setzeFahrzeug').mockResolvedValue({ fahrzeuge: [] });
+    zeige('laden');
+    fireEvent.click(await screen.findByRole('button', { name: /Familienauto/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Familienauto' });
+    // Derselbe Dialog wie `FahrzeugDialog`/Ladevorgänge - nicht das alte Fahrzeug-Blatt.
+    expect(within(dialog).getByText('Wie soll dieses Fahrzeug laden?')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(setzeFahrzeug).toHaveBeenCalledWith('s-1', 'tagref_abcd1234', expect.objectContaining({ quelle: 'ueberschuss' })));
   });
 });
 

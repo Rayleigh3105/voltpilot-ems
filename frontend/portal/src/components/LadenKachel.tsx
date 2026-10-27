@@ -12,8 +12,8 @@ import './LadenKachel.css';
  * an dem ohne Klick steht, ob ein Auto steckt und ob es lädt.
  *
  * REINE ANZEIGE (Captain): kein Start, kein Stopp, keine Freigabe. Der Kopf
- * springt auf „Ladevorgänge", jede Zeile auf ihre Geräteseite - die Handlungen
- * wohnen dort, wo sie hingehören.
+ * springt auf „Laden" (Konzept „Ein Ort fürs Laden" e1, §4.2), jede Zeile auf
+ * ihre Geräteseite - die Handlungen wohnen dort, wo sie hingehören.
  *
  * Die Fußzeile IST das bestehende Netzanschluss-Band: der Block `lade-budget`
  * ist mit diesem Baustein aus den Kennzahlen hierher gezogen, damit eine Zahl
@@ -27,7 +27,7 @@ export function LadenKachel({
   kachel = null,
 }: {
   view: LadenKachelView;
-  /** Die Kachel-Fassung im Raster (Konzept „Cockpit als Tagesfilm“): Kopf mit Absprung „Ladevorgänge“. */
+  /** Die Kachel-Fassung im Raster (Konzept „Cockpit als Tagesfilm“): Kopf mit Absprung „Laden“. */
   kachel?: { groesse?: RasterGroesse; onOpen?: (() => void) | null; lead?: boolean; fuss?: ReactNode } | null;
 }) {
   if (kachel) {
@@ -45,13 +45,13 @@ export function LadenKachel({
         ton="load"
         groesse={kachel.groesse ?? 'breit'}
         onOpen={kachel.onOpen ?? (view.href ? () => { window.location.hash = view.href!.replace(/^#/, ''); } : null)}
-        ziel="Ladevorgänge"
+        ziel="Laden"
         lead={kachel.lead}
         fuss={kachel.fuss}
       >
         {/* Wie im Prototyp: die Leistung groß, der eine Satz zum wichtigsten
             Ladepunkt, darunter das Ladebudget. Die Säulen im Einzelnen stehen
-            auf „Ladevorgänge“ und in „Verbrauch im Detail“. */}
+            auf „Laden“ und in „Verbrauch im Detail“. */}
         <div className="vp-k-reihe">
           <span className="vp-k-ico vp-laden-kachel-ico" aria-hidden="true">
             <Icon name="car" size={22} />
@@ -107,7 +107,7 @@ export function LadenKachel({
         </div>
         {view.href && (
           <a className="vp-laden-mehr" href={view.href}>
-            Ladevorgänge
+            Laden
             <Icon name="chevron-right" size={14} />
           </a>
         )}

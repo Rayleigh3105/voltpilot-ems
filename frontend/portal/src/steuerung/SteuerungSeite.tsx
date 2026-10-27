@@ -21,7 +21,7 @@
  */
 import { liste } from './liste';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ApiError, type Site, type SzeneKey } from '../api';
+import { api, ApiError, type Device, type Site, type SzeneKey } from '../api';
 import { Recht } from '../components/Recht';
 import { SteuernAssistent } from '../components/SteuernAssistent';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
@@ -65,7 +65,9 @@ import {
 import { SPEICHER, reihenfolgeRumpf, type GeraetBild } from './bild';
 import { GeraeteReiter } from './GeraeteReiter';
 import { Ic } from './Ic';
-import { FahrzeugBlatt, LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
+import { LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
+import { FahrzeugDialog } from '../components/FahrzeugDialog';
+import { fahrzeugZeilen } from '../fahrzeugProfile';
 import { quelleAusWunsch, smartSchritte } from './laden';
 import { LADEPUNKT_ABSTECKEN_DECKEL_MIN, boostDauer, bisAbsteckenSatz } from '../ladepunkte';
 import { LadeWahlBlatt } from './LadeWahl';
@@ -86,12 +88,14 @@ export interface SteuerungSeiteProps {
   reiter: SteuerungReiter;
   tabs: BereichTab[];
   onOpenSub: (sub: AnlagenSub) => void;
+  /** Für die Technik-Zeile auf „Laden" (Konzept e1 §4.3): der Weg zur Geräteseite der Wallbox. */
+  devices?: Device[];
 }
 
 const fehlerText = (e: unknown, sonst: string) =>
   e instanceof ApiError || e instanceof Error ? e.message || sonst : sonst;
 
-export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeiteProps) {
+export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: SteuerungSeiteProps) {
   const { daten, geladen, fehler, neuLaden, setze } = useSteuerungDaten(site);
   const rollen = useRollen();
   const [now, setNow] = useState(() => new Date());
@@ -518,6 +522,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   } else if (reiter === 'laden') {
     inhalt = (
       <LadenReiter
+        siteId={site.id}
         bild={bild}
         rahmen={rahmen}
         config={daten.chargingConfig}
@@ -553,6 +558,8 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
             meldung(fehlerText(e, 'Die Reserve konnte nicht gespeichert werden.'), true);
           }
         })}
+        devices={devices}
+        transactions={daten.ocppTransactions}
       />
     );
   } else if (reiter === 'regeln') {
@@ -587,6 +594,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         busy={busy}
         reoStart={reoStart}
         onReoGestartet={() => setReoStart(null)}
+        zuLaden={() => onOpenSub('laden')}
       />
     );
   }
@@ -714,18 +722,15 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         });
         return ok;
       }} onFahrzeug={async (tagRef, w) => {
-        let ok = false;
-        await lauf(`fz:${tagRef}`, async () => {
-          try {
-            const f = await api.setzeFahrzeug(site.id, tagRef, w);
-            setze('fahrzeuge', f);
-            meldung('Übernommen.');
-            ok = true;
-          } catch (e) {
-            meldung(fehlerText(e, 'Das Fahrzeug konnte nicht gespeichert werden.'), true);
-          }
-        });
-        return ok;
+        // ⚠ `FahrzeugDialog` (Konzept „Ein Ort fürs Laden" e1, Abschnitt 7
+        // Punkt 6: EIN Dialog statt des früheren Fahrzeug-Blatts) trägt seinen
+        // eigenen Busy-/Fehler-Zustand und erwartet eine Promise, die bei
+        // einem Fehler ABLEHNT - sie fängt ihn nicht hier ein.
+        const f = await api.setzeFahrzeug(site.id, tagRef, w);
+        setze('fahrzeuge', f);
+      }} onFahrzeugEntfernen={async (tagRef) => {
+        const f = await api.entferneFahrzeugProfil(site.id, tagRef);
+        setze('fahrzeuge', f);
       }} />}
       {einrichten && funktion.standortId && (
         <SteuernAssistent
@@ -768,7 +773,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   );
 }
 
-function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anlage, onSoLaden, onRegel, onLoeschen, onSteuerart, onGrenze, onFahrzeug }: {
+function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anlage, onSoLaden, onRegel, onLoeschen, onSteuerart, onGrenze, onFahrzeug, onFahrzeugEntfernen }: {
   blatt: BlattZustand;
   k: BlattKontext;
   siteId: string;
@@ -783,7 +788,8 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anla
   onLoeschen: (flowId: string) => Promise<boolean>;
   onSteuerart: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
   onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
-  onFahrzeug: (tagRef: string, w: import('../fahrzeugProfile').FahrzeugWunsch) => Promise<boolean>;
+  onFahrzeug: (tagRef: string, w: import('../fahrzeugProfile').FahrzeugWunsch) => Promise<void>;
+  onFahrzeugEntfernen: (tagRef: string) => Promise<void>;
 }) {
   switch (blatt.art) {
     case 'geraet':
@@ -812,8 +818,25 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anla
       return <ZielBlatt k={k} id={blatt.id} anlage={anlage} rahmenMinKw={rahmen?.mindestleistungKw ?? null} onSpeichern={onSteuerart} />;
     case 'womit':
       return <LadeWahlBlatt k={k} id={blatt.id} anlage={anlage} rahmenMinKw={rahmen?.mindestleistungKw ?? null} onSoLaden={onSoLaden} />;
-    case 'fahrzeug':
-      return <FahrzeugBlatt k={k} tagRef={blatt.tagRef} fahrzeuge={daten.fahrzeuge} onSetzen={onFahrzeug} />;
+    case 'fahrzeug': {
+      // ⚠ EIN Dialog für die Fahrzeug-Einstellung (Konzept „Ein Ort fürs
+      // Laden" e1, Abschnitt 7 Punkt 6): „Laden" öffnet denselben
+      // `FahrzeugDialog` wie früher nur die Ladevorgänge-Seite - zwei
+      // Dialoge über dieselbe Sache wären zwei Wahrheiten.
+      const namen = (cp: string) => k.bild.ladepunkte.find((g) => g.ladepunkt?.chargePointId === cp)?.name ?? null;
+      const zeile = fahrzeugZeilen(daten.fahrzeuge, namen, k.bild.raster.nowMs).find((z) => z.tagRef === blatt.tagRef);
+      if (!zeile) return null;
+      const fahrzeug = daten.fahrzeuge?.fahrzeuge.find((f) => f.tagRef === blatt.tagRef) ?? null;
+      return (
+        <FahrzeugDialog
+          zeile={zeile}
+          fahrzeug={fahrzeug}
+          onClose={k.zu}
+          onSpeichern={onFahrzeug}
+          onEntfernen={fahrzeug ? onFahrzeugEntfernen : undefined}
+        />
+      );
+    }
     case 'regel': {
       const vorhanden = blatt.flowId ? karten.find((x) => x.flowId === blatt.flowId) ?? null : null;
       if (vorhanden && !vorhanden.entwurf) {
