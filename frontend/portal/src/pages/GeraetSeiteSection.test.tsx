@@ -1046,6 +1046,50 @@ describe('GeraetSeiteSection', () => {
     expect(await screen.findByRole('heading', { name: 'Carport' })).toBeVisible();
   });
 
+  // Regressionsbeleg Wallbox-Einbindung e1, Abschnitt 7 Punkt 1: „Ladeeinstellungen der
+  // Anlage öffnen →" führt nach Steuerung › Laden (dort stehen „Womit laden?"/Ladeziel) -
+  // solange es den künftigen Ort „Laden" nicht gibt, nicht nach Ladevorgänge.
+  it('führt von der Wallbox-Geräteseite auf Steuerung › Laden statt auf Ladevorgänge', async () => {
+    stub({
+      entities: () => Promise.resolve({
+        ...entities,
+        entities: [
+          ...entities.entities,
+          {
+            id: 'wallbox-1', entityType: 'ev-charger', typeLabel: 'Ladepunkt',
+            role: 'consumer', label: 'Carport', control: true, deviceId: null,
+            capabilities: { measure: [{ channel: 'power_kw' }] }, guards: null,
+            syncStatus: 'in_sync', observed: null, edgeSourceId: null,
+          },
+        ],
+      }),
+    });
+    vi.mocked(api.siteChargers).mockResolvedValue({
+      budget: null,
+      chargers: [{
+        deviceId: 'gw', chargePointId: 'CP-1', label: 'Carport', priority: false,
+        connected: true, ready: true, lastSeen: FRISCH, connectors: [{
+          connectorId: 1, status: 'Charging', charging: true,
+        }], entityId: 'wallbox-1',
+      }],
+    });
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    vi.spyOn(api, 'ocppStations').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppEvents').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppGaps').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppTransactions').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppMeterValues').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppConfiguration').mockResolvedValue([]);
+    vi.spyOn(api, 'ocppActionPermissions').mockResolvedValue({ actions: {} });
+    vi.spyOn(api, 'ocppActions').mockResolvedValue([]);
+
+    window.history.replaceState(null, '', '#/anlage/s-1/geraet/edge-45gz7da/cp-CP-1');
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="cp-CP-1" devices={[box]} />);
+
+    const link = await screen.findByRole('link', { name: 'Ladeeinstellungen der Anlage öffnen →' });
+    expect(link).toHaveAttribute('href', '#/anlage/s-1/laden');
+  });
+
   it('zeigt die Befehle DIESES Geräts und führt auf die volle Liste', async () => {
     // Der Wechselrichter trägt seit der Ziel-Attribution seinen Speicher-Strom
     // (`deviceIsBox: false`) - die Seite fragt den Server mit SEINER Kennung.

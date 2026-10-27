@@ -75,7 +75,7 @@ export function LadenReiter(p: LadenReiterProps) {
       <section className="card immer">
         <button type="button" className="immer-r" onClick={p.onLadevorgaenge}>
           <span className="li"><Ic n="history" s={18} /></span>
-          <span className="lt">Ladevorgänge<small>Jede Ladung mit Menge, Herkunft und Karte</small></span>
+          <span className="lt">Ladevorgänge<small>Was gerade lädt, mit Leistung und Karte</small></span>
           <Ic n="chevR" s={18} />
         </button>
       </section>
@@ -202,7 +202,11 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
             data-m={k}
             aria-pressed={wahl === k}
             // ⚠ Unter einer Sperre bleibt nur der Rückweg eines laufenden Eingriffs („Smart“).
-            disabled={busy || (sperre != null && !(k === 'smart' && g.eingriff)) || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))}
+            // ⚠ „Schnell“ ist derselbe `POST /charging-boost` wie auf *Ladevorgänge* und im
+            // Menü „Eingreifen“ - EINE Regel (`boostbar`) für alle drei Flächen, sonst zeigt
+            // dieselbe Anlage gleichzeitig „anbietbar" und „gesperrt" (Audit, Befund 3).
+            disabled={busy || (sperre != null && !(k === 'smart' && g.eingriff)) || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))
+              || (k === 'schnell' && !ungesteuert && wahl !== 'schnell' && !(l?.boostbar ?? false))}
             onClick={(e) => {
               e.currentTarget.focus();
               if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }

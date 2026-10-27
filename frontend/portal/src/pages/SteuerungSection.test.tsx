@@ -102,10 +102,16 @@ beforeEach(() => {
   BOUND.activate.mockResolvedValue({ activated: true, published: true, message: 'aktiv', lifecycle: 'active' });
   BOUND.create.mockResolvedValue({ flowId: 'f-2', flowVersion: 1, name: 'x', runtime: 'edge', lifecycle: 'draft', document: REGEL, simulation: null, createdAt: '', updatedAt: '', simulatedAt: null, activatedAt: null, siteId: 's-1' });
   vi.spyOn(api, 'siteVerbraucher').mockResolvedValue(VERBRAUCHER);
-  vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [
-    { deviceId: 'd', chargePointId: 'CP-1', entityId: 'e-wb', label: 'Wallbox Werkstatt', priority: true, connected: true, ready: true,
-      connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 3.2, meteredAt: JETZT.toISOString(), sessionSince: JETZT.toISOString(), sessionKwh: 4.6 }] },
-  ] });
+  vi.spyOn(api, 'siteChargers').mockResolvedValue({
+    // `surplusActive: true` - die Säule lädt gerade mit Sonnenstrom-Überschuss (Status
+    // „Charging"), also bietet dieselbe Regel wie *Ladevorgänge*/„Eingreifen" (`boostbar`)
+    // auch hier den Knopf „Schnell" an.
+    budget: { deviceId: 'd', enabled: true, controlEnabled: true, connectorCount: 1, surplusActive: true },
+    chargers: [
+      { deviceId: 'd', chargePointId: 'CP-1', entityId: 'e-wb', label: 'Wallbox Werkstatt', priority: true, connected: true, ready: true,
+        connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 3.2, meteredAt: JETZT.toISOString(), sessionSince: JETZT.toISOString(), sessionKwh: 4.6 }] },
+    ],
+  });
   vi.spyOn(api, 'siteInterventions').mockResolvedValue({ automationPaused: false, pausedUntil: null, interventions: [] });
   vi.spyOn(api, 'telemetry').mockResolvedValue([{ ts: JETZT.toISOString(), powerKw: -0.4, socPct: 100, pvPowerKw: 8, loadKw: 5, gridLimitKw: null }]);
   vi.spyOn(api, 'schedule').mockResolvedValue({ planId: null, deviceId: null, generatedAt: null, slotMinutes: 15, savingsEur: null, bankedValueEur: null, socStartPct: null, socEndPct: null, peakTargetKw: null, fallback14a: null, slots: [] });

@@ -235,6 +235,25 @@ describe('OcppWallboxPage integration', () => {
     expect(within(steuerung).getByRole('radio', { name: /Sofort laden/ })).toBeInTheDocument();
   });
 
+  // Regressionsbeleg Wallbox-Einbindung e1, Abschnitt 7 Punkt 1: der Weg
+  // führt nach Steuerung › Laden (dort stehen „Womit laden?“/Ladeziel) -
+  // nie nach Ladevorgänge, wo es keine Einstellungen gibt.
+  it('führt „Ladeeinstellungen der Anlage öffnen" auf den übergebenen settingsHref', async () => {
+    vi.mocked(api.ocppStations).mockResolvedValue([]);
+    vi.mocked(api.ocppTransactions).mockResolvedValue([]);
+    vi.mocked(api.ocppMeterValues).mockResolvedValue([]);
+    render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back"
+      settingsHref="#/anlage/s-1/laden"
+      charger={{
+        deviceId: 'd', chargePointId: 'CP-1', priority: false, connected: true, ready: true,
+        lastSeen: new Date().toISOString(), reportedAt: new Date().toISOString(),
+        connectors: [{ connectorId: 1, status: 'Charging', charging: true }],
+      }} />);
+
+    const link = await screen.findByRole('link', { name: 'Ladeeinstellungen der Anlage öffnen →' });
+    expect(link).toHaveAttribute('href', '#/anlage/s-1/laden');
+  });
+
   // Audit vp-ocpp-haushalt W-01/W-05: eine verbundene Wallbox, an der VoltPilot
   // nichts bewirkt, sieht nicht steuerbar aus - die Bühne sagt es, der Schalter fehlt.
   it('⚠ W-05 · eine Wallbox ohne Ladegrenzen sagt es groß und bietet keinen Schalter an', async () => {
