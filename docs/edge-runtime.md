@@ -32,7 +32,9 @@ Die Vorzeichen folgen dem lokalen Vertrag. Der prim채re Netzwert wird standardm�
 - Unbekannte Ger채tekategorien und fehlende Standortbilanz verwenden den vorhandenen, ger채tespezifischen Rohlastpfad; keine pauschale Ersatzformel erg채nzen.
 - Quellwechsel und veraltete Messungen m체ssen im Zustand nachvollziehbar bleiben. Eine Komponente beh채lt Kennung und Historie bei Alias채nderung.
 
-Quellen: `agent.onLocalTelemetry`, `sources.BalanceSettings`, `inverter.FamilyHasBattery` im [Core](../edge-app/core/internal/).
+- Eine Box ohne Wechselrichter, die eine Anlagensteuerung liest (Erzeuger-Registerbild), bildet die Standortbilanz aus deren Lesung: PV = Erzeugung, Netz = Netzpunkt, Batterie 0 als Tatsache des Bilds, durch denselben Fold.
+
+Quellen: `agent.onLocalTelemetry`, `agent.foldSiteSample`, `agent.plantControllerSample`, `sources.BalanceSettings`, `inverter.FamilyHasBattery` im [Core](../edge-app/core/internal/).
 
 ## Schutzgrenzen
 

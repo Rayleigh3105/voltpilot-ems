@@ -356,6 +356,36 @@ class MeasurementRuntime {
     return { point_key:selected.point.point_key, raw:wert.roh, decoded:wert.wert, quality:wert.qualitaet };
   }
 
+  /**
+   * The reading of an Anlagensteuerung as the box's SOURCE telemetry (EZ-17, Scheibe 1): the
+   * same per-source message every additional source publishes on
+   * `edge/sources/<id>/telemetry` - `pv_power_kw` from `p_erzeugung_w`, `power_kw` from `p_nvp_w`
+   * (kW, +Bezug/-Einspeisung) - so the core folds it into the site sample (telemetry, Verlauf)
+   * when the box has no inverter of its own. Every tick, independent of the send rule of the
+   * samples: the site sample has the cadence of the read, like an inverter poll.
+   *
+   * Only a GOOD value becomes a channel: `stale` (heartbeat standing), `uncertain` (the
+   * Netzpunkt older than the threshold), ungueltig or not covered by its Gueltigkeitsbit
+   * leaves the channel out - never a 0 (Buettner without Netzpunkt: pv only). Eigenbedarf
+   * (`p_erzeugung_w` < 0) is consumption, so the generation channel floors at 0. A reading
+   * with neither channel publishes nothing.
+   */
+  erzeugerQuelle(target, gelesen, now) {
+    if (!target || !target.sourceId || !gelesen || gelesen.ergebnis !== 'erkannt') return null;
+    const gut = (feld) => {
+      const w = gelesen.werte.find((x) => x.feld === feld && x.einheit === null);
+      return w && w.qualitaet === 'good' && Number.isFinite(w.wert) ? w.wert : null;
+    };
+    const erzeugung = gut('p_erzeugung_w');
+    const netz = gut('p_nvp_w');
+    if (erzeugung === null && netz === null) return null;
+    const payload = {};
+    if (erzeugung !== null) payload.pv_power_kw = Math.max(0, erzeugung) / 1000;
+    if (netz !== null) payload.power_kw = netz / 1000;
+    payload.ts = now.toISOString();
+    return { topic:`edge/sources/${target.sourceId}/telemetry`, payload };
+  }
+
   erzeugerLesung(target, words, plan, erzeugerBilder, now) {
     if (erzeugerBilder.has(target.key)) return erzeugerBilder.get(target.key);
     const parameter = erzeugerbildFor(plan, target.key);
@@ -379,6 +409,12 @@ class MeasurementRuntime {
           for (const nachricht of gelesen.ereignisse) {
             try { this.publish(nachricht.topic, nachricht.payload, false); } catch (_) { /* an event never costs the samples */ }
           }
+        }
+        // The reading is also the box's SOURCE telemetry (EZ-17, Scheibe 1): the core composes
+        // the site sample from it when the box has no inverter of its own.
+        const quelle = gelesen && gelesen.ergebnis === 'erkannt' ? this.erzeugerQuelle(target, gelesen, now) : null;
+        if (quelle) {
+          try { this.publish(quelle.topic, quelle.payload, false); } catch (_) { /* the site sample never costs the samples */ }
         }
       }
       // No image this tick (read failed, foreign or Soll mismatch): the next value is the

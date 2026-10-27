@@ -45,8 +45,14 @@ ist ein Gerät wie heute die WAGO-Steuerung der Energiekarten, Wechselrichter un
   (`netzbetreiber_abweichung`, `netzbetreiber_nicht_eingetragen`), keine Schreibung.
 - ⚠ **Controllerwechsel:** Karten brauchen die Entscheidung `karten_uebernommen`, Erzeugungseinheiten ziehen
   ohne sie mit allen Angaben um (`ZaehlerwechselService`, `GeraetRepository.karteWechseln`).
-- ⚠ **Nicht in die Energiebilanz:** der Typ hat keine Kanäle; die Werte gehen weder in Topologie noch Hausbilanz
-  (wie ein Selbstbau-Gerät), bis EZ-17 das ausdrücklich koppelt.
+- ⚠ **Keine Kanäle, aber die Standortbilanz der Box:** der Typ hat keine `telemetry_v2`-Kanäle und geht nicht in die
+  Topologie. Seit EZ-17 Scheibe 1 (27.10.2026) wird die Lesung der Steuerung auf einer Box OHNE Wechselrichter zum
+  v1-Standort-Sample der Box (`pv_power_kw` = `p_erzeugung_w`, `power_kw` = `p_nvp_w`, Hauslast = Erzeugung +
+  Netzpunkt, Batterie 0 als Tatsache des Bilds) und damit zu `telemetry`, Rollups, Verlauf › Energie, „Heute · kWh“
+  und Erlösen - durch denselben Fold wie ein Wechselrichter-Sample (`agent.foldSiteSample`,
+  `plantControllerSample`; Palette: `measurement-runtime.js` `erzeugerQuelle` auf `edge/sources/<pin>/telemetry`).
+  Neben einem Wechselrichter bleibt die Lesung außerhalb der Bilanz (offen in EZ-17) ·
+  [Box-Leser](uems-erzeuger-registerbild-box.md).
 - ⚠ **`werte` ohne Wert = `keine_daten`, nie 0;** `aktuell` nur mit Qualität `good` und höchstens 120 s alt.
 
 ## Programmstand (EZ-16)
@@ -241,8 +247,9 @@ Art“, je Einheit/Monat), Detail `VorgabeDetail.tsx`, Routen und CSV in `erzeug
   Abrufe je Einheit nur unter „je Einheit“, Automatik/Hand/Ersatzwert/Schutz nur in Chronik-Route und CSV.
 - ⚠ **Zwilling:** `Ereignisse.VORGABEN_ARTEN` ↔ `historieEreignisse.ts` `VORGABEN_ARTEN`; der Client verwirft eine
   unbekannte Art still — `historieEreignisse.test.ts` liest die Arten aus `openapi.yaml`.
-- ⚠ **Ohne Hausbilanz:** eine Erzeugeranlage hat meist keine Messreihe für Verlauf › Energie; `MesswerteSection`
-  zeigt die Karte „Ereignisse“ trotzdem unter „Keine Messwerte“.
+- ⚠ **Hausbilanz erst seit dem Box-Release mit EZ-17 Scheibe 1:** eine Erzeugeranlage hat ihre Messreihe für
+  Verlauf › Energie erst, wenn ihre Box die Lesung der Steuerung als Standort-Sample sendet (Palette und Kern
+  gemeinsam); davor zeigt `MesswerteSection` die Karte „Ereignisse“ unter „Keine Messwerte“.
 - ⚠ **Einstiegs-Bündel:** die Vorgaben-Routen liegen in `erzeugerVorgabenApi.ts` (lazy); die Kachel „Wer hat heute
   geregelt?“ abonniert `…/heute` über das Erzeuger-Stück (`erzeuger.ts` `heuteAbonnieren`).
 

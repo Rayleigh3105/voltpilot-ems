@@ -360,6 +360,11 @@ type Agent struct {
 	balStore *sources.BalanceStore
 	bal      sources.BalanceSettings
 
+	// steuerungNebenWrOnce rate-limits the log line of plantControllerSample
+	// for a box that reads an Anlagensteuerung NEXT TO an inverter (the
+	// controller's reading then stays out of the balance, see there).
+	steuerungNebenWrOnce sync.Once
+
 	// testReads correlates an in-flight "Verbindung testen" round-trip
 	// (edge/test-read/request -> Node-RED -> edge/test-read/result) to the
 	// waiting HTTP handler by request id. The channel is buffered (size 1) so the
@@ -1544,6 +1549,26 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	if battKw != nil && (math.IsNaN(*battKw) || math.IsInf(*battKw, 0)) {
 		battKw = nil
 	}
+	a.foldSiteSample(ts, measurements, primary, battKw, bms)
+}
+
+// foldSiteSample is THE site-sample path - the one fold behind every reading
+// that may become the box's v1 telemetry sample: the primary inverter's sample
+// from edge/telemetry (onLocalTelemetry) and, on a box without an inverter,
+// the reading of its Anlagensteuerung (plantControllerSample). Everything
+// downstream of the parse is shared on purpose: the pv-sum/grid/house fold
+// over the additional sources, the plausibility and despike gates, the
+// physical envelope, the guard reading, the feed-in and charging watchdogs,
+// the store-and-forward buffer (= telemetry, telemetry_rollup_15m and the
+// Verlauf in the cloud), the history ring, the Modbus mirror and the state
+// snapshot. A second path to the buffer would be a second site-sample truth.
+//
+// measurements is the sample as the device reported it (the fold adds and
+// replaces channels in place); primary is its untouched copy for the
+// "Zuletzt gelesen" display; battKw is the MEASURED battery power or nil;
+// bms is the coupled BMS block (nil without one).
+func (a *Agent) foldSiteSample(ts time.Time, measurements, primary map[string]float64,
+	battKw *float64, bms map[string]float64) {
 	// Register-level cross-check (diagnostic ONLY, never displayed): the
 	// balance-derived battery from the primary's own raw registers
 	// (grid − load + pv) should agree with the hybrid's measured battery
@@ -4333,6 +4358,10 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		RelayOn   *bool    `json:"relay_on"`
 		Inputs    []bool   `json:"inputs"`
 		Outputs   []bool   `json:"outputs"`
+		// Ts is the reading's own observation time (RFC 3339), as every Layer-1
+		// source publishes it; a plant-controller sample keeps it as the sample
+		// time (store-and-forward replays with the ORIGINAL time, like v1).
+		Ts string `json:"ts"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil {
 		slog.Warn("source telemetry malformed; skipped", "id", id, "err", err)
@@ -4363,6 +4392,76 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 	if pv != nil {
 		a.curtailObserve(id, *pv, now)
 	}
+	a.plantControllerSample(id, pv, grid, m.Ts, now)
+}
+
+// plantControllerSample turns the reading of an Anlagensteuerung (the
+// plant-controller source, UEMS EZ-21) into the site sample of a box that has
+// no inverter of its own - Gore "Neue Halle": three inverters BEHIND the WAGO
+// PFC200, the box reads only the controller (UEMS EZ-17, Scheibe 1).
+//
+// Why: until here the Erzeuger image left the box ONLY as measurement
+// samples (device_measurement_sample in the cloud). The Jetzt view read those,
+// the Verlauf, "Heute - kWh", the Energiebilanz and the Erloese read none,
+// because they are fed by the v1 site sample (telemetry ->
+// telemetry_rollup_15m), which is composed in foldSiteSample from an inverter
+// sample on edge/telemetry plus the pv-generation / grid-meter sources - and
+// no fold read the plant-controller role. The reading now takes the
+// inverter's seat in that SAME fold: pv_power_kw is p_erzeugung_w, power_kw is
+// p_nvp_w (+Bezug/-Einspeisung, the sign of the image), the house is the
+// standard balance pv + grid - battery with battery 0 as a FACT of the
+// Erzeuger image (it has no storage field: PV, BHKW or both), never a
+// derived battery.
+//
+// A box WITH an inverter keeps the inverter sample as its site sample and the
+// controller's reading stays out of the balance as before (a controller next
+// to an inverter is EZ-17's open question, not this slice; logged once). A
+// reading without pv and grid is no sample; a missing channel stays absent -
+// Buettner without Netzpunkt (EW-16 C) yields pv only and no load, never 0.
+// Which values are GOOD (heartbeat running, Netzpunkt fresh, Gueltigkeitsbit
+// set) decides the Erzeuger stage on Layer 1 before it publishes the reading.
+func (a *Agent) plantControllerSample(id string, pv, grid *float64, tsRaw string, now time.Time) {
+	if pv == nil && grid == nil {
+		return
+	}
+	a.srcMu.Lock()
+	controller := false
+	for _, s := range a.srcs {
+		if s.ID == id {
+			controller = s.Role == sources.RolePlantController
+			break
+		}
+	}
+	a.srcMu.Unlock()
+	if !controller {
+		return
+	}
+	if _, hasInverter := a.GetInverter(); hasInverter {
+		a.steuerungNebenWrOnce.Do(func() {
+			slog.Info("Anlagensteuerung neben einem Wechselrichter: ihre Lesung bleibt ausserhalb der Standortbilanz; "+
+				"die Standortbilanz kommt vom Wechselrichter", "source", id)
+		})
+		return
+	}
+	ts := now
+	if tsRaw != "" {
+		if t, err := time.Parse(time.RFC3339, tsRaw); err == nil {
+			ts = t.UTC()
+		}
+	}
+	measurements := map[string]float64{}
+	if pv != nil {
+		measurements["pv_power_kw"] = *pv
+	}
+	if grid != nil {
+		measurements["power_kw"] = *grid
+	}
+	primary := make(map[string]float64, len(measurements))
+	for k, v := range measurements {
+		primary[k] = v
+	}
+	keineBatterie := 0.0
+	a.foldSiteSample(ts, measurements, primary, &keineBatterie, nil)
 }
 
 // sourceFresh reports whether a source's last reading is within its freshness
