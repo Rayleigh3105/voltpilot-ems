@@ -65,7 +65,7 @@ export function FahrplanTagesband({
   const t = chartTheme();
   const mitPreis = tag.preis != null;
   const g = useMemo(() => bandGeometrie(breite, mitPreis), [breite, mitPreis]);
-  const m = useMemo(() => bandModell(tag, g, ist), [tag, g, ist]);
+  const m = useMemo(() => bandModell(tag, g, ist, sonne), [tag, g, ist, sonne]);
   const [schwebt, setSchwebt] = useState<number | null>(null);
   const letzterZeiger = useRef<string>('mouse');
 
@@ -288,11 +288,25 @@ export function FahrplanTagesband({
           ))}
         </g>
 
-        {/* 3a. Sonne: kräftig gemessen, hell erwartet. */}
+        {/* 3a. Sonne: kräftig gemessen, hell erwartet - nach Ziel gestapelt bei sonne (§4.6). */}
         <g className="vp-tband-sonne">
           <rect x={g.x(0)} y={g.sonne[0]} width={breiteFlaeche} height={g.sonne[1] - g.sonne[0]} className="vp-tband-grund" />
-          {m.sonneErwartet && <path d={m.sonneErwartet} fill={t.pv} fillOpacity={0.3} />}
-          {m.sonneGemessen && <path d={m.sonneGemessen} fill={t.pv} fillOpacity={0.85} />}
+          {m.sonneNachZiel ? (
+            <>
+              {/* Haus (unten), Speicher (Mitte), Netz (oben) - dieselbe Reihenfolge wie die Sonne selbst versorgt. */}
+              {m.sonneNachZiel.haus.erwartet && <path d={m.sonneNachZiel.haus.erwartet} fill="var(--vp-flow-load)" fillOpacity={0.3} />}
+              {m.sonneNachZiel.speicher.erwartet && <path d={m.sonneNachZiel.speicher.erwartet} fill="var(--vp-flow-batt)" fillOpacity={0.3} />}
+              {m.sonneNachZiel.netz.erwartet && <path d={m.sonneNachZiel.netz.erwartet} fill="var(--vp-flow-grid)" fillOpacity={0.3} />}
+              {m.sonneNachZiel.haus.gemessen && <path d={m.sonneNachZiel.haus.gemessen} fill="var(--vp-flow-load)" fillOpacity={0.85} />}
+              {m.sonneNachZiel.speicher.gemessen && <path d={m.sonneNachZiel.speicher.gemessen} fill="var(--vp-flow-batt)" fillOpacity={0.85} />}
+              {m.sonneNachZiel.netz.gemessen && <path d={m.sonneNachZiel.netz.gemessen} fill="var(--vp-flow-grid)" fillOpacity={0.85} />}
+            </>
+          ) : (
+            <>
+              {m.sonneErwartet && <path d={m.sonneErwartet} fill={t.pv} fillOpacity={0.3} />}
+              {m.sonneGemessen && <path d={m.sonneGemessen} fill={t.pv} fillOpacity={0.85} />}
+            </>
+          )}
           {m.sonneSpitze && (() => {
             // N3: nur eine GEMESSENE Spitze darf an die Jetzt-Linie heranrücken -
             // eine geplante bleibt auf ihrer Seite, sonst läse sie sich als Messung.

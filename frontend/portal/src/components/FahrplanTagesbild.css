@@ -861,6 +861,13 @@ a.vp-antw-zusatz {
   background: var(--vp-surface);
 }
 
+/* „Ihr Sonnenstrom heute" (Konzept vp-fahrplan-eigenverbrauch-konzept §4.5):
+   eine dritte Karte unter „Ihr Tag"/„Gut zu wissen" - spannt beide Spalten
+   des 900-px-Rasters statt eine Lücke daneben offen zu lassen. */
+.vp-tb-karte2-breit {
+  grid-column: 1 / -1;
+}
+
 .vp-tb-karte2-kopf {
   display: flex;
   flex-wrap: wrap;
@@ -886,6 +893,18 @@ a.vp-antw-zusatz {
 
 .vp-tb-fein a {
   color: var(--vp-link);
+}
+
+/* „Ihr Sonnenstrom heute" (Konzept vp-fahrplan-eigenverbrauch-konzept §4.5). */
+.vp-tb-sonnenstrom-zeile {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--vp-text);
+}
+
+.vp-tb-sonnenstrom-zeile:last-of-type {
+  margin-bottom: 4px;
 }
 
 .vp-tb-reihe {

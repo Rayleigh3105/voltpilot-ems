@@ -10,6 +10,7 @@ import {
   type CurtailmentStatus,
   type ConsumerSchedule,
   type Einspeiseverguetung,
+  type HistoryTotals,
   type SchedulePlan,
   type Site,
   type SiteEarnings,
@@ -48,6 +49,7 @@ import { filmKicker, filmRows, naechsterEinsatz } from '../fahrplanFilm';
 import { jetztHeld } from '../fahrplanJetzt';
 import { lageView } from '../fahrplanLage';
 import { verguetungZeile } from '../einspeiseverguetung';
+import { autarkieHeute, sonnenstromModell } from '../fahrplanSonnenstrom';
 import { preisRolle } from '../preisRolle';
 import { JetztKompakt, JetztWarnungen, TagesFilm } from '../components/FahrplanJetzt';
 import { FahrplanLage } from '../components/FahrplanLage';
@@ -381,6 +383,10 @@ function FahrplanInhalt({ site }: { site: Site }) {
   // wie Wetter und Vorhersage, ohne sie bleibt die Erzählung beim
   // Stammdaten-Rückfall von `preisRolle`.
   const [verguetung, setVerguetung] = useState<Einspeiseverguetung | null>(null);
+  // Die Autarkie-Kachel „Aus eigenem Strom X %" (§4.3/§4.5) mischt den
+  // gemessenen Tag bis jetzt mit dem geplanten Rest - FAIL-SOFT wie oben;
+  // ohne die Messung bleibt nur der geplante Teil übrig (`autarkieHeute`).
+  const [historyTotals, setHistoryTotals] = useState<HistoryTotals | null>(null);
 
   const siteId = site.id;
   const loadLive = useCallback(() => {
@@ -529,6 +535,23 @@ function FahrplanInhalt({ site }: { site: Site }) {
     };
   }, [siteId]);
 
+  useEffect(() => {
+    let active = true;
+    setHistoryTotals(null);
+    const heute = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+    try {
+      api
+        .history(siteId, 'day', heute)
+        .then((h) => active && setHistoryTotals(h.totals))
+        .catch(() => active && setHistoryTotals(null));
+    } catch {
+      // Eine api-Attrappe ohne die Methode reißt die Seite nicht mit.
+    }
+    return () => {
+      active = false;
+    };
+  }, [siteId]);
+
   const slots = plan?.slots ?? [];
   const slotMinutes = plan?.slotMinutes ?? 15;
   // Auf das Slot-Raster DIESES Plans ausgerichtet (Zeitstempel, nie Index);
@@ -605,6 +628,13 @@ function FahrplanInhalt({ site }: { site: Site }) {
   const nullstundenNote = useMemo(
     () => (sonne ? nullstundenSatz(slots, rolle.nullstunden, slotMinutes) : null),
     [sonne, slots, rolle.nullstunden, slotMinutes],
+  );
+  // Der Sonnenbogen der Uhr (§4.3) matcht über den Zeitstempel, nie über den
+  // Index: `tag.slots` ist ein Tagesausschnitt, seine Indizes weichen von
+  // denen des vollen Laufs (`slots`, derselbe Lauf wie `preisRolle`) ab.
+  const nullstundenZeiten = useMemo(
+    () => new Set(sonne ? rolle.nullstunden.map((i) => slots[i]?.start).filter((s): s is string => s != null) : []),
+    [sonne, rolle.nullstunden, slots],
   );
   // Die „Lage"-Zeile (Erklärbarkeit Stufe 2): Tages-Bogen + Morgen-Ausblick aus
   // den Eingaben DIESES Laufs. Sie liest die Slots des jüngsten Laufs (nicht
@@ -736,6 +766,19 @@ function FahrplanInhalt({ site }: { site: Site }) {
   // Der AUFBAU der Seite hängt an heute: ohne Warum-Ebene heute gibt es kein
   // Tagesbild und damit auch keinen Tagesschalter.
   const hasTagesbild = tagHeute.hatWarum && tagHeute.slots.length > 0;
+  // Die Autarkie-Kachel und „Ihr Sonnenstrom heute" (§4.3/§4.5) gelten immer
+  // HEUTE, unabhängig vom Tagesschalter - `tagHeute`, nie der gewählte `tag`.
+  const autarkie = useMemo(
+    () => (sonne ? autarkieHeute(tagHeute, historyTotals) : null),
+    [sonne, tagHeute, historyTotals],
+  );
+  // Die Wallbox-Hinweiszeile bräuchte eine Geräteliste, die diese Seite heute
+  // nicht lädt - sie bleibt deshalb vorerst aus (`hatWallbox = false`), nie
+  // eine ungeprüfte Behauptung über Geräte, die es vielleicht nicht gibt.
+  const sonnenstrom = useMemo(
+    () => (sonne ? sonnenstromModell(tagHeute, false) : null),
+    [sonne, tagHeute],
+  );
   const morgenMs = tagDatum(now, 'morgen').getTime();
   const tagMorgen = useMemo(
     () =>
@@ -1197,6 +1240,11 @@ function FahrplanInhalt({ site }: { site: Site }) {
               sonne={sonne}
               verguetungHerkunft={verguetungInfo?.herkunft ?? null}
               verguetungLuecke={verguetungInfo?.luecke ?? false}
+              nullstundenZeiten={nullstundenZeiten}
+              // Die Autarkie-Kachel und „Ihr Sonnenstrom heute" gelten nur
+              // HEUTE (wie `antwortBringt`s eigene art==='heute'-Regel).
+              autarkie={tagArt === 'heute' ? autarkie : null}
+              sonnenstrom={tagArt === 'heute' ? sonnenstrom : null}
               onAlleWerte={tagArt === 'gestern' ? null : () => setAlleWerteOpen(true)}
               morgen={tagArt === 'heute' ? film.tomorrowSummary : null}
               art={tagArt}

@@ -201,3 +201,61 @@ test('Fahrplan: die Reiterleiste steht auf Fahrplan, Preise und Wetter an dersel
   }
   expect(oben, 'Oberkante der Reiterleiste je Reiter').toEqual([oben[0], oben[0], oben[0]]);
 });
+
+/**
+ * Die Sonnen-Erzählung (Konzept `vp-fahrplan-eigenverbrauch-konzept`,
+ * Scheibe S3): `help-site-2` ("Werkstatt am Bach") trägt einen Festtarif
+ * ohne Netzladen und klassiert deshalb als `preisRolle(...).erzaehlung ===
+ * 'sonne'` (über den Stammdaten-Rückfall, §5.3 - derselbe geteilte Lauf wie
+ * `help-site`, der (noch) keine Preisfelder je Viertelstunde trägt). Der
+ * Sonnenbogen an der Uhr und die Autarkie-Kachel erscheinen NUR hier, nie
+ * bei `help-site` (dynamischer Tarif, Preis-Erzählung) - diese Seite bleibt
+ * von den Tests oben unberührt gegen Rückschritt geprüft.
+ */
+test('Fahrplan (Sonnen-Erzählung): der Sonnenbogen bleibt im Rahmen, „Aus eigenem Strom" statt Geld', async ({ page }) => {
+  await oeffnen(page, '/e2e/help.html#/anlage/help-site-2/fahrplan');
+  await page.locator('.vp-tb').first().waitFor();
+
+  const breite = page.viewportSize()?.width ?? 0;
+  if (breite < 1200) {
+    // Telefon/Tablet: der Sonnenbogen lebt im selben <svg> wie der Ring - die
+    // bestehende Überlauf-/Symbolgrößen-Prüfung oben gilt automatisch weiter.
+    const uhrSvg = page.locator('.vp-uhr-svg').first();
+    await expect(uhrSvg).toBeVisible();
+    const mass = await uhrSvg.evaluate((svg) => {
+      const r = svg.getBoundingClientRect();
+      const boegen = [...svg.querySelectorAll('.vp-uhr-sonne path')].map((p) => p.getBoundingClientRect());
+      return {
+        svg: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+        boegen: boegen.map((b) => ({ left: b.left, right: b.right, top: b.top, bottom: b.bottom })),
+      };
+    });
+    expect(mass.boegen.length, 'der Sonnenbogen zeichnet mindestens ein Stück').toBeGreaterThan(0);
+    for (const b of mass.boegen) {
+      // Etwas Toleranz für Rundung/Antialiasing (1 px), aber kein echtes Überragen.
+      expect(b.left).toBeGreaterThanOrEqual(mass.svg.left - 1);
+      expect(b.right).toBeLessThanOrEqual(mass.svg.right + 1);
+      expect(b.top).toBeGreaterThanOrEqual(mass.svg.top - 1);
+      expect(b.bottom).toBeLessThanOrEqual(mass.svg.bottom + 1);
+    }
+  }
+
+  // Die Autarkie-Kachel statt der Geld-Kachel - in jeder Breite sichtbar.
+  await expect(page.getByText('Aus eigenem Strom').first()).toBeVisible();
+  const kacheln = page.locator('.vp-antw-zeile');
+  const kachelText = await kacheln.allTextContents();
+  expect(kachelText.some((t) => /Aus eigenem Strom/.test(t)), 'die Kachel zeigt die Autarkie').toBe(true);
+  expect(kachelText.some((t) => t.includes('€')), 'keine Geld-Kachel mehr auf dieser Klasse').toBe(false);
+
+  // „Gut zu wissen": der feste Strompreis UND die eigene Einspeisevergütung
+  // dieser Anlage stehen mit echten Zahlen da - nie „nicht hinterlegt" nur
+  // weil die Hilfe-Attrappe die falsche Anlage abgefragt hat.
+  const wissen = page.getByRole('button', { name: 'Gut zu wissen' });
+  if (await wissen.count()) await wissen.click();
+  const wissenText = (await page.locator('section[aria-label="Gut zu wissen"], .vp-tb-zu-inhalt').last().textContent()) ?? '';
+  expect(wissenText).toContain('30,0');
+  expect(wissenText).toContain('Ihre Einspeisevergütung');
+  expect(wissenText).not.toContain('nicht hinterlegt');
+
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+});

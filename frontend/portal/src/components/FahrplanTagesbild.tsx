@@ -29,6 +29,7 @@ import { chartTheme } from '../chartTheme';
 import { haptik } from '../haptik';
 import type { AnnahmeZeile } from '../fahrplanAnnahmen';
 import { antworten, type Antwort } from '../fahrplanAntworten';
+import { fmtNum } from '../format';
 import { uhrzeit, type TagModell } from '../fahrplanTag';
 import {
   BILD_AB_PX,
@@ -41,10 +42,11 @@ import {
   type TagArt,
   type TagOhneBild,
 } from '../fahrplanTagesbild';
-import { uhrFenster, uhrModell, uhrPhasen, uhrUnterschrift, type UhrHaelfte, type UhrPhase } from '../fahrplanUhr';
+import { sonnenBogen, uhrFenster, uhrModell, uhrPhasen, uhrUnterschrift, type UhrHaelfte, type UhrPhase } from '../fahrplanUhr';
 import { spanneSatz, waage } from '../fahrplanWaage';
 import type { WhySlot } from '../fahrplanWhy';
 import type { JetztHeldView } from '../fahrplanJetzt';
+import type { AutarkieHeute, SonnenstromModell } from '../fahrplanSonnenstrom';
 import type { PlanWordingKind } from '../schedule';
 import type { SpeicherAussage } from '../speicherAussage';
 import { InfoTip } from './InfoTip';
@@ -106,11 +108,22 @@ export interface FahrplanTagesbildProps {
   verguetungHerkunft?: string | null;
   /** Vergütung nicht hinterlegt (§5.2, die „Lücke"); Vorgabe `false`. */
   verguetungLuecke?: boolean;
+  /**
+   * Die Start-Zeitstempel der Viertelstunden ohne Vergütung (§ 51a,
+   * `preisRolle(...).nullstunden`, auf Zeitstempel übersetzt - siehe
+   * `fahrplanUhr.sonnenBogen`); Vorgabe = leere Menge.
+   */
+  nullstundenZeiten?: ReadonlySet<string>;
+  /** Die Autarkie-Kachel „Aus eigenem Strom X %" (§4.3/§4.5); Vorgabe `null`. */
+  autarkie?: AutarkieHeute | null;
+  /** Die zwei Balken „Ihr Sonnenstrom heute" (§4.5); Vorgabe `null` = kein Abschnitt. */
+  sonnenstrom?: SonnenstromModell | null;
 }
 
 /** Rollen, deren Farbe hell ist: ihr Symbol steht dunkel. */
 const RUHE_ROLLEN = new Set(['warten', 'reserve_halten', 'abregeln']);
 const KEINE_MESSUNG: readonly (number | null)[] = [];
+const KEINE_ZEITEN: ReadonlySet<string> = new Set();
 
 export function FahrplanTagesbild({
   tag,
@@ -134,6 +147,9 @@ export function FahrplanTagesbild({
   sonne = false,
   verguetungHerkunft = null,
   verguetungLuecke = false,
+  nullstundenZeiten = KEINE_ZEITEN,
+  autarkie = null,
+  sonnenstrom = null,
 }: FahrplanTagesbildProps) {
   const t = chartTheme();
   const huelle = useRef<HTMLDivElement | null>(null);
@@ -147,6 +163,7 @@ export function FahrplanTagesbild({
   const [phasenWahl, setPhasenWahl] = useState<{ quelle: UhrPhase['quelle']; phaseIndex: number } | null>(null);
   const [tagOffen, setTagOffen] = useState(false);
   const [wissenOffen, setWissenOffen] = useState(false);
+  const [sonnenstromOffen, setSonnenstromOffen] = useState(false);
   const [haelfte, setHaelfte] = useState<UhrHaelfte>('vormittag');
 
   // ---- Breite: Uhr oder Tagesband ------------------------------------------------
@@ -177,14 +194,18 @@ export function FahrplanTagesbild({
   const mitJetzt = istJetzt && tag.jetzt != null;
 
   const liste = useMemo(
-    () => antworten({ tag, auswahl: Math.max(0, auswahl), istJetzt, speicher, art }),
-    [tag, auswahl, istJetzt, speicher, art],
+    () => antworten({ tag, auswahl: Math.max(0, auswahl), istJetzt, speicher, art, autarkie: sonne ? autarkie : null }),
+    [tag, auswahl, istJetzt, speicher, art, sonne, autarkie],
   );
   const satz = useMemo(() => kopfsatz(tag, art), [tag, art]);
   const halte = useMemo(() => stationen(tag, plantKind, ist, sonne), [tag, plantKind, ist, sonne]);
   const uhrPh = useMemo(() => uhrPhasen(tag, art === 'heute' ? folgetag : null), [tag, folgetag, art]);
   const fenster = useMemo(() => uhrFenster(tag, uhrPh, haelfte), [tag, uhrPh, haelfte]);
   const uhr = useMemo(() => uhrModell(uhrPh, fenster), [uhrPh, fenster]);
+  const sonnenbogen = useMemo(
+    () => (sonne ? sonnenBogen(tag, fenster, nullstundenZeiten) : []),
+    [sonne, tag, fenster, nullstundenZeiten],
+  );
 
   if (n === 0) return null;
 
@@ -305,6 +326,14 @@ export function FahrplanTagesbild({
         form={form}
         nachtragHref={nachtragHref}
         erloeseHref={erloeseHref}
+        onSonnenstromOeffnen={
+          sonnenstrom
+            ? () => {
+                haptik('tick');
+                setSonnenstromOffen(true);
+              }
+            : undefined
+        }
       />
     );
   };
@@ -413,6 +442,27 @@ export function FahrplanTagesbild({
     </>
   );
 
+  /**
+   * „Ihr Sonnenstrom heute" (Konzept `vp-fahrplan-eigenverbrauch-konzept`
+   * §4.5, Scheibe S3): zwei Balken - wohin die Sonne floss/fließt, woher das
+   * Haus seinen Verbrauch deckte/deckt. „Auto" hat keinen eigenen Messwert
+   * (Wallbox-Konzept separat) und bleibt ein Gedankenstrich.
+   */
+  const sonnenstromListe = sonnenstrom ? (
+    <>
+      <p className="vp-tb-sonnenstrom-zeile">
+        <b>Ihre Sonne:</b> {fmtNum(sonnenstrom.sonne.gesamtKwh, 'kWh', 0)} — Haus {fmtNum(sonnenstrom.sonne.haus, 'kWh', 0)} ·
+        Speicher {fmtNum(sonnenstrom.sonne.speicher, 'kWh', 0)} · Auto – · Netz {fmtNum(sonnenstrom.sonne.netz, 'kWh', 0)}
+      </p>
+      <p className="vp-tb-sonnenstrom-zeile">
+        <b>Ihr Haus:</b> {fmtNum(sonnenstrom.haus.gesamtKwh, 'kWh', 0)} — Sonne {fmtNum(sonnenstrom.haus.sonne, 'kWh', 0)} ·
+        Speicher {fmtNum(sonnenstrom.haus.speicher, 'kWh', 0)} · Netz {fmtNum(sonnenstrom.haus.netz, 'kWh', 0)}
+      </p>
+      {sonnenstrom.wallboxHinweis && <p className="vp-tb-fein">{sonnenstrom.wallboxHinweis}</p>}
+      <p className="vp-tb-fein">Heute bis jetzt gemessen, der Rest geplant.</p>
+    </>
+  ) : null;
+
   /** Gut zu wissen: Eingaben und Grenzen des Plans, der Weg zu allen Werten. */
   const annahmenListe =
     annahmen.length > 0 || onAlleWerte ? (
@@ -495,6 +545,12 @@ export function FahrplanTagesbild({
             <h3 className="vp-tb-karte2-titel">{tagTitel}</h3>
             {stationenListe}
           </section>
+          {sonnenstromListe && (
+            <section className="vp-tb-karte2 vp-tb-karte2-breit" aria-label="Ihr Sonnenstrom heute">
+              <h3 className="vp-tb-karte2-titel">Ihr Sonnenstrom heute</h3>
+              {sonnenstromListe}
+            </section>
+          )}
           {annahmenListe && (
             <section className="vp-tb-karte2" aria-label="Gut zu wissen">
               <div className="vp-tb-karte2-kopf">
@@ -517,6 +573,7 @@ export function FahrplanTagesbild({
         modell={uhr}
         beschriftung={mitJetzt ? 'Die Uhr: was ab jetzt kommt' : `Die Uhr: ${uhrUnterschrift(fenster)}`}
         onPhase={phaseOeffnen}
+        sonnenbogen={sonnenbogen}
       />
       {fenster.zeiger == null ? (
         <div className="vp-tb-haelfte" role="group" aria-label="Tageshälfte">
@@ -548,6 +605,20 @@ export function FahrplanTagesbild({
         <Icon name="chevron-down" size={18} />
       </button>
       {tagOffen && <div className="vp-tb-zu-inhalt">{stationenListe}</div>}
+      {sonnenstromListe && (
+        <>
+          <button
+            type="button"
+            className="vp-tb-zu-kopf"
+            aria-expanded={sonnenstromOffen}
+            onClick={umschalten(setSonnenstromOffen)}
+          >
+            <span>Ihr Sonnenstrom heute</span>
+            <Icon name="chevron-down" size={18} />
+          </button>
+          {sonnenstromOffen && <div className="vp-tb-zu-inhalt">{sonnenstromListe}</div>}
+        </>
+      )}
       {annahmenListe && (
         <>
           <button type="button" className="vp-tb-zu-kopf" aria-expanded={wissenOffen} onClick={umschalten(setWissenOffen)}>

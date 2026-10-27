@@ -219,6 +219,74 @@ export function uhrModell(phasen: readonly UhrPhase[], fenster: UhrFenster): Uhr
   };
 }
 
+// ---------------------------------------------------------------------------
+// Sonnenbogen (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.3, Scheibe S3)
+// ---------------------------------------------------------------------------
+
+/** Der Ring des Sonnenbogens: außerhalb des Tätigkeits-Rings, innerhalb der Marken (bei `aussen + 16`). */
+export const SONNE_R = { innen: UHR_R.aussen + 4, aussen: UHR_R.aussen + 12 } as const;
+
+/** Unter diesem Gewicht bleibt ein Sonnenstück sichtbar, aber sehr blass. */
+const SONNE_GEWICHT_MIN = 0.15;
+
+export interface UhrSonnenStueck {
+  /** Minuten seit Mitternacht des gezeigten Tages (Fenster-Koordinaten wie {@link UhrBogen}). */
+  von: number;
+  bis: number;
+  d: string;
+  /** 0..1 — wie viel Sonne in diesem Stück steckt, relativ zur Tagesspitze (kräftig bei viel Sonne). */
+  gewicht: number;
+  /** § 51a: in dieser Viertelstunde gibt es keine Vergütung - schraffiert statt voll gefüllt. */
+  schraffiert: boolean;
+}
+
+/**
+ * Ein schmaler Bogen außen am Ring in Sonnenfarbe (`--vp-flow-pv`): von JETZT
+ * (oder Sonnenaufgang, je nachdem was später liegt — die Fenster-Klammer
+ * {@link fenster.von} erledigt das von selbst, da sie heute bereits bei
+ * `tag.jetzt` beginnt) bis Sonnenuntergang, laut der PV-PROGNOSE DES PLANS
+ * (keine Ephemeride — „Sonnenaufgang"/„Sonnenuntergang" sind hier die erste
+ * bzw. letzte Viertelstunde des Tages mit `pvKw > 0`). Kräftig bei viel Sonne:
+ * das Gewicht je Stück ist `pvKw` relativ zur Tagesspitze. Nach
+ * Sonnenuntergang (oder vor Sonnenaufgang) fehlt der Bogen ganz.
+ *
+ * `nullstundenZeiten` trägt die Start-Zeitstempel der Viertelstunden ohne
+ * Vergütung (§ 51a, `preisRolle(...).nullstunden`, auf die Zeitstempel der
+ * ANLAGEN-Slots übersetzt — `tag.slots` ist ein Tagesausschnitt und seine
+ * Indizes weichen von denen des vollen Laufs ab, also matcht diese Funktion
+ * über `start`, nie über den Index).
+ */
+export function sonnenBogen(
+  tag: TagModell,
+  fenster: UhrFenster,
+  nullstundenZeiten: ReadonlySet<string> = new Set(),
+): UhrSonnenStueck[] {
+  const start = uhrWinkel(fenster.von);
+  const grad = (minute: number) => start + ((minute - fenster.von) / HALBER_TAG) * 360;
+  const pvWerte = tag.slots.map((s) => (s.pvKw == null ? null : Number(s.pvKw)));
+  const spitze = Math.max(0.001, ...pvWerte.filter((v): v is number => v != null && v > 0));
+  const out: UhrSonnenStueck[] = [];
+  for (let i = 0; i < tag.slots.length; i++) {
+    const pv = pvWerte[i];
+    if (pv == null || pv <= 0) continue;
+    const v = tag.viertel[i];
+    const von = Math.max(v.von, fenster.von);
+    const bis = Math.min(v.bis, fenster.bis);
+    if (bis - von < 0.5) continue;
+    const a0 = grad(von);
+    const a1 = grad(bis);
+    if (a1 <= a0) continue;
+    out.push({
+      von,
+      bis,
+      d: ringStueck(SONNE_R.innen, SONNE_R.aussen, a0, a1),
+      gewicht: Math.max(SONNE_GEWICHT_MIN, Math.min(1, pv / spitze)),
+      schraffiert: nullstundenZeiten.has(tag.slots[i].start),
+    });
+  }
+  return out;
+}
+
 /**
  * Die Unterschrift der Uhr: heute „Ab jetzt bis 00:45" (das Ende auf die
  * Viertelstunde abgerundet), sonst die Tageshälfte.

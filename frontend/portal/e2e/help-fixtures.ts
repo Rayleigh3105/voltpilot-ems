@@ -26,7 +26,25 @@ export const site = {
   netzladenErlaubt: true, maxFeedInKw: 10, bezugspreisCtKwh: 29, einspeiseverguetungCtKwh: 8,
   leistungspreisEurKw: 80, abrechnung: 'jahr', socMinPct: 10, socMaxPct: 95,
 };
-export const sites = [site, { ...site, id: 'help-site-2', name: 'Werkstatt am Bach' }];
+// Scheibe S3 (Konzept `vp-fahrplan-eigenverbrauch-konzept`, Layout-Wächter
+// 375 × 812): Festtarif + feste Vergütung + Netzladen aus klassiert `preisRolle`
+// ausschließlich über den Stammdaten-Rückfall (dieser Lauf trägt noch keine
+// importPriceCtKwh/exportValueCtKwh-Felder, §5.3 „ältere Läufe") als die
+// Sonnen-Erzählung - ohne den geteilten Lauf/Plan zu verändern, den andere
+// Spezifikationen (z. B. die Reiterleiste `fahrplan`/`marktpreise`/`wetter`)
+// an `help-site`s dynamischem Tarif messen.
+export const siteSonne = {
+  ...site,
+  id: 'help-site-2',
+  name: 'Werkstatt am Bach',
+  tarifArt: 'fest' as const,
+  // `site.tarifParamCtKwh` (4,5) ist der Aufschlag des DYNAMISCHEN Tarifs von
+  // `help-site` - für einen festen Tarif ist dasselbe Feld der volle Preis
+  // (`fahrplanAnnahmen.planAnnahmen`), 30 ct trifft die Konzept-Beispiele.
+  tarifParamCtKwh: 30,
+  netzladenErlaubt: false,
+};
+export const sites = [site, siteSonne];
 export const devices = sites.map((s, i) => ({
   id: i ? 'help-box-2' : 'help-box', siteId: s.id, externalRef: i ? 'VP-DEMO-0002' : 'VP-DEMO-0001',
   kind: 'inverter', name: 'VoltPilot Box', status: 'active', lastSeenAt: NOW, createdAt: '2026-08-01T10:00:00Z',
@@ -295,13 +313,18 @@ export function installHelpFixtures() {
       day: '2026-09-0' + (i + 1), model, kind: j % 2 ? 'pv' : 'load', maeKw: .3 + .04 * i - (j > 1 ? .08 : 0), nmaePct: 10, biasKw: 0, skillVsBaseline: j > 1 ? .2 : null, nSlots: 96,
     }))).flat(), planAccuracy: [] }),
     siteForecastModels: result({ kinds: [], history: [] }), supplyPrice: result({ tarifArt: 'dynamisch', fixedPriceCtKwh: null, spotMarkupCtKwh: 4.5, gridFeeCtKwh: 8, taxesCtKwh: 2, vatPct: 19, source: 'manual' }),
-    // Die Karte „Einspeisevergütung" folgt dem Netzladen der Bühnen-Anlage (an: Börsenpreis, die Herleitung ruht).
-    einspeiseverguetung: async () => structuredClone({
-      zustand: site.netzladenErlaubt ? 'netzladen' : 'eeg', wirksamCtKwh: site.netzladenErlaubt ? null : 7.86,
-      angegebenCtKwh: null, inbetriebnahmeAbSolarspitzengesetz: null, hergeleitetCtKwh: 7.86, hergeleitetGenaehert: false,
-      inbetriebnahme: '2025-09-01', leistungKwp: 10, eegEndeAm: '2045-12-31', ohneVerguetungBeiNegativpreis: true,
-      anzulegenderWertCtKwh: null,
-    }),
+    // Die Karte „Einspeisevergütung" folgt dem Netzladen DER ANGEFRAGTEN Anlage
+    // (an: Börsenpreis, die Herleitung ruht) - `help-site-2` (Sonnen-Erzählung,
+    // Scheibe S3) hat Netzladen aus und trägt deshalb ihren eigenen EEG-Satz.
+    einspeiseverguetung: async (siteId: string) => {
+      const netzladenErlaubt = siteId === siteSonne.id ? siteSonne.netzladenErlaubt : site.netzladenErlaubt;
+      return structuredClone({
+        zustand: netzladenErlaubt ? 'netzladen' : 'eeg', wirksamCtKwh: netzladenErlaubt ? null : 7.86,
+        angegebenCtKwh: null, inbetriebnahmeAbSolarspitzengesetz: null, hergeleitetCtKwh: 7.86, hergeleitetGenaehert: false,
+        inbetriebnahme: '2025-09-01', leistungKwp: 10, eegEndeAm: '2045-12-31', ohneVerguetungBeiNegativpreis: true,
+        anzulegenderWertCtKwh: null,
+      });
+    },
     consumerSchedule: result({ planId: null, generatedAt: null, slotMinutes: 15, entities: [] }),
     siteProfiles: result({ profiles: [
       ['marktvermarktung','Marktoptimierung',!eigen && !erzFall && !location.hash.includes('lastspitzen')], ['lastspitzenkappung','Lastspitzenkappung',location.hash.includes('lastspitzen')],

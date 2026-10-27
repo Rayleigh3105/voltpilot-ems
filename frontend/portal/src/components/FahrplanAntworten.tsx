@@ -22,6 +22,7 @@ export function FahrplanAntworten({
   form,
   nachtragHref,
   erloeseHref,
+  onSonnenstromOeffnen,
 }: {
   antworten: Antwort[];
   /** Die aufgeklappte Antwort; null = keine. */
@@ -37,6 +38,12 @@ export function FahrplanAntworten({
   nachtragHref?: string;
   /** Wohin „Zu den Erlösen" führt. */
   erloeseHref?: string;
+  /**
+   * Die Sonnen-Erzählung (§4.3/§4.5): öffnet „Ihr Sonnenstrom heute" statt
+   * zu den Erlösen zu führen (`details === 'sonnenstrom'`); ohne Angabe
+   * bleibt der Knopf weg.
+   */
+  onSonnenstromOeffnen?: () => void;
 }) {
   if (antworten.length === 0) return null;
   const offen = antworten.find((a) => a.key === gewaehlt) ?? null;
@@ -81,6 +88,11 @@ export function FahrplanAntworten({
             <a className="vp-tb-link" href={erloeseHref}>
               Zu den Erlösen ›
             </a>
+          )}
+          {offen.details === 'sonnenstrom' && onSonnenstromOeffnen && (
+            <button type="button" className="vp-tb-link" onClick={onSonnenstromOeffnen}>
+              Zu Ihrem Sonnenstrom ›
+            </button>
           )}
         </div>
       )}

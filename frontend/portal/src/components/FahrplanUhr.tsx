@@ -17,9 +17,12 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { chartTheme } from '../chartTheme';
 import { uhrzeit } from '../fahrplanTag';
 import { ROLLEN_SYMBOL } from '../fahrplanTagesbild';
-import { UHR_C, UHR_MASS, type UhrModell, type UhrPhase } from '../fahrplanUhr';
+import { UHR_C, UHR_MASS, type UhrModell, type UhrPhase, type UhrSonnenStueck } from '../fahrplanUhr';
 import { haptik } from '../haptik';
 import { roleColor } from './FahrplanWhy';
+
+/** Eindeutige ID des Schraffur-Musters - eine Uhr pro Seite, aber `id` ist global im DOM. */
+const SONNE_HATCH_ID = 'vp-uhr-sonne-hatch';
 
 /** Rollen mit heller Farbe: ihr Symbol steht dunkel. */
 const HELL = new Set(['warten', 'reserve_halten', 'abregeln']);
@@ -32,12 +35,19 @@ export function FahrplanUhr({
   modell,
   beschriftung,
   onPhase,
+  sonnenbogen = [],
 }: {
   modell: UhrModell;
   /** Wofür die Uhr steht („Die Uhr: was ab jetzt kommt"). */
   beschriftung: string;
   /** Ein Tipp auf einen Bogen: das Warum dieser Phase. */
   onPhase: (p: UhrPhase) => void;
+  /**
+   * Der Sonnenbogen (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.3,
+   * Scheibe S3): leer lässt die Uhr unverändert (Preis-Erzählung oder keine
+   * Sonne im sichtbaren Fenster).
+   */
+  sonnenbogen?: readonly UhrSonnenStueck[];
 }) {
   const t = chartTheme();
   const waehlen = (p: UhrPhase) => {
@@ -47,7 +57,28 @@ export function FahrplanUhr({
   return (
     <div className="vp-uhr">
       <svg className="vp-uhr-svg" viewBox={`0 0 ${UHR_MASS} ${UHR_MASS}`} role="group" aria-label={beschriftung}>
+        {sonnenbogen.length > 0 && (
+          <defs>
+            {/* § 51a: Stunden ohne Vergütung - schraffiert statt voll gefüllt. */}
+            <pattern id={SONNE_HATCH_ID} width="5" height="5" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+              <rect width="5" height="5" fill="var(--vp-flow-pv-soft)" />
+              <line x1="0" y1="0" x2="0" y2="5" stroke="var(--vp-flow-pv)" strokeWidth="2" />
+            </pattern>
+          </defs>
+        )}
         <circle cx={UHR_C} cy={UHR_C} r={139} className="vp-uhr-blatt" />
+        {sonnenbogen.length > 0 && (
+          <g aria-hidden="true" className="vp-uhr-sonne">
+            {sonnenbogen.map((s) => (
+              <path
+                key={s.von}
+                d={s.d}
+                fill={s.schraffiert ? `url(#${SONNE_HATCH_ID})` : 'var(--vp-flow-pv)'}
+                opacity={s.schraffiert ? 1 : s.gewicht}
+              />
+            ))}
+          </g>
+        )}
         {modell.boegen.map((b) => {
           const farbe = roleColor(b.phase.role, t);
           const satz = `${zeit(b.von)} bis ${zeit(b.bis)}: ${b.phase.label}`;

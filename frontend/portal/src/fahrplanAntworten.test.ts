@@ -201,6 +201,45 @@ describe('antwortBringt · „Was bringt es heute?" (Messlatte E6)', () => {
     expect(antwortBringt(speicherAussage({ ...tagesGeld, savedEur: 1.25 }, { now: JETZT }))).toBeNull();
     expect(antwortBringt(null)).toBeNull();
   });
+
+  it('bleibt ohne die Sonnen-Erzählung (dritter Parameter weggelassen/null) unverändert', () => {
+    const aussage = speicherAussage(
+      { ...tagesGeld, savedEur: 1.25, savedSpeicherEur: 0.85, savedSteuerungEur: 0.4, steuerungSplitReason: null },
+      { now: JETZT },
+    );
+    expect(antwortBringt(aussage)).toEqual(antwortBringt(aussage, 'heute', null));
+  });
+});
+
+describe('antwortBringt · die Sonnen-Erzählung (Konzept vp-fahrplan-eigenverbrauch-konzept §4.3/§4.5, E2 = A)', () => {
+  it('zeigt „Aus eigenem Strom X %" statt Geld - unabhängig von der Steuerungs-Aussage', () => {
+    // Keine Steuerungs-Aussage da (`null`) - die Autarkie-Kachel braucht sie nicht.
+    const a = antwortBringt(null, 'heute', { pct: 91, quelle: 'gemischt' })!;
+    expect(a).not.toBeNull();
+    expect(a.kurz).toEqual({ label: 'Aus eigenem Strom', wert: '91 %', meta: 'heute, Rest geplant' });
+    expect(a.antwort).toContain('91 %');
+    expect(a.details).toBe('sonnenstrom');
+    // „Geld bleibt auf der Erlöse-Seite" (E2-Begründung): kein Link mehr dorthin.
+    expect(a.details).not.toBe('erloese');
+  });
+
+  it('sagt ehrlich, wenn der Teil bisher rein geplant ist (keine Messung heute)', () => {
+    const a = antwortBringt(null, 'heute', { pct: 100, quelle: 'geplant' })!;
+    expect(a.kurz.meta).toBe('geplant');
+    expect(a.zusatz).toMatch(/rein geplant/);
+  });
+
+  it('gilt nur für heute - gestern und morgen bleiben bei ihrer bisherigen Antwort', () => {
+    expect(antwortBringt(null, 'morgen', { pct: 80, quelle: 'gemischt' })).toBeNull();
+    const tagesGeld = { range: 'day' as const, from: TAG.toISOString(), to: MORGEN };
+    const aussage = speicherAussage(
+      { ...tagesGeld, savedEur: 1.25, savedSpeicherEur: 0.85, savedSteuerungEur: 0.4, steuerungSplitReason: null },
+      { now: JETZT },
+    );
+    // Gestern hat die Autarkie-Kachel (noch) keine eigene Fassung - die
+    // bestehende Geld-Antwort entscheidet, wie bisher, auch wenn `autarkie` gesetzt ist.
+    expect(antwortBringt(aussage, 'gestern', { pct: 80, quelle: 'gemischt' })).toEqual(antwortBringt(aussage, 'gestern'));
+  });
 });
 
 describe('antworten · Reihenfolge', () => {

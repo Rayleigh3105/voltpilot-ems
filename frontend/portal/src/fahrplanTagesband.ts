@@ -146,6 +146,18 @@ export interface BandModell {
   sonneGemessen: string | null;
   sonneErwartet: string | null;
   sonneSpitze: (BandMarke & { gemessen: boolean; kw: number }) | null;
+  /**
+   * Die Sonnenspur nach Ziel (Konzept `vp-fahrplan-eigenverbrauch-konzept`
+   * §4.6, Scheibe S3): dieselbe Fläche, gestapelt nach Haus/Speicher/Netz
+   * statt flach — nur gesetzt bei `sonne === true` (siehe `bandModell`s
+   * `sonne`-Parameter); sonst `null`, und `sonneGemessen`/`sonneErwartet`
+   * bleiben die einzige Spur (Preis-Erzählung, unverändert).
+   */
+  sonneNachZiel: {
+    haus: { gemessen: string | null; erwartet: string | null };
+    speicher: { gemessen: string | null; erwartet: string | null };
+    netz: { gemessen: string | null; erwartet: string | null };
+  } | null;
   preis: { x: number; w: number; stufe: number }[];
   preisMarken: (BandMarke & { art: 'min' | 'max'; ct: number })[];
   achse: { x: number; text: string | null; gross: boolean }[];
@@ -199,10 +211,55 @@ function flaeche(punkte: ({ x: number; y: number } | null)[], boden: number): st
   return d || null;
 }
 
+/**
+ * Die Fläche ZWISCHEN einer oberen und einer unteren Kurve (ein Band im
+ * Stapel, Konzept §4.6) — wie {@link flaeche}, nur mit einer Unterkante, die
+ * selbst eine Kurve ist statt einer Zahl. Lücken (ein Index ohne Punkt in
+ * einer der beiden Kurven) öffnen wie dort einen neuen Lauf.
+ */
+function bandFlaeche(
+  oben: ({ x: number; y: number } | null)[],
+  unten: ({ x: number; y: number } | null)[],
+): string | null {
+  let d = '';
+  let laufOben: { x: number; y: number }[] = [];
+  let laufUnten: { x: number; y: number }[] = [];
+  const schliessen = () => {
+    if (laufOben.length >= 2) {
+      d +=
+        `M${n(laufOben[0].x)} ${n(laufOben[0].y)}` +
+        laufOben
+          .slice(1)
+          .map((p) => `L${n(p.x)} ${n(p.y)}`)
+          .join('') +
+        [...laufUnten]
+          .reverse()
+          .map((p) => `L${n(p.x)} ${n(p.y)}`)
+          .join('') +
+        'Z';
+    }
+    laufOben = [];
+    laufUnten = [];
+  };
+  for (let i = 0; i < oben.length; i++) {
+    const o = oben[i];
+    const u = unten[i];
+    if (!o || !u) {
+      schliessen();
+      continue;
+    }
+    laufOben.push(o);
+    laufUnten.push(u);
+  }
+  schliessen();
+  return d || null;
+}
+
 export function bandModell(
   tag: TagModell,
   g: BandGeometrie,
   ist: readonly (number | null)[] = [],
+  sonne = false,
 ): BandModell {
   const x = g.x;
 
@@ -369,6 +426,63 @@ export function bandModell(
         }
       : null;
 
+  // ---- 3a'. Sonnenspur nach Ziel (Konzept §4.6, Scheibe S3) ----------------------------
+  // Dieselbe Fläche wie oben, gestapelt nach Haus/Speicher/Netz statt flach -
+  // JE VIERTELSTUNDE dieselbe gemessen/geplant-Entscheidung wie `pvM`/`pvF`
+  // (ein Slot ist ganz gemessen oder ganz geplant, nie gemischt - sonst
+  // summierten sich Haus+Speicher+Netz nicht auf dieselbe Sonne).
+  const sonneNachZiel = sonne
+    ? (() => {
+        const ldF = tag.slots.map((s) => zahl(s.loadKw));
+        const ldM = tag.slots.map((s, i) => (gewesen[i] ? zahl(s.measuredLoadKw) : null));
+        const hausKw: (number | null)[] = [];
+        const speicherKw: (number | null)[] = [];
+        const netzKw: (number | null)[] = [];
+        tag.slots.forEach((s, i) => {
+          const pv = gewesen[i] ? pvM[i] : pvF[i];
+          const last = gewesen[i] ? ldM[i] : ldF[i];
+          const fluss = energieFluss({ pvKw: pv, loadKw: last, batteryKw: zahl(s.batteryKw), curtailKw: zahl(s.curtailKw) });
+          if (!fluss) {
+            hausKw.push(null);
+            speicherKw.push(null);
+            netzKw.push(null);
+            return;
+          }
+          const kw = (von: FlussKnoten, nach: FlussKnoten) => fluss.find((f) => f.von === von && f.nach === nach)?.kw ?? 0;
+          hausKw.push(kw('sonne', 'haus'));
+          speicherKw.push(kw('sonne', 'speicher'));
+          netzKw.push(kw('sonne', 'netz'));
+        });
+        const basisPunkt = (i: number) => ({ x: x(mitte(i)), y: g.sonne[1] });
+        const kurve = (werte: (number | null)[]) => werte.map((v, i) => (v == null ? null : { x: x(mitte(i)), y: sy(v) }));
+        type Punkt = { x: number; y: number } | null;
+        const nurGemessen = (w: Punkt[]): Punkt[] => w.map((v, i) => (gewesen[i] ? v : null));
+        const nurErwartet = (w: Punkt[]): Punkt[] => w.map((v, i) => (gewesen[i] ? null : v));
+        const hausOben = kurve(hausKw);
+        const speicherOben = kurve(hausKw.map((h, i) => (h == null || speicherKw[i] == null ? null : h + (speicherKw[i] as number))));
+        const netzOben = kurve(
+          hausKw.map((h, i) =>
+            h == null || speicherKw[i] == null || netzKw[i] == null ? null : h + (speicherKw[i] as number) + (netzKw[i] as number),
+          ),
+        );
+        const basisLinie = tag.slots.map((_, i) => basisPunkt(i));
+        return {
+          haus: {
+            gemessen: bandFlaeche(nurGemessen(hausOben), nurGemessen(basisLinie)),
+            erwartet: bandFlaeche(nurErwartet(hausOben), nurErwartet(basisLinie)),
+          },
+          speicher: {
+            gemessen: bandFlaeche(nurGemessen(speicherOben), nurGemessen(hausOben)),
+            erwartet: bandFlaeche(nurErwartet(speicherOben), nurErwartet(hausOben)),
+          },
+          netz: {
+            gemessen: bandFlaeche(nurGemessen(netzOben), nurGemessen(speicherOben)),
+            erwartet: bandFlaeche(nurErwartet(netzOben), nurErwartet(speicherOben)),
+          },
+        };
+      })()
+    : null;
+
   // ---- 3b. Strompreis ----------------------------------------------------------------
   const preis: BandModell['preis'] = [];
   const preisMarken: BandModell['preisMarken'] = [];
@@ -415,6 +529,7 @@ export function bandModell(
     sonneGemessen,
     sonneErwartet,
     sonneSpitze,
+    sonneNachZiel,
     preis,
     preisMarken,
     achse,

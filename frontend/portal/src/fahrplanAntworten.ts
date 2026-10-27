@@ -31,6 +31,7 @@
 
 import { phaseVon, uhrzeit, TAG_MINUTEN, type TagModell, type TagPhase } from './fahrplanTag';
 import type { TagArt } from './fahrplanTagesbild';
+import type { AutarkieHeute } from './fahrplanSonnenstrom';
 import { MESSLATTE_DATIV, type SpeicherAussage } from './speicherAussage';
 
 export type AntwortKey = 'weiter' | 'reicht' | 'bringt';
@@ -70,8 +71,13 @@ export interface Antwort {
   /** Das Ehrlichkeits-Abzeichen. */
   art: 'geplant' | 'gemessen';
   ziel: AntwortZiel | null;
-  /** Wohin „Details" führt. */
-  details: 'stationen' | 'erloese';
+  /**
+   * Wohin „Details" führt. `sonnenstrom` (Konzept
+   * `vp-fahrplan-eigenverbrauch-konzept` §4.3/§4.5, E2 = A): die
+   * Autarkie-Kachel zeigt kein Geld mehr, also führt ihr Detail nicht zur
+   * Erlöse-Seite, sondern öffnet „Ihr Sonnenstrom heute".
+   */
+  details: 'stationen' | 'erloese' | 'sonnenstrom';
   /**
    * true = der Zusatz ist der Nachtrag-Satz (Speicher-Stammdaten fehlen) und
    * führt, wie auf der Erlöse-Seite, zu den Speicher-Einstellungen.
@@ -260,7 +266,42 @@ export function antwortReicht(tag: TagModell, art: TagArt = 'heute'): Antwort | 
  * „Was bringt es heute?" — die Steuerungs-Aussage der Erlöse-Welt, unverändert.
  * Ohne Aussage (älteres Backend, keine Kasse) gibt es keine Antwort.
  */
-export function antwortBringt(aussage: SpeicherAussage | null, art: TagArt = 'heute'): Antwort | null {
+export function antwortBringt(
+  aussage: SpeicherAussage | null,
+  art: TagArt = 'heute',
+  /**
+   * Die Sonnen-Erzählung (Konzept `vp-fahrplan-eigenverbrauch-konzept`
+   * §4.3/§4.5, E2 = A): gesetzt, ersetzt sie die Geld-Kachel für HEUTE durch
+   * „Aus eigenem Strom X %" - unabhängig von der Steuerungs-Aussage, denn die
+   * Autarkie hat ihre eigene Quelle (`fahrplanSonnenstrom.autarkieHeute`).
+   * Vorgabe `null` lässt diese Funktion unverändert (Preis-Erzählung).
+   */
+  autarkie: AutarkieHeute | null = null,
+): Antwort | null {
+  if (art === 'heute' && autarkie != null) {
+    // „Geld bleibt auf der Erlöse-Seite" (E2-Begründung): das Detail führt
+    // deshalb NICHT zu `erloese`, sondern öffnet „Ihr Sonnenstrom heute".
+    return {
+      key: 'bringt',
+      frage: 'Wie viel deckt die Sonne?',
+      zeit: null,
+      antwort: `Aus eigenem Strom: ${autarkie.pct} % Ihres heutigen Verbrauchs.`,
+      zusatz:
+        autarkie.quelle === 'gemischt'
+          ? 'Gemessen bis jetzt, für den Rest des Tages geplant.'
+          : 'Noch keine Messung für heute - der Wert ist bisher rein geplant.',
+      notiz: null,
+      kurz: {
+        label: 'Aus eigenem Strom',
+        wert: `${autarkie.pct} %`,
+        meta: autarkie.quelle === 'gemischt' ? 'heute, Rest geplant' : 'geplant',
+      },
+      art: 'geplant',
+      ziel: null,
+      details: 'sonnenstrom',
+      nachtrag: false,
+    };
+  }
   // Für morgen gibt es keine gemessene Aussage - und keine zweite Geldzahl (E6).
   if (art === 'morgen' || !aussage || !aussage.hatAussage) return null;
   // Am laufenden Tag führt der PLAN des ganzen Tages (dieselbe Messlatte, M2):
@@ -299,11 +340,13 @@ export function antworten(input: {
   speicher: SpeicherAussage | null;
   /** Der Tag des Tagesschalters; ohne Angabe heute. */
   art?: TagArt;
+  /** Die Sonnen-Erzählung (§4.3/§4.5, E2 = A); siehe {@link antwortBringt}. */
+  autarkie?: AutarkieHeute | null;
 }): Antwort[] {
   const art = input.art ?? 'heute';
   return [
     antwortWeiter(input.tag, input.auswahl, input.istJetzt, art),
     antwortReicht(input.tag, art),
-    antwortBringt(input.speicher, art),
+    antwortBringt(input.speicher, art, input.autarkie ?? null),
   ].filter((a): a is Antwort => a != null);
 }

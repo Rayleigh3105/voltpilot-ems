@@ -107,4 +107,66 @@ describe('bandModell · das Tagesband am Rechner', () => {
   it('nennt den günstigsten und den teuersten Preis', () => {
     expect(bandModell(tag, g, ist).preisMarken.map((p) => p.art)).toEqual(['min', 'max']);
   });
+
+  it('sonne = false (Vorgabe) lässt sonneNachZiel null - die Preis-Erzählung bleibt unverändert', () => {
+    const m = bandModell(tag, g, ist);
+    expect(m.sonneNachZiel).toBeNull();
+    // Dieselbe flache Spur wie vor der Umstellung - keine sichtbare Änderung.
+    expect(bandModell(tag, g, ist, false)).toEqual(m);
+  });
+});
+
+describe('bandModell · Sonnenspur nach Ziel (Konzept vp-fahrplan-eigenverbrauch-konzept §4.6, sonne = true)', () => {
+  const TAG = new Date(2026, 9, 27);
+  // Vormittag (gemessen, vorbei): Sonne deckt das Haus UND lädt den Speicher voll - kein Überschuss ins Netz.
+  // Nachmittag (geplant, ab jetzt): weniger Sonne, kein Speicherbedarf mehr - sie deckt das Haus UND speist den Rest ins Netz.
+  const slots: TagSlot[] = Array.from({ length: 40 }, (_, i) => ({
+    start: new Date(TAG.getTime() + i * 15 * 60_000).toISOString(),
+    batteryKw: i < 20 ? 3 : 0,
+    socPct: 50,
+    priceEurMwh: 100,
+    costEur: 0,
+    baselineCostEur: 0,
+    slotRole: 'eigenverbrauch',
+    slotFlags: null,
+    pvKw: i < 20 ? 4 : 2,
+    loadKw: 1,
+    measuredPvKw: i < 20 ? 4.1 : null,
+    measuredLoadKw: i < 20 ? 1.1 : null,
+  }));
+  const tag = tagModell({ slots, slotMinutes: 15, now: new Date(2026, 9, 27, 5, 0), plantKind: 'eigenverbrauch' });
+  const g = bandGeometrie(1100);
+
+  it('stapelt Haus, Speicher und Netz - gemessen für die vorbei-Viertelstunden, geplant für den Rest', () => {
+    const m = bandModell(tag, g, [], true);
+    expect(m.sonneNachZiel).not.toBeNull();
+    const z = m.sonneNachZiel!;
+    // Jedes Band trägt eine Fläche für beide Tageshälften - auch wo ein Ziel
+    // einmal nichts bekommt (Überschuss/Speicherbedarf = 0), bleibt die Fläche
+    // bestehen (nur ohne Höhe an der Stelle): `energieFluss` selbst trägt dort
+    // einen echten Wert (0), keine Lücke - eine Lücke bedeutet „kein Fakt",
+    // nicht „nichts floss".
+    for (const band of [z.haus, z.speicher, z.netz]) {
+      expect(band.gemessen, 'gemessener Vormittag').not.toBeNull();
+      expect(band.erwartet, 'geplanter Nachmittag').not.toBeNull();
+    }
+    // Die Spitze des Vormittags (viel Sonne, Speicher lädt) und des Nachmittags
+    // (weniger Sonne, Einspeisung) unterscheiden sich tatsächlich der Höhe nach -
+    // sonst wäre „nach Ziel gestapelt" nur eine leere Behauptung.
+    expect(z.speicher.gemessen).not.toBe(z.speicher.erwartet);
+    expect(z.netz.gemessen).not.toBe(z.netz.erwartet);
+  });
+
+  it('ohne Verbrauch oder Speicherwert (keine Warum-Fakten) liefert jedes Band null, statt einen Fluss zu erfinden', () => {
+    // energieFluss() selbst verweigert sich ohne loadKw/batteryKw (siehe dessen eigene Tests) -
+    // dieselbe Ehrlichkeit gilt für die gestapelte Spur.
+    const ohneFakten: TagSlot[] = slots.map((s) => ({ ...s, loadKw: undefined, batteryKw: null, measuredLoadKw: undefined }));
+    const t = tagModell({ slots: ohneFakten, slotMinutes: 15, now: new Date(2026, 9, 27, 5, 0), plantKind: 'eigenverbrauch' });
+    const m = bandModell(t, g, [], true);
+    expect(m.sonneNachZiel).toEqual({
+      haus: { gemessen: null, erwartet: null },
+      speicher: { gemessen: null, erwartet: null },
+      netz: { gemessen: null, erwartet: null },
+    });
+  });
 });
