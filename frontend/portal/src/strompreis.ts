@@ -47,6 +47,7 @@ import { filmLabel } from './fahrplanFilm';
 import { phases, type SlotRole, type WhySlot } from './fahrplanWhy';
 import { ctPerKwh } from './format';
 import { preisFenster, type FensterArt } from './preisFenster';
+import { preisRolle } from './preisRolle';
 import type { PlanWordingKind } from './schedule';
 import { bezugspreisVorschau, type PreisSlot } from './settingsSurface';
 import { hasMode, type ActiveMode } from './surface';
@@ -59,12 +60,19 @@ import { hasMode, type ActiveMode } from './surface';
  * Wo der Streifen erscheint: exakt die Signalmenge, die auch die
  * Marktpreise-Ansicht erreichbar macht (`surface.ts`/`ebenenNav`) — der
  * Markt-Modus ODER ein dynamischer Tarif. Keine neue Regel, kein Drift.
+ *
+ * Der Tarif-Teil liest {@link preisRolle} (Konzept
+ * `vp-fahrplan-eigenverbrauch-konzept` §5.1/§5.4) — die EINE Klassen-Regel,
+ * die auch `fahrplanTag.bildPreisArt` und der Preise-Reiter lesen; der
+ * Markt-Modus bleibt ein eigenes Signal, dieselbe Regel entscheidet ihn
+ * bereits über `plantKind`.
  */
 export function gateStrompreis(
   modes: ActiveMode[],
   tarifArt: TarifArt | null | undefined,
 ): boolean {
-  return hasMode(modes, 'marktvermarktung') || tarifArt === 'dynamisch';
+  if (hasMode(modes, 'marktvermarktung')) return true;
+  return preisRolle({ tarifArt: tarifArt ?? 'ohne', plantKind: 'eigenverbrauch' }).erzaehlung === 'preis';
 }
 
 // ---------------------------------------------------------------------------

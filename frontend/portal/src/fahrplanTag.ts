@@ -28,6 +28,7 @@
 import type { TarifArt } from './api';
 import { filmLabel } from './fahrplanFilm';
 import { phases, type PhaseKind, type PlanPhase, type SlotRole, type WhySlot } from './fahrplanWhy';
+import { preisRolle } from './preisRolle';
 import type { PlanWordingKind } from './schedule';
 
 /** Minuten eines Tages. */
@@ -140,18 +141,21 @@ export const PREIS_FLACH_CT = 0.5;
  *    Balken wären Zahlen ohne Konsequenz.
  * Ältere Läufe ohne Bezugspreis zeigen die Börse, außer der Tarif ist bekannt
  * fest und die Anlage vermarktet nicht.
+ *
+ * Die Klassifikation „rechnet dieser Bezug flach oder schwankend?" kommt aus
+ * {@link preisRolle} (Konzept `vp-fahrplan-eigenverbrauch-konzept` §5.1/§5.4)
+ * — derselben EINEN Regel, die auch `strompreis.gateStrompreis` und der
+ * Preise-Reiter lesen. Diese Funktion bleibt der eigene Entscheid, OB und
+ * WELCHER Preis im Bild steht (bezug/boerse/kein Preis).
  */
 export function bildPreisArt(
   slots: readonly WhySlot[],
   tarifArt: TarifArt | null | undefined,
   plantKind: PlanWordingKind,
 ): TagPreis['art'] | null {
-  const bezug = slots.map((s) => zahl(s.importPriceCtKwh));
-  if (bezug.length > 0 && bezug.every((v) => v != null)) {
-    const werte = bezug as number[];
-    if (Math.max(...werte) - Math.min(...werte) >= PREIS_FLACH_CT) return 'bezug';
-    return plantKind === 'direktvermarktung' ? 'boerse' : null;
-  }
+  const rolle = preisRolle({ slots, tarifArt, plantKind });
+  if (rolle.bezug === 'schwankt') return 'bezug';
+  if (rolle.bezug === 'flach') return plantKind === 'direktvermarktung' ? 'boerse' : null;
   if (tarifArt != null && tarifArt !== 'dynamisch' && plantKind !== 'direktvermarktung') return null;
   return 'boerse';
 }

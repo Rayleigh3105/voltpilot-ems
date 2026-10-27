@@ -53,6 +53,7 @@ import { applyProfileStates, type ProfileStates } from './profiles';
 import type { PlantKind, TarifArt } from './api';
 import { catalogType, type FlowDocument } from './flows/model';
 import { hasStrategyNode } from './flows/steuerung';
+import { preisRolle } from './preisRolle';
 import {
   EINRICHTUNG_DURCH_VOLTPILOT,
   isLeistungspreisActive,
@@ -547,7 +548,14 @@ export function baseSurface(site: AnlageSurfaceInput): BaseSurface {
     if (channels.length > 0) deepViews.push('telemetrie-historie');
   }
   if (hasStorage(input)) deepViews.push('fahrplan', 'prognosequalitaet');
-  if (tarifArtOf(input.config) === 'dynamisch') deepViews.push('marktpreise');
+  // Die EINE Klassen-Regel (Konzept `vp-fahrplan-eigenverbrauch-konzept`
+  // §5.1/§5.4, wie `fahrplanTag.bildPreisArt`/`strompreis.gateStrompreis`):
+  // ohne Lauf-Daten reduziert sie sich auf denselben Stammdaten-Entscheid wie
+  // bisher (nur der dynamische Tarif) — der Markt-Modus bringt `marktpreise`
+  // weiterhin über sein eigenes Modul-Manifest mit.
+  if (preisRolle({ tarifArt: tarifArtOf(input.config), plantKind: 'eigenverbrauch' }).erzaehlung === 'preis') {
+    deepViews.push('marktpreise');
+  }
 
   if (list.length === 0) {
     return {
