@@ -352,6 +352,8 @@ export function ausblickSatz(
     slotMinutes?: number;
     weather?: CloudPoint[] | null;
     plan?: PlanWhyFacts | null;
+    /** Die Sonnen-Erzählung; Vorgabe `false` lässt den Horizont-Satz unverändert. */
+    sonne?: boolean;
   } = {},
 ): string | null {
   const slotMinutes = opts.slotMinutes ?? 15;
@@ -374,7 +376,7 @@ export function ausblickSatz(
     const speicher = speicherHalbsatz(opts.plan);
     if (speicher) teile.push(speicher);
   } else {
-    const hint = horizonHint(slots, now, slotMinutes);
+    const hint = horizonHint(slots, now, slotMinutes, opts.sonne === true);
     if (hint) teile.push(hint);
   }
   return teile.length === 0 ? null : teile.join(' ');
@@ -405,6 +407,12 @@ export interface LageInput {
   /** Die Wetter-Vorhersage der Anlage; ohne sie fehlt das Himmels-Wort. */
   weather?: CloudPoint[] | null;
   now: Date;
+  /**
+   * Die Sonnen-Erzählung (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.5):
+   * true unterdrückt den Börsenpreis-Tagesbogen (B1, er entfällt ersatzlos)
+   * und spricht den Horizont-Satz sonnen-sicher. Vorgabe `false`.
+   */
+  sonne?: boolean;
 }
 
 export interface LageView {
@@ -431,11 +439,12 @@ export interface LageView {
  */
 export function lageView(input: LageInput): LageView | null {
   const slotMinutes = input.slotMinutes ?? 15;
-  const bogen = bogenSatz(tagesbogen(input.slots, input.now, slotMinutes));
+  const bogen = input.sonne ? null : bogenSatz(tagesbogen(input.slots, input.now, slotMinutes));
   const ausblick = ausblickSatz(input.slots, input.now, {
     slotMinutes,
     weather: input.weather,
     plan: input.plan,
+    sonne: input.sonne,
   });
   const nachtreserve = nachtreserveSatz(input.plan);
   if (bogen == null && ausblick == null && nachtreserve == null) return null;

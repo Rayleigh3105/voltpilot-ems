@@ -9,6 +9,7 @@ import {
   type ControlStatus,
   type CurtailmentStatus,
   type ConsumerSchedule,
+  type Einspeiseverguetung,
   type SchedulePlan,
   type Site,
   type SiteEarnings,
@@ -41,11 +42,13 @@ import {
   savingsTodayEur,
 } from '../schedule';
 import { consumerLayers, consumerSlotInfos, hasConsumerData } from '../consumerSchedule';
-import { FALLBACK_14A_NOTE, FORECAST_FOOTNOTE, phases } from '../fahrplanWhy';
+import { FALLBACK_14A_NOTE, FORECAST_FOOTNOTE, nullstundenSatz, phases } from '../fahrplanWhy';
 import { FahrplanWhyPanel } from '../components/FahrplanWhy';
 import { filmKicker, filmRows, naechsterEinsatz } from '../fahrplanFilm';
 import { jetztHeld } from '../fahrplanJetzt';
 import { lageView } from '../fahrplanLage';
+import { verguetungZeile } from '../einspeiseverguetung';
+import { preisRolle } from '../preisRolle';
 import { JetztKompakt, JetztWarnungen, TagesFilm } from '../components/FahrplanJetzt';
 import { FahrplanLage } from '../components/FahrplanLage';
 import { FahrplanTagesbild, TagOhneBildKarte } from '../components/FahrplanTagesbild';
@@ -212,6 +215,23 @@ const FAHRPLAN_BERECHNUNG =
   'Fahrplan.';
 
 /**
+ * Die Sonnen-Erzählung (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.5):
+ * derselbe Infotext ohne Börsenwort, mit den zwei Zahlen, mit denen der Plan
+ * selbst rechnet (`importPriceCtKwh`/`exportValueCtKwh`).
+ */
+function fahrplanBerechnungSonne(importCtKwh: number | null, exportCtKwh: number | null): string {
+  const zahlen =
+    importCtKwh != null && exportCtKwh != null
+      ? `selbst genutzt spart sie ${fmtNum(importCtKwh, 'ct', 1)}, eingespeist bringt sie ${fmtNum(exportCtKwh, 'ct', 1)}.`
+      : 'selbst genutzt spart sie Netzstrom, eingespeist bringt sie Ihre Vergütung.';
+  return (
+    `Für Ihre Anlage zählt, was eine Kilowattstunde wert ist: ${zahlen} Der Fahrplan nutzt deshalb so ` +
+    'viel Sonnenstrom wie möglich selbst – mit dem Speicher auch am Abend. Er rechnet alle 15 Minuten ' +
+    'neu, mit Ihrer Verbrauchs- und PV-Prognose, dem Ladestand, den Grenzen des Speichers und § 14a.'
+  );
+}
+
+/**
  * Die Fahrplan-Seite einer Anlage (Konzept „Tagesuhr und Bildfahrplan",
  * Entscheide E1–E11 vom 24.09.2026) im AUFBAU DES PROTOTYPS:
  *
@@ -356,6 +376,11 @@ function FahrplanInhalt({ site }: { site: Site }) {
   // als EINE Zeile in „Worauf Ihr Plan achtet" statt auf einer eigenen Seite.
   // FAIL-SOFT: ohne Bewertung fehlt nur diese Zeile.
   const [vorhersage, setVorhersage] = useState<ForecastQuality | null>(null);
+  // Die Sonnen-Erzählung (Konzept `vp-fahrplan-eigenverbrauch-konzept` §5.1):
+  // die `luecke` braucht die Karte „Einspeisevergütung" (PR 1589) - FAIL-SOFT
+  // wie Wetter und Vorhersage, ohne sie bleibt die Erzählung beim
+  // Stammdaten-Rückfall von `preisRolle`.
+  const [verguetung, setVerguetung] = useState<Einspeiseverguetung | null>(null);
 
   const siteId = site.id;
   const loadLive = useCallback(() => {
@@ -488,6 +513,22 @@ function FahrplanInhalt({ site }: { site: Site }) {
     };
   }, [siteId]);
 
+  useEffect(() => {
+    let active = true;
+    setVerguetung(null);
+    try {
+      api
+        .einspeiseverguetung(siteId)
+        .then((v) => active && setVerguetung(v))
+        .catch(() => active && setVerguetung(null));
+    } catch {
+      // Eine api-Attrappe ohne die Methode reißt die Seite nicht mit.
+    }
+    return () => {
+      active = false;
+    };
+  }, [siteId]);
+
   const slots = plan?.slots ?? [];
   const slotMinutes = plan?.slotMinutes ?? 15;
   // Auf das Slot-Raster DIESES Plans ausgerichtet (Zeitstempel, nie Index);
@@ -529,15 +570,51 @@ function FahrplanInhalt({ site }: { site: Site }) {
     : null;
   // FK2: banked terminal value + horizon-edge hint (pure derivations).
   const banked = bankedValueLine(plan?.bankedValueEur);
-  const horizonNote = horizonHint(slots, now, slotMinutes);
+  // Die EINE Klassen-Regel (Konzept `vp-fahrplan-eigenverbrauch-konzept` §5.1):
+  // aus den Preisen des jüngsten Laufs, mit Stammdaten-Rückfall ohne Lauf. Die
+  // Lücke kommt aus der Karte „Einspeisevergütung" (PR 1589) - fehlt sie
+  // (FAIL-SOFT), bleibt `luecke` false und die Regel entscheidet allein aus
+  // den Preisfeldern.
+  const rolle = useMemo(
+    () =>
+      preisRolle({
+        slots,
+        tarifArt: site.tarifArt ?? null,
+        plantKind: site.plantKind,
+        luecke: verguetung?.zustand === 'ohne_angabe',
+      }),
+    [slots, site.tarifArt, site.plantKind, verguetung],
+  );
+  const sonne = rolle.erzaehlung === 'sonne';
+  // Die Vergütungszeile von „Gut zu wissen" und die Spanne des Tagesbilds
+  // lesen dieselbe Karte, dieselben Wörter wie „Einstellungen › Strom & Geld"
+  // (§6.2: keine zweite Herkunfts-Sprache für denselben Satz).
+  const verguetungInfo = useMemo(() => {
+    if (!sonne || verguetung == null) return null;
+    const z = verguetungZeile(verguetung);
+    return {
+      satzCtKwh: verguetung.wirksamCtKwh,
+      herkunft: z.warn ? null : z.sub,
+      luecke: z.warn,
+      aendernHref: einstellungenHash(site.id, 'geld'),
+    };
+  }, [sonne, verguetung, site.id]);
+  const horizonNote = horizonHint(slots, now, slotMinutes, sonne);
+  // § 51a (§4.4): die Viertelstunden ohne Vergütung kommen ausschließlich aus
+  // `preisRolle` - keine zweite Erkennung in dieser Seite.
+  const nullstundenNote = useMemo(
+    () => (sonne ? nullstundenSatz(slots, rolle.nullstunden, slotMinutes) : null),
+    [sonne, slots, rolle.nullstunden, slotMinutes],
+  );
   // Die „Lage"-Zeile (Erklärbarkeit Stufe 2): Tages-Bogen + Morgen-Ausblick aus
   // den Eingaben DIESES Laufs. Sie liest die Slots des jüngsten Laufs (nicht
   // den Tages-Splice - der ist aus vielen Läufen genäht und trägt deshalb weder
   // einen Anker noch eine Prognose, die zu EINEM Lauf gehört) und liefert null,
   // sobald es nichts Belegtes zu sagen gibt; dann rendert die Karte gar nicht.
+  // Die Sonnen-Erzählung unterdrückt den Börsenpreis-Tagesbogen (B1) ersatzlos.
   const lage = useMemo(
-    () => lageView({ slots, slotMinutes, plan, weather: wetter?.points, now }),
-    [slots, slotMinutes, plan, wetter, now],
+    () => lageView({ slots, slotMinutes, plan, weather: wetter?.points, now, sonne }),
+    [slots, slotMinutes, plan, wetter, now, sonne],
   );
 
   // Block 2 - der GANZE Tag, wenn der Splice ihn trägt. Die Warum-Ebene ist
@@ -624,6 +701,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
         conflictStreak,
         plantKind: site.plantKind,
         now,
+        sonne,
       }),
     [
       slots,
@@ -639,6 +717,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
       site.plantKind,
       site.maxFeedInKw,
       conflictStreak,
+      sonne,
       now,
     ],
   );
@@ -798,8 +877,25 @@ function FahrplanInhalt({ site }: { site: Site }) {
         horizont: horizonNote,
         vorhersage: vorhersageZeile(vorhersage),
         prognoseSeite: showTechnicalLayer() ? `#/anlage/${site.id}/prognose` : null,
+        verguetung: verguetungInfo,
+        nullstunden: nullstundenNote,
       }),
-    [plan, slotMinutes, site.id, site.plantKind, site.tarifArt, site.tarifParamCtKwh, site.netzladenErlaubt, site.maxFeedInKw, hasWhy, lage, horizonNote, vorhersage],
+    [
+      plan,
+      slotMinutes,
+      site.id,
+      site.plantKind,
+      site.tarifArt,
+      site.tarifParamCtKwh,
+      site.netzladenErlaubt,
+      site.maxFeedInKw,
+      hasWhy,
+      lage,
+      horizonNote,
+      vorhersage,
+      verguetungInfo,
+      nullstundenNote,
+    ],
   );
   // Das Warum einer Viertelstunde des Tagesbilds liest den JÜNGSTEN Lauf, wenn
   // er sie trägt (dieselben Zahlen wie das Gerät, mit den Lauf-Fakten), sonst
@@ -829,6 +925,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
           siteId={site.id}
           currentSlotIndex={activeSlotIdx}
           ohneGeld
+          sonne={sonne}
           onClose={schliessen}
         />
       );
@@ -852,6 +949,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
         siteId={site.id}
         currentSlotIndex={tagArt === 'heute' ? activeFilmIdx : -1}
         ohneGeld
+        sonne={sonne}
         onClose={schliessen}
       />
     );
@@ -878,6 +976,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
       siteId={site.id}
       currentSlotIndex={activeFilmIdx}
       ohneGeld={hasTagesbild}
+      sonne={sonne}
       onClose={closePanel}
     />
   ) : null;
@@ -895,6 +994,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
       siteId={site.id}
       currentSlotIndex={activeSlotIdx}
       ohneGeld={hasTagesbild}
+      sonne={sonne}
       onClose={closePanel}
     />
   ) : null;
@@ -920,7 +1020,11 @@ function FahrplanInhalt({ site }: { site: Site }) {
           icon="battery-charging"
           category="battery"
           title="Noch kein Fahrplan"
-          description="Sobald Ihre Anlage einen Batteriespeicher meldet und Börsenpreise vorliegen, plant VoltPilot alle 15 Minuten einen kostenoptimalen Tagesfahrplan - er erscheint dann automatisch hier."
+          description={
+            sonne
+              ? 'Sobald Ihre Anlage einen Batteriespeicher meldet, plant VoltPilot alle 15 Minuten einen Tagesfahrplan für möglichst viel Eigenverbrauch - er erscheint dann automatisch hier.'
+              : 'Sobald Ihre Anlage einen Batteriespeicher meldet und Börsenpreise vorliegen, plant VoltPilot alle 15 Minuten einen kostenoptimalen Tagesfahrplan - er erscheint dann automatisch hier.'
+          }
         />
       </Card>
     );
@@ -1072,6 +1176,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
                   siteId={site.id}
                   currentSlotIndex={tag.jetztIndex}
                   ohneGeld
+                  sonne={sonne}
                   onClose={schliessen}
                 />
               )}
@@ -1081,7 +1186,17 @@ function FahrplanInhalt({ site }: { site: Site }) {
               // Lauf - er trägt heute und morgen, nicht gestern.
               held={tagArt === 'heute' ? held : null}
               annahmen={tagArt === 'gestern' ? KEINE_ANNAHMEN : annahmen}
-              berechnung={FAHRPLAN_BERECHNUNG}
+              berechnung={
+                sonne
+                  ? fahrplanBerechnungSonne(
+                      slots[0]?.importPriceCtKwh ?? null,
+                      slots[0]?.exportValueCtKwh ?? null,
+                    )
+                  : FAHRPLAN_BERECHNUNG
+              }
+              sonne={sonne}
+              verguetungHerkunft={verguetungInfo?.herkunft ?? null}
+              verguetungLuecke={verguetungInfo?.luecke ?? false}
               onAlleWerte={tagArt === 'gestern' ? null : () => setAlleWerteOpen(true)}
               morgen={tagArt === 'heute' ? film.tomorrowSummary : null}
               art={tagArt}
@@ -1100,6 +1215,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
                   siteId={site.id}
                   currentSlotIndex={-1}
                   ohneGeld
+                  sonne={sonne}
                   onClose={schliessen}
                 />
               )}

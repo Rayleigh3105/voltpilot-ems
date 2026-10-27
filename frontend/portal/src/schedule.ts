@@ -1102,6 +1102,13 @@ export const HORIZON_HINT =
   'vorliegen (ab ca. 13 Uhr), plant VoltPilot darüber hinaus.';
 
 /**
+ * Sonnen-sichere Fassung (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.5):
+ * dieselbe ≥13-Uhr-Gatterung, nur ohne das Wort „Börsenpreise" - bei flachem
+ * Bezug und fester Vergütung erklärt der Preis nichts (D1).
+ */
+export const HORIZON_HINT_SONNE = 'Der Fahrplan reicht bis Mitternacht – ab etwa 13 Uhr auch für morgen.';
+
+/**
  * The horizon-edge honesty hint (FK2 part b): before the day-ahead price
  * publication (~13:00) the plan's horizon ends at today's midnight, so the
  * morning Fahrplan shows an evening "hold" that flips to discharge in the
@@ -1109,11 +1116,15 @@ export const HORIZON_HINT =
  * the plan's own slot range: the hint shows while the horizon end lies within
  * today (still ahead of `now`); a plan reaching into tomorrow - or an entirely
  * stale plan, which is a different problem - gets no hint.
+ *
+ * `sonne` (Vorgabe `false`, lässt jeden bestehenden Aufrufer unverändert):
+ * true liefert {@link HORIZON_HINT_SONNE} statt {@link HORIZON_HINT}.
  */
 export function horizonHint(
   slots: { start: string }[],
   now: Date,
   slotMinutes = 15,
+  sonne = false,
 ): string | null {
   if (slots.length === 0) return null;
   // Slots come time-ordered from the API; the horizon ends after the last one.
@@ -1121,7 +1132,7 @@ export function horizonHint(
   const horizonEnd = last + slotMinutes * 60_000;
   if (horizonEnd <= now.getTime()) return null;
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
-  return horizonEnd <= endOfToday ? HORIZON_HINT : null;
+  return horizonEnd <= endOfToday ? (sonne ? HORIZON_HINT_SONNE : HORIZON_HINT) : null;
 }
 
 /* ---------------------------------------------------------------------------

@@ -64,6 +64,27 @@ export interface AnnahmenEingabe {
   } | null;
   /** Der Weg zur Prognose-Seite - nur für VoltPilot; null = kein Link. */
   prognoseSeite?: string | null;
+  /**
+   * Die Vergütungszeile der Sonnen-Erzählung (Konzept
+   * `vp-fahrplan-eigenverbrauch-konzept` §4.5): nur gesetzt, sobald die Anlage
+   * die Sonnen-Erzählung bekommt - sonst keine Zeile (die Börse erklärt die
+   * Einspeisung bei Preis-Erzählung schon über den Reiter „Preise").
+   */
+  verguetung?: {
+    /** Der wirksame Satz (ct/kWh); null = keiner (die Lücke, §5.2). */
+    satzCtKwh: number | null;
+    /** „hergeleitet aus EEG, Inbetriebnahme 01.06.2025" o. ä.; null ohne Angabe. */
+    herkunft: string | null;
+    /** Vergütung nicht hinterlegt - der Satz fehlt, nicht nur seine Herkunft. */
+    luecke: boolean;
+    /** Wohin „ändern ›" führt. */
+    aendernHref: string;
+  } | null;
+  /**
+   * Der § 51a-Satz des Tages (`fahrplanWhy.nullstundenSatz`, §4.4): nur
+   * gesetzt, trägt der jüngste Lauf Viertelstunden ohne Vergütung.
+   */
+  nullstunden?: string | null;
 }
 
 function zahl(v: number | null | undefined): number | null {
@@ -98,6 +119,19 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
   } else if (e.tarifArt === 'fest' && param != null) {
     zeile('tarif', 'euro', 'Fester Strompreis', `${fmtNum(param, 'ct', 1)} je kWh.`);
   }
+  if (e.verguetung) {
+    const v = e.verguetung;
+    zeile(
+      'verguetung',
+      'euro',
+      'Ihre Einspeisevergütung',
+      v.luecke || v.satzCtKwh == null
+        ? 'Vergütung nicht hinterlegt.'
+        : `${fmtNum(v.satzCtKwh, 'ct', 1)} je kWh${v.herkunft ? ` (${v.herkunft})` : ''}.`,
+      { href: v.aendernHref, text: 'ändern' },
+    );
+  }
+  if (e.nullstunden) zeile('nullstunden', 'sun', 'Stunden ohne Vergütung', e.nullstunden);
   if (e.plantKind === 'direktvermarktung') {
     zeile('vermarktung', 'trending-up', 'Direktvermarktung', 'Verkauft wird zum Börsenpreis.');
   }

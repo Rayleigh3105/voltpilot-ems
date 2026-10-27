@@ -218,9 +218,12 @@ describe('FahrplanSection · das Seitengerüst', () => {
     expect(container.querySelector('.vp-tb-zustand')?.textContent).toMatch(/Gerät führt nach · Plan 4,3/);
     fireEvent.click(container.querySelector('.vp-tb-zustand') as HTMLElement);
     expect(screen.getByText(/Fahrplan sah/)).toBeInTheDocument();
-    // Die Zahlen des Warum stehen auf der Waage im Blatt hinter der Status-Zeile.
+    // Diese Anlage rechnet flach (§ 5.1): Lesehöhe b zeigt die Spanne der
+    // Sonnen-Erzählung statt der λ-Waage (Konzept `vp-fahrplan-eigenverbrauch-konzept`).
     fireEvent.click(container.querySelector('button.vp-tb-status') as HTMLElement);
-    expect(screen.getByRole('region', { name: 'Die Waage dieser Viertelstunde' }).textContent).toContain('32,5');
+    expect(screen.getByRole('region', { name: 'Die Waage dieser Viertelstunde' }).textContent).toContain(
+      'Kilowattstunde Sonnenstrom wert ist',
+    );
     // Keine KPI-Reihe, KEINE Geldzahl gegen „ohne Speicher" (E6) und kein
     // Aufklapper „Mehr erklären" neben dem Tagesbild.
     expect(container.querySelector('.vp-kpis')).toBeNull();
@@ -535,13 +538,17 @@ describe('FahrplanSection · die Lage in „Gut zu wissen"', () => {
     return { ...base, slots: [...base.slots, ...morgen] };
   }
 
-  it('steht im Tagesbild unter den Stationen und erzählt den Tages-Bogen', async () => {
+  it('unterdrückt den Börsenpreis-Tagesbogen bei dieser Klasse (B1) und nennt stattdessen den sonnen-sicheren Horizont', async () => {
+    // SITE rechnet flach (`importPriceCtKwh` konstant 32,5, kein Netzladen,
+    // keine Direktvermarktung) - die Sonnen-Erzählung (§ 5.1), die den
+    // Börsenpreis-Bogen „Der Tag" ersatzlos unterdrückt (§4.8, B1).
     schedule.mockResolvedValue(talPlan());
     const { container } = render(<FahrplanSection site={SITE} />);
     await oeffnen();
     aufklappen('Ihr Tag');
-    await waitFor(() => expect(annahmen().textContent).toContain('mittags am günstigsten'));
-    expect(annahmen().textContent).toContain('Der Tag:');
+    await waitFor(() => expect(annahmen().textContent).toContain('ab etwa 13 Uhr auch für morgen'));
+    expect(annahmen().textContent).not.toContain('Der Tag:');
+    expect(annahmen().textContent).not.toContain('mittags am günstigsten');
     // Am Telefon (jsdom misst keine Breite): Uhr → Kacheln → Ihr Tag → Gut zu wissen.
     const reihe = [...container.querySelectorAll('.vp-uhr, .vp-antw, .vp-st, .vp-annahmen')].map((b) => b.classList[0]);
     expect(reihe).toEqual(['vp-uhr', 'vp-antw', 'vp-st', 'vp-annahmen']);
@@ -596,7 +603,7 @@ describe('FahrplanSection · die Lage in „Gut zu wissen"', () => {
     weather.mockRejectedValue(new Error('down'));
     render(<FahrplanSection site={SITE} />);
     await oeffnen();
-    await waitFor(() => expect(annahmen().textContent).toContain('mittags am günstigsten'));
+    await waitFor(() => expect(annahmen().textContent).toContain('ab etwa 13 Uhr auch für morgen'));
     expect(annahmen().textContent).not.toContain('Wettervorhersage');
   });
 });

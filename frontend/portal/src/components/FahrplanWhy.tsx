@@ -165,10 +165,13 @@ export function PhaseCard({
   grenzen = null,
   siteId = null,
   ohneGeld = false,
+  sonne = false,
   onClose,
 }: {
   phase: PlanPhase;
   plantKind: PlanWordingKind;
+  /** Die Sonnen-Erzählung (`preisRolle(...).erzaehlung === 'sonne'`); Vorgabe `false`. */
+  sonne?: boolean;
   /**
    * Die Abregel-Beleg-Lage - vom Aufrufer bereits darauf gefiltert, dass diese
    * Phase die LAUFENDE ist. Ein Beleg von jetzt sagt nichts über eine Phase am
@@ -203,7 +206,7 @@ export function PhaseCard({
         {roleLabel(phase.role, plantKind, phase.limits?.flags ?? null, false, curtail)}
         {mode && <span className="vp-fw-mode">{mode}</span>}
       </div>
-      <p className="vp-fw-why">{phaseWhy(phase, plantKind, curtail, grenzen)}</p>
+      <p className="vp-fw-why">{phaseWhy(phase, plantKind, curtail, grenzen, sonne)}</p>
       {/* Die Ausführungs-Wahrheit der Abregelung - nur mit Beleg. */}
       {curtailExecutionNote(curtail) && (
         <p className="vp-fw-exec">{curtailExecutionNote(curtail)}</p>
@@ -241,6 +244,7 @@ export function SlotCard({
   grenzen = null,
   siteId = null,
   ohneGeld = false,
+  sonne = false,
   onClose,
 }: {
   slot: WhySlot;
@@ -249,6 +253,8 @@ export function SlotCard({
   phases: PlanPhase[];
   plantKind: PlanWordingKind;
   slotMinutes: number;
+  /** Die Sonnen-Erzählung (`preisRolle(...).erzaehlung === 'sonne'`); Vorgabe `false`. */
+  sonne?: boolean;
   /** Wie bei {@link PhaseCard}: nur für die LAUFENDE Viertelstunde gesetzt. */
   curtail?: CurtailTruth;
   /**
@@ -273,8 +279,8 @@ export function SlotCard({
   const role = slot.slotRole as SlotRole;
   // Das Plan-Fenster reist mit: es ist der Maßstab des λ-über-Fenster-Zweigs
   // (W6) - ohne es bleibt der Ruhe-Satz beobachtend.
-  const why = slotWhy(slot, plantKind, curtail, slots, planFacts, grenzen);
-  const rows = slotContextRows(slot, slots, planFacts, plantKind);
+  const why = slotWhy(slot, plantKind, curtail, slots, planFacts, grenzen, sonne);
+  const rows = slotContextRows(slot, slots, planFacts, plantKind, sonne);
   const technik = technikRows(slot, planFacts, plantKind);
   const chips = bindingChips(slot.slotFlags, curtail);
   const phase = phases.find((p) => index >= p.startIdx && index <= p.endIdx) ?? null;
@@ -383,6 +389,7 @@ export function FahrplanWhyPanel({
   siteId = null,
   currentSlotIndex = -1,
   ohneGeld = false,
+  sonne = false,
   onClose,
 }: {
   phases: PlanPhase[];
@@ -391,6 +398,8 @@ export function FahrplanWhyPanel({
   slotMinutes: number;
   selectedPhase: number | null;
   selectedSlot: number | null;
+  /** Die Sonnen-Erzählung (`preisRolle(...).erzaehlung === 'sonne'`); Vorgabe `false`. */
+  sonne?: boolean;
   /** Die LAUF-Fakten des Plans (Erklärbarkeit Stufe 1) - siehe {@link SlotCard}. */
   planFacts?: (PlanWhyFacts & { fallback14a?: boolean | null }) | null;
   /** Die Grenzen-Fakten (Erklärbarkeit Stufe 3) - siehe {@link SlotCard}. */
@@ -425,6 +434,7 @@ export function FahrplanWhyPanel({
         grenzen={grenzen}
         siteId={siteId}
         ohneGeld={ohneGeld}
+        sonne={sonne}
         onClose={onClose}
       />
     );
@@ -444,6 +454,7 @@ export function FahrplanWhyPanel({
         grenzen={grenzen}
         siteId={siteId}
         ohneGeld={ohneGeld}
+        sonne={sonne}
         onClose={onClose}
       />
     );

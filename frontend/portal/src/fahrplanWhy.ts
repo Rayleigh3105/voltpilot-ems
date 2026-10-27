@@ -24,7 +24,7 @@ import {
   type CurtailTruth,
 } from './curtailment';
 import { FEED_IN_FULL_MARGIN_KW } from './flowConflict';
-import { eurAmount, fmtNum } from './format';
+import { eurAmount, fmtNum, NBSP } from './format';
 import {
   leitgrund,
   type GrenzenGrund,
@@ -61,6 +61,8 @@ export interface WhySlot {
   baselineCostEur: number | null;
   curtailKw?: number | null;
   pvKw?: number | null;
+  /** Hausverbrauch der Viertelstunde (kW); null/fehlend = unbekannt. */
+  loadKw?: number | null;
   /**
    * Net grid power of the slot (kW, signed +import/−export). A negative value
    * means the slot feeds surplus into the grid - the trigger for the "Überschuss
@@ -758,23 +760,33 @@ export function roleLabel(
  *
  * `curtail` wie bei {@link roleLabel}: ohne Beleg (Standard) exakt der
  * Plan-Wortlaut aus Fix 1.
+ *
+ * `sonne` (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.4): true, sobald
+ * die Anlage die Sonnen-Erzählung bekommt (`preisRolle(...).erzaehlung ===
+ * 'sonne'`) — Vorgabe `false` lässt jeden bestehenden Aufrufer unverändert.
  */
 export function phaseWhy(
   phase: PlanPhase,
   kind: PlanWordingKind,
   curtail: CurtailTruth = CURTAIL_PLAN,
   grenzen?: GrenzenKontext | null,
+  sonne = false,
 ): string {
   switch (phase.role) {
     case 'pv_speichern':
-      return 'Überschüssiger Solarstrom wandert in den Speicher statt in die Einspeisung – für die teuren Stunden.';
+      return sonne
+        ? 'Überschüssiger Solarstrom wandert in den Speicher statt in die Einspeisung – für heute Abend.'
+        : 'Überschüssiger Solarstrom wandert in den Speicher statt in die Einspeisung – für die teuren Stunden.';
     case 'guenstig_laden':
       return phase.driver === 'lastspitze'
         ? 'Der Speicher kauft günstigen Strom ein – bewusst flach verteilt, damit keine neue Lastspitze entsteht.'
         : 'Der Speicher kauft günstigen Strom ein – für die teuren Stunden danach.';
     case 'eigenverbrauch':
-      return 'Der Speicher deckt den Verbrauch und vermeidet teuren Netzbezug.';
+      return sonne
+        ? 'Der Speicher deckt den Verbrauch mit Sonnenstrom vom Tag.'
+        : 'Der Speicher deckt den Verbrauch und vermeidet teuren Netzbezug.';
     case 'verkaufen':
+      if (sonne) return 'Der Speicher gibt ab, was das Haus gerade nicht braucht.';
       return kind === 'direktvermarktung'
         ? 'Der Speicher verkauft zum Spitzenpreis.'
         : 'Der Speicher speist zum hohen Preis ein.';
@@ -1013,6 +1025,13 @@ export function dayAvgPriceCt(slots: WhySlot[]): number | null {
  * verglichen wird (W6, Erklärbarkeit Stufe 0). Es ist OPTIONAL: ohne das
  * Fenster (oder ohne λ) entfällt der Zweig und der Satz bleibt beobachtend -
  * nie ein Vergleich gegen einen Preis, den niemand geliefert hat.
+ *
+ * `sonne` (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.4): true, sobald
+ * die Anlage die Sonnen-Erzählung bekommt (`preisRolle(...).erzaehlung ===
+ * 'sonne'`) — Vorgabe `false` lässt jeden bestehenden Aufrufer unverändert.
+ * Dann sprechen die Sätze in Sonne und Haus statt in Börse und
+ * „Wert gespeicherter Energie" (Satzkatalog §4.4); kein Zweig wechselt die
+ * FAKTEN, an denen er hängt - nur ihre Formulierung.
  */
 export function slotWhy(
   slot: WhySlot,
@@ -1021,6 +1040,7 @@ export function slotWhy(
   slots: WhySlot[] = [],
   plan?: PlanWhyFacts | null,
   grenzen?: GrenzenKontext | null,
+  sonne = false,
 ): string | null {
   const role = slot.slotRole;
   if (role == null || !ROLE_SET.has(role)) return null;
@@ -1035,6 +1055,15 @@ export function slotWhy(
       // vp-wr-k0-plandaten, Herzogau 22.09.; Betreiber-Zwilling
       // SlotEconomics.whyText). Der Vergleich steht nur, wenn er stimmt.
       const grid = slot.gridKw == null ? null : Number(slot.gridKw);
+      if (sonne) {
+        if (grid != null && grid > PV_BUS_IMPORT_DEADBAND_KW) {
+          return 'Die Sonne lädt den Speicher, während das Haus kurz Netzstrom nimmt – in den Speicher darf nur Sonnenstrom (EEG).';
+        }
+        const load = slot.loadKw == null ? null : Number(slot.loadKw);
+        return load != null
+          ? `Ihr Haus braucht gerade ${fmtNum(load, 'kW')}. Den Rest der Sonne nimmt der Speicher – für heute Abend.`
+          : 'Den Überschuss Ihrer Sonne nimmt der Speicher – für heute Abend.';
+      }
       if (grid != null && grid > PV_BUS_IMPORT_DEADBAND_KW) {
         const head = 'Solarstrom lädt den Speicher, während das Haus Strom aus dem Netz bezieht';
         const imp = importCt(slot);
@@ -1063,6 +1092,12 @@ export function slotWhy(
         : `${head}.`;
     }
     case 'eigenverbrauch': {
+      if (sonne) {
+        const imp = importCt(slot);
+        return imp != null
+          ? `Die Sonne ist weg. Der Speicher versorgt das Haus mit Sonnenstrom vom Tag – jede Kilowattstunde ersetzt Netzstrom zu ${ctFmt(imp)}.`
+          : 'Die Sonne ist weg. Der Speicher versorgt das Haus mit Sonnenstrom vom Tag.';
+      }
       const imp = importCt(slot);
       if (imp == null || lam == null) {
         return 'Deckt den Verbrauch aus dem Speicher und vermeidet teuren Netzbezug.';
@@ -1073,6 +1108,29 @@ export function slotWhy(
         : `${head}.`;
     }
     case 'verkaufen': {
+      if (sonne) {
+        const idx = slots.findIndex((s) => s.start === slot.start);
+        let nextChargeIdx = -1;
+        for (let i = idx + 1; i < slots.length; i++) {
+          if (slots[i].slotRole === 'pv_speichern') {
+            nextChargeIdx = i;
+            break;
+          }
+        }
+        if (nextChargeIdx < 0) return 'Der Speicher gibt ab, was das Haus gerade nicht braucht.';
+        const bis = slotTime(slots[nextChargeIdx].start);
+        let nullt = false;
+        for (let i = nextChargeIdx; i < slots.length && slots[i].slotRole === 'pv_speichern'; i++) {
+          if (exportCt(slots[i]) === 0) {
+            nullt = true;
+            break;
+          }
+        }
+        const tail = nullt
+          ? ' Mittags füllt ihn die Sonne wieder – dann gibt es für Einspeisung nichts.'
+          : ' Mittags füllt ihn die Sonne wieder.';
+        return `Der Speicher gibt ab, was das Haus bis ${bis} nicht braucht.${tail}`;
+      }
       const verb = kind === 'direktvermarktung' ? 'Verkauft zum Spitzenpreis' : 'Speist ein';
       const exp = exportCt(slot);
       return exp != null && lam != null
@@ -1093,9 +1151,32 @@ export function slotWhy(
       // N8: ein Speicher an der Schutz-Reserve ist LEER - er hält keine Energie
       // "zurück", er hat keine mehr. Dieser Fall muss vor der Rückhalte-Aussage
       // geprüft werden, sonst behauptet der Satz einen Vorrat, den es nicht gibt.
-      if (flags.includes('soc_floor'))
+      if (flags.includes('soc_floor')) {
+        if (sonne) {
+          const floor = plan?.effectiveFloorSocPct == null ? null : Math.round(Number(plan.effectiveFloorSocPct));
+          const idx = slots.findIndex((s) => s.start === slot.start);
+          let naechste: string | null = null;
+          for (let i = idx + 1; i < slots.length; i++) {
+            const pv = slots[i].pvKw == null ? null : Number(slots[i].pvKw);
+            const load = slots[i].loadKw == null ? null : Number(slots[i].loadKw);
+            if (pv != null && load != null && pv > load) {
+              naechste = slotTime(slots[i].start);
+              break;
+            }
+          }
+          const reserveClause =
+            floor != null
+              ? `Der Speicher ist leer, ${floor}${NBSP}% bleiben als Reserve.`
+              : 'Der Speicher ist leer.';
+          const planClause =
+            naechste != null
+              ? ` Das Haus nimmt Netzstrom, bis die Sonne mehr liefert, als es braucht – laut Plan ab ${naechste}.`
+              : ' Das Haus nimmt Netzstrom, bis die Sonne mehr liefert, als es braucht.';
+          return `${reserveClause}${planClause}`;
+        }
         return 'Der Speicher hat seine Schutz-Reserve erreicht. Er lädt automatisch wieder, sobald Ihre PV mehr liefert als das Haus braucht – oder der Strompreis günstig genug ist.';
-      if (slot.unplannedLoadDischarge === false) {
+      }
+      if (!sonne && slot.unplannedLoadDischarge === false) {
         const imp = importCt(slot);
         const importSentence =
           imp == null
@@ -1110,8 +1191,22 @@ export function slotWhy(
           `${valueSentence} Falls Ihre PV nicht reicht, ist Netzbezug in dieser Viertelstunde deshalb bewusst zugelassen.`
         );
       }
-      if (flags.includes('soc_max'))
+      if (flags.includes('soc_max')) {
+        if (sonne) {
+          const exp = exportCt(slot);
+          const expClause = exp != null ? ` und bringt ${ctFmt(exp)} je kWh` : '';
+          return `Der Speicher ist voll. Die übrige Sonne geht ins Netz${expClause}. Heute Abend versorgt er das Haus.`;
+        }
         return 'Der Speicher ist voll. Er entlädt wieder, sobald es sich lohnt – meist am Abend, wenn der Strompreis steigt.';
+      }
+      if (sonne) {
+        const soc = slot.socPct == null ? null : Math.round(Number(slot.socPct));
+        const grid = slot.gridKw == null ? null : Number(slot.gridKw);
+        const tail = grid != null && grid < 0 ? ' Die übrige Sonne geht ins Netz.' : '';
+        return soc != null
+          ? `Der Speicher hat mit ${soc}${NBSP}% genug für heute Abend.${tail}`
+          : `Der Speicher hat gerade genug für heute Abend.${tail}`;
+      }
       {
         // W1 (Erklärbarkeit Stufe 1): der ECHTE Treiber der Ruhe, aus den
         // exportierten Fakten - woher der Wert gespeicherter Energie kommt
@@ -1168,6 +1263,31 @@ const SURPLUS_REST_DEADBAND_KW = 0.05;
 /** de-DE "12:00" for the "lädt ab X Uhr" reason. */
 function slotTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * Der Satz „Stunden ohne Vergütung" (§ 51a EEG, Konzept
+ * `vp-fahrplan-eigenverbrauch-konzept` §4.4): die Viertelstunden, in denen der
+ * Plan bei sonst fester Vergütung nichts für die Einspeisung ansetzt
+ * (`preisRolle(...).nullstunden`). Die Spanne ist VON–BIS über den ersten und
+ * letzten Index; null ohne Nullstunden. Keine zweite Erkennung - die Indizes
+ * kommen ausschließlich aus `preisRolle`.
+ */
+export function nullstundenSatz(
+  slots: readonly WhySlot[],
+  nullstunden: readonly number[],
+  slotMinutes = 15,
+): string | null {
+  if (nullstunden.length === 0) return null;
+  const von = Math.min(...nullstunden);
+  const bis = Math.max(...nullstunden);
+  if (!slots[von] || !slots[bis]) return null;
+  const vonZeit = slotTime(slots[von].start);
+  const bisZeit = slotTime(new Date(new Date(slots[bis].start).getTime() + slotMinutes * 60_000).toISOString());
+  return (
+    `Von ${vonZeit} bis ${bisZeit} gibt es für eingespeisten Strom keine Vergütung ` +
+    '(negative Börsenpreise, § 51a EEG). In dieser Zeit füllt VoltPilot lieber den Speicher.'
+  );
 }
 
 /** Ab dieser Nähe zu 100 % ist „voll wird der Speicher trotzdem" belegt. */
@@ -1386,16 +1506,21 @@ export interface ContextRow {
  * Börsenpreis (with the plan's Ø for comparison), PV-Prognose, Ladestand,
  * Wert gespeicherter Energie. Rows whose value is absent are omitted -
  * "—"-discipline, never a fabricated number.
+ *
+ * `sonne` (§4.8): die Börsenpreis-Zeile (Rauschen bei flachem Bezug) und die
+ * Zeile „Wert gespeicherter Energie" (sie zieht in die Spanne um, §4.4
+ * Lesehöhe b) entfallen; der Rest bleibt wortgleich.
  */
 export function slotContextRows(
   slot: WhySlot,
   slots: WhySlot[],
   plan?: PlanWhyFacts | null,
   kind: PlanWordingKind = 'eigenverbrauch',
+  sonne = false,
 ): ContextRow[] {
   const rows: ContextRow[] = [];
   const price = spotCt(slot);
-  if (price != null) {
+  if (price != null && !sonne) {
     const avg = dayAvgPriceCt(slots);
     rows.push({
       label: 'Börsenpreis',
@@ -1420,7 +1545,7 @@ export function slotContextRows(
       value: `${Number(slot.socPct).toLocaleString('de-DE', { maximumFractionDigits: 0 })} %`,
     });
   }
-  if (slot.storedValueCtKwh != null) {
+  if (slot.storedValueCtKwh != null && !sonne) {
     // Lesehöhe (b), Stufe 1: λ stand hier schon immer - NEU ist sein WARUM.
     // Der Zusatz kommt ausschließlich aus dem exportierten Anker; ohne ihn
     // bleibt die Zeile wortgleich wie vor dieser Stufe.

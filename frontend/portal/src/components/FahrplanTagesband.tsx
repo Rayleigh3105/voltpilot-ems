@@ -45,6 +45,8 @@ export interface FahrplanTagesbandProps {
   onJetzt: () => void;
   /** Ein Klick auf einen Block: das Warum dieser Phase (Index in `tag.phasenRoh`). */
   onPhase: (phaseIndex: number) => void;
+  /** Die Sonnen-Erzählung (§4.6): die Lupe zeigt den Fluss statt der drei Preiszeilen. */
+  sonne?: boolean;
 }
 
 export function FahrplanTagesband({
@@ -58,6 +60,7 @@ export function FahrplanTagesband({
   onWahl,
   onJetzt,
   onPhase,
+  sonne = false,
 }: FahrplanTagesbandProps) {
   const t = chartTheme();
   const mitPreis = tag.preis != null;
@@ -113,7 +116,7 @@ export function FahrplanTagesband({
     : undefined;
 
   const lupeI = schwebt;
-  const lupeView = lupeI == null ? null : lupe(tag, lupeI);
+  const lupeView = lupeI == null ? null : lupe(tag, lupeI, sonne);
   const lupeIst = lupeI == null ? null : (ist[lupeI] ?? null);
   const lupeX = lupeI == null ? 0 : g.x(tag.viertel[lupeI].bis);
   const LUPE_B = 280;

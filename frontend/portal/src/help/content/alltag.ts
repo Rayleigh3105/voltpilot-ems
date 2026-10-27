@@ -56,6 +56,9 @@ export const everydayArticles: HelpArticle[] = [
       { id: 'gruende', title: 'Warum die Batterie gerade so geplant ist', paragraphs: [
         "PV, Bedarf, Tarif, Reserven und Grenzen bestimmen den Plan. Ein günstiger Börsenpreis allein erlaubt noch kein Netzladen; ein hoher Preis verlangt keine vollständige Entladung. Die Waage im Warum stellt die zwei Werte je Kilowattstunde nebeneinander, zwischen denen entschieden wurde; „Alle Gründe und Zahlen“ öffnet die ausführliche Erklärung.",
       ] },
+      { id: 'festpreis', title: 'Bei festem Strompreis', paragraphs: [
+        "Haben Sie einen festen Strompreis und eine feste Einspeisevergütung, erklärt der Fahrplan sich über die Sonne statt über die Börse: Ihr Strompreis gegen Ihre Vergütung ist die eine Waage, die über jede Entscheidung des Tages bestimmt – deshalb zuerst ins Haus, dann in den Speicher, der Rest ins Netz. „Aus eigenem Strom“ zeigt dann, wie viel Ihres heutigen Verbrauchs die Sonne gedeckt hat; „Ihr Sonnenstrom heute“ zeigt, wohin sie floss. Nur bei negativen Börsenpreisen nach dem 25.02.2025 (§ 51a EEG) gibt es für einzelne Viertelstunden keine Vergütung – der Fahrplan füllt den Speicher dann lieber, statt einzuspeisen.",
+      ] },
       { id: 'kontrolle', title: 'Plan ist nicht gleich Ausführung', paragraphs: [
         "Ein Plan belegt eine Absicht. Geräteantworten und Messwerte zeigen, was daraus wurde. Fehlt der Plan, prüfen Sie Verbindung, Speicherzuordnung und die Hinweise unter Steuerung.",
       ], diagram: 'proof' },

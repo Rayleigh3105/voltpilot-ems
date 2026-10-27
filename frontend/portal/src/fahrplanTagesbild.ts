@@ -497,6 +497,7 @@ export function stationen(
   tag: TagModell,
   plantKind: PlanWordingKind,
   ist: readonly (number | null)[] | null = null,
+  sonne = false,
 ): Station[] {
   return tag.phasen.map((p) => {
     const roh = tag.phasenRoh[p.phaseIndex];
@@ -523,9 +524,25 @@ export function stationen(
       ladestand: gemessen ? ladestandSpanne(gemessen.von, gemessen.bis) : ladestandSpanne(anfang, ende),
       gemessen: gemessen != null,
       abweichung,
-      grund: p.role === 'warten' ? null : phaseWhy(roh, plantKind),
+      grund:
+        p.role === 'warten'
+          ? sonne
+            ? stationWartenGrund(tag.slots[roh.startIdx]?.slotFlags ?? [])
+            : null
+          : phaseWhy(roh, plantKind, undefined, undefined, sonne),
     };
   });
+}
+
+/**
+ * Der kurze Warten-Grund der Sonnen-Erzählung (§4.5 „Ihr Tag"): „voll genug –
+ * Sonne geht ins Netz" oder „leer – Haus nimmt Netzstrom"; sonst kein Grund
+ * (die Station bleibt stumm, wie bisher).
+ */
+function stationWartenGrund(flags: readonly string[]): string | null {
+  if (flags.includes('soc_max')) return 'voll genug – Sonne geht ins Netz';
+  if (flags.includes('soc_floor')) return 'leer – Haus nimmt Netzstrom';
+  return null;
 }
 
 /**
@@ -550,7 +567,30 @@ export interface LupeView {
   zeilen: { label: string; wert: string }[];
 }
 
-export function lupe(tag: TagModell, i: number): LupeView | null {
+/** Die kW eines Flusses zwischen zwei Knoten; 0 ohne ihn (nie eine Lücke). */
+function flussKw(fluss: FlussStrom[] | null, von: FlussStrom['von'], nach: FlussStrom['nach']): number {
+  return fluss?.find((f) => f.von === von && f.nach === nach)?.kw ?? 0;
+}
+
+/**
+ * „5,7 kW → Haus 0,4 · Speicher 0 · Netz 5,3" (§4.6: die Lupe zeigt den Fluss
+ * statt der drei Preiszeilen) - reiner Fluss aus `energieFluss`, keine zweite
+ * Rechnung.
+ */
+function sonneFlussZeile(fluss: FlussStrom[] | null, pvKw: number | null): string | null {
+  if (pvKw == null) return null;
+  const haus = flussKw(fluss, 'sonne', 'haus');
+  const speicher = flussKw(fluss, 'sonne', 'speicher');
+  const netz = flussKw(fluss, 'sonne', 'netz');
+  return `${fmtNum(pvKw, 'kW')} → Haus ${fmtNum(haus, 'kW')} · Speicher ${fmtNum(speicher, 'kW')} · Netz ${fmtNum(netz, 'kW')}`;
+}
+
+/**
+ * `sonne` (§4.6, Vorgabe `false` lässt jeden bestehenden Aufrufer
+ * unverändert): statt der drei Preiszeilen (Strom kostet/Einspeisewert/Wert
+ * gespeicherter Energie) steht hier der Sonnenfluss dieser Viertelstunde.
+ */
+export function lupe(tag: TagModell, i: number, sonne = false): LupeView | null {
   const v = tag.viertel[i];
   const s = tag.slots[i];
   if (!v || !s) return null;
@@ -560,20 +600,31 @@ export function lupe(tag: TagModell, i: number): LupeView | null {
   const zeilen: { label: string; wert: string }[] = [];
   const preis = tag.preis?.ct[i] ?? null;
   if (preis != null) zeilen.push({ label: tag.preis?.art === 'boerse' ? 'Börsenpreis' : 'Strompreis', wert: ct(preis) });
-  // Zeigt das Bild die Börse (oder gar keinen Preis), nennt die Lupe den
-  // Bezugspreis trotzdem: was eine kWh aus dem Netz hier kostet, ist ein Fakt.
-  const bezug = tag.preis?.art === 'bezug' ? null : zahl(s.importPriceCtKwh);
-  if (bezug != null) zeilen.push({ label: 'Strom kostet', wert: ct(bezug) });
-  const einspeisung = zahl(s.exportValueCtKwh);
-  if (einspeisung != null) zeilen.push({ label: 'Einspeisewert', wert: ct(einspeisung) });
-  const lambda = zahl(s.storedValueCtKwh);
-  if (lambda != null) zeilen.push({ label: 'Wert gespeicherter Energie', wert: ct(lambda) });
-  const pvM = gewesen ? zahl(s.measuredPvKw) : null;
   const pvF = zahl(s.pvKw);
+  const ldF = zahl(s.loadKw);
+  const fluss = energieFluss({
+    pvKw: pvF,
+    loadKw: ldF,
+    batteryKw: zahl(s.batteryKw),
+    curtailKw: zahl(s.curtailKw),
+  });
+  if (sonne) {
+    const sonnenZeile = sonneFlussZeile(fluss, pvF);
+    if (sonnenZeile != null) zeilen.push({ label: 'Sonne', wert: sonnenZeile });
+  } else {
+    // Zeigt das Bild die Börse (oder gar keinen Preis), nennt die Lupe den
+    // Bezugspreis trotzdem: was eine kWh aus dem Netz hier kostet, ist ein Fakt.
+    const bezug = tag.preis?.art === 'bezug' ? null : zahl(s.importPriceCtKwh);
+    if (bezug != null) zeilen.push({ label: 'Strom kostet', wert: ct(bezug) });
+    const einspeisung = zahl(s.exportValueCtKwh);
+    if (einspeisung != null) zeilen.push({ label: 'Einspeisewert', wert: ct(einspeisung) });
+    const lambda = zahl(s.storedValueCtKwh);
+    if (lambda != null) zeilen.push({ label: 'Wert gespeicherter Energie', wert: ct(lambda) });
+  }
+  const pvM = gewesen ? zahl(s.measuredPvKw) : null;
   if (pvM != null) zeilen.push({ label: 'Sonne gemessen', wert: fmtNum(pvM, 'kW') });
   else if (pvF != null) zeilen.push({ label: 'Sonne erwartet', wert: fmtNum(pvF, 'kW') });
   const ldM = gewesen ? zahl(s.measuredLoadKw) : null;
-  const ldF = zahl(s.loadKw);
   if (ldM != null) zeilen.push({ label: 'Verbrauch gemessen', wert: fmtNum(ldM, 'kW') });
   else if (ldF != null) zeilen.push({ label: 'Verbrauch erwartet', wert: fmtNum(ldF, 'kW') });
   const soc = zahl(s.socPct);
@@ -583,12 +634,7 @@ export function lupe(tag: TagModell, i: number): LupeView | null {
     art,
     was: ph?.label ?? null,
     role: ph?.role ?? null,
-    fluss: energieFluss({
-      pvKw: pvF,
-      loadKw: ldF,
-      batteryKw: zahl(s.batteryKw),
-      curtailKw: zahl(s.curtailKw),
-    }),
+    fluss,
     zeilen,
   };
 }

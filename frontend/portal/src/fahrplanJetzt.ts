@@ -229,6 +229,12 @@ export interface JetztInput {
   conflictStreak?: number;
   plantKind: PlanWordingKind;
   now: Date;
+  /**
+   * Die Sonnen-Erzählung (Konzept `vp-fahrplan-eigenverbrauch-konzept`,
+   * `preisRolle(...).erzaehlung === 'sonne'`); Vorgabe `false` lässt den
+   * Status-Satz unverändert (Preis-Erzählung).
+   */
+  sonne?: boolean;
 }
 
 /**
@@ -376,9 +382,15 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
       // Viertelstunde stehen. `maxFeedInKw` liegt hier ohnehin (der
       // Flussabgleich braucht es), also nennt der Abregel-Satz des Helden die
       // Einspeisegrenze mit ihrer Zahl - ohne einen zweiten Eingang.
-      slotWhy(slot, plantKind, curtail, input.slots ?? [], input.planFacts, {
-        maxFeedInKw: input.maxFeedInKw,
-      })
+      slotWhy(
+        slot,
+        plantKind,
+        curtail,
+        input.slots ?? [],
+        input.planFacts,
+        { maxFeedInKw: input.maxFeedInKw },
+        input.sonne ?? false,
+      )
     : null;
   // ... und der Steuerungs-Zustand aus der BESTEHENDEN Ableitung der Karte.
   const strip = controlStrip(input.control, now, input.expectControl, reason);

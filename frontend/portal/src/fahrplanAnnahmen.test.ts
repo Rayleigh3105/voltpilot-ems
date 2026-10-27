@@ -87,4 +87,40 @@ describe('planAnnahmen · worauf der Plan achtet', () => {
     const ohneLage = planAnnahmen({ ...BASIS, horizont });
     expect(ohneLage[0]).toMatchObject({ key: 'horizont', text: horizont });
   });
+
+  it('nennt die Einspeisevergütung mit Herkunft und verlinkt „ändern" (Sonnen-Erzählung §4.5)', () => {
+    const z = planAnnahmen({
+      ...BASIS,
+      verguetung: {
+        satzCtKwh: 8.1,
+        herkunft: 'EEG, Inbetriebnahme 15.06.2024',
+        luecke: false,
+        aendernHref: '#/anlage/a1/einstellungen/geld',
+      },
+    });
+    expect(z.find((x) => x.key === 'verguetung')).toMatchObject({
+      titel: 'Ihre Einspeisevergütung',
+      text: `8,1${NBSP}ct je kWh (EEG, Inbetriebnahme 15.06.2024).`,
+      link: { href: '#/anlage/a1/einstellungen/geld', text: 'ändern' },
+    });
+  });
+
+  it('zeigt die Lücke, ist die Vergütung nicht hinterlegt - nie einen erfundenen Satz', () => {
+    const z = planAnnahmen({
+      ...BASIS,
+      verguetung: { satzCtKwh: null, herkunft: null, luecke: true, aendernHref: '#/anlage/a1/einstellungen/geld' },
+    });
+    expect(z.find((x) => x.key === 'verguetung')?.text).toBe('Vergütung nicht hinterlegt.');
+  });
+
+  it('ohne Vergütungs-Angabe bleibt die Zeile ganz weg', () => {
+    expect(planAnnahmen(BASIS).some((x) => x.key === 'verguetung')).toBe(false);
+  });
+
+  it('nennt die Stunden ohne Vergütung (§ 51a), sobald der Lauf sie trägt', () => {
+    const nullstunden = 'Von 10:00 bis 14:30 gibt es für eingespeisten Strom keine Vergütung (negative Börsenpreise, § 51a EEG). In dieser Zeit füllt VoltPilot lieber den Speicher.';
+    const z = planAnnahmen({ ...BASIS, nullstunden });
+    expect(z.find((x) => x.key === 'nullstunden')).toMatchObject({ titel: 'Stunden ohne Vergütung', text: nullstunden });
+    expect(planAnnahmen(BASIS).some((x) => x.key === 'nullstunden')).toBe(false);
+  });
 });

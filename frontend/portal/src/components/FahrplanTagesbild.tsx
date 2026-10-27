@@ -42,7 +42,7 @@ import {
   type TagOhneBild,
 } from '../fahrplanTagesbild';
 import { uhrFenster, uhrModell, uhrPhasen, uhrUnterschrift, type UhrHaelfte, type UhrPhase } from '../fahrplanUhr';
-import { waage } from '../fahrplanWaage';
+import { spanneSatz, waage } from '../fahrplanWaage';
 import type { WhySlot } from '../fahrplanWhy';
 import type { JetztHeldView } from '../fahrplanJetzt';
 import type { PlanWordingKind } from '../schedule';
@@ -96,6 +96,16 @@ export interface FahrplanTagesbildProps {
   ist?: readonly (number | null)[];
   /** Der gemessene Ladestand JETZT (frische Telemetrie); null = keiner. */
   jetztLadestand?: number | null;
+  /**
+   * Die Sonnen-Erzählung (Konzept `vp-fahrplan-eigenverbrauch-konzept`,
+   * `preisRolle(...).erzaehlung === 'sonne'`); Vorgabe `false` lässt Stationen,
+   * Waage und Lupe unverändert (Preis-Erzählung).
+   */
+  sonne?: boolean;
+  /** Herkunft der Einspeisevergütung für die Spanne (§4.4); null = unbekannt. */
+  verguetungHerkunft?: string | null;
+  /** Vergütung nicht hinterlegt (§5.2, die „Lücke"); Vorgabe `false`. */
+  verguetungLuecke?: boolean;
 }
 
 /** Rollen, deren Farbe hell ist: ihr Symbol steht dunkel. */
@@ -121,6 +131,9 @@ export function FahrplanTagesbild({
   art = 'heute',
   ist = KEINE_MESSUNG,
   jetztLadestand = null,
+  sonne = false,
+  verguetungHerkunft = null,
+  verguetungLuecke = false,
 }: FahrplanTagesbildProps) {
   const t = chartTheme();
   const huelle = useRef<HTMLDivElement | null>(null);
@@ -168,7 +181,7 @@ export function FahrplanTagesbild({
     [tag, auswahl, istJetzt, speicher, art],
   );
   const satz = useMemo(() => kopfsatz(tag, art), [tag, art]);
-  const halte = useMemo(() => stationen(tag, plantKind, ist), [tag, plantKind, ist]);
+  const halte = useMemo(() => stationen(tag, plantKind, ist, sonne), [tag, plantKind, ist, sonne]);
   const uhrPh = useMemo(() => uhrPhasen(tag, art === 'heute' ? folgetag : null), [tag, folgetag, art]);
   const fenster = useMemo(() => uhrFenster(tag, uhrPh, haelfte), [tag, uhrPh, haelfte]);
   const uhr = useMemo(() => uhrModell(uhrPh, fenster), [uhrPh, fenster]);
@@ -176,7 +189,16 @@ export function FahrplanTagesbild({
   if (n === 0) return null;
 
   const warumSlot = auswahl >= 0 ? slotFuerWarum(auswahl) : null;
-  const w = warumSlot ? waage(warumSlot, plantKind) : null;
+  const w = warumSlot
+    ? sonne
+      ? spanneSatz({
+          importCtKwh: warumSlot.importPriceCtKwh ?? null,
+          exportCtKwh: warumSlot.exportValueCtKwh ?? null,
+          verguetungHerkunft,
+          luecke: verguetungLuecke,
+        })
+      : waage(warumSlot, plantKind)
+    : null;
   const band = auswahl >= 0 ? momentBand(tag, auswahl, istJetzt, held, w?.urteil ?? null) : null;
   const jz = auswahl >= 0 ? jetztZeile(tag, auswahl, istJetzt, held, plantKind, jetztLadestand) : null;
   const erloeseHref = `#/anlage/${siteId}/erloese`;
@@ -465,6 +487,7 @@ export function FahrplanTagesbild({
             onWahl={(i) => setWahl(i === jetztI ? null : i)}
             onJetzt={zurueck}
             onPhase={(p) => phaseOeffnen({ quelle: 'tag', phaseIndex: p })}
+            sonne={sonne}
           />
         </section>
         <div className="vp-tb-unten">
