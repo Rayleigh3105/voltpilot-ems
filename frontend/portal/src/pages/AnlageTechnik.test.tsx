@@ -757,16 +757,19 @@ describe('Einstellungen · von VoltPilot eingerichtet (Schloss)', () => {
     const { restore } = await renderEinstellungen();
     const streifen = document.querySelector('.vp-set-schutz') as HTMLElement;
     expect(within(streifen).getByText('§ 14a-Schutz')).toBeInTheDocument();
-    expect(within(streifen).getByText('Negativpreis-Abregelung')).toBeInTheDocument();
     expect(within(streifen).getByText('EEG: nur Solarladen')).toBeInTheDocument();
+    // N4: feste Vergütung (eigenverbrauch, kein Netzladen) regelt nie wegen
+    // des Preises ab - die Zeile behauptet das dann auch nicht.
+    expect(within(streifen).queryByText('Negativpreis-Abregelung')).toBeNull();
     restore();
   });
 
-  it('… und lässt „nur Solarladen" weg, sobald das Netzladen erlaubt ist', async () => {
+  it('… und lässt „nur Solarladen" weg, sobald das Netzladen erlaubt ist - dann regelt die Anlage auch bei Negativpreis ab', async () => {
     const { restore } = await renderEinstellungen({ netzladenErlaubt: true });
     const streifen = document.querySelector('.vp-set-schutz') as HTMLElement;
     expect(within(streifen).getByText('§ 14a-Schutz')).toBeInTheDocument();
     expect(within(streifen).queryByText('EEG: nur Solarladen')).toBeNull();
+    expect(within(streifen).getByText('Negativpreis-Abregelung')).toBeInTheDocument();
     restore();
   });
 });

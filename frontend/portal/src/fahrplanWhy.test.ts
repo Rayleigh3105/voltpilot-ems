@@ -374,11 +374,22 @@ describe('slotWhy (per-slot customer sentence)', () => {
     expect(old).not.toContain('15,8');
   });
 
-  it('verkaufen words per plant kind', () => {
-    expect(slotWhy({ ...base, slotRole: 'verkaufen' }, 'direktvermarktung')).toBe(
-      'Verkauft zum Spitzenpreis: Börsenpreis 31,5 ct/kWh liegt über dem Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
+  it('verkaufen words per plant kind and names the Einspeisewert, not the bare Börsenpreis (N6)', () => {
+    // exportValueCtKwh (35,2) diverges from the bare Börsenpreis (31,5 aus
+    // priceEurMwh=315) - eine feste Vergütung oder §51a-Abregelung kann vom
+    // Spot abweichen, und der Satz muss nennen, was die Anlage wirklich
+    // einnimmt, nicht was die Börse gerade tut.
+    const sentence = slotWhy({ ...base, slotRole: 'verkaufen', exportValueCtKwh: 35.2 }, 'direktvermarktung');
+    expect(sentence).toBe(
+      'Verkauft zum Spitzenpreis: Einspeisewert 35,2 ct/kWh liegt über dem Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
     );
-    expect(slotWhy({ ...base, slotRole: 'verkaufen' }, 'eigenverbrauch')).toContain('Speist ein');
+    expect(sentence).not.toContain('Börsenpreis');
+    expect(slotWhy({ ...base, slotRole: 'verkaufen', exportValueCtKwh: 35.2 }, 'eigenverbrauch')).toContain('Speist ein');
+    // Ohne exportValueCtKwh (älterer Lauf) degradiert der Satz, statt stumm
+    // auf den Börsenpreis zurückzufallen.
+    expect(slotWhy({ ...base, slotRole: 'verkaufen' }, 'direktvermarktung')).toBe(
+      'Verkauft zum Spitzenpreis: der Preis liegt über dem Wert gespeicherter Energie.',
+    );
   });
 
   // §4 geschärft: jeder Ruhe-Satz sagt, was ALS NÄCHSTES passiert.
@@ -396,6 +407,20 @@ describe('slotWhy (per-slot customer sentence)', () => {
     expect(slotWhy({ ...base, slotRole: 'warten' }, 'eigenverbrauch')).toBe(
       'Der Speicher wartet – für diese Viertelstunde ist weder Laden noch Entladen eingeplant.',
     );
+  });
+
+  // N8: ein leerer Speicher an der Schutz-Reserve hält KEINE Energie zurück -
+  // er hat keine mehr. Der soc_floor-Satz muss VOR der Rückhalte-Aussage
+  // greifen, auch wenn unplannedLoadDischarge zugleich false ist.
+  it('N8: soc_floor geht der Rückhalte-Aussage vor, auch mit unplannedLoadDischarge=false', () => {
+    const sentence = slotWhy(
+      { ...base, slotRole: 'warten', slotFlags: ['soc_floor'], unplannedLoadDischarge: false },
+      'eigenverbrauch',
+    );
+    expect(sentence).toBe(
+      'Der Speicher hat seine Schutz-Reserve erreicht. Er lädt automatisch wieder, sobald Ihre PV mehr liefert als das Haus braucht – oder der Strompreis günstig genug ist.',
+    );
+    expect(sentence).not.toContain('wertvolleren Einsatz zurück');
   });
 
   it('erklärt einen bewusst zugelassenen Netzbezug mit den zwei getrennten Preiswahrheiten', () => {
@@ -647,6 +672,16 @@ describe('surplusWhy (Teil 4b: Überschuss geht ins Netz statt in die Batterie)'
       expect(s).not.toContain('kostet Laden nur');
     });
 
+    // N7: bei GLEICHSTAND (Einspeisen jetzt = entgangene Vergütung im
+    // Ladefenster) ist "bringt 5,0 ... kostet nur rund 5,0" kein echter
+    // Vorteil - der bezifferte Satz darf dann nicht erscheinen.
+    it('c) beziffert NICHT bei Gleichstand (N7: < statt <=)', () => {
+      const gleich = [now, chargeSlot(13, 15, 5, 15), chargeSlot(13, 30, 5, 15, 92), chargeSlot(13, 45, 0, 0)];
+      const s = surplusWhy(now, 'eigenverbrauch', nextCharge, { slots: gleich, slotMinutes: 15 })!;
+      expect(s).toContain('Er lädt laut Fahrplan ab');
+      expect(s).not.toContain('kostet Laden nur');
+    });
+
     it('d) hängt bei erreichter Grenze den „darüber lädt der Speicher"-Zusatz an (Teil 2)', () => {
       expect(
         surplusWhy({ ...exporting, gridKw: -31.2 }, 'direktvermarktung', null, {
@@ -686,6 +721,21 @@ describe('slotContextRows', () => {
 
   it('dayAvgPriceCt is null without prices', () => {
     expect(dayAvgPriceCt(mkSlots(rep('warten', 3)))).toBeNull();
+  });
+
+  // N2: der Satz "Ihr Haus bezieht seine Last parallel aus dem Netz" steht
+  // nur, wenn wirklich Netzbezug parallel läuft - nie bei chargeFromSurplusOnly
+  // ohne jeden Netzbezug (Plan: Netz 0).
+  it('N2: nennt den parallelen Netzbezug nur, wenn der Slot wirklich Netzbezug plant', () => {
+    const slots = mkSlots(rep('pv_speichern', 1), () => ({ chargeFromSurplusOnly: true, gridKw: 0 }));
+    expect(slotContextRows(slots[0], slots)).not.toContainEqual(
+      expect.objectContaining({ label: 'In dieser Viertelstunde' }),
+    );
+    const mitNetzbezug = mkSlots(rep('pv_speichern', 1), () => ({ chargeFromSurplusOnly: true, gridKw: 1.2 }));
+    expect(slotContextRows(mitNetzbezug[0], mitNetzbezug)).toContainEqual({
+      label: 'In dieser Viertelstunde',
+      value: 'lädt der Speicher nur den gemessenen Solar-Überschuss – Ihr Haus bezieht seine Last parallel aus dem Netz',
+    });
   });
 });
 

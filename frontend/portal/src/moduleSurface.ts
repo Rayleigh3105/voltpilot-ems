@@ -310,6 +310,25 @@ export function vermiedeneSpitzeLine(
 }
 
 /**
+ * N4: true nur für die Klassen, deren Plan die Einspeisung wirklich zum
+ * Börsenpreis rechnet und darum bei Negativpreis tatsächlich abregelt
+ * (`SlotEconomics.exportValueCtKwh` server-seitig: `netzladenErlaubt` und
+ * Direktvermarktung fallen bei negativem Spot selbst unter null). Eine feste
+ * EEG-Vergütung bleibt positiv, egal was die Börse macht - der Solver regelt
+ * dort nie wegen des Preises ab (`solver.py` PV-Kürzung). Ohne die Erzeuger-
+ * Daten (Inbetriebnahme, §51a-Ablauf) bleibt die Entscheidung bei dieser
+ * groben Zweiteilung: der sichere Fall (ja/nein eindeutig), nicht die volle
+ * Server-Regel - eine feine Zwischen-Klasse bräuchte eine neue Eingabe, die
+ * das Portal heute nicht hat.
+ */
+export function exportFolgtBoersenpreis(site: {
+  plantKind?: PlantKind | string | null;
+  netzladenErlaubt?: boolean | null;
+}): boolean {
+  return site.netzladenErlaubt === true || site.plantKind === 'direktvermarktung';
+}
+
+/**
  * Tier 3 - always-on protections the system applies automatically. One line
  * each; the tip carries the detail behind an InfoTip.
  */

@@ -290,17 +290,22 @@ export function FahrplanTagesband({
           <rect x={g.x(0)} y={g.sonne[0]} width={breiteFlaeche} height={g.sonne[1] - g.sonne[0]} className="vp-tband-grund" />
           {m.sonneErwartet && <path d={m.sonneErwartet} fill={t.pv} fillOpacity={0.3} />}
           {m.sonneGemessen && <path d={m.sonneGemessen} fill={t.pv} fillOpacity={0.85} />}
-          {m.sonneSpitze && (
-            <text
-              x={m.jetztX != null && Math.abs(m.sonneSpitze.x - m.jetztX) < 40 ? m.jetztX - 6 : m.sonneSpitze.x}
-              y={Math.max(g.sonne[0] + 11, m.sonneSpitze.y)}
-              textAnchor={m.jetztX != null && Math.abs(m.sonneSpitze.x - m.jetztX) < 40 ? 'end' : 'middle'}
-              className="vp-tband-marke"
-              fill={t.pvLine}
-            >
-              {fmtNum(m.sonneSpitze.kw, 'kW')}
-            </text>
-          )}
+          {m.sonneSpitze && (() => {
+            // N3: nur eine GEMESSENE Spitze darf an die Jetzt-Linie heranrücken -
+            // eine geplante bleibt auf ihrer Seite, sonst läse sie sich als Messung.
+            const anJetzt = m.sonneSpitze.gemessen && m.jetztX != null && Math.abs(m.sonneSpitze.x - m.jetztX) < 40;
+            return (
+              <text
+                x={anJetzt ? m.jetztX! - 6 : m.sonneSpitze.x}
+                y={Math.max(g.sonne[0] + 11, m.sonneSpitze.y)}
+                textAnchor={anJetzt ? 'end' : 'middle'}
+                className="vp-tband-marke"
+                fill={t.pvLine}
+              >
+                {fmtNum(m.sonneSpitze.kw, 'kW')}
+              </text>
+            );
+          })()}
         </g>
 
         {/* 3b. Strompreis: hell günstig, dunkel teuer. */}

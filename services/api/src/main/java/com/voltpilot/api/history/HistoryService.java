@@ -159,7 +159,7 @@ public class HistoryService {
             HistoryRange.Window window, HistoryRepository.CoverageRow coverageRow,
             HistoryCoverageDto coverage, LocalDate at, Instant cutover) {
         List<HistoryEventDto> events = new java.util.ArrayList<>(Ereignisse.build(range,
-                repo.negativePriceSlots(biddingZone, window.from(), window.to()),
+                negativeEinspeiseSlots(siteId, biddingZone, window),
                 repo.curtailSlots(siteId, window.from(), window.to()),
                 Ereignisse.evaluatesGridLimit(range)
                         ? repo.gridLimitSlots(siteId, window.from(), window.to())
@@ -175,6 +175,35 @@ public class HistoryService {
             }
         }
         return events;
+    }
+
+    /**
+     * Die negativen Börsenpreis-Viertelstunden, EINGESCHRÄNKT auf die, in denen
+     * die Einspeisung dieser Anlage dabei wirklich Geld kostet (N5,
+     * vp-fahrplan-eigenverbrauch-konzept §9). {@code negativePriceSlots} ist
+     * zonenweit - eine feste EEG-Vergütung bleibt positiv, egal was die Börse
+     * macht ({@link SlotEconomics#exportValueCtKwh}), und regelt dafür nie
+     * wegen des Preises ab. Ohne die Anlagen-Ökonomie (RLS) bleibt der
+     * zonenweite Fund stehen, statt ein echtes Ereignis stumm zu verschlucken.
+     */
+    private List<HistoryRepository.ValueSlot> negativeEinspeiseSlots(UUID siteId, String biddingZone,
+            HistoryRange.Window window) {
+        List<HistoryRepository.ValueSlot> slots =
+                repo.negativePriceSlots(biddingZone, window.from(), window.to());
+        if (slots.isEmpty()) {
+            return slots;
+        }
+        SlotEconomics economics = diagnostics.economicsFor(siteId, window.from(), window.to());
+        if (economics == null) {
+            return slots;
+        }
+        return slots.stream()
+                .filter(s -> {
+                    Double spot = s.value() == null ? null : s.value().doubleValue();
+                    Double exportCt = economics.exportValueCtKwh(spot, s.slot());
+                    return exportCt == null || exportCt < 0.0;
+                })
+                .toList();
     }
 
     // ---- Abendverkauf (P2 des Nachtreserve-Konzepts) --------------------------

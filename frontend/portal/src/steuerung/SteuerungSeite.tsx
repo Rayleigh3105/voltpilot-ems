@@ -582,6 +582,8 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         onReihenfolge={reihenfolge}
         onAnlage={() => onOpenSub('modell')}
         netzanschlussKw={rahmen?.effektivGrenzeKw ?? rahmen?.netzanschlussKw ?? null}
+        plantKind={site.plantKind}
+        netzladenErlaubt={site.netzladenErlaubt}
         busy={busy}
         reoStart={reoStart}
         onReoGestartet={() => setReoStart(null)}

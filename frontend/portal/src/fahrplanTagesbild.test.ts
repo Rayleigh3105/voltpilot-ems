@@ -215,6 +215,13 @@ describe('jetztZeile · wer was tut, darunter höchstens drei Stichworte', () =>
   it('sagt beim Warten „wartet", nie „ruht"', () => {
     expect(jetztZeile(t, 2, false, null, 'eigenverbrauch')?.titel).toBe('Speicher wartet');
   });
+
+  it('N9: nennt beim Warten keine kW-Zahl, auch mit Restleistung über der Ruhe-Schwelle', () => {
+    const w = modell((i) => ({ batteryKw: i === 2 ? 0.1 : 0, socPct: 40 }));
+    const z = jetztZeile(w, 2, false, null, 'eigenverbrauch')!;
+    expect(z.titel).toBe('Speicher wartet');
+    expect(z.unterzeile).not.toContain('kW');
+  });
 });
 
 describe('Tagesschalter (E2 = A: Gestern · Heute · Morgen)', () => {

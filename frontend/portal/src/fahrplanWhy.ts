@@ -911,6 +911,17 @@ function importCt(slot: WhySlot): number | null {
   return slot.importPriceCtKwh == null ? null : Number(slot.importPriceCtKwh);
 }
 
+/**
+ * What one exported kWh REALLY earns in this slot (ct/kWh) - the Einspeisewert
+ * the optimizer decided with (P0 Textwahrheit, Einspeiseseite). NEVER falls
+ * back to the bare Börsenpreis: a feste Vergütung or §51a-Abregelung can
+ * diverge from spot, and comparing spot against λ then produced a sentence
+ * that named a price the plant never actually earned (N6).
+ */
+function exportCt(slot: WhySlot): number | null {
+  return slot.exportValueCtKwh == null ? null : Number(slot.exportValueCtKwh);
+}
+
 /** Below this the breakdown's Aufschlag term is noise, not information. */
 const PRICE_PART_DEADBAND_CT = 0.05;
 
@@ -1013,7 +1024,6 @@ export function slotWhy(
 ): string | null {
   const role = slot.slotRole;
   if (role == null || !ROLE_SET.has(role)) return null;
-  const price = spotCt(slot);
   const lam = slot.storedValueCtKwh == null ? null : Number(slot.storedValueCtKwh);
   const flags = slot.slotFlags ?? [];
 
@@ -1064,8 +1074,9 @@ export function slotWhy(
     }
     case 'verkaufen': {
       const verb = kind === 'direktvermarktung' ? 'Verkauft zum Spitzenpreis' : 'Speist ein';
-      return price != null && lam != null
-        ? `${verb}: Börsenpreis ${ctFmt(price)} liegt über dem Wert gespeicherter Energie (≈ ${ctFmt(lam)}).`
+      const exp = exportCt(slot);
+      return exp != null && lam != null
+        ? `${verb}: Einspeisewert ${ctFmt(exp)} liegt über dem Wert gespeicherter Energie (≈ ${ctFmt(lam)}).`
         : `${verb}: der Preis liegt über dem Wert gespeicherter Energie.`;
     }
     case 'spitze_kappen':
@@ -1079,6 +1090,11 @@ export function slotWhy(
         return 'Der Speicher hält Ladung als Reserve für die Lastspitzenkappung zurück.';
       return 'Der Speicher hält Ladung als Reserve zurück.';
     case 'warten':
+      // N8: ein Speicher an der Schutz-Reserve ist LEER - er hält keine Energie
+      // "zurück", er hat keine mehr. Dieser Fall muss vor der Rückhalte-Aussage
+      // geprüft werden, sonst behauptet der Satz einen Vorrat, den es nicht gibt.
+      if (flags.includes('soc_floor'))
+        return 'Der Speicher hat seine Schutz-Reserve erreicht. Er lädt automatisch wieder, sobald Ihre PV mehr liefert als das Haus braucht – oder der Strompreis günstig genug ist.';
       if (slot.unplannedLoadDischarge === false) {
         const imp = importCt(slot);
         const importSentence =
@@ -1096,8 +1112,6 @@ export function slotWhy(
       }
       if (flags.includes('soc_max'))
         return 'Der Speicher ist voll. Er entlädt wieder, sobald es sich lohnt – meist am Abend, wenn der Strompreis steigt.';
-      if (flags.includes('soc_floor'))
-        return 'Der Speicher hat seine Schutz-Reserve erreicht. Er lädt automatisch wieder, sobald Ihre PV mehr liefert als das Haus braucht – oder der Strompreis günstig genug ist.';
       {
         // W1 (Erklärbarkeit Stufe 1): der ECHTE Treiber der Ruhe, aus den
         // exportierten Fakten - woher der Wert gespeicherter Energie kommt
@@ -1336,7 +1350,7 @@ export function surplusWhy(
     // Nur enrichen, wenn die Ökonomie WIRKLICH so ist: das Ladefenster kostet
     // weniger entgangene Vergütung als das Einspeisen jetzt (sonst wäre der
     // bezifferte „darum wartet er"-Satz irreführend).
-    if (expNow != null && range != null && win!.maxExpCt != null && win!.maxExpCt <= expNow) {
+    if (expNow != null && range != null && win!.maxExpCt != null && win!.maxExpCt < expNow) {
       const fill = fillClause(win!);
       return `Der Speicher wartet absichtlich: Einspeisen bringt jetzt ${ctFmt(expNow)}, ab ${slotTime(nextChargeAt)} Uhr kostet Laden nur ${range} entgangene Vergütung.${fill ? ` ${fill}` : ''}`;
     }
@@ -1443,7 +1457,11 @@ export function slotContextRows(
   // W7: in dieser Viertelstunde ist der Watt-Wert eine VORHERSAGE, keine
   // feste Anweisung - deshalb kann Netzbezug entstehen, obwohl der Speicher
   // lädt. Nur bei einem ausdrücklichen true (die Dreiwertigkeit der Pflicht).
-  if (slot.chargeFromSurplusOnly === true) {
+  // N2: der Satz nennt Netzbezug „parallel" - er steht deshalb nur, wenn der
+  // Slot wirklich Netzbezug plant (gridKw > 0), nie bei chargeFromSurplusOnly
+  // ohne jeden Netzbezug (Plan: Netz 0).
+  const gridNow = slot.gridKw == null ? null : Number(slot.gridKw);
+  if (slot.chargeFromSurplusOnly === true && gridNow != null && gridNow > PV_BUS_IMPORT_DEADBAND_KW) {
     rows.push({
       label: 'In dieser Viertelstunde',
       value:
