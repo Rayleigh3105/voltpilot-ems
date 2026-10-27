@@ -293,3 +293,80 @@ test('readModbus: FC aus dem Erzeuger-Bild, ohne Funktionscode keine Lesung', ()
   assert.throws(() => modbusFunktionscode('erzeuger_registerbild', undefined), /Funktionscode/);
   assert.strictEqual(modbusFunktionscode('modbus_holding', 4), 3);
 });
+
+// --- EZ-17, Scheibe 1: die Lesung als Quellen-Telemetrie fuer das Standort-Sample ----------
+//
+// Befund 27.10.2026 (Gore „Neue Halle"): die Box lieferte das Erzeuger-Bild nur als
+// Messwerte (device_measurement_sample) - das Cockpit hatte die Jetzt-Werte, Verlauf und
+// „Heute · kWh" blieben leer, weil das v1-Standort-Sample der Box nur aus einem Wechselrichter
+// und den Quellen pv-generation/grid-meter entsteht. Seitdem veroeffentlicht die Laufzeit nach
+// jeder erkannten Lesung dieselbe Quellen-Nachricht wie jede andere Quelle
+// (edge/sources/<pin>/telemetry), aus der der Kern das Standort-Sample bildet.
+
+const quellenVon = (nachrichten) => nachrichten.filter((m) => m.topic === `edge/sources/${PIN}/telemetry`)
+  .map((m) => m.payload);
+
+test('Quellen-Telemetrie: jede erkannte Lesung geht als pv_power_kw/power_kw in kW auf edge/sources/<pin>/telemetry',
+  { skip:!buehneDa }, async () => {
+    const b = await aufbauen();
+    try {
+      b.runtime.apply(konfiguration());
+      await b.runtime.tick();
+      // Gore: 182 400 W Erzeugung, -1 200 W am Netzpunkt (Einspeisung), Zeit der Lesung.
+      assert.deepStrictEqual(quellenVon(b.gesendet),
+        [{ pv_power_kw:182.4, power_kw:-1.2, ts:'2026-10-21T20:00:00.000Z' }]);
+      // Im Takt der Lesung - auch wenn die Melde-Regel kein Sample schickt (nichts bewegt sich).
+      const runde = await b.runde(5000);
+      assert.deepStrictEqual(samplesVon(runde), []);
+      assert.deepStrictEqual(quellenVon(runde), [{ pv_power_kw:182.4, power_kw:-1.2, ts:'2026-10-21T20:00:05.000Z' }]);
+    } finally { await b.server.close(); }
+  });
+
+test('Quellen-Telemetrie: nur gute Werte - steht der Herzschlag, geht nichts; ohne Netzpunkt kein power_kw',
+  { skip:!buehneDa }, async () => {
+    const b = await aufbauen();
+    try {
+      b.runtime.apply(konfiguration());
+      await b.runtime.tick();
+      // Der Herzschlag steht: die zweite gleiche Lesung ist noch frisch, die dritte ist `stale`.
+      assert.strictEqual(quellenVon(await b.runde(5000, { laeuft:false })).length, 1);
+      assert.deepStrictEqual(quellenVon(await b.runde(5000, { laeuft:false })), []);
+      // Er laeuft wieder: die Lesung ist wieder eine Quelle.
+      assert.strictEqual(quellenVon(await b.runde(5000)).length, 1);
+      // Netzpunkt nicht gueltig (a_gueltig Bit 0 = 0, EW-16 C): nur die Erzeugung, nie power_kw 0.
+      b.store.setze(12, 0b1000);
+      assert.deepStrictEqual(quellenVon(await b.runde(5000)), [{ pv_power_kw:182.4, ts:'2026-10-21T20:00:20.000Z' }]);
+      // Netzpunkt-Messung zu alt (a_alter_s ueber der Schwelle): `uncertain` ist kein Wert.
+      b.store.setze(12, 0b1001); b.store.setze(13, 31);
+      assert.deepStrictEqual(quellenVon(await b.runde(5000)), [{ pv_power_kw:182.4, ts:'2026-10-21T20:00:25.000Z' }]);
+      // Erzeugung nicht gueltig (Bit 3 = 0), Netzpunkt wieder frisch: nur power_kw.
+      b.store.setze(12, 0b0001); b.store.setze(13, 2);
+      assert.deepStrictEqual(quellenVon(await b.runde(5000)), [{ power_kw:-1.2, ts:'2026-10-21T20:00:30.000Z' }]);
+      // Beides ungueltig: keine Quellen-Nachricht.
+      b.store.setze(12, 0);
+      assert.deepStrictEqual(quellenVon(await b.runde(5000)), []);
+    } finally { await b.server.close(); }
+  });
+
+test('Quellen-Telemetrie: Eigenbedarf (negative Erzeugung) ist Verbrauch - pv_power_kw 0, nie negativ',
+  { skip:!buehneDa }, async () => {
+    const b = await aufbauen();
+    try {
+      b.runtime.apply(konfiguration());
+      bilder.woerterVon('S32', -300, 'big').forEach((w, i) => b.store.setze(16 + i, w));
+      bilder.woerterVon('S32', 300, 'big').forEach((w, i) => b.store.setze(14 + i, w));
+      await b.runtime.tick();
+      assert.deepStrictEqual(quellenVon(b.gesendet), [{ pv_power_kw:0, power_kw:0.3, ts:'2026-10-21T20:00:00.000Z' }]);
+      // Das Sample selbst traegt den rohen Wert weiter (die Quelle aendert kein Messwert-Sample).
+      assert.strictEqual(nach(samplesVon(b.gesendet), 'erzeuger.a.p_erzeugung_w').decoded, -300);
+    } finally { await b.server.close(); }
+  });
+
+test('Quellen-Telemetrie: ein fremdes oder nicht lesbares Bild ist keine Quelle', { skip:!buehneDa }, async () => {
+  const b = await aufbauen();
+  try {
+    b.runtime.apply(konfiguration({ bild:{ anlagenart:'bhkw' } }));
+    await b.runtime.tick();
+    assert.deepStrictEqual(quellenVon(b.gesendet), []);
+  } finally { await b.server.close(); }
+});

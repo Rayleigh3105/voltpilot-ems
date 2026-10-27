@@ -3,7 +3,8 @@
 Neu am 21.10.2026, Paket EZ-5 des Konzepts „Erzeuger am WAGO-Modbus-Server“ (Entscheide EW-4 A, EW-5 A,
 EW-17 A, Abgleich EZ-1 A1/A2 und Lesarten 1–12). Die Box liest das VoltPilot-Registerbild Erzeuger v1
 (schlanke Fassung 1.0) einer Anlagensteuerung und liefert Messpunkte, Qualität und Ereignisse — **nur lesen**,
-nichts in die Energiebilanz, nichts in Sonnenstrom-Logik oder Steuerung (Verbraucher sind EZ-17).
+nichts in Sonnenstrom-Logik oder Steuerung (Verbraucher sind EZ-17). Seit EZ-17 Scheibe 1 (27.10.2026) geht die
+Lesung auch in die **Standortbilanz** einer Box ohne Wechselrichter (unten „Standort-Sample“).
 Mit dem Box-Leser ging die Katalogfamilie aus EZ-6 an die Box: **Laufzeitstand 2026.10.21.1** (gleich dem
 Inhaltsstand), Metadaten `V20261021234700`, wirksam mit dem Box-Release, das diese Palette trägt.
 
@@ -34,6 +35,27 @@ Inhaltsstand), Metadaten `V20261021234700`, wirksam mit dem Box-Release, das die
   dokumentierter Länge.
 - `:8484`: die Wahl „Diese Box liest eine Anlagensteuerung“ (`POST /api/onboarding/anlagensteuerung`,
   `<DataDir>/onboarding-anlagensteuerung`) öffnet das Kopplungstor ohne Wechselrichter oder Ladepunkt.
+
+## Standort-Sample (EZ-17 Scheibe 1, 27.10.2026)
+
+Befund Gore „Neue Halle“: das Cockpit zeigte die Jetzt-Werte aus `device_measurement_sample`, Verlauf › Energie,
+„Heute · kWh“ und die Energiebilanz blieben leer — das v1-Standort-Sample der Box (die EINE Quelle von `telemetry`,
+`telemetry_rollup_15m` und Verlauf) entstand nur aus einem Wechselrichter-Sample auf `edge/telemetry` plus den
+Rollen `pv-generation`/`grid-meter`, und die Rolle `plant-controller` las kein Fold.
+
+- `measurement-runtime.js` `erzeugerQuelle`: nach jeder **erkannten** Lesung dieselbe Quellen-Nachricht wie jede
+  andere Quelle auf `edge/sources/<pin>/telemetry` — `pv_power_kw` aus `p_erzeugung_w`, `power_kw` aus `p_nvp_w`
+  (kW, +Bezug/−Einspeisung, Zeit der Lesung), im Takt der Lesung, unabhängig von der Melde-Regel der Samples. Nur
+  `good` wird Kanal: `stale`, `uncertain` (Netzpunkt zu alt), ungültig oder ungedeckt lässt den Kanal weg, nie 0;
+  Eigenbedarf (`p_erzeugung_w` < 0) ist Verbrauch, `pv_power_kw` floor 0.
+- Go-Kern `agent.plantControllerSample` (aus `onSourceTelemetry`): auf einer Box **ohne Wechselrichter** nimmt die
+  Lesung den Platz des Wechselrichter-Samples in `foldSiteSample` ein — derselbe Fold (Quellen-Summe, Tore, Puffer,
+  Ring, Spiegel, Zustand), Hauslast = Standardbilanz pv + grid − Batterie mit Batterie 0 als Tatsache des Bilds.
+  Fehlt ein Kanal, fehlt er im Sample (Büttner ohne Netzpunkt: PV ohne Last). Neben einem Wechselrichter bleibt die
+  Lesung außerhalb der Bilanz (einmal geloggt).
+- ⚠ **Palette und Kern gehören zusammen:** ein alter Kern ignoriert die Nachricht (Rolle ungelesen), eine alte
+  Palette sendet keine — wirksam erst mit dem Box-Release, das beides trägt. Rückwirkend entsteht nichts.
+- Nachweise: Go `plant_controller_sample_test.go`, Node-RED `erzeuger-laufzeit.test.js` („Quellen-Telemetrie“).
 
 ## Fallen
 
