@@ -23,6 +23,7 @@ import {
   type GeraetBild,
 } from './bild';
 import { Ic } from './Ic';
+import { exportFolgtBoersenpreis } from '../moduleSurface';
 import { messBild, type MessTeil } from './messen';
 import { AnlagensteuerungKarten } from './AnlagensteuerungKarte';
 import { vorschlag } from './neu';
@@ -53,6 +54,9 @@ export interface GeraeteReiterProps {
   onReihenfolge: (ids: string[]) => Promise<void>;
   onAnlage: (g: GeraetBild | null) => void;
   netzanschlussKw: number | null;
+  /** N4: nur mit ihnen zeigt „Was immer gilt“ die Negativpreis-Abregelung. */
+  plantKind: string | null;
+  netzladenErlaubt: boolean | null;
   busy: string | null;
   /** Von außen gewünscht: die Reihenfolge ändern (aus einem Blatt). */
   reoStart: string | null;
@@ -95,7 +99,13 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
         onAnlage={p.onAnlage}
         busy={p.busy === 'reihenfolge'}
       />
-      <ImmerKarte bild={bild} oeffne={p.oeffne} netzanschlussKw={p.netzanschlussKw} />
+      <ImmerKarte
+        bild={bild}
+        oeffne={p.oeffne}
+        netzanschlussKw={p.netzanschlussKw}
+        plantKind={p.plantKind}
+        netzladenErlaubt={p.netzladenErlaubt}
+      />
     </>
   );
 }
@@ -918,7 +928,13 @@ function cssId(id: string): string {
 // Was immer gilt
 // ---------------------------------------------------------------------------
 
-function ImmerKarte({ bild, oeffne, netzanschlussKw }: { bild: SeitenBild; oeffne: (b: BlattZustand) => void; netzanschlussKw: number | null }) {
+function ImmerKarte({ bild, oeffne, netzanschlussKw, plantKind, netzladenErlaubt }: {
+  bild: SeitenBild;
+  oeffne: (b: BlattZustand) => void;
+  netzanschlussKw: number | null;
+  plantKind: string | null;
+  netzladenErlaubt: boolean | null;
+}) {
   const rows: [string, string, string, BlattZustand][] = [
     ['shield', 'Wer gewinnt?', 'Schutz › Ihr Eingriff › Regel › Frist › Reihenfolge', { art: 'vorrang' }],
   ];
@@ -929,7 +945,12 @@ function ImmerKarte({ bild, oeffne, netzanschlussKw }: { bild: SeitenBild; oeffn
     rows.push(['gauge', `Netzanschluss ${fKw(netzanschlussKw)}`, 'Laden wird gekürzt, bevor die Sicherung fällt', { art: 'rahmen' }]);
   }
   rows.push(['pole', '§ 14a EnWG', 'Grenze Ihres Netzbetreibers für steuerbare Geräte', { art: 'p14a' }]);
-  rows.push(['down', 'Negativpreis-Abregelung', 'Bei Preisen unter null speist die Anlage nicht ein', { art: 'negativ' }]);
+  // N4: nur zeigen, wo der Plan die Einspeisung wirklich zum Börsenpreis
+  // rechnet - bei fester Vergütung regelt der Optimierer nie wegen des
+  // Preises ab.
+  if (exportFolgtBoersenpreis({ plantKind, netzladenErlaubt })) {
+    rows.push(['down', 'Negativpreis-Abregelung', 'Bei Preisen unter null speist die Anlage nicht ein', { art: 'negativ' }]);
+  }
   return (
     <section className="card immer links" aria-label="Was immer gilt">
       <div className="card-h" style={{ margin: '8px 0 2px' }}>

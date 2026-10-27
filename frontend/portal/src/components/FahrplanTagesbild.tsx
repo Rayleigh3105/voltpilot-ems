@@ -300,7 +300,11 @@ export function FahrplanTagesbild({
     >
       {warumOffen && auswahl >= 0 && (
         <div className="vp-tb-warumblatt vp-tb-blattinhalt">
-          {band?.warum && <p className="vp-tb-warumblatt-satz">{band.warum}</p>}
+          {/* N1: ohne Gerätezustand ist band.warum GENAU der Waage-Satz
+              (`w.urteil` fließt unverändert durch) - dann steht er nur einmal,
+              in der Waage. Mit Gerätezustand (`held.why`) ist er ein eigener
+              Satz und bleibt stehen. */}
+          {band?.warum && band.warum !== w?.urteil && <p className="vp-tb-warumblatt-satz">{band.warum}</p>}
           {w && <FahrplanWaage waage={w} />}
           {/* Was gerade gemessen wird - hier immer erreichbar, auch wenn das Gerät ruhig ist. */}
           {mitJetzt && held && <JetztMesswerte view={held} />}

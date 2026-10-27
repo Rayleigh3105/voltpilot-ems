@@ -6,6 +6,7 @@ import {
   OPTIMIERUNG_INTRO,
   abrechnungLabel,
   buildLastspitzenUpdate,
+  exportFolgtBoersenpreis,
   isLeistungspreisActive,
   lastspitzenkappungCard,
   lastspitzenPerioden,
@@ -145,6 +146,15 @@ describe('PS-4 proof (real numbers on the active card + the money-hero line)', (
   it('abrechnungLabel speaks the billing period', () => {
     expect(abrechnungLabel('jahr')).toBe('pro Jahr');
     expect(abrechnungLabel('monat')).toBe('pro Monat');
+  });
+});
+
+describe('exportFolgtBoersenpreis (N4: Negativpreis-Abregelung nur wo wahr)', () => {
+  it('true nur bei Netzladen oder Direktvermarktung - der feste Vergütungsfall bleibt false', () => {
+    expect(exportFolgtBoersenpreis({ plantKind: 'eigenverbrauch', netzladenErlaubt: false })).toBe(false);
+    expect(exportFolgtBoersenpreis({ plantKind: 'eigenverbrauch', netzladenErlaubt: true })).toBe(true);
+    expect(exportFolgtBoersenpreis({ plantKind: 'direktvermarktung', netzladenErlaubt: false })).toBe(true);
+    expect(exportFolgtBoersenpreis({ plantKind: null, netzladenErlaubt: null })).toBe(false);
   });
 });
 

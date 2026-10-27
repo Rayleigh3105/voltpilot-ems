@@ -404,7 +404,8 @@ export function jetztZeile(
   const kw = zahl(s.batteryKw);
   if (bindung) teile.push(bindung);
   else if (ausgefuehrt && held.value) teile.push(held.value);
-  else if (kw != null && Math.abs(kw) > RUHE_KW) teile.push(fmtNum(Math.abs(kw), 'kW'));
+  // Wartend hat der Speicher keine Leistung zu nennen - „0,0 kW" wäre Rauschen.
+  else if (role !== 'warten' && kw != null && Math.abs(kw) > RUHE_KW) teile.push(fmtNum(Math.abs(kw), 'kW'));
   if (ph) {
     const k = tag.phasen.indexOf(ph);
     const naechste = tag.phasen[k + 1];

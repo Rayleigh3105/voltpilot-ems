@@ -483,6 +483,18 @@ describe('protectionItems', () => {
     expect(labels).toEqual(['§ 14a-Schutz', 'Negativpreis-Abregelung']);
   });
 
+  // N4: die Negativpreis-Abregelung „schützt vor Kosten" nur, wo der Plan
+  // wirklich zum Börsenpreis einspeist - bei fester Vergütung (Eigenverbrauch,
+  // kein Netzladen) regelt der Optimierer nie wegen des Preises ab.
+  it('N4: nennt die Negativpreis-Abregelung nur bei Netzladen oder Direktvermarktung', () => {
+    expect(protectionItems({ netzladenErlaubt: false, plantKind: 'eigenverbrauch' }).map((p) => p.label))
+      .not.toContain('Negativpreis-Abregelung');
+    expect(protectionItems({ netzladenErlaubt: false, plantKind: 'direktvermarktung' }).map((p) => p.label))
+      .toContain('Negativpreis-Abregelung');
+    expect(protectionItems({ netzladenErlaubt: true, plantKind: 'eigenverbrauch' }).map((p) => p.label))
+      .toContain('Negativpreis-Abregelung');
+  });
+
   it('names the EEG solar-only clamp ONLY while grid charging is barred', () => {
     expect(protectionItems({ netzladenErlaubt: false }).map((p) => p.label))
       .toContain('EEG: nur Solarladen');

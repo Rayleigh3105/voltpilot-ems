@@ -242,6 +242,26 @@ describe('Telefon · Warum, Kacheln, Abschnitte', () => {
     expect(warumPanel).toHaveBeenCalledWith(MODELL.jetztIndex, expect.any(Function));
   });
 
+  it('N1: wiederholt beim Warten nicht den Satz der Waage als eigenen Kopfsatz', () => {
+    // Ohne Gerätezustand (held=null) ist band.warum GENAU der Waage-Satz -
+    // der Kopfsatz entfällt dann, die Waage bleibt die einzige Stelle.
+    const jetztWarten = new Date(TAG.getTime() + 2 * 15 * 60_000);
+    const wartenSlots = slots(TAG, LAUF).map((s, i) =>
+      i === 2 ? { ...s, whyNextBest: 'solar_speichern', whyNextBestMarginCt: 3.1 } : s,
+    );
+    const modellWarten = tagModell({ slots: wartenSlots, slotMinutes: 15, now: jetztWarten, plantKind: 'eigenverbrauch' });
+    const { container } = zeichnen({
+      tag: modellWarten,
+      held: null,
+      slotFuerWarum: (i: number) => modellWarten.slots[i] ?? null,
+    });
+    fireEvent.click(container.querySelector('button.vp-tb-status') as HTMLElement);
+    const blatt = screen.getByRole('dialog');
+    expect(container.querySelector('.vp-tb-warumblatt-satz')).toBeNull();
+    const urteil = within(blatt).getByText(/wäre.*schlechter/);
+    expect(urteil.className).toContain('vp-waage-urteil');
+  });
+
   it('zeigt Heute Abend und die Geldzahl als Kacheln - der ganze Satz klappt darunter auf', () => {
     const speicher = speicherAussage(
       { range: 'day', from: TAG.toISOString(), to: MORGEN.toISOString(), savedEur: -0.2, savedSpeicherEur: -0.17, savedSteuerungEur: -0.03, steuerungSplitReason: null },
