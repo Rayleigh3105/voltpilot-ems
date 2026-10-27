@@ -126,3 +126,16 @@ export function preisRolle(eingabe: PreisRolleEingabe): PreisRolle {
 
   return { bezug, einspeisung, luecke, erzaehlung, nullstunden };
 }
+
+/**
+ * Umstellung (report.md §5.3, Scheibe S5): eine eben geänderte Einstellung
+ * (Tarif, Netzladen oder Vergütung) widerspricht noch dem jüngsten Lauf —
+ * der Plan übernimmt sie erst beim nächsten Lauf (höchstens 15 Minuten).
+ * `stammdaten` ist `preisRolle(...)` OHNE `slots` (reiner Rückfall), `lauf`
+ * dieselbe Regel MIT den Preisfeldern des jüngsten Plans. Ohne Lauf (leere
+ * `slots`) lösen beide Seiten über denselben Rückfall auf und stimmen immer
+ * überein — kein erfundener Widerspruch.
+ */
+export function umstellungErkannt(stammdaten: PreisRolle, lauf: PreisRolle): boolean {
+  return stammdaten.erzaehlung !== lauf.erzaehlung;
+}

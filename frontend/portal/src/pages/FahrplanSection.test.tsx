@@ -910,6 +910,59 @@ describe('FahrplanSection · der Tagesschalter (E2 = A)', () => {
     expect(container.querySelector('.vp-uhr-zeiger')).toBeTruthy();
   });
 
+  it('klassiert jeden Tag über seine EIGENEN Preise - gestern Preis-Erzählung, heute bleibt Sonne (Konzept vp-fahrplan-eigenverbrauch-konzept §5.3, Scheibe S5)', async () => {
+    // Heute (und der jüngste Lauf): die Standard-Fixtur ist flach (32,5 ct
+    // konstant) - sonne. Gestern bekommt einen Tag mit SCHWANKENDEM Bezugspreis
+    // (ein dynamischer Tarif, der heute womöglich gar nicht mehr gilt) - preis.
+    const gesternIso = lokal(vortag0());
+    const schwankenderTag = Array.from({ length: 40 }, (_, i) =>
+      slot({
+        start: new Date(vortag0().getTime() + i * 15 * 60_000).toISOString(),
+        slotRole: 'eigenverbrauch',
+        importPriceCtKwh: i % 2 === 0 ? 20 : 40,
+      }),
+    );
+    schedule.mockImplementation((_id: unknown, mode?: unknown, date?: unknown) =>
+      Promise.resolve(
+        date === gesternIso
+          ? { ...plan(), planId: null, slots: schwankenderTag }
+          : mode === 'day'
+            ? dayPlan()
+            : plan(),
+      ),
+    );
+    siteEarnings.mockImplementation((_id: unknown, _r: unknown, at: unknown) =>
+      at === gesternIso ? Promise.resolve(GELD_GESTERN) : Promise.reject(new Error('404')),
+    );
+    const { container } = render(<FahrplanSection site={SITE} />);
+    // Die Uhr trägt denselben Phasen-Namen als eigenes Bogen-Element (role
+    // "button") - die Station in „Ihr Tag"/„Der Tag …" ist deshalb nur über
+    // ihre eigene Klasse eindeutig anzusprechen; heute trägt der Tages-Splice
+    // (`dayPlan()`) zusätzlich eine frühere „Sonne speichern"-Phase, darum
+    // gezielt die „Verbrauch decken"-Zeile suchen statt die erste Station.
+    const stationKlicken = () => {
+      const zeilen = [...container.querySelectorAll('.vp-st-zeile')];
+      const ziel = zeilen.find((z) => z.textContent?.includes('Verbrauch decken'));
+      fireEvent.click((ziel ?? zeilen[0]) as HTMLElement);
+    };
+
+    // Gestern: der Tag selbst schwankt - die Preis-Erzählung, auch wenn heute Sonne gilt.
+    fireEvent.click(await screen.findByRole('tab', { name: /^Gestern/ }));
+    await waitFor(() => expect(screen.getByRole('group', { name: /Die Uhr:/ })).toBeInTheDocument());
+    aufklappen('Der Tag gestern');
+    await waitFor(() => expect(container.querySelector('.vp-st-zeile')).toBeTruthy());
+    stationKlicken();
+    await waitFor(() => expect(screen.getByText(/vermeidet teuren Netzbezug/)).toBeInTheDocument());
+    expect(screen.queryByText(/Sonnenstrom vom Tag/)).toBeNull();
+
+    // Zurück auf heute: derselbe Phasentyp erzählt wieder die Sonne. „Ihr Tag"
+    // steht schon offen (dasselbe Bauteil, derselbe Umschalt-Zustand).
+    fireEvent.click(screen.getByRole('tab', { name: /^Heute/ }));
+    await waitFor(() => expect(container.querySelector('.vp-st-zeile')).toBeTruthy());
+    stationKlicken();
+    await waitFor(() => expect(screen.getByText(/Sonnenstrom vom Tag/)).toBeInTheDocument());
+  });
+
   it('bietet nach einem gescheiterten Abruf von gestern „Erneut versuchen"', async () => {
     const gesternIso = lokal(vortag0());
     let versuche = 0;

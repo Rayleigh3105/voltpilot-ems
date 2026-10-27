@@ -7,7 +7,7 @@ import evFestFruehling from './fahrplanVektoren/laeufe/ev-fest-fruehling-tag.jso
 import evFestNetzladen from './fahrplanVektoren/laeufe/ev-fest-netzladen-0500.json';
 import evFest from './fahrplanVektoren/laeufe/ev-fest-tag.json';
 import type { WhySlot } from './fahrplanWhy';
-import { preisRolle, type PreisRolleSlot } from './preisRolle';
+import { preisRolle, umstellungErkannt, type PreisRolleSlot } from './preisRolle';
 import { gateStrompreis } from './strompreis';
 import type { ActiveMode } from './surface';
 
@@ -149,5 +149,30 @@ describe('Wächter: die drei bestehenden Tore ohne sichtbare Änderung (report.m
     expect(gateStrompreis([], 'fest')).toBe(false);
     expect(gateStrompreis([peak], 'ohne')).toBe(false);
     expect(gateStrompreis([], null)).toBe(false);
+  });
+});
+
+describe('umstellungErkannt (report.md §5.3, Scheibe S5)', () => {
+  it('meldet eine Umstellung, widersprechen sich Stammdaten und der jüngste Lauf', () => {
+    // Stammdaten sagen „fest" (Sonne), der eben umgestellte Lauf rechnet noch dynamisch (Preis).
+    const stammdaten = preisRolle({ tarifArt: 'fest', plantKind: 'eigenverbrauch' });
+    const lauf = preisRolle({ slots: LAEUFE['ev-dyn-tag'].slots, tarifArt: 'fest', plantKind: 'eigenverbrauch' });
+    expect(umstellungErkannt(stammdaten, lauf)).toBe(true);
+  });
+
+  it('meldet keine Umstellung, stimmen Stammdaten und Lauf überein', () => {
+    const stammdatenFest = preisRolle({ tarifArt: 'fest', plantKind: 'eigenverbrauch' });
+    const laufFest = preisRolle({ slots: LAEUFE['ev-fest-tag'].slots, tarifArt: 'fest', plantKind: 'eigenverbrauch' });
+    expect(umstellungErkannt(stammdatenFest, laufFest)).toBe(false);
+
+    const stammdatenDyn = preisRolle({ tarifArt: 'dynamisch', plantKind: 'eigenverbrauch' });
+    const laufDyn = preisRolle({ slots: LAEUFE['ev-dyn-tag'].slots, tarifArt: 'dynamisch', plantKind: 'eigenverbrauch' });
+    expect(umstellungErkannt(stammdatenDyn, laufDyn)).toBe(false);
+  });
+
+  it('meldet keine Umstellung ohne Lauf - beide Seiten lösen über denselben Rückfall auf', () => {
+    const stammdaten = preisRolle({ tarifArt: 'fest', plantKind: 'eigenverbrauch' });
+    const ohneLauf = preisRolle({ tarifArt: 'fest', plantKind: 'eigenverbrauch' });
+    expect(umstellungErkannt(stammdaten, ohneLauf)).toBe(false);
   });
 });

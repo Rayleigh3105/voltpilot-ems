@@ -85,6 +85,15 @@ export interface AnnahmenEingabe {
    * gesetzt, trägt der jüngste Lauf Viertelstunden ohne Vergütung.
    */
   nullstunden?: string | null;
+  /**
+   * Umstellung (Konzept `vp-fahrplan-eigenverbrauch-konzept` §5.3, Scheibe
+   * S5): Stammdaten (Tarif, Vermarktungsart) und der jüngste Lauf
+   * widersprechen sich noch in der Erzählung - eine eben geänderte
+   * Einstellung (Tarif, Netzladen, Vergütung), die der Plan erst beim
+   * nächsten Lauf (höchstens 15 Minuten) nachvollzieht
+   * (`preisRolle.umstellungErkannt`).
+   */
+  umstellung?: boolean;
 }
 
 function zahl(v: number | null | undefined): number | null {
@@ -99,6 +108,17 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
   const out: AnnahmeZeile[] = [];
   const zeile = (key: string, icon: IconName, titel: string, text: string, link: AnnahmeZeile['link'] = null) =>
     out.push({ key, icon, titel, text, link });
+
+  // Umstellung (§5.3): steht zuerst - sie erklärt, warum der Rest der Karte
+  // gerade noch die alte Einstellung zeigen könnte.
+  if (e.umstellung) {
+    zeile(
+      'umstellung',
+      'refresh-cw',
+      'Ihre Änderung',
+      'Ihre Änderung gilt ab dem nächsten Plan (spätestens in 15 Minuten).',
+    );
+  }
 
   // Die Lage: wie der Tag verläuft und was für morgen erwartet wird.
   if (e.lage?.bogen) zeile('bogen', 'trending-up', 'Der Tag', e.lage.bogen);
@@ -136,7 +156,17 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
     zeile('vermarktung', 'trending-up', 'Direktvermarktung', 'Verkauft wird zum Börsenpreis.');
   }
   if (e.netzladenErlaubt === true) {
-    zeile('netzladen', 'zap', 'Netzladen aktiv', 'Der Speicher darf günstigen Netzstrom laden (Ihre Einstellung).');
+    // §5.3: bei festem Strompreis bewertet der Plan die Einspeisung zum
+    // Börsenpreis und lädt aus dem Netz nur über einer Hürde - bei einem
+    // festen Bezugspreis lohnt das praktisch nie, darum der Hinweis mit dem
+    // echten Satz, wenn er bekannt ist.
+    const hinweisFest =
+      e.tarifArt === 'fest'
+        ? param != null
+          ? ` Bei Ihrem festen Strompreis (${fmtNum(param, 'ct', 1)} je kWh) lohnt das praktisch nie – der Speicher kauft dann nur über einer Hürde ein, die kaum je unterschritten wird.`
+          : ' Bei einem festen Strompreis lohnt das praktisch nie – der Speicher kauft dann nur über einer Hürde ein, die kaum je unterschritten wird.'
+        : '';
+    zeile('netzladen', 'zap', 'Netzladen aktiv', `Der Speicher darf günstigen Netzstrom laden (Ihre Einstellung).${hinweisFest}`);
   } else if (e.netzladenErlaubt === false) {
     zeile('netzladen', 'sun', 'Nur Solarladen (EEG)', 'Der Speicher lädt nur aus Sonnenstrom (Ihre Einstellung).');
   }
