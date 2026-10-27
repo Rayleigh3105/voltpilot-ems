@@ -431,6 +431,74 @@ describe('E6 = A · die Prognosen-Seite ist ein Werkzeug für VoltPilot', () => 
   });
 });
 
+describe('„Ein Ort fürs Laden" §4.6/§7.1 · Ladevorgänge entfällt für Privatkunden, Betreiber bleiben als „Ladepark"', () => {
+  const LADEPARK = anlageSurface({
+    entities: [
+      { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+    ] as never,
+    config: { plantKind: 'eigenverbrauch' },
+  });
+
+  function renderLadevorgaenge(
+    betriebsart: 'endkunde' | 'betreiber' | null,
+    ladepunktAnzahl: number | null,
+  ) {
+    return render(
+      <AnlagenPage
+        sites={[site]}
+        devices={[]}
+        devicesFetchedAt={null}
+        route={{ page: 'anlagen', siteId: 's-1', sub: 'ladevorgaenge' as never, geraet: null as never }}
+        onNavigate={() => {}}
+        onReload={() => {}}
+        surface={LADEPARK}
+        betriebsart={betriebsart}
+        ladepunktAnzahl={ladepunktAnzahl}
+      />,
+    );
+  }
+
+  beforeEach(() => {
+    vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] } as never);
+  });
+
+  afterEach(() => {
+    window.location.hash = '';
+  });
+
+  it('leitet eine ausdrückliche Privatkunden-Betriebsart auf Steuerung › Laden um', async () => {
+    window.location.hash = '#/anlage/s-1/ladevorgaenge';
+    renderLadevorgaenge('endkunde', null);
+    await waitFor(() => expect(window.location.hash).toBe('#/anlage/s-1/laden'));
+  });
+
+  it('leitet ohne gespeicherte Betriebsart bei höchstens zwei Ladepunkten ebenfalls um', async () => {
+    window.location.hash = '#/anlage/s-1/ladevorgaenge';
+    renderLadevorgaenge(null, 2);
+    await waitFor(() => expect(window.location.hash).toBe('#/anlage/s-1/laden'));
+  });
+
+  it('lässt einen Betreiber an Ort und Stelle - die Seite bleibt (das Label „Ladepark" prüft ebenenNav.test.ts)', async () => {
+    window.location.hash = '#/anlage/s-1/ladevorgaenge';
+    renderLadevorgaenge('betreiber', null);
+    await screen.findByText('Weitere Säule anbinden');
+    expect(window.location.hash).toBe('#/anlage/s-1/ladevorgaenge');
+  });
+
+  it('lässt ohne gespeicherte Betriebsart bei drei oder mehr Ladepunkten ebenfalls an Ort und Stelle', async () => {
+    window.location.hash = '#/anlage/s-1/ladevorgaenge';
+    renderLadevorgaenge(null, 3);
+    await screen.findByText('Weitere Säule anbinden');
+    expect(window.location.hash).toBe('#/anlage/s-1/ladevorgaenge');
+  });
+
+  it('wartet, solange die Ladepunktzahl noch nicht geladen ist - und leitet nicht verfrüht um', () => {
+    window.location.hash = '#/anlage/s-1/ladevorgaenge';
+    renderLadevorgaenge(null, null);
+    expect(window.location.hash).toBe('#/anlage/s-1/ladevorgaenge');
+  });
+});
+
 describe('Endzustand „nicht zugeordnet": Anlage MIT Daten, ohne v2-Komponenten (Captain-Nachtrag 06.08.2026)', () => {
   it('rendert die ruhige Zeile + den Hebel, und KEINEN M3-Knoten', async () => {
     mockAdaptive(false);

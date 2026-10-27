@@ -2,9 +2,7 @@ import { Recht } from './Recht';
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, ApiError, type Device } from '../api';
 import { VpPicker } from './VpPicker';
 import {
@@ -466,39 +464,4 @@ export function LadesaeuleAnbinden({
 function offen(steps: { erledigt: boolean }[]): number {
   const i = steps.findIndex((s) => !s.erledigt);
   return i < 0 ? steps.length - 1 : i;
-}
-
-/**
- * Derselbe Körper in einem Drawer - der Wirt der Ladevorgänge-Seite.
- */
-export function LadesaeuleAnbindenDrawer({
-  open,
-  siteId,
-  device,
-  devices,
-  onClose,
-  onChanged,
-}: {
-  open: boolean;
-  siteId: string;
-  device?: Device;
-  devices?: Device[];
-  onClose: () => void;
-  onChanged?: () => void;
-}) {
-  if (!open) return null;
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Ladesäule anbinden"
-      icon={
-        <IconTile category="primary" size={40}>
-          <Icon name="zap" size={20} />
-        </IconTile>
-      }
-    >
-      <LadesaeuleAnbinden siteId={siteId} device={device} devices={devices} onChanged={onChanged} />
-    </Modal>
-  );
 }

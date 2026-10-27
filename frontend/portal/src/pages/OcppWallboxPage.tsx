@@ -1,6 +1,6 @@
 import { useRollen } from '../rollen';
 import { Recht } from '../components/Recht';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
@@ -21,16 +21,9 @@ import { fokussierbare } from '../components/VpPanel';
 import { VpPicker } from '../components/VpPicker';
 import { OcppControlPanel } from '../components/OcppControlPanel';
 import {
-  boostEndeKarte,
-  boostDauer,
-  boostFolgenKarte,
-  LADEPUNKT_DAUER_VORGABE,
-  LADEPUNKT_DAUERN,
   ladepunktSperre,
-  pauseFolgenKarte,
   type ChargePoint,
   type ChargingBudget,
-  type LadepunktAktion,
 } from '../ladepunkte';
 import {
   ACTION_GROUP_LABEL,
@@ -63,10 +56,7 @@ import {
   type TechnikTeil,
 } from '../components/GeraetRahmen';
 import { GeraetBuehne } from '../components/GeraetBuehne';
-import { GeraetSteuerung } from '../components/GeraetSteuerung';
-import { HandeingriffDialog } from '../components/HandeingriffDialog';
-import { ladepunktZeilen, type JetztZeile, type LadepunktAdresse } from '../steuerungJetzt';
-import { ladepunktSteuerung, type SegmentAktion } from '../geraetSteuerung';
+import { ladepunktZeilen } from '../steuerungJetzt';
 import type { Zeile } from '../geraetSeite';
 import './OcppWallboxPage.css';
 // Uhr: nie seltener als der Live-Takt (sonst behauptet sie ein altes Alter).
@@ -144,10 +134,6 @@ export function OcppWallboxPage({
   const [eventFilter, setEventFilter] = useState('alle');
   const [pollError, setPollError] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  /** Der Ladepunkt-Eingriff (Sofort laden · Pausieren · Automatik) - derselbe wie in der Steuerung. */
-  const [lade, setLade] = useState<{ adresse: LadepunktAdresse; aktion: LadepunktAktion } | null>(null);
-  const [ladeDauer, setLadeDauer] = useState(LADEPUNKT_DAUER_VORGABE);
-  const [ladeBusy, setLadeBusy] = useState(false);
 
   /**
    * Die Zeile dieser Säule in der Jetzt-Zone der Steuerung - Zustand, Quelle,
@@ -159,50 +145,6 @@ export function OcppWallboxPage({
     () => (charger ? ladepunktZeilen({ chargers: [charger], budget }, undefined, now).zeilen : []),
     [charger, budget, now],
   );
-
-  const ladeFolgen = useMemo(() => {
-    if (!lade) return null;
-    // ⚠ Die RÜCKNAHME beschreibt, was gerade LÄUFT - die zwei Richtungen enden
-    // verschieden (dieselbe Regel wie in der Jetzt-Zone).
-    if (lade.aktion === 'resume') return boostEndeKarte(lade.adresse.eingriff ?? 'voll_laden');
-    const d = LADEPUNKT_DAUERN.find((x) => x.key === ladeDauer) ?? LADEPUNKT_DAUERN[2];
-    if (lade.aktion === 'laden_pausieren') return pauseFolgenKarte(d);
-    return boostFolgenKarte(budget, d);
-  }, [lade, ladeDauer, budget]);
-
-  const ladeBestaetigen = useCallback(async () => {
-    if (!lade) return;
-    setLadeBusy(true);
-    try {
-      const d = LADEPUNKT_DAUERN.find((x) => x.key === ladeDauer) ?? LADEPUNKT_DAUERN[2];
-      await api.chargingBoost(siteId, {
-        chargePointId: lade.adresse.chargePointId,
-        connectorId: lade.adresse.connectorId,
-        // ⚠ „bis Abstecken" reist als `untilUnplug` - dann gilt der Deckel der
-        // Box für diesen Fall (dieselbe Regel wie in der Jetzt-Zone).
-        ...(lade.aktion !== 'resume' ? boostDauer(d.minutes) : {}),
-        cancel: lade.aktion === 'resume',
-        action:
-          lade.aktion === 'laden_pausieren'
-            || (lade.aktion === 'resume' && lade.adresse.eingriff === 'pausiert')
-            ? 'pause'
-            : 'voll',
-      });
-    } catch {
-      // Ein abgelehnter Eingriff lässt die Seite stehen, wie sie war - nie ein
-      // Schein-Erfolg.
-    } finally {
-      setLade(null);
-      setLadeBusy(false);
-      onDatenGeaendert?.();
-    }
-  }, [lade, ladeDauer, siteId, onDatenGeaendert]);
-
-  const segmentAusloesen = useCallback((a: SegmentAktion, zeile: JetztZeile | null) => {
-    if (a.art !== 'ladepunkt' || !zeile?.ladepunkt) return;
-    setLadeDauer(LADEPUNKT_DAUER_VORGABE);
-    setLade({ adresse: zeile.ladepunkt, aktion: a.wert });
-  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), LIVE_POLL_MS);
@@ -396,53 +338,34 @@ export function OcppWallboxPage({
           // ⚠ Den Grund sagt die Steuerung darunter - derselbe Satz zweimal
           // auf einem Bildschirm war der Befund („Ladevorgang läuft.").
           hinweis={detailSatz && detailSatz !== ladeZeile?.grund ? detailSatz : null}
-          warnung={sperre ? `${sperre.satz}.` : null}
-          aktion={(
-            <>
-              {ladeZeile ? null : hauptaktion}
-              {/* Konzept „Ein Ort fürs Laden" e1, §4.2: alle Türen führen zu
-                  „Laden" - hier, prominent, oben auf der Geräteseite. */}
-              {settingsHref && (
-                <a className="vp-btn vp-btn--outline vp-btn--md" href={settingsHref}>
-                  <Icon name="car" size={16} />
-                  Laden steuern
-                </a>
-              )}
-            </>
-          )}
+          // ⚠ Satz UND Folge zusammen (dieselbe Regel wie `SperreHinweis` auf
+          // „Laden"): die Folge stand früher im entfallenden Schalter-Baustein -
+          // ohne ihn wäre sie sonst verschwunden, nicht nur umgezogen.
+          // ⚠ Satz UND Folge als ZWEI eigene Textknoten (dieselbe Form wie
+          // `SperreHinweis` auf „Laden") - zusammengesetzt in EINER Zeichenkette
+          // wäre keiner der beiden Sätze mehr für sich findbar/zitierbar.
+          warnung={sperre ? <><b>{sperre.satz}.</b> {sperre.folge}</> : null}
+          // Konzept „Ein Ort fürs Laden" e1, §4.2: alle Türen führen zu
+          // „Laden" - hier, prominent, oben auf der Geräteseite.
+          // §4.3 (Scheibe 3): die Haupt-OCPP-Aktion (Laden starten/stoppen)
+          // zieht in „Technik und Diagnose" - die Bühne nennt nur noch den
+          // einen Weg zur Schaltstelle.
+          aktion={settingsHref ? (
+            <a className="vp-btn vp-btn--outline vp-btn--md" href={settingsHref}>
+              <Icon name="car" size={16} />
+              Laden steuern
+            </a>
+          ) : null}
         />
       </div>
     ),
   };
 
-  // --- Steuerung: Automatik · Sofort laden · Pausieren ---------------------
-  const steuerungRoh = ladeZeile ? ladepunktSteuerung(ladeZeile) : null;
-  // Die Sperre steht schon groß in der Bühne - unter dem Schalter nur ihre Folge.
-  const steuerungView = steuerungRoh && sperre && steuerungRoh.segmente.length === 0
-    ? { ...steuerungRoh, keinEingriff: sperre.folge }
-    : steuerungRoh;
-  const steuerung: BausteinInhalt | null = steuerungView
-    ? {
-      kopfRechts: steuerungView.zeile.quelle === 'handeingriff' ? 'Handeingriff' : null,
-      inhalt: (
-        <GeraetSteuerung
-          view={steuerungView}
-          busy={ladeBusy}
-          onAktion={(a) => segmentAusloesen(a, ladeZeile)}
-          zusatz={(
-            <>
-              {hauptaktion}
-              {settingsHref && (
-                <p className="vp-steuer-leise">
-                  <a href={settingsHref}>Ladeeinstellungen der Anlage öffnen →</a>
-                </p>
-              )}
-            </>
-          )}
-        />
-      ),
-    }
-    : null;
+  // ⚠ Scheibe 3 (§4.3): der Schalter-Baustein „Automatik · Sofort laden ·
+  // Pausieren" entfällt - er duplizierte Aus · Smart · Schnell, die seit
+  // Scheibe 1 NUR NOCH auf „Laden" schalten. „Laden steuern" (Bühne) führt
+  // hin; die rohe OCPP-Aktion „Laden stoppen" wohnt jetzt in „Technik und
+  // Diagnose" (oben, `hauptaktion`).
 
   // --- Aktivität: die letzten Ladevorgänge ----------------------------------
   const aktivitaet: BausteinInhalt = {
@@ -540,6 +463,17 @@ export function OcppWallboxPage({
       hinweis: gaps.length > 0 ? `${gaps.length} ${gaps.length === 1 ? 'Lücke' : 'Lücken'}` : null,
       inhalt: (
         <div className="vp-ocpp-technik">
+          {/* ⚠ „Laden stoppen" (RemoteStop/-StartTransaction) wandert hierher
+              (Konzept „Ein Ort fürs Laden" e1, Scheibe 3 §4.3) - bewusst NICHT
+              hinter `showCommandCenter`: der Haushalt eines Kundenadministrators
+              sieht sonst gar keine Technik, obwohl ihm genau diese EINE Aktion
+              erlaubt ist (der Command-Center-Vorhang gilt nur den weiteren
+              Support-/Admin-Aktionen). */}
+          {hauptaktion && (
+            <OcppSection id="laden" label="Laden" title="Diese Ladung beenden oder starten">
+              {hauptaktion}
+            </OcppSection>
+          )}
           {showCommandCenter && (
             <OcppSection id="aktionen" label="Support & Administration" title="Für dieses Konto freigegebene OCPP-Aktionen">
               <p className="vp-ocpp-intro">Hier erscheinen ausschließlich Aktionen, die serverseitig für dieses Support- oder Administrationskonto freigegeben sind.</p>
@@ -724,7 +658,7 @@ export function OcppWallboxPage({
           </>
         )}
         veraltet={!connection.online}
-        bausteine={{ buehne, steuerung, heute, aktivitaet }}
+        bausteine={{ buehne, heute, aktivitaet }}
         details={details}
         technik={technik}
       />
@@ -735,20 +669,14 @@ export function OcppWallboxPage({
           connectorId={state.connectorId}
           onClose={() => setActionOpen(null)} onCreated={(action) => {
             setData((old) => old ? { ...old, actions: [action, ...old.actions.filter((row) => row.id !== action.id)] } : old);
+            // „Laden stoppen"/„Laden starten" wohnt seit Scheibe 3 hier (Technik
+            // und Diagnose) - der Host lädt danach wie früher nach dem
+            // Lastmanagement-Eingriff neu, statt stumm auf den nächsten Poll zu warten.
+            if (action.action === 'RemoteStartTransaction' || action.action === 'RemoteStopTransaction') {
+              onDatenGeaendert?.();
+            }
           }} />
       )}
-      {/* Derselbe Folgen-Karten-Dialog wie in der Jetzt-Zone der Steuerung -
-          eine Grammatik für jeden Handeingriff, mit den Dauern des Boosts. */}
-      <HandeingriffDialog
-        folgen={ladeFolgen}
-        busy={ladeBusy}
-        withDuration={lade?.aktion !== 'resume'}
-        dauern={LADEPUNKT_DAUERN}
-        dauerKey={ladeDauer}
-        onDauer={setLadeDauer}
-        onConfirm={() => void ladeBestaetigen()}
-        onCancel={() => !ladeBusy && setLade(null)}
-      />
     </div>
   );
 }

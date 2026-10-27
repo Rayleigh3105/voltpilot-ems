@@ -29,11 +29,10 @@ import {
   type LadevorgangRow,
   type SiteCharging,
 } from '../ladepunkte';
-import { LadesaeuleAnbindenDrawer } from '../components/LadesaeuleAnbinden';
 import { FahrzeugDialog } from '../components/FahrzeugDialog';
 import { verlaufFahrzeug, type FahrzeugWunsch, type SiteFahrzeuge } from '../fahrzeugProfile';
-import { fuehrendeBoxOf, boxRefOf, chargerGeraetId } from '../geraetSeite';
-import { anlageRoute, geraetSeiteHash, hashForRoute } from '../nav';
+import { boxRefOf, chargerGeraetId } from '../geraetSeite';
+import { anlageRoute, aufbauHash, geraetSeiteHash, hashForRoute } from '../nav';
 import { Icon } from '../../designsystem/components/core/Icon';
 import './Ladevorgaenge.css';
 import { useFreshnessPoll } from '../useFreshnessPoll';
@@ -66,9 +65,6 @@ export function LadevorgaengeSection({
   // Bewegung P6: die Ladevorgänge staffeln beim ersten Blick (`src/staffel.ts`).
   const ladeStaffel = useStaffel('ladevorgaenge');
   const boxRef = boxRefOf(devices, site.id);
-  // Die Box kennt ihre eigene Adresse (D5) - der Assistent baut daraus den
-  // `ws://`-Endpunkt. Ohne EINE eindeutige Box nennt er ehrlich den Weg.
-  const box = fuehrendeBoxOf(devices, site.id);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [error, setError] = useState<string | null>(null);
   // „Jetzt voll laden": die EINE Aktion dieser Seite. Sie setzt keine Grenze -
@@ -76,7 +72,6 @@ export function LadevorgaengeSection({
   const [dialog, setDialog] = useState<LadevorgangRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [anbinden, setAnbinden] = useState(false);
   // Die Fahrzeuge dieser Anlage (P7) - fail-soft: ein älteres Backend kennt die
   // Route nicht, dann bleibt die Zeile ohne Fahrzeug-Weg und alles Übrige
   // rendert zeichengleich wie vorher.
@@ -300,22 +295,14 @@ export function LadevorgaengeSection({
         <p className="vp-lade-note">{ANBINDEN_EINSTIEG}</p>
         <p className="vp-lade-note">{ANBINDEN_ALLOWLIST}</p>
         <div className="vp-lade-anbinden-actions">
-          <Recht aktion="ladepunkt.anbinden"><Button size="sm" onClick={() => setAnbinden(true)}>
+          <Recht aktion="ladepunkt.anbinden"><a className="vp-btn vp-btn--primary vp-btn--sm" href={aufbauHash(site.id, 'geraet')}>
             Ladesäule anbinden
-          </Button></Recht>
+          </a></Recht>
           <a className="vp-lade-note" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
             Alle Geräte dieser Anlage ansehen →
           </a>
         </div>
       </Card>
-
-      <LadesaeuleAnbindenDrawer
-        open={anbinden}
-        siteId={site.id}
-        device={box ?? undefined}
-        devices={(devices ?? []).filter((device) => device.siteId === site.id)}
-        onClose={() => setAnbinden(false)}
-      />
 
       {/* Benennen aus dem Verlauf heraus (P7, Konzept §4.5): derselbe Dialog wie
           in der Fahrzeuge-Karte - zwei Dialoge über dieselbe Sache wären zwei

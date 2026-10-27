@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Site, type SiteEntity } from './api';
 import { customerFlowApi } from './flows/flowsApi';
+import { EV_CHARGER } from './ladepunkte';
 import { profileStatesFrom, type SiteProfiles } from './profiles';
 import {
   aufmerksamkeit,
@@ -53,6 +54,14 @@ export interface AnlageSurfaceState {
    * die halbe Steuerungs-Seite, nur um eine Zahl zu malen.
    */
   aufmerksam: Aufmerksamkeit;
+  /**
+   * „Ein Ort fürs Laden" §4.6: die Zahl der Ladepunkte (Katalog-Typ
+   * `ev-charger`), aus den ohnehin schon gefetchten Entities gezählt - kein
+   * zweiter Abruf. Entscheidet nur den Rückfall OHNE gespeicherte
+   * Betriebsart (`ebenenNav.ts` `anlageBereiche`); null = Entities nicht
+   * geladen (Rückfall bleibt dann unentschieden, siehe Aufrufer).
+   */
+  ladepunktAnzahl: number | null;
 }
 
 /**
@@ -70,6 +79,7 @@ export function useAnlageSurface(
   const [loading, setLoading] = useState(site != null);
   const [failed, setFailed] = useState(false);
   const [aufmerksam, setAufmerksam] = useState<Aufmerksamkeit>(() => aufmerksamkeit(null));
+  const [ladepunktAnzahl, setLadepunktAnzahl] = useState<number | null>(null);
 
   const siteId = site?.id ?? null;
   // The money/contract master data comes from the SiteDto we already hold, so
@@ -87,6 +97,7 @@ export function useAnlageSurface(
       setLoading(false);
       setFailed(false);
       setAufmerksam(aufmerksamkeit(null));
+      setLadepunktAnzahl(null);
       return undefined;
     }
     let active = true;
@@ -132,6 +143,9 @@ export function useAnlageSurface(
       if (!active) return;
       setProfiles(shelf);
       setEntityList(entities?.entities ?? null);
+      setLadepunktAnzahl(
+        entities ? entities.entities.filter((e) => e.entityType === EV_CHARGER).length : null,
+      );
       const projektion = anlageSurface({
         signals: profile?.signals ?? null,
         config: {
@@ -171,5 +185,5 @@ export function useAnlageSurface(
     };
   }, [siteId, plantKind, tarifArt, netzladen, leistungspreis, retryKey]);
 
-  return { surface, profiles, entities: entityList, loading, failed, aufmerksam };
+  return { surface, profiles, entities: entityList, loading, failed, aufmerksam, ladepunktAnzahl };
 }

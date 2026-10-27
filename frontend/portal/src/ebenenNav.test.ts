@@ -16,6 +16,7 @@ import {
   EBENEN_SEITEN,
   flottenEintraege,
   istDetailseite,
+  ladeSicht,
   modeViewItems,
   resolveAnlage,
   STANDORT_BERICHTE,
@@ -179,6 +180,70 @@ describe('anlageBereiche - die fünf Bereiche sind FEST und geordnet', () => {
     expect(tabsFor(anlageSidebar(ladepark), 'ladevorgaenge')).toEqual([]);
   });
 
+  it('nennt ihn „Ladepark" für einen Betreiber, egal wie viele Ladepunkte', () => {
+    const ladepark = anlageSurface({
+      entities: [
+        { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+      ],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    const bereiche = anlageBereiche(ladepark, undefined, undefined, false, 'betreiber', 1);
+    const zweiter = bereiche[1];
+    expect(zweiter.key).toBe('ladevorgaenge');
+    expect(zweiter.label).toBe('Ladepark');
+    expect(bottomBarSlots(anlageSidebar(ladepark, undefined, undefined, false, 'betreiber', 1))[1].label).toBe(
+      'Ladepark',
+    );
+  });
+
+  it('lässt den Bereich für eine Privatkunden-Betriebsart WEG - das Laden steht in der Steuerung', () => {
+    const ladepark = anlageSurface({
+      entities: [
+        { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+      ],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    expect(keys(anlageBereiche(ladepark, undefined, undefined, false, 'endkunde'))).toEqual([
+      'cockpit',
+      'verlauf',
+      'steuerung',
+      'anlage',
+    ]);
+    // Die Steuerung behält ihren Reiter „Laden" - unberührt von der Betriebsart.
+    expect(tabsOf(anlageBereiche(ladepark, undefined, undefined, false, 'endkunde'), 'steuerung')).toEqual([
+      'steuerung',
+      'laden',
+      'regeln',
+    ]);
+  });
+
+  it('entscheidet ohne gespeicherte Betriebsart nach der Zahl der Ladepunkte', () => {
+    const ladepark = anlageSurface({
+      entities: [
+        { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+      ],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    // Bis zwei Ladepunkte: Privatkunde - der Bereich entfällt.
+    expect(keys(anlageBereiche(ladepark, undefined, undefined, false, null, 2))).toEqual([
+      'cockpit',
+      'verlauf',
+      'steuerung',
+      'anlage',
+    ]);
+    // Ab drei: Ladepark.
+    expect(anlageBereiche(ladepark, undefined, undefined, false, null, 3)[1].label).toBe('Ladepark');
+  });
+
+  it('ladeSicht: ausdrückliche Betriebsart schlägt die Ladepunktzahl, keine Angabe bleibt historisch', () => {
+    expect(ladeSicht(undefined, undefined)).toBe('ladevorgaenge');
+    expect(ladeSicht(null, 0)).toBe('privatkunde');
+    expect(ladeSicht(null, 2)).toBe('privatkunde');
+    expect(ladeSicht(null, 3)).toBe('ladepark');
+    expect(ladeSicht('betreiber', 0)).toBe('ladepark');
+    expect(ladeSicht('endkunde', 99)).toBe('privatkunde');
+  });
+
   it('hängt die Ladevorgänge als ZWEITEN Reiter an den Fahrplan, wo es beides gibt', () => {
     const beides = anlageSurface({
       entities: [
@@ -191,6 +256,22 @@ describe('anlageBereiche - die fünf Bereiche sind FEST und geordnet', () => {
     expect(keys(bereiche)).toEqual(FUENF);
     // Das Wetter erklärt den Plan und steht deshalb bei ihm (Verlauf-Rework E1).
     expect(tabsOf(bereiche, 'fahrplan')).toEqual(['fahrplan', 'ladevorgaenge', 'wetter']);
+
+    // §4.6: dieselbe Betriebsart-Unterscheidung gilt für den REITER im
+    // Fahrplan genauso wie für den eigenständigen Bereich oben.
+    expect(tabsOf(anlageBereiche(beides, undefined, undefined, false, 'betreiber'), 'fahrplan')).toEqual([
+      'fahrplan',
+      'ladevorgaenge',
+      'wetter',
+    ]);
+    expect(
+      anlageBereiche(beides, undefined, undefined, false, 'betreiber').find((b) => b.key === 'fahrplan')?.tabs
+        .find((t) => t.sub === 'ladevorgaenge')?.label,
+    ).toBe('Ladepark');
+    expect(tabsOf(anlageBereiche(beides, undefined, undefined, false, 'endkunde'), 'fahrplan')).toEqual([
+      'fahrplan',
+      'wetter',
+    ]);
   });
 
   it('öffnet jeder Bereich seine erste Seite', () => {

@@ -4,8 +4,9 @@
  * Säule eintragen → warten, bis sie sich meldet.
  *
  * **Es ist eine reine Textschicht.** Jede Regel und jeder Satz steht hier;
- * `components/LadesaeuleAnbindenDrawer.tsx` rendert nur und meldet, was jemand
- * angefasst hat.
+ * `components/LadesaeuleAnbinden.tsx` (im Aufbau-Fluss `AnlegenFlow.tsx`
+ * eingebettet, seit „Ein Ort fürs Laden" Scheibe 3) rendert nur und meldet,
+ * was jemand angefasst hat.
  *
  * ## Die drei Regeln, die den Assistenten tragen
  *

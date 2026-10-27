@@ -1956,6 +1956,13 @@
       "nachher": "608da9db688bf35e0ecf92e0395c2382b0886b8878597e3a662eb395d6c7dfe9",
       "commit": "fm/vp-ocpp-start-portal",
       "grund": "Audit vp-ocpp-haushalt W-02 (Zusatz Paket Cloud, Inbox 001): der Knopf an einer schon eingetragenen Kennung speichert jetzt Anschluss ODER Nennleistung und heißt deshalb „Änderung speichern“ statt „Anschluss speichern“; er sperrt bei ungültiger Nennleistung, Handler unverändert."
+    },
+    {
+      "datei": "pages/LadevorgaengeSection.tsx",
+      "vorher": "55b42bc07bbd6fc53e701bb83c7d4473d001bacfcb2bd83aa3fe691568637a7b",
+      "nachher": null,
+      "commit": "fm/vp-wallbox-ein-ort-laden-w1",
+      "grund": "Konzept Wallbox-Einbindung e1 (Captain 27.10.2026, E1-E6 = A), Scheibe 3 §4.3/§7: „Ladesäule anbinden“ öffnet keinen eigenen Assistenten-Drawer mehr, sondern führt als Link auf den Aufbau derselben Anlage (`aufbauHash(site.id, 'geraet')`) - demselben Ort, an dem auch eine Anlage oder eine Box entsteht (Hausregel „Ein Ort zum Anlegen“). Der Formular-Körper components/LadesaeuleAnbinden.tsx lebt unverändert im Aufbau-Fluss (AnlegenFlow.tsx) weiter; nur die Drawer-Hülle (components/LadesaeuleAnbindenDrawer) ist entfallen."
     }
   ],
   "assistentZusammenfuehrung": {

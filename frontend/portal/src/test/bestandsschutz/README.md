@@ -117,6 +117,15 @@ drei Portfolio-Reiter und die `startEbene`-Matrix (64 Eingaben). Die fünf in de
 Canvas-/Diagrammkomponenten schützt zusätzlich `diagramme.json` mit SHA-256 des Bezugsstands.
 Damit sind HTML und unveränderte Diagrammquellen geprüft; dies ist keine Pixelaufnahme eines Browsers.
 
+**Ein Ort fürs Laden, Scheibe 3 (27.10.2026, Konzept `vp-wallbox-einbindung-konzept`, „Ladesäule anbinden“ führt in den Aufbau):**
+`verlauf-ladevorgaenge.html` ändert genau eine Stelle: der Knopf „Ladesäule anbinden“ im Kasten „Weitere Säule
+anbinden“ ist kein `<button>` mehr, der einen eigenen Drawer öffnet, sondern ein Link auf den Aufbau derselben
+Anlage (`aufbauHash(site.id, 'geraet')`, `href="#/anlage/s-lade/modell?neu=geraet"`) - derselbe Ort, an dem auch
+eine Anlage oder eine Box entsteht (Hausregel „Ein Ort zum Anlegen“). Die zugehörige `LadesaeuleAnbindenDrawer`-
+Komponente ist entfallen; ihr Formular-Körper `LadesaeuleAnbinden` lebt unverändert im Aufbau-Fluss
+(`AnlegenFlow.tsx`) weiter. Neu geschrieben mit `vitest -u` gegen den aktuellen Produktstand - die bewusste, von
+firstmate beauftragte Änderung dieser Fläche; der Zeichenvergleich alt/neu zeigt nur das eine getauschte Element.
+
 Aus `frontend/portal` gezielt ausführen (auch nach einem Rebase):
 
 ```bash

@@ -967,7 +967,7 @@ function UnifiedPortal() {
   // REITER des Verlaufs, also gewöhnliche Unterseiten - ein eigener Zweig für
   // sie gibt es nicht mehr.
   const shellSite = page === 'anlagen' ? resolveAnlage(sites, route.siteId) : null;
-  const { surface, aufmerksam } = useAnlageSurface(shellSite);
+  const { surface, aufmerksam, ladepunktAnzahl } = useAnlageSurface(shellSite);
 
   // Die stille Auffrischung der Geräteliste - das Gegenstück zur Bezugszeit
   // oben. Vorher tickte hier nur eine Uhr über einem EINMAL geladenen
@@ -1103,6 +1103,8 @@ function UnifiedPortal() {
           aufmerksamkeitTitel(aufmerksam),
           // Das EINE Tor (`rollen.showTechnicalLayer` = Plattform-Admin).
           isAdmin,
+          betriebsart,
+          ladepunktAnzahl,
         ),
         // Hervorgehoben wird der BEREICH, in dem die offene Unterseite wohnt
         // (`activeAreaKey`) - ein Reiter darf die Leiste nie ins Nichts zeigen
@@ -1842,6 +1844,8 @@ function UnifiedPortal() {
               // Standort dieser Anlage misst. Sonst fragt das Cockpit nichts und zeigt nichts Neues.
               misstHier={route.siteId ? misstAnlage(ebenenLesemodell, route.siteId) : false}
               standortId={orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null}
+              betriebsart={betriebsart}
+              ladepunktAnzahl={ladepunktAnzahl}
             />
           )}
           {page === 'plattform-uebersicht' && isAdmin && (

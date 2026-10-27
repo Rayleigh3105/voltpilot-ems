@@ -11,6 +11,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import {
   api,
+  type Betriebsart,
   type ControlStatus,
   type CurtailmentStatus,
   type SiteCharging,
@@ -142,7 +143,7 @@ import { ErrorState, Skeleton } from '../components/States';
 import { LazyBoundary } from '../components/Lazy';
 import { Fehlergrenze } from '../components/Fehlergrenze';
 import { BereichTabs } from '../components/BereichTabs';
-import { anlageSidebar, bereichLabel, tabsFor } from '../ebenenNav';
+import { anlageSidebar, bereichLabel, ladeSicht, tabsFor } from '../ebenenNav';
 import { useSiteEarnings } from '../useSiteEarnings';
 import { isoDate } from '../periodNav';
 // Die Unterseiten einer Anlage werden LAZY geladen. Das Cockpit (`sub === null`)
@@ -313,6 +314,15 @@ export interface AnlagenPageProps {
   misstHier?: boolean;
   /** Standort der Anlage für die additive, fail-soft Ausfall-Lesesicht. */
   standortId?: string | null;
+  /**
+   * „Ein Ort fürs Laden" §4.6 (E2 = A): welches Gesicht der Bereich mit den
+   * Ladepunkten trägt (Privatkunde „Laden" in der Steuerung, Betreiber
+   * „Ladepark" an der heutigen Ladevorgänge-Stelle). Ohne gespeicherte
+   * Betriebsart entscheidet die Zahl der Ladepunkte (`ladepunktAnzahl`).
+   */
+  betriebsart?: Betriebsart | null;
+  /** Aus `useAnlageSurface` - ohne zweiten Abruf gezählt. */
+  ladepunktAnzahl?: number | null;
 }
 
 /**
@@ -361,6 +371,8 @@ export function AnlagenPage(props: AnlagenPageProps) {
       geraet={route.geraet ?? null}
       isAdmin={isAdmin}
       surface={props.surface ?? null}
+      betriebsart={props.betriebsart ?? null}
+      ladepunktAnzahl={props.ladepunktAnzahl ?? null}
       onBack={() => onNavigate(anlageRoute(site.id))}
       onOpenSub={(sub) => onNavigate(anlageRoute(site.id, sub))}
       onReload={props.onReload}
@@ -603,6 +615,8 @@ function AnlagenSubPage({
   geraet,
   isAdmin,
   surface,
+  betriebsart,
+  ladepunktAnzahl,
   onBack,
   onOpenSub,
   onReload,
@@ -616,6 +630,8 @@ function AnlagenSubPage({
   geraet: GeraetTarget | null;
   isAdmin: boolean;
   surface: AnlageSurface | null;
+  betriebsart: Betriebsart | null;
+  ladepunktAnzahl: number | null;
   onBack: () => void;
   onOpenSub: (sub: AnlagenSub) => void;
   onReload: (selectSiteId?: string) => void;
@@ -631,7 +647,7 @@ function AnlagenSubPage({
   // `rollen.showTechnicalLayer`) - hier als Prop, damit die Hülle im
   // Einstiegs-Bündel nicht die Rollen-Ableitung mitzieht.
   const technisch = isAdmin;
-  const sidebar = anlageSidebar(surface, undefined, undefined, technisch);
+  const sidebar = anlageSidebar(surface, undefined, undefined, technisch, betriebsart, ladepunktAnzahl);
   const tabs = tabsFor(sidebar, sub);
 
   // E6 = A: die Prognosen-Seite ist ein Werkzeug für VoltPilot. Ein Kunde, der
@@ -646,6 +662,22 @@ function AnlagenSubPage({
     if (!prognoseUmleiten || hatFahrplan == null) return;
     window.location.replace(hashForRoute(anlageRoute(site.id, hatFahrplan ? 'fahrplan' : null)));
   }, [prognoseUmleiten, hatFahrplan, site.id]);
+
+  // „Ein Ort fürs Laden" §4.6/§7.1 (E2 = A): „Ladevorgänge“ entfällt für
+  // Privatkunden - ein altes Lesezeichen (nav.ts-Disziplin: jedes Lesezeichen
+  // gilt) landet auf Steuerung › Laden, wo dieselbe Frage jetzt wohnt.
+  // Betreiber bleiben an Ort und Stelle (als „Ladepark“, siehe `anlageSidebar`
+  // oben) - nichts leitet dort um. Ohne gespeicherte Betriebsart entscheidet
+  // die Ladepunktzahl erst, sobald sie geladen ist (`ladeEntschieden`) - sonst
+  // träfe eine noch unbekannte Zahl kurz die Privatkunden-Annahme und würde
+  // auch einen Betreiber-Ladepark einen Augenblick umleiten.
+  const ladeEntschieden = betriebsart === 'betreiber' || betriebsart === 'endkunde' || ladepunktAnzahl != null;
+  const ladevorgaengeUmleiten =
+    sub === 'ladevorgaenge' && ladeEntschieden && ladeSicht(betriebsart, ladepunktAnzahl) === 'privatkunde';
+  useEffect(() => {
+    if (!ladevorgaengeUmleiten) return;
+    window.location.replace(hashForRoute(anlageRoute(site.id, 'laden')));
+  }, [ladevorgaengeUmleiten, site.id]);
 
   /**
    * **Der Welt-Wechsel wohnt seit E3 in DIESEN Reitern** (Konzept
@@ -779,7 +811,15 @@ function AnlagenSubPage({
           />
         )}
         {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
-        {sub === 'ladevorgaenge' && <LadevorgaengeSection site={site} devices={devices} />}
+        {sub === 'ladevorgaenge' && !ladevorgaengeUmleiten && (
+          <LadevorgaengeSection site={site} devices={devices} />
+        )}
+        {ladevorgaengeUmleiten && (
+          <p className="vp-muted">
+            Das Laden steht jetzt in der{' '}
+            <a href={hashForRoute(anlageRoute(site.id, 'laden'))}>Steuerung › Laden</a>.
+          </p>
+        )}
         {/* Die BEFEHLE-Seite gehört einer KOMPONENTE - sie kommt als
             Hash-Parameter, damit jedes Lesezeichen dieselbe wieder öffnet. */}
         {sub === 'befehle' && (

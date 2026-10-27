@@ -136,8 +136,13 @@ export function GeraetBuehne({
   chips?: HeldKachel[];
   zeilen?: string[];
   hinweis?: string | null;
-  /** Ein Satz, den der Kunde nicht übersehen darf (z. B. „VoltPilot regelt diese Wallbox noch nicht“). */
-  warnung?: string | null;
+  /**
+   * Was der Kunde nicht übersehen darf (z. B. „VoltPilot regelt diese
+   * Wallbox noch nicht“) - ein `ReactNode`, damit ein Satz UND seine Folge
+   * als zwei eigene Textknoten stehen können, wie `SperreHinweis` es tut,
+   * statt als eine zusammengesetzte Zeichenkette.
+   */
+  warnung?: ReactNode | null;
   /**
    * Die angesprungene Kachel (`?kachel=speicher`): die Batterie hat keine
    * eigene Seite, ihr Absprung aus dem Anlagen-Modell markiert sie HIER.

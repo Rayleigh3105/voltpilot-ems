@@ -1047,8 +1047,11 @@ describe('GeraetSeiteSection', () => {
   });
 
   // Regressionsbeleg Wallbox-Einbindung e1, Abschnitt 7 Punkt 1: „Ladeeinstellungen der
-  // Anlage öffnen →" führt nach Steuerung › Laden (dort stehen „Womit laden?"/Ladeziel) -
-  // solange es den künftigen Ort „Laden" nicht gibt, nicht nach Ladevorgänge.
+  // Anlage öffnen →" führte nach Steuerung › Laden (dort stehen „Womit laden?"/Ladeziel) -
+  // solange es den künftigen Ort „Laden" nicht gab, nicht nach Ladevorgänge. Scheibe 3
+  // (Ein Ort fürs Laden) hat die leise Zeile ersatzlos entfernt - „Laden steuern" (ein
+  // prominenter Knopf auf der Bühne, eigener Test in `OcppWallboxPage.test.tsx`) ist
+  // seither die EINE Tür und führt an dieselbe Stelle.
   it('führt von der Wallbox-Geräteseite auf Steuerung › Laden statt auf Ladevorgänge', async () => {
     stub({
       entities: () => Promise.resolve({
@@ -1086,8 +1089,9 @@ describe('GeraetSeiteSection', () => {
     window.history.replaceState(null, '', '#/anlage/s-1/geraet/edge-45gz7da/cp-CP-1');
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="cp-CP-1" devices={[box]} />);
 
-    const link = await screen.findByRole('link', { name: 'Ladeeinstellungen der Anlage öffnen →' });
+    const link = await screen.findByRole('link', { name: 'Laden steuern' });
     expect(link).toHaveAttribute('href', '#/anlage/s-1/laden');
+    expect(screen.queryByText('Ladeeinstellungen der Anlage öffnen →')).not.toBeInTheDocument();
   });
 
   it('zeigt die Befehle DIESES Geräts und führt auf die volle Liste', async () => {

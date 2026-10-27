@@ -38,7 +38,7 @@
  * Routen bleiben (`nav.ts` LEGACY-Disziplin): jedes Lesezeichen gilt weiter.
  */
 import type { IconName } from '../designsystem/components/core/Icon';
-import type { Funktionen, Kennzahl, StandortAmStichtag } from './api';
+import type { Betriebsart, Funktionen, Kennzahl, StandortAmStichtag } from './api';
 import {
   isPortfolioPage,
   pageRoute,
@@ -243,6 +243,24 @@ function bereich(
  * Projektion) bleibt der Rückfall für einen Aufrufer, der nichts übergibt —
  * so rendert ein älterer Testaufruf zeichengleich wie vorher.
  */
+/**
+ * „Ein Ort fürs Laden" §4.6 (E2 = A): welches Gesicht der Bereich mit den
+ * Ladepunkten trägt. `undefined` (kein Aufrufer-Opt-in) ist absichtlich vom
+ * ausdrücklichen `null` (keine gespeicherte Betriebsart) unterschieden - nur
+ * so bleibt ein älterer Aufruf ohne diesen Parameter zeichengleich wie vor
+ * dieser Scheibe. Exportiert, damit die Privatkunden-Umleitung
+ * (`pages/AnlagenPage.tsx`) dieselbe Entscheidung trifft wie die Navigation.
+ */
+export function ladeSicht(
+  betriebsart: Betriebsart | null | undefined,
+  ladepunktAnzahl: number | null | undefined,
+): 'ladevorgaenge' | 'ladepark' | 'privatkunde' {
+  if (betriebsart === undefined) return 'ladevorgaenge';
+  if (betriebsart === 'betreiber') return 'ladepark';
+  if (betriebsart === 'endkunde') return 'privatkunde';
+  return (ladepunktAnzahl ?? 0) >= 3 ? 'ladepark' : 'privatkunde';
+}
+
 export function anlageBereiche(
   surface: AnlageSurface | null | undefined,
   badgeAnzahl?: number | null,
@@ -254,6 +272,9 @@ export function anlageBereiche(
    * (`showTechnicalLayer()`) herein - dieses Modul bleibt rein.
    */
   mitPrognosen = false,
+  /** Siehe {@link ladeSicht}; `hatLade` der Steuerung bleibt unberührt. */
+  betriebsart?: Betriebsart | null,
+  ladepunktAnzahl?: number | null,
 ): AnlageBereich[] {
   const raw = badgeAnzahl === undefined ? surface?.modes.length ?? null : badgeAnzahl;
   const badge =
@@ -266,22 +287,25 @@ export function anlageBereiche(
 
   // Bereich 2 folgt als EINZIGER der Komposition: mit Speicher heißt er
   // „Fahrplan" (und trägt die Ladevorgänge als zweiten Reiter, wo es auch
-  // Ladepunkte gibt), auf einem REINEN Ladepark „Ladevorgänge", sonst gibt es
-  // ihn nicht.
+  // Ladepunkte gibt), auf einem REINEN Ladepark „Ladevorgänge"/„Ladepark",
+  // sonst gibt es ihn nicht.
   const hatFahrplan = views.includes('fahrplan');
   const hatLade = views.includes('ladevorgaenge');
+  const ladeModus = ladeSicht(betriebsart, ladepunktAnzahl);
+  const zeigeLade = hatLade && ladeModus !== 'privatkunde';
+  const ladeLabel = ladeModus === 'ladepark' ? 'Ladepark' : 'Ladevorgänge';
   const planKontext = PLAN_KONTEXT_TABS.filter((t) => views.includes(t.view)).map(
     ({ key, label, sub }) => ({ key, label, sub }),
   );
   if (hatFahrplan) {
     const tabs: BereichTab[] = [{ key: 'fahrplan', label: 'Fahrplan', sub: 'fahrplan' }];
-    if (hatLade) tabs.push({ key: 'ladevorgaenge', label: 'Ladevorgänge', sub: 'ladevorgaenge' });
+    if (zeigeLade) tabs.push({ key: 'ladevorgaenge', label: ladeLabel, sub: 'ladevorgaenge' });
     tabs.push(...planKontext);
     out.push(bereich('fahrplan', 'Fahrplan', 'calendar', 'fahrplan', tabs));
-  } else if (hatLade) {
+  } else if (zeigeLade) {
     out.push(
-      bereich('ladevorgaenge', 'Ladevorgänge', 'zap', 'ladevorgaenge', [
-        { key: 'ladevorgaenge', label: 'Ladevorgänge', sub: 'ladevorgaenge' },
+      bereich('ladevorgaenge', ladeLabel, 'zap', 'ladevorgaenge', [
+        { key: 'ladevorgaenge', label: ladeLabel, sub: 'ladevorgaenge' },
       ]),
     );
   }
@@ -333,14 +357,21 @@ export function anlageSidebar(
   badgeAnzahl?: number | null,
   badgeTitel?: string | null,
   mitPrognosen = false,
+  betriebsart?: Betriebsart | null,
+  ladepunktAnzahl?: number | null,
 ): AnlageSidebar {
   return {
-    bereiche: anlageBereiche(surface, badgeAnzahl, badgeTitel, mitPrognosen),
+    bereiche: anlageBereiche(surface, badgeAnzahl, badgeTitel, mitPrognosen, betriebsart, ladepunktAnzahl),
     foot: [HELP_ITEM],
   };
 }
 
-/** Kürzere Telefon-Beschriftungen; die Seitenleiste behält die vollen Wörter. */
+/**
+ * Kürzere Telefon-Beschriftungen; die Seitenleiste behält die vollen Wörter.
+ * Nur das lange „Ladevorgänge" wird gekürzt - „Ladepark" (Betreiber-Sicht,
+ * §4.6) ist am Telefon schon kurz genug und bliebe sonst mit der Steuerung
+ * ununterscheidbar.
+ */
 const BOTTOM_LABELS: Partial<Record<BereichId, string>> = {
   ladevorgaenge: 'Laden',
 };
@@ -355,7 +386,7 @@ const BOTTOM_LABELS: Partial<Record<BereichId, string>> = {
 export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
   return sidebar.bereiche.map((b) => ({
     key: b.key,
-    label: BOTTOM_LABELS[b.key] ?? b.label,
+    label: b.label === 'Ladevorgänge' ? BOTTOM_LABELS[b.key] ?? b.label : b.label,
     icon: b.icon,
     target: b.target,
     badge: b.badge,
