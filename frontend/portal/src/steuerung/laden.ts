@@ -217,6 +217,17 @@ export function band(rahmen: LadeparkRahmen | null | undefined, lp: GeraetBild[]
   };
 }
 
+/**
+ * Bremst der Netzanschluss das Laden JETZT? (Konzept „Ein Ort fürs Laden"
+ * §5/§10, E5 = A): Steuerung › Laden zeigt die Anschlussgrenze seit dieser
+ * Scheibe nicht mehr als eigene Karte (sie wohnt in den Einstellungen) -
+ * nur noch EIN Satz, und nur, solange tatsächlich geladen wird UND für
+ * weitere Autos praktisch nichts mehr frei ist.
+ */
+export function bandBremst(b: Band | null): boolean {
+  return b != null && b.ladenKw > 0.05 && b.freiKw < 0.5;
+}
+
 /** Die nächste Viertelstunde, an der es eine Uhrzeit ist („morgen 07:00“, falls heute vorbei). */
 export function naechsteUhrzeit(jetzt: number, hhmm: string): number {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);

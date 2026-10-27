@@ -65,9 +65,9 @@ die Server-Regeln, die sie nennen.
 Eingriff am Verbraucher `consumersApi.startOverride/clearOverride` (Server-Deckel 4 h), Ladepunkt
 `chargingBoost`, Speicher `startBatteryOverride`, Pause `pauseAutomation`, Smart `setzeSteuerart`,
 Reihenfolge `saveRangliste`, Betriebsmodell `setSiteProfile`, Regeln über die Flow-API
-(`create`/`save` → `activate`). Die Anschlussgrenze im Rahmen-Blatt geht über den Kunden-Schritt
-`saveCustomerChargingFrame` (`PUT /charging-frame`, Prüfung gegen den Netzanschluss mit 422, nie über
-`saveChargingConfig`): [Ladegrenze](../root/uems-ladegrenze-kundenroute.md). **„Nur messen“** ist die Haltung `nur_messen` ohne Frist in
+(`create`/`save` → `activate`). Die Anschlussgrenze (seit Scheibe 4 der Einstellungen, nicht mehr des
+Laden-Reiters) geht über den Kunden-Schritt `saveCustomerChargingFrame` (`PUT /charging-frame`, Prüfung gegen
+den Netzanschluss mit 422, nie über `saveChargingConfig`): [Ladegrenze](../root/uems-ladegrenze-kundenroute.md). **„Nur messen“** ist die Haltung `nur_messen` ohne Frist in
 `suggestion-states` (V20260929120000) und wird beim Übernehmen per `DELETE` zurückgenommen.
 **Szenen** (`/scene`, `SzenenService`) pausieren gewählte Verbraucher über den Pausenweg und setzen
 beim Beenden genau die fort, die die Szene pausiert hat; ohne `voltpilot.consumer-control.enabled`

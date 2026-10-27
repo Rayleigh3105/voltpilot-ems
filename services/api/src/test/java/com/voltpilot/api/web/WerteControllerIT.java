@@ -79,7 +79,8 @@ class WerteControllerIT {
         AnlagenflussWerteLeser leser = new AnlagenflussWerteLeser(topologyService, ladepunkte,
                 new PriceRepository(app), app);
         controller = new WerteController(new WerteKatalog(), leser, topologyService,
-                new com.voltpilot.api.zugriff.Geltungsbereich(app));
+                new com.voltpilot.api.zugriff.Geltungsbereich(app),
+                mock(com.voltpilot.api.ueberwachung.LadepunktWerteLeser.class));
     }
 
     @AfterEach

@@ -141,7 +141,8 @@ class UeberwachungAuswahlIT {
         UeberwachungsService dienst = new UeberwachungsService(repo, katalog, zustandLeser,
                 Mockito.mock(EreignisWerteLeser.class), Mockito.mock(AnlagenflussWerteLeser.class), messreiheLeser,
                 new MengeWerteLeser(earnings, peaks, app), new GeldWerteLeser(earnings, app),
-                Mockito.mock(KennzahlWerteLeser.class), Mockito.mock(ZaehlungWerteLeser.class), zugriffe,
+                Mockito.mock(KennzahlWerteLeser.class), Mockito.mock(ZaehlungWerteLeser.class),
+                Mockito.mock(LadepunktWerteLeser.class), zugriffe,
                 Mockito.mock(PriceRepository.class), peaks, Mockito.mock(com.voltpilot.api.uems.MessstelleRepository.class),
                 Mockito.mock(com.voltpilot.api.uems.KennzahlService.class),
                 Mockito.mock(com.voltpilot.api.uems.EnergiezielService.class));

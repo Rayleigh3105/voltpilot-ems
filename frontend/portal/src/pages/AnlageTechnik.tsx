@@ -51,6 +51,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfoTip } from '../components/InfoTip';
 import { PRESETS, PROFIL_UNGESETZT, profilAenderungsFolgen, profilLabel, type Profil } from '../anwendungen';
 import { MastrDrawer } from '../components/MastrDrawer';
+import { AnschlussgrenzeBlatt } from '../components/AnschlussgrenzeBlatt';
 import { canEditSetting, SettingEditForm, settingReadValue } from '../components/SettingEditors';
 import { ErrorState, TextSkeleton } from '../components/States';
 import { GemeinsameSteuerungKarte, useGemeinsameSteuerung, type GemeinsameSteuerungDaten } from '../components/GemeinsameSteuerungKarte';
@@ -243,6 +244,12 @@ export function TechnikSection({
   const setVerguetung = (stand: Einspeiseverguetung) => setVerguetungGeladen({ siteId: site.id, stand });
   const [schaltBusy, setSchaltBusy] = useState<Folge['key'] | null>(null);
   const [schaltFehler, setSchaltFehler] = useState<{ key: Folge['key']; text: string } | null>(null);
+  // „Ein Ort fürs Laden" Scheibe 4 (E5 = A): die Zeile „Anschlussgrenze" zeigt
+  // den heutigen Wert, ohne die Haupt-Ladefolge der Einstellungen damit zu
+  // belasten - `AnschlussgrenzeBlatt` holt beim Öffnen ihre eigenen, volleren
+  // Daten (Netzanschluss-Bindung, Grundlast) noch einmal selbst.
+  const [gridLimitKw, setGridLimitKw] = useState<number | null>(null);
+  const [anschlussgrenzeOffen, setAnschlussgrenzeOffen] = useState(false);
 
   // Ein Rückgängig baut auf dem NEUESTEN Stand auf, nie auf dem des Klicks -
   // sonst setzte es eine inzwischen gespeicherte andere Änderung mit zurück.
@@ -285,6 +292,19 @@ export function TechnikSection({
       cancelled = true;
     };
   }, [site.id, assetsReloadKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGridLimitKw(null);
+    api.chargingConfig(site.id)
+      .then((c) => !cancelled && setGridLimitKw(c.gridLimitKw ?? null))
+      // Fail-soft: die Zeile zeigt dann „noch nicht hinterlegt" - dasselbe
+      // Bild wie bei einer Anlage, die wirklich keine Grenze gesetzt hat.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [site.id]);
 
   // Die Einspeisevergütung hängt an Veräußerungsform, Netzladen und dem
   // PV-Eintrag (Inbetriebnahme, kWp; neu nach der MaStR-Verknüpfung) - nach
@@ -491,6 +511,21 @@ export function TechnikSection({
             wert={site.maxFeedInKw != null ? fmtNum(site.maxFeedInKw, 'kW', 1) : 'keine Grenze hinterlegt'}
             recht="anlage.verwalten"
             onClick={() => oeffne({ art: 'stammdaten' })}
+          />
+          {/*
+            „Ein Ort fürs Laden" Scheibe 4 (E5 = A): die Anschlussgrenze zieht
+            aus dem Rahmen-Blatt der Steuerung hierher um, neben Einspeisegrenze
+            und Netzladen. Die Rechnung selbst bleibt im bewährten
+            `RahmenBlatt` - `AnschlussgrenzeBlatt` holt ihre Daten nur lazy,
+            wenn die Zeile tatsächlich geöffnet wird.
+          */}
+          <Zeile
+            icon="sliders"
+            kat="grid"
+            label="Anschlussgrenze"
+            wert={gridLimitKw != null ? fmtNum(gridLimitKw, 'kW', 1) : 'noch nicht hinterlegt'}
+            recht="grenze.eintragen"
+            onClick={() => setAnschlussgrenzeOffen(true)}
           />
           {/* UEMS AP-02 IP-8: das Standort-OBJEKT über den Koordinaten - nur, wenn die Anlage eines hat. */}
           {anlageStandort && standortAntwort && (
@@ -908,6 +943,13 @@ export function TechnikSection({
       </Modal>
 
       <ProfilDialog site={site} open={profilOffen} onClose={() => setProfilOffen(false)} onSaved={onSiteSaved} />
+      {anschlussgrenzeOffen && (
+        <AnschlussgrenzeBlatt
+          siteId={site.id}
+          onClose={() => setAnschlussgrenzeOffen(false)}
+          onSaved={(c) => setGridLimitKw(c.gridLimitKw ?? null)}
+        />
+      )}
       <MastrDrawer
         site={site}
         open={mastrOpen}

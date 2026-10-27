@@ -14,6 +14,11 @@ import { ahrenbergHeute, ahrenbergUnternehmen, bestandEineAnlage, FIXTURE_IDS } 
  * sind darum im Nachzug-Merge aus der REINEN main-Fassung von `AnlageTechnik.tsx`
  * neu aufgenommen, nicht aus der vereinigten. Ändert sich hier ein Byte, ist das
  * kein neuer Snapshot, sondern ein Bruch.
+ *
+ * **„Ein Ort fürs Laden" Scheibe 4 (27.10.2026, E5 = A):** beide Dateien bekommen genau EINE neue
+ * Zeile „Anschlussgrenze" direkt nach „Einspeisegrenze" (Konzept-Entscheid, nicht gefunden) - mit
+ * `vitest -u` gegen den aktuellen Produktstand neu geschrieben; der Zeichenvergleich alt/neu zeigt
+ * nur das eine eingefügte `<li>`.
  */
 
 vi.mock('leaflet', () => {

@@ -32,14 +32,19 @@ import org.springframework.stereotype.Component;
  * Messpunkte der Familie {@code voltpilot.erzeuger_registerbild_v1} einer Anlagensteuerung, ausgewertet zu fünf
  * Zuständen ({@link ErzeugerWerteLeser}). Ihre Einträge tragen statt eines Vorschlags ab Werk eine
  * {@link Vorlage}: nie gesät, je Anlage wählbar, die Wertart ist die stabile Kennung der Vorlage.
+ *
+ * <p>„Ein Ort fürs Laden" Scheibe 4 (E6 = A) fügt die Leserart {@code ladepunkt} hinzu
+ * ({@link LadepunktWerteLeser}): Verbindung, Stecker- und Ladeziel-Zustand der Ladepunkte einer Anlage - zwei
+ * Einträge mit {@link Vorschlag} ab Werk, zwei mit {@link Vorlage} wählbar.
  */
 @Component
 public class WerteKatalog {
 
     /** Die Leserarten, die der Code heute kennt (Scheibe 1: zustand, ereignis; Scheibe 2: anlagenfluss,
-     * messreihe; Scheibe 4: menge, geld; Scheibe 5: kennzahl, zaehlung; EZ-11: erzeuger). */
+     * messreihe; Scheibe 4: menge, geld; Scheibe 5: kennzahl, zaehlung; EZ-11: erzeuger; Ein Ort fürs Laden
+     * Scheibe 4: ladepunkt). */
     static final List<String> LESERARTEN = List.of("zustand", "ereignis", "anlagenfluss", "messreihe", "menge", "geld",
-            "kennzahl", "zaehlung", "erzeuger");
+            "kennzahl", "zaehlung", "erzeuger", "ladepunkt");
 
     /** Wie ein Eintrag seinen Wert liest (§6.3): Scheibe 1 nutzt {@code feld} ODER {@code arten}+{@code bezugsfeld}. */
     public record LeserVerweis(String art, String feld, List<String> arten, String bezugsfeld) {}

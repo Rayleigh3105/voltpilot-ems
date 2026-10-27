@@ -148,7 +148,12 @@ export type BlattZustand =
   | { art: 'nullstunden' }
   | { art: 'anbinden' }
   | { art: 'neu'; id: string }
-  | { art: 'rahmen' }
+  /**
+   * Die Anschlussgrenze SELBST stellt man seit „Ein Ort fürs Laden" Scheibe 4
+   * (E5 = A) in den Einstellungen ein - dieses Blatt ist nur noch der Hinweis
+   * auf der Geräte-Seite („Was immer gilt"), kein Formular mehr.
+   */
+  | { art: 'netzanschluss' }
   | { art: 'ziel'; id: string }
   /** „Womit laden?“ - das Vorschau-Blatt eines Ladepunkts (Konzept k1, E1=B). */
   | { art: 'womit'; id: string }

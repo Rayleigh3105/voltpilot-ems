@@ -3,9 +3,10 @@ import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * Die Ladegrenze (AP-01 IP-13) im Rahmen-Blatt von Steuerung › Laden. Seit dem Nachzug „Steuerung neu“ wohnt die
- * Prüfung gegen den Netzanschluss nicht mehr in der gelöschten `LadeparkRahmenKarte`, sondern im Blatt der echten
- * Seite (Bühne `e2e/ladegrenze.tsx` auf den Steuerungs-Beispieldaten). Geschrieben wird über `PUT /charging-frame`.
+ * Die Ladegrenze (AP-01 IP-13) im Rahmen-Blatt. Seit „Ein Ort fürs Laden" Scheibe 4 (E5 = A) öffnet die Zeile
+ * „Anschlussgrenze" der Einstellungen dasselbe Blatt wie früher „Rahmen" auf Steuerung › Laden - die Prüfung
+ * gegen den Netzanschluss bleibt Zeichen für Zeichen dieselbe (Bühne `e2e/ladegrenze.tsx` auf den
+ * Steuerungs-Beispieldaten). Geschrieben wird über `PUT /charging-frame`.
  */
 
 const BILDER = process.env.LADEGRENZE_BILDER;
@@ -15,9 +16,10 @@ test.use({ locale: 'de-DE', timezoneId: 'Europe/Berlin' });
 async function oeffne(page: Page, breite: number, fall: 'gebunden' | 'ungebunden' | 'zuhoch') {
   await page.clock.setFixedTime(new Date('2026-09-29T11:10:00Z'));
   await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 1000 });
-  await page.goto(`/e2e/ladegrenze.html?fall=${fall}#/anlage/help-site/laden`);
-  await page.locator('.stn').first().waitFor();
-  await page.getByRole('button', { name: 'Rahmen', exact: true }).click();
+  await page.goto(`/e2e/ladegrenze.html?fall=${fall}#/anlage/help-site/technik`);
+  const zeile = page.getByRole('button', { name: /^Anschlussgrenze/ });
+  await zeile.waitFor();
+  await zeile.click();
   const blatt = page.getByRole('dialog', { name: 'Netzanschluss und Laden' });
   await expect(blatt).toBeVisible();
   await expect(blatt.getByText('Netzanschluss wird geprüft …')).toHaveCount(0);

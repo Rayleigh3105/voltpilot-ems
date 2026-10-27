@@ -80,6 +80,7 @@ public class UeberwachungsService {
     private final GeldWerteLeser geldLeser;
     private final KennzahlWerteLeser kennzahlLeser;
     private final ZaehlungWerteLeser zaehlungLeser;
+    private final LadepunktWerteLeser ladepunktLeser;
     private final ZugriffRepository zugriffe;
     private final PriceRepository preise;
     private final PeakShavingRepository peakShaving;
@@ -98,6 +99,7 @@ public class UeberwachungsService {
             AnlagenflussWerteLeser anlagenflussLeser, MessreiheWerteLeser messreiheLeser,
             MengeWerteLeser mengeLeser, GeldWerteLeser geldLeser,
             KennzahlWerteLeser kennzahlLeser, ZaehlungWerteLeser zaehlungLeser,
+            LadepunktWerteLeser ladepunktLeser,
             ZugriffRepository zugriffe, PriceRepository preise, PeakShavingRepository peakShaving,
             MessstelleRepository messstellen, KennzahlService kennzahlen, EnergiezielService energieziele) {
         this.repo = repo;
@@ -110,6 +112,7 @@ public class UeberwachungsService {
         this.geldLeser = geldLeser;
         this.kennzahlLeser = kennzahlLeser;
         this.zaehlungLeser = zaehlungLeser;
+        this.ladepunktLeser = ladepunktLeser;
         this.zugriffe = zugriffe;
         this.preise = preise;
         this.peakShaving = peakShaving;
@@ -130,6 +133,7 @@ public class UeberwachungsService {
             case "kennzahl" -> kennzahlLeser;
             case "zaehlung" -> zaehlungLeser;
             case "erzeuger" -> erzeugerLeser;
+            case "ladepunkt" -> ladepunktLeser;
             default -> null;
         };
     }
@@ -283,6 +287,7 @@ public class UeberwachungsService {
             List<UUID> anlagen = switch (eintrag.leser().feld()) {
                 case "box_erreichbar" -> repo.anlagenMitAngenommenerBox();
                 case "datenquelle_status" -> repo.anlagenMitDatenquelle();
+                case "wallbox_meldet_sich_nicht", "ziel_wird_knapp" -> repo.anlagenMitLadepunkt();
                 default -> List.of();
             };
             for (UUID anlageId : anlagen) {

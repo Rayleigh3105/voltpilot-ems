@@ -51,6 +51,7 @@ import {
   AnbindenBlatt,
   GeraetBlatt,
   NegativBlatt,
+  NetzanschlussBlatt,
   NullstundenBlatt,
   NeuBlatt,
   P14aBlatt,
@@ -66,7 +67,7 @@ import {
 import { SPEICHER, reihenfolgeRumpf, type GeraetBild } from './bild';
 import { GeraeteReiter } from './GeraeteReiter';
 import { Ic } from './Ic';
-import { LadenReiter, LadungenBlatt, RahmenBlatt, ZielBlatt } from './LadenReiter';
+import { LadenReiter, LadungenBlatt, ZielBlatt } from './LadenReiter';
 import { FahrzeugDialog } from '../components/FahrzeugDialog';
 import { fahrzeugZeilen } from '../fahrzeugProfile';
 import { quelleAusWunsch, smartSchritte } from './laden';
@@ -706,24 +707,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
       <main className={`stn-main ${reiter}`}>
         {inhalt}
       </main>
-      {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} anlage={anlage} onSoLaden={soLaden} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onGrenze={async (kw, vereinbartKw) => {
-        let ok = false;
-        await lauf('rahmen', async () => {
-          try {
-            // Der Kunden-Schritt (AP-01 IP-13) prüft gegen den Netzanschluss und lehnt mit 422 und Grund ab;
-            // `/charging-config` speicherte die Grenze ungeprüft.
-            const c = await api.saveCustomerChargingFrame(site.id, { gridLimitKw: kw, ...(vereinbartKw != null ? { vereinbartKw } : {}) });
-            setze('chargingConfig', c);
-            meldung('Rahmen übernommen.');
-            ok = true;
-            const v = await api.siteVerbraucher(site.id).catch(() => null);
-            if (v) setze('verbraucher', v);
-          } catch (e) {
-            meldung(fehlerText(e, 'Der Rahmen konnte nicht gespeichert werden.'), true);
-          }
-        });
-        return ok;
-      }} onFahrzeug={async (tagRef, w) => {
+      {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} anlage={anlage} onSoLaden={soLaden} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onFahrzeug={async (tagRef, w) => {
         // ⚠ `FahrzeugDialog` (Konzept „Ein Ort fürs Laden" e1, Abschnitt 7
         // Punkt 6: EIN Dialog statt des früheren Fahrzeug-Blatts) trägt seinen
         // eigenen Busy-/Fehler-Zustand und erwartet eine Promise, die bei
@@ -775,7 +759,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
   );
 }
 
-function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anlage, onSoLaden, onRegel, onLoeschen, onSteuerart, onGrenze, onFahrzeug, onFahrzeugEntfernen }: {
+function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anlage, onSoLaden, onRegel, onLoeschen, onSteuerart, onFahrzeug, onFahrzeugEntfernen }: {
   blatt: BlattZustand;
   k: BlattKontext;
   siteId: string;
@@ -789,7 +773,6 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anla
   onRegel: (e: RegelEntwurf) => Promise<boolean>;
   onLoeschen: (flowId: string) => Promise<boolean>;
   onSteuerart: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
-  onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
   onFahrzeug: (tagRef: string, w: import('../fahrzeugProfile').FahrzeugWunsch) => Promise<void>;
   onFahrzeugEntfernen: (tagRef: string) => Promise<void>;
 }) {
@@ -816,8 +799,8 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anla
       return <NeuBlatt k={k} id={blatt.id} />;
     case 'szene':
       return <SzeneBlatt k={k} id={blatt.id} />;
-    case 'rahmen':
-      return <RahmenBlatt k={k} siteId={siteId} rahmen={rahmen} config={daten.chargingConfig} onGrenze={onGrenze} />;
+    case 'netzanschluss':
+      return <NetzanschlussBlatt k={k} siteId={siteId} netzanschlussKw={rahmen?.effektivGrenzeKw ?? rahmen?.netzanschlussKw ?? 0} />;
     case 'ziel':
       return <ZielBlatt k={k} id={blatt.id} anlage={anlage} rahmenMinKw={rahmen?.mindestleistungKw ?? null} onSpeichern={onSteuerart} />;
     case 'womit':

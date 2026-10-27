@@ -61,7 +61,8 @@ class ErzeugerUeberwachungTest {
     private final UeberwachungsService dienst = new UeberwachungsService(repo, new WerteKatalog(),
             mock(ZustandWerteLeser.class), mock(EreignisWerteLeser.class), mock(AnlagenflussWerteLeser.class),
             mock(MessreiheWerteLeser.class), mock(MengeWerteLeser.class), mock(GeldWerteLeser.class),
-            mock(KennzahlWerteLeser.class), mock(ZaehlungWerteLeser.class), mock(ZugriffRepository.class),
+            mock(KennzahlWerteLeser.class), mock(ZaehlungWerteLeser.class), mock(LadepunktWerteLeser.class),
+            mock(ZugriffRepository.class),
             mock(PriceRepository.class), mock(com.voltpilot.api.repo.PeakShavingRepository.class),
             mock(com.voltpilot.api.uems.MessstelleRepository.class), mock(com.voltpilot.api.uems.KennzahlService.class),
             mock(com.voltpilot.api.uems.EnergiezielService.class));
