@@ -57,14 +57,9 @@ for (const breite of BREITEN) {
     expect(einzug[1]).toBeGreaterThan(einzug[0]);
     expect(new Set(einzug.slice(1)).size).toBe(1);
     await ohneQuerlauf(page, breite);
-    // Ein Tipp öffnet den Kurzblick; von dort führt „Geräteseite öffnen“ auf die Seite der Einheit.
+    // Ein Tipp springt direkt auf die Seite der Einheit - kein Kurzblick mehr dazwischen.
     await einheiten.nth(1).locator('.vp-auf-t-titel').click();
-    const blick = page.getByRole('dialog');
-    await expect(blick).toContainText('Wechselrichter 2');
-    await expect(blick).toContainText('gelesen über Anlagensteuerung Gore');
-    await expect(blick.getByRole('link', { name: /Geräteseite öffnen/ })).toHaveAttribute('href', SEITE(2));
-    await expect(blick).not.toContainText('Register lesen und schreiben');
-    await ohneQuerlauf(page, breite);
+    await expect(page).toHaveURL(new RegExp(`${SEITE(2)}$`));
     expect(fehler).toEqual([]);
   });
 

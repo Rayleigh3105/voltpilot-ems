@@ -340,11 +340,14 @@ describe('AufbauSection · der Baum', () => {
       'href',
       '#/anlage/s-1/box/VP-ABC123',
     );
-    // Die Geräte stehen darunter - ihr Name öffnet den Kurzblick.
+    // Die Geräte stehen darunter - ihr Name führt direkt auf die Geräteseite, kein Modal mehr dazwischen.
     for (const id of ['inv', 'src-1']) {
       const z = await zeile(id);
       expect(z).toHaveAttribute('role', 'row');
-      expect(within(z).getAllByRole('button').some((b) => b.getAttribute('aria-haspopup') === 'dialog')).toBe(true);
+      expect(within(z).getByRole('link', { name: new RegExp(id === 'inv' ? 'Deye' : 'Fronius') })).toHaveAttribute(
+        'href',
+        expect.stringContaining(`/geraet/VP-ABC123/${id}`),
+      );
     }
   });
 
@@ -448,7 +451,7 @@ describe('AufbauSection · der Baum', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/VoltPilot/));
   });
 
-  it('nennt eine Ausnahme schon in der Zeile - „ohne Ladestand" - und den Grund im Kurzblick', async () => {
+  it('nennt eine Ausnahme schon in der Zeile - „ohne Ladestand" - und den Grund im InfoTip', async () => {
     stub();
     vi.mocked(api.siteComponents).mockResolvedValue({
       componentAuthority: 'portal',
@@ -471,15 +474,18 @@ describe('AufbauSection · der Baum', () => {
       ],
     } as never);
     rendere();
-    await waitFor(async () => expect(await zeile('inv')).toHaveTextContent('ohne Ladestand'));
+    const deye = await waitFor(async () => {
+      const z = await zeile('inv');
+      expect(z).toHaveTextContent('ohne Ladestand');
+      return z;
+    });
 
-    const dialog = await kurzblick(zeile('inv'));
-    const speicher = komponente(dialog, 'Speicher');
-    expect(within(speicher).getByText('ohne Ladestand')).toBeInTheDocument();
-    expect(within(speicher).getByText(/mit unplausiblen Testwerten angelegt am 21\.08\.2026/)).toBeInTheDocument();
-    expect(within(speicher).getByText(/Steuerung des Speichers bleibt deshalb aus/)).toBeInTheDocument();
-    // Die PV-Zeile desselben Hybrids ist davon nicht betroffen.
-    expect(within(dialog).getAllByText(/mit unplausiblen Testwerten/)).toHaveLength(1);
+    // Das Gerät hat eine eigene Seite - der Klick führt dorthin; der Grund hinter „ohne Ladestand" steht jetzt
+    // an einem InfoTip derselben Zeile, kein Kurzblick mehr dazwischen.
+    fireEvent.click(within(deye).getByRole('button', { name: 'Erklärung anzeigen' }));
+    const tip = screen.getByRole('tooltip');
+    expect(within(tip).getByText(/mit unplausiblen Testwerten angelegt am 21\.08\.2026/)).toBeInTheDocument();
+    expect(within(tip).getByText(/Steuerung des Speichers bleibt deshalb aus/)).toBeInTheDocument();
   });
 
   it('schweigt ohne Beleg - eine gewöhnliche Anlage trägt keine Ausnahme', async () => {
@@ -496,10 +502,12 @@ describe('AufbauSection · der Baum', () => {
   it('spricht in der Kundensicht keine technischen Wörter', async () => {
     stub();
     const { container } = rendere();
-    await zeile('inv');
+    const deye = await zeile('inv');
     expect(FORBIDDEN.test(container.textContent ?? '')).toBe(false);
-    const dialog = await kurzblick(zeile('inv'));
-    expect(FORBIDDEN.test(dialog.textContent ?? '')).toBe(false);
+    // Das „…"-Zeilenmenü (Regel erstellen, Zuordnung ändern) trägt jetzt eigenen Text - auch er bleibt kundentauglich.
+    fireEvent.click(within(deye).getByRole('button', { name: /Weitere Aktionen/ }));
+    const menu = await screen.findByRole('menu');
+    expect(FORBIDDEN.test(menu.textContent ?? '')).toBe(false);
   });
 });
 
@@ -610,9 +618,11 @@ describe('AufbauSection · ein Eintrag je Kasten (GE-1)', () => {
     expect(container.querySelector('[data-aufbau-weg="dq-1"]')).toBeNull();
     expect(container.querySelector('.vp-auf-t-zeile.is-box')).toHaveTextContent('2 Geräte · 1 Anschluss offen');
     expect(container.textContent).not.toMatch(/Datenquelle/);
-    // Der Kurzblick nennt Weg und Box.
-    const dialog = await kurzblick(fronius);
-    expect(dialog).toHaveTextContent('SunSpec-Modbus · 192.168.10.20:502 · an VoltPilot-Box');
+    // Das Gerät hat eine eigene Seite - der Klick springt dorthin, kein Kurzblick mehr dazwischen.
+    expect(within(fronius).getByRole('link', { name: /Fronius/ })).toHaveAttribute(
+      'href',
+      '#/anlage/s-1/geraet/VP-ABC123/src-1',
+    );
   });
 
   it('ohne Antwort von `…/geraete` bleibt es fail-soft: die Geräte wie vorher, kein geratener Anschluss', async () => {
@@ -628,49 +638,53 @@ describe('AufbauSection · ein Eintrag je Kasten (GE-1)', () => {
   });
 });
 
-describe('AufbauSection · der Kurzblick (E2)', () => {
+describe('AufbauSection · ein Gerät mit eigener Seite springt direkt dorthin (kein Modal mehr)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('öffnet beim Tippen - und die Geräteseite ist EINEN Tipp weiter', async () => {
+  it('springt beim Tippen auf die Zeile direkt auf die Geräteseite - kein Kurzblick dazwischen', async () => {
     stub();
     rendere();
-    const dialog = await kurzblick(zeile('inv'));
-    expect(dialog).toHaveAccessibleName('Deye SUN-30K');
-    expect(within(dialog).getByText(/an VoltPilot-Box/)).toBeInTheDocument();
-    expect(within(dialog).getByRole('link', { name: /Geräteseite öffnen/ })).toHaveAttribute(
+    const deye = await zeile('inv');
+    // Titel UND Zeile sind dasselbe Ziel - „Bearbeiten", Sofortmaßnahmen und Entfernen stehen bereits dort.
+    expect(within(deye).getByRole('link', { name: 'Deye SUN-30K' })).toHaveAttribute(
       'href',
       '#/anlage/s-1/geraet/VP-ABC123/inv',
     );
-    // Der Register-Weg wird GENAU EINMAL genannt - kein zweiter Einstieg.
-    expect(within(dialog).getAllByText(/Register lesen und schreiben Sie auf der Geräteseite/)).toHaveLength(1);
-    expect(screen.queryByTestId('am-register-experte')).toBeNull();
-    expect(screen.queryByTestId('am-regwrite')).toBeNull();
+    fireEvent.click(deye);
+    expect(window.location.hash).toBe('#/anlage/s-1/geraet/VP-ABC123/inv');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('trägt EIN Gerät mit mehreren Komponenten - Speicher, Solarmodule, Netzanschluss', async () => {
+  it('trägt an mehreren Komponenten je eine eigene Zeile im „…“-Menü - Regel erstellen, Zuordnung ändern', async () => {
     stub();
     rendere();
-    const dialog = await kurzblick(zeile('inv'));
-    const speicher = komponente(dialog, 'Speicher');
-    expect(speicher).toHaveTextContent('76,0');
-    expect(speicher).toHaveTextContent('Wird von VoltPilot gesteuert');
-    expect(komponente(dialog, 'Netzanschluss')).toHaveTextContent('Einspeisung');
-    // Dieselbe Aufteilung wie der Energiefluss: 27 kW am Hybrid, 21,2 davon
-    // liefert der Fronius - die eigenen Module tragen 5,8 kW.
-    expect(komponente(dialog, 'Solarmodule am Deye SUN-30K')).toHaveTextContent('5,8');
+    const deye = await zeile('inv');
+    fireEvent.click(within(deye).getByRole('button', { name: /Weitere Aktionen/ }));
+    const eintraege = (await screen.findAllByRole('menuitem')).map((m) => m.textContent);
+    // Speicher und Netzanschluss sind von VoltPilot zusammengesetzt - keine Aufräum-Hebel, aber beide messen,
+    // also bietet jede ihre eigene Regel-Brücke; nur der Netzanschluss ist re-pinnbar.
+    expect(eintraege.some((t) => t?.includes('Regel mit dieser Komponente erstellen · Speicher'))).toBe(true);
+    expect(eintraege.some((t) => t?.includes('Regel mit dieser Komponente erstellen · Netzanschluss'))).toBe(true);
+    expect(eintraege.some((t) => t?.includes('Zuordnung ändern · Netzanschluss'))).toBe(true);
+    // Von VoltPilot zusammengesetzte Komponenten (Speicher) bekommen keine Aufräum-Hebel und keine Freigabe -
+    // die Freigabe eines Plattform-Speichers erteilt VoltPilot, nicht der Kunde.
+    expect(eintraege.some((t) => t?.includes('Zuordnung ändern · Speicher'))).toBe(false);
+    expect(eintraege.some((t) => t?.includes('Komponente löschen · Speicher'))).toBe(false);
+    expect(eintraege.some((t) => t?.includes('Steuern freigeben'))).toBe(false);
   });
 
-  it('führt Bearbeiten an den EINEN Inline-Ort auf der Geräteseite', async () => {
+  it('führt „Regel mit dieser Komponente erstellen" aus dem Zeilenmenü in den Baukasten', async () => {
     stub();
-    portalVerwaltet();
     rendere();
-    await waitFor(() => expect(api.siteComponents).toHaveBeenCalled());
-    const dialog = await kurzblick(zeile('inv'));
-    expect(await within(dialog).findByRole('link', { name: /Bearbeiten/ })).toHaveAttribute(
-      'href',
-      '#/anlage/s-1/geraet/VP-ABC123/inv?bearbeiten=1',
-    );
+    const fronius = await zeile('src-1');
+    fireEvent.click(within(fronius).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Regel mit dieser Komponente erstellen/ }));
+    expect(window.location.hash).toContain('/steuerung?komponente=fr1');
   });
+});
+
+describe('AufbauSection · der Kurzblick (E2) - für Geräte ohne eigene Seite', () => {
+  afterEach(() => vi.restoreAllMocks());
 
   it('bietet einem Gerät ohne Seite weder Bearbeiten noch Geräteseite - der Stift bleibt im Aufbau', async () => {
     stub();
@@ -729,53 +743,8 @@ describe('AufbauSection · der Kurzblick (E2)', () => {
     expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
   });
 
-  it('bietet den Namens-Stift an jeder benennbaren Komponente - nicht an der PV-Zeile des Hybrids', async () => {
-    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
-    stub();
-    rendere();
-    const deye = await kurzblick(zeile('inv'));
-    const namen = within(deye)
-      .getAllByRole('link', { name: /umbenennen/ })
-      .map((a) => a.getAttribute('aria-label'));
-    expect(namen).toContain('„Speicher“ umbenennen');
-    expect(namen).toContain('„Netzanschluss“ umbenennen');
-    expect(namen.some((n) => n?.includes('Solarmodule'))).toBe(false);
-    // Der Stift führt ohne Dialog auf den Inline-Ort der Geräteseite.
-    expect(within(deye).getByRole('link', { name: '„Netzanschluss“ umbenennen' })).toHaveAttribute(
-      'href',
-      '#/anlage/s-1/geraet/VP-ABC123/inv?bearbeiten=1&komponente=grid',
-    );
-    expect(screen.queryByRole('dialog', { name: 'Komponente umbenennen' })).toBeNull();
-
-    fireEvent.click(within(deye).getByRole('button', { name: 'Schließen' }));
-    const fronius = await kurzblick(zeile('src-1'));
-    expect(within(fronius).getByRole('link', { name: /Fronius Anlage“ umbenennen/ })).toBeInTheDocument();
-  });
-
-  it('§5.3 · die Speicher-Zeile führt auf das Hybrid-Blatt mit markierter Kachel - nur sie', async () => {
-    stub();
-    rendere();
-    const dialog = await kurzblick(zeile('inv'));
-    const link = within(komponente(dialog, 'Speicher')).getByRole('link', { name: /Speicher am Wechselrichter/ });
-    expect(link.getAttribute('href')).toMatch(/abschnitt=buehne/);
-    expect(link.getAttribute('href')).toMatch(/kachel=speicher/);
-    // Ein Parameter im Hash, nie eine zweite Raute.
-    expect((link.getAttribute('href') ?? '').slice(1)).not.toContain('#');
-    expect(
-      within(komponente(dialog, 'Netzanschluss')).queryByRole('link', { name: /Speicher am Wechselrichter/ }),
-    ).toBeNull();
-  });
-
-  it('bietet an den von VoltPilot zusammengesetzten Komponenten keine Aufräum-Hebel', async () => {
-    stub();
-    rendere();
-    const dialog = await kurzblick(zeile('inv'));
-    const speicher = komponente(dialog, 'Speicher');
-    expect(within(speicher).queryByRole('button', { name: /Komponente löschen/ })).toBeNull();
-    expect(within(speicher).queryByRole('button', { name: /Zuordnung ändern/ })).toBeNull();
-    // Die Freigabe eines Plattform-Speichers erteilt VoltPilot, nicht der Kunde.
-    expect(within(dialog).queryByRole('button', { name: /Steuern freigeben/ })).toBeNull();
-  });
+  // Das Umbenennen je Komponente und der markierte Speicher-Abschnitt („§5.3") sind seit diesem Wechsel Sache
+  // der Geräteseite selbst (sie bietet beides inline, Inhalt der Geräteseite ist nicht Gegenstand dieser Fläche).
 });
 
 /**
@@ -853,9 +822,10 @@ describe('AufbauSection · nicht mehr verbunden', () => {
     });
     rendere();
 
-    const dialog = await kurzblick(zeileMit('Fronius WR2'));
-    fireEvent.click(within(dialog).getByText(/Mehr zu/));
-    fireEvent.click(within(dialog).getByRole('button', { name: /Zuordnung ändern/ }));
+    // Dieses Gerät hat eine eigene Seite - „Zuordnung ändern" kommt jetzt aus dem „…"-Zeilenmenü, nicht mehr dem Kurzblick.
+    const zeileWr2 = await zeileMit('Fronius WR2');
+    fireEvent.click(within(zeileWr2).getByRole('button', { name: /Weitere Aktionen/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Zuordnung ändern/ }));
 
     expect(await screen.findByText('aktuell zugeordnet')).toBeInTheDocument();
     expect(screen.getByText(/gehört derzeit zu „Geist“/)).toBeInTheDocument();
@@ -1314,8 +1284,10 @@ describe('AufbauSection · die technische Sicht', () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
     rendere();
-    const dialog = await kurzblick(zeile('inv'));
-    expect(within(dialog).queryAllByTestId('tech-zeile')).toHaveLength(0);
+    // Kein Kurzblick mehr für dieses Gerät - der Klick würde auf die Geräteseite springen; die Abwesenheit
+    // technischer Elemente gilt ohnehin für die ganze Fläche, nicht nur innerhalb eines Dialogs.
+    await zeile('inv');
+    expect(screen.queryAllByTestId('tech-zeile')).toHaveLength(0);
     expect(screen.queryByText('Rollen & Zuordnung')).toBeNull();
     expect(screen.queryByRole('button', { name: /Technisch bearbeiten/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Komponente anlegen \(technisch\)/ })).toBeNull();

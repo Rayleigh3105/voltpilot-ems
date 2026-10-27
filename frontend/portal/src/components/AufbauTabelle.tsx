@@ -3,7 +3,8 @@ import { useId, useState, type CSSProperties, type MouseEvent, type ReactNode } 
 import { Icon } from '../../designsystem/components/core/Icon';
 import { AufbauSymbol } from './AufbauSymbol';
 import { VpPicker } from './VpPicker';
-import { RowMenu } from './RowMenu';
+import { RowMenu, type RowMenuItem } from './RowMenu';
+import { InfoTip } from './InfoTip';
 import { hervorheben, suchBegriffe } from '../picker/suche';
 
 import {
@@ -129,8 +130,24 @@ export interface AufbauTabelleProps {
   onBoxHinzufuegen: () => void;
   onAnlageHinzufuegen: () => void;
   onBoxVerwalten: (b: AufbauBox) => void;
-  /** Eine Ausnahme an einer Komponente („ohne Ladestand") - sie steht in der Zeile. */
-  hinweisFor: (g: AufbauGeraet) => string | null;
+  /**
+   * Eine Ausnahme an einer Komponente („ohne Ladestand") - das Wort steht in der Zeile, der Grund dahinter kam
+   * früher nur im Kurzblick; jetzt trägt ihn ein `InfoTip` an derselben Stelle (ein Gerät mit eigener Seite
+   * öffnet beim Tippen keinen Dialog mehr).
+   */
+  hinweisFor: (g: AufbauGeraet) => { badge: string; satz: string } | null;
+  /**
+   * Ein Gerät mit eigener Seite (`karte.href`) springt beim Tippen DIREKT dorthin - kein Modal mehr dazwischen.
+   * Was der frühere Kurzblick an solchen Geräten zusätzlich bot (Zuordnung ändern, Komponente löschen, Regel mit
+   * dieser Komponente erstellen) steht jetzt im „…“-Zeilenmenü; leer = nichts davon trifft zu.
+   */
+  mehrFor: (g: AufbauGeraet) => RowMenuItem[];
+  /**
+   * Die technische Sicht (nur VoltPilot, hinter `showTechnicalLayer()`) behält den Kurzblick unverändert - er
+   * zeigt dort den vollen technischen Rumpf (Strategien, Rollen, Entfernen mit `purgePoint`), den keine andere
+   * Fläche so dicht beieinander hat. Nur der Kundenklick springt direkt auf die Geräteseite.
+   */
+  showTechnical: boolean;
   /** Nur für VoltPilot: der technische Einstieg neben „Gerät hinzufügen". */
   technik?: ReactNode;
 }
@@ -562,12 +579,21 @@ function GeraetZeile({
   const nurLesend = !z.anlage.aktuell;
   const hinweis = nurLesend ? null : p.hinweisFor(g);
   const wert = g.werte[0] ?? null;
+  // Ein Gerät mit eigener Seite springt dorthin - nie mehr über ein Modal. Nur ohne Seite (verwaist, neu
+  // gefunden, keine Geräteseite) bleibt der Kurzblick der einzige Ort - und für die technische Sicht bleibt er
+  // es ganz (sie zeigt dort mehr, als ein Zeilenmenü fassen könnte).
+  const href = p.showTechnical ? null : g.karte.href;
+  const mehr = !nurLesend && href ? p.mehrFor(g) : [];
   // Die ganze Zeile ist ein Ziel für die Maus; Tastatur und Vorlesesoftware
-  // nehmen den Namen-Knopf - eine Zeile, die selbst ein Knopf wäre, dürfte
+  // nehmen den Namen-Knopf/-Link - eine Zeile, die selbst ein Ziel wäre, dürfte
   // keinen Aufklapp-Knopf enthalten.
   const zeilenKlick = (e: MouseEvent<HTMLDivElement>) => {
-    if (nurLesend) return;
     if ((e.target as HTMLElement).closest('button, a, input')) return;
+    if (href) {
+      window.location.hash = href;
+      return;
+    }
+    if (nurLesend) return;
     p.onKurzblick(g.id);
   };
   const titel = <Treffer text={g.titel} begriffe={begriffe} />;
@@ -591,16 +617,14 @@ function GeraetZeile({
         )}
         <AufbauSymbol kategorie={g.kategorie} icon={g.icon} />
         <span className="vp-auf-t-text">
-          {nurLesend ? (
-            g.karte.href ? (
-              <a className="vp-auf-t-titel" href={g.karte.href}>
-                <span className="vp-auf-t-kuerze">{titel}</span>
-              </a>
-            ) : (
-              <span className="vp-auf-t-titel">
-                <span className="vp-auf-t-kuerze">{titel}</span>
-              </span>
-            )
+          {href ? (
+            <a className="vp-auf-t-titel" href={href}>
+              <span className="vp-auf-t-kuerze">{titel}</span>
+            </a>
+          ) : nurLesend ? (
+            <span className="vp-auf-t-titel">
+              <span className="vp-auf-t-kuerze">{titel}</span>
+            </span>
           ) : (
             <button
               type="button"
@@ -626,7 +650,12 @@ function GeraetZeile({
                 </span>
               </span>
             )}
-            {hinweis && <span className="is-warn">{hinweis}</span>}
+            {hinweis && (
+              <span className="is-warn">
+                {hinweis.badge}
+                <InfoTip title={hinweis.badge}>{hinweis.satz}</InfoTip>
+              </span>
+            )}
           </small>
         </span>
       </span>
@@ -652,8 +681,11 @@ function GeraetZeile({
           </span>
         )}
       </span>
-      <span role="cell" className="vp-auf-t-pfeil" aria-hidden="true">
-        {!nurLesend && <Icon name="chevron-right" size={16} />}
+      <span role="cell" className="vp-auf-t-pfeil">
+        {mehr.length > 0 && (
+          <RowMenu label={`Weitere Aktionen für ${g.titel}`} buttonClassName="vp-auf-t-mehr" items={mehr} />
+        )}
+        {(href || !nurLesend) && <Icon name="chevron-right" size={16} />}
       </span>
     </div>
   );
