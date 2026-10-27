@@ -25,6 +25,7 @@ Buchstabenformen passen, „damit ist das gehäuse erst mal final“).
 | Deckel, Körper mit Lichtschacht | gedruckt, bestätigt am 11.10.2026 („sitzt perfekt. Licht passt auch“) |
 | Deckel, Beschriftung 3,8 mm | nach dem Druck gewählt am 12.10.2026 („gedruckt - 1. wir nehmen 3,8 2. ja“; gefragt war nach der Schriftprobe). Ob auch der Deckel selbst in dieser Fassung schon gedruckt ist, ist nicht ausdrücklich gesagt |
 | Hutschienen-Clip, Bohrlehre | gerechnet und zur Probe geslict; kein Druck gemeldet |
+| Unterteil mit Kennung (Referenz und QR-Code je Box, Entscheid 8 vom 26.10.2026) | gerechnet, zur Probe geslict, QR-Code aus dem G-Code gelesen; **kein Druck gemeldet**. Sonst das bestätigte Unterteil, ohne Etikettfeld ([Kennung](docs/kennung.md)) |
 
 Genauer, je Datei: [druck/README.md](druck/README.md). Was offen ist: [Entscheidungen, Abschnitt „Offen“](docs/entscheidungen.md#offen).
 Zu Produktsicherheit und CE trifft dieses Verzeichnis keine Aussage; das klärt der Betreiber selbst.
@@ -34,6 +35,7 @@ Zu Produktsicherheit und CE trifft dieses Verzeichnis keine Aussage; das klärt 
 | Ich will … | Datei |
 |---|---|
 | drucken | [druck/](druck/README.md) (fertige 3MF) und die [Druckanleitung](docs/drucken.md) |
+| das Gehäuse einer Box mit Referenz und QR-Code drucken | `./bauen.sh --referenz edge-…`, dann [Kennung](docs/kennung.md) |
 | zusammenbauen, aufstellen, an die Wand hängen | [Montage](docs/montage.md) |
 | wissen, woher ein Maß kommt und wie sicher es ist | [Maßmodell](docs/massmodell.md), [Tabelle aller Zahlen](docs/massmodell-tabelle.md) |
 | wissen, warum etwas so gebaut ist | [Entscheidungen und Geschichte v0 bis v0.4](docs/entscheidungen.md), [Regeln für Druck, Schrift und Logo](docs/regeln.md) |
@@ -49,6 +51,7 @@ glinet-gl-mt300n-v2/
 ├── docs/
 │   ├── drucken.md         Drucker, Farben, Lage, Zeiten, Farbwechsel, Abfall
 │   ├── montage.md         Zusammenbau, liegend, Wand, Hutschiene, Etikett
+│   ├── kennung.md         Referenz und QR-Code je Box auf der Unterseite: Befehl, Lage, Prüfung
 │   ├── massmodell.md      Quellen, Bezug, Verfahren; was gemessen, was bestätigt, was angenommen ist
 │   ├── massmodell-tabelle.md   jede Zahl mit Herkunft (aus dem Programm erzeugt)
 │   ├── entscheidungen.md  Geschichte v0 bis v0.4 mit Datum, offene Punkte
@@ -59,7 +62,7 @@ glinet-gl-mt300n-v2/
 ├── logo/logo-vektor.svg   das Logo als Vektor; einzige Quelle des Logos für das Modell
 ├── werkzeug/              Bambu Studio einrichten und aufrufen, Logo nachzeichnen
 ├── einrichten.sh          legt die Python-Umgebung an (ohne Root-Rechte)
-├── bauen.sh               baut und prüft alles nach aus/
+├── bauen.sh               baut und prüft alles nach aus/; --referenz: das Gehäuse einer Box
 └── anforderungen.txt      Fassungen der Python-Pakete
 ```
 
@@ -69,6 +72,7 @@ glinet-gl-mt300n-v2/
 ./einrichten.sh            # Python-Umgebung in .venv (rund 1,1 GB)
 ./einrichten.sh --bambu    # dazu Bambu Studio für die Kontrolle der 3MF (rund 0,8 GB)
 ./bauen.sh                 # alles nach aus/; Rückgabewert 1 bei einem Fehler
+./bauen.sh --referenz edge-wrk7abg   # Gehäuse einer Box mit Referenz und QR-Code
 ```
 
 Der Bau prüft den Entwurf (Durchdringung mit der Platine, Regeln, Stege je Druckschicht, jede 3MF

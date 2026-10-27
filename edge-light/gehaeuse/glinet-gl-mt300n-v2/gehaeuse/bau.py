@@ -7,6 +7,7 @@ import json
 import time
 
 import numpy as np
+from shapely.geometry import box
 
 from . import entwurf, massmodell as m, passproben, platine, schachtbild, schrift, schriftbild
 from .ausgabe import (AUS, bild, drucklage, gewendet, in_drucklage, nebeneinander, netz, schnittbild,
@@ -451,6 +452,77 @@ def bau_entwurf(p=STANDARD, name=NAME):
         "sekunden": round(time.time() - t, 1),
     }
     return _merke(ordner, "entwurf", daten)
+
+
+def kennung_ordner(ref):
+    return AUS / "kennung" / ref
+
+
+def _kennung_json(pfad, k, lege, objekt, p):
+    """Hält für die Lesbarkeitsprüfung (bambu.qr_im_gcode) fest, wo der Code in der Druckdatei liegt:
+    Rahmen in Druckkoordinaten um die Mitte des Objekts, Modul, Inhalt."""
+    rahmen = lege(box(*k.qr_rahmen)).bounds
+    daten = {"referenz": k.inhalt["referenz"], "klartext": k.inhalt["klartext"], "link": k.inhalt["link"],
+             "fassung": k.inhalt["fassung"], "maske": k.inhalt["maske"], "module": len(k.inhalt["module"]),
+             "modul": p.qr_modul, "objekt": objekt, "rahmen": [round(v, 3) for v in rahmen],
+             "einlage_schichten": round(p.einlage / SCHICHT),
+             "filament": list(FARBEN).index(p.beschriftung_farbe) + 1}
+    pfad.write_text(json.dumps(daten, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
+def bau_kennung(ref, p=STANDARD):
+    """Das Unterteil einer Box mit Referenz und QR-Code auf der Standfläche (Entscheid 8), nach
+    aus/kennung/<ref>/:
+
+      gehaeuse-<ref>.3mf   Unterteil mit Kennung und Deckel auf einer Platte, ein Drucklauf
+      unterteil-<ref>.3mf  nur das Unterteil mit Kennung
+      unterseite-<ref>.png die Standfläche, wie man sie von unten sieht
+
+    Daneben für die Prüfung je 3MF <name>-schrift.json (Zeichen der Klarschrift) und
+    <name>-kennung.json (Lage des Codes)."""
+    from . import kennung
+    inhalt = kennung.inhalt(ref)
+    ordner = kennung_ordner(ref)
+    ordner.mkdir(parents=True, exist_ok=True)
+    schwund = p.stoff.schwund
+    t = time.time()
+    k = entwurf.kennung_unten(p, inhalt)
+    teile = entwurf.unterteil_mit_kennung(p, inhalt)
+    netze = {n: netz(k_, 0.01, 0.2) for n, k_ in teile.items()}
+    objekt = f"unterteil-{ref}"
+    lage = schreibe_druckdateien(ordner, objekt, netze, schwund=schwund)
+    deckel = {n: netz(k_, 0.01, 0.2) for n, k_ in entwurf.deckel(p).items()}
+    platte = nebeneinander({objekt: lage, "deckel": drucklage(deckel, wenden=True, schwund=schwund)})
+    schreibe_3mf(ordner / f"gehaeuse-{ref}.3mf", {o: teile_fuer_3mf(t_) for o, t_ in platte.items()},
+                 {"deckel": WANDGENERATOR[p.wandgenerator]})
+
+    lege = in_drucklage(netze, schwund=schwund)
+    worte = [{"name": f"kennung-{i + 1}", "text": z["text"], "zeichen": z["zeichen"]} for i, z in enumerate(k.zeilen)]
+    worte = _worte_in_drucklage(worte, lege, 1.0 / (1.0 - schwund), objekt, p.wandgenerator)
+    alle = [z["form"].bounds for w in worte for z in w["zeichen"]]
+    rahmen = [round(fn(b[i] for b in alle) + d, 2)
+              for fn, i, d in ((min, 0, -1.5), (min, 1, -1.5), (max, 2, 1.5), (max, 3, 1.5))]
+    for datei in (objekt, f"gehaeuse-{ref}"):
+        bilder = [{"datei": f"{datei}-bahnen.png", "objekt": objekt, "rahmen": rahmen, "halb_gedreht": False}]
+        _schrift_json(ordner / f"{datei}-schrift.json", worte, bilder, p)
+        _kennung_json(ordner / f"{datei}-kennung.json", k, lege, objekt, p)
+
+    unten = [(*netze["gehaeuse_weiss"], WEISS),
+             *((e, d, FARBEN[n]) for n, (e, d) in netze.items() if n != "gehaeuse_weiss")]
+    marken = _marken_unten(p.mit(etikett="keins"))   # der Grund der Schlüssellöcher, sonst unsichtbar von unten
+    bild(ordner / f"unterseite-{ref}.png", _umgedreht(unten + marken + _fuesse(p)), azimut=-90, hoehe=90, breite=1400)
+    bild(ordner / f"unterseite-{ref}-schraeg.png", _umgedreht(unten + marken + _fuesse(p)[:2]), azimut=-125,
+         hoehe=38)
+    daten = {"referenz": ref, "klartext": inhalt["klartext"], "link": inhalt["link"],
+             "fassung": inhalt["fassung"], "maske": inhalt["maske"], "module": len(inhalt["module"]),
+             "modul": p.qr_modul, "seite": round(len(inhalt["module"]) * p.qr_modul, 2),
+             "qr_rahmen": [round(v, 2) for v in k.qr_rahmen],
+             "zeilen": [{"text": z["text"], "rahmen": [round(v, 2) for v in z["form"].bounds]} for z in k.zeilen],
+             "volumen": {n: round(_volumen(*x), 1) for n, x in netze.items()},
+             "dateien": sorted(q.name for q in ordner.iterdir() if q.suffix in (".3mf", ".png")),
+             "kontrolle": lies_3mf(ordner / f"gehaeuse-{ref}.3mf"),
+             "sekunden": round(time.time() - t, 1)}
+    return _merke(ordner, "kennung", daten)
 
 
 def bau_massbild():

@@ -28,10 +28,11 @@ Jede 3MF bringt ihre Teile mit Namen und Filamentplatz mit:
 | Platz | Teil in der Datei | Farbe | wofür |
 |---|---|---|---|
 | 1 | `gehaeuse_weiss` | Weiß | Gehäuse |
-| 2 | `schrift_schwarz` | Schwarz | Schrift des Logos und die Wörter WAN, LAN, 5V, USB |
+| 2 | `schrift_schwarz` | Schwarz | Schrift des Logos und die Wörter WAN, LAN, 5V, USB; auf dem Unterteil einer Box ihre Referenz und der QR-Code |
 | 3 | `zeichen_hellblau` | Hellblau | Papierflieger und Blitz des Logos |
 
-Unterteil, Clip und Bohrlehre sind einfarbig (Platz 1).
+Unterteil, Clip und Bohrlehre sind einfarbig (Platz 1). Das Unterteil einer Box mit ihrer Kennung
+ist zweifarbig (Platz 1 und 2), siehe unten.
 
 **Material.** Das Modell rechnet mit ASA für Weiß und Schwarz und ABS „Azure“ für das hellblaue
 Zeichen (Stellgröße `material = "asa"`). Der Grund für die Mischung: Das Hellblau des Logos
@@ -79,6 +80,29 @@ Zwei Läufe derselben Datei weichen in der Zeit um bis zu 0,1 Minuten voneinande
 Ein Farbwechsel kostet nach dem Probeslicen rund 2,6 Minuten und knapp 0,5 g. Von Schwarz nach Weiß
 spült der Slicer mehr als umgekehrt; die Reihenfolge legt er selbst fest.
 
+## Gehäuse für eine Box: mit Referenz und QR-Code
+
+Seit Entscheid 8 (26.10.2026) trägt jede Box ihre Referenz und einen QR-Code mit dem Direktlink auf
+der Unterseite, gedruckt statt geklebt. Die Datei entsteht je Box:
+
+```bash
+./bauen.sh --referenz edge-…      # die Referenz aus der Werkstatt-Liste
+```
+
+Dann `aus/kennung/<referenz>/gehaeuse-<referenz>.3mf` in Bambu Studio öffnen: Unterteil mit Kennung
+und Deckel auf einer Platte, Filament 1 weiß, 2 schwarz, 3 hellblau wie oben. Nur das Unterteil:
+`unterteil-<referenz>.3mf`. Lage, Prüfung und was noch offen ist: [Kennung](kennung.md).
+
+Probeslicen für die erfundene Referenz `edge-wrk7abg` (ASA, Zeichen in ABS), kein Druck:
+
+| Datei | Druckzeit | Filamentwechsel | Material im Teil | Abfall (Spülen und Turm) |
+|---|---|---|---|---|
+| `gehaeuse-<referenz>.3mf` (Unterteil mit Kennung und Deckel) | 87,9 min | 6 | 22,69 g | 2,81 g |
+| `unterteil-<referenz>.3mf` | 62,1 min | 3 | 15,14 g | 1,77 g |
+
+Auf der gemeinsamen Platte kostet die Kennung keinen zusätzlichen Farbwechsel: Ihr Schwarz liegt in
+denselben drei Schichten wie das des Deckels.
+
 ## Maßhaltigkeit und Schwund
 
 Die Dateien haben **Nennmaß**, ohne Schwundausgleich (`schwund = 0` in `gehaeuse/parameter.py`).
@@ -106,6 +130,8 @@ die mit der Voreinstellung druckt ([Regeln](regeln.md#schrift-der-beschriftung))
 Was bisher nur gerechnet ist und sich erst am Teil zeigt:
 
 - Deckel: Sind die Ränder der Schrift glatt, schmiert Schwarz ins Weiß, haften die kleinen Inseln?
+- Unterteil mit Kennung: Liest das Telefon den QR-Code, und landet der Link im Portal? Ist die
+  Referenz lesbar ([Kennung](kennung.md#was-nur-ein-druck-zeigt))?
 - Reset: Trifft eine Büroklammer durch das Loch den Taster?
 - Wand: Hängt das Gehäuse sicher an zwei Schrauben, wenn Kabel daran ziehen? Stimmt die Bohrlehre?
 - Clip: Federkraft und Halt an einer echten Schiene.

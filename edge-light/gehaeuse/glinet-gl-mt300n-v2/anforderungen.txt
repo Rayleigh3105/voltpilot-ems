@@ -5,5 +5,8 @@ numpy==2.5.3
 shapely==2.2.0
 pillow==12.2.0
 cairosvg==2.9.1
+# Kennung auf der Unterseite: QR-Code bauen (gleich dem Portal) und aus dem G-Code lesen
+qrcode==8.2
+zxing-cpp==3.1.1
 # nur für werkzeug/logo_vektor.py (Logo aus dem Raster-PNG nachzeichnen)
 scikit-image==0.26.0

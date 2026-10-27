@@ -1,6 +1,6 @@
 {
   "vertrag": "Kennung einer VoltPilot-Box (edge-Referenz) mit Prüfzeichen",
-  "beschreibung": "Die Box erzeugt ihre Kennung selbst und zeigt sie in ihrer App unter „Einrichten“: Präfix + sechs Zeichen + ein Prüfzeichen (positionsgewichtete Summe mod 31 über die sechs Zeichen). Erzeuger: edge-app/core/internal/agent/agent.go (refCheckChar); Prüfung: services/api …/web/EdgeRef.java (isValid) und frontend/portal/src/edgeRef.ts (pruefeKennung). Alle drei lesen diese Datei; Algorithmus und Vektoren nur gemeinsam ändern.",
+  "beschreibung": "Die Box erzeugt ihre Kennung selbst und zeigt sie in ihrer App unter „Einrichten“: Präfix + sechs Zeichen + ein Prüfzeichen (positionsgewichtete Summe mod 31 über die sechs Zeichen). Erzeuger: edge-app/core/internal/agent/agent.go (refCheckChar); Prüfung: services/api …/web/EdgeRef.java (isValid) und frontend/portal/src/edgeRef.ts (pruefeKennung); das Gehäuse-Programm prüft damit die Referenz, die es auf die Unterseite druckt (edge-light/gehaeuse/glinet-gl-mt300n-v2/gehaeuse/kennung.py). Alle vier lesen diese Datei; Algorithmus und Vektoren nur gemeinsam ändern.",
   "alphabet": "abcdefghjkmnpqrstuvwxyz23456789",
   "praefix": "edge-",
   "koerper_laenge": 6,

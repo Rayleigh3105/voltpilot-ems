@@ -23,7 +23,11 @@ unter `aus/gehaeuse-v04/`), nicht eingecheckt:
   Wandgenerator „Arachne“); beide baut der Schritt `entwurf` mit;
 - die Beschriftung vertieft statt eingelegt, mit Reset und LEDs, ohne Beschriftung (Deckel v0.2);
 - nur liegend ohne Sockel, Etikett auf dem Deckel oder an der Seite, alles in PETG;
-- die Probestücke (Probe-Platte, Schablone, Steckerwand, Schachtprobe, Schriftprobe) und die STL.
+- die Probestücke (Probe-Platte, Schablone, Steckerwand, Schachtprobe, Schriftprobe) und die STL;
+- das Gehäuse einer Box mit Referenz und QR-Code auf der Unterseite: Es gibt es je Box, gebaut mit
+  `./bauen.sh --referenz edge-…` nach `aus/kennung/<referenz>/` ([Kennung](../docs/kennung.md)). Es ist
+  das Unterteil von hier ohne Etikettfeld, mit der Kennung in den ersten drei Schichten. **Gedruckt ist
+  noch keine Kennung**; das Unterteil mit Kennung gilt bis zum Probedruck als nicht bestätigt.
 
 Welche Schalter es gibt: [Bauen und ändern](../docs/bauen.md#varianten).
 

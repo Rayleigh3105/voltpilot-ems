@@ -204,6 +204,28 @@ class Parameter:
     etikett_groesse: tuple = (40.0, 14.0)
     etikett_tiefe: float = 0.2       # auf Deckel und Unterseite eine Schicht; an der Seite 0,3
 
+    # ---- Kennung auf der Unterseite (Entscheid 8 vom 26.10.2026) ----------
+    # "ich würde gerne die beschriftung und qr code per 3d-Drucker aufs gehäuse
+    # drucken keinen aufkleber mehr zu brauchen": Referenz in Klarschrift und
+    # QR-Code mit dem Direktlink als schwarze Einlage in den ersten drei
+    # Schichten der Standfläche, wie Logo und Schrift des Deckels. Gebaut je Box
+    # (./bauen.sh --referenz edge-…); das Etikettfeld entfällt dort. Der Inhalt
+    # kommt aus gehaeuse/kennung.py, gleich dem Portal (werkstatt.ts).
+    # Modul zwei Bahnen wie jeder farbige Strich: Der Code (Fassung 3, 29 x 29
+    # Module) misst dann 24,36 mm. Er sitzt zwischen den Mulden der LED-Seite,
+    # so weit wie möglich vom Rand und von den Schlüssellöchern.
+    qr_modul: float = 2 * BAHN
+    # Ruhezone: helles Material um den Code bis zu einem Loch, einer Mulde (dort
+    # klebt ein dunkler Fuß) oder dem Rand des Teils, in Modulen. ISO/IEC 18004
+    # verlangt 4; zwischen Mulden und Schlüssellöchern bleiben bei 0,84 mm je
+    # Modul rund 3,7. Ob das reicht, sagt die Lesbarkeitsprüfung mit der
+    # echten Umgebung aus dem G-Code (bambu.py), nicht diese Zahl.
+    qr_ruhe_min: float = 3.0
+    # Klarschrift in der Schrift des Deckels, zwei Zeilen: "EDGE-" zwischen den
+    # Schlüssellöchern, darunter der Rest an der Netzwerk-Seite. In einer Zeile
+    # wäre sie rund 42 mm breit; frei sind zwischen den Mulden 33,5 mm.
+    kennung_zeilenabstand: float = 1.5
+
     # ---- Außenform --------------------------------------------------------
     fase_unten: float = 1.5          # Fase um die Standfläche (v0: 0,5)
 
