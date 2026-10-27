@@ -29178,6 +29178,13 @@ components:
             client puts the range-appropriate time in front. `end` is exclusive.
             netzladen counts from 0.5 kWh per window.
 
+            keine-verguetung is the same negative-spot-price window as
+            negativpreis, but for a site under §51a EEG (Solarspitzengesetz):
+            its otherwise-fixed feed-in remuneration is clamped to 0 in those
+            quarter-hours, not a real negative rate - no value/unit, the
+            notable fact is the missing remuneration, not a number
+            (vp-fahrplan-eigenverbrauch-konzept §4.7/§9).
+
             netzgrenze is evaluated for day and week only (grid_limit_kw lives in
             the RAW telemetry, which the rollup cascade does not carry) - a
             client must SAY so rather than let a missing marker read as "no grid
@@ -29207,7 +29214,7 @@ components:
             properties:
               type:
                 type: string
-                enum: [negativpreis, abregelung, netzgrenze, netzladen, abendverkauf, datenluecke, geraet-still, netzbetreiber, direktvermarkter, nicht-bereit]
+                enum: [negativpreis, keine-verguetung, abregelung, netzgrenze, netzladen, abendverkauf, datenluecke, geraet-still, netzbetreiber, direktvermarkter, nicht-bereit]
               start: { type: string, format: date-time }
               end: { type: string, format: date-time, description: Exclusive. }
               text: { type: string, description: Plain-German statement without a time. }

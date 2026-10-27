@@ -328,6 +328,35 @@ export function exportFolgtBoersenpreis(site: {
   return site.netzladenErlaubt === true || site.plantKind === 'direktvermarktung';
 }
 
+/** Welche „Was immer gilt"-Zeile zur Einspeisung passt; `null` = keine. */
+export type NegativpreisZeileArt = 'negativ' | 'nullstunden';
+
+/**
+ * Die feinere Fassung von {@link exportFolgtBoersenpreis} (Konzept
+ * `vp-fahrplan-eigenverbrauch-konzept` §4.7, Scheibe S4), sobald ein Lauf
+ * vorliegt: `preisRolle(...).einspeisung` liest die echten Preisfelder des
+ * Plans (`importPriceCtKwh`/`exportValueCtKwh`) und kennt damit zusätzlich
+ * den Fall, den die Stammdaten allein nicht sehen - Ü20 (abgelaufene oder
+ * fehlende EEG-Vergütung, Rückfall auf den Börsenpreis). Die Stammdaten-
+ * Prüfung bleibt als Rückfall für Läufe ohne Preisfelder (`einspeisung ===
+ * 'unbekannt'`), damit kein älterer Lauf die Zeile verliert.
+ *
+ * - `einspeisung === 'schwankt'` (echte Marktbindung: Netzladen an,
+ *   Direktvermarktung, Ü20) ODER die Stammdaten sagen dasselbe → `'negativ'`
+ *   (Negativpreis-Abregelung, unverändert).
+ * - sonst `einspeisung === 'flach_mit_nullstunden'` (§ 51a: sonst feste
+ *   Vergütung, in einzelnen Viertelstunden auf null geklemmt) → `'nullstunden'`.
+ * - sonst `null` - bei dieser Anlage gibt es zur Einspeisung nichts zu sagen.
+ */
+export function negativpreisZeile(
+  rolle: { einspeisung: string },
+  site: { plantKind?: PlantKind | string | null; netzladenErlaubt?: boolean | null },
+): NegativpreisZeileArt | null {
+  if (exportFolgtBoersenpreis(site) || rolle.einspeisung === 'schwankt') return 'negativ';
+  if (rolle.einspeisung === 'flach_mit_nullstunden') return 'nullstunden';
+  return null;
+}
+
 /**
  * Tier 3 - always-on protections the system applies automatically. One line
  * each; the tip carries the detail behind an InfoTip.

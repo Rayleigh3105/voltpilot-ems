@@ -1100,12 +1100,22 @@ export function kopfsatz(
   return { vor: satz, sonne: null, nach: '' };
 }
 
-/** Die Unterzeile: „Börsenpreis 8,4 ct/kWh · 22 °C draußen · Speicher 64 %“. */
-export function unterzeile(rh: Reihen, t: number, mitSpeicher: boolean): string {
+/**
+ * Die Unterzeile: „Börsenpreis 8,4 ct/kWh · 22 °C draußen · Speicher 64 %“.
+ *
+ * `sonne` (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.7, Scheibe S4):
+ * true, sobald die Anlage die Sonnen-Erzählung bekommt
+ * (`preisRolle(...).erzaehlung === 'sonne'`) - lässt den Börsenpreis ganz
+ * weg, statt ihn durch etwas zu ersetzen. Vorgabe `false` lässt jeden
+ * bestehenden Aufrufer unverändert.
+ */
+export function unterzeile(rh: Reihen, t: number, mitSpeicher: boolean, sonne = false): string {
   const m = moment(rh, t);
   const teile: string[] = [];
-  if (m.preis != null) teile.push(`Börsenpreis ${fCt(m.preis)}`);
-  else if (t >= TAG && !rh.morgenBekannt) teile.push('Preise für morgen kommen gegen 13 Uhr');
+  if (!sonne) {
+    if (m.preis != null) teile.push(`Börsenpreis ${fCt(m.preis)}`);
+    else if (t >= TAG && !rh.morgenBekannt) teile.push('Preise für morgen kommen gegen 13 Uhr');
+  }
   if (m.temp != null) teile.push(`${fGrad(m.temp)} draußen`);
   if (mitSpeicher && m.soc != null) teile.push(`Speicher ${fPct(m.soc)}`);
   return teile.join(' · ');
@@ -1122,10 +1132,20 @@ export function naechsterWechsel(g: GeraetBild, t: number): { t: number; an: boo
   return null;
 }
 
-/** Die Zeile unter dem Tagesbild zur gewählten Viertelstunde. */
-export function momentZeile(rh: Reihen, t: number, liste: GeraetBild[], jetzt: number): { kopf: string; zeile: string } {
+/**
+ * Die Zeile unter dem Tagesbild zur gewählten Viertelstunde - das Tooltip-
+ * Äquivalent von „Heute gesteuert" (B18). `sonne` (Vorgabe `false`, siehe
+ * {@link unterzeile}) lässt den Börsenpreis der gewählten Viertelstunde weg.
+ */
+export function momentZeile(
+  rh: Reihen,
+  t: number,
+  liste: GeraetBild[],
+  jetzt: number,
+  sonne = false,
+): { kopf: string; zeile: string } {
   const m = moment(rh, t);
-  const kopf = `${uhrTag(t)}–${uhr(t + 1)}${m.pv != null ? ` · Sonne ${fKw(m.pv)}` : ''}${m.preis != null ? ` · ${fCt(m.preis)}` : ''}`;
+  const kopf = `${uhrTag(t)}–${uhr(t + 1)}${m.pv != null ? ` · Sonne ${fKw(m.pv)}` : ''}${!sonne && m.preis != null ? ` · ${fCt(m.preis)}` : ''}`;
   const laufen = laufende(liste, t, jetzt);
   if (!laufen.length) return { kopf, zeile: 'Kein gesteuertes Gerät läuft.' };
   return {

@@ -889,6 +889,7 @@ export interface HistoryPlanPoint {
  */
 export type HistoryEventType =
   | 'negativpreis'
+  | 'keine-verguetung'
   | 'abregelung'
   | 'netzgrenze'
   | 'netzladen'

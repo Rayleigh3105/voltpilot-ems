@@ -42,6 +42,14 @@ import { monatSchluessel, tagSchluessel } from './verlaufRaster';
 /** Die Arten, die diese Oberfläche kennt (der Server darf mehr schicken). */
 export type EreignisArt =
   | 'negativpreis'
+  /**
+   * § 51a EEG (Solarspitzengesetz, Konzept `vp-fahrplan-eigenverbrauch-konzept`
+   * §4.7/§9, Scheibe S4): dieselbe negative Börsenpreis-Lage wie `negativpreis`,
+   * aber bei dieser Anlage klemmt sie die sonst feste Einspeisevergütung auf
+   * null - kein echter negativer Satz. Der Zwilling ist der Server
+   * (`HistoryService.einspeiseEreignisSlots`/`Ereignisse.java`).
+   */
+  | 'keine-verguetung'
   | 'abregelung'
   | 'netzgrenze'
   | 'netzladen'
@@ -91,6 +99,7 @@ export interface EreignisArtInfo {
 /** Kanonische Reihenfolge: erst der Markt, dann die Anlage, zuletzt die Lücken. */
 export const ART_ORDER: readonly EreignisArt[] = [
   'negativpreis',
+  'keine-verguetung',
   'abregelung',
   'netzgrenze',
   'netzladen',
@@ -108,6 +117,12 @@ export const EREIGNIS_ARTEN: Record<EreignisArt, EreignisArtInfo> = {
     farbe: 'markt',
     erklaerung:
       'Der Börsenpreis lag unter null — eingespeister Strom kostet dann Geld, statt welches zu bringen.',
+  },
+  'keine-verguetung': {
+    label: 'Keine Vergütung',
+    farbe: 'markt',
+    erklaerung:
+      'In diesen Viertelstunden gab es für eingespeisten Strom keine Vergütung (§ 51a EEG).',
   },
   abregelung: {
     label: 'Abregelung',

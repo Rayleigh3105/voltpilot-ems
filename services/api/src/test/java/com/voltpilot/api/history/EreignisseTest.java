@@ -61,8 +61,17 @@ class EreignisseTest {
     private static List<HistoryEventDto> build(List<ValueSlot> negativePrices,
             List<ValueSlot> curtail, List<ValueSlot> gridLimits, List<ValueSlot> gridCharges,
             List<GapRun> gaps, CoverageRow row, HistoryCoverageDto coverage) {
-        return Ereignisse.build(HistoryRange.DAY, negativePrices, curtail, gridLimits,
-                gridCharges, gaps, row, coverage);
+        return build(negativePrices, List.of(), curtail, gridLimits, gridCharges, gaps, row,
+                coverage);
+    }
+
+    /** Wie oben, mit expliziten § 51a-„keine Vergütung"-Slots (Scheibe S4). */
+    private static List<HistoryEventDto> build(List<ValueSlot> negativePrices,
+            List<ValueSlot> keineVerguetung, List<ValueSlot> curtail, List<ValueSlot> gridLimits,
+            List<ValueSlot> gridCharges, List<GapRun> gaps, CoverageRow row,
+            HistoryCoverageDto coverage) {
+        return Ereignisse.build(HistoryRange.DAY, negativePrices, keineVerguetung, curtail,
+                gridLimits, gridCharges, gaps, row, coverage);
     }
 
     // ---- Fenster ---------------------------------------------------------------
@@ -114,6 +123,33 @@ class EreignisseTest {
             assertThat(e.days()).isEqualTo(1);
             assertThat(e.facts()).isEmpty();
         });
+    }
+
+    @Test
+    void keineVerguetungTraegtKeineZahlNurDieDauer() {
+        // § 51a (Konzept vp-fahrplan-eigenverbrauch-konzept §4.7/§9, Scheibe S4):
+        // dieselbe Zonen-Lage wie oben, aber getrennt von „negativpreis" - kein
+        // echter negativer Satz, also keine Zahl im Ereignis.
+        List<HistoryEventDto> events = build(List.of(), lauf(t("10:00"), 19, "-40"), List.of(),
+                List.of(), List.of(), List.of(), null, null);
+
+        assertThat(events).singleElement().satisfies(e -> {
+            assertThat(e.type()).isEqualTo("keine-verguetung");
+            assertThat(e.start()).isEqualTo(t("10:00"));
+            assertThat(e.text()).isEqualTo("Keine Vergütung (§ 51a EEG): 4 Std 45 Min");
+            assertThat(e.value()).isNull();
+            assertThat(e.unit()).isNull();
+            assertThat(e.planned()).isFalse();
+        });
+    }
+
+    @Test
+    void negativpreisUndKeineVerguetungBleibenGetrenntAuchAmSelbenTag() {
+        List<HistoryEventDto> events = build(lauf(t("06:00"), 4, "-20"),
+                lauf(t("10:00"), 19, "-40"), List.of(), List.of(), List.of(), List.of(), null, null);
+
+        assertThat(events).extracting(HistoryEventDto::type)
+                .containsExactly("negativpreis", "keine-verguetung");
     }
 
     @Test
@@ -397,8 +433,8 @@ class EreignisseTest {
     private static List<HistoryEventDto> build(HistoryRange range, List<ValueSlot> negativePrices,
             List<ValueSlot> curtail, List<ValueSlot> gridCharges, List<GapRun> gaps,
             CoverageRow row, HistoryCoverageDto coverage) {
-        return Ereignisse.build(range, negativePrices, curtail, List.of(), gridCharges, gaps, row,
-                coverage);
+        return Ereignisse.build(range, negativePrices, List.of(), curtail, List.of(), gridCharges,
+                gaps, row, coverage);
     }
 
     /** Ein Zeitpunkt im Juli 2026 (UTC, Berlin = UTC+2). */

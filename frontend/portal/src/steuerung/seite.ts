@@ -139,6 +139,13 @@ export type BlattZustand =
   | { art: 'vorrang' }
   | { art: 'p14a' }
   | { art: 'negativ' }
+  /**
+   * „Stunden ohne Vergütung" (§ 51a EEG, Konzept
+   * `vp-fahrplan-eigenverbrauch-konzept` §4.7, Scheibe S4): die Sonnen-
+   * Erzählung-Fassung von {@link negativ} - keine Kostenvermeidung, sondern
+   * eine ausbleibende Vergütung bei sonst fester Einspeisung.
+   */
+  | { art: 'nullstunden' }
   | { art: 'anbinden' }
   | { art: 'neu'; id: string }
   | { art: 'rahmen' }

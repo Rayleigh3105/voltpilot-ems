@@ -19,7 +19,14 @@ import java.util.UUID;
  *
  * <ul>
  *   <li>{@code negativpreis} - zusammenhängendes Fenster negativer
- *       Börsenpreise (gemessen an der gespeicherten Preisreihe).</li>
+ *       Börsenpreise (gemessen an der gespeicherten Preisreihe), bei denen die
+ *       Einspeisung dieser Anlage wirklich Geld kostet.</li>
+ *   <li>{@code keine-verguetung} - dieselbe negative Preislage, aber die
+ *       Anlage hat § 51a EEG (Solarspitzengesetz): ihre sonst feste
+ *       Einspeisevergütung ist in diesen Viertelstunden auf 0 geklemmt, kein
+ *       echter negativer Satz (Konzept {@code vp-fahrplan-eigenverbrauch-konzept}
+ *       §4.7/§9, Scheibe S4). Kein {@code value}/{@code unit} - der auffällige
+ *       Fakt ist das Ausbleiben der Vergütung, keine Zahl.</li>
  *   <li>{@code abregelung} - vom Optimierer EINGEPLANTE PV-Abregelung
  *       ({@code schedule.curtail_kw}). Das ist eine Plan-Aussage, kein
  *       Messwert - der Text sagt es.</li>

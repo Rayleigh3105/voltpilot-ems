@@ -13,6 +13,7 @@ import {
   lastspitzenProof,
   marktoptimierungCard,
   marktoptimierungLine,
+  negativpreisZeile,
   parseLastspitzenForm,
   supportsLastspitzenConfig,
   vermiedeneSpitzeLine,
@@ -155,6 +156,36 @@ describe('exportFolgtBoersenpreis (N4: Negativpreis-Abregelung nur wo wahr)', ()
     expect(exportFolgtBoersenpreis({ plantKind: 'eigenverbrauch', netzladenErlaubt: true })).toBe(true);
     expect(exportFolgtBoersenpreis({ plantKind: 'direktvermarktung', netzladenErlaubt: false })).toBe(true);
     expect(exportFolgtBoersenpreis({ plantKind: null, netzladenErlaubt: null })).toBe(false);
+  });
+});
+
+describe('negativpreisZeile (Konzept vp-fahrplan-eigenverbrauch-konzept §4.7, Scheibe S4)', () => {
+  const site = { plantKind: 'eigenverbrauch', netzladenErlaubt: false };
+
+  it('bleibt bei den Stammdaten, trägt der Lauf keine Preisfelder (einspeisung unbekannt)', () => {
+    expect(negativpreisZeile({ einspeisung: 'unbekannt' }, site)).toBeNull();
+    expect(negativpreisZeile({ einspeisung: 'unbekannt' }, { plantKind: 'eigenverbrauch', netzladenErlaubt: true })).toBe('negativ');
+    expect(negativpreisZeile({ einspeisung: 'unbekannt' }, { plantKind: 'direktvermarktung', netzladenErlaubt: false })).toBe(
+      'negativ',
+    );
+  });
+
+  it('eine feste Einspeisung ohne Nullstunden zeigt keine Zeile', () => {
+    expect(negativpreisZeile({ einspeisung: 'flach' }, site)).toBeNull();
+  });
+
+  it('§ 51a (einspeisung flach_mit_nullstunden) zeigt „Stunden ohne Vergütung" statt der Abregelung', () => {
+    expect(negativpreisZeile({ einspeisung: 'flach_mit_nullstunden' }, site)).toBe('nullstunden');
+  });
+
+  it('eine echt schwankende Einspeisung (Ü20) zeigt die Abregelung, auch ohne Netzladen/DV in den Stammdaten', () => {
+    expect(negativpreisZeile({ einspeisung: 'schwankt' }, site)).toBe('negativ');
+  });
+
+  it('Netzladen/DV gewinnt, auch wenn der Lauf (noch) keine Nullstunden zeigt', () => {
+    expect(negativpreisZeile({ einspeisung: 'flach_mit_nullstunden' }, { plantKind: 'eigenverbrauch', netzladenErlaubt: true })).toBe(
+      'negativ',
+    );
   });
 });
 

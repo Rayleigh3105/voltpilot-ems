@@ -51,6 +51,7 @@ import {
   AnbindenBlatt,
   GeraetBlatt,
   NegativBlatt,
+  NullstundenBlatt,
   NeuBlatt,
   P14aBlatt,
   PauseBlatt,
@@ -591,6 +592,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
         netzanschlussKw={rahmen?.effektivGrenzeKw ?? rahmen?.netzanschlussKw ?? null}
         plantKind={site.plantKind}
         netzladenErlaubt={site.netzladenErlaubt}
+        tarifArt={site.tarifArt}
         busy={busy}
         reoStart={reoStart}
         onReoGestartet={() => setReoStart(null)}
@@ -806,6 +808,8 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anla
       return <P14aBlatt k={k} />;
     case 'negativ':
       return <NegativBlatt k={k} />;
+    case 'nullstunden':
+      return <NullstundenBlatt k={k} />;
     case 'anbinden':
       return <AnbindenBlatt k={k} />;
     case 'neu':

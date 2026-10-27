@@ -84,6 +84,25 @@ class HistoryServiceNegativpreisVerguetungTest {
     }
 
     @Test
+    void mitSolarspitzengesetzWirdKeineVerguetungStattNegativpreisGemeldet() {
+        // Scheibe S4 (vp-fahrplan-eigenverbrauch-konzept §4.7/§9): commissioned
+        // ab dem Solarspitzengesetz-Stichtag - §51a klemmt die sonst feste
+        // Vergütung in dieser negativen Viertelstunde auf 0,0, kein echter
+        // negativer Satz. Dasselbe zonenweite Fenster wie oben, aber ein
+        // anderes Ereignis - end-to-end durch die echte SlotEconomics, nicht
+        // nur die reine Ereignisse.build()-Fallstudie in EreignisseTest.
+        SiteEconomics s51a = siteEconomics("eigenverbrauch", false,
+                LocalDate.of(2025, 3, 1), null);
+        HistoryService service = dienst(s51a);
+
+        HistoryDto h = service.history(SITE, "DE-LU", HistoryRange.DAY, TAG);
+
+        assertThat(h.events()).extracting(HistoryEventDto::type)
+                .contains("keine-verguetung")
+                .doesNotContain("negativpreis");
+    }
+
+    @Test
     void ohneAnlagenOekonomieBleibtDerZonenweiteFundStehen() {
         repo = mock(HistoryRepository.class);
         when(repo.tariffContext(SITE)).thenReturn(new HistoryRepository.TariffContext("fest", true));

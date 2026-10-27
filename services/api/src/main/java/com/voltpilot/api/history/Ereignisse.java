@@ -121,7 +121,11 @@ public final class Ereignisse {
      * Kappung der längsten Fenster ließ im Sommer Tage mit negativen Preisen weg.
      *
      * @param range          der Zeitraum - er entscheidet, ob gebündelt wird
-     * @param negativePrices Preis-Slots unter null (Wert = EUR/MWh)
+     * @param negativePrices Preis-Slots unter null (Wert = EUR/MWh), bei denen
+     *                       die Einspeisung dieser Anlage wirklich Geld kostet
+     * @param keineVerguetung dieselbe Zonen-Lage (Preis unter null), aber §51a
+     *                       EEG klemmt die sonst feste Vergütung dieser Anlage
+     *                       auf null - kein echter negativer Satz (Scheibe S4)
      * @param curtailments   geplante Abregelung je Slot (Wert = kW)
      * @param gridLimits     gemeldete Netzgrenze je Slot (Wert = kW); leer, wenn
      *                       der Zeitraum sie nicht auswertet
@@ -135,6 +139,7 @@ public final class Ereignisse {
     public static List<HistoryEventDto> build(
             HistoryRange range,
             List<ValueSlot> negativePrices,
+            List<ValueSlot> keineVerguetung,
             List<ValueSlot> curtailments,
             List<ValueSlot> gridLimits,
             List<ValueSlot> gridCharges,
@@ -144,6 +149,7 @@ public final class Ereignisse {
 
         List<HistoryEventDto> events = new ArrayList<>();
         events.addAll(ereignisse(range, "negativpreis", runs(negativePrices)));
+        events.addAll(ereignisse(range, "keine-verguetung", runs(keineVerguetung)));
         events.addAll(ereignisse(range, "abregelung", runs(curtailments)));
         events.addAll(ereignisse(range, "netzgrenze", runs(gridLimits)));
         events.addAll(ereignisse(range, "netzladen", runs(gridCharges).stream()
@@ -298,6 +304,13 @@ public final class Ereignisse {
                         ? "Negative Börsenpreise: " + dauer
                         : String.format(Locale.GERMANY, "Negative Börsenpreise: %s, bis %.1f ct/kWh",
                                 dauer, value);
+            }
+            case "keine-verguetung" -> {
+                // Kein Satz ist hier der auffällige Fakt (§51a klemmt auf null) -
+                // keine Zahl, dieselbe Disziplin wie „datenluecke".
+                value = null;
+                unit = null;
+                text = "Keine Vergütung (§ 51a EEG): " + dauer;
             }
             case "abregelung" -> {
                 // Aus den gespeicherten Fahrplänen - eine Vorher-Rechnung, keine Messung.

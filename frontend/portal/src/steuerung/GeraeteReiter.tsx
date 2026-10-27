@@ -7,10 +7,12 @@
  * Geräte, ohne Reihenfolge, Plan und Vorschläge. Angehalten (SZ-2 A) stehen
  * die Geräte abgedimmt mit ihrem Grund, die Reihenfolge ohne „Ändern“.
  */
-import { forwardRef, useEffect, useRef, useState, type PointerEvent as RPointerEvent, type KeyboardEvent } from 'react';
+import { forwardRef, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type KeyboardEvent } from 'react';
 import { Recht } from '../components/Recht';
+import type { TarifArt } from '../api';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { haptik } from '../haptik';
+import { preisRolle, type PreisRolle } from '../preisRolle';
 import {
   SPEICHER,
   auftragSatz,
@@ -23,7 +25,7 @@ import {
   type GeraetBild,
 } from './bild';
 import { Ic } from './Ic';
-import { exportFolgtBoersenpreis } from '../moduleSurface';
+import { negativpreisZeile } from '../moduleSurface';
 import { messBild, type MessTeil } from './messen';
 import { AnlagensteuerungKarten } from './AnlagensteuerungKarte';
 import { vorschlag } from './neu';
@@ -54,9 +56,15 @@ export interface GeraeteReiterProps {
   onReihenfolge: (ids: string[]) => Promise<void>;
   onAnlage: (g: GeraetBild | null) => void;
   netzanschlussKw: number | null;
-  /** N4: nur mit ihnen zeigt „Was immer gilt“ die Negativpreis-Abregelung. */
+  /**
+   * N4/S4 (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.7): zusammen mit
+   * `tarifArt` und dem Tagesbild-Lauf entscheiden sie, ob „Was immer gilt"
+   * die Negativpreis-Abregelung oder (§ 51a) „Stunden ohne Vergütung" zeigt.
+   */
   plantKind: string | null;
   netzladenErlaubt: boolean | null;
+  /** Die Sonnen-Erzählung (§4.7): aus `preisRolle`, zusammen mit dem Lauf. */
+  tarifArt: TarifArt | null | undefined;
   busy: string | null;
   /** Von außen gewünscht: die Reihenfolge ändern (aus einem Blatt). */
   reoStart: string | null;
@@ -87,15 +95,34 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
     });
   }, [p.reoStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Die EINE Klassen-Regel (Konzept `vp-fahrplan-eigenverbrauch-konzept`
+  // §5.1/§4.7, Scheibe S4): aus den Preisen des HEUTIGEN Laufs
+  // (`bild.reihen.bezug`/`.einspeise`, dieselben Felder wie der Fahrplan
+  // liest), Index 0..TAG-1 - `Reihen` ist bereits auf die absolute
+  // Raster-Zeit ausgerichtet, keine zweite Übersetzung nötig (anders als
+  // `TagModell`s Tagesausschnitt).
+  const rolle = useMemo(
+    () =>
+      preisRolle({
+        slots: bild.reihen.bezug
+          .slice(0, TAG)
+          .map((importPriceCtKwh, i) => ({ importPriceCtKwh, exportValueCtKwh: bild.reihen.einspeise[i] })),
+        tarifArt: p.tarifArt ?? null,
+        plantKind: p.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
+      }),
+    [bild.reihen, p.tarifArt, p.plantKind],
+  );
+  const sonne = rolle.erzaehlung === 'sonne';
+
   if (bild.funktion.ohneTeilnahme) return <MessenAnsicht bild={bild} siteId={p.siteId} oeffne={p.oeffne} />;
   const t = sel ?? bild.raster.jetzt;
   return (
     <>
-      <JetztKarte bild={bild} t={t} sel={sel} onJetzt={() => { setSel(null); setTag(0); }} oeffne={p.oeffne} />
+      <JetztKarte bild={bild} t={t} sel={sel} sonne={sonne} onJetzt={() => { setSel(null); setTag(0); }} oeffne={p.oeffne} />
       {bild.einordnung.neu.map((g) => (
         <NeuKarte key={g.id} g={g} bild={bild} busy={p.busy === g.id} oeffne={p.oeffne} onUebernehmen={p.onUebernehmen} onNurMessen={p.onNurMessen} />
       ))}
-      <Tagesbild bild={bild} tag={tag} setTag={(x) => { setTag(x); setSel(x === 1 ? TAG + bild.raster.jetzt : null); }} sel={sel} setSel={setSel} oeffne={p.oeffne} />
+      <Tagesbild bild={bild} tag={tag} setTag={(x) => { setTag(x); setSel(x === 1 ? TAG + bild.raster.jetzt : null); }} sel={sel} setSel={setSel} sonne={sonne} oeffne={p.oeffne} />
       <Liste
         ref={listeRef}
         bild={bild}
@@ -113,6 +140,7 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
         netzanschlussKw={p.netzanschlussKw}
         plantKind={p.plantKind}
         netzladenErlaubt={p.netzladenErlaubt}
+        rolle={rolle}
       />
     </>
   );
@@ -122,8 +150,11 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
 // Jetzt
 // ---------------------------------------------------------------------------
 
-function JetztKarte({ bild, t, sel, onJetzt, oeffne }: {
-  bild: SeitenBild; t: number; sel: number | null; onJetzt: () => void; oeffne: (b: BlattZustand) => void;
+function JetztKarte({ bild, t, sel, sonne = false, onJetzt, oeffne }: {
+  bild: SeitenBild; t: number; sel: number | null;
+  /** Die Sonnen-Erzählung (§4.7, Scheibe S4); Vorgabe `false` lässt den Zusatz unverändert. */
+  sonne?: boolean;
+  onJetzt: () => void; oeffne: (b: BlattZustand) => void;
 }) {
   const r = bild.raster;
   const rh = bild.reihen;
@@ -134,8 +165,17 @@ function JetztKarte({ bild, t, sel, onJetzt, oeffne }: {
   const satz = kopfsatz(rh, t, bild.geraete, r.jetzt);
   const zusatz: [string, string][] = [];
   const preis = rh.preis[t];
-  if (preis != null && preis < 0) {
-    zusatz.push(['down', `Strom kostet an der Börse gerade unter null${(rh.abgeregelt[t] ?? 0) > 0.1 ? '; statt einzuspeisen wird abgeregelt.' : '.'}`]);
+  const abgeregeltSuffix = (rh.abgeregelt[t] ?? 0) > 0.1;
+  if (sonne) {
+    // § 51a (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.7): die Einspeise-
+    // Vergütung dieser Viertelstunde ist auf null geklemmt, weil die Börse
+    // gerade negativ ist - sonst sagt diese Klasse zur Börse nichts (sie
+    // rechnet damit nicht).
+    if (rh.einspeise[t] === 0 && preis != null && preis < 0) {
+      zusatz.push(['down', `Gerade gibt es für Einspeisung keine Vergütung${abgeregeltSuffix ? '; der Überschuss wird abgeregelt.' : '.'}`]);
+    }
+  } else if (preis != null && preis < 0) {
+    zusatz.push(['down', `Strom kostet an der Börse gerade unter null${abgeregeltSuffix ? '; statt einzuspeisen wird abgeregelt.' : '.'}`]);
   }
   if (t === r.jetzt) {
     for (const g of bild.geraete) {
@@ -149,7 +189,7 @@ function JetztKarte({ bild, t, sel, onJetzt, oeffne }: {
     if (bild.pausiertBisMs != null) zusatz.push(['pause', 'Automatik pausiert.']);
     if (bild.funktion.angehalten) zusatz.push(['pause', 'VoltPilot steuert gerade nicht.']);
   }
-  const unter = unterzeile(rh, t, bild.speicher != null);
+  const unter = unterzeile(rh, t, bild.speicher != null, sonne);
   const l = leiste(rh, t, bild.geraete, bild.reihenfolge, r.jetzt);
   return (
     <section className="card jetzt links" id="jetzt" aria-live="polite" aria-label="Jetzt">
@@ -401,9 +441,12 @@ function artikelUnbestimmt(g: GeraetBild): string {
 // Tagesbild
 // ---------------------------------------------------------------------------
 
-function Tagesbild({ bild, tag, setTag, sel, setSel, oeffne }: {
+function Tagesbild({ bild, tag, setTag, sel, setSel, sonne = false, oeffne }: {
   bild: SeitenBild; tag: number; setTag: (t: number) => void; sel: number | null;
-  setSel: (t: number | null) => void; oeffne: (b: BlattZustand) => void;
+  setSel: (t: number | null) => void;
+  /** Die Sonnen-Erzählung (§4.7, Scheibe S4): keine Börsenpreis-Spur, kein Preis im Tooltip. Vorgabe `false`. */
+  sonne?: boolean;
+  oeffne: (b: BlattZustand) => void;
 }) {
   const [ref, w] = useBreite();
   const heute = tag === 0;
@@ -416,7 +459,7 @@ function Tagesbild({ bild, tag, setTag, sel, setSel, oeffne }: {
     .map((g) => ({ g, h: breit ? 17 : 15, gap: 5 }));
   const bands = [
     { art: 'pv' as const, h: 24, gap: 4 },
-    { art: 'preis' as const, h: 26, gap: 8 },
+    ...(sonne ? [] : [{ art: 'preis' as const, h: 26, gap: 8 }]),
     ...(bild.speicher ? [{ art: 'soc' as const, h: 12, gap: 6, label: 'Ladestand des Speichers' }] : []),
   ];
   const momentT = sel ?? bild.raster.jetzt;
@@ -457,7 +500,7 @@ function Tagesbild({ bild, tag, setTag, sel, setSel, oeffne }: {
     if (e.key === 'End') { e.preventDefault(); waehle(t0 + TAG - 1); }
     if (e.key === 'Escape') { e.preventDefault(); setSel(null); }
   };
-  const mz = momentZeile(bild.reihen, momentT, bild.geraete, bild.raster.jetzt);
+  const mz = momentZeile(bild.reihen, momentT, bild.geraete, bild.raster.jetzt, sonne);
   const erwartet = bild.geraete.some((g) => g.herkunft.some((h) => h === 'erwartet'));
   return (
     <section className="card plan links" aria-label="Tagesbild">
@@ -940,12 +983,14 @@ function cssId(id: string): string {
 // Was immer gilt
 // ---------------------------------------------------------------------------
 
-function ImmerKarte({ bild, oeffne, netzanschlussKw, plantKind, netzladenErlaubt }: {
+function ImmerKarte({ bild, oeffne, netzanschlussKw, plantKind, netzladenErlaubt, rolle }: {
   bild: SeitenBild;
   oeffne: (b: BlattZustand) => void;
   netzanschlussKw: number | null;
   plantKind: string | null;
   netzladenErlaubt: boolean | null;
+  /** Die EINE Klassen-Regel (§4.7, Scheibe S4) - aus dem heutigen Lauf, siehe {@link GeraeteReiter}. */
+  rolle: PreisRolle;
 }) {
   const rows: [string, string, string, BlattZustand][] = [
     ['shield', 'Wer gewinnt?', 'Schutz › Ihr Eingriff › Regel › Frist › Reihenfolge', { art: 'vorrang' }],
@@ -957,11 +1002,13 @@ function ImmerKarte({ bild, oeffne, netzanschlussKw, plantKind, netzladenErlaubt
     rows.push(['gauge', `Netzanschluss ${fKw(netzanschlussKw)}`, 'Laden wird gekürzt, bevor die Sicherung fällt', { art: 'rahmen' }]);
   }
   rows.push(['pole', '§ 14a EnWG', 'Grenze Ihres Netzbetreibers für steuerbare Geräte', { art: 'p14a' }]);
-  // N4: nur zeigen, wo der Plan die Einspeisung wirklich zum Börsenpreis
-  // rechnet - bei fester Vergütung regelt der Optimierer nie wegen des
-  // Preises ab.
-  if (exportFolgtBoersenpreis({ plantKind, netzladenErlaubt })) {
+  // N4/S4 (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.7): siehe
+  // `moduleSurface.negativpreisZeile` für die Regel.
+  const zeileArt = negativpreisZeile(rolle, { plantKind, netzladenErlaubt });
+  if (zeileArt === 'negativ') {
     rows.push(['down', 'Negativpreis-Abregelung', 'Bei Preisen unter null speist die Anlage nicht ein', { art: 'negativ' }]);
+  } else if (zeileArt === 'nullstunden') {
+    rows.push(['down', 'Stunden ohne Vergütung', 'Keine Vergütung bei negativen Börsenpreisen (§ 51a EEG)', { art: 'nullstunden' }]);
   }
   return (
     <section className="card immer links" aria-label="Was immer gilt">

@@ -150,6 +150,26 @@ describe('ereignisSpur — Chips', () => {
     expect(spur.arten.map((a) => a.art)).toEqual(['abregelung', 'netzladen']);
     expect(ART_ORDER.indexOf('abregelung')).toBeLessThan(ART_ORDER.indexOf('netzladen'));
   });
+
+  it('§ 51a: „keine-verguetung" ist eine eigene Art, getrennt von „negativpreis" (Scheibe S4)', () => {
+    const spur = ereignisSpur(
+      hist(
+        [local(2026, 7, 15)],
+        [
+          ereignis({ type: 'keine-verguetung', text: 'Keine Vergütung (§ 51a EEG): 4 Std 45 Min', value: null, unit: null }),
+        ],
+      ),
+    )!;
+    expect(spur.chips.map((c) => c.art)).toEqual(['keine-verguetung']);
+    expect(spur.arten.map((a) => a.art)).toEqual(['keine-verguetung']);
+    expect(EREIGNIS_ARTEN['keine-verguetung'].label).toBe('Keine Vergütung');
+    expect(EREIGNIS_ARTEN['keine-verguetung'].farbe).toBe('markt');
+    // Beide Arten können am selben Tag nebeneinander stehen - nie dieselbe Art.
+    const beide = ereignisSpur(
+      hist([local(2026, 7, 15)], [ereignis(), ereignis({ type: 'keine-verguetung', value: null, unit: null })]),
+    )!;
+    expect(beide.chips.map((c) => c.art)).toEqual(['negativpreis', 'keine-verguetung']);
+  });
 });
 
 describe('ereignisZeit — das exklusive Ende zählt keinen Tag zu viel', () => {
@@ -287,6 +307,7 @@ describe('Bereiche — vier Farben statt sieben, das Symbol unterscheidet', () =
   it('ordnet jede Art genau einem der vier Bereiche zu', () => {
     expect(Object.fromEntries(ART_ORDER.map((a) => [a, EREIGNIS_ARTEN[a].farbe]))).toEqual({
       negativpreis: 'markt',
+      'keine-verguetung': 'markt',
       abregelung: 'pv',
       netzgrenze: 'netz',
       netzladen: 'netz',
@@ -337,6 +358,7 @@ describe('Die eine Zahl — Format', () => {
     expect(ereignisZahl('abregelung', 214.6, 600, t, 'year')).toBe('215 kWh');
     expect(ereignisZahl('netzgrenze', 4.2, 90, t, 'day')).toBe('≤ 4,2 kW');
     expect(ereignisZahl('datenluecke', null, 135, t, 'month')).toBe('2 Std 15 Min');
+    expect(ereignisZahl('keine-verguetung', null, 285, t, 'day')).toBe('4 Std 45 Min');
     expect(ereignisZahl('netzladen', null, 45, t, 'month')).toBe('45 Min');
     expect(ereignisZahl('geraet-still', null, 600, t, 'day')).toBe('seit 14:15');
     expect(ereignisZahl('geraet-still', null, 600, t, 'year')).toBe('seit 20.10.');
@@ -503,7 +525,7 @@ describe('Vorgaben — Netzbetreiber, Direktvermarkter, nicht bereit (EZ-9)', ()
 
   it('kennt jede Ereignisart des Vertrags — eine unbekannte verwürfe der Client still', () => {
     const vertrag = readFileSync(resolve(process.cwd(), '../../docs/contracts/openapi.yaml'), 'utf8');
-    const zeile = vertrag.split('\n').find((z) => z.includes('enum: [negativpreis, abregelung'));
+    const zeile = vertrag.split('\n').find((z) => z.includes('enum: [negativpreis, keine-verguetung, abregelung'));
     const arten = /\[(.*)\]/.exec(zeile ?? '')![1].split(',').map((x) => x.trim());
     expect(arten.filter((a) => !(a in EREIGNIS_ARTEN))).toEqual([]);
     expect(arten.slice(-VORGABEN_ARTEN.length)).toEqual([...VORGABEN_ARTEN]);

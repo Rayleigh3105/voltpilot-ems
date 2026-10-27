@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import evDyn from '../fahrplanVektoren/laeufe/ev-dyn-tag.json';
+import evFest51a from '../fahrplanVektoren/laeufe/ev-fest-51a-tag.json';
+import { preisRolle } from '../preisRolle';
 import {
   SPEICHER,
   auftragSatz,
@@ -9,6 +12,7 @@ import {
   kopfsatz,
   kurzName,
   leiste,
+  momentZeile,
   ordnen,
   quellenAnteil,
   reihen,
@@ -16,10 +20,11 @@ import {
   reihenfolgeRumpf,
   speicherBild,
   symbolFuer,
+  unterzeile,
   type Reihen,
 } from './bild';
 import type { VerbraucherEintrag } from '../verbraucherZone';
-import { N, raster, slotVon, uhr, uhrTag, dauer, spannen, spannenText } from './zeit';
+import { N, TAG, raster, slotVon, uhr, uhrTag, dauer, spannen, spannenText } from './zeit';
 
 const NOW = new Date(2026, 8, 29, 13, 10);
 const r = raster(NOW);
@@ -240,6 +245,68 @@ describe('Jetzt', () => {
     const s = kopfsatz(rh, 80, [], 52);
     expect(s.vor).toBe('Keine Sonne. Der Speicher liefert 0,8 kW, das Netz 1,5 kW.');
     expect(kopfsatz(leereReihen(), 80, [], 52).vor).toBe('Für diese Viertelstunde liegen keine Werte vor.');
+  });
+});
+
+describe('unterzeile/momentZeile · sonne (Konzept vp-fahrplan-eigenverbrauch-konzept §4.7, Scheibe S4)', () => {
+  it('nennt den Börsenpreis wie bisher, ohne `sonne` (Vorgabe false)', () => {
+    const rh = leereReihen();
+    rh.preis[52] = 8.4; rh.temp[52] = 22; rh.soc[52] = 64;
+    expect(unterzeile(rh, 52, true)).toBe('Börsenpreis 8,4 ct/kWh · 22 °C draußen · Speicher 64 %');
+    expect(unterzeile(rh, 52, true, false)).toBe('Börsenpreis 8,4 ct/kWh · 22 °C draußen · Speicher 64 %');
+  });
+
+  it('lässt den Börsenpreis (und die Morgen-Notiz) weg, mit `sonne = true`', () => {
+    const rh = leereReihen();
+    rh.preis[52] = 8.4; rh.temp[52] = 22; rh.soc[52] = 64;
+    expect(unterzeile(rh, 52, true, true)).toBe('22 °C draußen · Speicher 64 %');
+    // Die Morgen-Notiz ist ebenfalls eine Preis-Aussage - auch sie entfällt.
+    const morgen = leereReihen();
+    morgen.morgenBekannt = false;
+    expect(unterzeile(morgen, TAG, false, true)).toBe('');
+    expect(unterzeile(morgen, TAG, false, false)).toBe('Preise für morgen kommen gegen 13 Uhr');
+  });
+
+  it('momentZeile: derselbe Kopf ohne den Preis-Teil bei `sonne = true`', () => {
+    const rh = leereReihen();
+    rh.pv[52] = 3.2; rh.preis[52] = 11.9;
+    expect(momentZeile(rh, 52, [], 52).kopf).toBe('13:00–13:15 · Sonne 3,2 kW · 11,9 ct/kWh');
+    expect(momentZeile(rh, 52, [], 52, true).kopf).toBe('13:00–13:15 · Sonne 3,2 kW');
+  });
+});
+
+describe('reihen() + preisRolle · Ende zu Ende über den echten § 51a-Lauf (Scheibe S4)', () => {
+  it('klassiert über `bild.reihen` genauso wie der Fahrplan - 19 Nullstunden, 10:00-14:45', () => {
+    const lauf = evFest51a as { slots: Array<Record<string, unknown>> };
+    const r51a = raster(new Date(2026, 9, 27));
+    const rh = reihen({ raster: r51a, plan: { slots: lauf.slots } as never });
+    const rolle = preisRolle({
+      slots: rh.bezug.slice(0, TAG).map((importPriceCtKwh, i) => ({ importPriceCtKwh, exportValueCtKwh: rh.einspeise[i] })),
+      tarifArt: 'fest',
+      plantKind: 'eigenverbrauch',
+    });
+    expect(rolle.bezug).toBe('flach');
+    expect(rolle.einspeisung).toBe('flach_mit_nullstunden');
+    expect(rolle.erzaehlung).toBe('sonne');
+    expect(rolle.nullstunden).toHaveLength(19);
+    // Dieselbe Spanne wie in fahrplanWhy.sonne.test.ts (ev-fest-51a-tag): 10:00-14:45 lokal.
+    const von = Math.min(...rolle.nullstunden);
+    const bis = Math.max(...rolle.nullstunden);
+    expect(uhrTag(von)).toBe('10:00');
+    expect(uhrTag(bis + 1)).toBe('14:45');
+  });
+
+  it('der dynamische Lauf (ev-dyn-tag) bleibt die Preis-Erzählung über dieselbe Ableitung', () => {
+    const lauf = evDyn as { slots: Array<Record<string, unknown>> };
+    const rDyn = raster(new Date(2026, 9, 27));
+    const rh = reihen({ raster: rDyn, plan: { slots: lauf.slots } as never });
+    const rolle = preisRolle({
+      slots: rh.bezug.slice(0, TAG).map((importPriceCtKwh, i) => ({ importPriceCtKwh, exportValueCtKwh: rh.einspeise[i] })),
+      tarifArt: 'dynamisch',
+      plantKind: 'eigenverbrauch',
+    });
+    expect(rolle.bezug).toBe('schwankt');
+    expect(rolle.erzaehlung).toBe('preis');
   });
 });
 

@@ -994,6 +994,28 @@ export function NegativBlatt({ k }: { k: BlattKontext }) {
   );
 }
 
+/**
+ * „Stunden ohne Vergütung" (§ 51a EEG, Konzept
+ * `vp-fahrplan-eigenverbrauch-konzept` §4.7, Scheibe S4): die Sonnen-
+ * Erzählung-Fassung von {@link NegativBlatt} - bei dieser Klasse ist
+ * Einspeisung sonst fest vergütet, keine Kostenvermeidung nötig. Keine
+ * Regel-Vorlage: der Fahrplan füllt den Speicher in diesen Stunden bereits
+ * von selbst, es gibt nichts zusätzlich einzustellen.
+ */
+export function NullstundenBlatt({ k }: { k: BlattKontext }) {
+  return (
+    <Blatt symbol="down" titel="Stunden ohne Vergütung" unter="§ 51a EEG" onClose={k.zu}>
+      <div className="warum">
+        Bei negativen Börsenpreisen gibt es für Ihre Anlage keine Einspeisevergütung (§ 51a EEG, Solarspitzengesetz).
+      </div>
+      <p className="leise">
+        In diesen Viertelstunden füllt der Fahrplan lieber den Speicher, statt wertlos einzuspeisen - dafür ist nichts
+        einzustellen.
+      </p>
+    </Blatt>
+  );
+}
+
 export function AnbindenBlatt({ k }: { k: BlattKontext }) {
   const schritte: [string, string, string][] = [
     ['layers', 'In der Anlage anlegen und verbinden', 'Anlage › Aufbau › Komponente anlegen. Dort sagen Sie, was es ist (Waschmaschine, Poolpumpe, Wallbox …) und wie es angebunden ist.'],

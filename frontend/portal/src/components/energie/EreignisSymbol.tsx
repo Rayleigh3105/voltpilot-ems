@@ -15,6 +15,14 @@ const PFADE: Record<EreignisArt, ReactElement> = {
       <polyline points="16 17 22 17 22 11" />
     </>
   ),
+  // Durchgestrichenes Geldzeichen: § 51a klemmt die Vergütung auf null.
+  'keine-verguetung': (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M14.5 9a3.5 3.5 0 0 0-5.2 2M14.5 15a3.5 3.5 0 0 1-5.2-2" />
+      <path d="M4.5 4.5l15 15" />
+    </>
+  ),
   // Sonne unter einem Deckel: die Einspeisung wird begrenzt.
   abregelung: (
     <>

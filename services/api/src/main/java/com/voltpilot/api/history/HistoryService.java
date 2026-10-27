@@ -158,8 +158,10 @@ public class HistoryService {
     private List<HistoryEventDto> events(UUID siteId, String biddingZone, HistoryRange range,
             HistoryRange.Window window, HistoryRepository.CoverageRow coverageRow,
             HistoryCoverageDto coverage, LocalDate at, Instant cutover) {
+        EinspeiseSlots einspeise = einspeiseEreignisSlots(siteId, biddingZone, window);
         List<HistoryEventDto> events = new java.util.ArrayList<>(Ereignisse.build(range,
-                negativeEinspeiseSlots(siteId, biddingZone, window),
+                einspeise.negativ(),
+                einspeise.keineVerguetung(),
                 repo.curtailSlots(siteId, window.from(), window.to()),
                 Ereignisse.evaluatesGridLimit(range)
                         ? repo.gridLimitSlots(siteId, window.from(), window.to())
@@ -178,32 +180,52 @@ public class HistoryService {
     }
 
     /**
+     * {@code negativ} - die negativen Börsenpreis-Viertelstunden, in denen die
+     * Einspeisung dieser Anlage dabei wirklich Geld kostet (N5,
+     * vp-fahrplan-eigenverbrauch-konzept §9); {@code keineVerguetung} - dieselbe
+     * Zonen-Lage, aber die Anlage hat § 51a EEG (Solarspitzengesetz): ihre sonst
+     * feste Vergütung ist auf {@code 0.0} geklemmt, kein echter negativer Satz
+     * (Scheibe S4, vp-fahrplan-eigenverbrauch-konzept §4.7/§9).
+     */
+    private record EinspeiseSlots(List<HistoryRepository.ValueSlot> negativ,
+            List<HistoryRepository.ValueSlot> keineVerguetung) {
+    }
+
+    /**
      * Die negativen Börsenpreis-Viertelstunden, EINGESCHRÄNKT auf die, in denen
      * die Einspeisung dieser Anlage dabei wirklich Geld kostet (N5,
-     * vp-fahrplan-eigenverbrauch-konzept §9). {@code negativePriceSlots} ist
-     * zonenweit - eine feste EEG-Vergütung bleibt positiv, egal was die Börse
-     * macht ({@link SlotEconomics#exportValueCtKwh}), und regelt dafür nie
-     * wegen des Preises ab. Ohne die Anlagen-Ökonomie (RLS) bleibt der
-     * zonenweite Fund stehen, statt ein echtes Ereignis stumm zu verschlucken.
+     * vp-fahrplan-eigenverbrauch-konzept §9), UND, getrennt, die, in denen §51a
+     * die sonst feste Vergütung stattdessen auf null klemmt (S4). {@code
+     * negativePriceSlots} ist zonenweit - eine feste EEG-Vergütung bleibt
+     * positiv, egal was die Börse macht ({@link SlotEconomics#exportValueCtKwh}),
+     * und regelt dafür nie wegen des Preises ab. Ohne die Anlagen-Ökonomie (RLS)
+     * bleibt der zonenweite Fund als {@code negativ} stehen (keine Vergütungslage
+     * bekannt, also kein §51a-Ereignis), statt ein echtes Ereignis stumm zu
+     * verschlucken.
      */
-    private List<HistoryRepository.ValueSlot> negativeEinspeiseSlots(UUID siteId, String biddingZone,
+    private EinspeiseSlots einspeiseEreignisSlots(UUID siteId, String biddingZone,
             HistoryRange.Window window) {
         List<HistoryRepository.ValueSlot> slots =
                 repo.negativePriceSlots(biddingZone, window.from(), window.to());
         if (slots.isEmpty()) {
-            return slots;
+            return new EinspeiseSlots(slots, List.of());
         }
         SlotEconomics economics = diagnostics.economicsFor(siteId, window.from(), window.to());
         if (economics == null) {
-            return slots;
+            return new EinspeiseSlots(slots, List.of());
         }
-        return slots.stream()
-                .filter(s -> {
-                    Double spot = s.value() == null ? null : s.value().doubleValue();
-                    Double exportCt = economics.exportValueCtKwh(spot, s.slot());
-                    return exportCt == null || exportCt < 0.0;
-                })
-                .toList();
+        List<HistoryRepository.ValueSlot> negativ = new java.util.ArrayList<>();
+        List<HistoryRepository.ValueSlot> keineVerguetung = new java.util.ArrayList<>();
+        for (HistoryRepository.ValueSlot s : slots) {
+            Double spot = s.value() == null ? null : s.value().doubleValue();
+            Double exportCt = economics.exportValueCtKwh(spot, s.slot());
+            if (exportCt == null || exportCt < 0.0) {
+                negativ.add(s);
+            } else if (exportCt == 0.0) {
+                keineVerguetung.add(s);
+            }
+        }
+        return new EinspeiseSlots(negativ, keineVerguetung);
     }
 
     // ---- Abendverkauf (P2 des Nachtreserve-Konzepts) --------------------------
