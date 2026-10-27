@@ -50,7 +50,7 @@ import { jetztHeld } from '../fahrplanJetzt';
 import { lageView } from '../fahrplanLage';
 import { verguetungZeile } from '../einspeiseverguetung';
 import { autarkieHeute, sonnenstromModell } from '../fahrplanSonnenstrom';
-import { preisRolle } from '../preisRolle';
+import { preisRolle, umstellungErkannt } from '../preisRolle';
 import { JetztKompakt, JetztWarnungen, TagesFilm } from '../components/FahrplanJetzt';
 import { FahrplanLage } from '../components/FahrplanLage';
 import { FahrplanTagesbild, TagOhneBildKarte } from '../components/FahrplanTagesbild';
@@ -636,6 +636,13 @@ function FahrplanInhalt({ site }: { site: Site }) {
     () => new Set(sonne ? rolle.nullstunden.map((i) => slots[i]?.start).filter((s): s is string => s != null) : []),
     [sonne, rolle.nullstunden, slots],
   );
+  // Umstellung (§5.3, Scheibe S5): eine eben geänderte Einstellung, der der
+  // jüngste Lauf noch widerspricht - Stammdaten ohne Lauf gegen dieselbe
+  // Regel MIT den Preisfeldern des Laufs.
+  const umstellung = useMemo(
+    () => umstellungErkannt(preisRolle({ tarifArt: site.tarifArt ?? null, plantKind: site.plantKind }), rolle),
+    [site.tarifArt, site.plantKind, rolle],
+  );
   // Die „Lage"-Zeile (Erklärbarkeit Stufe 2): Tages-Bogen + Morgen-Ausblick aus
   // den Eingaben DIESES Laufs. Sie liest die Slots des jüngsten Laufs (nicht
   // den Tages-Splice - der ist aus vielen Läufen genäht und trägt deshalb weder
@@ -807,6 +814,31 @@ function FahrplanInhalt({ site }: { site: Site }) {
     [gesternSlots, slotMinutes, now, site.plantKind, site.tarifArt],
   );
   const gesternPhasen = useMemo(() => phases(gesternSlots, slotMinutes), [gesternSlots, slotMinutes]);
+  // Gestern ist ein ANDERER Lauf (der Tages-Splice) als heute/morgen - die
+  // Sonnen-Erzählung gilt nur, wenn SEIN Tag sie auch wirklich trägt (§5.3:
+  // „ein Tag, an dem Läufe beider Klassen liegen, bekommt die Preis-
+  // Erzählung, sobald ein gezeigter Wert schwankt"). Keine eigene Lücke für
+  // gestern - die Vergütungs-Lücke ist ein AKTUELLER Konfigurationszustand,
+  // keine rückwirkende Tatsache.
+  const rolleGestern = useMemo(
+    () => preisRolle({ slots: gesternSlots, tarifArt: site.tarifArt ?? null, plantKind: site.plantKind }),
+    [gesternSlots, site.tarifArt, site.plantKind],
+  );
+  const sonneGestern = rolleGestern.erzaehlung === 'sonne';
+  const nullstundenZeitenGestern = useMemo(
+    () =>
+      new Set(
+        sonneGestern
+          ? rolleGestern.nullstunden.map((i) => gesternSlots[i]?.start).filter((s): s is string => s != null)
+          : [],
+      ),
+    [sonneGestern, rolleGestern.nullstunden, gesternSlots],
+  );
+  // Die im Bild gezeigte Erzählung: für „gestern" die Klassierung SEINES
+  // eigenen Tages, sonst (heute/morgen) die des jüngsten Laufs - beide teilen
+  // sich denselben Lauf (`slots`).
+  const sonneAnzeige = tagArt === 'gestern' ? sonneGestern : sonne;
+  const nullstundenZeitenAnzeige = tagArt === 'gestern' ? nullstundenZeitenGestern : nullstundenZeiten;
   const tag = tagArt === 'gestern' ? tagGestern : tagArt === 'morgen' ? tagMorgen : tagHeute;
   const tagHatBild = tag.hatWarum && tag.slots.length > 0;
   // „Was bringt es heute?" (E6): die Steuerungs-Aussage der Erlöse-Welt aus
@@ -922,6 +954,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
         prognoseSeite: showTechnicalLayer() ? `#/anlage/${site.id}/prognose` : null,
         verguetung: verguetungInfo,
         nullstunden: nullstundenNote,
+        umstellung,
       }),
     [
       plan,
@@ -938,6 +971,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
       vorhersage,
       verguetungInfo,
       nullstundenNote,
+      umstellung,
     ],
   );
   // Das Warum einer Viertelstunde des Tagesbilds liest den JÜNGSTEN Lauf, wenn
@@ -992,7 +1026,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
         siteId={site.id}
         currentSlotIndex={tagArt === 'heute' ? activeFilmIdx : -1}
         ohneGeld
-        sonne={sonne}
+        sonne={sonneAnzeige}
         onClose={schliessen}
       />
     );
@@ -1219,7 +1253,7 @@ function FahrplanInhalt({ site }: { site: Site }) {
                   siteId={site.id}
                   currentSlotIndex={tag.jetztIndex}
                   ohneGeld
-                  sonne={sonne}
+                  sonne={sonneAnzeige}
                   onClose={schliessen}
                 />
               )}
@@ -1237,10 +1271,10 @@ function FahrplanInhalt({ site }: { site: Site }) {
                     )
                   : FAHRPLAN_BERECHNUNG
               }
-              sonne={sonne}
+              sonne={sonneAnzeige}
               verguetungHerkunft={verguetungInfo?.herkunft ?? null}
               verguetungLuecke={verguetungInfo?.luecke ?? false}
-              nullstundenZeiten={nullstundenZeiten}
+              nullstundenZeiten={nullstundenZeitenAnzeige}
               // Die Autarkie-Kachel und „Ihr Sonnenstrom heute" gelten nur
               // HEUTE (wie `antwortBringt`s eigene art==='heute'-Regel).
               autarkie={tagArt === 'heute' ? autarkie : null}

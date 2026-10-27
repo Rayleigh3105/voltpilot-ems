@@ -123,4 +123,36 @@ describe('planAnnahmen · worauf der Plan achtet', () => {
     expect(z.find((x) => x.key === 'nullstunden')).toMatchObject({ titel: 'Stunden ohne Vergütung', text: nullstunden });
     expect(planAnnahmen(BASIS).some((x) => x.key === 'nullstunden')).toBe(false);
   });
+
+  it('nennt die Umstellung zuerst, widersprechen sich Stammdaten und jüngster Lauf (§5.3)', () => {
+    const z = planAnnahmen({ ...BASIS, umstellung: true, horizont: 'Der Fahrplan reicht bis zum Tagesende.' });
+    expect(z[0]).toMatchObject({
+      key: 'umstellung',
+      titel: 'Ihre Änderung',
+      text: 'Ihre Änderung gilt ab dem nächsten Plan (spätestens in 15 Minuten).',
+    });
+    // Ohne Widerspruch (Vorgabe false/fehlend) keine Zeile.
+    expect(planAnnahmen({ ...BASIS, umstellung: false }).some((x) => x.key === 'umstellung')).toBe(false);
+    expect(planAnnahmen(BASIS).some((x) => x.key === 'umstellung')).toBe(false);
+  });
+
+  it('Netzladen bei festem Strompreis trägt den Hinweis, mit dem echten Satz wenn bekannt (§5.3)', () => {
+    const mitSatz = planAnnahmen({ ...BASIS, tarifArt: 'fest', tarifParamCtKwh: 30, netzladenErlaubt: true });
+    expect(mitSatz.find((x) => x.key === 'netzladen')?.text).toBe(
+      `Der Speicher darf günstigen Netzstrom laden (Ihre Einstellung). Bei Ihrem festen Strompreis (30,0${NBSP}ct je kWh) lohnt das praktisch nie – der Speicher kauft dann nur über einer Hürde ein, die kaum je unterschritten wird.`,
+    );
+    const ohneSatz = planAnnahmen({ ...BASIS, tarifArt: 'fest', tarifParamCtKwh: null, netzladenErlaubt: true });
+    expect(ohneSatz.find((x) => x.key === 'netzladen')?.text).toBe(
+      'Der Speicher darf günstigen Netzstrom laden (Ihre Einstellung). Bei einem festen Strompreis lohnt das praktisch nie – der Speicher kauft dann nur über einer Hürde ein, die kaum je unterschritten wird.',
+    );
+    // Kein Hinweis bei dynamischem Tarif oder ohne Tarif - und keiner ohne Netzladen.
+    const dynamisch = planAnnahmen({ ...BASIS, tarifArt: 'dynamisch', tarifParamCtKwh: 4.5, netzladenErlaubt: true });
+    expect(dynamisch.find((x) => x.key === 'netzladen')?.text).toBe(
+      'Der Speicher darf günstigen Netzstrom laden (Ihre Einstellung).',
+    );
+    const festOhneNetzladen = planAnnahmen({ ...BASIS, tarifArt: 'fest', tarifParamCtKwh: 30, netzladenErlaubt: false });
+    expect(festOhneNetzladen.find((x) => x.key === 'netzladen')?.text).toBe(
+      'Der Speicher lädt nur aus Sonnenstrom (Ihre Einstellung).',
+    );
+  });
 });
