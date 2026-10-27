@@ -579,6 +579,29 @@ public class OcppRepository {
                 siteId, Math.max(1, Math.min(limit, 1000)));
     }
 
+    /**
+     * BEENDETE Ladungen einer Anlage in einem Zeitfenster, alle Ladepunkte
+     * (Konzept „Ein Ort fürs Laden" e1, Scheibe 2 - „Ladungen" mit Herkunft und
+     * Geld): eine laufende Sitzung hat keine Menge, also fließt sie hier nicht
+     * ein - dieselbe Regel wie {@link #transactions}. Der Aufrufer filtert nach
+     * Ladepunkt, genau wie {@link #transactions} schon site-weit liefert.
+     */
+    public List<OcppDto.Transaction> transactionsForMonth(UUID siteId, Instant from, Instant to) {
+        return jdbc.query("SELECT * FROM ocpp_transaction s WHERE s.site_id=?"
+                        + " AND s.stopped_at IS NOT NULL AND s.started_at>=? AND s.started_at<?"
+                        + " ORDER BY s.started_at DESC",
+                (rs, n) -> new OcppDto.Transaction(UUID.fromString(rs.getString("device_id")),
+                        rs.getString("charge_point_id"), rs.getInt("transaction_id"),
+                        rs.getInt("connector_id"), instant(rs, "started_at"), instant(rs, "stopped_at"),
+                        rs.getLong("meter_start"), nullableLong(rs, "meter_stop"), rs.getString("stop_reason"),
+                        rs.getString("start_id_tag_ref"), rs.getString("stop_id_tag_ref"),
+                        nullableInt(rs, "reservation_id"), nullableInt(rs, "charging_profile_id"),
+                        rs.getString("charging_profile_purpose"), rs.getString("start_auth_status"),
+                        rs.getString("stop_auth_status"), rs.getString("parent_id_tag_ref"),
+                        parse(rs.getString("transaction_data")), instant(rs, "transaction_data_purged_at")),
+                siteId, ts(from), ts(to));
+    }
+
     public List<OcppDto.MeterSample> meterSamples(UUID siteId, Instant from, Instant to,
             String pointKey, Integer transactionId, int limit) {
         StringBuilder sql = new StringBuilder("SELECT * FROM ocpp_meter_sample WHERE site_id=?");

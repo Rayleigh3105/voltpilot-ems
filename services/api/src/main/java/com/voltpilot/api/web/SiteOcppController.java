@@ -2,12 +2,17 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.ocpp.OcppActionPolicy;
 import com.voltpilot.api.ocpp.OcppRepository;
+import com.voltpilot.api.ocpp.OcppTransactionEconomicsService;
 import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.OcppDto;
 import java.time.Instant;
+import java.time.YearMonth;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +20,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Tenant-scoped, strictly read-only OCPP 1.6 data API. There is intentionally
@@ -32,11 +38,14 @@ public class SiteOcppController {
     private final Geltungsbereich geltungsbereich;
     private final OcppRepository ocpp;
     private final OcppActionPolicy policy;
+    private final OcppTransactionEconomicsService economics;
 
-    public SiteOcppController(Geltungsbereich geltungsbereich, OcppRepository ocpp, OcppActionPolicy policy) {
+    public SiteOcppController(Geltungsbereich geltungsbereich, OcppRepository ocpp, OcppActionPolicy policy,
+            OcppTransactionEconomicsService economics) {
         this.geltungsbereich = geltungsbereich;
         this.ocpp = ocpp;
         this.policy = policy;
+        this.economics = economics;
     }
 
     @GetMapping("/stations")
@@ -68,6 +77,32 @@ public class SiteOcppController {
             @RequestParam(defaultValue = "200") int limit) {
         requireSite(siteId);
         return ocpp.transactions(siteId, limit);
+    }
+
+    /**
+     * „Ladungen" mit Herkunft und Geld (Konzept „Ein Ort fürs Laden" e1,
+     * Scheibe 2): die beendeten Ladungen ALLER Ladepunkte der Anlage in einem
+     * Kalendermonat (Europe/Berlin, Vorgabe der laufende Monat), mit Menge,
+     * anteiligem Sonnenanteil und Euro auf derselben Preisgrundlage wie die
+     * Erlöse - site-weit wie {@link #transactions}, der Aufrufer filtert nach
+     * Ladepunkt über das Feld {@code chargePointId} im Ergebnis.
+     */
+    @GetMapping("/transactions/economics")
+    public List<OcppDto.TransactionEconomics> transactionEconomics(@PathVariable UUID siteId,
+            @RequestParam(required = false) String month) {
+        requireSite(siteId);
+        return economics.forMonth(siteId, parseMonth(month));
+    }
+
+    private static YearMonth parseMonth(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return YearMonth.now(ZoneId.of("Europe/Berlin"));
+        }
+        try {
+            return YearMonth.parse(raw);
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "month muss „yyyy-MM“ sein.");
+        }
     }
 
     @GetMapping("/meter-values")

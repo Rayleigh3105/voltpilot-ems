@@ -41,6 +41,21 @@ public final class OcppDto {
             String startAuthStatus, String stopAuthStatus, String parentIdTagRef,
             JsonNode transactionData, Instant transactionDataPurgedAt) {}
 
+    /**
+     * Eine beendete Ladung mit Herkunft und Geld (Konzept „Ein Ort fürs Laden"
+     * e1, Scheibe 2) - auf derselben Preisgrundlage wie die Erlöse
+     * ({@code SlotEconomics}), nie verdoppelt. {@code kwh} kommt aus dem
+     * Zählerstandspaar der Box, {@code sonnenanteilPct} ist ein ANTEILIGER
+     * SCHLUSS aus der Hausbilanz der Anlage (nie gemessen), {@code euro}/
+     * {@code durchschnittCtKwh} sind {@code null}, wo eine der beiden Zutaten
+     * fehlt - nie eine erfundene Zahl. {@code kartenRef} ist das
+     * Karten-Pseudonym der Box ({@code start_id_tag_ref}), nie der
+     * OCPP-Bezug der Cloud.
+     */
+    public record TransactionEconomics(String chargePointId, int transactionId, Instant startedAt,
+            Instant stoppedAt, Double kwh, Double sonnenanteilPct, Double euro, Double durchschnittCtKwh,
+            String kartenRef) {}
+
     public record MeterSample(Instant sampledAt, UUID eventId, int meterValueIndex,
             int sampledValueIndex, UUID deviceId, String chargePointId, int connectorId,
             Integer transactionId, String source, String pointKey, String measurand,

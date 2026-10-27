@@ -16,7 +16,7 @@ import {
   type ChargingConfig,
   type Funktionen,
   type History,
-  type OcppTransaction,
+  type OcppTransactionEconomics,
   type PriceSeries,
   type RuleEvents,
   type SchedulePlan,
@@ -51,8 +51,8 @@ export interface SteuerungDaten {
   overrides: ManualOverride[] | null;
   charging: SiteCharging | null;
   chargingConfig: ChargingConfig | null;
-  /** Die beendeten Ladevorgänge (Reiter Laden › „Ladungen", Scheibe 1: nur die kWh). */
-  ocppTransactions: OcppTransaction[] | null;
+  /** „Ladungen" mit Herkunft und Geld (Reiter Laden, Scheibe 2), laufender Monat, alle Ladepunkte. */
+  ocppTransactionEconomics: OcppTransactionEconomics[] | null;
   interventions: SiteInterventions | null;
   plan: SchedulePlan | null;
   consumerPlan: ConsumerSchedule | null;
@@ -78,7 +78,7 @@ export interface SteuerungDaten {
 
 const LEER: SteuerungDaten = {
   verbraucher: null, consumers: null, status: null, overrides: null, charging: null,
-  chargingConfig: null, ocppTransactions: null, interventions: null, plan: null, consumerPlan: null, verlauf: null,
+  chargingConfig: null, ocppTransactionEconomics: null, interventions: null, plan: null, consumerPlan: null, verlauf: null,
   preise: null, wetter: null, live: null, assets: null, profiles: null, fahrzeuge: null,
   flows: null, editorEntities: null, ruleEvents: null, entities: null, vorschlaege: null,
   szene: null, funktionen: null, gemessen: {},
@@ -134,7 +134,7 @@ export function useSteuerungDaten(site: Site): SteuerungLaden {
     return Promise.all([
       hole('consumers', consumersApi.list(id)),
       hole('chargingConfig', api.chargingConfig(id)),
-      hole('ocppTransactions', api.ocppTransactions(id)),
+      hole('ocppTransactionEconomics', api.ocppTransactionEconomics(id)),
       hole('plan', api.schedule(id)),
       hole('consumerPlan', api.consumerSchedule(id)),
       hole('verlauf', api.history(id, 'day', heuteIso())),

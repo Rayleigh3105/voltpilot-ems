@@ -1428,6 +1428,25 @@ export interface OcppTransaction {
   transactionDataPurgedAt: string | null;
 }
 
+/**
+ * „Ladungen" mit Herkunft und Geld (Konzept „Ein Ort fürs Laden" e1, Scheibe 2):
+ * dieselbe Preisgrundlage wie die Erlöse (`SlotEconomics`). `sonnenanteilPct`
+ * ist ein ANTEILIGER SCHLUSS aus der Hausbilanz, nie gemessen; `euro`/
+ * `durchschnittCtKwh` sind `null`, wo eine Zutat fehlt - nie eine erfundene
+ * Zahl. `kartenRef` ist das Karten-Pseudonym der Box, nie der OCPP-Bezug.
+ */
+export interface OcppTransactionEconomics {
+  chargePointId: string;
+  transactionId: number;
+  startedAt: string;
+  stoppedAt: string | null;
+  kwh: number | null;
+  sonnenanteilPct: number | null;
+  euro: number | null;
+  durchschnittCtKwh: number | null;
+  kartenRef: string | null;
+}
+
 export interface OcppMeterSample {
   sampledAt: string;
   eventId: string;
@@ -10446,6 +10465,16 @@ export const api = {
     request<OcppDataGap[]>(`/api/v1/sites/${siteId}/ocpp/gaps?limit=${limit}`, { signal }),
   ocppTransactions: (siteId: string, limit = 200, signal?: AbortSignal) =>
     request<OcppTransaction[]>(`/api/v1/sites/${siteId}/ocpp/transactions?limit=${limit}`, { signal }),
+  /**
+   * „Ladungen" mit Herkunft und Geld (Konzept „Ein Ort fürs Laden" e1,
+   * Scheibe 2): alle Ladepunkte der Anlage, ein Kalendermonat
+   * (`yyyy-MM`, Vorgabe der laufende Monat in Europe/Berlin).
+   */
+  ocppTransactionEconomics: (siteId: string, month?: string, signal?: AbortSignal) =>
+    request<OcppTransactionEconomics[]>(
+      `/api/v1/sites/${siteId}/ocpp/transactions/economics${month ? `?month=${encodeURIComponent(month)}` : ''}`,
+      { signal },
+    ),
   /**
    * Die Zählerstands-Proben der Anlage. `from`/`pointKey` engen sie serverseitig
    * ein (`SiteOcppController.meterValues` kennt beide seit Slice 9) - die

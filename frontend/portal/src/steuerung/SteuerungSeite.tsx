@@ -65,7 +65,7 @@ import {
 import { SPEICHER, reihenfolgeRumpf, type GeraetBild } from './bild';
 import { GeraeteReiter } from './GeraeteReiter';
 import { Ic } from './Ic';
-import { LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
+import { LadenReiter, LadungenBlatt, RahmenBlatt, ZielBlatt } from './LadenReiter';
 import { FahrzeugDialog } from '../components/FahrzeugDialog';
 import { fahrzeugZeilen } from '../fahrzeugProfile';
 import { quelleAusWunsch, smartSchritte } from './laden';
@@ -559,7 +559,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
           }
         })}
         devices={devices}
-        transactions={daten.ocppTransactions}
+        economics={daten.ocppTransactionEconomics}
       />
     );
   } else if (reiter === 'regeln') {
@@ -818,6 +818,8 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anla
       return <ZielBlatt k={k} id={blatt.id} anlage={anlage} rahmenMinKw={rahmen?.mindestleistungKw ?? null} onSpeichern={onSteuerart} />;
     case 'womit':
       return <LadeWahlBlatt k={k} id={blatt.id} anlage={anlage} rahmenMinKw={rahmen?.mindestleistungKw ?? null} onSoLaden={onSoLaden} />;
+    case 'ladungen':
+      return <LadungenBlatt k={k} id={blatt.id} siteId={siteId} fahrzeuge={daten.fahrzeuge} />;
     case 'fahrzeug': {
       // ⚠ EIN Dialog für die Fahrzeug-Einstellung (Konzept „Ein Ort fürs
       // Laden" e1, Abschnitt 7 Punkt 6): „Laden" öffnet denselben

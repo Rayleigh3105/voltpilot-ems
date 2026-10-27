@@ -17,6 +17,7 @@ import { STEUERN_EINSTIEG_SATZ } from '../steuernAssistent';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { rechteSeed } from '../test/rollenFixtures';
 import * as flowsApi from '../flows/flowsApi';
+import * as ladeCsvModule from '../ladeCsv';
 import { buildGuidedFlow } from '../flows/guidedBuilder';
 import { RechteStandort, setSelbstauskunft } from '../rollen';
 import { rechteSeed, STANDORT_IDS } from '../test/rollenFixtures';
@@ -127,7 +128,7 @@ beforeEach(() => {
   vi.spyOn(api, 'siteEntities').mockResolvedValue({ registry: null, entities: [], localSetup: [], staleOnDevice: [] });
   vi.spyOn(api, 'suggestionStates').mockResolvedValue({ states: [] });
   vi.spyOn(api, 'scene').mockResolvedValue({ scene: null, offen: [], message: null });
-  vi.spyOn(api, 'ocppTransactions').mockResolvedValue([]);
+  vi.spyOn(api, 'ocppTransactionEconomics').mockResolvedValue([]);
   vi.spyOn(api, 'entityHistory').mockRejectedValue(new Error('nicht da'));
   // Ohne Antwort von `/funktionen` behauptet die Seite nichts über „Steuern & Optimieren“.
   vi.spyOn(api, 'funktionen').mockRejectedValue(new Error('nicht da'));
@@ -414,23 +415,47 @@ describe('Steuerung · Reiter Laden', () => {
     expect(within(karte).getByTestId('geraet-held')).toHaveTextContent('3,2');
   });
 
-  // §4.1 Punkt 5, Scheibe 1: zuerst nur die kWh aus den vorhandenen OCPP-Ladevorgängen.
-  it('Ladungen: zeigt die letzten beendeten Ladevorgänge dieses Ladepunkts mit kWh', async () => {
-    vi.spyOn(api, 'ocppTransactions').mockResolvedValue([
-      { deviceId: 'd', chargePointId: 'CP-1', transactionId: 1, connectorId: 1, startedAt: '2026-10-20T08:00:00Z', stoppedAt: '2026-10-20T10:00:00Z', meterStart: 1000, meterStop: 8400, stopReason: null, startIdTagRef: null, stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null, startAuthStatus: null, stopAuthStatus: null, parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null },
+  // §4.1 Punkt 5 / §4.4, Scheibe 2: Menge, Sonnenanteil und Euro auf derselben
+  // Preisgrundlage wie die Erlöse - vom Server, nicht selbst gerechnet.
+  it('Ladungen: zeigt die letzten beendeten Ladungen dieses Ladepunkts mit Sonnenanteil und Euro', async () => {
+    vi.spyOn(api, 'ocppTransactionEconomics').mockResolvedValue([
+      { chargePointId: 'CP-1', transactionId: 1, startedAt: '2026-10-20T08:00:00Z', stoppedAt: '2026-10-20T10:00:00Z', kwh: 7.4, sonnenanteilPct: 62, euro: 1.23, durchschnittCtKwh: 16.6, kartenRef: 'tagref_x' },
       // Ein anderer Ladepunkt - gehört nicht in diese Karte.
-      { deviceId: 'd', chargePointId: 'CP-ANDERE', transactionId: 2, connectorId: 1, startedAt: '2026-10-20T08:00:00Z', stoppedAt: '2026-10-20T10:00:00Z', meterStart: 0, meterStop: 5000, stopReason: null, startIdTagRef: null, stopIdTagRef: null, reservationId: null, chargingProfileId: null, chargingProfilePurpose: null, startAuthStatus: null, stopAuthStatus: null, parentIdTagRef: null, transactionData: null, transactionDataPurgedAt: null },
+      { chargePointId: 'CP-ANDERE', transactionId: 2, startedAt: '2026-10-20T08:00:00Z', stoppedAt: '2026-10-20T10:00:00Z', kwh: 5.0, sonnenanteilPct: 10, euro: 1.4, durchschnittCtKwh: 28, kartenRef: null },
     ]);
     zeige('laden');
     const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
     expect(await within(karte).findByText('7,4 kWh')).toBeInTheDocument();
     expect(within(karte).queryByText('5,0 kWh')).not.toBeInTheDocument();
+    expect(karte).toHaveTextContent('62 %');
+    expect(karte).toHaveTextContent('1,23 €');
   });
 
   it('Ladungen: ohne beendete Ladung ein ehrlicher Leertext statt einer erfundenen Zahl', async () => {
     zeige('laden');
     const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
     expect(await within(karte).findByText('Noch keine abgeschlossene Ladung.')).toBeInTheDocument();
+  });
+
+  // §4.1 Punkt 5: „Alle" öffnet Monat, Auto-Filter, Säulen je Ladung und die CSV.
+  it('Ladungen · Alle: zeigt die Ladungen des Monats und exportiert dieselben Zeilen als CSV', async () => {
+    vi.spyOn(api, 'ocppTransactionEconomics').mockResolvedValue([
+      { chargePointId: 'CP-1', transactionId: 1, startedAt: '2026-10-20T08:00:00Z', stoppedAt: '2026-10-20T10:00:00Z', kwh: 18.2, sonnenanteilPct: 62, euro: 3.04, durchschnittCtKwh: 16.7, kartenRef: 'tagref_abcd1234' },
+    ]);
+    const ladeCsvSpy = vi.spyOn(ladeCsvModule, 'ladeCsv').mockImplementation(() => {});
+    zeige('laden');
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    fireEvent.click(within(karte).getByRole('button', { name: /Alle/ }));
+
+    const blatt = await screen.findByRole('dialog', { name: /Ladungen/ });
+    expect(await within(blatt).findByText('18,2 kWh')).toBeInTheDocument();
+    expect(blatt).toHaveTextContent('62 %');
+
+    fireEvent.click(within(blatt).getByRole('button', { name: /CSV für die Abrechnung/ }));
+    expect(ladeCsvSpy).toHaveBeenCalledTimes(1);
+    const [inhalt, datei] = ladeCsvSpy.mock.calls[0];
+    expect(inhalt).toContain('2026-10-20T08:00:00Z,18.2,62,3.04,16.7,tagref_abcd1234');
+    expect(datei).toMatch(/^ladungen-CP-1-\d{4}-\d{2}\.csv$/);
   });
 
   // §4.3: die Technik-Zeile führt zur Geräteseite - nur, wo sie eindeutig ist.

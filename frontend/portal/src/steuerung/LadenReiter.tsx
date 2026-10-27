@@ -7,7 +7,7 @@
  */
 import { liste } from './liste';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { api, type ChargingConfig, type Device, type OcppTransaction } from '../api';
+import { api, type ChargingConfig, type Device, type OcppTransactionEconomics } from '../api';
 import { Recht } from '../components/Recht';
 import { GeraetBuehne } from '../components/GeraetBuehne';
 import { LADEPUNKT_MODUS, LADEPUNKT_UNGESTEUERT, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
@@ -18,12 +18,13 @@ import { fahrzeugName, fahrzeugZeilen, kartenKurz } from '../fahrzeugProfile';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { parseDecimal } from '../zahl';
+import { ladeCsv } from '../ladeCsv';
 import { boxRefOf, chargerGeraetId } from '../geraetAdresse';
 import { geraetSeiteHash } from '../nav';
 import { Blatt } from './Blatt';
 import type { BlattKontext } from './Blaetter';
 import { quellenAnteil, type GeraetBild } from './bild';
-import { letzteLadungen } from './ladungen';
+import { ladungenCsv, ladungenSumme, ladungenZeilen } from './ladungen';
 import { Ic } from './Ic';
 import {
   OPTION_SONNE_SPEICHER, band, grenzePruefung, heutigerAnschluss, kwVereinbart, ladebudgetKw,
@@ -33,7 +34,7 @@ import { DreiZahlen, QuelleZeichen, VorschauBand, startEntwurf, wunschAus } from
 import { kwhText, mitAuto, uhrKurz, vorschauFuer, vorschauSaetze, type VorschauAnlage } from './ladeVorschau';
 import { rueckmeldung, type Gesendet } from './rueckmeldung';
 import type { BlattZustand, SeitenBild } from './seite';
-import { TAG, fCt, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
+import { TAG, fCt, fEur, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
 
 export interface LadenReiterProps {
   siteId: string;
@@ -59,8 +60,8 @@ export interface LadenReiterProps {
   gesendet: Record<string, Gesendet>;
   /** Für die Technik-Zeile (§4.3): der Weg zur Geräteseite der Wallbox. */
   devices?: Device[];
-  /** Für „Ladungen" (§4.1 Punkt 5, Scheibe 1: nur die kWh): die beendeten OCPP-Ladevorgänge. */
-  transactions?: OcppTransaction[] | null;
+  /** Für „Ladungen" (§4.1 Punkt 5 / §4.4, Scheibe 2): die Ladungen aller Ladepunkte, mit Herkunft und Geld. */
+  economics?: OcppTransactionEconomics[] | null;
 }
 
 export function LadenReiter(p: LadenReiterProps) {
@@ -75,7 +76,7 @@ export function LadenReiter(p: LadenReiterProps) {
           key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne}
           onSmart={p.onSmart} release={p.release ?? null} releaseGemeldet={p.releaseGemeldet ?? null}
           anlage={p.anlage} gesendet={p.gesendet[g.id] ?? null} siteId={p.siteId} boxRef={boxRef}
-          transactions={p.transactions ?? null}
+          economics={p.economics ?? null}
         />
       ))}
       {!lp.length && (
@@ -141,13 +142,13 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
 }
 
 function LadeKarte({
-  g, bild, fahrzeuge, busy, oeffne, onSmart, release, releaseGemeldet, anlage, gesendet, siteId, boxRef, transactions,
+  g, bild, fahrzeuge, busy, oeffne, onSmart, release, releaseGemeldet, anlage, gesendet, siteId, boxRef, economics,
 }: {
   g: GeraetBild; bild: SeitenBild; fahrzeuge: SiteFahrzeuge | null; busy: boolean;
   oeffne: (b: BlattZustand) => void; onSmart: (g: GeraetBild) => void;
   release: SpeicherFreigabe | null; releaseGemeldet: string | null;
   anlage: VorschauAnlage; gesendet: Gesendet | null;
-  siteId: string; boxRef: string | null; transactions: OcppTransaction[] | null;
+  siteId: string; boxRef: string | null; economics: OcppTransactionEconomics[] | null;
 }) {
   const rollen = useRollen();
   const r = bild.raster;
@@ -215,7 +216,9 @@ function LadeKarte({
         : wahl === 'aus'
           ? 'Pausiert'
           : 'Wartet';
-  const ladungen = letzteLadungen(transactions, l?.chargePointId ?? '', 3);
+  const ladungenMonat = ladungenZeilen(economics, l?.chargePointId ?? '');
+  const ladungen = ladungenMonat.slice(0, 3);
+  const summe = ladungenSumme(ladungenMonat);
   const technikHref = boxRef ? geraetSeiteHash(siteId, boxRef, chargerGeraetId(l?.chargePointId ?? '')) : null;
   return (
     <section className={`card lp-card${bild.funktion.angehalten ? ' matt' : ''}`} aria-label={g.name}>
@@ -347,17 +350,29 @@ function LadeKarte({
           ))}
         </ol>
       )}
-      {/* „Ladungen" (§4.1 Punkt 5, Scheibe 1): zuerst nur die kWh aus den
-          vorhandenen OCPP-Ladevorgängen - Herkunft, Euro und Sonnenanteil
-          kommen erst mit der Server-Route aus Scheibe 2. */}
+      {/* „Ladungen" (§4.1 Punkt 5 / §4.4, Scheibe 2): drei Zahlen des Monats,
+          darunter die letzten drei mit Sonnenanteil und Euro; „Alle" öffnet
+          Monat, Auto-Filter und die CSV „für die Abrechnung". */}
       <div className="blk">
-        <h3>Ladungen</h3>
+        <div className="card-h" style={{ margin: 0 }}>
+          <h3 style={{ margin: 0 }}>Ladungen · {monatsName()}</h3>
+          <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'ladungen', id: g.id }); }}>
+            Alle<Ic n="chevR" s={16} />
+          </button>
+        </div>
+        {summe.kwh != null && (
+          <p style={{ margin: '4px 0 10px', font: '600 14px/1.4 var(--font)' }}>
+            {fKwh(summe.kwh)}{summe.sonnenanteilPct != null ? `, ${fPct(summe.sonnenanteilPct)} Sonne` : ''}
+            {summe.euro != null ? `, ${fEur(summe.euro)}` : ''}
+            {summe.durchschnittCtKwh != null ? <small> · Ø {fCt(summe.durchschnittCtKwh)}</small> : null}
+          </p>
+        )}
         {ladungen.length ? (
           <ul className="lq-ladungen">
             {ladungen.map((z) => (
               <li key={z.key}>
-                <span>{ladungDatum(z.startedAt)}</span>
-                <b>{z.kwh != null ? fKwh(z.kwh) : '—'}</b>
+                <span>{ladungDatum(z.startedAt)}{z.sonnenanteilPct != null ? ` · ${fPct(z.sonnenanteilPct)} Sonne` : ''}</span>
+                <b>{z.kwh != null ? fKwh(z.kwh) : '—'}{z.euro != null ? <small> {fEur(z.euro)}</small> : null}</b>
               </li>
             ))}
           </ul>
@@ -376,6 +391,11 @@ function LadeKarte({
       )}
     </section>
   );
+}
+
+/** „Oktober" - der Name des laufenden Monats (die Zeilen sind sein Inhalt). */
+function monatsName(): string {
+  return new Date().toLocaleDateString('de-DE', { month: 'long' });
 }
 
 /** „26.10., 18:20" - das Datum einer Ladung, in Kundenworten. */
@@ -503,6 +523,114 @@ function FahrzeugKarte({ fahrzeuge, oeffne, bild }: { fahrzeuge: SiteFahrzeuge |
 // ---------------------------------------------------------------------------
 // Blätter des Reiters
 // ---------------------------------------------------------------------------
+
+/** „2026-10" → der Vormonat/Folgemonat - reine Zeichenkettenarithmetik, keine Datumsbibliothek nötig. */
+function monatVerschoben(monat: string, delta: number): string {
+  const [jahrStr, monatStr] = monat.split('-');
+  const n = (Number(jahrStr) * 12 + (Number(monatStr) - 1)) + delta;
+  const jahr = Math.floor(n / 12);
+  const m = (n % 12) + 1;
+  return `${jahr}-${String(m).padStart(2, '0')}`;
+}
+
+/** „2026-10" → „Oktober 2026". */
+function monatLabel(monat: string): string {
+  const [jahr, m] = monat.split('-').map(Number);
+  return new Date(jahr, m - 1, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+}
+
+/**
+ * „Ladungen · Alle" (§4.1 Punkt 5, Scheibe 2): Monat wählen, nach Auto
+ * filtern, jede Ladung mit Menge/Sonnenanteil/Euro, CSV „für die
+ * Abrechnung" - ohne jede Aussage über steuerliche oder messrechtliche
+ * Eignung. Holt sich den gewählten Monat selbst (wie `useAnschluss` im
+ * Rahmen-Blatt): die Hauptseite kennt nur den laufenden Monat.
+ */
+export function LadungenBlatt({ k, id, siteId, fahrzeuge }: {
+  k: BlattKontext; id: string; siteId: string; fahrzeuge: SiteFahrzeuge | null;
+}) {
+  const g = k.bild.geraete.find((x) => x.id === id);
+  const heuteMonat = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const [monat, setMonat] = useState(heuteMonat);
+  const [autoFilter, setAutoFilter] = useState<string | null>(null);
+  const [daten, setDaten] = useState<OcppTransactionEconomics[] | null>(null);
+  const [laden, setLaden] = useState(false);
+  useEffect(() => {
+    let aktiv = true;
+    setLaden(true);
+    api.ocppTransactionEconomics(siteId, monat).then(
+      (d) => { if (aktiv) { setDaten(d); setLaden(false); } },
+      () => { if (aktiv) { setDaten(null); setLaden(false); } },
+    );
+    return () => { aktiv = false; };
+  }, [siteId, monat]);
+  if (!g?.ladepunkt) return null;
+  const cp = g.ladepunkt.chargePointId;
+  const alle = ladungenZeilen(daten, cp);
+  const autos = Array.from(new Set(alle.map((z) => z.kartenRef).filter((x): x is string => !!x)));
+  const gefiltert = autoFilter ? alle.filter((z) => z.kartenRef === autoFilter) : alle;
+  const summe = ladungenSumme(gefiltert);
+  const autoName = (ref: string) => {
+    const f = liste(fahrzeuge?.fahrzeuge).find((x) => x.tagRef === ref);
+    return f ? fahrzeugName(f) : `Karte ${kartenKurz(ref)}…`;
+  };
+  return (
+    <Blatt symbol="history" titel={`Ladungen · ${g.name}`} unter={monatLabel(monat)} voll onClose={k.zu}>
+      <div className="blk">
+        <div className="mini-seg" role="group" aria-label="Monat" style={{ marginBottom: 10 }}>
+          <button type="button" onClick={() => setMonat(monatVerschoben(monat, -1))}><Ic n="chevL" s={16} />Vormonat</button>
+          <button type="button" disabled={monat >= heuteMonat} onClick={() => setMonat(monatVerschoben(monat, 1))}>Folgemonat<Ic n="chevR" s={16} /></button>
+        </div>
+        {autos.length > 1 && (
+          <div className="chips" role="group" aria-label="Auto" style={{ marginBottom: 10 }}>
+            <button type="button" aria-pressed={autoFilter == null} onClick={() => setAutoFilter(null)}>Alle Autos</button>
+            {autos.map((ref) => (
+              <button type="button" key={ref} aria-pressed={autoFilter === ref} onClick={() => setAutoFilter(ref)}>{autoName(ref)}</button>
+            ))}
+          </div>
+        )}
+        {laden ? (
+          <p className="leise">Lädt …</p>
+        ) : summe.kwh != null ? (
+          <p style={{ margin: '0 0 10px', font: '700 15px/1.4 var(--font)' }}>
+            {fKwh(summe.kwh)}{summe.sonnenanteilPct != null ? `, ${fPct(summe.sonnenanteilPct)} Sonne` : ''}
+            {summe.euro != null ? `, ${fEur(summe.euro)}` : ''}
+            {summe.durchschnittCtKwh != null ? <small> · Ø {fCt(summe.durchschnittCtKwh)}</small> : null}
+          </p>
+        ) : (
+          <p className="leise">Keine abgeschlossene Ladung in diesem Monat.</p>
+        )}
+        {gefiltert.length > 0 && (
+          <ul className="lq-ladungen">
+            {gefiltert.map((z) => (
+              <li key={z.key}>
+                <span>
+                  {ladungDatum(z.startedAt)}
+                  {z.sonnenanteilPct != null ? ` · ${fPct(z.sonnenanteilPct)} Sonne` : ''}
+                  {z.kartenRef ? ` · ${autoName(z.kartenRef)}` : ''}
+                </span>
+                <b>{z.kwh != null ? fKwh(z.kwh) : '—'}{z.euro != null ? <small> {fEur(z.euro)}</small> : null}</b>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button
+          type="button"
+          className="btn sek"
+          style={{ marginTop: 12 }}
+          disabled={!gefiltert.length}
+          onClick={() => ladeCsv(ladungenCsv(gefiltert), `ladungen-${cp}-${monat}.csv`)}
+        >
+          <Ic n="down" s={18} />
+          CSV für die Abrechnung
+        </button>
+        <p className="leise" style={{ marginTop: 8 }}>
+          Die CSV ist eine Übersicht für Ihre eigenen Unterlagen - keine Rechnung und kein Nachweis im steuerlichen oder messrechtlichen Sinn.
+        </p>
+      </div>
+    </Blatt>
+  );
+}
 
 const ZIEL_ZEITEN = ['06:00', '07:00', '08:00', '16:00', '18:00'];
 

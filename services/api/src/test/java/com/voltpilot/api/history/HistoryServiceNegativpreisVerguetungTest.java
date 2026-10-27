@@ -55,7 +55,7 @@ class HistoryServiceNegativpreisVerguetungTest {
     private static SiteEconomics siteEconomics(String plantKind, boolean netzladen,
             LocalDate commissioned, Double anzulegenderWertCtKwh) {
         return new SiteEconomics(plantKind, netzladen, "ohne", null, anzulegenderWertCtKwh,
-                commissioned, 9.0, 0.92, 4.0, null);
+                commissioned, 9.0, null, null, 0.92, 4.0, null);
     }
 
     @Test
