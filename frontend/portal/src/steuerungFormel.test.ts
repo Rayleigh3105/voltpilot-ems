@@ -278,6 +278,14 @@ describe('steuerungFormel — A1: die EEG-Einspeisevergütung', () => {
     expect(einspeise(eeg).text).not.toContain('Börsenpreis');
   });
 
+  it('ein selbst angegebener Satz ist „angegeben", nicht „nach EEG"', () => {
+    const angegeben: SteuerungFormelInput = { ...eeg, exportVerguetungQuelle: 'angegeben' };
+    expect(einspeise(angegeben).text).toBe('Ihre angegebene Einspeisevergütung.');
+    expect(steuerungFormel(angegeben).kern).toContain('Ihrer festen Einspeisevergütung für die Einspeisung');
+    // Die Herkunft allein macht nichts fest: ohne das Flag bleibt es beim Börsenpreis.
+    expect(einspeise({ ...angegeben, exportVerguetungPriced: false }).text).toContain('Börsenpreis');
+  });
+
   it('der Netzbezug bleibt davon unberührt (weiterhin „Börsenpreis" ohne Tarif)', () => {
     // A1 dreht NUR die Einspeise-Seite; der Bezugspreis folgt weiter dem Tarif.
     expect(steuerungFormel(eeg).kern).toContain('dem Börsenpreis für den Netzbezug');

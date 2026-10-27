@@ -235,6 +235,9 @@ public class SiteEarningsController {
                 ? null
                 : peaks.peaksByPeriod(today).get(siteId);
 
+        // The export valuation's source (eeg | angegeben | null = bare spot or
+        // Direktvermarktung) - the honesty label of the Einspeise-Erlös.
+        String quelle = earnings.exportVerguetungQuelleForSite(siteId);
         return new SiteEarningsDto(
                 site.id(),
                 site.name(),
@@ -245,7 +248,8 @@ public class SiteEarningsController {
                 site.tarifArt(),
                 site.tarifParamCtKwh(),
                 earnings.tarifPricedForSite(siteId),
-                earnings.exportVerguetungPricedForSite(siteId),
+                quelle != null,
+                quelle,
                 site.anzulegenderWertCtKwh(),
                 covered,
                 firstCovered,

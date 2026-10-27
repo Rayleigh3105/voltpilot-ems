@@ -161,12 +161,15 @@ function einspeisung(m: SiteEarnings): BalkenZeile {
   }
   if (m.exportVerguetungPriced) {
     return zeile('einspeisung', 'Einspeisung', ct, {
-      text: 'verdient: feste Vergütung (EEG), 20 Jahre ab Inbetriebnahme',
+      text:
+        m.exportVerguetungQuelle === 'angegeben'
+          ? 'verdient: Ihre angegebene Vergütung'
+          : 'verdient: feste Vergütung (EEG), 20 Jahre ab Inbetriebnahme',
     });
   }
   return zeile('einspeisung', 'Einspeisung', ct, {
-    text: 'verdient: Börsenpreis · nicht verknüpft',
-    link: { text: 'Anlage verknüpfen ›', ziel: 'mastr' },
+    text: 'verdient: Börsenpreis · Vergütung nicht hinterlegt',
+    link: { text: 'Vergütung hinterlegen ›', ziel: 'verguetung' },
   });
 }
 

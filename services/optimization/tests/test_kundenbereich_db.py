@@ -48,6 +48,8 @@ ALTER TABLE site ADD COLUMN IF NOT EXISTS plant_kind TEXT;
 ALTER TABLE site ADD COLUMN IF NOT EXISTS tarif_art TEXT;
 ALTER TABLE site ADD COLUMN IF NOT EXISTS tarif_param_ct_kwh NUMERIC;
 ALTER TABLE site ADD COLUMN IF NOT EXISTS anzulegender_wert_ct_kwh NUMERIC;
+ALTER TABLE site ADD COLUMN IF NOT EXISTS einspeiseverguetung_ct_kwh NUMERIC;
+ALTER TABLE site ADD COLUMN IF NOT EXISTS inbetriebnahme_ab_solarspitzengesetz BOOLEAN;
 ALTER TABLE site ADD COLUMN IF NOT EXISTS backup_reserve_soc_pct NUMERIC;
 ALTER TABLE site ADD COLUMN IF NOT EXISTS max_feed_in_kw NUMERIC;
 ALTER TABLE site ADD COLUMN IF NOT EXISTS leistungspreis_eur_kw NUMERIC;

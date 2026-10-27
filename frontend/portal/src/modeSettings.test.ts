@@ -115,12 +115,13 @@ const ids = (defs: { id: string }[]) => defs.map((d) => d.id);
 // ---------------------------------------------------------------------------
 
 describe('SETTING_DEFS — der §2-Audit als Registry', () => {
-  it('trägt genau die sieben Einstellungen, jede unter ihrer eigenen Id', () => {
+  it('trägt genau die acht Einstellungen, jede unter ihrer eigenen Id', () => {
     expect(ALL_SETTINGS.map((s) => s.id)).toEqual([
       'speicherschonung',
       'netzladen',
       'anzulegender-wert',
       'stromtarif',
+      'einspeiseverguetung',
       'leistungspreis',
       'abrechnung-leistung',
       'lastspitzen-reserve',
@@ -250,16 +251,18 @@ describe('settingsForMode — Anzeige je aktivem Modus', () => {
 // ---------------------------------------------------------------------------
 
 describe('settingsPageSettings — die Heimat der Kunden-Einstellungen (E1)', () => {
-  it('die Einstellungs-Seite besitzt genau die vier kunden-gestellten Werte', () => {
-    // Die „fünf" des Auftrags sind vier IDs: die Bezugspreis-Komponenten sind
-    // Teil des Stromtarif-Formulars (`SupplyPriceFields` in `TariffFields`).
+  it('die Einstellungs-Seite besitzt genau die fünf kunden-gestellten Werte', () => {
+    // Die Bezugspreis-Komponenten sind Teil des Stromtarif-Formulars
+    // (`SupplyPriceFields` in `TariffFields`); die Einspeisevergütung ist seine
+    // Gegenrichtung und wohnt ebenso auf der Seite.
     expect(ids(settingsPageSettings())).toEqual([
       'speicherschonung',
       'netzladen',
       'anzulegender-wert',
       'stromtarif',
+      'einspeiseverguetung',
     ]);
-    // Und genau diese vier tragen `home: 'einstellungen'`.
+    // Und genau diese fünf tragen `home: 'einstellungen'`.
     for (const def of ALL_SETTINGS) {
       expect(def.home).toBe(def.editability === 'customer' ? 'einstellungen' : 'modus');
     }
@@ -276,11 +279,22 @@ describe('settingsPageSettings — die Heimat der Kunden-Einstellungen (E1)', ()
       'speicherschonung',
       'netzladen',
       'stromtarif',
+      'einspeiseverguetung',
     ]);
     // Nichts davon ist noch verwaist — die §3-Sackgasse ist geschlossen.
-    for (const id of ['speicherschonung', 'netzladen', 'stromtarif', 'anzulegender-wert']) {
+    for (const id of ['speicherschonung', 'netzladen', 'stromtarif', 'einspeiseverguetung', 'anzulegender-wert']) {
       expect(ids(orphanedSettings(modes))).not.toContain(id);
     }
+  });
+
+  it('die Einspeisevergütung steht auf JEDER Anlage - bei Direktvermarktung erklärt sie nur', () => {
+    // Sie ist kein Vertragsfakt einer Veräußerungsform: die Karte nennt für
+    // Eigenverbrauch den Satz, für Direktvermarktung „Börsenpreis + Marktprämie".
+    for (const plantKind of ['eigenverbrauch', 'direktvermarktung', null]) {
+      expect(ids(settingsPageSettings({ plantKind }))).toContain('einspeiseverguetung');
+    }
+    expect(SETTING_DEFS.einspeiseverguetung.claimedBy).toEqual([]);
+    expect(SETTING_DEFS.einspeiseverguetung.home).toBe('einstellungen');
   });
 
   it('die Sichtbarkeitsregel bleibt: der anzulegende Wert ist ein DV-Fakt', () => {

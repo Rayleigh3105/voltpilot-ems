@@ -113,9 +113,13 @@ public record EarningsDto(
      * the "bewertet zu Ihrem Stromtarif" copy never over- or under-claims;
      * {@code exportVerguetungPriced} is its EXPORT-side sibling (B2 fix,
      * audit vp-geldzahlen-audit-x7): whether the feed-in terms are valued at
-     * the plant's feste EEG-Einspeisevergütung instead of bare spot (false for
+     * the plant's feste Einspeisevergütung instead of bare spot (false for
      * Direktvermarktung, whose spot + Marktprämie valuation the premium fields
-     * already explain, and for plants without a determinable remuneration). The
+     * already explain, and for plants without a determinable remuneration);
+     * {@code exportVerguetungQuelle} says where that fixed rate comes from -
+     * {@code eeg} (derived from the EEG schedule) or {@code angegeben} (the
+     * customer's own statement, {@code site.einspeiseverguetung_ct_kwh}) - and
+     * is null exactly when {@code exportVerguetungPriced} is false. The
      * Eigenverbrauchs-Wert is computed slot-by-slot in the repository at the
      * site's IMPORT price - it IS the avoided supply cost, so {@code tarifPriced}
      * describes it just as it describes {@code stromkosten}/{@code savedEur}
@@ -193,6 +197,7 @@ public record EarningsDto(
             BigDecimal tarifParamCtKwh,
             Boolean tarifPriced,
             Boolean exportVerguetungPriced,
+            String exportVerguetungQuelle,
             BigDecimal einspeiseErloesEur,
             BigDecimal eigenverbrauchsWertEur,
             BigDecimal gesamtertragEur,

@@ -191,6 +191,21 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
     readView: 'stromtarif',
     editForm: 'stromtarif',
   },
+  einspeiseverguetung: {
+    id: 'einspeiseverguetung',
+    label: 'Einspeisevergütung',
+    // Die Gegenrichtung des Stromtarifs: was eine eingespeiste kWh bringt. Kein
+    // Betriebsmodell beansprucht sie - jede Anlage mit Einspeisung hat sie, also
+    // wohnt sie (wie der Tarif) auf der Einstellungs-Seite. Lese-Wert und
+    // Formular brauchen den Stand vom Server (Herleitung, Herkunft), deshalb
+    // rendert die Seite sie selbst (`EinspeiseverguetungBlatt`) statt über
+    // `settingReadValue`/`SettingEditForm`.
+    claimedBy: claimants('einspeiseverguetung'),
+    editability: 'customer',
+    home: 'einstellungen',
+    readView: 'einspeiseverguetung',
+    editForm: 'einspeiseverguetung',
+  },
   leistungspreis: {
     id: 'leistungspreis',
     label: 'Leistungspreis',

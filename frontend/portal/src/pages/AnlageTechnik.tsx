@@ -10,6 +10,7 @@ import {
   api,
   ApiError,
   type Device,
+  type Einspeiseverguetung,
   type Erzeugungseinheit,
   type PlantKind,
   type Site,
@@ -43,6 +44,8 @@ import { LocationMap } from '../components/LocationMap';
 import { AnlageStandortZeile, useAnlageStandort } from '../components/AnlageStandortZeile';
 import { koordinatenLabel } from '../anlageStandort';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
+import { EinspeiseverguetungBlatt } from '../components/EinspeiseverguetungBlatt';
+import { angabeMoeglich, verguetungFolge, verguetungZeile } from '../einspeiseverguetung';
 import { DangerZone } from '../components/DangerZone';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfoTip } from '../components/InfoTip';
@@ -119,6 +122,8 @@ type BlattArt =
   | { art: 'stammdaten' }
   | { art: 'einstellung'; setting: ModeSettingDef }
   | { art: 'voltpilot'; setting: ModeSettingDef }
+  // Die Einspeisevergütung braucht den Stand vom Server (Herleitung, Herkunft).
+  | { art: 'verguetung' }
   | { art: 'speicher'; bearbeiten: boolean }
   | { art: 'registrierung' }
   | { art: 'loeschen' }
@@ -129,7 +134,7 @@ type BlattArt =
   | { art: 'einheit'; geraetId: string; einheit: Erzeugungseinheit };
 
 interface Folge {
-  key: 'netzladen' | 'speicherschonung';
+  key: 'netzladen' | 'speicherschonung' | 'verguetung';
   text: string;
   zurueck: (() => void) | null;
 }
@@ -227,6 +232,15 @@ export function TechnikSection({
   const [profilOffen, setProfilOffen] = useState(false);
   const [mastrOpen, setMastrOpen] = useState(false);
   const [folge, setFolge] = useState<Folge | null>(null);
+  // Die Karte „Einspeisevergütung": der Stand vom Server, gemerkt mit SEINER
+  // Anlage - beim Wechsel der Anlage steht nie der Stand der vorigen da.
+  const [verguetungGeladen, setVerguetungGeladen] = useState<{ siteId: string; stand: Einspeiseverguetung } | null>(
+    null,
+  );
+  const [verguetungFehler, setVerguetungFehler] = useState(false);
+  const [verguetungKey, setVerguetungKey] = useState(0);
+  const verguetung = verguetungGeladen?.siteId === site.id ? verguetungGeladen.stand : null;
+  const setVerguetung = (stand: Einspeiseverguetung) => setVerguetungGeladen({ siteId: site.id, stand });
   const [schaltBusy, setSchaltBusy] = useState<Folge['key'] | null>(null);
   const [schaltFehler, setSchaltFehler] = useState<{ key: Folge['key']; text: string } | null>(null);
 
@@ -272,6 +286,23 @@ export function TechnikSection({
     };
   }, [site.id, assetsReloadKey]);
 
+  // Die Einspeisevergütung hängt an Veräußerungsform, Netzladen und dem
+  // PV-Eintrag (Inbetriebnahme, kWp; neu nach der MaStR-Verknüpfung) - nach
+  // jeder dieser Änderungen neu lesen.
+  useEffect(() => {
+    let cancelled = false;
+    const id = site.id;
+    setVerguetungFehler(false);
+    api
+      .einspeiseverguetung(id)
+      .then((stand) => !cancelled && setVerguetungGeladen({ siteId: id, stand }))
+      // „Nicht geladen" ist nicht „keine Angabe": ein Fehler zeigt sich als Fehler.
+      .catch(() => !cancelled && setVerguetungFehler(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [site.id, site.plantKind, site.netzladenErlaubt, assetsReloadKey, verguetungKey]);
+
   // Direktlinks: die Gruppe in den Blick holen. Die Box wohnt im Aufbau.
   useEffect(() => {
     if (!anchored) return;
@@ -295,6 +326,7 @@ export function TechnikSection({
   const pageSettings = settingsPageSettings({ plantKind: site.plantKind });
   const geld = pageSettings.filter((s) => settingsGroupFor(s.id) === 'geld');
   const tarif = geld.find((s) => s.id === 'stromtarif') ?? null;
+  const verguetungSetting = geld.find((s) => s.id === 'einspeiseverguetung') ?? null;
   const anzulegend = geld.find((s) => s.id === 'anzulegender-wert') ?? null;
   const netzladen = geld.find((s) => s.id === 'netzladen') ?? null;
   const schonung = pageSettings.find((s) => s.id === 'speicherschonung') ?? null;
@@ -354,6 +386,26 @@ export function TechnikSection({
       });
     } catch {
       setSchaltFehler({ key: 'speicherschonung', text: SCHALT_FEHLER });
+    } finally {
+      setSchaltBusy(null);
+    }
+  }
+
+  /** Setzt die Angabe zurück auf den vorigen Stand - das „Rückgängig" der Folge. */
+  async function verguetungZurueck(vorher: Einspeiseverguetung) {
+    setSchaltBusy('verguetung');
+    setSchaltFehler(null);
+    try {
+      // Der vorige Stand samt seiner Antwort zu § 51a (nur ohne Datum gespeichert).
+      const neu = await api.setEinspeiseverguetung(
+        site.id,
+        vorher.angegebenCtKwh,
+        vorher.angegebenCtKwh == null ? null : vorher.inbetriebnahmeAbSolarspitzengesetz,
+      );
+      setVerguetung(neu);
+      setFolge({ key: 'verguetung', text: verguetungFolge(neu), zurueck: null });
+    } catch {
+      setSchaltFehler({ key: 'verguetung', text: SCHALT_FEHLER });
     } finally {
       setSchaltBusy(null);
     }
@@ -474,6 +526,16 @@ export function TechnikSection({
               wert={tarifArtLabel(site.tarifArt, site.tarifParamCtKwh)}
               recht="anlage.verwalten"
               onClick={() => oeffne({ art: 'einstellung', setting: tarif })}
+            />
+          )}
+          {verguetungSetting && (
+            <VerguetungZeile
+              label={verguetungSetting.label}
+              stand={verguetung}
+              fehler={verguetungFehler}
+              onBlatt={() => oeffne({ art: 'verguetung' })}
+              onNeuLaden={() => setVerguetungKey((k) => k + 1)}
+              folge={folgeZeile('verguetung')}
             />
           )}
           {anzulegend && (
@@ -729,6 +791,32 @@ export function TechnikSection({
             /></Recht>
           </div>
         )}
+        {blattInhalt?.art === 'verguetung' && verguetung && (
+          <div className="vp-einst-blatt">
+            {/* Erklärung und „Wirkt auf …" nur, wo die Angabe auch wirkt - bei
+                Direktvermarktung und Netzladen erklärt das Blatt den Börsenpreis. */}
+            {angabeMoeglich(verguetung.zustand) && <p className="vp-note">{SETTING_HINT.einspeiseverguetung}</p>}
+            {angabeMoeglich(verguetung.zustand) && <Wirkung id="einspeiseverguetung" />}
+            <EinspeiseverguetungBlatt
+              siteId={site.id}
+              stand={verguetung}
+              onCancel={schliesse}
+              onMastr={() => {
+                schliesse();
+                setMastrOpen(true);
+              }}
+              onSaved={(neu, vorher) => {
+                schliesse();
+                setVerguetung(neu);
+                setFolge({
+                  key: 'verguetung',
+                  text: verguetungFolge(neu),
+                  zurueck: () => void verguetungZurueck(vorher),
+                });
+              }}
+            />
+          </div>
+        )}
         {blattInhalt?.art === 'voltpilot' && (
           <div className="vp-einst-blatt">
             <p className="vp-einst-gross">{settingReadValue(blattInhalt.setting.id, site, battery)}</p>
@@ -820,7 +908,16 @@ export function TechnikSection({
       </Modal>
 
       <ProfilDialog site={site} open={profilOffen} onClose={() => setProfilOffen(false)} onSaved={onSiteSaved} />
-      <MastrDrawer site={site} open={mastrOpen} onClose={() => setMastrOpen(false)} onApplied={(a) => setAssets(a)} />
+      <MastrDrawer
+        site={site}
+        open={mastrOpen}
+        onClose={() => setMastrOpen(false)}
+        onApplied={(a) => {
+          setAssets(a);
+          // Inbetriebnahme und kWp aus dem Register: die Herleitung neu lesen.
+          setVerguetungKey((k) => k + 1);
+        }}
+      />
     </div>
   );
 }
@@ -832,6 +929,8 @@ function blattTitel(b: BlattArt | null, battery: SiteAsset | null): string {
     case 'einstellung':
     case 'voltpilot':
       return b.setting.label;
+    case 'verguetung':
+      return 'Einspeisevergütung';
     case 'speicher':
       return battery ? 'Speicher' : 'Speicher hinzufügen';
     case 'registrierung':
@@ -903,6 +1002,7 @@ function Zeile({
   gefahr = false,
   recht,
   onClick,
+  nach = null,
 }: {
   id?: string;
   icon: IconName;
@@ -913,6 +1013,8 @@ function Zeile({
   warn?: boolean;
   schloss?: boolean;
   gefahr?: boolean;
+  /** Was unter der Zeile im selben Eintrag steht (die Folge nach dem Speichern). */
+  nach?: ReactNode;
   /**
    * Das Recht, das die Änderung hinter dieser Zeile braucht (UEMS AP-03 IP-12). Ohne
    * es bleibt der Wert lesbar, die Zeile öffnet nichts, und der Grund steht darunter.
@@ -935,6 +1037,7 @@ function Zeile({
           </span>
           <span />
         </div>
+        {nach}
       </li>
     );
   }
@@ -963,7 +1066,67 @@ function Zeile({
           )}
         </span>
       </button>
+      {nach}
     </li>
+  );
+}
+
+/**
+ * Die Zeile „Einspeisevergütung" unter dem Stromtarif: der Satz, der gerade
+ * gilt, und darunter, woher er kommt („hergeleitet aus EEG, Inbetriebnahme …"
+ * bzw. „von Ihnen angegeben"). Ohne Grundlage steht „Ohne Angabe" da - nie eine
+ * Null. Bei Direktvermarktung und Netzladen öffnet sie ein erklärendes Blatt
+ * ohne Recht-Schranke (es ändert nichts), sonst braucht sie „Anlage verwalten"
+ * wie der Stromtarif.
+ */
+function VerguetungZeile({
+  label,
+  stand,
+  fehler,
+  onBlatt,
+  onNeuLaden,
+  folge,
+}: {
+  label: string;
+  stand: Einspeiseverguetung | null;
+  fehler: boolean;
+  onBlatt: () => void;
+  onNeuLaden: () => void;
+  folge: ReactNode;
+}) {
+  if (fehler) {
+    return (
+      <Zeile
+        id="technik-verguetung"
+        icon="sun"
+        kat="dynamic"
+        label={label}
+        wert="nicht geladen"
+        sub="Tippen, um es erneut zu versuchen"
+        warn
+        onClick={onNeuLaden}
+      />
+    );
+  }
+  if (stand == null) {
+    return (
+      <Zeile id="technik-verguetung" icon="sun" kat="dynamic" label={label} wert="wird geladen …" onClick={() => undefined} />
+    );
+  }
+  const z = verguetungZeile(stand);
+  return (
+    <Zeile
+      id="technik-verguetung"
+      icon="sun"
+      kat="dynamic"
+      label={label}
+      wert={z.wert}
+      sub={z.sub}
+      warn={z.warn}
+      recht={angabeMoeglich(stand.zustand) ? 'anlage.verwalten' : undefined}
+      onClick={onBlatt}
+      nach={folge}
+    />
   );
 }
 

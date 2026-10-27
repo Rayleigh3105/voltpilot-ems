@@ -141,6 +141,7 @@ export type ModeSettingId =
   | 'netzladen'
   | 'anzulegender-wert'
   | 'stromtarif'
+  | 'einspeiseverguetung'
   | 'leistungspreis'
   | 'abrechnung-leistung'
   | 'lastspitzen-reserve';

@@ -45,12 +45,15 @@ import java.util.UUID;
  *     "bewertet zu Ihrem Stromtarif" vs "zu Börsenpreisen" switch)
  * @param exportVerguetungPriced the EXPORT-side sibling of {@code tarifPriced}
  *     (B2 fix, audit vp-geldzahlen-audit-x7): whether the feed-in is valued at
- *     the plant's feste EEG-Einspeisevergütung instead of bare spot (a
- *     non-grid-charging {@code eigenverbrauch} plant with a known, unexpired
- *     commissioning date). {@code false} for Direktvermarktung - its spot +
- *     Marktprämie valuation is already explained by the premium fields - and
- *     for plants whose remuneration cannot be determined (they honestly stay
- *     at spot)
+ *     the plant's feste Einspeisevergütung instead of bare spot (a
+ *     non-grid-charging {@code eigenverbrauch} plant with a customer-stated
+ *     rate or a known, unexpired commissioning date). {@code false} for
+ *     Direktvermarktung - its spot + Marktprämie valuation is already
+ *     explained by the premium fields - and for plants whose remuneration
+ *     cannot be determined (they honestly stay at spot)
+ * @param exportVerguetungQuelle where that fixed rate comes from: {@code eeg}
+ *     (derived from the EEG schedule) or {@code angegeben} (the customer's own
+ *     statement); null exactly when {@code exportVerguetungPriced} is false
  * @param nettoErgebnisEur the period's result: Ertrag minus Stromkosten
  * @param savedEur the ATTRIBUTION of VoltPilot's steering - a delta against an
  *     unregulated plant that already sits INSIDE the result, never a sibling
@@ -158,6 +161,7 @@ public record SiteEarningsDto(
         BigDecimal tarifParamCtKwh,
         boolean tarifPriced,
         boolean exportVerguetungPriced,
+        String exportVerguetungQuelle,
         BigDecimal anzulegenderWertCtKwh,
         long coveredSlots,
         LocalDate firstCoveredDate,

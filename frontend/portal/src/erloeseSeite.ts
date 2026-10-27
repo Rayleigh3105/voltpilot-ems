@@ -145,7 +145,10 @@ function einspeiseInfo(money: SiteEarnings): GeldErklaerung {
     };
   }
   if (money.exportVerguetungPriced) {
-    return { titel: 'Einspeisung', text: erloesBegriff('feste').erklaerung };
+    return {
+      titel: 'Einspeisung',
+      text: erloesBegriff(money.exportVerguetungQuelle === 'angegeben' ? 'angegeben' : 'feste').erklaerung,
+    };
   }
   return {
     titel: 'Einspeisung',

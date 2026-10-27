@@ -315,6 +315,39 @@ def test_cache_key_is_stable_and_input_sensitive():
     doc = _valid_doc()
     doc["battery"]["capacityKwh"] = 12.0
     assert parse_request(doc).cache_key() != a
+    # A stated Einspeisevergütung changes the export pricing, so it must
+    # change the key too (no cached result of another rate).
+    doc = _valid_doc()
+    doc["tariff"]["einspeiseverguetungCtKwh"] = 9.5
+    assert parse_request(doc).cache_key() != a
+
+
+def test_parse_request_reads_the_stated_einspeiseverguetung():
+    # Absent = None: the EEG derivation from the commissioning date applies.
+    assert parse_request(_valid_doc()).tariff.einspeiseverguetung_ct_kwh is None
+    doc = _valid_doc()
+    doc["tariff"]["einspeiseverguetungCtKwh"] = 9.5
+    assert parse_request(doc).tariff.einspeiseverguetung_ct_kwh == pytest.approx(9.5)
+    doc["tariff"]["einspeiseverguetungCtKwh"] = 0.0  # 0 is a statement
+    assert parse_request(doc).tariff.einspeiseverguetung_ct_kwh == 0.0
+    doc["tariff"]["einspeiseverguetungCtKwh"] = -1.0
+    with pytest.raises(InvalidRequest, match="Einspeisevergütung"):
+        parse_request(doc)
+
+
+def test_parse_request_reads_the_paragraph_51a_answer():
+    assert parse_request(_valid_doc()).tariff.inbetriebnahme_ab_solarspitzengesetz is None
+    doc = _valid_doc()
+    doc["tariff"]["einspeiseverguetungCtKwh"] = 6.0
+    doc["tariff"]["inbetriebnahmeAbSolarspitzengesetz"] = True
+    request = parse_request(doc)
+    assert request.tariff.inbetriebnahme_ab_solarspitzengesetz is True
+    # It changes the zero hours, so it must change the cache key too.
+    doc["tariff"]["inbetriebnahmeAbSolarspitzengesetz"] = False
+    assert parse_request(doc).cache_key() != request.cache_key()
+    doc["tariff"]["inbetriebnahmeAbSolarspitzengesetz"] = "ja"
+    with pytest.raises(InvalidRequest, match="25.02.2025"):
+        parse_request(doc)
 
 
 def test_battery_for_size_scales_power_but_keeps_base_asset():

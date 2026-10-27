@@ -41,7 +41,7 @@ export type ZahlTon = 'plus' | 'minus' | 'null';
  * (`Kontoauszug.hrefFor`); ohne Auflösung bleibt der Link ruhiger Text — das
  * `SpeicherBlock.nachtragHref`-Muster.
  */
-export type SekundaerZiel = 'tarif' | 'mastr';
+export type SekundaerZiel = 'tarif' | 'verguetung';
 
 /**
  * **Die Sekundärzeile einer Ledger-Zeile** (Konzept `vp-erloese-lesbar-konzept-u3`
@@ -202,18 +202,25 @@ function einspeiseSekundaer(money: SiteEarnings): Sekundaerzeile {
     };
   }
   if (money.exportVerguetungPriced) {
+    // Die Herkunft des festen Satzes (Karte „Einspeisevergütung"): ein Satz,
+    // den der Kunde selbst angegeben hat, ist keine „gesetzliche" Vergütung.
+    const angegeben = money.exportVerguetungQuelle === 'angegeben';
     return {
-      teile: [...menge, 'feste Vergütung'],
+      teile: [...menge, angegeben ? 'angegebene Vergütung' : 'feste Vergütung'],
       link: null,
       ton: 'normal',
-      titel: 'Bewertet mit Ihrer gesetzlichen Einspeisevergütung.',
+      titel: angegeben
+        ? 'Bewertet mit dem Satz, den Sie unter „Einspeisevergütung" angegeben haben.'
+        : 'Bewertet mit Ihrer gesetzlichen Einspeisevergütung.',
     };
   }
+  // Der Weg führt zur Karte „Einspeisevergütung": dort steht, warum kein fester
+  // Satz gilt, und dort lässt er sich angeben oder per MaStR herleiten.
   return {
     teile: ['Börsenpreis', 'Vergütung nicht hinterlegt'],
-    link: { text: 'Anlage verknüpfen ›', ziel: 'mastr' },
+    link: { text: 'Vergütung hinterlegen ›', ziel: 'verguetung' },
     ton: 'warn',
-    titel: 'Ohne Verknüpfung im Marktstammdatenregister rechnen wir mit dem Börsenpreis.',
+    titel: 'Ohne hinterlegte Einspeisevergütung rechnen wir mit dem Börsenpreis.',
   };
 }
 

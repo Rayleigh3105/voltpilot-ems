@@ -295,6 +295,13 @@ export function installHelpFixtures() {
       day: '2026-09-0' + (i + 1), model, kind: j % 2 ? 'pv' : 'load', maeKw: .3 + .04 * i - (j > 1 ? .08 : 0), nmaePct: 10, biasKw: 0, skillVsBaseline: j > 1 ? .2 : null, nSlots: 96,
     }))).flat(), planAccuracy: [] }),
     siteForecastModels: result({ kinds: [], history: [] }), supplyPrice: result({ tarifArt: 'dynamisch', fixedPriceCtKwh: null, spotMarkupCtKwh: 4.5, gridFeeCtKwh: 8, taxesCtKwh: 2, vatPct: 19, source: 'manual' }),
+    // Die Karte „Einspeisevergütung" folgt dem Netzladen der Bühnen-Anlage (an: Börsenpreis, die Herleitung ruht).
+    einspeiseverguetung: async () => structuredClone({
+      zustand: site.netzladenErlaubt ? 'netzladen' : 'eeg', wirksamCtKwh: site.netzladenErlaubt ? null : 7.86,
+      angegebenCtKwh: null, inbetriebnahmeAbSolarspitzengesetz: null, hergeleitetCtKwh: 7.86, hergeleitetGenaehert: false,
+      inbetriebnahme: '2025-09-01', leistungKwp: 10, eegEndeAm: '2045-12-31', ohneVerguetungBeiNegativpreis: true,
+      anzulegenderWertCtKwh: null,
+    }),
     consumerSchedule: result({ planId: null, generatedAt: null, slotMinutes: 15, entities: [] }),
     siteProfiles: result({ profiles: [
       ['marktvermarktung','Marktoptimierung',!eigen && !erzFall && !location.hash.includes('lastspitzen')], ['lastspitzenkappung','Lastspitzenkappung',location.hash.includes('lastspitzen')],

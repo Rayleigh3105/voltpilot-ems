@@ -22,7 +22,9 @@ consumes what other layers produced:
   and the grid-charging switch from ``site``,
 - the pricing master data for the P1 asymmetric objective: ``site.plant_kind``,
   ``site.tarif_art``/``tarif_param_ct_kwh``, ``site.anzulegender_wert_ct_kwh``,
-  the PV asset's ``commissioned_on``/``pv_capacity_kwp`` (MaStR) and the
+  the customer-stated ``site.einspeiseverguetung_ct_kwh`` (with its §51a answer
+  ``inbetriebnahme_ab_solarspitzengesetz``), the PV asset's
+  ``commissioned_on``/``pv_capacity_kwp`` (MaStR) and the
   ``monthly_market_value`` Monatsmarktwert rows - turned into per-slot
   import/export price series by :mod:`voltpilot_optimization.pricing`.
 
@@ -403,7 +405,8 @@ class BatterySite:
 
     ``tariff`` carries the pricing-relevant master data (P1: plant_kind,
     tarif_art/param, anzulegender Wert, the PV asset's commissioning date +
-    kWp, plus the structured ``site_supply_price`` sheet as
+    kWp, the customer's stated Einspeisevergütung, plus the structured
+    ``site_supply_price`` sheet as
     ``tariff.supply_price`` - ``None`` when no row is maintained, which keeps
     the legacy import model byte-identically) feeding the asymmetric
     import/export pricing; the default reproduces the symmetric bare-spot
@@ -478,7 +481,8 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                    a.roundtrip_efficiency_pct, s.netzladen_erlaubt,
                    s.latitude, s.longitude, a.wear_cost_ct_per_kwh,
                    s.plant_kind, s.tarif_art, s.tarif_param_ct_kwh,
-                   s.anzulegender_wert_ct_kwh,
+                   s.anzulegender_wert_ct_kwh, s.einspeiseverguetung_ct_kwh,
+                   s.inbetriebnahme_ab_solarspitzengesetz,
                    pv.commissioned_on, pv.pv_capacity_kwp,
                    s.backup_reserve_soc_pct,
                    a.soc_min_pct, a.soc_max_pct,
@@ -509,6 +513,7 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                 tenant_id, site_id, device_id, zone, cap, chg, dis, eff,
                 netzladen, lat, lon, wear_ct,
                 plant_kind, tarif_art, tarif_param, anzulegender_wert,
+                einspeiseverguetung, ab_solarspitzengesetz,
                 commissioned_on, pv_kwp, backup_reserve,
                 soc_min_pct, soc_max_pct, max_feed_in,
                 leistungspreis, abrechnung, peak_reserve,
@@ -587,6 +592,15 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                         ),
                         commissioned_on=commissioned_on,
                         pv_capacity_kwp=float(pv_kwp) if pv_kwp is not None else None,
+                        # The customer's stated rate (Einspeisevergütung card):
+                        # NULL = no statement, the EEG derivation applies.
+                        einspeiseverguetung_ct_kwh=_opt_float(einspeiseverguetung),
+                        # §51a for a stated rate without commissioning date.
+                        inbetriebnahme_ab_solarspitzengesetz=(
+                            bool(ab_solarspitzengesetz)
+                            if ab_solarspitzengesetz is not None
+                            else None
+                        ),
                         # No site_supply_price row = None = the legacy import
                         # model, byte-identically (report §3.1 rollout rule).
                         supply_price=(

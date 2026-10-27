@@ -526,6 +526,7 @@ export function cockpitHero(input: {
                   tarifParamCtKwh: input.money?.tarifParamCtKwh ?? null,
                   tarifPriced: input.money?.tarifPriced ?? null,
                   exportVerguetungPriced: input.money?.exportVerguetungPriced ?? null,
+                  exportVerguetungQuelle: input.money?.exportVerguetungQuelle ?? null,
                   bezugspreisCtKwh: input.money?.bezugspreisCtKwh ?? null,
                   plantKind: input.money?.plantKind ?? null,
                   marktpraemieEur: input.money?.marktpraemieEur ?? null,

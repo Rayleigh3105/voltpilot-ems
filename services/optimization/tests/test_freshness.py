@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -198,6 +199,7 @@ class _SitesCursor:
         self, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
         max_feed_in=None, leistungspreis=None, abrechnung="jahr",
         peak_reserve=None, supply_row=None, grenz_rows=(),
+        einspeiseverguetung=None, ab_solarspitzengesetz=None,
     ) -> None:
         # The UEMS AP-15 IP-3 Grenzblatt read (load_grenzblaetter): rows of
         # (site_id, gueltig_ab, einspeisegrenze_kw, bezugsgrenze_kw, keine); none by
@@ -215,6 +217,9 @@ class _SitesCursor:
         # else a 7-tuple (netzentgelt, stromsteuer, konzession, umlagen,
         # vertrieb, ust, komponenten_stand).
         self._supply_row = supply_row
+        # The customer-stated Einspeisevergütung (site column, NULL = none).
+        self._einspeiseverguetung = einspeiseverguetung
+        self._ab_solarspitzengesetz = ab_solarspitzengesetz
         self._rows: list = []
 
     def __enter__(self):
@@ -261,6 +266,8 @@ class _SitesCursor:
         assert "s.max_feed_in_kw" in sql  # the FK1 feed-in cap is read too
         assert "s.leistungspreis_eur_kw" in sql  # the PS-1 module is read too
         assert "s.peak_reserve_soc_pct" in sql  # the PS-2 reserve is read too
+        assert "s.einspeiseverguetung_ct_kwh" in sql  # the stated rate too
+        assert "s.inbetriebnahme_ab_solarspitzengesetz" in sql  # its §51a answer
         # The structured Bezugspreis sheet is read too (site_supply_price):
         assert "LEFT JOIN site_supply_price ssp" in sql
         assert "ssp.netzentgelt_arbeitspreis_ct" in sql
@@ -273,7 +280,8 @@ class _SitesCursor:
             (
                 TENANT, SITE, uuid4(), "DE-LU",
                 10.0, 5.0, 5.0, 92.0, True, None, None, self._wear_ct,
-                "eigenverbrauch", "ohne", None, None, None, None,
+                "eigenverbrauch", "ohne", None, None,
+                self._einspeiseverguetung, self._ab_solarspitzengesetz, None, None,
                 self._backup_reserve,
                 self._soc_min, self._soc_max,
                 self._max_feed_in,
@@ -289,7 +297,8 @@ class _SitesCursor:
 def _wire_sites(
     monkeypatch, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
     max_feed_in=None, leistungspreis=None, abrechnung="jahr", peak_reserve=None,
-    supply_row=None, grenz_rows=(),
+    supply_row=None, grenz_rows=(), einspeiseverguetung=None,
+    ab_solarspitzengesetz=None,
 ):
     class _Conn:
         def __enter__(self):
@@ -302,7 +311,7 @@ def _wire_sites(
             return _SitesCursor(
                 wear_ct, backup_reserve, soc_min, soc_max, max_feed_in,
                 leistungspreis, abrechnung, peak_reserve, supply_row,
-                grenz_rows,
+                grenz_rows, einspeiseverguetung, ab_solarspitzengesetz,
             )
 
     monkeypatch.setitem(
@@ -319,6 +328,25 @@ def test_null_asset_wear_falls_back_to_the_platform_default(monkeypatch):
     monkeypatch.setenv("OPTIMIZER_WEAR_COST_CT_PER_KWH", "2.5")
     [site] = load_battery_sites("postgresql://fake")
     assert site.battery.wear_cost_ct_per_kwh == 2.5
+
+
+def test_stated_einspeiseverguetung_resolves_to_the_site_tariff(monkeypatch):
+    # NULL column = no statement: the EEG derivation applies (byte-identical).
+    _wire_sites(monkeypatch, None)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.tariff.einspeiseverguetung_ct_kwh is None
+    # A stated rate (NUMERIC -> Decimal from psycopg) lands as float ct/kWh.
+    _wire_sites(monkeypatch, None, einspeiseverguetung=Decimal("12.500"))
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.tariff.einspeiseverguetung_ct_kwh == 12.5
+    assert isinstance(site.tariff.einspeiseverguetung_ct_kwh, float)
+    assert site.tariff.inbetriebnahme_ab_solarspitzengesetz is None
+    # Its §51a answer (only asked without a commissioning date) rides along.
+    _wire_sites(
+        monkeypatch, None, einspeiseverguetung=Decimal("6"), ab_solarspitzengesetz=True
+    )
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.tariff.inbetriebnahme_ab_solarspitzengesetz is True
 
 
 def test_asset_wear_override_beats_the_platform_default(monkeypatch):

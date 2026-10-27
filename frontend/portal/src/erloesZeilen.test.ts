@@ -194,15 +194,30 @@ describe('erloesZeilen · Sekundärzeilen nennen den WEG, wo etwas fehlt (B6)', 
     expect(v.zeilen[1].segment).toBeNull();
   });
 
-  it('ohne MaStR-Verknüpfung: „Anlage verknüpfen ›"', () => {
+  it('ohne Vergütung: „Vergütung hinterlegen ›" führt zur Karte „Einspeisevergütung"', () => {
+    // Dort steht, WARUM kein fester Satz gilt, und dort lässt er sich angeben
+    // oder per Marktstammdatenregister herleiten.
     const f = FX.find((x) => x.id === 'eeg-ohne-mastr')!;
     expect(view(f).zeilen[0].sekundaer).toEqual(
       expect.objectContaining({
         teile: ['Börsenpreis', 'Vergütung nicht hinterlegt'],
-        link: { text: 'Anlage verknüpfen ›', ziel: 'mastr' },
+        link: { text: 'Vergütung hinterlegen ›', ziel: 'verguetung' },
         ton: 'warn',
       }),
     );
+  });
+
+  it('ein selbst angegebener Satz heißt nie „gesetzlich"', () => {
+    const f = FX.find((x) => x.id === 'eeg-tag-abgeschlossen')!;
+    expect(view(f).zeilen[0].sekundaer?.teile).toContain('feste Vergütung');
+    expect(view(f).zeilen[0].sekundaer?.titel).toBe('Bewertet mit Ihrer gesetzlichen Einspeisevergütung.');
+    const angegeben = { ...f, money: { ...f.money, exportVerguetungQuelle: 'angegeben' as const } };
+    const z = view(angegeben).zeilen[0].sekundaer!;
+    expect(z.teile).toContain('angegebene Vergütung');
+    expect(z.teile).not.toContain('feste Vergütung');
+    expect(z.titel).toBe('Bewertet mit dem Satz, den Sie unter „Einspeisevergütung" angegeben haben.');
+    expect(z.link).toBeNull();
+    expect(z.ton).toBe('normal');
   });
 
   it('Negativpreis-Tag: die Prämie, die WIRKLICH angefallen ist — nicht „ruht"', () => {
