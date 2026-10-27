@@ -57,9 +57,13 @@ public class OptimizerDiagnosticsRepository {
      * The site's optimizer-relevant master data in one row: pricing fields,
      * the battery asset's parameters ({@code hasBattery} false when the site
      * has no battery asset - the optimizer then never plans it), the PV
-     * asset's remuneration inputs (MaStR commissioning date + kWp) and the
-     * structured supply-price sheet ({@code hasSupplyPrice} false when the
-     * site has no {@code site_supply_price} row - the legacy import model).
+     * asset's remuneration inputs (MaStR commissioning date + kWp), the
+     * customer-stated Einspeisevergütung ({@code einspeiseverguetungCtKwh},
+     * null = no statement - the EEG derivation applies) with the customer's
+     * answer on §51a for a plant without commissioning date
+     * ({@code inbetriebnahmeAbSolarspitzengesetz}) and the structured
+     * supply-price sheet ({@code hasSupplyPrice} false when the site has no
+     * {@code site_supply_price} row - the legacy import model).
      */
     public record SiteContext(
             UUID siteId,
@@ -80,6 +84,8 @@ public class OptimizerDiagnosticsRepository {
             BigDecimal socMaxPct,
             LocalDate pvCommissionedOn,
             BigDecimal pvCapacityKwp,
+            BigDecimal einspeiseverguetungCtKwh,
+            Boolean inbetriebnahmeAbSolarspitzengesetz,
             boolean hasSupplyPrice,
             BigDecimal netzentgeltArbeitspreisCt,
             BigDecimal stromsteuerCt,
@@ -102,7 +108,8 @@ public class OptimizerDiagnosticsRepository {
                         + " s.tarif_param_ct_kwh, s.anzulegender_wert_ct_kwh,"
                         + " s.backup_reserve_soc_pct,"
                         + " s.leistungspreis_eur_kw, s.abrechnung_leistung,"
-                        + " s.peak_reserve_soc_pct,"
+                        + " s.peak_reserve_soc_pct, s.einspeiseverguetung_ct_kwh,"
+                        + " s.inbetriebnahme_ab_solarspitzengesetz,"
                         + " b.id AS battery_id, b.capacity_kwh, b.roundtrip_efficiency_pct,"
                         + " b.wear_cost_ct_per_kwh, b.soc_min_pct, b.soc_max_pct,"
                         + " pv.commissioned_on, pv.pv_capacity_kwp,"
@@ -288,6 +295,8 @@ public class OptimizerDiagnosticsRepository {
                 rs.getBigDecimal("soc_max_pct"),
                 commissioned != null ? commissioned.toLocalDate() : null,
                 rs.getBigDecimal("pv_capacity_kwp"),
+                rs.getBigDecimal("einspeiseverguetung_ct_kwh"),
+                rs.getObject("inbetriebnahme_ab_solarspitzengesetz", Boolean.class),
                 rs.getObject("ssp_site_id", UUID.class) != null,
                 rs.getBigDecimal("netzentgelt_arbeitspreis_ct"),
                 rs.getBigDecimal("stromsteuer_ct"),

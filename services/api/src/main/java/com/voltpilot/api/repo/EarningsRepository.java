@@ -71,8 +71,11 @@ import org.springframework.stereotype.Repository;
  * metered AND the residual export, the identities
  * {@code saved == baseline - actual} and
  * {@code stromkosten - einspeise == actual} keep holding exactly.
- * {@code exportVerguetungPriced} (the {@code tarifPriced} sibling) tells the
- * portal which valuation engaged.
+ * A customer-stated rate ({@code site.einspeiseverguetung_ct_kwh}) takes the
+ * place of the derived one inside the same composition (a layer above the EEG
+ * schedule, see {@link SlotEconomics#exportValueCtKwh}).
+ * {@code exportVerguetungPriced}/{@code exportVerguetungQuelle} (the
+ * {@code tarifPriced} siblings) tell the portal which valuation engaged.
  *
  * <p><b>Historik-Semantik (documented v1 simplification):</b> every slot in
  * the window - however old - is valued at the CURRENTLY maintained tariff and
@@ -339,8 +342,8 @@ public class EarningsRepository {
     /** The tarifPricedSql boolean for this flag setting (see {@link #tarifPriced}). */
     private final String tarifPricedExpr;
 
-    /** The export-side honesty boolean (see {@link #exportVerguetungPriced}). */
-    private final String exportVerguetungPricedExpr;
+    /** The export-side honesty label (see {@link #exportVerguetungQuelle}). */
+    private final String exportVerguetungQuelleExpr;
 
     public EarningsRepository(JdbcTemplate jdbc, OptimizerProperties optimizer) {
         this.jdbc = jdbc;
@@ -366,7 +369,7 @@ public class EarningsRepository {
                 + " - (GREATEST(r.pv_kwh - r.load_kwh, 0) - r.grid_export_kwh)"
                 + "   * " + exportValueEurKwh + ")";
         this.tarifPricedExpr = SlotEconomics.tarifPricedSql(optimizer.defaultSupplyComponents());
-        this.exportVerguetungPricedExpr = SlotEconomics.exportVerguetungPricedSql();
+        this.exportVerguetungQuelleExpr = SlotEconomics.exportVerguetungQuelleSql();
     }
 
     /**
@@ -658,39 +661,45 @@ public class EarningsRepository {
     }
 
     /**
-     * The EXPORT-side honesty switch (the {@link #tarifPriced} sibling, B2
-     * fix): which of the tenant's sites have their feed-in valued at the feste
-     * EEG-Einspeisevergütung instead of bare spot
-     * ({@link SlotEconomics#exportVerguetungPricedSql} - a non-grid-charging
-     * {@code eigenverbrauch} plant with a known, unexpired commissioning
-     * date). {@code false} for Direktvermarktung (its spot + Marktprämie
-     * valuation is already explained by the premium fields) and for every
-     * plant whose remuneration cannot be determined - those honestly stay at
-     * spot, and the copy must not claim otherwise. RLS-fenced like every read
-     * here.
+     * The EXPORT-side honesty label (the {@link #tarifPriced} sibling, B2
+     * fix): which of the tenant's sites have their feed-in valued at a feste
+     * Einspeisevergütung instead of bare spot, and where that rate comes from
+     * ({@link SlotEconomics#exportVerguetungQuelleSql}): {@code eeg} - derived
+     * from the EEG schedule for a non-grid-charging {@code eigenverbrauch}
+     * plant with a known, unexpired commissioning date - or {@code angegeben}
+     * - the customer's own statement ({@code site.einspeiseverguetung_ct_kwh}).
+     * A site WITHOUT a fixed valuation is absent from the map: Direktvermarktung
+     * (its spot + Marktprämie valuation is already explained by the premium
+     * fields) and every plant whose remuneration cannot be determined - those
+     * honestly stay at spot, and the copy must not claim otherwise. The
+     * {@code exportVerguetungPriced} boolean of the DTOs is "present here".
+     * RLS-fenced like every read here.
      */
-    public Map<UUID, Boolean> exportVerguetungPriced() {
-        Map<UUID, Boolean> result = new HashMap<>();
+    public Map<UUID, String> exportVerguetungQuelle() {
+        Map<UUID, String> result = new HashMap<>();
         jdbc.query(
-                "SELECT s.id, " + exportVerguetungPricedExpr + " AS export_priced "
+                "SELECT s.id, " + exportVerguetungQuelleExpr + " AS quelle "
                         + "FROM site s " + PV_ASSET_JOIN,
                 rs -> {
-                    result.put(rs.getObject("id", UUID.class), rs.getBoolean("export_priced"));
+                    String quelle = rs.getString("quelle");
+                    if (quelle != null) {
+                        result.put(rs.getObject("id", UUID.class), quelle);
+                    }
                 });
         return result;
     }
 
     /**
-     * The export-side honesty switch for ONE site (P3). False for a site the
-     * caller cannot see (RLS) - conservative, like {@link #tarifPricedForSite}.
+     * The export-side honesty label for ONE site (P3): {@code eeg},
+     * {@code angegeben} or null - null also for a site the caller cannot see
+     * (RLS), conservative like {@link #tarifPricedForSite}.
      */
-    public boolean exportVerguetungPricedForSite(UUID site) {
-        Boolean priced = jdbc.query(
-                "SELECT " + exportVerguetungPricedExpr + " AS export_priced "
+    public String exportVerguetungQuelleForSite(UUID site) {
+        return jdbc.query(
+                "SELECT " + exportVerguetungQuelleExpr + " AS quelle "
                         + "FROM site s " + PV_ASSET_JOIN + "WHERE s.id = ?",
-                rs -> rs.next() ? rs.getBoolean("export_priced") : Boolean.FALSE,
+                rs -> rs.next() ? rs.getString("quelle") : null,
                 site);
-        return Boolean.TRUE.equals(priced);
     }
 
     /**

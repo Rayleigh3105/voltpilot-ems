@@ -175,9 +175,10 @@ public class EarningsController {
         });
         // Whether each site's import valuation engages a tariff/Preisblatt
         // beyond bare spot - the provenance copy's honesty switch - and its
-        // export-side sibling (feste EEG-Vergütung vs bare spot, B2 fix).
+        // export-side sibling (feste Vergütung vs bare spot, B2 fix) with the
+        // source of that rate (EEG-derived or stated by the customer).
         Map<UUID, Boolean> tarifPriced = earnings.tarifPriced();
-        Map<UUID, Boolean> exportVerguetungPriced = earnings.exportVerguetungPriced();
+        Map<UUID, String> exportVerguetungQuelle = earnings.exportVerguetungQuelle();
         // The forward expected Marktwert Solar is independent of the selected
         // range (always the coming horizon), so it is computed once against the
         // wall clock, keyed on the ACTIVE PV model.
@@ -341,7 +342,8 @@ public class EarningsController {
                     site.tarifArt(),
                     site.tarifParamCtKwh(),
                     tarifPriced.getOrDefault(site.id(), false),
-                    exportVerguetungPriced.getOrDefault(site.id(), false),
+                    exportVerguetungQuelle.containsKey(site.id()),
+                    exportVerguetungQuelle.get(site.id()),
                     einspeise,
                     eigenverbrauchsWert,
                     gesamtertrag,

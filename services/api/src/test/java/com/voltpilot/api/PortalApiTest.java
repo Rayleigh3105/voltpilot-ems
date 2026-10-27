@@ -5946,7 +5946,7 @@ class PortalApiTest {
             for (Vec v : vectors) {
                 var site = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
                         "eigenverbrauch", false, v.tarifArt(), v.param(),
-                        null, null, null, null, null, v.sheet());
+                        null, null, null, null, null, null, null, v.sheet());
                 Double expected = new com.voltpilot.api.optimizer.SlotEconomics(site,
                         com.voltpilot.api.optimizer.EegRates.defaults(), Map.of(), flag)
                         .importPriceCtKwh(v.spot());
@@ -6003,7 +6003,7 @@ class PortalApiTest {
             for (Vec v : vectors) {
                 var site = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
                         "eigenverbrauch", false, v.tarifArt(), v.param(),
-                        null, null, null, null, null, v.sheet());
+                        null, null, null, null, null, null, null, v.sheet());
                 Double ct = new com.voltpilot.api.optimizer.SlotEconomics(site,
                         com.voltpilot.api.optimizer.EegRates.defaults(), Map.of(), flag)
                         .importPriceCtKwh(v.spot());
@@ -6120,6 +6120,13 @@ class PortalApiTest {
      * spot + Marktprämie valuation (the Java twin's netzladen-first guard
      * would strip it - re-gating would silently change live DV numbers, out
      * of B2's byte-identical-for-DV contract).
+     *
+     * <p>Since the Einspeisevergütung card the SQL also reads the
+     * customer-stated rate {@code s.einspeiseverguetung_ct_kwh}: the legacy
+     * vectors below bind it NULL (byte-identical to before), and the SHARED
+     * vectors of {@code docs/contracts/einspeiseverguetung-vectors.json} - the
+     * same cases pricing.py's test_pricing.py runs - pin the stated-rate
+     * branch, plus the {@code exportVerguetungQuelleSql} label per case.
      */
     @Test
     void exportValueSqlMatchesTheSlotEconomicsCompositionVectors() {
@@ -6159,7 +6166,7 @@ class PortalApiTest {
         for (Vec v : vectors) {
             var site = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
                     v.plantKind(), v.netzladen(), "ohne", null, v.aw(),
-                    v.commissioned(), v.kwp(), null, null, null);
+                    v.commissioned(), v.kwp(), null, null, null, null, null);
             Map<LocalDate, com.voltpilot.api.optimizer.SlotEconomics.MarketValue> mvs =
                     v.mvCt() == null ? Map.of()
                             : Map.of(com.voltpilot.api.optimizer.SlotEconomics.berlinMonth(slot),
@@ -6169,7 +6176,7 @@ class PortalApiTest {
                     com.voltpilot.api.optimizer.EegRates.defaults(), mvs)
                     .exportValueCtKwh(v.spot(), slot);
             Double actual = evalExportValueSql(v.plantKind(), v.netzladen(), v.aw(), v.mvCt(),
-                    v.commissioned(), v.kwp(), v.spot(), slot);
+                    v.commissioned(), v.kwp(), null, null, v.spot(), slot).ct();
             if (expected == null) {
                 assertThat(actual).as(v.toString()).isNull();
             } else {
@@ -6177,29 +6184,57 @@ class PortalApiTest {
             }
         }
 
+        // The SHARED vectors: the customer-stated rate, against the very same
+        // expectations pricing.py and SlotEconomicsTest check - and the label
+        // the Einspeise-Erlös carries for each case.
+        Instant geteilt = com.voltpilot.api.optimizer.EinspeiseverguetungVektoren.slot();
+        for (var f : com.voltpilot.api.optimizer.EinspeiseverguetungVektoren.faelle()) {
+            ExportSql sql = evalExportValueSql(f.veraeusserungsform(), f.netzladen(),
+                    f.anzulegenderWertCtKwh(), f.monatsmarktwertCtKwh(), f.inbetriebnahme(),
+                    f.leistungKwp(), f.angegebenCtKwh(), f.inbetriebnahmeAbSolarspitzengesetz(),
+                    f.spotEurMwh(), geteilt);
+            if (f.einspeisewertCtKwh() == null) {
+                assertThat(sql.ct()).as(f.fall()).isNull();
+            } else {
+                assertThat(sql.ct()).as(f.fall()).isNotNull().isCloseTo(f.einspeisewertCtKwh(), eps);
+            }
+            assertThat(sql.quelle()).as(f.fall() + " (quelle)").isEqualTo(f.quelle());
+            assertThat(sql.priced()).as(f.fall() + " (priced)").isEqualTo(f.quelle() != null);
+        }
+
         // The pinned DEVIATION: Java (the optimizer's rule) strips the premium
         // from a netzladen DV site; the earnings SQL deliberately keeps it -
         // today's crediting, so DV sites stay byte-identical under the B2 fix.
         var netzladenDv = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
-                "direktvermarktung", true, "ohne", null, 8.11, null, null, null, null, null);
+                "direktvermarktung", true, "ohne", null, 8.11, null, null, null, null, null, null,
+                null);
         assertThat(new com.voltpilot.api.optimizer.SlotEconomics(netzladenDv,
                 com.voltpilot.api.optimizer.EegRates.defaults(),
                 Map.of(com.voltpilot.api.optimizer.SlotEconomics.berlinMonth(slot),
                         new com.voltpilot.api.optimizer.SlotEconomics.MarketValue(5.0, false)))
                 .exportValueCtKwh(100.0, slot)).isCloseTo(10.0, eps);
-        assertThat(evalExportValueSql("direktvermarktung", true, 8.11, 5.0, null, null, 100.0, slot))
-                .isCloseTo(13.11, eps);
+        assertThat(evalExportValueSql("direktvermarktung", true, 8.11, 5.0, null, null, null, null,
+                100.0, slot).ct()).isCloseTo(13.11, eps);
     }
 
-    /** Evaluates the generated export-value SQL over one bound vector row. */
-    private static Double evalExportValueSql(String plantKind, boolean netzladen, Double aw,
-            Double mvCt, LocalDate commissioned, Double kwp, Double spot, Instant slot) {
+    /** One evaluated vector row: the export value and the two honesty labels. */
+    private record ExportSql(Double ct, String quelle, boolean priced) {
+    }
+
+    /** Evaluates the generated export-value SQL (and its labels) over one bound vector row. */
+    private static ExportSql evalExportValueSql(String plantKind, boolean netzladen, Double aw,
+            Double mvCt, LocalDate commissioned, Double kwp, Double angegeben,
+            Boolean abSolarspitzengesetz, Double spot, Instant slot) {
         String sql = "SELECT "
                 + com.voltpilot.api.optimizer.SlotEconomics.exportValueCtSql(
                         "p.price_eur_mwh", "r.bucket",
                         com.voltpilot.api.optimizer.EegRates.defaults())
-                + " AS ct FROM (VALUES (?::text, ?::boolean, ?::numeric))"
-                + " AS s(plant_kind, netzladen_erlaubt, anzulegender_wert_ct_kwh)"
+                + " AS ct, " + com.voltpilot.api.optimizer.SlotEconomics.exportVerguetungQuelleSql()
+                + " AS quelle, " + com.voltpilot.api.optimizer.SlotEconomics.exportVerguetungPricedSql()
+                + " AS priced"
+                + " FROM (VALUES (?::text, ?::boolean, ?::numeric, ?::numeric, ?::boolean))"
+                + " AS s(plant_kind, netzladen_erlaubt, anzulegender_wert_ct_kwh,"
+                + " einspeiseverguetung_ct_kwh, inbetriebnahme_ab_solarspitzengesetz)"
                 + " CROSS JOIN (VALUES (?::numeric)) AS mv(value_ct_kwh)"
                 + " CROSS JOIN (VALUES (?::date, ?::numeric)) AS pv(commissioned_on, pv_capacity_kwp)"
                 + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)"
@@ -6210,17 +6245,20 @@ class PortalApiTest {
             ps.setString(1, plantKind);
             ps.setBoolean(2, netzladen);
             ps.setObject(3, aw);
+            ps.setObject(4, angegeben);
+            ps.setObject(5, abSolarspitzengesetz);
             // A missing monthly_market_value / pv-asset row = the LEFT JOIN's
             // all-NULL side - bind it exactly like that.
-            ps.setObject(4, mvCt);
-            ps.setObject(5, commissioned == null ? null : java.sql.Date.valueOf(commissioned));
-            ps.setObject(6, kwp);
-            ps.setObject(7, spot);
-            ps.setObject(8, java.sql.Timestamp.from(slot));
+            ps.setObject(6, mvCt);
+            ps.setObject(7, commissioned == null ? null : java.sql.Date.valueOf(commissioned));
+            ps.setObject(8, kwp);
+            ps.setObject(9, spot);
+            ps.setObject(10, java.sql.Timestamp.from(slot));
             try (java.sql.ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 java.math.BigDecimal ct = rs.getBigDecimal("ct");
-                return ct == null ? null : ct.doubleValue();
+                return new ExportSql(ct == null ? null : ct.doubleValue(), rs.getString("quelle"),
+                        rs.getBoolean("priced"));
             }
         } catch (Exception e) {
             throw new IllegalStateException("vector eval failed", e);
@@ -7510,6 +7548,7 @@ class PortalApiTest {
         org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
         Map<String, Object> s51aBody = siteEarningsDay(demo, s51a, "2026-03-03");
         assertThat(s51aBody).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "eeg")
                 .containsEntry("tarifPriced", true)
                 // Not Direktvermarktung -> no premium claim, and no negative
                 // spot "revenue" a fixed remuneration does not have.
@@ -7523,7 +7562,8 @@ class PortalApiTest {
         assertThat(num(s51aBody, "savedEur")).isCloseTo(0.05295, eps);
 
         Map<String, Object> altBody = siteEarningsDay(demo, alt, "2026-03-03");
-        assertThat(altBody).containsEntry("exportVerguetungPriced", true);
+        assertThat(altBody).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "eeg");
         assertThat(num(altBody, "einspeiseErloesEur")).isCloseTo(0.12165, eps);
         assertThat(num(altBody, "baselineEur")).isCloseTo(0.02835, eps);
         assertThat(num(altBody, "actualEur")).isCloseTo(-0.06165, eps);
@@ -7531,7 +7571,8 @@ class PortalApiTest {
         assertThat(num(altBody, "nettoErgebnisEur")).isCloseTo(0.45165, eps);
 
         Map<String, Object> bareBody = siteEarningsDay(demo, bare, "2026-03-03");
-        assertThat(bareBody).containsEntry("exportVerguetungPriced", false);
+        assertThat(bareBody).containsEntry("exportVerguetungPriced", false)
+                .containsEntry("exportVerguetungQuelle", null);
         assertThat(num(bareBody, "einspeiseErloesEur")).isCloseTo(0.075, eps);
         assertThat(num(bareBody, "baselineEur")).isCloseTo(0.0, eps);
         assertThat(num(bareBody, "actualEur")).isCloseTo(-0.015, eps);
@@ -7556,12 +7597,203 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
         Map<String, Object> s51aRow = siteRow(fleet, s51a);
-        assertThat(s51aRow).containsEntry("exportVerguetungPriced", true);
+        assertThat(s51aRow).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "eeg");
         assertThat(num(s51aRow, "einspeiseErloesEur")).isCloseTo(0.0741, eps);
         assertThat(num(s51aRow, "savedEur")).isCloseTo(0.05295, eps);
         Map<String, Object> bareRow = siteRow(fleet, bare);
         assertThat(bareRow).containsEntry("exportVerguetungPriced", false);
         assertThat(num(bareRow, "einspeiseErloesEur")).isCloseTo(0.075, eps);
+    }
+
+    /**
+     * Die Karte "Einspeisevergütung" Ende zu Ende: die Herleitung aus dem EEG
+     * steht mit Herkunft da, eine eigene Angabe wirkt SOFORT in jeder Euro-Zahl
+     * der Erlöse und im Fahrplan-Preis, und das Zurücksetzen stellt die
+     * Herleitung Zahl für Zahl wieder her.
+     *
+     * <p>Seed am 2026-03-10 in der Zone CH (ein Tag, den kein anderer Test
+     * besitzt): dieselben zwei Viertelstunden wie der B2-Test - 10:00Z zu 100
+     * EUR/MWh (1,0 kWh Einspeisung), 18:00Z zu -50 EUR/MWh (0,5 kWh). Die
+     * PV-Anlage ist am 2025-06-01 mit 9,8 kWp in Betrieb gegangen: hergeleitet
+     * 7,94 ct, § 51a gilt (auch für die Angabe). Vorher, noch OHNE PV-Eintrag,
+     * prüft der Test die Pflicht-Antwort zu § 51a (vor/ab dem 25.02.2025).
+     * <pre>
+     *   hergeleitet: einspeise = 1,0*0,0794 + 0,5*0 = 0,0794
+     *   angegeben 12,5 ct: einspeise = 1,0*0,125 + 0,5*0 = 0,125
+     * </pre>
+     */
+    @Test
+    void einspeiseverguetungKarteAngabeWirktInErloesenUndFahrplanUndSetztZurueck() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String site = createSiteWithTarif(demo, "Einspeise Angabe", "CH", "eigenverbrauch",
+                "fest", "30");
+        String base = "/api/v1/sites/" + site + "/einspeiseverguetung";
+
+        // Ohne Grundlage: keine Zahl, nur der Grund.
+        Map<String, Object> ohne = getSheet(demo, base);
+        assertThat(ohne).containsEntry("zustand", "ohne_angabe")
+                .containsEntry("wirksamCtKwh", null)
+                .containsEntry("hergeleitetCtKwh", null)
+                .containsEntry("angegebenCtKwh", null);
+
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "('2026-03-10T10:00:00Z', 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "('2026-03-10T18:00:00Z', 'CH', 'PT15M', -50.0, 'EUR', 'test') "
+                + "ON CONFLICT DO NOTHING");
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                + "('2026-03-10T10:00:00Z', '" + tenantA + "', '" + site
+                + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90), "
+                + "('2026-03-10T18:00:00Z', '" + tenantA + "', '" + site
+                + "', 0.5, 1.0, 0.2, 0.5, 0.0, 0.3, 90) "
+                + "ON CONFLICT DO NOTHING");
+        org.assertj.core.data.Offset<Double> eps0 = org.assertj.core.data.Offset.offset(1e-9);
+
+        // 0. Ohne Inbetriebnahmedatum braucht ein eigener Satz die Antwort zu
+        //    § 51a - sonst rechnete der Plan ihn still in Negativpreis-Stunden.
+        ResponseEntity<Map<String, Object>> ohneAntwort = rest.exchange(url(base), HttpMethod.PUT,
+                new HttpEntity<>(mapOf("satzCtKwh", 6.0), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(ohneAntwort.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) ohneAntwort.getBody().get("message")).contains("vor oder ab dem 25.02.2025");
+        assertThat(getSheet(demo, base)).containsEntry("angegebenCtKwh", null);
+        Map<String, Object> abStichtag = new java.util.HashMap<>(Map.of("satzCtKwh", 6.0,
+                "inbetriebnahmeAbSolarspitzengesetz", true));
+        assertThat(putSheet(demo, base, abStichtag)).containsEntry("zustand", "angegeben")
+                .containsEntry("inbetriebnahmeAbSolarspitzengesetz", true)
+                .containsEntry("ohneVerguetungBeiNegativpreis", true);
+        Map<String, Object> mitNull = siteEarningsDay(demo, site, "2026-03-10");
+        assertThat(mitNull).containsEntry("exportVerguetungQuelle", "angegeben");
+        // 1,0 kWh x 6 ct + 0,5 kWh x 0 (die negative Viertelstunde, § 51a)
+        assertThat(num(mitNull, "einspeiseErloesEur")).isCloseTo(0.06, eps0);
+        Map<String, Object> vorStichtag = new java.util.HashMap<>(Map.of("satzCtKwh", 6.0,
+                "inbetriebnahmeAbSolarspitzengesetz", false));
+        assertThat(putSheet(demo, base, vorStichtag)).containsEntry("ohneVerguetungBeiNegativpreis", false);
+        // 1,0 kWh x 6 ct + 0,5 kWh x 6 ct: vor dem Stichtag gilt der Satz auch bei negativem Preis
+        assertThat(num(siteEarningsDay(demo, site, "2026-03-10"), "einspeiseErloesEur"))
+                .isCloseTo(0.09, eps0);
+        // Zurücksetzen löscht Satz UND Antwort: wieder Börsenpreis, keine erfundene Zahl.
+        assertThat(putSheet(demo, base, nullValue("satzCtKwh"))).containsEntry("zustand", "ohne_angabe")
+                .containsEntry("inbetriebnahmeAbSolarspitzengesetz", null);
+        // 1,0 kWh x 10 ct + 0,5 kWh x (-5 ct)
+        assertThat(num(siteEarningsDay(demo, site, "2026-03-10"), "einspeiseErloesEur"))
+                .isCloseTo(0.075, eps0);
+
+        exec("INSERT INTO asset (id, tenant_id, site_id, type, commissioned_on, pv_capacity_kwp)"
+                + " VALUES (gen_random_uuid(), '" + tenantA + "', '" + site
+                + "', 'pv', '2025-06-01', 9.8)");
+        // Ein Fahrplan-Slot zu positivem Börsenpreis: sein Einspeisewert ist der
+        // Preis, mit dem der Optimierer plant.
+        exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at, battery_kw,"
+                + " grid_kw, price_eur_mwh) VALUES (now(), '" + tenantA + "', '" + site + "',"
+                + " '22222222-2222-2222-2222-222222222222', now(), 0.0, -1.0, 100.0)"
+                + " ON CONFLICT DO NOTHING");
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+
+        // 1. Hergeleitet aus dem EEG, mit Herkunft.
+        Map<String, Object> eeg = getSheet(demo, base);
+        assertThat(eeg).containsEntry("zustand", "eeg")
+                .containsEntry("inbetriebnahme", "2025-06-01")
+                .containsEntry("eegEndeAm", "2045-12-31")
+                .containsEntry("ohneVerguetungBeiNegativpreis", true)
+                .containsEntry("hergeleitetGenaehert", false)
+                .containsEntry("angegebenCtKwh", null);
+        assertThat(num(eeg, "wirksamCtKwh")).isCloseTo(7.94, eps);
+        assertThat(num(eeg, "hergeleitetCtKwh")).isCloseTo(7.94, eps);
+        Map<String, Object> vorher = siteEarningsDay(demo, site, "2026-03-10");
+        assertThat(vorher).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "eeg");
+        assertThat(num(vorher, "einspeiseErloesEur")).isCloseTo(0.0794, eps);
+        assertThat(fahrplanEinspeisewert(demo, site)).isCloseTo(7.94, eps);
+
+        // 2. Eigener Satz (deutsches Komma): wirkt in Erlösen und Fahrplan.
+        Map<String, Object> angegeben = putSheet(demo, base, mapOf("satzCtKwh", "12,5"));
+        assertThat(angegeben).containsEntry("zustand", "angegeben");
+        assertThat(num(angegeben, "wirksamCtKwh")).isCloseTo(12.5, eps);
+        assertThat(num(angegeben, "angegebenCtKwh")).isCloseTo(12.5, eps);
+        assertThat(num(angegeben, "hergeleitetCtKwh")).as("die Herleitung bleibt sichtbar")
+                .isCloseTo(7.94, eps);
+        assertThat(getSheet(demo, base)).isEqualTo(angegeben);
+        Map<String, Object> mit = siteEarningsDay(demo, site, "2026-03-10");
+        assertThat(mit).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "angegeben");
+        // § 51a hängt weiter am Inbetriebnahmedatum: die negative Viertelstunde bleibt 0.
+        assertThat(num(mit, "einspeiseErloesEur")).isCloseTo(0.125, eps);
+        assertThat(num(mit, "nettoErgebnisEur")).isCloseTo(
+                num(mit, "einspeiseErloesEur") + num(mit, "eigenverbrauchsWertEur")
+                        - num(mit, "stromkostenEur"), eps);
+        assertThat(num(mit, "stromkostenEur") - num(mit, "einspeiseErloesEur"))
+                .isCloseTo(num(mit, "actualEur"), eps);
+        assertThat(num(mit, "baselineEur") - num(mit, "actualEur"))
+                .isCloseTo(num(mit, "savedEur"), eps);
+        assertThat(fahrplanEinspeisewert(demo, site)).isCloseTo(12.5, eps);
+        // Mit Datum entscheidet das Datum: eine mitgesendete Antwort wird nicht gespeichert.
+        Map<String, Object> mitAntwort = new java.util.HashMap<>(Map.of("satzCtKwh", 12.5,
+                "inbetriebnahmeAbSolarspitzengesetz", false));
+        assertThat(putSheet(demo, base, mitAntwort)).containsEntry("inbetriebnahmeAbSolarspitzengesetz", null)
+                .containsEntry("ohneVerguetungBeiNegativpreis", true);
+        Map<String, Object> fleet = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-03-10"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        assertThat(siteRow(fleet, site)).containsEntry("exportVerguetungPriced", true)
+                .containsEntry("exportVerguetungQuelle", "angegeben");
+        assertThat(num(siteRow(fleet, site), "einspeiseErloesEur")).isCloseTo(0.125, eps);
+
+        // 3. Ungültige Angaben sind deutsche 400er und ändern nichts.
+        for (Map<String, Object> falsch : List.of(new java.util.HashMap<String, Object>(),
+                mapOf("satzCtKwh", -1), mapOf("satzCtKwh", 100.5), mapOf("satzCtKwh", "abc"))) {
+            ResponseEntity<Map<String, Object>> r = rest.exchange(url(base), HttpMethod.PUT,
+                    new HttpEntity<>(falsch, bearer(demo)), new ParameterizedTypeReference<>() {});
+            assertThat(r.getStatusCode()).as(String.valueOf(falsch)).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat((String) r.getBody().get("message")).as(String.valueOf(falsch)).contains("ct/kWh");
+        }
+        assertThat(num(getSheet(demo, base), "angegebenCtKwh")).isCloseTo(12.5, eps);
+
+        // 4. Ein anderer Mandant sieht und ändert nichts (404, nie 403).
+        String demo2 = token("demo2", "demo2");
+        assertThat(rest.exchange(url(base), HttpMethod.GET, new HttpEntity<>(bearer(demo2)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url(base), HttpMethod.PUT,
+                new HttpEntity<>(mapOf("satzCtKwh", 3.0), bearer(demo2)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(num(getSheet(demo, base), "angegebenCtKwh")).isCloseTo(12.5, eps);
+
+        // 5. Zurücksetzen: die Herleitung gilt wieder, Zahl für Zahl.
+        Map<String, Object> zurueck = putSheet(demo, base, nullValue("satzCtKwh"));
+        assertThat(zurueck).isEqualTo(eeg);
+        Map<String, Object> danach = siteEarningsDay(demo, site, "2026-03-10");
+        assertThat(danach).containsEntry("exportVerguetungQuelle", "eeg");
+        assertThat(num(danach, "einspeiseErloesEur")).isCloseTo(0.0794, eps);
+        assertThat(num(danach, "savedEur")).isCloseTo(num(vorher, "savedEur"), eps);
+        assertThat(fahrplanEinspeisewert(demo, site)).isCloseTo(7.94, eps);
+
+        // 6. Direktvermarktung: kein fester Satz zu setzen, zurücksetzen geht immer.
+        String dv = createSiteWithTarif(demo, "Einspeise DV", "CH", "direktvermarktung",
+                "fest", "30");
+        String dvBase = "/api/v1/sites/" + dv + "/einspeiseverguetung";
+        assertThat(getSheet(demo, dvBase)).containsEntry("zustand", "direktvermarktung")
+                .containsEntry("wirksamCtKwh", null);
+        ResponseEntity<Map<String, Object>> dvSetzen = rest.exchange(url(dvBase), HttpMethod.PUT,
+                new HttpEntity<>(mapOf("satzCtKwh", 8.0), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(dvSetzen.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) dvSetzen.getBody().get("message")).contains("Direktvermarktung");
+        assertThat(putSheet(demo, dvBase, nullValue("satzCtKwh")))
+                .containsEntry("zustand", "direktvermarktung");
+    }
+
+    /** Der Einspeisewert des jüngsten Fahrplan-Slots einer Anlage (ct/kWh). */
+    private double fahrplanEinspeisewert(String token, String siteId) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/schedule"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> first = (Map<String, Object>) ((List<?>) res.getBody().get("slots")).get(0);
+        return ((Number) first.get("exportValueCtKwh")).doubleValue();
     }
 
     /**

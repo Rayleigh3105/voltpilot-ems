@@ -119,10 +119,20 @@ describe('erloesEbenen · Ebene 1 der Einspeisung', () => {
     expect(e1.zeilen[0].herkunft).toBe('Ihre feste Einspeisevergütung (EEG)');
   });
 
-  it('EEG ohne Verknüpfung nennt den WEG statt einer Vergütung', () => {
+  it('EEG ohne Vergütung nennt den WEG statt einer Vergütung', () => {
     const f = FX.find((x) => x.id === 'eeg-ohne-mastr')!;
     const e1 = ebene1(f.money, viewOf(f), 'einspeisung')!;
-    expect(e1.zeilen[0].herkunft).toMatch(/Anlage verknüpfen ›$/);
+    // Klartext, kein Schein-Link: die Zeile ist kein Knopf.
+    expect(e1.zeilen[0].herkunft).toMatch(/Vergütung nicht hinterlegt: unter Strom & Geld eintragen$/);
+    expect(e1.zeilen[0].herkunft).not.toMatch(/›/);
+  });
+
+  it('ein selbst angegebener Satz heißt „angegeben", nicht „EEG"', () => {
+    const f = FX.find((x) => x.id === 'eeg-tag-abgeschlossen')!;
+    const money = { ...f.money, exportVerguetungQuelle: 'angegeben' as const };
+    const e1 = ebene1(money, viewOf(f), 'einspeisung')!;
+    expect(e1.zeilen).toHaveLength(1);
+    expect(e1.zeilen[0].herkunft).toBe('Ihre angegebene Einspeisevergütung');
   });
 });
 
@@ -218,6 +228,17 @@ describe('erloesEbenen · Ebene 2', () => {
     expect(labels).not.toContain('Bei 0,0 ct Börsenpreis');
     const einsp = ebene2({ money: f.money }).zeilen.find((z) => z.label === 'Einspeisepreis')!;
     expect(einsp.wert).toMatch(/feste Vergütung \(EEG\), 20 Jahre ab Inbetriebnahme$/);
+  });
+
+  it('angegeben: kein „EEG, 20 Jahre" - der Satz heißt „von Ihnen angegeben" und das Glossar erklärt ihn', () => {
+    const f = FX.find((x) => x.id === 'eeg-tag-abgeschlossen')!;
+    const money = { ...f.money, exportVerguetungQuelle: 'angegeben' as const };
+    const e2 = ebene2({ money });
+    const einsp = e2.zeilen.find((z) => z.label === 'Einspeisepreis')!;
+    expect(einsp.wert).toMatch(/von Ihnen angegeben$/);
+    expect(einsp.wert).not.toMatch(/EEG/);
+    expect(e2.glossar.map((g) => g.begriff)).toContain('Angegebene Einspeisevergütung');
+    expect(e2.glossar.map((g) => g.begriff)).not.toContain('Feste Einspeisevergütung');
   });
 
   it.each(FX.map((f) => [f.id, f] as const))('%s — höchstens acht Zeilen (§3.4)', (_id, f) => {

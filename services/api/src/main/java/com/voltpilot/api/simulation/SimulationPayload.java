@@ -83,6 +83,14 @@ public final class SimulationPayload {
         Object commissioned = firstOfObj(
                 tariff == null ? null : tariff.commissionedOn(), site.pvCommissionedOn());
         put(tariffDoc, "commissionedOn", commissioned == null ? null : commissioned.toString());
+        // The site's stated Einspeisevergütung prices the export exactly like
+        // the live optimizer (pricing.py: a layer above the EEG derivation).
+        put(tariffDoc, "einspeiseverguetungCtKwh", firstOf(
+                tariff == null ? null : tariff.einspeiseverguetungCtKwh(),
+                site.einspeiseverguetungCtKwh()));
+        put(tariffDoc, "inbetriebnahmeAbSolarspitzengesetz", firstOfObj(
+                tariff == null ? null : tariff.inbetriebnahmeAbSolarspitzengesetz(),
+                site.inbetriebnahmeAbSolarspitzengesetz()));
         put(tariffDoc, "netzladenErlaubt", firstOfObj(
                 tariff == null ? null : tariff.netzladenErlaubt(), site.netzladenErlaubt()));
         doc.put("tariff", tariffDoc);
@@ -142,6 +150,8 @@ public final class SimulationPayload {
             put(t, "anzulegenderWertCtKwh", tariff.anzulegenderWertCtKwh());
             put(t, "commissionedOn",
                     tariff.commissionedOn() == null ? null : tariff.commissionedOn().toString());
+            put(t, "einspeiseverguetungCtKwh", tariff.einspeiseverguetungCtKwh());
+            put(t, "inbetriebnahmeAbSolarspitzengesetz", tariff.inbetriebnahmeAbSolarspitzengesetz());
             put(t, "netzladenErlaubt", tariff.netzladenErlaubt());
             doc.put("tariff", t);
         }

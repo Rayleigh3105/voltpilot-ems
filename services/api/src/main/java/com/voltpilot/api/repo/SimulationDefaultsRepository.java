@@ -9,7 +9,8 @@ import org.springframework.stereotype.Repository;
 
 /**
  * One RLS-scoped read of everything the Ersparnis-Simulation pre-fills from a
- * site's master data (site tariff/coords/netzladen + the battery asset's
+ * site's master data (site tariff incl. the customer-stated
+ * Einspeisevergütung/coords/netzladen + the battery asset's
  * params incl. the RAW wear ct - the customer-facing SiteAssetDto only carries
  * the Speicherschonung preset, but an admin-configured "individuell" wear
  * must flow into the simulation verbatim + the PV asset's kWp/orientation).
@@ -26,6 +27,8 @@ public class SimulationDefaultsRepository {
             String tarifArt,
             BigDecimal tarifParamCtKwh,
             BigDecimal anzulegenderWertCtKwh,
+            BigDecimal einspeiseverguetungCtKwh,
+            Boolean inbetriebnahmeAbSolarspitzengesetz,
             boolean netzladenErlaubt,
             BigDecimal backupReserveSocPct,
             BigDecimal batteryCapacityKwh,
@@ -52,6 +55,7 @@ public class SimulationDefaultsRepository {
                 """
                 SELECT s.bidding_zone, s.latitude, s.longitude, s.plant_kind,
                        s.tarif_art, s.tarif_param_ct_kwh, s.anzulegender_wert_ct_kwh,
+                       s.einspeiseverguetung_ct_kwh, s.inbetriebnahme_ab_solarspitzengesetz,
                        s.netzladen_erlaubt, s.backup_reserve_soc_pct,
                        b.capacity_kwh, b.max_charge_kw, b.max_discharge_kw,
                        b.roundtrip_efficiency_pct, b.wear_cost_ct_per_kwh,
@@ -70,6 +74,8 @@ public class SimulationDefaultsRepository {
                         rs.getString("tarif_art"),
                         rs.getBigDecimal("tarif_param_ct_kwh"),
                         rs.getBigDecimal("anzulegender_wert_ct_kwh"),
+                        rs.getBigDecimal("einspeiseverguetung_ct_kwh"),
+                        rs.getObject("inbetriebnahme_ab_solarspitzengesetz", Boolean.class),
                         rs.getBoolean("netzladen_erlaubt"),
                         rs.getBigDecimal("backup_reserve_soc_pct"),
                         rs.getBigDecimal("capacity_kwh"),

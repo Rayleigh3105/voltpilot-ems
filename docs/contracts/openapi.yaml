@@ -4214,6 +4214,75 @@ paths:
         "400": { description: A component/USt/date value is invalid (German message). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/einspeiseverguetung:
+    get:
+      tags: [sites]
+      summary: Die Karte "Einspeisevergütung" - der wirksame Satz mit Herkunft.
+      description: >
+        Welcher Satz je eingespeister kWh HEUTE in Fahrplan und Erlöse eingeht
+        und woher er kommt. Der hergeleitete Satz kommt aus demselben
+        EEG-Satzplan wie Optimierer und Erlöse (inkl. OPTIMIZER_EEG_RATES_JSON),
+        die Herkunft aus derselben Abfrage wie `exportVerguetungQuelle` der
+        Erlöse - die Karte nennt nie einen Satz, mit dem nicht gerechnet wird.
+        Regel und gemeinsame Vektoren:
+        docs/contracts/einspeiseverguetung-vectors.json. RLS-scoped (foreign
+        site 404; admins via the `X-Tenant-Id` switcher).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Der Stand der Karte.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Einspeiseverguetung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+    put:
+      tags: [sites]
+      summary: Eigenen Satz angeben oder auf die Herleitung zurücksetzen.
+      description: >
+        `{"satzCtKwh": 8.2}` setzt den eigenen festen Satz (ct/kWh, 0 bis 100;
+        ein deutsches Komma ist erlaubt, 0 ist eine Angabe), `{"satzCtKwh":
+        null}` setzt auf die Herleitung aus dem EEG zurück. Ein fehlendes Feld
+        ist 400, nie ein stilles Zurücksetzen. Die Angabe ist eine Ebene ÜBER
+        dem EEG-Satzplan: sie ersetzt den hergeleiteten Satz und das Ende nach
+        20 Jahren, § 51a EEG hängt weiter am Inbetriebnahmedatum; sie wirkt nur
+        bei Eigenverbrauch ohne Netzladen (sonst ruht sie gespeichert). Bei
+        Direktvermarktung ist Setzen 409, Zurücksetzen geht immer. Fehlt das
+        Inbetriebnahmedatum am PV-Asset, verlangt ein Satz
+        `inbetriebnahmeAbSolarspitzengesetz` (true = in Betrieb ab dem
+        25.02.2025, dann gilt § 51a: 0 in Negativpreis-Viertelstunden); mit
+        Datum entscheidet das Datum und die Antwort wird nicht gespeichert.
+        Zurücksetzen löscht Satz und Antwort. Geschrieben nur hier, nie über
+        PUT /api/v1/sites/{siteId}. Needs `anlage.verwalten`.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [satzCtKwh]
+              properties:
+                satzCtKwh: { type: number, nullable: true, minimum: 0, maximum: 100 }
+                inbetriebnahmeAbSolarspitzengesetz:
+                  type: boolean
+                  nullable: true
+                  description: >
+                    Pflicht zu einem Satz, solange das Inbetriebnahmedatum fehlt:
+                    ging die Anlage ab dem 25.02.2025 in Betrieb (§ 51a EEG)?
+      responses:
+        "200":
+          description: Der neue Stand der Karte.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Einspeiseverguetung" }
+        "400": { description: satzCtKwh fehlt oder ist keine Zahl zwischen 0 und 100, oder ohne Inbetriebnahmedatum fehlt inbetriebnahmeAbSolarspitzengesetz (German message). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Recht `anlage.verwalten` fehlt. }
+        "404": { description: Site not found for this tenant. }
+        "409": { description: Direktvermarktung - es gibt keinen festen Satz (German message). }
   /api/v1/sites/{siteId}/topology:
     get:
       tags: [topology]
@@ -24794,6 +24863,22 @@ components:
             tarifParamCtKwh: { type: number, nullable: true }
             anzulegenderWertCtKwh: { type: number, nullable: true }
             commissionedOn: { type: string, format: date, nullable: true }
+            einspeiseverguetungCtKwh:
+              type: number
+              nullable: true
+              minimum: 0
+              maximum: 100
+              description: >
+                The stated feste Einspeisevergütung (ct/kWh). Customer route:
+                defaults to the site's own statement (the Einspeisevergütung
+                card); absent = the EEG derivation from commissionedOn.
+            inbetriebnahmeAbSolarspitzengesetz:
+              type: boolean
+              nullable: true
+              description: >
+                Decides §51a for a stated rate while commissionedOn is unknown
+                (true = in Betrieb ab dem 25.02.2025). Customer route: the site's
+                own answer.
             netzladenErlaubt: { type: boolean, nullable: true }
         battery:
           type: object
@@ -26111,6 +26196,15 @@ components:
             False for Direktvermarktung (its spot + Marktprämie valuation is
             explained by the premium fields) and for plants whose remuneration
             cannot be determined - those honestly stay at spot.
+        exportVerguetungQuelle:
+          type: string
+          nullable: true
+          enum: [eeg, angegeben]
+          description: >
+            Where that fixed rate comes from: eeg = derived from the EEG
+            schedule, angegeben = the customer's own statement
+            (site.einspeiseverguetung_ct_kwh, the Einspeisevergütung card).
+            Null exactly when exportVerguetungPriced is false.
         einspeiseErloesEur:
           type: number
           nullable: true
@@ -26319,6 +26413,14 @@ components:
             EEG-Einspeisevergütung instead of bare spot. False for
             Direktvermarktung and for plants whose remuneration cannot be
             determined (no commissioned pv asset) - those honestly stay at spot.
+        exportVerguetungQuelle:
+          type: string
+          nullable: true
+          enum: [eeg, angegeben]
+          description: >
+            Where that fixed rate comes from: eeg = derived from the EEG
+            schedule, angegeben = the customer's own statement. Null exactly
+            when exportVerguetungPriced is false.
         anzulegenderWertCtKwh: { type: number, nullable: true }
         coveredSlots: { type: integer, format: int64 }
         firstCoveredDate: { type: string, format: date, nullable: true }
@@ -28409,6 +28511,32 @@ components:
         ustPct: { type: number, nullable: true, description: "USt on everything incl. spot; 0 for Vorsteuer-Abzug (C&I)." }
         komponentenStand: { type: string, format: date, nullable: true, description: "Preisblatt gültig ab." }
         updatedAt: { type: string, format: date-time, nullable: true }
+    Einspeiseverguetung:
+      type: object
+      description: >
+        Die Karte "Einspeisevergütung" (Einstellungen > Strom & Geld). `zustand`
+        ist ein geschlossenes Vokabular (einspeiseverguetung-vectors.json,
+        `zustaende`): angegeben = der eigene Satz wirkt, eeg = der aus dem EEG
+        hergeleitete Satz wirkt, eeg_abgelaufen = die 20 Jahre sind vorbei
+        (Börsenpreis), ohne_angabe = kein Inbetriebnahmedatum und keine Angabe
+        (Börsenpreis, nie eine erfundene Zahl), netzladen = Netzladen erlaubt
+        (Börsenpreis, eine Angabe ruht), direktvermarktung = Börsenpreis +
+        Marktprämie (kein fester Satz).
+      required: [zustand, hergeleitetGenaehert, ohneVerguetungBeiNegativpreis]
+      properties:
+        zustand:
+          type: string
+          enum: [angegeben, eeg, eeg_abgelaufen, ohne_angabe, netzladen, direktvermarktung]
+        wirksamCtKwh: { type: number, nullable: true, description: "Der feste Satz, der heute wirkt; null = keiner (Börse)." }
+        angegebenCtKwh: { type: number, nullable: true, description: "Die gespeicherte Angabe; null = keine. Kann ruhen (Netzladen, Direktvermarktung)." }
+        inbetriebnahmeAbSolarspitzengesetz: { type: boolean, nullable: true, description: "Die Antwort 'in Betrieb ab dem 25.02.2025?' - nur ohne Inbetriebnahmedatum (mit Datum null: das Datum entscheidet)." }
+        hergeleitetCtKwh: { type: number, nullable: true, description: "Der Satz aus dem EEG-Satzplan; null ohne Inbetriebnahmedatum." }
+        hergeleitetGenaehert: { type: boolean, description: "Inbetriebnahme vor dem 30.07.2022 - der Satzplan rechnet dort mit Jahresstufen (Näherungswert)." }
+        inbetriebnahme: { type: string, format: date, nullable: true }
+        leistungKwp: { type: number, nullable: true, description: "null = unbekannt (der Satzplan nimmt dann das Band bis 10 kWp)." }
+        eegEndeAm: { type: string, format: date, nullable: true, description: "Letzter Tag der EEG-Vergütung (31.12. des 20. Jahres nach dem Inbetriebnahmejahr)." }
+        ohneVerguetungBeiNegativpreis: { type: boolean, description: "§ 51a EEG gilt (Inbetriebnahme ab 25.02.2025 nach dem Datum, ohne Datum nach der Antwort) - auch für einen angegebenen Satz." }
+        anzulegenderWertCtKwh: { type: number, nullable: true, description: "Nur bei Direktvermarktung: der anzulegende Wert der Marktprämie." }
     UsageProfile:
       type: object
       description: >

@@ -286,7 +286,8 @@ export function ErloeseSection({
   const tabelle = useMemo(() => geldTabelle(diagramm, money), [diagramm, money]);
 
   const hrefFor = useCallback(
-    (ziel: SekundaerZiel) => einstellungenHash(site.id, ziel === 'tarif' ? 'geld' : 'anlage'),
+    // Stromtarif und Einspeisevergütung wohnen beide unter „Strom & Geld".
+    (ziel: SekundaerZiel) => einstellungenHash(site.id, ziel === 'tarif' || ziel === 'verguetung' ? 'geld' : 'anlage'),
     [site.id],
   );
 

@@ -11,9 +11,11 @@ pattern from test_freshness.
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -404,6 +406,127 @@ def test_expiry_is_evaluated_per_slot_across_the_horizon_boundary():
     assert values == [rate, rate, 100.0, -20.0]
 
 
+# ---- export side: the customer-STATED rate (a layer above the schedule) ------
+
+#: The SHARED vectors - the same cases the api's SlotEconomicsTest (Java) and
+#: PortalApiTest (the earnings SQL twin) run, read by path.
+EINSPEISEVERGUETUNG_VECTORS = (
+    Path(__file__).resolve().parents[3]
+    / "docs"
+    / "contracts"
+    / "einspeiseverguetung-vectors.json"
+)
+
+
+def _vektoren() -> dict:
+    return json.loads(EINSPEISEVERGUETUNG_VECTORS.read_text(encoding="utf-8"))
+
+
+def test_stated_rate_follows_the_shared_vectors():
+    doc = _vektoren()
+    slot = datetime.fromisoformat(doc["slot"].replace("Z", "+00:00"))
+    geprueft = 0
+    for f in doc["faelle"]:
+        if f["spotEurMwh"] is None:
+            # The optimizer only ever plans slots WITH a day-ahead price; an
+            # unknown spot is a read-side state (Java/SQL answer null there).
+            continue
+        tariff = SiteTariff(
+            plant_kind=f["veraeusserungsform"],
+            anzulegender_wert_ct_kwh=f["anzulegenderWertCtKwh"],
+            commissioned_on=(
+                date.fromisoformat(f["inbetriebnahme"])
+                if f["inbetriebnahme"]
+                else None
+            ),
+            pv_capacity_kwp=f["leistungKwp"],
+            einspeiseverguetung_ct_kwh=f["angegebenCtKwh"],
+            inbetriebnahme_ab_solarspitzengesetz=f["inbetriebnahmeAbSolarspitzengesetz"],
+        )
+        market_values = (
+            {berlin_month(slot): f["monatsmarktwertCtKwh"]}
+            if f["monatsmarktwertCtKwh"] is not None
+            else {}
+        )
+        [value] = export_values(
+            tariff, f["netzladen"], [f["spotEurMwh"]], [slot], market_values
+        )
+        assert value / 10.0 == pytest.approx(f["einspeisewertCtKwh"], abs=1e-9), f["fall"]
+        geprueft += 1
+    assert geprueft >= 17
+
+
+def test_stated_rate_leaves_the_schedule_untouched():
+    # The statement replaces the rate the schedule would give - it never
+    # changes the schedule itself (the Java twin EegRates stays byte-equal).
+    before = eeg_rate_schedule()
+    tariff = SiteTariff(
+        plant_kind="eigenverbrauch",
+        commissioned_on=date(2023, 6, 15),
+        pv_capacity_kwp=8.0,
+        einspeiseverguetung_ct_kwh=12.5,
+    )
+    assert export_values(tariff, False, SPOT, STARTS, {}) == [125.0] * 4
+    assert eeg_rate_schedule() == before == DEFAULT_EEG_RATE_SCHEDULE
+    assert feste_verguetung_ct_per_kwh(date(2023, 6, 15), 8.0) == 8.2
+
+
+def test_stated_rate_in_merchant_mode_is_flagged_and_priced_at_spot(caplog):
+    # A grid-charging plant cannot claim a feste Vergütung - stated or derived
+    # (Ausschliesslichkeitsprinzip): bare spot, and the inconsistency is loud
+    # even without a commissioning date.
+    tariff = SiteTariff(plant_kind="eigenverbrauch", einspeiseverguetung_ct_kwh=9.0)
+    with caplog.at_level("WARNING"):
+        values = export_values(tariff, True, SPOT, STARTS, {})
+    assert values == SPOT
+    assert any(
+        "eeg_remuneration_ignored_in_merchant_mode" in r.message
+        for r in caplog.records
+    )
+
+
+def test_stated_rate_without_date_needs_the_answer_for_its_zero_hours():
+    # The Fahrplan concept's open question (vp-fahrplan-eigenverbrauch-konzept
+    # §6.2): a stated rate without commissioning date must not earn in
+    # negative-price slots when the plant went live on/after 2025-02-25.
+    ab = SiteTariff(
+        plant_kind="eigenverbrauch",
+        einspeiseverguetung_ct_kwh=6.0,
+        inbetriebnahme_ab_solarspitzengesetz=True,
+    )
+    assert export_values(ab, False, SPOT, STARTS, {}) == [60.0, 60.0, 0.0, 60.0]
+    vor = SiteTariff(
+        plant_kind="eigenverbrauch",
+        einspeiseverguetung_ct_kwh=6.0,
+        inbetriebnahme_ab_solarspitzengesetz=False,
+    )
+    assert export_values(vor, False, SPOT, STARTS, {}) == [60.0] * 4
+    # A commissioning date always wins over a stored answer.
+    datum = SiteTariff(
+        plant_kind="eigenverbrauch",
+        commissioned_on=date(2023, 6, 15),
+        einspeiseverguetung_ct_kwh=6.0,
+        inbetriebnahme_ab_solarspitzengesetz=True,
+    )
+    assert export_values(datum, False, SPOT, STARTS, {}) == [60.0] * 4
+
+
+def test_stated_rate_spans_the_expiry_boundary_flat():
+    # The 2005 plant of the B10 vector: its EEG rate ends at Berlin midnight
+    # 2025/2026 - a stated rate (an Anschlussvertrag) does not end there.
+    starts = [
+        datetime(2025, 12, 31, 22, 45, tzinfo=timezone.utc),  # Berlin 23:45
+        datetime(2025, 12, 31, 23, 0, tzinfo=timezone.utc),   # Berlin 00:00
+    ]
+    tariff = SiteTariff(
+        plant_kind="eigenverbrauch",
+        commissioned_on=date(2005, 6, 15),
+        pv_capacity_kwp=8.0,
+        einspeiseverguetung_ct_kwh=6.0,
+    )
+    assert export_values(tariff, False, [100.0, -20.0], starts, {}) == [60.0, 60.0]
+
+
 def test_blended_rate_weights_the_tranches():
     # 25 kWp EEG-2023 plant: first 10 kWp at 8.2, remaining 15 at 7.1.
     rate = feste_verguetung_ct_per_kwh(date(2023, 6, 15), 25.0)
@@ -595,6 +718,32 @@ def test_gather_inputs_builds_the_asymmetric_series_for_a_dv_site(fake_psycopg):
     assert inp.prices_eur_mwh == [100.0] * SLOTS
     assert inp.import_price_eur_mwh == [280.0] * SLOTS
     assert inp.export_value_eur_mwh == [180.0] * SLOTS
+
+
+def test_gather_inputs_prices_export_at_the_stated_rate(fake_psycopg):
+    from voltpilot_optimization.inputs import BatterySite, gather_inputs
+
+    site = BatterySite(
+        tenant_id=TENANT,
+        site_id=SITE,
+        device_id=None,
+        bidding_zone="DE-LU",
+        battery=BatteryParams(capacity_kwh=10, max_charge_kw=5, max_discharge_kw=5),
+        netzladen_erlaubt=False,
+        tariff=SiteTariff(
+            plant_kind="eigenverbrauch",
+            tarif_art="fest",
+            tarif_param_ct_kwh=30.0,
+            commissioned_on=date(2023, 6, 15),
+            pv_capacity_kwp=8.0,
+            einspeiseverguetung_ct_kwh=12.5,
+        ),
+    )
+    inp = gather_inputs("postgresql://fake", site, NOW, SLOTS)
+    # The solver objective's export series IS the stated 12,5 ct (not the
+    # derived 8,2 ct); the import side stays the fest 30 ct.
+    assert inp.export_value_eur_mwh == [125.0] * SLOTS
+    assert inp.import_price_eur_mwh == [300.0] * SLOTS
 
 
 def test_gather_inputs_default_tariff_stays_symmetric_spot(fake_psycopg):

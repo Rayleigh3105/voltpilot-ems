@@ -28,15 +28,16 @@ class SlotEconomicsTest {
     private static SiteEconomics site(String plantKind, boolean netzladen, String tarifArt,
             Double param, Double aw, LocalDate commissioned, Double kwp) {
         return new SiteEconomics(plantKind, netzladen, tarifArt, param, aw,
-                commissioned, kwp, 0.92, 4.0, null);
+                commissioned, kwp, null, null, 0.92, 4.0, null);
     }
 
     private static SiteEconomics withSupply(SiteEconomics base,
             SlotEconomics.SupplyPrice supply) {
         return new SiteEconomics(base.plantKind(), base.netzladenErlaubt(), base.tarifArt(),
                 base.tarifParamCtKwh(), base.anzulegenderWertCtKwh(), base.pvCommissionedOn(),
-                base.pvCapacityKwp(), base.roundtripEfficiency(), base.wearCostCtPerKwh(),
-                supply);
+                base.pvCapacityKwp(), base.einspeiseverguetungCtKwh(),
+                base.inbetriebnahmeAbSolarspitzengesetz(), base.roundtripEfficiency(),
+                base.wearCostCtPerKwh(), supply);
     }
 
     /** The report's household sheet: 7.6+2.05+1.59+2.946+1.5 = 15.686 ct netto. */
@@ -285,6 +286,72 @@ class SlotEconomicsTest {
         assertThat(expired.exportValueCtKwh(100.0, SLOT)).isEqualTo(10.0);
     }
 
+    // ---- export value: die Angabe des Kunden über dem EEG-Satzplan -------------
+
+    /**
+     * Die GETEILTEN Vektoren ({@code docs/contracts/einspeiseverguetung-vectors.json}):
+     * dieselben Fälle prüft {@code test_pricing.py} am Optimierer und
+     * {@code PortalApiTest} am SQL-Zwilling der Erlöse - drei Rechnungen, eine
+     * Regel.
+     */
+    @Test
+    void angegebeneVerguetungFolgtDenGeteiltenVektoren() {
+        Instant slot = EinspeiseverguetungVektoren.slot();
+        assertThat(EinspeiseverguetungVektoren.faelle()).hasSizeGreaterThanOrEqualTo(21);
+        for (EinspeiseverguetungVektoren.Fall f : EinspeiseverguetungVektoren.faelle()) {
+            SiteEconomics site = new SiteEconomics(f.veraeusserungsform(), f.netzladen(), "ohne",
+                    null, f.anzulegenderWertCtKwh(), f.inbetriebnahme(), f.leistungKwp(),
+                    f.angegebenCtKwh(), f.inbetriebnahmeAbSolarspitzengesetz(), 0.92, 4.0, null);
+            Map<LocalDate, MarketValue> mv = f.monatsmarktwertCtKwh() == null ? Map.of()
+                    : Map.of(SlotEconomics.berlinMonth(slot),
+                            new MarketValue(f.monatsmarktwertCtKwh(), false));
+            Double wert = new SlotEconomics(site, EegRates.defaults(), mv)
+                    .exportValueCtKwh(f.spotEurMwh(), slot);
+            if (f.einspeisewertCtKwh() == null) {
+                assertThat(wert).as(f.fall()).isNull();
+            } else {
+                assertThat(wert).as(f.fall()).isNotNull()
+                        .isCloseTo(f.einspeisewertCtKwh(), within(1e-9));
+            }
+        }
+    }
+
+    @Test
+    void angegebeneVerguetungLaesstDenSatzplanUnberuehrt() {
+        // Die Angabe ist eine Ebene ÜBER dem Satzplan: dieselbe Anlage ohne
+        // Angabe rechnet byte-gleich wie vor der Spalte, und der Satzplan selbst
+        // kennt die Angabe nicht.
+        LocalDate inbetrieb = LocalDate.of(2025, 3, 1);
+        SlotEconomics ohne = new SlotEconomics(
+                site("eigenverbrauch", false, "ohne", null, null, inbetrieb, 5.0),
+                EegRates.defaults(), Map.of());
+        SlotEconomics mit = new SlotEconomics(
+                new SiteEconomics("eigenverbrauch", false, "ohne", null, null, inbetrieb, 5.0,
+                        11.0, null, 0.92, 4.0, null),
+                EegRates.defaults(), Map.of());
+        assertThat(ohne.exportValueCtKwh(100.0, SLOT)).isEqualTo(7.94);
+        assertThat(mit.exportValueCtKwh(100.0, SLOT)).isEqualTo(11.0);
+        assertThat(mit.exportValueCtKwh(-40.0, SLOT)).isEqualTo(0.0); // §51a am Datum
+        assertThat(EegRates.defaults().festeVerguetungCtPerKwh(inbetrieb, 5.0)).isEqualTo(7.94);
+        // Der Bezug bleibt unberührt: die Angabe ist eine Einspeise-Größe.
+        assertThat(mit.importPriceCtKwh(100.0)).isEqualTo(ohne.importPriceCtKwh(100.0));
+    }
+
+    @Test
+    void paragraph51aFolgtDemDatumUndOhneDatumDerAntwort() {
+        LocalDate alt = LocalDate.of(2023, 6, 15);
+        LocalDate neu = LocalDate.of(2025, 2, 25); // der Stichtag selbst zählt schon
+        assertThat(SlotEconomics.solarspitzengesetzGilt(neu, null)).isTrue();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(neu.minusDays(1), null)).isFalse();
+        // Das Datum geht vor - eine gespeicherte Antwort ändert daran nichts.
+        assertThat(SlotEconomics.solarspitzengesetzGilt(alt, true)).isFalse();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(neu, false)).isTrue();
+        // Ohne Datum entscheidet die Antwort; ohne Antwort gilt § 51a nicht.
+        assertThat(SlotEconomics.solarspitzengesetzGilt(null, true)).isTrue();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(null, false)).isFalse();
+        assertThat(SlotEconomics.solarspitzengesetzGilt(null, null)).isFalse();
+    }
+
     // ---- persisted wear rate --------------------------------------------------
 
     @Test
@@ -332,7 +399,7 @@ class SlotEconomicsTest {
         // Battery-less site (no efficiency/wear) -> all null.
         SlotEconomics noBattery = new SlotEconomics(
                 new SiteEconomics("eigenverbrauch", false, "ohne", null, null,
-                        null, null, null, null, null),
+                        null, null, null, null, null, null, null),
                 EegRates.defaults(), Map.of());
         assertThat(noBattery.storedEnergyValuesCtKwh(List.of(10.0), List.of(5.0)).get(0))
                 .isNull();

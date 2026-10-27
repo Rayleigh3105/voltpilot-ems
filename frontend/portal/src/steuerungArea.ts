@@ -125,6 +125,7 @@ export function contributionRows(
               tarifParamCtKwh: earnings.tarifParamCtKwh,
               tarifPriced: earnings.tarifPriced ?? null,
               exportVerguetungPriced: earnings.exportVerguetungPriced ?? null,
+              exportVerguetungQuelle: earnings.exportVerguetungQuelle ?? null,
               plantKind: earnings.plantKind,
               anzulegenderWertCtKwh: earnings.anzulegenderWertCtKwh,
               marketValueSolarCtKwh: earnings.marketValueSolarCtKwh,

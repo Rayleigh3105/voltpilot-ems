@@ -98,6 +98,14 @@ public final class SlotEconomics {
      * per-cycle rate (asset override or platform default).
      * {@code supplyPrice} is the site's structured supply-price sheet (null =
      * no {@code site_supply_price} row = the legacy import model).
+     * {@code einspeiseverguetungCtKwh} is the customer-STATED feste
+     * Einspeisevergütung ({@code site.einspeiseverguetung_ct_kwh}, null = no
+     * statement): a layer ABOVE the EEG schedule, see
+     * {@link #exportValueCtKwh(Double, Instant)}.
+     * {@code inbetriebnahmeAbSolarspitzengesetz} is the customer's answer
+     * "in Betrieb ab dem 25.02.2025?" ({@code site.inbetriebnahme_ab_solarspitzengesetz},
+     * null = not given) - it decides §51a ONLY while {@code pvCommissionedOn}
+     * is unknown; a commissioning date always wins.
      */
     public record SiteEconomics(
             String plantKind,
@@ -107,6 +115,8 @@ public final class SlotEconomics {
             Double anzulegenderWertCtKwh,
             LocalDate pvCommissionedOn,
             Double pvCapacityKwp,
+            Double einspeiseverguetungCtKwh,
+            Boolean inbetriebnahmeAbSolarspitzengesetz,
             Double roundtripEfficiency,
             Double wearCostCtPerKwh,
             SupplyPrice supplyPrice) {
@@ -296,6 +306,18 @@ public final class SlotEconomics {
      * commissioned on/after 2025-02-25; expired/unknown commissioning = bare
      * spot); merchant mode ({@code netzladen_erlaubt}) = bare spot regardless
      * (Ausschließlichkeitsprinzip - mirrors pricing.py's guard).
+     *
+     * <p>A customer-STATED rate ({@link SiteEconomics#einspeiseverguetungCtKwh})
+     * is a layer above the EEG schedule, never a change to it: on an
+     * Eigenverbrauch plant it replaces the derived rate AND the 20-year end (the
+     * statement is what the customer gets today, so it needs no commissioning
+     * date either); §51a keeps hanging on the commissioning date - and, while
+     * that date is unknown, on the customer's answer "in Betrieb ab dem
+     * 25.02.2025" ({@link #solarspitzengesetzGilt}). Merchant mode and
+     * Direktvermarktung stay as they are: a statement only ever acts on an
+     * Eigenverbrauch plant that may not grid-charge. The shared vectors
+     * ({@code docs/contracts/einspeiseverguetung-vectors.json}) pin this
+     * branch against pricing.py and {@link #exportValueCtSql}.
      */
     public Double exportValueCtKwh(Double spotEurMwh, Instant slotStart) {
         if (site.netzladenErlaubt()) {
@@ -313,11 +335,14 @@ public final class SlotEconomics {
         }
         if ("eigenverbrauch".equals(site.plantKind())) {
             LocalDate commissioned = site.pvCommissionedOn();
-            if (commissioned == null || EegRates.remunerationExpired(commissioned, slotStart)) {
+            Double angegeben = site.einspeiseverguetungCtKwh();
+            if (angegeben == null
+                    && (commissioned == null || EegRates.remunerationExpired(commissioned, slotStart))) {
                 return spotCt(spotEurMwh);
             }
-            double rate = eegRates.festeVerguetungCtPerKwh(commissioned, site.pvCapacityKwp());
-            if (!commissioned.isBefore(EegRates.SOLARSPITZENGESETZ_CUTOFF)) {
+            double rate = angegeben != null ? angegeben
+                    : eegRates.festeVerguetungCtPerKwh(commissioned, site.pvCapacityKwp());
+            if (solarspitzengesetzGilt(commissioned, site.inbetriebnahmeAbSolarspitzengesetz())) {
                 if (spotEurMwh == null) {
                     return null; // §51a needs the spot sign - unknown = unknowable
                 }
@@ -326,6 +351,20 @@ public final class SlotEconomics {
             return rate;
         }
         return spotCt(spotEurMwh);
+    }
+
+    /**
+     * Whether §51a EEG (Solarspitzengesetz: no remuneration in negative-price
+     * slots) applies: by the commissioning date when it is known - always,
+     * even when an older answer is still stored - else by the customer's
+     * answer "in Betrieb ab dem 25.02.2025" (null = not given = no §51a).
+     * Mirrors pricing.py {@code _solarspitzengesetz_gilt}.
+     */
+    public static boolean solarspitzengesetzGilt(LocalDate commissionedOn, Boolean abSolarspitzengesetz) {
+        if (commissionedOn != null) {
+            return !commissionedOn.isBefore(EegRates.SOLARSPITZENGESETZ_CUTOFF);
+        }
+        return Boolean.TRUE.equals(abSolarspitzengesetz);
     }
 
     /**
@@ -358,11 +397,19 @@ public final class SlotEconomics {
      * live DV numbers. The lockstep test pins the agreement vector-for-vector
      * AND this deviation by name
      * ({@code PortalApiTest.exportValueSqlMatchesTheSlotEconomicsCompositionVectors}).
+     *
+     * <p>The customer-stated rate {@code s.einspeiseverguetung_ct_kwh} enters
+     * exactly like in the Java twin: it wins over the schedule lookup
+     * ({@code COALESCE}) and opens the fixed branch without a commissioning
+     * date and past the 20-year end, while §51a stays on the commissioning
+     * date - or, without one, on {@code s.inbetriebnahme_ab_solarspitzengesetz}
+     * (the shared vectors of {@code einspeiseverguetung-vectors.json}).
      */
     public static String exportValueCtSql(String spotEurMwhExpr, String slotStartExpr,
             EegRates eegRates) {
         String spotCt = "(" + spotEurMwhExpr + " / 10.0)";
-        String rate = eegRates.festeVerguetungCtSql("pv.commissioned_on", "pv.pv_capacity_kwp");
+        String rate = "COALESCE(s.einspeiseverguetung_ct_kwh, "
+                + eegRates.festeVerguetungCtSql("pv.commissioned_on", "pv.pv_capacity_kwp") + ")";
         // The DV premium exactly as the earnings' PREMIUM_ELIGIBLE /
         // PREMIUM_RATE_CT pair applies it (incl. the per-slot §51 suspension);
         // 0 for every other plant kind, NULL-spot propagates to NULL via the
@@ -374,8 +421,12 @@ public final class SlotEconomics {
                 + " ELSE 0 END)";
         // §51a needs the spot SIGN: with a NULL spot both comparisons are
         // unknown and the CASE yields NULL - the Java twin's "unknowable".
-        String s51aAware = "(CASE WHEN pv.commissioned_on >= DATE '"
+        // Whether §51a applies at all is solarspitzengesetzGilt in SQL: the
+        // commissioning date when known, else the customer's answer (a NULL
+        // date comparison is unknown, so only an explicit TRUE answer counts).
+        String s51aAware = "(CASE WHEN (pv.commissioned_on >= DATE '"
                 + EegRates.SOLARSPITZENGESETZ_CUTOFF + "'"
+                + " OR (pv.commissioned_on IS NULL AND s.inbetriebnahme_ab_solarspitzengesetz))"
                 + " THEN (CASE WHEN " + spotEurMwhExpr + " >= 0 THEN " + rate
                 + " WHEN " + spotEurMwhExpr + " < 0 THEN 0 END)"
                 + " ELSE " + rate + " END)";
@@ -387,30 +438,53 @@ public final class SlotEconomics {
 
     /**
      * SQL boolean: does {@link #exportValueCtSql} value this site's export at
-     * its feste EEG-Einspeisevergütung instead of bare spot - the export-side
-     * sibling of {@link #tarifPricedSql} (same aliases {@code s} and
-     * {@code pv}), so the portal can say WHAT the Einspeise-Erlös was valued
-     * with. Deliberately narrow: {@code false} for Direktvermarktung (its
-     * spot + Marktprämie valuation is already explained by the premium
-     * fields), and evaluated against TODAY's Berlin year (a site-level label
-     * like {@code tarifPriced}; the per-slot expiry precision stays in the
-     * money math itself).
+     * a feste Einspeisevergütung (derived from the EEG or stated by the
+     * customer, see {@link #exportVerguetungQuelleSql}) instead of bare spot -
+     * the export-side sibling of {@link #tarifPricedSql} (same aliases
+     * {@code s} and {@code pv}), so the portal can say WHAT the
+     * Einspeise-Erlös was valued with. Deliberately narrow: {@code false} for
+     * Direktvermarktung (its spot + Marktprämie valuation is already explained
+     * by the premium fields), and evaluated against TODAY's Berlin year (a
+     * site-level label like {@code tarifPriced}; the per-slot expiry precision
+     * stays in the money math itself).
      */
     public static String exportVerguetungPricedSql() {
-        return eegFixedAppliesSql("EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Berlin')");
+        return eegFixedAppliesSql(TODAY_BERLIN_YEAR_SQL);
     }
+
+    /**
+     * WHERE the fixed export valuation of {@link #exportVerguetungPricedSql}
+     * comes from, as SQL text: {@code 'angegeben'} (the customer-stated rate
+     * {@code s.einspeiseverguetung_ct_kwh}), {@code 'eeg'} (the rate derived
+     * from the EEG schedule) or NULL (no fixed valuation - bare spot, or
+     * Direktvermarktung). Same aliases and the same TODAY rule as its boolean
+     * sibling, so the label can never name a source the money math did not
+     * use; the portal says "Ihre angegebene" vs "Ihre gesetzliche
+     * Einspeisevergütung" from it.
+     */
+    public static String exportVerguetungQuelleSql() {
+        return "(CASE WHEN " + eegFixedAppliesSql(TODAY_BERLIN_YEAR_SQL)
+                + " THEN (CASE WHEN s.einspeiseverguetung_ct_kwh IS NOT NULL"
+                + " THEN 'angegeben' ELSE 'eeg' END) END)";
+    }
+
+    /** Today's Berlin year - the site-level labels' expiry reference. */
+    private static final String TODAY_BERLIN_YEAR_SQL =
+            "EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Berlin')";
 
     /**
      * When the feste-Vergütung branch applies at the given Berlin-year
      * expression: an {@code eigenverbrauch} plant that may NOT grid-charge
      * (the Ausschließlichkeitsprinzip guard, mirroring the Java twin's
-     * netzladen-first rule), with a known commissioning date whose 20-year
-     * remuneration has not expired ({@link EegRates#remunerationExpired}).
+     * netzladen-first rule), with either a customer-stated rate or a known
+     * commissioning date whose 20-year remuneration has not expired
+     * ({@link EegRates#remunerationExpired}).
      */
     private static String eegFixedAppliesSql(String atYearExpr) {
         return "(s.plant_kind = 'eigenverbrauch' AND NOT s.netzladen_erlaubt"
-                + " AND pv.commissioned_on IS NOT NULL"
-                + " AND " + atYearExpr + " <= EXTRACT(YEAR FROM pv.commissioned_on) + 20)";
+                + " AND (s.einspeiseverguetung_ct_kwh IS NOT NULL"
+                + " OR (pv.commissioned_on IS NOT NULL"
+                + " AND " + atYearExpr + " <= EXTRACT(YEAR FROM pv.commissioned_on) + 20)))";
     }
 
     /**

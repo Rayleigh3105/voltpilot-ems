@@ -19,6 +19,7 @@ flowchart LR
 | Status-Herzschlag: Steuerstand des Speichers | [Vertrag](speicher-steuerstand.md), [Vektoren](speicher-steuerstand-vectors.json) |
 | Status-Herzschlag: Ladequelle je Säule (Echo für „Box hat übernommen“) | [Vertrag](ladepunkt-quelle-echo.md), [Vektoren](ladepunkt-quelle-echo-vectors.json) |
 | Vorsprung mit Bestand je Anlage (api → Optimierer, Vorsprung-Budget NS-2 A) | [Vertrag](steuerung-vorsprung-v1.md), Tabelle `steuerung_vorsprung` |
+| Einspeisevergütung je eingespeister kWh: Angabe des Kunden über dem EEG-Satzplan (Optimierer, Erlöse, Karte im Portal) | [Vektoren](einspeiseverguetung-vectors.json), Spalte `site.einspeiseverguetung_ct_kwh`, Route `/api/v1/sites/{siteId}/einspeiseverguetung` |
 | Provisioning | [Hello-/Config-Vertrag](mqtt-provisioning.schema.json) |
 | Kennung einer Box (`edge-` + Prüfzeichen; Box, API und Portal) | [Vektoren](edge-ref-vectors.json) |
 | v2: Entitäten, Flows, Verbraucher und Messpunkte | [v2-Übersicht](v2/README.md) |

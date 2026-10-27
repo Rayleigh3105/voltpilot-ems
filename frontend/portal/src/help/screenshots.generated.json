@@ -551,22 +551,22 @@
     "title": "Einstellungen der Anlage",
     "file": "einstellungen.png",
     "width": 1192,
-    "height": 1115,
+    "height": 1200,
     "alt": "Einstellungen der Anlage. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 4.7,
-        "y": 28.43,
+        "y": 26.44,
         "text": "Jede Zeile zeigt ihren aktuellen Wert; ein Tippen öffnet das Bearbeiten."
       },
       {
         "x": 93.37,
-        "y": 39.79,
+        "y": 44.86,
         "text": "Einfache Schalter wirken sofort und lassen sich rückgängig machen."
       },
       {
         "x": 4.7,
-        "y": 65.81,
+        "y": 72.39,
         "text": "Beim Speicher stehen Kapazität und der Umgang mit dem Speicher."
       }
     ]

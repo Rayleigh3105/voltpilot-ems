@@ -19,7 +19,9 @@ objective consumes (:mod:`voltpilot_optimization.solver`):
   suspended in negative-price slots - byte-for-byte the EarningsRepository
   rule); ``eigenverbrauch`` = the feste EEG-Einspeisevergütung derived from
   the PV asset's MaStR commissioning date + kWp (the schedule in
-  :mod:`voltpilot_optimization.config`); anything unknown/unconfigured = spot.
+  :mod:`voltpilot_optimization.config`) - or, a layer ABOVE that schedule, the
+  rate the customer STATED (``site.einspeiseverguetung_ct_kwh``, see
+  :func:`_feste_verguetung_values`); anything unknown/unconfigured = spot.
 
 **EEG remuneration enters the objective only in EEG mode (netzladen_erlaubt =
 False), deliberately.** Both EEG revenues (feste Vergütung, Marktprämie) are
@@ -150,7 +152,15 @@ class SiteTariff:
 
     ``commissioned_on``/``pv_capacity_kwp`` come from the site's PV asset
     (MaStR link or manual entry) and drive the feste-Vergütung lookup for
-    ``eigenverbrauch`` plants. ``supply_price`` is the site's structured
+    ``eigenverbrauch`` plants. ``einspeiseverguetung_ct_kwh`` is the rate the
+    customer STATED on the Einspeisevergütung card
+    (``site.einspeiseverguetung_ct_kwh``; ``None`` = no statement, the lookup
+    applies unchanged) - a layer above the schedule, never a change to it.
+    ``inbetriebnahme_ab_solarspitzengesetz`` is the customer's answer "in
+    Betrieb ab dem 25.02.2025?" (``site.inbetriebnahme_ab_solarspitzengesetz``,
+    ``None`` = not given): it decides §51a for a stated rate only while
+    ``commissioned_on`` is unknown - a commissioning date always wins.
+    ``supply_price`` is the site's structured
     supply-price sheet (``site_supply_price`` row; ``None`` = no row = the
     legacy import model, byte-identically). The defaults reproduce today's
     symmetric-spot model exactly, so an un-wired caller can never invent a
@@ -163,6 +173,8 @@ class SiteTariff:
     anzulegender_wert_ct_kwh: float | None = None
     commissioned_on: date | None = None
     pv_capacity_kwp: float | None = None
+    einspeiseverguetung_ct_kwh: float | None = None
+    inbetriebnahme_ab_solarspitzengesetz: bool | None = None
     supply_price: SupplyPriceComponents | None = None
 
 
@@ -359,6 +371,7 @@ def export_values(
         )
     if tariff.plant_kind == PLANT_KIND_EIGENVERBRAUCH and (
         tariff.commissioned_on is not None
+        or tariff.einspeiseverguetung_ct_kwh is not None
     ):
         # B5: the same inconsistency on an EEG-remunerated eigenverbrauch
         # plant was previously silent. Warning only - whether physical PV
@@ -371,8 +384,9 @@ def export_values(
                     **ctx,
                     "reason": (
                         "netzladen_erlaubt=true on an eigenverbrauch plant "
-                        "with a commissioning date - a grid-charging plant "
-                        "cannot claim the feste Einspeisevergütung "
+                        "with a commissioning date or a stated "
+                        "Einspeisevergütung - a grid-charging plant cannot "
+                        "claim the feste Einspeisevergütung "
                         "(Ausschliesslichkeitsprinzip); export is priced at "
                         "bare spot"
                     ),
@@ -435,7 +449,38 @@ def _feste_verguetung_values(
     the commissioning date is unknown or the 20-year remuneration has expired.
     Post-Solarspitzengesetz plants earn 0 in negative-price slots (§51a) -
     never a negative export value (a feste-Vergütung plant is not settled at
-    spot, so feeding in never COSTS it money)."""
+    spot, so feeding in never COSTS it money).
+
+    A rate the customer STATED (``tariff.einspeiseverguetung_ct_kwh``) is a
+    layer above the schedule: it replaces the derived rate AND the 20-year end
+    (it is what the customer gets today, so it needs no commissioning date
+    either) and stays flat across the kWp tranches; §51a keeps hanging on the
+    commissioning date - and, while that is unknown, on the customer's answer
+    (:func:`_solarspitzengesetz_gilt`). The shared vectors
+    ``docs/contracts/einspeiseverguetung-vectors.json`` pin this against the
+    api's SlotEconomics (Java + SQL) twins."""
+    if tariff.einspeiseverguetung_ct_kwh is not None:
+        logger.info(
+            "pricing.einspeiseverguetung_angegeben",
+            extra={
+                "context": {
+                    **ctx,
+                    "satz_ct_kwh": tariff.einspeiseverguetung_ct_kwh,
+                    "reason": (
+                        "the customer stated the feste Einspeisevergütung - "
+                        "it replaces the rate derived from the EEG schedule"
+                    ),
+                }
+            },
+        )
+        rate_eur_mwh = tariff.einspeiseverguetung_ct_kwh * CT_PER_KWH_TO_EUR_PER_MWH
+        suspend_negative = _solarspitzengesetz_gilt(
+            tariff.commissioned_on, tariff.inbetriebnahme_ab_solarspitzengesetz
+        )
+        return [
+            0.0 if suspend_negative and price < 0 else rate_eur_mwh
+            for price in spot
+        ]
     if tariff.commissioned_on is None:
         logger.info(
             "pricing.no_commissioning_date",
@@ -524,6 +569,19 @@ def feste_verguetung_ct_per_kwh(
         + tranche40 * band.le40_ct
         + tranche_rest * band.le100_ct
     ) / kwp
+
+
+def _solarspitzengesetz_gilt(
+    commissioned_on: date | None, ab_solarspitzengesetz: bool | None
+) -> bool:
+    """Whether §51a EEG (no remuneration in negative-price slots) applies: by
+    the commissioning date when it is known - always, even over a stored
+    answer - else by the customer's answer "in Betrieb ab dem 25.02.2025"
+    (``None`` = not given = no §51a). Twin of the api's
+    ``SlotEconomics.solarspitzengesetzGilt``."""
+    if commissioned_on is not None:
+        return commissioned_on >= SOLARSPITZENGESETZ_CUTOFF
+    return ab_solarspitzengesetz is True
 
 
 def _remuneration_expired(commissioned_on: date, at: datetime) -> bool:

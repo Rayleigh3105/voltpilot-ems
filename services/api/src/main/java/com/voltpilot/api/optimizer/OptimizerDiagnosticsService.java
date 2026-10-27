@@ -289,6 +289,8 @@ public class OptimizerDiagnosticsService {
                 toDouble(site.anzulegenderWertCtKwh()),
                 site.pvCommissionedOn(),
                 toDouble(site.pvCapacityKwp()),
+                toDouble(site.einspeiseverguetungCtKwh()),
+                site.inbetriebnahmeAbSolarspitzengesetz(),
                 roundtrip,
                 wearCt,
                 supplyPrice(site));

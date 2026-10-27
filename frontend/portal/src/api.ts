@@ -264,6 +264,54 @@ export type SupplyPriceUpdate = Partial<{
   komponentenStand: string | null;
 }>;
 
+/**
+ * Der Zustand der Karte „Einspeisevergütung" - ein geschlossenes Vokabular
+ * (`docs/contracts/einspeiseverguetung-vectors.json`, Block `zustaende`):
+ * `angegeben` = Ihr eigener Satz wirkt, `eeg` = der aus dem EEG hergeleitete
+ * Satz wirkt, `eeg_abgelaufen` = die 20 Jahre sind vorbei (Börsenpreis),
+ * `ohne_angabe` = kein Inbetriebnahmedatum und keine Angabe (Börsenpreis),
+ * `netzladen` = Netzladen erlaubt (Börsenpreis, die Angabe ruht),
+ * `direktvermarktung` = Börsenpreis + Marktprämie (kein fester Satz).
+ */
+export type EinspeiseverguetungZustand =
+  | 'angegeben'
+  | 'eeg'
+  | 'eeg_abgelaufen'
+  | 'ohne_angabe'
+  | 'netzladen'
+  | 'direktvermarktung';
+
+/**
+ * GET/PUT /api/v1/sites/{siteId}/einspeiseverguetung: welcher Satz je
+ * eingespeister kWh HEUTE in Fahrplan und Erlöse eingeht und woher er kommt.
+ * Der Server rechnet alles (Satzplan, Herkunft) - das Portal liest nur.
+ */
+export interface Einspeiseverguetung {
+  zustand: EinspeiseverguetungZustand;
+  /** Der feste Satz, der heute wirkt (ct/kWh); null = keiner (Börse). */
+  wirksamCtKwh: number | null;
+  /** Ihre gespeicherte Angabe; null = keine. Ruht bei Netzladen/Direktvermarktung. */
+  angegebenCtKwh: number | null;
+  /**
+   * Ihre Antwort „in Betrieb ab dem 25.02.2025?" - nur ohne Inbetriebnahmedatum
+   * (mit Datum null: das Datum entscheidet); null = nicht angegeben.
+   */
+  inbetriebnahmeAbSolarspitzengesetz: boolean | null;
+  /** Der Satz aus dem EEG-Satzplan; null ohne Inbetriebnahmedatum. */
+  hergeleitetCtKwh: number | null;
+  /** Der Satzplan rechnet für dieses Datum mit Jahresstufen (vor dem EEG 2023). */
+  hergeleitetGenaehert: boolean;
+  /** Inbetriebnahme der PV-Anlage (ISO-Tag) oder null. */
+  inbetriebnahme: string | null;
+  leistungKwp: number | null;
+  /** Letzter Tag der EEG-Vergütung (ISO-Tag) oder null. */
+  eegEndeAm: string | null;
+  /** § 51a EEG: bei negativem Börsenpreis keine Vergütung (Datum, sonst Ihre Antwort). */
+  ohneVerguetungBeiNegativpreis: boolean;
+  /** Bei Direktvermarktung der anzulegende Wert, sonst null. */
+  anzulegenderWertCtKwh: number | null;
+}
+
 export interface CreateSiteInput {
   name: string;
   biddingZone?: string;
@@ -7697,6 +7745,12 @@ export interface EarningsSite extends CockpitMoney {
    * unchanged, conservative Börsenpreis wording).
    */
   exportVerguetungPriced?: boolean | null;
+  /**
+   * WOHER der feste Satz kommt: `eeg` (hergeleitet) oder `angegeben` (Ihre
+   * Angabe auf der Karte „Einspeisevergütung"); null genau dann, wenn
+   * `exportVerguetungPriced` nicht true ist. Optional wie sein Geschwister.
+   */
+  exportVerguetungQuelle?: 'eeg' | 'angegeben' | null;
   einspeiseErloesEur: number | null;
   eigenverbrauchsWertEur: number | null;
   gesamtertragEur: number | null;
@@ -7881,6 +7935,8 @@ export interface SiteEarnings extends CockpitMoney {
    * consumers gate on `=== true`.
    */
   exportVerguetungPriced?: boolean | null;
+  /** `eeg` | `angegeben` | null - siehe EarningsSite.exportVerguetungQuelle. */
+  exportVerguetungQuelle?: 'eeg' | 'angegeben' | null;
   anzulegenderWertCtKwh: number | null;
   coveredSlots: number;
   firstCoveredDate: string | null;
@@ -10781,6 +10837,21 @@ export const api = {
     request<SupplyPrice>(`/api/v1/sites/${siteId}/supply-price`, {
       method: 'PUT',
       body: JSON.stringify(patch),
+    }),
+  /** Die Karte „Einspeisevergütung": der wirksame Satz mit Herkunft. */
+  einspeiseverguetung: (siteId: string) =>
+    request<Einspeiseverguetung>(`/api/v1/sites/${siteId}/einspeiseverguetung`),
+  /**
+   * Eigenen Satz setzen (ct/kWh) oder mit `null` auf die Herleitung zurücksetzen.
+   * Ohne Inbetriebnahmedatum braucht ein Satz die Antwort zu § 51a
+   * (`inbetriebnahmeAbSolarspitzengesetz`: in Betrieb ab dem 25.02.2025?).
+   */
+  setEinspeiseverguetung: (siteId: string, satzCtKwh: number | null, inbetriebnahmeAbSolarspitzengesetz?: boolean | null) =>
+    request<Einspeiseverguetung>(`/api/v1/sites/${siteId}/einspeiseverguetung`, {
+      method: 'PUT',
+      body: JSON.stringify(
+        inbetriebnahmeAbSolarspitzengesetz == null ? { satzCtKwh } : { satzCtKwh, inbetriebnahmeAbSolarspitzengesetz },
+      ),
     }),
   /** 409 while the site still has devices (remove them first). */
   deleteSite: (siteId: string) =>
