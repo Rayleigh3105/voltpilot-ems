@@ -792,6 +792,8 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   justify-self: end;
   color: var(--vp-text-gray);
   display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .vp-auf-t-summe {
   grid-column: 2 / 5;
@@ -953,9 +955,22 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   }
   .vp-auf-t-zeile > .vp-auf-t-zustand small,
   .vp-auf-t-zeile > .vp-auf-t-art,
-  .vp-auf-t-zeile > .vp-auf-t-pfeil,
+  .vp-auf-t-zeile > .vp-auf-t-pfeil:not(:has(.vp-rowmenu)),
   .vp-auf-t-zeile > [role='cell']:empty {
     display: none;
+  }
+  /* Das „…“-Menü (Zuordnung ändern, Komponente löschen, Regel erstellen) bleibt auch am Telefon erreichbar - eine
+     eigene dritte Spalte, statt mit dem sonst ausgeblendeten Pfeil zu verschwinden. */
+  .vp-auf-t-zeile:has(> .vp-auf-t-pfeil .vp-rowmenu) {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'name wert mehr'
+      'name zustand mehr';
+  }
+  .vp-auf-t-zeile > .vp-auf-t-pfeil:has(.vp-rowmenu) {
+    grid-area: mehr;
+    justify-self: end;
+    align-self: center;
   }
   .vp-auf-t-zeile.is-ok > .vp-auf-t-zustand .w {
     color: var(--vp-text-gray);

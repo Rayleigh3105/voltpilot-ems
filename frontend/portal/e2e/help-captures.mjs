@@ -121,7 +121,7 @@ export const captures = [
   { id: 'modell', title: 'Aufbau: Anlagen, Boxen und Geräte', hash: plant('modell'), root: 'main', maxHeight: 1400, points: [
     point('.vp-auf-suche', 'Die Suche findet Namen, Modelle und Kennungen; die Filter daneben grenzen nach Art, Zustand, Box und Hersteller ein.'),
     point('.vp-auf-t-zeile.is-box', 'Die VoltPilot-Box verbindet die Geräte darunter mit VoltPilot.'),
-    point('[data-aufbau-geraet]', 'Ein Tippen auf ein Gerät öffnet den Kurzblick mit allen Werten.'),
+    point('[data-aufbau-geraet]', 'Ein Tippen auf ein Gerät führt direkt auf seine Geräteseite mit allen Werten.'),
     point('.vp-auf-neu-haupt', '„Gerät hinzufügen“ öffnet den Gerätekatalog; im Menü daneben legen Sie eine Box oder Anlage an.'),
   ] },
   { id: 'geraet-hinzufuegen', title: 'Gerät hinzufügen: der Gerätekatalog', hash: plant('modell'), root: '.vp-modal',

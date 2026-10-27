@@ -45,6 +45,7 @@ import {
   type AufbauFilter,
 } from '../aufbauTabelle';
 import { AufbauTabelle } from '../components/AufbauTabelle';
+import type { RowMenuItem } from '../components/RowMenu';
 import { AufbauSymbol } from '../components/AufbauSymbol';
 import type { SiteCharging } from '../ladepunkte';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
@@ -662,6 +663,45 @@ export function AufbauSection({
     tu();
   };
 
+  /**
+   * Ein Gerät mit eigener Seite springt beim Tippen direkt dorthin - kein Kurzblick mehr dazwischen (Captain,
+   * 27.10.2026). „Bearbeiten", Sofortmaßnahmen und Entfernen stehen bereits auf der Geräteseite selbst; was der
+   * Kurzblick sonst je Komponente bot - Zuordnung ändern, Komponente löschen, Regel mit dieser Komponente
+   * erstellen - zieht ins „…“-Zeilenmenü, statt ein zweites UI-Muster zu erfinden.
+   */
+  const mehrFor = (g: AufbauGeraet): RowMenuItem[] => {
+    const items: RowMenuItem[] = [];
+    const mehrfach = g.karte.komponenten.length > 1;
+    for (const c of g.karte.komponenten) {
+      const suffix = mehrfach ? ` · ${c.label}` : '';
+      if (bietetRegelBruecke({ entityId: c.entityId, label: c.label, channels: c.channels.map((m) => ({ channel: m.raw })) })) {
+        items.push({
+          label: `${REGEL_BRUECKE_LABEL}${suffix}`,
+          icon: 'zap',
+          recht: 'betriebsweise.aendern',
+          onClick: () => {
+            window.location.hash = regelBrueckeHash(site.id, c.entityId);
+          },
+        });
+      }
+      if (c.orphaned) continue;
+      const actions = componentActions(c, data?.entities.find((e) => e.id === c.entityId));
+      if (actions.canRepin) {
+        items.push({ label: `Zuordnung ändern${suffix}`, icon: 'link', recht: 'geraet.einrichten', onClick: () => setRepin(c) });
+      }
+      if (actions.canDelete) {
+        items.push({
+          label: `Komponente löschen${suffix}`,
+          icon: 'trash',
+          recht: 'komponente.loeschen',
+          danger: true,
+          onClick: () => setRemove(c),
+        });
+      }
+    }
+    return items;
+  };
+
   if (rename) {
     return (
       <div className="vp-auf">
@@ -788,7 +828,9 @@ export function AufbauSection({
           onBoxHinzufuegen={() => setBoxAnmelden(true)}
           onAnlageHinzufuegen={() => setAnlageAnlegen(true)}
           onBoxVerwalten={(b) => setBoxVerwalten(b.id)}
-          hinweisFor={(g) => g.karte.komponenten.map((c) => ohneMesswertById.get(c.entityId)?.badge).find(Boolean) ?? null}
+          hinweisFor={(g) => g.karte.komponenten.map((c) => ohneMesswertById.get(c.entityId)).find(Boolean) ?? null}
+          mehrFor={mehrFor}
+          showTechnical={showTechnical}
           technik={
             showTechnical ? (
               <button type="button" className="vp-auf-technik-add" onClick={() => setTechnikDrawer({ mode: 'create' })}>
