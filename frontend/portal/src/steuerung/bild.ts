@@ -40,7 +40,7 @@ import { CONSUMER_REASON_TEXT, CONSUMER_STATE_TEXT, STATUS_UNKNOWN_TEXT } from '
 import type { ManualOverride } from '../consumers/fulfillment';
 import { LADEQUELLE } from '../glossar';
 import type { ChargePoint, ChargeConnector, LadepunktSperre, LadeZustand, SiteCharging } from '../ladepunkte';
-import { budgetFuer, ladepunktSperre, ladeZustand, aktuelleLeistung } from '../ladepunkte';
+import { budgetFuer, ladepunktSperre, ladeZustand, aktuelleLeistung, boostbar, ladevorgangRows } from '../ladepunkte';
 import type {
   RanglisteEintrag,
   SiteVerbraucher,
@@ -276,6 +276,12 @@ export interface LadepunktBezug {
   zustand: LadeZustand | null;
   /** Warum VoltPilot an dieser Säule gerade nichts bewirkt (Audit W-01/W-05/W-12), sonst null. */
   sperre: LadepunktSperre | null;
+  /**
+   * Dieselbe Regel wie auf „Ladevorgänge“ und im Menü „Eingreifen“
+   * (`boostbar`, EINE Wahrheit für `POST /charging-boost`): „Jetzt voll
+   * laden“ kann hier strukturell nichts bewirken, wenn dort kein Knopf stünde.
+   */
+  boostbar: boolean;
 }
 
 export interface GeraetBild {
@@ -475,6 +481,22 @@ function ladepunktVon(
   return { cp, con };
 }
 
+/**
+ * Dieselbe Regel wie auf *Ladevorgänge* und im Menü „Eingreifen“
+ * (`boostbar`, EINE Wahrheit für `POST /charging-boost`): ohne Stecker gibt
+ * es keine Zeile und damit nichts zu boosten.
+ */
+function boostbarFuer(
+  lp: { cp: ChargePoint; con: ChargeConnector | null },
+  charging: SiteCharging | null | undefined,
+  nowMs: number,
+): boolean {
+  if (!lp.con) return false;
+  const row = ladevorgangRows([lp.cp], nowMs).find((r) => r.connectorId === lp.con!.connectorId);
+  if (!row) return false;
+  return boostbar(budgetFuer(charging, lp.cp), row);
+}
+
 function eingriffVon(
   id: string,
   overrides: ManualOverride[] | null | undefined,
@@ -622,6 +644,10 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
             gemeldetAm: lp.cp.reportedAt ?? null,
             zustand: lp.con ? ladeZustand(lp.con, lp.cp, nowMs) : null,
             sperre: ladepunktSperre(lp.cp, budgetFuer(i.charging, lp.cp), nowMs),
+            // ⚠ EIN Blick in `boostbar` reicht - dieselbe Zeile, die die
+            // Ladevorgänge-Seite und das Menü „Eingreifen“ fragen (Audit: zwei
+            // Regeln für `POST /charging-boost` waren Befund 3).
+            boostbar: boostbarFuer(lp, i.charging, nowMs),
           }
         : null,
       gemessen,

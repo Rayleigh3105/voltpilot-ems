@@ -1256,7 +1256,7 @@ function GeraetSeiteKern({
           fallbackTitle={view.kopf.titel}
           backHref={komponentenHref}
           siteHref={anlageHref}
-          settingsHref={hashForRoute(anlageRoute(site.id, 'ladevorgaenge'))}
+          settingsHref={hashForRoute(anlageRoute(site.id, 'laden'))}
           charger={wallbox}
           budget={wallbox ? budgetFuer(charging, wallbox) : charging?.budget ?? null}
           onRename={chargerRenameTarget ? () => {
