@@ -294,6 +294,7 @@ async function renderEinstellungen(
   plan: unknown = null,
   devices: Device[] = [device({ id: 'd-1' })],
   verguetung: Einspeiseverguetung | Error = verguetungStand(),
+  gridLimitKw: number | null = null,
 ) {
   const s: Site = { ...eegSite, ...over };
   const assets = vi
@@ -305,6 +306,10 @@ async function renderEinstellungen(
       : vi.spyOn(api, 'einspeiseverguetung').mockResolvedValue(verguetung);
   const preview = vi.spyOn(api, 'siteDeletionPreview').mockRejectedValue(new Error('n/a'));
   const supply = vi.spyOn(api, 'supplyPrice').mockResolvedValue(supplySheet as never);
+  // Die Zeile „Anschlussgrenze" (E5 = A, Scheibe 4) holt ihren Anzeigewert selbst.
+  const chargingConfig = vi.spyOn(api, 'chargingConfig').mockResolvedValue({
+    gridLimitKw, priorityChargePointIds: [], chargePoints: [],
+  } as never);
   const schedule =
     plan == null
       ? vi.spyOn(api, 'schedule').mockRejectedValue(new Error('kein Plan'))
@@ -336,7 +341,7 @@ async function renderEinstellungen(
         />,
       ),
     verguetungAbruf,
-    restore: () => [assets, preview, supply, schedule, verguetungAbruf].forEach((m) => m.mockRestore()),
+    restore: () => [assets, preview, supply, schedule, verguetungAbruf, chargingConfig].forEach((m) => m.mockRestore()),
   };
 }
 
@@ -369,6 +374,21 @@ describe('Einstellungen · die kurze Liste (E5)', () => {
     // Ohne Koordinaten sagt die Zeile, was fehlt - und warum es zählt. Das
     // Feld heißt weiter „Standort" (Glossar, E9: B).
     expect(zeile('Standort')).toHaveTextContent('Ohne Standort auf der Karte gibt es keine Wettervorhersage.');
+    restore();
+  });
+
+  // „Ein Ort fürs Laden" Scheibe 4 (E5 = A): die Anschlussgrenze zieht aus dem
+  // Rahmen-Blatt der Steuerung hierher um - direkt neben der Einspeisegrenze.
+  it('zeigt die Anschlussgrenze neben der Einspeisegrenze und öffnet das Rahmen-Blatt', async () => {
+    vi.spyOn(api, 'siteVerbraucher').mockResolvedValue({
+      verbraucher: [], rangliste: [],
+      ladepunkte: { standard: null, standardFolger: 0, gesamt: 0, rahmen: null },
+    } as never);
+    vi.spyOn(api, 'siteDetail').mockRejectedValue(new Error('n/a'));
+    const { restore } = await renderEinstellungen({}, {}, null, null, undefined, undefined, 77);
+    await waitFor(() => expect(zeile('Anschlussgrenze')).toHaveTextContent('77,0'));
+    fireEvent.click(zeile('Anschlussgrenze'));
+    expect(await screen.findByRole('dialog', { name: /Netzanschluss und Laden/ })).toBeInTheDocument();
     restore();
   });
 

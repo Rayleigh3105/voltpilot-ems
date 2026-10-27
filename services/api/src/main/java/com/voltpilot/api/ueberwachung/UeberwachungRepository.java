@@ -76,6 +76,14 @@ public class UeberwachungRepository {
     }
 
     /**
+     * Alle Anlagen mit mindestens einer Ladesäule - Grundlage der zwei Ladepunkt-Meldungen ab Werk
+     * ("Ein Ort fürs Laden" Scheibe 4, E6 = A).
+     */
+    public List<UUID> anlagenMitLadepunkt() {
+        return jdbc.queryForList("SELECT DISTINCT site_id FROM ocpp_station", UUID.class);
+    }
+
+    /**
      * Sät die Zeile ab Werk (Entscheid 2A), idempotent (Teil-Index {@code uq_ueberwachung_ab_werk}).
      * Empfänger: Kundenadministrator und Energiemanager als Rollen, erst beim Versand aufgelöst
      * (§6.4 "Mehrere Empfänger") - so bekommt eine neue Kollegin die Meldungen ohne Regeländerung.

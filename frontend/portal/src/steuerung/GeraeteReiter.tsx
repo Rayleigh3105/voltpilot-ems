@@ -999,7 +999,7 @@ function ImmerKarte({ bild, oeffne, netzanschlussKw, plantKind, netzladenErlaubt
     rows.push(['battery', `Speicher: ${bild.betriebsmodell}`, `Betriebsmodell${bild.speicher.reservePct != null ? ` · Reserve ${fPct(bild.speicher.reservePct)}` : ''}`, { art: 'speicher' }]);
   }
   if (netzanschlussKw != null) {
-    rows.push(['gauge', `Netzanschluss ${fKw(netzanschlussKw)}`, 'Laden wird gekürzt, bevor die Sicherung fällt', { art: 'rahmen' }]);
+    rows.push(['gauge', `Netzanschluss ${fKw(netzanschlussKw)}`, 'Laden wird gekürzt, bevor die Sicherung fällt', { art: 'netzanschluss' }]);
   }
   rows.push(['pole', '§ 14a EnWG', 'Grenze Ihres Netzbetreibers für steuerbare Geräte', { art: 'p14a' }]);
   // N4/S4 (Konzept `vp-fahrplan-eigenverbrauch-konzept` §4.7): siehe

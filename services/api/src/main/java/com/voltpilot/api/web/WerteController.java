@@ -5,6 +5,7 @@ import com.voltpilot.api.topology.TopologyService.CapabilityDto;
 import com.voltpilot.api.topology.TopologyService.EntityTopologyDto;
 import com.voltpilot.api.ueberwachung.AnlagenflussWerteLeser;
 import com.voltpilot.api.ueberwachung.ErzeugerWerteLeser;
+import com.voltpilot.api.ueberwachung.LadepunktWerteLeser;
 import com.voltpilot.api.ueberwachung.WerteKatalog;
 import com.voltpilot.api.ueberwachung.WerteLeser;
 import com.voltpilot.api.web.dto.WertverweisDto;
@@ -35,6 +36,12 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>UEMS EZ-11: dazu die Alarm-Vorlagen der Leserart {@code erzeuger} - nur an einer Anlage mit Anlagensteuerung,
  * mit ihrem aktuellen Zustand (die Vorlage je Einheit hat an der Anlage keinen einzelnen Zustand).
+ *
+ * <p>"Ein Ort fürs Laden" Scheibe 4 (E6 = A): dazu die wählbaren Alarm-Vorlagen der Leserart {@code ladepunkt}
+ * ({@code auto_angesteckt}, {@code ladung_fertig}) - nur an einer Anlage mit mindestens einem Ladepunkt. Die
+ * zwei Meldungen ab Werk ({@code wallbox_meldet_sich_nicht}, {@code ziel_wird_knapp}) sind hier NICHT gelistet,
+ * wie {@code box.erreichbar}/{@code datenquelle.liefert_daten} auch nicht: sie sind reine Vorschläge ab Werk
+ * ({@link WerteKatalog#mitVorschlagAbWerk()}), nie über diese Auswahl manuell anlegbar.
  */
 @RestController
 @RequestMapping("/api/v1/werte")
@@ -44,14 +51,16 @@ public class WerteController {
     private final AnlagenflussWerteLeser anlagenfluss;
     private final TopologyService topologie;
     private final Geltungsbereich geltungsbereich;
+    private final LadepunktWerteLeser ladepunkt;
     private ErzeugerWerteLeser erzeuger;
 
     public WerteController(WerteKatalog katalog, AnlagenflussWerteLeser anlagenfluss, TopologyService topologie,
-            Geltungsbereich geltungsbereich) {
+            Geltungsbereich geltungsbereich, LadepunktWerteLeser ladepunkt) {
         this.katalog = katalog;
         this.anlagenfluss = anlagenfluss;
         this.topologie = topologie;
         this.geltungsbereich = geltungsbereich;
+        this.ladepunkt = ladepunkt;
     }
 
     @Autowired(required = false)
@@ -79,6 +88,7 @@ public class WerteController {
         List<WertverweisDto> werte = new ArrayList<>(anlagenflussWerte(anlageId));
         werte.addAll(messreiheWerte(anlageId));
         werte.addAll(erzeugerWerte(anlageId));
+        werte.addAll(ladepunktWerte(anlageId));
         return new WertverweisDto.Liste(werte);
     }
 
@@ -109,6 +119,27 @@ public class WerteController {
                 .map(e -> {
                     WerteLeser.Lesung l = erzeuger.jeEinheit(e) ? WerteLeser.Lesung.unbekannt()
                             : erzeuger.lese(e, leserBezug, jetzt);
+                    return new WertverweisDto(e.wertart(), e.name(), e.satzname(), e.bedingungen(), bezugJson,
+                            l.bekannt(), l.zahlenwert(), l.zustandswort(), l.einheit());
+                })
+                .toList();
+    }
+
+    /**
+     * "Ein Ort fürs Laden" Scheibe 4 (E6 = A): die zwei wählbaren Ladepunkt-Vorlagen - nur, wo die Anlage
+     * mindestens eine Ladesäule hat.
+     */
+    private List<WertverweisDto> ladepunktWerte(UUID anlageId) {
+        if (!ladepunkt.hatLadepunkt(anlageId)) {
+            return List.of();
+        }
+        WerteLeser.Bezug leserBezug = WerteLeser.Bezug.anlage(anlageId);
+        Instant jetzt = Instant.now();
+        String bezugJson = "{\"anlage\":\"" + anlageId + "\"}";
+        return katalog.vorlagen().stream()
+                .filter(e -> "ladepunkt".equals(e.leser().art()))
+                .map(e -> {
+                    WerteLeser.Lesung l = ladepunkt.lese(e, leserBezug, jetzt);
                     return new WertverweisDto(e.wertart(), e.name(), e.satzname(), e.bedingungen(), bezugJson,
                             l.bekannt(), l.zahlenwert(), l.zustandswort(), l.einheit());
                 })

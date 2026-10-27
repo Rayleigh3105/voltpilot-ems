@@ -19,6 +19,7 @@ import { benefitLine } from '../profiles';
 import { fehlt, fragen, TAGE_WORT, wunschAus, entwurfAus, type SteuerartEntwurf, type SteuerartWunsch } from '../steuerartDialog';
 import type { FlowSummary } from '../flows/flowsApi';
 import { parseGuidedFlow } from '../flows/guidedBuilder';
+import { hashForRoute, anlageRoute } from '../nav';
 import { Blatt } from './Blatt';
 import {
   SPEICHER,
@@ -977,6 +978,23 @@ export function P14aBlatt({ k }: { k: BlattKontext }) {
     <Blatt symbol="pole" titel="§ 14a EnWG" unter="Steuerbare Verbrauchseinrichtungen" onClose={k.zu}>
       <div className="warum">Dimmt Ihr Netzbetreiber, gilt seine Grenze für Wallboxen, Wärmepumpe und Speicher zusammen (mindestens 4,2 kW bleiben).</div>
       <p className="leise">VoltPilot kürzt dann nach Ihrer Reihenfolge von unten. Die Box setzt die Grenze vor Ort durch, auch ohne Cloud.</p>
+    </Blatt>
+  );
+}
+
+/**
+ * Der Hinweis „Was immer gilt“ › Netzanschluss (Geräte-Reiter) - seit „Ein
+ * Ort fürs Laden" Scheibe 4 (E5 = A) nur noch Erklärung, kein Formular mehr.
+ * Die Anschlussgrenze SELBST stellt man in den Einstellungen ein.
+ */
+export function NetzanschlussBlatt({ k, siteId, netzanschlussKw }: {
+  k: BlattKontext; siteId: string; netzanschlussKw: number;
+}) {
+  return (
+    <Blatt symbol="gauge" titel={`Netzanschluss ${fKw(netzanschlussKw)}`} unter="läuft immer mit" onClose={k.zu}>
+      <div className="warum">Laden wird gekürzt, bevor die Sicherung fällt.</div>
+      <p className="leise">VoltPilot hält Ihren Netzanschluss ein - auch ohne Cloud. Die Grenze stellen Sie in den{' '}
+        <a href={hashForRoute(anlageRoute(siteId, 'technik'))}>Einstellungen</a> ein.</p>
     </Blatt>
   );
 }

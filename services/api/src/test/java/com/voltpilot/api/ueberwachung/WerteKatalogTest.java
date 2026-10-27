@@ -42,10 +42,13 @@ class WerteKatalogTest {
     }
 
     @Test
-    void nurDieBeidenAbWerkEintraegeHabenEinenVorschlag() {
+    void nurDieVierAbWerkEintraegeHabenEinenVorschlag() {
+        // Scheibe 1: box.erreichbar, datenquelle.liefert_daten. "Ein Ort fürs Laden" Scheibe 4 (E6 = A) fügt
+        // die zwei Ladepunkt-Meldungen ab Werk hinzu (eigener Test unten für ihre Vorgaben).
         assertThat(katalog.mitVorschlagAbWerk())
                 .extracting(WerteKatalog.Eintrag::wertart)
-                .containsExactlyInAnyOrder("box.erreichbar", "datenquelle.liefert_daten");
+                .containsExactlyInAnyOrder("box.erreichbar", "datenquelle.liefert_daten",
+                        "ladepunkt.wallbox_meldet_sich_nicht", "ladepunkt.ziel_wird_knapp");
     }
 
     @Test
@@ -141,25 +144,29 @@ class WerteKatalogTest {
     @Test
     void entscheid9aKeinScheibe5EintragHatEinenVorschlagAbWerk() {
         // 9A: kein Läufer legt ab Werk eine Überwachung auf Energiemanagement-Zahlen an - nur
-        // eine selbst angelegte. mitVorschlagAbWerk() bleibt darum unverändert bei den zwei
-        // Scheibe-1-Einträgen (siehe nurDieBeidenAbWerkEintraegeHabenEinenVorschlag oben).
+        // eine selbst angelegte. mitVorschlagAbWerk() bleibt darum unverändert bei den
+        // Scheibe-1- und Ladepunkt-Einträgen (siehe nurDieVierAbWerkEintraegeHabenEinenVorschlag oben).
         for (String wertart : List.of("kennzahl.bezugsbasis", "energieziel.kurs", "messstelle.menge",
                 "messstelle.beobachtung", "messstelle.monat_unvollstaendig")) {
             assertThat(katalog.eintrag(wertart).vorschlag()).as(wertart).isNull();
         }
         assertThat(katalog.mitVorschlagAbWerk()).extracting(WerteKatalog.Eintrag::wertart)
-                .containsExactlyInAnyOrder("box.erreichbar", "datenquelle.liefert_daten");
+                .containsExactlyInAnyOrder("box.erreichbar", "datenquelle.liefert_daten",
+                        "ladepunkt.wallbox_meldet_sich_nicht", "ladepunkt.ziel_wird_knapp");
     }
 
     @Test
     void dieErzeugerVorlagenHabenStabileKennungenUndWerdenNieGesaet() {
         // EZ-11: die Wertart IST die Kennung, unter der EZ-15 (Anlege-Schritt) die Vorlagen anbietet - umbenennen
-        // bricht gespeicherte Regeln und den Anlege-Schritt.
-        assertThat(katalog.vorlagen()).extracting(WerteKatalog.Eintrag::wertart).containsExactly(
+        // bricht gespeicherte Regeln und den Anlege-Schritt. Gefiltert auf "erzeuger.*": seit "Ein Ort fürs
+        // Laden" Scheibe 4 trägt der Katalog auch die "ladepunkt.*"-Vorlagen (eigener Test unten).
+        List<WerteKatalog.Eintrag> erzeugerVorlagen = katalog.vorlagen().stream()
+                .filter(e -> e.wertart().startsWith("erzeuger.")).toList();
+        assertThat(erzeugerVorlagen).extracting(WerteKatalog.Eintrag::wertart).containsExactly(
                 "erzeuger.fernsteuerung_nicht_bereit", "erzeuger.daten_veraltet", "erzeuger.anlage_folgt_nicht",
                 "erzeuger.netzbetreiber_abgeschaltet", "erzeuger.fernwirk_verbindung_weg",
                 "erzeuger.programmstand_veraltet");
-        for (WerteKatalog.Eintrag e : katalog.vorlagen()) {
+        for (WerteKatalog.Eintrag e : erzeugerVorlagen) {
             assertThat(e.leser().art()).as(e.wertart()).isEqualTo("erzeuger");
             assertThat(e.vorschlag()).as(e.wertart() + ": nie ab Werk gesät").isNull();
             assertThat(e.vorlage().nurMitAnlagensteuerung()).as(e.wertart()).isTrue();
@@ -172,5 +179,27 @@ class WerteKatalogTest {
         assertThat(katalog.eintrag("erzeuger.fernwirk_verbindung_weg").vorlage().dauerS()).isEqualTo(600);
         assertThat(katalog.eintrag("erzeuger.netzbetreiber_abgeschaltet").vorlage().dauerS()).isZero();
         assertThat(katalog.eintrag("erzeuger.programmstand_veraltet").vorlage().dauerS()).isEqualTo(86_400); // EZ-11b: 24 h
+    }
+
+    @Test
+    void dieLadepunktEintraegeSindVollstaendigUndKonsistent() {
+        // "Ein Ort fürs Laden" Scheibe 4 (E6 = A): zwei Meldungen ab Werk EINGESCHALTET
+        // (wallbox_meldet_sich_nicht, ziel_wird_knapp), zwei wählbar (auto_angesteckt, ladung_fertig) -
+        // alle vier mit demselben Leser "ladepunkt" und Bezug "anlage" wie box.erreichbar.
+        for (String wertart : List.of("ladepunkt.wallbox_meldet_sich_nicht", "ladepunkt.ziel_wird_knapp",
+                "ladepunkt.auto_angesteckt", "ladepunkt.ladung_fertig")) {
+            WerteKatalog.Eintrag e = katalog.eintrag(wertart);
+            assertThat(e).as(wertart).isNotNull();
+            assertThat(e.leser().art()).as(wertart).isEqualTo("ladepunkt");
+            assertThat(e.bezug()).as(wertart).isEqualTo("anlage");
+            assertThat(e.recht()).as(wertart).isEqualTo("messwerte.ansehen");
+            assertThat(e.zustaende()).as(wertart).containsAll(
+                    e.vorschlag() != null ? e.vorschlag().ziel() : e.vorlage().ziel());
+        }
+        assertThat(katalog.eintrag("ladepunkt.wallbox_meldet_sich_nicht").vorschlag().ziel())
+                .containsExactly("nicht_erreichbar");
+        assertThat(katalog.eintrag("ladepunkt.ziel_wird_knapp").vorschlag().ziel()).containsExactly("knapp");
+        assertThat(katalog.eintrag("ladepunkt.auto_angesteckt").vorlage().ziel()).containsExactly("angesteckt");
+        assertThat(katalog.eintrag("ladepunkt.ladung_fertig").vorlage().ziel()).containsExactly("fertig");
     }
 }

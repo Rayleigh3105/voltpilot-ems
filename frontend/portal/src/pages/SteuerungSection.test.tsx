@@ -534,17 +534,15 @@ describe('Steuerung · Rechte (AP-03 IP-12)', () => {
     expect(BOUND.deactivate).not.toHaveBeenCalled();
   });
 
-  it('der Bedienberechtigte bedient und rahmt nicht: Lademodus ja, Anschlussgrenze nur mit Grund', async () => {
+  // Die Anschlussgrenze wohnt seit „Ein Ort fürs Laden" Scheibe 4 (E5 = A) in
+  // den Einstellungen, nicht mehr hier - das Rechte-Gefälle an IHREM Knopf
+  // prüft `AnlageTechnik.test.tsx`/`RahmenBlatt.test.tsx`.
+  it('der Bedienberechtigte bedient: Lademodus ja', async () => {
     zeigeAls('MD', 'laden');
     const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
     expect(within(karte).getByRole('group', { name: 'Lademodus' })).toBeInTheDocument();
     expect(within(karte).getByRole('button', { name: /^Womit laden: / })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Automatik an/ })).toBeEnabled();
-    fireEvent.click(within(screen.getByRole('region', { name: 'Netzanschluss' })).getByRole('button', { name: /Rahmen/ }));
-    const blatt = await screen.findByRole('dialog', { name: /Netzanschluss und Laden/ });
-    expect(within(blatt).queryByRole('button', { name: 'mehr' })).not.toBeInTheDocument();
-    expect(within(blatt).queryByRole('button', { name: 'Übernehmen' })).not.toBeInTheDocument();
-    expect(within(blatt).getByRole('note')).toHaveTextContent(GRUND);
   });
 });
 

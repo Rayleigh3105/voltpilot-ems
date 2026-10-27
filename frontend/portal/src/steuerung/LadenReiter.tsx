@@ -27,7 +27,7 @@ import { quellenAnteil, type GeraetBild } from './bild';
 import { ladungenCsv, ladungenSumme, ladungenZeilen } from './ladungen';
 import { Ic } from './Ic';
 import {
-  OPTION_SONNE_SPEICHER, band, grenzePruefung, heutigerAnschluss, kwVereinbart, ladebudgetKw,
+  OPTION_SONNE_SPEICHER, band, bandBremst, grenzePruefung, heutigerAnschluss, kwVereinbart, ladebudgetKw,
   ladeQuelle, ladeWahl, lokalesDatum, naechsteUhrzeit, speicherZeile, type AnschlussStand,
 } from './laden';
 import { DreiZahlen, QuelleZeichen, VorschauBand, startEntwurf, wunschAus } from './LadeWahl';
@@ -35,6 +35,12 @@ import { kwhText, mitAuto, uhrKurz, vorschauFuer, vorschauSaetze, type VorschauA
 import { rueckmeldung, type Gesendet } from './rueckmeldung';
 import type { BlattZustand, SeitenBild } from './seite';
 import { TAG, fCt, fEur, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
+// `RahmenBlatt` ist seit „Ein Ort fürs Laden" Scheibe 4 auch außerhalb der Steuerung mountbar
+// (Einstellungen, `components/AnschlussgrenzeBlatt.tsx`) - diese Datei bringt ihre eigene
+// Styling-Abhängigkeit deshalb selbst mit, statt sich auf `SteuerungSeite.tsx`s Import zu
+// verlassen (Bündler dedupliziert dieselbe Datei; sonst rendert das Blatt dort ohne Höhen-/
+// Z-Index-Regel und der Sektionsleiste läuft über sie hinweg).
+import './steuerung.css';
 
 export interface LadenReiterProps {
   siteId: string;
@@ -68,9 +74,17 @@ export function LadenReiter(p: LadenReiterProps) {
   const { bild } = p;
   const lp = bild.ladepunkte;
   const boxRef = boxRefOf(p.devices, p.siteId);
+  // Die Anschlussgrenze wohnt seit „Ein Ort fürs Laden" Scheibe 4 (E5 = A) in
+  // den Einstellungen - hier bleibt NUR ein Satz, und nur, solange sie
+  // tatsächlich bremst (`bandBremst`). Kein Rahmen-Knopf, keine Karte mehr.
+  const bremstSatz = bandBremst(band(p.rahmen, bild.ladepunkte, bild.reihen, bild.raster.jetzt));
   return (
     <>
-      <BudgetKarte bild={bild} rahmen={p.rahmen} oeffne={p.oeffne} />
+      {bremstSatz && (
+        <section className="card" aria-label="Netzanschluss">
+          <p className="leise">Mehr lässt Ihr Hausanschluss gerade nicht zu.</p>
+        </section>
+      )}
       {lp.map((g) => (
         <LadeKarte
           key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne}
@@ -98,46 +112,6 @@ export function LadenReiter(p: LadenReiterProps) {
         </button>
       </section>
     </>
-  );
-}
-
-function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: LadeparkRahmen | null; oeffne: (b: BlattZustand) => void }) {
-  const b = band(rahmen, bild.ladepunkte, bild.reihen, bild.raster.jetzt);
-  if (!b) {
-    return (
-      <section className="card" aria-label="Netzanschluss">
-        <div className="card-h">
-          <h2><Ic n="gauge" s={18} />Netzanschluss</h2>
-          <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'rahmen' }); }}><Ic n="sliders" s={16} />Rahmen</button>
-        </div>
-        <p className="leise">Die Grenze Ihres Netzanschlusses ist noch nicht hinterlegt. Ohne sie verteilt die Box nur, was sie sicher weiß.</p>
-      </section>
-    );
-  }
-  return (
-    <section className="card" aria-label="Netzanschluss">
-      <div className="card-h">
-        <h2><Ic n="gauge" s={18} />Netzanschluss {fKw(b.anschlussKw)}</h2>
-        <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'rahmen' }); }}><Ic n="sliders" s={16} />Rahmen</button>
-      </div>
-      <div className="budget">
-        <div className="b-bar" role="img" aria-label="Aufteilung des Netzanschlusses">
-          {b.teile.map((x, i) => (
-            <span key={`${x.k}-${i}`} className={x.k} style={{ flex: `0 0 ${((x.kw / b.anschlussKw) * 100).toFixed(1)}%` }} title={`${x.label} ${fKw(x.kw)}`}>
-              {x.kw / b.anschlussKw > 0.14 ? x.label : ''}
-            </span>
-          ))}
-        </div>
-        <p className="leise">
-          {b.einspeisungKw != null
-            ? <>{b.einspeisungKw > 0.05 ? `Ihre Anlage speist gerade ${fKw(b.einspeisungKw)} ein` : 'Ihr Haus bezieht gerade keinen Netzstrom'}
-              {b.ladenNetzKw > 0.05 ? `; aus dem Netz lädt gerade ${fKw(b.ladenNetzKw)}` : ''}</>
-            : <>Aus dem Netz gerade: Haus {b.hausKw != null ? fKw(b.hausKw) : 'nicht gemeldet'}
-              {b.ladenNetzKw > 0.05 ? `, Laden ${fKw(b.ladenNetzKw)}` : ''}</>}. Für Autos frei: <b style={{ color: 'var(--c-fg)' }}>{fKw(b.freiKw)}</b>. Laden mit Sonnenstrom belastet den Anschluss nicht.
-          {b.ladenKw > 0.05 ? ` Es laden gerade ${fKw(b.ladenKw)}.` : ''}
-        </p>
-      </div>
-    </section>
   );
 }
 
@@ -726,9 +700,13 @@ export function ZielBlatt({ k, id, anlage, rahmenMinKw, onSpeichern }: {
  * Blatt zeigt denselben Grund schon vorher und sperrt „Übernehmen“. Ohne
  * Bindung gilt der Übergang: die vereinbarte Leistung kommt aus dem Blatt.
  */
-export function RahmenBlatt({ k, siteId, rahmen, config, onGrenze }: {
-  k: BlattKontext; siteId: string; rahmen: LadeparkRahmen | null; config: ChargingConfig | null;
+export function RahmenBlatt({ k, siteId, rahmen, config, onGrenze, serverFehler = null }: {
+  /** Nur `zu`/`busy` - seit Scheibe 4 auch außerhalb der Steuerung mountbar (Einstellungen). */
+  k: { zu: () => void; busy: string | null };
+  siteId: string; rahmen: LadeparkRahmen | null; config: ChargingConfig | null;
   onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
+  /** Ein Fehler des `onGrenze`-Abrufs selbst (Netz/Server) - getrennt von der Plausibilitätsprüfung unten. */
+  serverFehler?: string | null;
 }) {
   const start = config?.gridLimitKw ?? rahmen?.gepflegteGrenzeKw ?? rahmen?.netzanschlussKw ?? null;
   const [kw, setKw] = useState<number | null>(start);
@@ -827,6 +805,7 @@ export function RahmenBlatt({ k, siteId, rahmen, config, onGrenze }: {
           )}
           {uebergangBeruehrt && uebergangFehlt && geaendert && <p className="stn-fehler">Tragen Sie die vereinbarte Leistung ein.</p>}
           {einwand && <p className="stn-fehler">{einwand}</p>}
+          {serverFehler && <p className="stn-fehler" role="alert">{serverFehler}</p>}
         </div>
       </div>
       <div className="blk">

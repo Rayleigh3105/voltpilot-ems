@@ -108,7 +108,8 @@ test('Geräte: die Reihenfolge lässt sich mit Pfeilen ändern und speichern', a
 
 test('Laden: Ladepunkte, Womit laden und Ladeziel ohne Überlauf', async ({ page }) => {
   const fehler = await oeffnen(page, LADEN);
-  await expect(page.getByRole('region', { name: 'Netzanschluss' })).toContainText('Netzanschluss 22,0 kW');
+  // „Ein Ort fürs Laden" Scheibe 4 (E5 = A): die Karte „Netzanschluss" ist entfallen -
+  // die Anschlussgrenze wohnt jetzt in den Einstellungen (e2e/ladegrenze.spec.ts).
   const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
   await expect(wb.getByRole('button', { name: /Smart/ })).toHaveAttribute('aria-pressed', 'true');
   // Konzept k1: der gewählte Modus als eine Zeile mit Versprechen, Tagesband und zwei kurzen Sätzen.
@@ -301,15 +302,10 @@ test('Laden W-21: Auto voll - das Vektor-Wort statt „wartet“, keine Ladeank�
   await expect(karte).not.toContainText('Lädt ab');
 });
 
-test('Laden W-14: Einspeisung - keine negative Hauslast, „frei“ höchstens der Anschluss', async ({ page }) => {
-  await oeffnen(page, '/e2e/steuerung.html?wallbox=einspeisung#/anlage/help-site/laden');
-  const netz = page.getByRole('region', { name: 'Netzanschluss' });
-  await expect(netz).toContainText('Ihre Anlage speist gerade 1,5 kW ein');
-  await expect(netz).not.toContainText('Haus -');
-  await expect(netz).not.toContainText('Haus −');
-  const frei = await netz.locator('b').first().textContent();
-  expect(Number((frei ?? '').replace(/[^\d,]/g, '').replace(',', '.'))).toBeLessThanOrEqual(22);
-});
+// Laden W-14 (Einspeisung - keine negative Hauslast, „frei“ höchstens der Anschluss): die Karte
+// „Netzanschluss" ist seit „Ein Ort fürs Laden" Scheibe 4 (E5 = A) von dieser Seite entfallen; die
+// geprüfte Rechnung (`band()`) bleibt unverändert und zeichengleich getestet in
+// `src/steuerung/laden.test.ts` › „Netzanschluss bei Einspeisung (Audit W-14)“.
 
 test('Regeln: Satzbaukasten mit Probelauf, Folgen und Aktivieren', async ({ page }) => {
   const fehler = await oeffnen(page, REGELN);

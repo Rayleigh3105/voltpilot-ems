@@ -17,6 +17,10 @@
  *
  * UEMS EZ-11 fügt die Leserart `erzeuger` mit fünf Alarm-Vorlagen hinzu (`vorlage` statt `vorschlag`: nie
  * gesät, je Anlage mit Anlagensteuerung wählbar; die Wertart ist die stabile Kennung der Vorlage).
+ *
+ * „Ein Ort fürs Laden" Scheibe 4 (E6 = A) fügt die Leserart `ladepunkt` hinzu: zwei Einträge mit
+ * `vorschlag` ab Werk (`wallbox_meldet_sich_nicht`, `ziel_wird_knapp`), zwei mit `vorlage` wählbar
+ * (`auto_angesteckt`, `ladung_fertig`).
  */
 
 export type LeserArt =
@@ -28,7 +32,8 @@ export type LeserArt =
   | 'zustand'
   | 'ereignis'
   | 'zaehlung'
-  | 'erzeuger';
+  | 'erzeuger'
+  | 'ladepunkt';
 
 /** Geschlossenes Vokabular der Bedingungsarten (§6.4). `periode` und `aenderung` (Scheibe 4) gelten
  * nur für periodische Einträge (an ihren `bedingungen`, nicht an der Leserart zu erkennen - Scheibe 5
@@ -397,6 +402,54 @@ export const WERTE_KATALOG: WerteKatalogEintrag[] = [
     zustaende: ['aktuell', 'aelter'],
     bedingungen: ['zustand'],
     vorlage: { dauer_s: 86400, erholen_s: 300, schwere: 'warnung', ziel: ['aelter'], nur_mit_anlagensteuerung: true },
+  },
+  {
+    wertart: 'ladepunkt.wallbox_meldet_sich_nicht',
+    name: 'Wallbox meldet sich nicht',
+    satzname: 'die Wallbox',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'ladepunkt', feld: 'wallbox_meldet_sich_nicht' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['erreichbar', 'nicht_erreichbar'],
+    bedingungen: ['zustand'],
+    vorschlag: { dauer_s: 900, erholen_s: 300, schwere: 'warnung', ziel: ['nicht_erreichbar'] },
+  },
+  {
+    wertart: 'ladepunkt.ziel_wird_knapp',
+    name: 'Ladeziel wird knapp',
+    satzname: 'das Ladeziel',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'ladepunkt', feld: 'ziel_wird_knapp' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['reicht', 'knapp'],
+    bedingungen: ['zustand'],
+    vorschlag: { dauer_s: 0, erholen_s: 300, schwere: 'warnung', ziel: ['knapp'] },
+  },
+  {
+    wertart: 'ladepunkt.auto_angesteckt',
+    name: 'Auto angesteckt',
+    satzname: 'ein Auto',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'ladepunkt', feld: 'auto_angesteckt' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['angesteckt', 'nicht_angesteckt'],
+    bedingungen: ['zustand'],
+    vorlage: { dauer_s: 0, erholen_s: 300, schwere: 'hinweis', ziel: ['angesteckt'], nur_mit_anlagensteuerung: false },
+  },
+  {
+    wertart: 'ladepunkt.ladung_fertig',
+    name: 'Ladung fertig',
+    satzname: 'die Ladung',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'ladepunkt', feld: 'ladung_fertig' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['laedt', 'fertig', 'nicht_angesteckt'],
+    bedingungen: ['zustand'],
+    vorlage: { dauer_s: 0, erholen_s: 300, schwere: 'hinweis', ziel: ['fertig'], nur_mit_anlagensteuerung: false },
   },
 ];
 
