@@ -42,6 +42,25 @@ func feedSteuerung(a *Agent, payload string) {
 	a.onSourceTelemetry(sources.TopicPrefix+goreSteuerungPin+"/telemetry", []byte(payload))
 }
 
+// lesung ist die Lesung der Steuerung mit ihrer eigenen Beobachtungszeit - die
+// Zeit IMMER relativ zur Uhr des Tests, nie ein fester Zeitpunkt: capturePaths
+// liest den Ring mit einem Stundenfenster an der Wanduhr (history.Ring.Recent),
+// und eine Lesung mit dem festen Zeitpunkt des Screenshots zaehlte dort ab
+// einer Stunde danach nicht mehr - so riss das Edge release gate von
+// edge-2026.10.6, obwohl der Puffer das Sample hatte.
+func lesung(ts time.Time, werte string) string {
+	if werte == "" {
+		return fmt.Sprintf(`{"ts": %q}`, ts.Format(time.RFC3339))
+	}
+	return fmt.Sprintf(`{%s, "ts": %q}`, werte, ts.Format(time.RFC3339))
+}
+
+// ebenGelesen ist eine Beobachtungszeit kurz vor jetzt, sekundengenau wie die
+// Palette sie veroeffentlicht (RFC 3339 ohne Bruchteile).
+func ebenGelesen() time.Time {
+	return time.Now().UTC().Truncate(time.Second).Add(-10 * time.Second)
+}
+
 func naechstesSample(t *testing.T, a *Agent) map[string]float64 {
 	t.Helper()
 	e, ok := a.buf.Next()
@@ -62,14 +81,15 @@ func TestControllerReadingBecomesTheSiteSampleOfAnInverterlessBox(t *testing.T) 
 		t.Fatalf("vor der Lesung nichts im Puffer: %+v", vorher)
 	}
 	// Die Werte des Screenshots vom 27.10.2026, 16:59: 0,7 kW Erzeugung, 679,4 kW Bezug.
-	feedSteuerung(a, `{"pv_power_kw": 0.7, "power_kw": 679.4, "ts": "2026-10-27T15:59:00Z"}`)
+	erste := ebenGelesen()
+	feedSteuerung(a, lesung(erste, `"pv_power_kw": 0.7, "power_kw": 679.4`))
 
 	nach := capturePaths(a)
 	if nach.pending != 1 || nach.ringLen != 1 {
 		t.Fatalf("die Lesung ist ein Standort-Sample (Puffer, Ring): %+v", nach)
 	}
-	if want := time.Date(2026, 10, 27, 15, 59, 0, 0, time.UTC); !nach.lastTel.Equal(want) {
-		t.Fatalf("Sample traegt die Zeit der Lesung: %v", nach.lastTel)
+	if !nach.lastTel.Equal(erste) {
+		t.Fatalf("Sample traegt die Zeit der Lesung: %v statt %v", nach.lastTel, erste)
 	}
 	m := naechstesSample(t, a)
 	if !nahe(m["pv_power_kw"], 0.7) || !nahe(m["power_kw"], 679.4) {
@@ -91,7 +111,7 @@ func TestControllerReadingBecomesTheSiteSampleOfAnInverterlessBox(t *testing.T) 
 	}
 
 	// Jede Lesung ist ein Sample - im Takt der Steuerung, wie ein Wechselrichter-Poll.
-	feedSteuerung(a, `{"pv_power_kw": 0.3, "power_kw": 679.8, "ts": "2026-10-27T15:59:05Z"}`)
+	feedSteuerung(a, lesung(erste.Add(5*time.Second), `"pv_power_kw": 0.3, "power_kw": 679.8`))
 	if p := capturePaths(a); p.pending != 2 || p.ringLen != 2 {
 		t.Fatalf("zweite Lesung, zweites Sample: %+v", p)
 	}
@@ -100,7 +120,7 @@ func TestControllerReadingBecomesTheSiteSampleOfAnInverterlessBox(t *testing.T) 
 func TestControllerReadingWithoutNetzpunktHasNoGridAndNoLoad(t *testing.T) {
 	a := goreBox(t)
 	// Buettner (EW-16 C): kein Netzpunkt - die Palette laesst power_kw weg. Nie 0.
-	feedSteuerung(a, `{"pv_power_kw": 58.9, "ts": "2026-10-27T15:59:00Z"}`)
+	feedSteuerung(a, lesung(ebenGelesen(), `"pv_power_kw": 58.9`))
 	if p := capturePaths(a); p.pending != 1 {
 		t.Fatalf("auch ohne Netzpunkt ein Sample (Erzeugung): %+v", p)
 	}
@@ -118,7 +138,7 @@ func TestControllerReadingWithoutNetzpunktHasNoGridAndNoLoad(t *testing.T) {
 func TestControllerReadingWithGridOnlyHasNoLoad(t *testing.T) {
 	a := goreBox(t)
 	// Erzeugung nicht gueltig (a_gueltig Bit 3 = 0): Netzpunkt allein ergibt keine Hauslast.
-	feedSteuerung(a, `{"power_kw": 12.5, "ts": "2026-10-27T15:59:00Z"}`)
+	feedSteuerung(a, lesung(ebenGelesen(), `"power_kw": 12.5`))
 	m := naechstesSample(t, a)
 	if !nahe(m["power_kw"], 12.5) {
 		t.Fatalf("Netzpunkt wie gelesen: %v", m)
@@ -130,7 +150,7 @@ func TestControllerReadingWithGridOnlyHasNoLoad(t *testing.T) {
 
 func TestControllerReadingWithNothingUsableIsNoSample(t *testing.T) {
 	a := goreBox(t)
-	feedSteuerung(a, `{"ts": "2026-10-27T15:59:00Z"}`)
+	feedSteuerung(a, lesung(ebenGelesen(), ""))
 	feedSteuerung(a, `{"pv_power_kw": null, "power_kw": null}`)
 	if p := capturePaths(a); p.pending != 0 || p.ringLen != 0 {
 		t.Fatalf("eine Lesung ohne Wert ist kein Sample: %+v", p)
@@ -149,7 +169,7 @@ func TestControllerReadingBesideAnInverterStaysOutOfTheBalance(t *testing.T) {
 	if _, ok := a.GetInverter(); !ok {
 		t.Fatal("der Wechselrichter bleibt neben der Steuerung")
 	}
-	feedSteuerung(a, `{"pv_power_kw": 0.7, "power_kw": 679.4, "ts": "2026-10-27T15:59:00Z"}`)
+	feedSteuerung(a, lesung(ebenGelesen(), `"pv_power_kw": 0.7, "power_kw": 679.4`))
 	if p := capturePaths(a); p.pending != 0 || p.ringLen != 0 {
 		t.Fatalf("mit Wechselrichter bleibt die Steuerung ausserhalb der Bilanz: %+v", p)
 	}
