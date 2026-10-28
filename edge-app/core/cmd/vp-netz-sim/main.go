@@ -98,7 +98,14 @@ func main() {
 		}
 		mu.Lock()
 		payload := map[string]any{
-			"ts":       time.Now().UTC().Format(time.RFC3339),
+			// Milliseconds, like every real Layer 1 (Node-RED toISOString,
+			// edge-light isoMillis). Truncated to the second, a charge point's
+			// meter time (milliseconds) of the same instant regularly fell
+			// AFTER the sample, and the pairing at the telemetry choke point
+			// (csms ChargingTotal) read every sample as incomplete - the OCPP
+			// rig sat in L6/L7 without a measurement, depending on the phase
+			// of the two 2-s cadences (release gate edge-2026.10.6).
+			"ts":       time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
 			"power_kw": cur.house + cur.charging,
 		}
 		// ⚠ Only a REPORTED envelope: a §14a value of 0 means zero kilowatts,
