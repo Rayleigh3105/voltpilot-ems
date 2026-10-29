@@ -119,9 +119,10 @@ const AnlagensteuerungAssistent = lazy(() =>
  *
  * - **Zahlen statt Sätze.** Jede Zeile trägt Name, Zustandspunkt und ihre Werte
  *   als kurze Chips; Erklärungen stehen erst im Kurzblick.
- * - **E2 · Tippen öffnet den Kurzblick** (zentriertes `Modal`, am Telefon ein
- *   Vollbild-Blatt): Werte je Komponente, Steuerung, alle Handlungen, und einen
- *   Tipp weiter die Geräteseite.
+ * - **E2 · Tippen springt auf die Geräteseite**; nur ein Gerät ohne eigene Seite
+ *   öffnet den Kurzblick (zentriertes `Modal`, am Telefon ein Vollbild-Blatt). Die
+ *   technische Sicht springt ebenso und erreicht ihren Kurzblick über „Technisch …“
+ *   im Zeilenmenü.
  * - **E3 · Alle Ebenen, immer.** Auch mit einer Anlage und einer Box steht der
  *   Baum gleich da - die Struktur ändert sich nicht, sobald eine zweite Box kommt.
  * - **Hinzufügen beginnt im Gerätekatalog** (Konzept „Aufbau und

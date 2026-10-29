@@ -303,6 +303,13 @@ async function kurzblick(el: HTMLElement | Promise<HTMLElement>) {
   return screen.findByRole('dialog');
 }
 
+/** Technische Sicht: der Zeilenmenü-Eintrag „Technisch …“ öffnet den Kurzblick eines Geräts mit eigener Seite. */
+async function technischerKurzblick(el: HTMLElement | Promise<HTMLElement>) {
+  fireEvent.click(within(await el).getByRole('button', { name: /Weitere Aktionen/ }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: /Technisch/ }));
+  return screen.findByRole('dialog');
+}
+
 /** Die Zeile einer Komponente im Kurzblick. */
 function komponente(dialog: HTMLElement, label: string): HTMLElement {
   return within(dialog).getByText(label).closest('li') as HTMLElement;
@@ -1223,9 +1230,28 @@ describe('AufbauSection · die technische Sicht', () => {
     await zeile('inv');
   }
 
+  it('springt beim Tippen direkt auf die Geräteseite - der technische Rumpf liegt hinter „Technisch …“', async () => {
+    await adminRender();
+    window.location.hash = '';
+    fireEvent.click(await zeile('inv'));
+    expect(window.location.hash).toBe('#/anlage/s-1/geraet/VP-ABC123/inv');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const dialog = await technischerKurzblick(zeile('inv'));
+    expect(within(dialog).getAllByTestId('tech-zeile').length).toBeGreaterThan(0);
+  });
+
+  it('bietet „Technisch …“ dem Kunden nicht an', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    rendere();
+    fireEvent.click(within(await zeile('inv')).getByRole('button', { name: /Weitere Aktionen/ }));
+    await screen.findAllByRole('menuitem');
+    expect(screen.queryByRole('menuitem', { name: /Technisch/ })).toBeNull();
+  });
+
   it('trägt den technischen Rumpf an der Komponente im Kurzblick', async () => {
     await adminRender();
-    const dialog = await kurzblick(zeile('inv'));
+    const dialog = await technischerKurzblick(zeile('inv'));
     const zeilen = within(dialog).getAllByTestId('tech-zeile');
     const alle = zeilen.map((z) => z.textContent ?? '').join(' ');
     expect(alle).toContain('Netzanschluss');
@@ -1245,7 +1271,7 @@ describe('AufbauSection · die technische Sicht', () => {
     const remove = vi.spyOn(entitiesApi, 'remove').mockResolvedValue(undefined as never);
     rendere();
 
-    const dialog = await kurzblick(zeile('inv'));
+    const dialog = await technischerKurzblick(zeile('inv'));
     const netz = within(dialog)
       .getAllByTestId('tech-zeile')
       .find((z) => (z.textContent ?? '').includes('Netzanschluss')) as HTMLElement;

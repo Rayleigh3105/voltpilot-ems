@@ -109,3 +109,17 @@ for (const breite of BREITEN) {
     expect(fehler).toEqual([]);
   });
 }
+
+test('Aufbau, technische Sicht: der Klick springt direkt auf die Geräteseite, „Technisch …“ öffnet den Kurzblick', async ({ page }) => {
+  await oeffne(page, 1440, 'fall=gore&flaeche=aufbau&admin=1');
+  const einheit = page.locator('.vp-auf-t-zeile.is-einheit').nth(1);
+  await expect(einheit).toBeVisible();
+  await einheit.locator('.vp-auf-t-mehr').click();
+  await page.getByRole('menuitem', { name: /Technisch/ }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await einheit.locator('.vp-auf-t-titel').click();
+  await expect(page).toHaveURL(new RegExp(`${SEITE(2)}$`));
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
