@@ -246,6 +246,45 @@ class BenutzerVerwaltungApiTest {
         assertThat(zuweisungen(sub)).hasSize(2);
     }
 
+    /**
+     * Der Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration liest Benutzerliste und
+     * Zugriffsprotokoll und wechselt Rollen wie der Kundenadministrator — über {@code X-Kundenbereich} ohne
+     * Unterstützung. Der Protokolleintrag trägt IHRE Kennung und die Rolle VoltPilot-Betrieb; der letzte
+     * Kundenadministrator bleibt auch gegen sie geschützt. Ohne Sprung erreicht sie keine Kundenroute.
+     */
+    @Test void imMandantensprungVerwaltetDiePlattformBenutzerWieDerKundenadministrator() throws Exception {
+        String lena = "sub-sprung-lena";
+        var sprung = plattform(lena);
+        Antwort liste = ruf(get("/api/v1/benutzer").header(ZugriffKontextLader.KUNDENBEREICH_HEADER, DEMO.toString()),
+                sprung);
+        assertThat(liste.status()).as(liste.body()).isEqualTo(200);
+        assertThat(liste.body()).contains(JONAS, CLAUDIA);
+
+        String sub = "konto-sprung"; spiegel(sub); amStandort(sub, "leser", standortA);
+        UUID bisher = zuweisungen(sub).get(0);
+        Antwort wechsel = ruf(MockMvcRequestBuilders.put(uri("/api/v1/benutzer/" + sub + "/zugriff"))
+                .header(ZugriffKontextLader.KUNDENBEREICH_HEADER, DEMO.toString()).contentType(MediaType.APPLICATION_JSON)
+                .content(MAPPER.writeValueAsString(Map.of("bisher", List.of(bisher), "rolle", "bearbeiter",
+                        "standorte", List.of(standortA)))), sprung);
+        assertThat(wechsel.status()).as(wechsel.body()).isEqualTo(204);
+        assertThat(zuweisungen(sub)).hasSize(1).doesNotContain(bisher);
+        assertThat(root.queryForList("SELECT DISTINCT actor_sub || ' ' || actor_rolle || ' ' || actor_art "
+                + "FROM zugriff_protokoll WHERE tenant_id = ? AND betroffener_sub = ? AND aktion = 'zuweisen'",
+                String.class, DEMO, sub)).containsExactly(lena + " voltpilot_betrieb voltpilot");
+        String zeitraum = "/api/v1/benutzer/protokoll?von=" + Instant.now().minusSeconds(3600) + "&bis="
+                + Instant.now().plusSeconds(3600);
+        Antwort protokoll = ruf(get(zeitraum).header(ZugriffKontextLader.KUNDENBEREICH_HEADER, DEMO.toString()), sprung);
+        assertThat(protokoll.status()).as(protokoll.body()).isEqualTo(200);
+        assertThat(protokoll.body()).contains(sub, "Lena Voss");
+
+        Antwort letzter = ruf(post("/api/v1/benutzer/" + JONAS + "/sperren", "{}")
+                .header(ZugriffKontextLader.KUNDENBEREICH_HEADER, DEMO.toString()), sprung);
+        assertThat(letzter.status()).isEqualTo(409);
+        assertThat(letzter.body()).contains("letzter_kundenadministrator");
+
+        assertThat(ruf(get("/api/v1/benutzer"), sprung).status()).as("ohne Sprung kein Kundenbereich").isEqualTo(403);
+    }
+
     // ================================================================= AP-19 Folge IP-13 — Einsicht befristen (R6)
 
     /**
@@ -441,6 +480,14 @@ class BenutzerVerwaltungApiTest {
             claims.put("tenant_id", tenant.toString());
         }
         Jwt jwt = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"), claims);
+        return new KeycloakRealmRoleConverter().convert(jwt);
+    }
+
+    /** Ein Plattform-Konto (Realm-Rolle {@code platform-admin}) ohne Kundenbereich im Token. */
+    private static Authentication plattform(String sub) {
+        Jwt jwt = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"),
+                Map.of("sub", sub, "preferred_username", "Lena Voss", "realm_access",
+                        Map.of("roles", List.of(KeycloakRealmRoleConverter.PLATFORM_ADMIN_ROLE))));
         return new KeycloakRealmRoleConverter().convert(jwt);
     }
 

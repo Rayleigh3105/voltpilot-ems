@@ -107,6 +107,8 @@ class ZugriffZaunApiTest {
     private static final String BERLIN_SITE = "00000000-0000-0000-0000-000000000002";
     private static final String KUNDENBEREICH = ZugriffKontextLader.KUNDENBEREICH_HEADER;
     private static final String TENANT = "X-Tenant-Id";
+    /** Das Konto des Bestandsvergleichs, das seit dem Mandantensprung (29.10.2026) als Kundenadministrator liest. */
+    private static final String PLATTFORM_IM_SPRUNG = "Plattform mit X-Tenant-Id";
     static final String SITZUNG = "/api/v1/test-sitzung";
     private static final String AUSNAHME = "Ausnahme im Handler: ";
 
@@ -362,6 +364,11 @@ class ZugriffZaunApiTest {
      *
      * <p>Captain 22.09.2026 E2 = A: genau die beiden Kundenkonten steigen — echte und gedachte
      * Kundenadmin-Zuweisung (E12) erhalten dieselbe Stufe. Alle anderen Leseantworten bleiben gleich.
+     *
+     * <p><b>Der Mandantensprung (Auftrag vom 29.10.2026):</b> die Plattform mit {@code X-Tenant-Id} liest seither als
+     * Kundenadministrator, wo ein Dienst sein Urteil über {@code RechtPruefung.aufrufer()} spricht — „vorher" war sie
+     * dort eine VoltPilot-Unterstützung. Ihre Abweichungen stehen in {@code sprung} und sind wörtlich festgenagelt:
+     * eine weitere Route, die sich für sie ändert, fällt auf, ebenso ein Zurückdrehen.
      */
     @Test
     void jedesHeutigeKontoSiehtAufJederLesendenKundenrouteDasselbeWieVorIp4UndIp5() throws Exception {
@@ -373,12 +380,13 @@ class ZugriffZaunApiTest {
                         new String[0]),
                 new Konto("Kundenkonto ohne Realm-Rolle, nie zugewiesen (Bestandsregel E12)", konto(KUNDE_NIE, DEMO),
                         new String[0]),
-                new Konto("Plattform mit X-Tenant-Id", konto("sub-zaun-plattform", null, "platform-admin"),
+                new Konto(PLATTFORM_IM_SPRUNG, konto("sub-zaun-plattform", null, "platform-admin"),
                         new String[] {TENANT, DEMO.toString()}),
                 new Konto("Plattform ohne Kopf", konto("sub-zaun-plattform", null, "platform-admin"),
                         new String[0]));
         List<String> abweichungen = new ArrayList<>();
         List<String> stufenwechsel = new ArrayList<>();
+        Set<String> sprung = new TreeSet<>();
         Set<String> fluechtig = new TreeSet<>();
         Set<String> mitAusnahme = new TreeSet<>();
         Set<String> ohneAussage = new TreeSet<>();
@@ -386,6 +394,7 @@ class ZugriffZaunApiTest {
         for (Route r : routen) {
             boolean jedeAntwortAbgelehnt = true;
             for (Konto k : konten) {
+                List<String> abweichend = k.name().equals(PLATTFORM_IM_SPRUNG) ? new ArrayList<>() : abweichungen;
                 Antwort vorher1 = vorher(r, k);
                 Antwort nachher = ruf(r, k);
                 Antwort vorher2 = vorher(r, k);
@@ -396,17 +405,20 @@ class ZugriffZaunApiTest {
                 if (vorher1.status() != vorher2.status()) {
                     fluechtig.add(r.toString());
                 } else if (nachher.status() != vorher2.status()) {
-                    abweichungen.add(k.name() + ": " + r + " vorher " + vorher2.status() + ", nachher " + nachher.status());
+                    abweichend.add(k.name() + ": " + r + " vorher " + vorher2.status() + ", nachher " + nachher.status());
                 } else if (!vorher1.body().equals(vorher2.body())) {
                     fluechtig.add(r.toString());
                 } else if (!nachher.body().equals(vorher2.body())) {
                     if (OCPP_STUFE.equals(r.muster())) {
                         stufenwechsel.add(k.name() + ": " + stufe(vorher2.body()) + " → " + stufe(nachher.body()));
                     } else {
-                        abweichungen.add(k.name() + ": " + r + " Körper weicht ab");
+                        abweichend.add(k.name() + ": " + r + " Körper weicht ab");
                     }
                 } else {
                     gleich = true;
+                }
+                if (abweichend != abweichungen) {
+                    sprung.addAll(abweichend);
                 }
                 if (gleich && nachher.status() == 200 && nachher.body().length() > 2) {
                     mitDaten++;
@@ -434,6 +446,12 @@ class ZugriffZaunApiTest {
         assertThat(routen).hasSizeGreaterThan(150);
         assertThat(mitDaten).isGreaterThan(100);
         assertThat(abweichungen).isEmpty();
+        // Mandantensprung: Berichte (vorher 403 als Unterstützung) und die Knöpfe Freigeben/Zurücknehmen der
+        // Korrekturen (vorher „recht_fehlt“) wie beim Kundenadministrator.
+        assertThat(sprung).containsExactlyInAnyOrder(
+                PLATTFORM_IM_SPRUNG + ": GET /api/v1/berichte vorher 403, nachher 200",
+                PLATTFORM_IM_SPRUNG + ": GET /api/v1/korrekturen/{kennung} Körper weicht ab",
+                PLATTFORM_IM_SPRUNG + ": GET /api/v1/standorte/{standortId}/korrekturen Körper weicht ab");
         // Captain 22.09.2026 E2 = A: echte und gedachte Kundenadmin-Zuweisung, jeweils MIT Stufe.
         assertThat(stufenwechsel).containsExactly(
                 "Kundenkonto (Bestandsübernahme: Kundenadministrator): CUSTOMER → SITE_ADMIN",

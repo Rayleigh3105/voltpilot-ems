@@ -120,8 +120,28 @@ public final class ZugriffContext {
         }
 
         /**
+         * Die Plattform-Administration im Mandantensprung (Zugang {@code umschalter}): sie handelt hier mit den Rechten
+         * des Kundenadministrators, unternehmensweit ({@link RechtPruefung#SPRUNGRECHT}, Auftrag vom 29.10.2026). Ihr
+         * Protokoll-Wort bleibt {@code voltpilot_betrieb} ({@code uems/ProtokollAkteur}).
+         */
+        public boolean imSprung() {
+            return konto == Konto.PLATTFORM && zugang == Zugang.UMSCHALTER;
+        }
+
+        /**
+         * Der Kundenadministrator dieses Kundenbereichs: das Kundenkonto mit wirksamer Zuweisung „Kundenadministrator"
+         * oder als Bestandskonto (E12) — und die Plattform im Sprung ({@link #imSprung}). Für die Stellen, die nicht
+         * über die Matrix, sondern über die Person entscheiden (Lesen im beendeten Kundenbereich, Gesamtabzug,
+         * Benutzerverwaltung).
+         */
+        public boolean kundenadministrator() {
+            return imSprung() || zugang == Zugang.KONTO && (bestandskonto
+                    || zuweisungen.stream().anyMatch(x -> x.rolle() == RechteAbleitung.Rolle.KUNDENADMINISTRATOR));
+        }
+
+        /**
          * {@code unternehmen}, wenn das Kundenkonto eine wirksame mandantenweite Zuweisung hat — und am Umschalter,
-         * der heute den ganzen Kundenbereich sieht (W3).
+         * der den ganzen Kundenbereich sieht (W3; im Sprung als Kundenadministrator, {@link #imSprung}).
          *
          * <p>Ebenso ein BESTANDSKONTO: die Bestandsregel E12 („wer noch nie eine Zuweisung hatte, wird
          * Kundenadministrator"), die {@code ZugriffBestandLaeufer} beim Start schreibt, gilt schon in der Anfrage — der

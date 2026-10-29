@@ -2,6 +2,8 @@ package com.voltpilot.api.zugriff;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.KennzahlAufrufer;
 import com.voltpilot.api.uems.KennzahlRechte;
 import com.voltpilot.api.uems.KorrekturRechte;
@@ -16,6 +18,7 @@ import com.voltpilot.api.uems.RechteAbleitung.Standort;
 import com.voltpilot.api.uems.RechteAbleitung.Ziel;
 import com.voltpilot.api.zugriff.ZugriffContext.Zugang;
 import com.voltpilot.api.zugriff.ZugriffContext.Zugriff;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -35,6 +38,7 @@ import org.junit.jupiter.api.Test;
 class RechtAufruferTest {
 
     private static final Instant JETZT = Instant.parse("2026-09-15T10:00:00Z");
+    private static final Path VEKTOREN = Path.of("..", "..", "docs", "contracts", "v2", "rechte-vectors.json");
     private static final UUID TENANT = UUID.fromString("a3060000-0000-0000-0000-000000000001");
     private static final UUID ST1 = UUID.fromString("a3060000-0000-0000-0001-000000000001");
     private static final UUID ST2 = UUID.fromString("a3060000-0000-0000-0001-000000000002");
@@ -54,10 +58,62 @@ class RechtAufruferTest {
         assertThat(new KennzahlAufrufer().benutzer(wer)).isEqualTo(KorrekturRechte.benutzer(wer));
     }
 
+    /**
+     * Der Mandantensprung (Auftrag vom 29.10.2026): am Umschalter urteilen Korrekturen, Kennzahlen, Berichte,
+     * Überwachungen und Stummschaltungen über die Plattform wie über den Kundenadministrator — jede Aktion, an
+     * Unternehmen und Standort, gleich bis auf die P-Zeilen, die sie dazu über {@code voltpilot_betrieb} hat. Bis dahin
+     * war sie hier eine VoltPilot-Unterstützung (Korrektur 403) bzw. ohne Aufrufer (Überwachung 403).
+     */
     @Test
-    void amUmschalterBleibtEsBeiDerFestlegungVonVorher() {
+    void imSprungUrteilenDieDiensteWieUeberDenKundenadministrator() throws Exception {
         ProtokollAkteur wer = ProtokollAkteur.fuer("sub-plattform", "Plattform", true);
         ZugriffContext.set(new Zugriff("sub-plattform", Konto.PLATTFORM, TENANT, Zugang.UMSCHALTER, List.of(), JETZT));
+        Benutzer sprung = KorrekturRechte.aufrufer(wer);
+        assertThat(RechtPruefung.aufrufer()).contains(sprung);
+        assertThat(new KennzahlAufrufer().benutzer(wer)).isEqualTo(sprung);
+        assertThat(sprung.konto()).isEqualTo(Konto.PLATTFORM);
+        assertThat(sprung.zuweisungen()).containsExactly(RechtPruefung.SPRUNGRECHT);
+
+        Benutzer kundenadministrator = KorrekturRechte.benutzer(ProtokollAkteur.fuer("sub-kunde", "Kunde", false));
+        RechteAbleitung.Matrix m = RechteMatrixDatei.matrix();
+        List<String> plattform = RechteMatrixDatei.aktionen().stream()
+                .filter(a -> m.aktionen().get(a).zelle(Rolle.VOLTPILOT_BETRIEB) == RechteAbleitung.Zelle.P).toList();
+        assertThat(abweichungen(kundenadministrator, sprung)).allSatisfy(a -> assertThat(plattform)
+                .anyMatch(p -> a.startsWith(p + " @ ")));
+        assertThat(KorrekturRechte.darf(wer, "korrektur.erfassen", JETZT).darf()).isTrue();
+        assertThat(KorrekturRechte.darf(wer, "vieraugen.einstellen", JETZT).darf()).isTrue();
+
+        // Dieselbe gedachte Zuweisung pinnen die Fälle sprung-* in rechte-vectors.json für beide Zwillinge.
+        JsonNode vektoren = new ObjectMapper().readTree(VEKTOREN.toFile());
+        int faelle = 0;
+        for (JsonNode c : vektoren.path("cases")) {
+            if (!c.path("name").asText().startsWith("sprung-")) {
+                continue;
+            }
+            JsonNode b = c.path("input").has("benutzer") ? c.path("input").path("benutzer")
+                    : c.path("input").path("handelnder");
+            assertThat(b.path("konto").asText()).isEqualTo(sprung.konto().code());
+            assertThat(b.path("zuweisungen")).hasSize(1);
+            JsonNode z = b.path("zuweisungen").get(0);
+            assertThat(z.path("rolle").asText()).isEqualTo(RechtPruefung.SPRUNGRECHT.rolle().code());
+            assertThat(z.path("standorte").isNull()).isTrue();
+            assertThat(Instant.parse(z.path("gueltig_ab").asText())).isEqualTo(RechtPruefung.SPRUNGRECHT.gueltigAb());
+            assertThat(z.path("gueltig_bis").isNull() && z.path("beendet_am").isNull() && z.path("art").isNull()
+                    && z.path("umfang").isNull()).isTrue();
+            faelle++;
+        }
+        assertThat(faelle).isGreaterThanOrEqualTo(8);
+    }
+
+    @Test
+    void ohneSprungBleibtDiePlattformEineUnterstuetzung() {
+        ProtokollAkteur wer = ProtokollAkteur.fuer("sub-plattform", "Plattform", true);
+        ZugriffContext.set(new Zugriff("sub-plattform", Konto.PLATTFORM, TENANT, Zugang.UNTERSTUETZUNG, List.of(), JETZT));
+        assertThat(ZugriffContext.get().imSprung()).isFalse();
+        assertThat(ZugriffContext.get().kundenadministrator()).isFalse();
+        assertThat(KorrekturRechte.aufrufer(wer).zuweisungen()).isEmpty();
+        ZugriffContext.clear();
+        assertThat(RechtPruefung.aufrufer()).isEmpty();
         assertThat(KorrekturRechte.aufrufer(wer)).isEqualTo(KorrekturRechte.benutzer(wer));
     }
 

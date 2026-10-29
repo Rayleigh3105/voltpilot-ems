@@ -344,7 +344,9 @@ tags:
       Plattform-Konten wählen den Kundenbereich mit `X-Kundenbereich`. Ein Partner braucht dafür immer eine
       wirksame Unterstützung - sonst 404 auf jeder Kundenroute. Die Plattform kommt bei offenem
       Mandanten-Umschalter (`voltpilot.uems.unterstuetzung.umschalter-enabled`, Vorgabe AN seit 26.10.2026) auch
-      ohne sie hinein; ist er aus, gilt für sie dasselbe wie für einen Partner.
+      ohne sie hinein; ist er aus, gilt für sie dasselbe wie für einen Partner. In diesem Mandantensprung (Zugang
+      `umschalter`) handelt sie seit 29.10.2026 als Kundenadministrator, unternehmensweit - in `/me` und in jeder
+      Prüfung; P-Zeilen bleiben beim VoltPilot-Betrieb, das Protokoll nennt weiter ihre Kennung.
   - name: energiemanagement
     description: >
       UEMS AP-19 Dokumentation und Managementabläufe. VoltPilot hält fest, der Kunde entscheidet, und jede Zeile
@@ -22358,7 +22360,7 @@ components:
           type: string
           nullable: true
           enum: [konto, unterstuetzung, umschalter]
-          description: "`umschalter` = Plattform am offenen Mandanten-Umschalter (`X-Tenant-Id`, oder `X-Kundenbereich` ohne wirksame Unterstützung); null ohne Kundenbereich."
+          description: "`umschalter` = Plattform am offenen Mandanten-Umschalter (`X-Tenant-Id`, oder `X-Kundenbereich` ohne wirksame Unterstützung) - der Mandantensprung, mit den Rechten des Kundenadministrators (`rollen` = `kundenadministrator`, unternehmensweit); null ohne Kundenbereich."
         rollen:
           type: array
           items: { type: string }

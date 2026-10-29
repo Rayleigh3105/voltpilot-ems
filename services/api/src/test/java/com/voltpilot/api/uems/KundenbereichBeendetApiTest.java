@@ -259,7 +259,10 @@ class KundenbereichBeendetApiTest {
                 .as("kein Schreibweg hat etwas geschrieben").isEmpty();
     }
 
-    /** NW-5: der Kundenadministrator liest weiter, eine Leserin nicht; beide sehen den Zustand und /me. */
+    /**
+     * NW-5: der Kundenadministrator (auch die Plattform im Mandantensprung) liest weiter, eine Leserin nicht; beide
+     * sehen den Zustand und /me.
+     */
     @Test
     void lesenBleibtNurFuerDenKundenadministrator() throws Exception {
         beenden(tenant);
@@ -288,9 +291,16 @@ class KundenbereichBeendetApiTest {
         assertThat(endeLeserin.path("text").asText()).contains("Nur Ihr Kundenadministrator")
                 .doesNotContain("Gesamtabzug");
 
-        // Der Umschalter der Plattform liest einen beendeten Bereich nicht als Kunde; die Plattform-Liste bleibt.
+        // Die Plattform im Mandantensprung liest wie der Kundenadministrator (Auftrag vom 29.10.2026) — schreiben darf
+        // auch sie im beendeten Bereich nichts mehr. Die Plattform-Liste bleibt.
         assertThat(ruf(get("/api/v1/sites").header("X-Tenant-Id", tenant.toString()), plattform())
-                .getResponse().getStatus()).isEqualTo(409);
+                .getResponse().getStatus()).isEqualTo(200);
+        JsonNode endeSprung = JSON.readTree(ruf(get("/api/v1/me").header("X-Tenant-Id", tenant.toString()), plattform())
+                .getResponse().getContentAsString(StandardCharsets.UTF_8)).path("kundenbereich").path("beendet");
+        assertThat(endeSprung.path("liest").asBoolean()).isTrue();
+        MvcResult sprungSchreibt = ruf(post("/api/v1/sites").header("X-Tenant-Id", tenant.toString())
+                .contentType(MediaType.APPLICATION_JSON).content("{}"), plattform());
+        assertThat(sprungSchreibt.getResponse().getStatus()).isEqualTo(409);
         assertThat(ruf(get("/api/v1/admin/tenants"), plattform()).getResponse().getStatus()).isEqualTo(200);
         // Ein Kundenkonto erfährt über eine Plattform-Route nichts über den Zustand: dort gilt weiter 403.
         assertThat(ruf(post("/api/v1/admin/tenants/" + tenant + "/users").contentType(MediaType.APPLICATION_JSON)

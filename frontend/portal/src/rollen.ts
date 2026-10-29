@@ -91,17 +91,28 @@ export function ohneStandort(s = selbst): boolean {
 }
 
 /**
- * UEMS AP-20 IP-17: den Gesamtabzug lädt nur der Kundenadministrator mit eigenem Konto — der Zwilling von
+ * Der Kundenadministrator dieses Kundenbereichs: das eigene Kundenkonto mit dieser Rolle — oder die
+ * Plattform-Administration im Mandantensprung (`zugang` „umschalter“), die dort als Kundenadministrator handelt
+ * (Auftrag vom 29.10.2026). Der Zwilling von `ZugriffContext.Zugriff#kundenadministrator` (Java).
+ */
+export function kundenadministrator(s = selbst): boolean {
+  if (!s || s.zustand !== 'aktiv') return false;
+  if (s.konto === 'plattform' && s.zugang === 'umschalter') return true;
+  return s.konto === 'benutzer' && s.zugang === 'konto' && s.rollen.includes('kundenadministrator');
+}
+
+/**
+ * UEMS AP-20 IP-17: den Gesamtabzug lädt nur der Kundenadministrator ({@link kundenadministrator}) — der Zwilling von
  * `KundenbereichEndeFilter.kundenadministrator` (Java); die API entscheidet trotzdem selbst (403).
  */
 export function gesamtabzugLaden(s = selbst): boolean {
-  return !!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto' && s.rollen.includes('kundenadministrator');
+  return kundenadministrator(s);
 }
 
 /** Die Benutzerliste hat keine eigene Aktionskennung (AP-03 E2): Energiemanager lesen mit. */
 export function benutzerLesen(s = selbst): boolean {
-  return !!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto'
-    && (darf('benutzer.verwalten', null, s) || s.rollen.includes('energiemanager'));
+  return kundenadministrator(s) || (!!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto'
+    && (darf('benutzer.verwalten', null, s) || s.rollen.includes('energiemanager')));
 }
 
 export function useRollen() {

@@ -1,6 +1,7 @@
 import ReactDOM from 'react-dom/client';
 import App from '../src/App';
 import { keycloak } from '../src/auth';
+import { rechteSeed, SPRUNG_FALL } from '../src/test/rollenFixtures';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -12,7 +13,8 @@ import '../src/index.css';
 
 // Der ganze `App` als Plattform-Administrator OHNE wirksame Unterstützung. Ersetzt sind nur die OIDC-Sitzung (wie in
 // `boot-flow.tsx`) und der Server. `fetch` antwortet wie die API bei offenem Mandanten-Umschalter (Vorgabe seit
-// 26.10.2026): `/api/v1/me` mit dem ganzen Kundenbereich (`zugang` „umschalter“), Anlagen und Geräte des Mandanten,
+// 26.10.2026): `/api/v1/me` mit dem ganzen Kundenbereich (`zugang` „umschalter“, seit 29.10.2026 mit den Rechten des
+// Kundenadministrators aus dem Vertragsfall `sprung-*`), Anlagen und Geräte des Mandanten,
 // alles Weitere der Anlage 404 (die Attrappe hat es nicht). `?schalter=aus` ist der Not-Aus: dann wie von IP-15 bis
 // dahin `/api/v1/me` mit dem eigenen Konto allein und jede andere Kundenroute mit `X-Kundenbereich` 404. Die Köpfe
 // wählt `api.ts` selbst. Alle Mandanten, Personen und Anlagen hier sind erfunden.
@@ -51,11 +53,13 @@ const KONTO = {
   unterstuetzungen: { eigene: [], gewaehrte: [] }, kundenadministratoren: [], kundenbereiche: [],
 };
 const NUR_KONTO = { ...KONTO, kundenbereich: null, zugang: null, unternehmensweit: false, standorte: [] };
+const SPRUNG = rechteSeed('LV', SPRUNG_FALL).me;
 const amUmschalter = (m: { id: string; name: string }) => ({
-  ...KONTO, kundenbereich: { id: m.id, name: m.name, beendet: null }, zugang: 'umschalter', rollen: ['unterstuetzer'],
-  unternehmensweit: true,
+  ...KONTO, kundenbereich: { id: m.id, name: m.name, beendet: null }, zugang: 'umschalter', rollen: ['kundenadministrator'],
+  unternehmensweit: true, unternehmen_rechte: SPRUNG.unternehmen_rechte,
   standorte: m.id === MIT_STANDORT ? [{ id: 'd1000000-0000-4000-8000-000000000001', kennzeichen: 'ST-1',
-    name: 'Solarhof Dach', rollen: ['unterstuetzer'], umfang: 'einrichten_und_bedienen', ocpp_stufe: 'PLATFORM', rechte: [] }] : [],
+    name: 'Solarhof Dach', rollen: ['kundenadministrator'], umfang: null, ocpp_stufe: 'PLATFORM',
+    rechte: SPRUNG.standorte[0].rechte }] : [],
 });
 const liste = (eintraege: unknown[]) => ({ eintraege, teilansicht: { sichtbar: 1, gesamt: 1 } });
 // Nur der Mandant mit genau einer Anlage hat seinen Standort bekommen (Bestandsübernahme); der mit zweien nicht.

@@ -26,7 +26,11 @@
     "Zeitpunkt (genau 24 h, halboffen). Ab `beendet_am` ist sie beendet (Entzug, Beenden), nach dem",
     "Enddatum abgelaufen. Nur ein Konto im Zustand `aktiv` hat Rechte (§4.8).",
     "Konto `benutzer` gehört zum Kundenbereich; `partner` (Installateur, E7) und `plattform`",
-    "(VoltPilot) erreichen ihn NUR über eine wirksame Unterstützung.",
+    "(VoltPilot) erreichen ihn über eine wirksame Unterstützung — die Plattform-Administration",
+    "außerdem über den Mandantensprung (Zugang `umschalter`, Auftrag vom 29.10.2026): dort trägt",
+    "sie die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher (`gueltig_ab`",
+    "1970-01-01T00:00:00Z) und darf damit, was der Kundenadministrator darf — P-Zeilen weiter über",
+    "voltpilot_betrieb, Vier-Augen und der letzte Kundenadministrator wie bei ihm. Fälle `sprung-*`.",
     "`jetzt` ist der Anfragezeitpunkt des Falls; nennt ein Abnahmefall nur einen Tag, steht 12:00 Uhr.",
     "",
     "═══ FAMILIE darf — darf(benutzer, aktion, ziel) ═══",
@@ -17359,6 +17363,524 @@
         "rolle_noetig": "bearbeiter",
         "umfang_noetig": null,
         "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "sprung-lena-aendert-betriebsweise",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration springt ohne Unterstützung in einen Kundenbereich und trägt dort die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher — dieselbe, die `RechtPruefung` im Zugang `umschalter` baut. Sie bedient, was der Kundenadministrator am Standort bedient: die Reihenfolge „Wer bekommt Sonnenstrom zuerst?“ (Betriebsweise) — statt „Dafür fehlt Ihnen das Recht.“",
+      "annahme": "Lena Voss springt als Plattform-Administration ohne Unterstützung in den Kundenbereich (Mandantensprung); die Referenzdatei führt sie nur mit ihrer VoltPilot-Unterstützung „Ansehen“ an ST-1. Die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher steht in keiner Tabelle — sie entsteht in der Anfrage.",
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "1970-01-01T00:00:00Z",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "betriebsweise.aendern",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-29T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "kundenadministrator",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "sprung-lena-bearbeitet-unternehmen",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration springt ohne Unterstützung in einen Kundenbereich und trägt dort die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher — dieselbe, die `RechtPruefung` im Zugang `umschalter` baut. Auch die Verwaltung auf Unternehmensebene gehört dazu.",
+      "annahme": "Lena Voss springt als Plattform-Administration ohne Unterstützung in den Kundenbereich (Mandantensprung); die Referenzdatei führt sie nur mit ihrer VoltPilot-Unterstützung „Ansehen“ an ST-1. Die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher steht in keiner Tabelle — sie entsteht in der Anfrage.",
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "1970-01-01T00:00:00Z",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "unternehmen.bearbeiten",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-29T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": "kundenadministrator",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "sprung-lena-plattform-weg-bleibt",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration springt ohne Unterstützung in einen Kundenbereich und trägt dort die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher — dieselbe, die `RechtPruefung` im Zugang `umschalter` baut. Was die Matrix mit P führt, bleibt beim VoltPilot-Betrieb und nennt weiter diese Rolle — die gedachte Zuweisung ändert daran nichts.",
+      "annahme": "Lena Voss springt als Plattform-Administration ohne Unterstützung in den Kundenbereich (Mandantensprung); die Referenzdatei führt sie nur mit ihrer VoltPilot-Unterstützung „Ansehen“ an ST-1. Die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher steht in keiner Tabelle — sie entsteht in der Anfrage.",
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "1970-01-01T00:00:00Z",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "plattform.zertifizierung",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-29T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": "voltpilot_betrieb",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "sprung-lena-sieht-alle-standorte",
+      "familie": "sichtbare_standorte",
+      "ableitung": "sichtbare_standorte",
+      "abnahme": null,
+      "why": "Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration springt ohne Unterstützung in einen Kundenbereich und trägt dort die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher — dieselbe, die `RechtPruefung` im Zugang `umschalter` baut. Unternehmensweit heißt: jeder Standort, ohne Teilansicht.",
+      "annahme": "Lena Voss springt als Plattform-Administration ohne Unterstützung in den Kundenbereich (Mandantensprung); die Referenzdatei führt sie nur mit ihrer VoltPilot-Unterstützung „Ansehen“ an ST-1. Die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher steht in keiner Tabelle — sie entsteht in der Anfrage.",
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "1970-01-01T00:00:00Z",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "jetzt": "2026-10-29T10:15:00+01:00"
+      },
+      "expected": {
+        "standorte": [
+          {
+            "kennzeichen": "ST-1",
+            "name": "Werk Ahrenberg",
+            "rollen": [
+              "kundenadministrator"
+            ],
+            "umfang": null
+          },
+          {
+            "kennzeichen": "ST-2",
+            "name": "Werk Lindach",
+            "rollen": [
+              "kundenadministrator"
+            ],
+            "umfang": null
+          }
+        ],
+        "unternehmensweit": true,
+        "kuenftig": [],
+        "text": null,
+        "teilansicht": {
+          "sichtbar": 2,
+          "gesamt": 2,
+          "unternehmensebene": true,
+          "teilansicht": false,
+          "kopfzeile": null,
+          "export_kopfzeile": null,
+          "unternehmensweite_objekte": true
+        }
+      }
+    },
+    {
+      "name": "sprung-lena-ocpp-platform",
+      "familie": "ocpp_stufe",
+      "ableitung": "ocpp_stufe",
+      "abnahme": null,
+      "why": "Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration springt ohne Unterstützung in einen Kundenbereich und trägt dort die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher — dieselbe, die `RechtPruefung` im Zugang `umschalter` baut. Die OCPP-Stufe bleibt die der Plattform (E13), nicht SITE_ADMIN.",
+      "annahme": "Lena Voss springt als Plattform-Administration ohne Unterstützung in den Kundenbereich (Mandantensprung); die Referenzdatei führt sie nur mit ihrer VoltPilot-Unterstützung „Ansehen“ an ST-1. Die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher steht in keiner Tabelle — sie entsteht in der Anfrage.",
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "1970-01-01T00:00:00Z",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "standort": "ST-2",
+        "jetzt": "2026-10-29T10:15:00+01:00"
+      },
+      "expected": {
+        "stufe": "PLATFORM",
+        "sichtbar": true,
+        "rolle": "voltpilot_betrieb"
+      }
+    },
+    {
+      "name": "sprung-lena-vergibt-rollen",
+      "familie": "aenderung",
+      "ableitung": "zuweisung_aendern",
+      "abnahme": null,
+      "why": "Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration springt ohne Unterstützung in einen Kundenbereich und trägt dort die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher — dieselbe, die `RechtPruefung` im Zugang `umschalter` baut. Anders als eine VoltPilot-Unterstützung (`voltpilot-vergibt-keine-rollen-404`) weist sie im Sprung Rollen zu wie der Kundenadministrator.",
+      "annahme": "Lena Voss springt als Plattform-Administration ohne Unterstützung in den Kundenbereich (Mandantensprung); die Referenzdatei führt sie nur mit ihrer VoltPilot-Unterstützung „Ansehen“ an ST-1. Die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher steht in keiner Tabelle — sie entsteht in der Anfrage.",
+      "input": {
+        "handelnder": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "1970-01-01T00:00:00Z",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "betroffener": {
+          "kennung": "CB",
+          "name": "Claudia Berger"
+        },
+        "aenderung": {
+          "art": "zuweisen",
+          "rolle": "leser",
+          "standorte": [
+            "ST-1"
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "jetzt": "2026-10-29T10:15:00+01:00"
+      },
+      "expected": {
+        "erlaubt": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "rolle_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "sprung-lena-entfernt-letzten-kundenadministrator-409",
+      "familie": "aenderung",
+      "ableitung": "zuweisung_aendern",
+      "abnahme": null,
+      "why": "Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration springt ohne Unterstützung in einen Kundenbereich und trägt dort die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher — dieselbe, die `RechtPruefung` im Zugang `umschalter` baut. Der letzte Kundenadministrator bleibt geschützt (W12) — auch gegen die Plattform im Sprung.",
+      "annahme": "Lena Voss springt als Plattform-Administration ohne Unterstützung in den Kundenbereich (Mandantensprung); die Referenzdatei führt sie nur mit ihrer VoltPilot-Unterstützung „Ansehen“ an ST-1. Die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher steht in keiner Tabelle — sie entsteht in der Anfrage.",
+      "input": {
+        "handelnder": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "1970-01-01T00:00:00Z",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "betroffener": {
+          "kennung": "JW",
+          "name": "Jonas Wendlinger"
+        },
+        "aenderung": {
+          "art": "entfernen",
+          "rolle": null,
+          "standorte": null
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "jetzt": "2026-10-29T10:15:00+01:00"
+      },
+      "expected": {
+        "erlaubt": false,
+        "http": 409,
+        "grund": "letzter_kundenadministrator",
+        "rolle_noetig": null,
+        "text": "Kunststoffwerk Ahrenberg GmbH braucht mindestens einen Kundenadministrator. Ernennen Sie zuerst eine weitere Person."
+      }
+    },
+    {
+      "name": "sprung-lena-gibt-eigene-korrektur-bei-vier-augen-nicht-frei",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration springt ohne Unterstützung in einen Kundenbereich und trägt dort die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher — dieselbe, die `RechtPruefung` im Zugang `umschalter` baut. Vier-Augen gilt für sie wie für den Kundenadministrator (E8): die eigene Korrektur gibt eine zweite Person frei.",
+      "annahme": "Lena Voss springt als Plattform-Administration ohne Unterstützung in den Kundenbereich (Mandantensprung); die Referenzdatei führt sie nur mit ihrer VoltPilot-Unterstützung „Ansehen“ an ST-1. Die gedachte Zuweisung Kundenadministrator, unternehmensweit, seit jeher steht in keiner Tabelle — sie entsteht in der Anfrage.",
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "1970-01-01T00:00:00Z",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-29T10:15:00+01:00",
+        "ersteller": "LV",
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "zweite_person_noetig",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Freigabe durch eine zweite Person. Ihr Kundenadministrator: Jonas Wendlinger."
       }
     }
   ]

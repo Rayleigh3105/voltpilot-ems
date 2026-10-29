@@ -3,11 +3,13 @@ package com.voltpilot.api.ueberwachung;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import com.voltpilot.api.zugriff.ZugriffKontextLader;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashMap;
@@ -20,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.core.Authentication;
@@ -44,7 +47,8 @@ import org.testcontainers.utility.DockerImageName;
  *   <li><b>Kein Existenz-Leck:</b> eine unbekannte Regel, die Regel eines anderen Kundenbereichs und eine Regel hinter
  *       dem Standort-Zaun ({@code site_scope} auf {@code ueberwachung}) antworten mit demselben 404.</li>
  *   <li><b>Sichtbar, aber ohne Recht</b> (Leserin am Standort der Regel): 403 {@code recht_fehlt}.</li>
- *   <li><b>Ohne Aufrufer</b> (der Umschalter der Plattform, kein Zugriffs-Kontext): 403, wie Anlegen und Entfernen.</li>
+ *   <li><b>Die Plattform im Mandantensprung</b> (Zugang {@code umschalter}): 200 wie der Kundenadministrator —
+ *       {@code RechtPruefung.aufrufer()} ist dort sein Recht (Auftrag vom 29.10.2026), nicht mehr leer (403).</li>
  * </ul>
  *
  * <p>Die Route gab es vor UEMS AP-03 IP-4 nicht, und ihr Dienst spricht sein Urteil über den Aufrufer selbst
@@ -173,11 +177,41 @@ public class ExterneEmpfaengerApiTest {
     }
 
     @Test
-    void ohneAufruferIst403WieAnlegenUndEntfernen() throws Exception {
+    void imMandantensprungSiehtDiePlattformSieWieDerKundenadministrator() throws Exception {
         MvcResult a = ruf(get(PROBE).header("X-Tenant-Id", tenant.toString()),
                 auth("betrieb-voss", null, "platform-admin"));
 
-        assertThat(a.getResponse().getStatus()).as(koerper(a)).isEqualTo(403);
+        assertThat(a.getResponse().getStatus()).as(koerper(a)).isEqualTo(200);
+        assertThat(JSON.readTree(koerper(a)).get(0).path("email").asText()).isEqualTo("hausmeister@example.test");
+    }
+
+    /**
+     * Der Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration legt eine Überwachung an wie der
+     * Kundenadministrator — über {@code X-Kundenbereich} ohne Unterstützung. Bis dahin war
+     * {@code RechtPruefung.aufrufer()} dort leer, und {@code POST /api/v1/meldungen/regeln} sagte 403, während die
+     * Oberfläche den Knopf zeigte. Die Regel steht unter der Kennung der Plattform-Person.
+     */
+    @Test
+    void imMandantensprungLegtDiePlattformEineUeberwachungAn() throws Exception {
+        UUID st1 = root.queryForObject("SELECT id FROM standort WHERE tenant_id = ? AND kurzzeichen = 'ST-1'",
+                UUID.class, tenant);
+        UUID anlage = root.queryForObject("INSERT INTO site (tenant_id, name, bidding_zone) "
+                + "VALUES (?, 'Halle Sprung', 'DE-LU') RETURNING id", UUID.class, tenant);
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) "
+                + "VALUES (?, ?, ?, '2026-01-01')", tenant, anlage, st1);
+        String anfrage = JSON.writeValueAsString(Map.of("wertart", "box.erreichbar",
+                "bezug", Map.of("anlage", anlage.toString()),
+                "bedingung", Map.of("art", "zustand", "ziel", List.of("nicht_erreichbar")),
+                "schwere", "warnung", "name", "Box im Sprung"));
+
+        MvcResult a = ruf(post("/api/v1/meldungen/regeln")
+                .header(ZugriffKontextLader.KUNDENBEREICH_HEADER, tenant.toString())
+                .contentType(MediaType.APPLICATION_JSON).content(anfrage), auth("betrieb-voss", null, "platform-admin"));
+
+        assertThat(a.getResponse().getStatus()).as(koerper(a)).isEqualTo(201);
+        UUID id = UUID.fromString(JSON.readTree(koerper(a)).path("id").asText());
+        assertThat(root.queryForObject("SELECT angelegt_von FROM ueberwachung WHERE id = ?", String.class, id))
+                .isEqualTo("betrieb-voss");
     }
 
     private static UUID standort(UUID kunde, UUID unternehmen, String name, String kurzzeichen) {

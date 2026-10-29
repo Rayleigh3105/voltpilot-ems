@@ -92,3 +92,33 @@ test('Not-Aus: bei abgeschaltetem Sprung endet er auf der Karte mit Grund und We
   await expect(page.getByRole('button', { name: 'Details zu Musterwerk Nord GmbH' })).toBeVisible();
   expect(await page.evaluate(() => sessionStorage.getItem('vp-tenant-override'))).toBeNull();
 });
+
+/**
+ * Auftrag vom 29.10.2026 („als Admin in der Mandantensicht alles können“): im Sprung bedient die Plattform-Administration,
+ * was der Kundenadministrator bedient. Bis dahin lieferte `/me` ihr dort nur die Rechte einer VoltPilot-Unterstützung,
+ * und die Karte „Wer bekommt Sonnenstrom zuerst?“ sagte „Dafür fehlt Ihnen das Recht.“ statt „Ändern“ (ebenso fünf
+ * Stellen unter Laden und fünf unter Regeln). Wirt: `steuerung.html?sprung=1` - Plattform-Token, gemerkter Mandant und
+ * `/me` aus dem Vertragsfall `sprung-*` (Kundenadministrator, unternehmensweit, Zugang „umschalter“).
+ */
+test('im Sprung bedient die Plattform die Karte „Wer bekommt Sonnenstrom zuerst?“ wie der Kundenadministrator', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-29T11:10:00Z'));
+  const satz = page.getByText('Dafür fehlt Ihnen das Recht', { exact: false });
+  await page.goto('/e2e/steuerung.html?sprung=1#/anlage/help-site/steuerung');
+  const karte = page.getByRole('region', { name: 'Geräte und Reihenfolge' });
+  await expect(karte.getByRole('heading', { name: 'Wer bekommt Sonnenstrom zuerst?' })).toBeVisible();
+  expect(await page.evaluate(() => sessionStorage.getItem('vp-tenant-override'))).toBe('help-tenant');
+  await expect(satz).toHaveCount(0);
+
+  await karte.getByRole('button', { name: /Ändern/ }).click();
+  await page.getByRole('button', { name: 'Poolpumpe nach oben' }).click();
+  await expect(page.getByText(/Poolpumpe Platz 4 statt 5/)).toBeVisible();
+  await page.getByRole('button', { name: 'Reihenfolge speichern' }).click();
+  await expect(page.getByRole('status')).toContainText('Reihenfolge gespeichert');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+
+  for (const reiter of ['laden', 'regeln']) {
+    await page.goto(`/e2e/steuerung.html?sprung=1#/anlage/help-site/${reiter}`);
+    await expect(page.getByRole('tablist', { name: 'Reiter der Steuerung' })).toBeVisible();
+    await expect(satz, reiter).toHaveCount(0);
+  }
+});

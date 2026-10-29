@@ -25,9 +25,9 @@ import org.springframework.web.bind.annotation.RestController;
  * Abruf protokolliert ({@link Gesamtabzug}).
  *
  * <p><b>Wer:</b> nur der Kundenadministrator — dieselbe Regel, mit der {@link KundenbereichEndeFilter} ihn im Zustand
- * „beendet" noch lesen lässt (Kundenkonto mit wirksamer Zuweisung oder Bestandskonto E12). Erreichbar im Zustand
- * „aktiv" und „beendet" — dort ist er der Zweck. Jede andere Person, Unterstützer, Einsicht und der Umschalter der
- * Plattform bekommen 403 {@code recht_fehlt}.
+ * „beendet" noch lesen lässt (Kundenkonto mit wirksamer Zuweisung oder Bestandskonto E12, und die Plattform im
+ * Mandantensprung, die dort als Kundenadministrator handelt). Erreichbar im Zustand „aktiv" und „beendet" — dort ist
+ * er der Zweck. Jede andere Person, Unterstützer und Einsicht bekommen 403 {@code recht_fehlt}.
  */
 @RestController
 @RequestMapping("/api/v1/unternehmen")

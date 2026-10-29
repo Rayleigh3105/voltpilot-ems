@@ -221,7 +221,7 @@ public class KorrekturPortalService {
     public Detail erfassen(String kennzeichen, Eingabe eingabe, ProtokollAkteur wer) {
         Vorbereitet v = vorbereiten(kennzeichen, eingabe);
         rechte.pruefen(KorrekturRechte.ERSATZWERT_ERFASSEN, RechtZiel.STANDORT, v.ort().id(), KorrekturPortalService::nichtGefunden);
-        // Gleiche Matrix auch ohne Zugriff-Kontext (Alt-Kunden und Plattform-Umschalter).
+        // Gleiche Matrix auch ohne Zugriff-Kontext (Alt-Kunden); im Mandantensprung als Kundenadministrator.
         var d = RechteAbleitung.darf(KorrekturRechte.MATRIX, KorrekturRechte.aufrufer(wer),
                 new RechteAbleitung.Kundenbereich("Kundenbereich", List.of(new RechteAbleitung.Standort(v.ort().id().toString(), v.ort().name())), List.of()),
                 KorrekturRechte.ERSATZWERT_ERFASSEN, RechteAbleitung.Ziel.standort(v.ort().id().toString()), Instant.now());

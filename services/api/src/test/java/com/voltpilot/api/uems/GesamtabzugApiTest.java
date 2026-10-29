@@ -58,8 +58,9 @@ import org.testcontainers.utility.DockerImageName;
  *       {@code pruefsummen.sha256} nennt dieselben und die des Manifests; ein Berichtsstand trägt als Datei die
  *       gespeicherte Prüfsumme; nichts aus einem anderen Kundenbereich; der
  *       Abruf steht abgeschlossen im Protokoll mit der SHA-256 des Manifests.</li>
- *   <li><b>Unterstützer und Einsicht 403</b> — ebenso Leserin, Energiemanager und der Umschalter der Plattform; keine
- *       Protokollzeile.</li>
+ *   <li><b>Unterstützer und Einsicht 403</b> — ebenso Leserin und Energiemanager; keine Protokollzeile. Die Plattform
+ *       im Mandantensprung lädt ihn wie der Kundenadministrator, protokolliert unter ihrer Kennung (Auftrag vom
+ *       29.10.2026).</li>
  *   <li><b>Zustand „beendet"</b> — der Filter aus IP-16 lässt den Abzug für den Kundenadministrator durch, alle
  *       anderen bekommen dort seine 409.</li>
  *   <li><b>Großer Bereich ohne Speicher-Spitze</b> — eine Million Messzeilen gehen durch den Strom, während der Cursor
@@ -246,7 +247,7 @@ public class GesamtabzugApiTest {
         assertThat(protokoll.get(0).get("abgeschlossen_am")).isNotNull();
     }
 
-    /** NW-5: Unterstützer und Einsicht 403 — ebenso jede andere Rolle und der Umschalter; nichts wird protokolliert. */
+    /** NW-5: Unterstützer und Einsicht 403 — ebenso jede andere Rolle; nichts wird protokolliert. */
     @Test
     void unterstuetzerEinsichtUndJedeAndereRolleBekommen403() throws Exception {
         String leserin = "berger-" + nr;
@@ -269,8 +270,6 @@ public class GesamtabzugApiTest {
         antworten.put("Einsicht", ruf(get(ABZUG), konto(einsicht)));
         antworten.put("Leserin", ruf(get(ABZUG), konto(leserin)));
         antworten.put("Energiemanager", ruf(get(ABZUG), konto(energiemanager)));
-        antworten.put("Umschalter der Plattform", ruf(get(ABZUG).header("X-Tenant-Id", tenant.toString()),
-                auth("betrieb-voss", null, "platform-admin")));
         for (Map.Entry<String, MvcResult> a : antworten.entrySet()) {
             String koerper = a.getValue().getResponse().getContentAsString(StandardCharsets.UTF_8);
             assertThat(a.getValue().getResponse().getStatus()).as(a.getKey() + ": " + koerper).isEqualTo(403);
@@ -281,6 +280,24 @@ public class GesamtabzugApiTest {
         }
         assertThat(root.queryForObject("SELECT count(*) FROM kundenbereich_abzug WHERE tenant_id = ?", Integer.class,
                 tenant)).as("eine Ablehnung schreibt kein Protokoll").isZero();
+    }
+
+    /**
+     * Der Mandantensprung (Auftrag vom 29.10.2026): die Plattform-Administration lädt den Gesamtabzug wie der
+     * Kundenadministrator — über {@code X-Kundenbereich} ohne Unterstützung wie über {@code X-Tenant-Id}. Der Abruf
+     * steht unter IHRER Kennung im Protokoll, nicht unter der eines Kundenkontos.
+     */
+    @Test
+    void imMandantensprungLaedtDiePlattformDenAbzugUnterIhrerKennung() throws Exception {
+        MvcResult kopf = ruf(get(ABZUG).header(ZugriffKontextLader.KUNDENBEREICH_HEADER, tenant.toString()),
+                auth("betrieb-voss", null, "platform-admin"));
+        assertThat(kopf.getResponse().getStatus()).as(kopf.getResponse().getContentAsString()).isEqualTo(200);
+        assertThat(entpacken(kopf.getResponse().getContentAsByteArray())).containsKey("manifest.json");
+        MvcResult umschalter = ruf(get(ABZUG).header("X-Tenant-Id", tenant.toString()),
+                auth("betrieb-voss", null, "platform-admin"));
+        assertThat(umschalter.getResponse().getStatus()).isEqualTo(200);
+        assertThat(root.queryForList("SELECT akteur_sub FROM kundenbereich_abzug WHERE tenant_id = ? AND "
+                + "abgeschlossen_am IS NOT NULL", String.class, tenant)).containsExactly("betrieb-voss", "betrieb-voss");
     }
 
     /** NW-5: im Zustand „beendet" lässt der Filter aus IP-16 den Abzug für den Kundenadministrator durch — nur ihn. */

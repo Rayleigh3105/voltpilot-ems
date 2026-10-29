@@ -205,6 +205,16 @@ class SelbstauskunftApiTest {
             JsonNode me = me(welt(in.path("kundenbereich")), in);
             personen.add(in.path("benutzer").path("kennung").asText());
             geprueft++;
+            if (!imSprung(in.path("benutzer")) && "umschalter".equals(me.path("zugang").asText())) {
+                // Der Vertrag rechnet eine VoltPilot-Unterstützung, die (noch) nicht wirkt — ohne Sprung nichts. Bei
+                // offenem Umschalter (Profil local) nimmt die API die Plattform trotzdem an: als Mandantensprung mit
+                // den Rechten des Kundenadministrators (Fälle sprung-*); den geschlossenen Weg prüft
+                // UnterstuetzungApiTest (Umschalter AUS).
+                if (!texte(me.path("rollen")).equals(List.of("kundenadministrator"))) {
+                    fehler.add(fall + ": im Sprung nicht Kundenadministrator: " + me.path("rollen"));
+                }
+                continue;
+            }
 
             JsonNode standortZiel = in.path("ziel").path("standort");
             if (standortZiel.isNull()) {
@@ -334,8 +344,15 @@ class SelbstauskunftApiTest {
         }
     }
 
+    /**
+     * Der Mandantensprung (Auftrag vom 29.10.2026, „als Admin in der Mandantensicht alles können"): die Plattform am
+     * Umschalter ist Kundenadministrator, unternehmensweit — sie hat jedes Recht, das Jonas als Kundenadministrator im
+     * selben Kundenbereich hat, im Unternehmen und an jedem Standort, und dazu die Zeilen mit P. Bis dahin war sie
+     * hier eine VoltPilot-Unterstützung, und die Karte „Wer bekommt Sonnenstrom zuerst?" zeigte „Dafür fehlt Ihnen das
+     * Recht." statt „Ändern" ({@code betriebsweise.aendern} fehlte).
+     */
     @Test
-    void diePlattformAmUmschalterSiehtDenKundenbereichWieHeute() throws Exception {
+    void diePlattformImSprungHatJedesRechtDesKundenadministrators() throws Exception {
         Welt w = welt(ahrenberg());
         kundenadministratoren(w, ahrenberg(), null);
         Map<String, Object> claims = claims("sub-lena", "Lena Voss", "plattform", null);
@@ -349,8 +366,27 @@ class SelbstauskunftApiTest {
         assertThat(me.path("zugang").asText()).isEqualTo("umschalter");
         assertThat(me.path("unternehmensweit").asBoolean()).isTrue();
         assertThat(texte(me.path("standorte"), "kennzeichen")).isEqualTo(new ArrayList<>(w.standorte().keySet()));
-        assertThat(texte(me.path("rollen"))).containsExactly("unterstuetzer");
+        assertThat(texte(me.path("rollen"))).containsExactly("kundenadministrator");
         assertThat(me.path("unterstuetzungen").path("eigene")).isEmpty();
+        assertThat(texte(me.path("kundenadministratoren"), "name")).as("der Weg nennt weiter die echten")
+                .containsExactly("Jonas Wendlinger");
+
+        JsonNode jonas = ruf(w.tenant(), "sub-JW", "Jonas Wendlinger", "benutzer", null);
+        assertThat(texte(jonas.path("rollen"))).containsExactly("kundenadministrator");
+        assertThat(texte(me.path("unternehmen_rechte"))).containsAll(texte(jonas.path("unternehmen_rechte")));
+        for (JsonNode s : jonas.path("standorte")) {
+            String kz = s.path("kennzeichen").asText();
+            assertThat(texte(standort(me, kz).path("rechte"))).as(kz).containsAll(texte(s.path("rechte")))
+                    .contains("betriebsweise.aendern", "handeingriff.setzen", "freigabe.erteilen");
+            assertThat(standort(me, kz).path("ocpp_stufe").asText()).as(kz).isEqualTo("PLATFORM");
+        }
+        List<String> plattform = new ArrayList<>();
+        matrix.path("aktionen").forEach(a -> {
+            if ("P".equals(a.path("zellen").path("voltpilot_betrieb").asText())) {
+                plattform.add(a.path("kennung").asText());
+            }
+        });
+        assertThat(texte(me.path("unternehmen_rechte"))).containsAll(plattform);
     }
 
     // ------------------------------------------------------------------ Welt
@@ -371,6 +407,10 @@ class SelbstauskunftApiTest {
         assertThat(me.path("kundenbereich").path("id").asText()).isEqualTo(w.tenant().toString());
         assertThat(me.path("unternehmensweit").asBoolean()).isTrue();
         assertThat(texte(me.path("standorte"), "kennzeichen")).isEqualTo(new ArrayList<>(w.standorte().keySet()));
+        assertThat(texte(me.path("rollen"))).containsExactly("kundenadministrator");
+        for (JsonNode s : me.path("standorte")) {
+            assertThat(texte(s.path("rechte"))).contains("betriebsweise.aendern");
+        }
 
         UUID ohneStandort = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class,
                 "Ohne Standort #" + NR.incrementAndGet());
@@ -411,19 +451,35 @@ class SelbstauskunftApiTest {
         return new Welt(t, u, standorte);
     }
 
-    /** Person und Kundenadministratoren des Falls, Uhr auf den Stichtag, dann {@code /me}. */
+    /**
+     * Person und Kundenadministratoren des Falls, Uhr auf den Stichtag, dann {@code /me}. Der Mandantensprung (Fälle
+     * {@code sprung-*}) legt keine Zeile an: seine gedachte Zuweisung entsteht in der Anfrage.
+     */
     private JsonNode me(Welt w, JsonNode in) throws Exception {
         JsonNode b = in.path("benutzer");
         String kennung = b.path("kennung").asText();
         String konto = b.path("konto").asText();
         spiegel(w, "sub-" + kennung, b.path("name").asText(), konto, b.path("zustand").asText());
-        for (JsonNode z : b.path("zuweisungen")) {
+        for (JsonNode z : imSprung(b) ? MAPPER.createArrayNode() : b.path("zuweisungen")) {
             zuweisung(w, "sub-" + kennung, z);
         }
         kundenadministratoren(w, in.path("kundenbereich"), kennung);
         uhr(in.path("jetzt"));
         return ruf(w.tenant(), "sub-" + kennung, b.path("name").asText(), konto,
                 "benutzer".equals(konto) ? null : w.tenant());
+    }
+
+    /** Ein Plattform-Konto ohne Unterstützung im Fall: die Plattform-Administration im Mandantensprung. */
+    private static boolean imSprung(JsonNode benutzer) {
+        if (!"plattform".equals(benutzer.path("konto").asText())) {
+            return false;
+        }
+        for (JsonNode z : benutzer.path("zuweisungen")) {
+            if ("unterstuetzer".equals(z.path("rolle").asText())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void uhr(JsonNode jetzt) {

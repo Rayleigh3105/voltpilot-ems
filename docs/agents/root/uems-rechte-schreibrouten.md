@@ -32,8 +32,9 @@ Code: `zugriff/Recht`, `zugriff/RechtZiel`, `zugriff/RechtInterceptor` (über `z
   Körper) im Controller über `RechtPruefung.pruefen`/`pruefenGeltung`.
 - **Körper-Ziele:** Ort verschieben prüft den neuen Elternknoten (`pruefenStandortOderOrt`); „gültig ab" vor heute
   braucht `aenderung.rueckwirkend` (`RechtPruefung.rueckwirkend`, Ort anlegen/Fläche/verschieben).
-- **Nicht geprüft, gezählt:** ohne Zugriff-Kontext (Token ohne Kontoart, OIDC aus) und die Plattform am Umschalter
-  `X-Tenant-Id` (W3, bis IP-8). Zähler `voltpilot_recht_total{ergebnis=erlaubt|recht_fehlt|ausserhalb|unsichtbar|
+- **Nicht geprüft, gezählt:** ohne Zugriff-Kontext (Token ohne Kontoart, OIDC aus) und die Plattform im Mandantensprung
+  (Zugang `umschalter`, W3) — sie darf dort jede Aktion des Kundenadministrators und P (`RechtPruefung.SPRUNGRECHT`,
+  29.10.2026). Zähler `voltpilot_recht_total{ergebnis=erlaubt|recht_fehlt|ausserhalb|unsichtbar|
   ohne_kontext|umschalter}`, Anfrage-Attribut `RechtInterceptor.URTEIL`.
 
 ## ⚠ Fallen für die Folgepakete
@@ -44,8 +45,9 @@ Code: `zugriff/Recht`, `zugriff/RechtZiel`, `zugriff/RechtInterceptor` (über `z
   (Simulation und Steuerungs-Vorschau = `messwerte.ansehen`, Nutzungsprofil und Vorschlags-Gedächtnis =
   `betriebsweise.aendern`, Preisblatt = `anlage.verwalten`) tragen ihr Recht. Zwei Rechte in einem Aufruf lösen
   `DIENST` plus genaue Prüfung im Handler.
-- ⚠ **IP-8:** der Umschalter wird ungeprüft durchgereicht (`Ergebnis.UMSCHALTER`). Stellt IP-8 ihn ab, fällt der Zweig
-  in `RechtPruefung.ungeprueft` weg.
+- ⚠ **Umschalter:** er wird ungeprüft durchgereicht (`Ergebnis.UMSCHALTER`); wer selbst urteilt, bekommt über
+  `RechtPruefung.aufrufer()` den Kundenadministrator des Sprungs (`uems-zugriff-kontext.md`). Der Not-Aus
+  `umschalter-enabled=false` weist die Plattform ohne Unterstützung schon im Filter ab.
 - ⚠ **Neue 404 im Controller:** Wer an einer `MESSSTELLE`-, `BEZUGSGROESSE`- oder `GERAET`-Route die 404 für eine
   unbekannte Kennung ändert, zieht `RechtPruefung.nichtGefunden` nach. `RechtMatrixApiTest.ausserhalbIst…` vergleicht
   beide Antworten.

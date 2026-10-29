@@ -8,11 +8,12 @@
  * `e2e/steuerung.tsx` importiert; nie im Produktionsbündel.
  */
 import { api } from '../src/api';
+import { keycloak } from '../src/auth';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { buildGuidedFlow } from '../src/flows/guidedBuilder';
 import { installHelpFixtures, site } from './help-fixtures';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
-import { rechteSeed } from '../src/test/rollenFixtures';
+import { rechteSeed, SPRUNG_FALL } from '../src/test/rollenFixtures';
 import D from './steuerung-daten.json';
 
 /** Die Uhr der Aufnahmen: 13:10 Uhr in Berlin. */
@@ -415,11 +416,27 @@ export function installSteuerungFixtures() {
     });
   }
 
+  // Mandantensprung (Auftrag vom 29.10.2026): `?sprung=1` zeigt dieselbe Anlage der Plattform-Administration, die ohne
+  // Unterstützung in den Kundenbereich gesprungen ist - Plattform-Token, gemerkter Mandant und `/me` aus dem
+  // Vertragsfall `sprung-*` (Kundenadministrator, unternehmensweit, Zugang „umschalter“), wie die API ihn liefert.
+  const sprung = new URLSearchParams(location.search).get('sprung') === '1';
+  const MANDANT = { id: 'help-tenant', name: 'Beispielbetrieb', segment: 'B2C', plan: 'mvp', betriebsart: null,
+    betriebsartEffective: null, createdAt: '2026-03-12T08:00:00Z' };
+  if (sprung) {
+    Object.assign(keycloak, { tokenParsed: { name: 'Lena Voss', email: 'support-voss@voltpilot.local',
+      realm_access: { roles: ['platform-admin'] } } });
+    sessionStorage.setItem('vp-tenant-override', MANDANT.id);
+    Object.assign(api, {
+      selbstauskunft: result({ ...rechteSeed('LV', SPRUNG_FALL).me, kundenbereich: { id: MANDANT.id, name: MANDANT.name, beendet: null } }),
+    });
+  }
+
   // Die Regeln (`/flows`) laufen über fetch - dieselbe Abkürzung wie in den Hilfe-Beispieldaten.
   const vorher = window.fetch;
   window.fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
     const json = (v: unknown) => new Response(JSON.stringify(v), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (sprung && url.pathname === '/api/v1/admin/tenants') return json([MANDANT]);
     if (url.pathname.endsWith(`/sites/${SITE}/flows`) && (!init?.method || init.method === 'GET')) return json(flows);
     if (/\/flows\/[^/]+\/versions\/\d+\/activate$/.test(url.pathname)) return json({ activated: true, message: 'aktiv', published: true, lifecycle: 'active' });
     if (url.pathname.endsWith(`/sites/${SITE}/flows`) && init?.method === 'POST') {

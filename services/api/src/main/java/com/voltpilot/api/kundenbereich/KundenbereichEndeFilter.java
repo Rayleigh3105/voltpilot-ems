@@ -3,7 +3,6 @@ package com.voltpilot.api.kundenbereich;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import com.voltpilot.api.tenant.TenantContext;
-import com.voltpilot.api.uems.RechteAbleitung.Rolle;
 import com.voltpilot.api.zugriff.ZugriffContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -32,8 +31,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * <ul>
  *   <li>jeder Schreibweg (alles außer GET/HEAD/OPTIONS) → {@code 409 kundenbereich_beendet};</li>
  *   <li>Lesen nur für den Kundenadministrator (Kundenkonto mit wirksamer Zuweisung „Kundenadministrator" oder
- *       Bestandskonto E12) — jede andere Person, Unterstützung und Umschalter bekommt dieselbe 409 („nur der
- *       Kundenadministrator meldet sich noch an", RF-08);</li>
+ *       Bestandskonto E12, und die Plattform im Mandantensprung, die dort als Kundenadministrator handelt — Auftrag
+ *       vom 29.10.2026) — jede andere Person und Unterstützung bekommt dieselbe 409 („nur der Kundenadministrator
+ *       meldet sich noch an", RF-08);</li>
  *   <li>ausgenommen {@code /api/v1/me}: jede Person erfährt dort ({@code kundenbereich.beendet}), was los ist.</li>
  * </ul>
  *
@@ -123,10 +123,12 @@ public class KundenbereichEndeFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    /** Der Kundenadministrator liest im beendeten Kundenbereich weiter — nur sein eigenes Konto, nie ein Dritter. */
+    /**
+     * Der Kundenadministrator liest im beendeten Kundenbereich weiter — sein eigenes Konto oder die Plattform im
+     * Mandantensprung ({@link ZugriffContext.Zugriff#kundenadministrator}), nie eine Unterstützung.
+     */
     public static boolean kundenadministrator(ZugriffContext.Zugriff z) {
-        return z != null && z.zugang() == ZugriffContext.Zugang.KONTO
-                && (z.bestandskonto() || z.zuweisungen().stream().anyMatch(x -> x.rolle() == Rolle.KUNDENADMINISTRATOR));
+        return z != null && z.kundenadministrator();
     }
 
     private static boolean plattform() {

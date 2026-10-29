@@ -16,8 +16,12 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 | Bedienberechtigt | `bedienberechtigt` | BD | je Standort | Daten: nur sehen · Steuerung ✔ (Betrieb, je Standort) · Verwaltung ✘ |
 | Leser | `leser` | LE | je Standort | Daten: sehen (je Standort) · Steuerung ✘ · Verwaltung ✘ |
 | Unterstützer | `unterstuetzer` | US | je Standort · befristet | je Umfang: Daten sehen/pflegen · Steuerung Betrieb · nie Rahmen, nie Verwaltung · immer befristet + Banner + Protokoll |
-| VoltPilot-Betrieb | `voltpilot_betrieb` | VP | Plattform | Plattform-Betrieb |
+| VoltPilot-Betrieb | `voltpilot_betrieb` | VP | Plattform | Plattform-Betrieb · im Mandantensprung jede Kundenaktion wie Kundenadministrator (siehe „Mandantensprung“) |
 | Einsicht | `einsicht` | EI | Unternehmen | Daten: nur sehen (alle Standorte) · Steuerung ✘ · Verwaltung ✘ · nie eine Freigabe, nie ein Eintrag, kein Export von Messwerten; das Verzeichnis als CSV ja |
+
+### Mandantensprung
+
+Die Plattform-Administration (Realm-Rolle `platform-admin`) springt ohne Unterstützung in einen Kundenbereich (Zugang `umschalter`, Auftrag vom 29.10.2026). Dort trägt sie die gedachte Zuweisung Kundenadministrator, unternehmensweit: sie darf jede Aktion der Spalte Kundenadministrator an jedem Standort und dazu die Zeilen mit P — in der Selbstauskunft `/me` wie in jeder Prüfung des API. Vier-Augen und der Schutz des letzten Kundenadministrators gelten für sie wie für ihn. Im Protokoll steht weiter ihre eigene Kennung mit der Rolle VoltPilot-Betrieb. Die Spalte VoltPilot-Betrieb gilt außerhalb des Sprungs (Plattform-Routen `/api/v1/admin/**`, VoltPilot-Unterstützung, Notfall-Zugriff). Wie der Sprung rechnet, pinnen die Fälle `sprung-*` in [`rechte-vectors.json`](./rechte-vectors.json).
 
 ## Unterstützer-Umfang (E9)
 

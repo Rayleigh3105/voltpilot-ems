@@ -65,8 +65,9 @@ verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, L
 
 `GET /api/v1/unternehmen/abzug` (`UnternehmenAbzugController` → `kundenbereich/Gesamtabzug`), BT4, RF-08 Schritt 3.
 
-- **Wer:** nur `KundenbereichEndeFilter.kundenadministrator(...)` — sonst 403 `recht_fehlt`
-  (`rolle_noetig: kundenadministrator`), auch Unterstützer, Einsicht, Umschalter. Im Zustand „beendet“ lässt der
+- **Wer:** nur `KundenbereichEndeFilter.kundenadministrator(...)` (= `Zugriff#kundenadministrator`, seit 29.10.2026
+  auch die Plattform im Mandantensprung) — sonst 403 `recht_fehlt` (`rolle_noetig: kundenadministrator`), auch
+  Unterstützer und Einsicht. Im Zustand „beendet“ lässt der
   Filter ihn als GET durch; alle anderen bekommen dort die 409 des Filters. Recht-Kommentar: „keine eigene Kennung“
   (keine Matrix-Zeile). Portal-Zwilling `rollen.ts#gesamtabzugLaden`.
 - **Inhalt:** `staende/` (Berichtsstand = gespeicherter Text, SHA-256 = gespeicherte Prüfsumme ohne `sha256:`),

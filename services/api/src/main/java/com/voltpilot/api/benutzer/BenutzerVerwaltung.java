@@ -78,11 +78,12 @@ public class BenutzerVerwaltung {
                         rs.getString("actor_name"), rs.getString("grund")), TenantContext.get(), von.atOffset(ZoneOffset.UTC), bis.atOffset(ZoneOffset.UTC));
     }
 
+    /** Kundenadministrator (auch die Plattform im Mandantensprung) und Energiemanager mit eigenem Konto. */
     private void lesen() {
         var z = ZugriffContext.get();
-        if (z == null || z.konto() != Konto.BENUTZER || z.zugang() != ZugriffContext.Zugang.KONTO
-                || !(z.bestandskonto() || z.zuweisungen().stream().anyMatch(a -> a.rolle() == Rolle.KUNDENADMINISTRATOR
-                        || a.rolle() == Rolle.ENERGIEMANAGER)))
+        if (z == null || !(z.kundenadministrator() || z.konto() == Konto.BENUTZER
+                && z.zugang() == ZugriffContext.Zugang.KONTO
+                && z.zuweisungen().stream().anyMatch(a -> a.rolle() == Rolle.ENERGIEMANAGER)))
             throw new BenutzerFehler(403, "recht_fehlt", "Die Benutzerliste sehen Kundenadministratoren und Energiemanager.");
     }
     private void schreiben() {

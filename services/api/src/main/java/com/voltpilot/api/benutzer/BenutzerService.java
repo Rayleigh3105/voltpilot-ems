@@ -10,7 +10,6 @@ import com.voltpilot.api.uems.RechteAbleitung.KontoZustand;
 import com.voltpilot.api.uems.RechteAbleitung.Rolle;
 import com.voltpilot.api.zugriff.ZugriffAenderung;
 import com.voltpilot.api.zugriff.ZugriffContext;
-import com.voltpilot.api.zugriff.ZugriffContext.Zugang;
 import com.voltpilot.api.zugriff.ZugriffRepository;
 import com.voltpilot.api.zugriff.ZugriffRepository.BenutzerSpiegel;
 import com.voltpilot.api.zugriff.ZugriffRepository.NeueZuweisung;
@@ -141,10 +140,10 @@ public class BenutzerService {
         });
     }
 
+    /** Das Kundenkonto als Kundenadministrator oder die Plattform im Mandantensprung ({@code Zugriff#kundenadministrator}). */
     private static void kundenadministrator() {
         var z = ZugriffContext.get();
-        if (z == null || z.konto() != Konto.BENUTZER || z.zugang() != Zugang.KONTO
-                || !(z.bestandskonto() || z.zuweisungen().stream().anyMatch(x -> x.rolle() == Rolle.KUNDENADMINISTRATOR))) {
+        if (z == null || !z.kundenadministrator()) {
             throw new BenutzerFehler(403, "recht_fehlt", "Nur der Kundenadministrator kann Benutzer anlegen oder ein Startpasswort neu vergeben.");
         }
     }

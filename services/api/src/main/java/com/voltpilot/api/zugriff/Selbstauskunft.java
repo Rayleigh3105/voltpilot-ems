@@ -2,7 +2,6 @@ package com.voltpilot.api.zugriff;
 
 import com.voltpilot.api.kundenbereich.KundenbereichEndeFilter;
 import com.voltpilot.api.kundenbereich.KundenbereichEndeRepository;
-import com.voltpilot.api.uems.KorrekturRechte;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.RechteAbleitung;
 import com.voltpilot.api.uems.RechteAbleitung.Art;
@@ -57,8 +56,9 @@ import org.springframework.transaction.annotation.Transactional;
  *       {@link RechtPruefung#BESTANDSRECHT}, das jede Route prüft. Sonst sähe ein Bestandskunde „Kein Standort
  *       zugewiesen", solange der Start-Lauf Keycloak nicht erreicht (Befund B2), obwohl jede Route ihn bedient.</li>
  *   <li>Partner/Plattform über {@code X-Kundenbereich}: nur die Unterstützungen, die ihn hineinlassen.</li>
- *   <li>Plattform am Umschalter ({@code X-Tenant-Id}, bis IP-8): wie heute {@link KorrekturRechte#benutzer} —
- *       VoltPilot-Unterstützung mandantenweit.</li>
+ *   <li>Plattform im Mandantensprung (Zugang {@code umschalter}): Kundenadministrator, unternehmensweit — dasselbe
+ *       {@link RechtPruefung#SPRUNGRECHT}, das jede Prüfung im Sprung annimmt. Sonst sähe die Plattform-Administration
+ *       „Dafür fehlt Ihnen das Recht.", wo das API sie bedient (Auftrag vom 29.10.2026).</li>
  * </ul>
  * Name und Zustand stehen im Spiegel ({@code benutzer}); fehlt er, gilt der Name aus dem Token und „aktiv" (das
  * Token beweist die Anmeldung). Gewährte Unterstützungen sieht ein Kundenkonto nur an seinen sichtbaren Standorten;
@@ -84,8 +84,8 @@ public class Selbstauskunft {
 
     /**
      * Das Vertragsende des angenommenen Kundenbereichs (UEMS AP-20 IP-16) — {@code null}, solange er aktiv ist. Der
-     * Satz hängt an der Person: der Kundenadministrator liest weiter, jede andere Person nicht mehr
-     * ({@link KundenbereichEndeFilter#kundenadministrator}).
+     * Satz hängt an der Person: der Kundenadministrator (auch die Plattform im Sprung) liest weiter, jede andere Person
+     * nicht mehr ({@link KundenbereichEndeFilter#kundenadministrator}).
      */
     private SelbstauskunftDto.Beendet beendet(Zugriff z) {
         KundenbereichEndeRepository repo = ende.getIfAvailable();
@@ -174,8 +174,8 @@ public class Selbstauskunft {
     }
 
     private Benutzer benutzer(Zugriff z, String sub, String tokenName, Konto konto) {
-        if (z.zugang() == Zugang.UMSCHALTER) {
-            return KorrekturRechte.benutzer(ProtokollAkteur.fuer(sub, tokenName, true));
+        if (z.imSprung()) {
+            return RechtPruefung.imSprung(sub, tokenName == null ? sub : tokenName);
         }
         Optional<BenutzerSpiegel> spiegel = zugriffe.spiegel(sub);
         String name = spiegel.map(BenutzerSpiegel::anzeigename).orElse(tokenName);

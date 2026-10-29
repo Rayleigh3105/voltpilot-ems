@@ -17,7 +17,9 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
   - `unterstuetzung`: Partner oder Plattform mit `X-Kundenbereich`. Der Kopf wird NUR gegen eine wirksame
     Unterstützung in genau diesem Kundenbereich angenommen (Partner: `installateur`; Plattform: `voltpilot` oder
     `notfall`). Dann setzt der Filter den `TenantContext`.
-  - `umschalter`: die Plattform ohne `X-Kundenbereich` mit `X-Tenant-Id`, wie vor IP-4. Die Umstellung ist IP-8 (W3).
+  - `umschalter`: die Plattform ohne `X-Kundenbereich` mit `X-Tenant-Id` — oder mit `X-Kundenbereich` ohne wirksame
+    Unterstützung, solange `umschalter-enabled` offen ist (W3, IP-8). Das ist der **Mandantensprung**: seit 29.10.2026
+    handelt die Plattform dort als Kundenadministrator, unternehmensweit (`RechtPruefung.SPRUNGRECHT`, siehe unten).
 - **Abgewiesen** werden ein Partner ohne Kopf und Partner oder Plattform mit einem Kopf ohne wirksame Unterstützung.
   Die Antwort ist 404 per `sendError` auf JEDER Kundenroute, auch für Methoden, die es dort nicht gibt. Nur
   `/api/v1/me` antwortet 200 ohne Kundenbereich.
@@ -60,9 +62,21 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
   `@Recht` nur, was sein Umfang erlaubt** (`uems-rechte-schreibrouten.md`). Die Steuerungs-Schreibpfade bindet erst
   IP-7. Heute legt keine Route eine Unterstützung an (IP-8). Wer IP-8 vor IP-7 ausliefert, öffnet genau das.
 - ⚠ **Seit IP-6 umgestellt:** `KennzahlAufrufer` (Kennzahlen, Berichte) und `KorrekturRechte.aufrufer` lesen die
-  Zuweisungen aus dem Kontext. Nur ohne Kontext und am Umschalter gilt weiter `KorrekturRechte.benutzer` (Kundenkonto =
-  Kundenadministrator). `ProtokollAkteur` legt das Protokoll-Wort weiter fest (IP-7). Wer durchsetzt, liest
-  `ZugriffContext.get()`, nie einen Anfragekörper.
+  Zuweisungen aus dem Kontext. Nur ohne Kontext gilt weiter `KorrekturRechte.benutzer` (Kundenkonto =
+  Kundenadministrator, Plattform = VoltPilot-Unterstützung). `ProtokollAkteur` legt das Protokoll-Wort weiter fest
+  (IP-7). Wer durchsetzt, liest `ZugriffContext.get()`, nie einen Anfragekörper.
+- ⚠ **Mandantensprung (Auftrag vom 29.10.2026, „als Admin in der Mandantensicht alles können“):** im Zugang `umschalter`
+  ist der Aufrufer `RechtPruefung.imSprung` — Plattform-Konto mit der gedachten Zuweisung `SPRUNGRECHT`
+  (Kundenadministrator, unternehmensweit, seit jeher). `/me` (`Selbstauskunft`), `RechtPruefung.aufrufer()` (Korrektur,
+  Kennzahl, Bericht, Überwachung, Stummschaltung) und `ZugriffAenderung` rechnen mit ihm; die `@Recht`-Routen lassen den
+  Umschalter weiter ungeprüft durch (das Ergebnis wäre stets „erlaubt“). P-Zeilen bleiben bei `voltpilot_betrieb`, das
+  Protokoll-Wort bleibt `voltpilot_betrieb`. Vertragsfälle `sprung-*` in `rechte-vectors.json`, Regel in der
+  Matrix-Doku („Mandantensprung“). **Wer eine Sonderprüfung über die PERSON baut** (beendeter Kundenbereich, Gesamtabzug,
+  Benutzerverwaltung), fragt `Zugriff#kundenadministrator()` bzw. im Portal `rollen.ts#kundenadministrator` — nie
+  `zugang == KONTO`/`konto === 'benutzer'` allein, sonst steht der Admin im Sprung wieder vor „Dafür fehlt Ihnen das
+  Recht.“. ⚠ Tests mit `jwt()` statt Konverter tragen kein `KONTO_*` und damit keinen Kontext: dort ist die Plattform
+  weiter die Unterstützung von vorher (`KorrekturFreigabeApiTest`, `BerichtApiTest`) — den echten Sprung prüfen
+  `SelbstauskunftApiTest`, `RechtAufruferTest`, `BenutzerVerwaltungApiTest`, `ExterneEmpfaengerApiTest`.
 - ⚠ **Die Matrix zur Laufzeit** ist die Vertragsdatei selbst: `pom.xml` legt `docs/contracts/v2/rechte-matrix.json`
   als `uems/rechte-matrix.json` ins Jar, das `Dockerfile` kopiert sie in die Build-Stufe. Eine neue Build-Umgebung
   braucht dieselbe Zeile, sonst scheitert NUR `/me` (die Datei wird erst beim ersten Aufruf geladen). Die Routen mit
