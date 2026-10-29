@@ -50,6 +50,10 @@ import '../src/steuerung/steuerung.css';
 
 (keycloak as unknown as { token: string; updateToken: () => Promise<boolean> }).token = 'e2e-token';
 (keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
+// `&admin=1`: die technische Sicht (Plattform-Admin) für den Zeilenklick im Aufbau.
+if (new URLSearchParams(window.location.search).get('admin') === '1') {
+  (keycloak as unknown as { tokenParsed: unknown }).tokenParsed = { realm_access: { roles: ['platform-admin'] } };
+}
 
 /**
  * E2E-Bühne UEMS EZ-10 „Steuerung, Anlage, Messwerte“: die vier Flächen einer Erzeugeranlage mit

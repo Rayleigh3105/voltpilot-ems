@@ -143,9 +143,9 @@ export interface AufbauTabelleProps {
    */
   mehrFor: (g: AufbauGeraet) => RowMenuItem[];
   /**
-   * Die technische Sicht (nur VoltPilot, hinter `showTechnicalLayer()`) behält den Kurzblick unverändert - er
-   * zeigt dort den vollen technischen Rumpf (Strategien, Rollen, Entfernen mit `purgePoint`), den keine andere
-   * Fläche so dicht beieinander hat. Nur der Kundenklick springt direkt auf die Geräteseite.
+   * Die technische Sicht (nur VoltPilot, hinter `showTechnicalLayer()`) springt ebenfalls direkt; ihren vollen
+   * technischen Rumpf (Strategien, Rollen, Entfernen mit `purgePoint`) öffnet der Zeilenmenü-Eintrag
+   * „Technisch …“ im unveränderten Kurzblick.
    */
   showTechnical: boolean;
   /** Nur für VoltPilot: der technische Einstieg neben „Gerät hinzufügen". */
@@ -580,10 +580,19 @@ function GeraetZeile({
   const hinweis = nurLesend ? null : p.hinweisFor(g);
   const wert = g.werte[0] ?? null;
   // Ein Gerät mit eigener Seite springt dorthin - nie mehr über ein Modal. Nur ohne Seite (verwaist, neu
-  // gefunden, keine Geräteseite) bleibt der Kurzblick der einzige Ort - und für die technische Sicht bleibt er
-  // es ganz (sie zeigt dort mehr, als ein Zeilenmenü fassen könnte).
-  const href = p.showTechnical ? null : g.karte.href;
-  const mehr = !nurLesend && href ? p.mehrFor(g) : [];
+  // gefunden, keine Geräteseite) bleibt der Kurzblick der einzige Ort.
+  const href = g.karte.href;
+  // Die technische Sicht springt ebenso; ihren Rumpf (Strategien, Rollen, technisch bearbeiten, Entfernen) trägt
+  // weiter der Kurzblick - er öffnet über „Technisch …“ im Zeilenmenü.
+  const mehr: RowMenuItem[] =
+    !nurLesend && href
+      ? [
+          ...p.mehrFor(g),
+          ...(p.showTechnical
+            ? [{ label: 'Technisch …', icon: 'cpu' as const, onClick: () => p.onKurzblick(g.id) }]
+            : []),
+        ]
+      : [];
   // Die ganze Zeile ist ein Ziel für die Maus; Tastatur und Vorlesesoftware
   // nehmen den Namen-Knopf/-Link - eine Zeile, die selbst ein Ziel wäre, dürfte
   // keinen Aufklapp-Knopf enthalten.
