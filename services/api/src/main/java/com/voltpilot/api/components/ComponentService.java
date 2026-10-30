@@ -21,6 +21,7 @@ import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.QuelleEinstellungService;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
 import com.voltpilot.api.web.dto.ComponentMatchDto;
+import com.voltpilot.api.web.dto.GeraetesucheBezug;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
 import com.voltpilot.api.web.dto.ComponentActivationStatusDto;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
@@ -280,10 +281,7 @@ public class ComponentService {
         UUID entityId = resolveOrCreatePoint(siteId, tenantId, role, req, template);
         int version = writeDefinition(siteId, tenantId, entityId, role, req, template, tested,
                 subject, "Angelegt");
-        if (fund != null) {
-            geraetesuche.protokollieren(tenantId, siteId, fund, GeraetesucheHerkunft.UEBERNOMMEN, entityId,
-                    akteur());
-        }
+        uebernommen(tenantId, siteId, fund, entityId);
         // L9: NACH dem Commit und mit Wiederholung, wie Bearbeiten und Rollback.
         // Ein Push INNERHALB der Transaktion hat zwei Fehlerformen, die beide
         // still sind: ein Broker-Ausfall genau hier wird nie wiederholt (erst
@@ -424,13 +422,28 @@ public class ComponentService {
 
     /** Der geprüfte Bezug auf einen Fund der Gerätesuche, oder {@code null} ohne Bezug (der Weg wie bisher). */
     private GeraetesucheHerkunft.Fund fundAusSuche(UUID siteId, SaveComponentRequest req) {
-        if (req.geraetesuche() == null) {
+        return fundAusSuche(siteId, req.geraetesuche());
+    }
+
+    /**
+     * Derselbe Haken für die Selbstbau-Tür ({@code POST …/components/custom}, „Vielleicht · selbst beschreiben"):
+     * ein Weg, eine Prüfung, eine 422.
+     */
+    GeraetesucheHerkunft.Fund fundAusSuche(UUID siteId, GeraetesucheBezug bezug) {
+        if (bezug == null) {
             return null;
         }
         if (geraetesuche == null) {
             throw new IllegalStateException("Gerätesuche-Herkunft ist nicht verdrahtet");
         }
-        return geraetesuche.pruefen(siteId, req.geraetesuche());
+        return geraetesuche.pruefen(siteId, bezug);
+    }
+
+    /** Die Protokollzeile {@code uebernommen} einer angelegten Komponente; ohne Fund geschieht nichts. */
+    void uebernommen(UUID tenantId, UUID siteId, GeraetesucheHerkunft.Fund fund, UUID entityId) {
+        if (fund != null) {
+            geraetesuche.protokollieren(tenantId, siteId, fund, GeraetesucheHerkunft.UEBERNOMMEN, entityId, akteur());
+        }
     }
 
     /** Die Person der Anfrage im Protokoll-Vokabular - aus dem Token, nie aus dem Rumpf. */

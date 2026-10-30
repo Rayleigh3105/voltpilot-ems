@@ -205,7 +205,7 @@ export function AufbauSection({
   // Solange der Anlege-Fluss darüber liegt, bleibt das Modal im Baum (verdeckt) - danach führt der Weg zur Liste zurück.
   const [suche, setSuche] = useState<{ box: Device; suchId: string | null; start: 'suche' | 'verlauf'; lauf: number } | null>(null);
   const [sucheFund, setSucheFund] = useState<
-    { art: 'vorlage'; u: GeraetesucheUebernahme } | { art: 'selbst'; fund: GeraetesucheFund } | null
+    { art: 'vorlage'; u: GeraetesucheUebernahme } | { art: 'selbst'; fund: GeraetesucheFund; suchId: string | null } | null
   >(null);
   const [uebernommen, setUebernommen] = useState<ReadonlyMap<string, string>>(new Map());
   const [sucheZuletzt, setSucheZuletzt] = useState<{ titel: string; n: number } | null>(null);
@@ -557,7 +557,9 @@ export function AufbauSection({
     setSuche((alt) => ({ box, suchId: opts.suchId ?? null, start: opts.start ?? 'suche', lauf: (alt?.lauf ?? 0) + 1 }));
   };
   /** Aus der Suche in den bestehenden Anlege-Fluss: Vorlage und Anschluss vorbelegt, der Test startet von selbst. */
-  const ausSucheAnlegen = (f: { art: 'vorlage'; u: GeraetesucheUebernahme } | { art: 'selbst'; fund: GeraetesucheFund }) => {
+  const ausSucheAnlegen = (
+    f: { art: 'vorlage'; u: GeraetesucheUebernahme } | { art: 'selbst'; fund: GeraetesucheFund; suchId: string | null },
+  ) => {
     if (!suche) return;
     setSucheFund(f);
     setAddBox(suche.box);
@@ -1011,7 +1013,7 @@ export function AufbauSection({
           zuletzt={sucheZuletzt}
           onClose={() => setSuche(null)}
           onUebernehmen={(u) => ausSucheAnlegen({ art: 'vorlage', u })}
-          onSelbst={(fund) => ausSucheAnlegen({ art: 'selbst', fund })}
+          onSelbst={(fund, suchId) => ausSucheAnlegen({ art: 'selbst', fund, suchId })}
           onVonHand={() => {
             const b = suche.box;
             setSuche(null);
@@ -1037,7 +1039,13 @@ export function AufbauSection({
           startRolle={start?.rolle ?? null}
           startVerbindung={sucheVorbelegung ?? (addWeg ? gatewayVorbelegung(addWeg) : null)}
           startHerkunft={sucheHerkunft}
-          startFund={sucheFund?.art === 'vorlage' ? geraetesucheBezug(sucheFund.u.suchId, sucheFund.u.fund.schluessel) : null}
+          startFund={
+            sucheFund?.art === 'vorlage'
+              ? geraetesucheBezug(sucheFund.u.suchId, sucheFund.u.fund.schluessel)
+              : sucheFund?.art === 'selbst'
+                ? geraetesucheBezug(sucheFund.suchId, sucheFund.fund.schluessel)
+                : null
+          }
           zurueckLabel={sucheFund ? 'Zurück zur Gerätesuche' : undefined}
           onZurueck={() => {
             const ausSuche = sucheFund !== null;

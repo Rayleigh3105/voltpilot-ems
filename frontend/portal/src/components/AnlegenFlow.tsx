@@ -1446,6 +1446,7 @@ export function AnlegenFlow({
             ? { host: startVerbindung.ip, port: typeof startVerbindung.port === 'number' ? startVerbindung.port : null }
             : null
         }
+        startFund={startFund}
         onZurueck={onZurueck}
         zurueckLabel={zurueckLabel}
         onClose={onClose}

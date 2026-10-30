@@ -10,8 +10,8 @@ einem Tipp in den bestehenden Anlege-Fluss. V3 (gezieltes Wiederfinden von der G
 | Vertrag | [`mqtt-geraetesuche.md`](../../contracts/v2/mqtt-geraetesuche.md) mit drei Schemas (`mqtt-geraetesuche*.schema.json`) und [`geraetesuche-vectors.json`](../../contracts/v2/geraetesuche-vectors.json) (Erkennungskatalog je Box-Art, Gruppen-Fälle, Grenzen); Bereichsregel [`lan-range-vectors.json`](../../contracts/lan-range-vectors.json); [OCPP „klopft an“](../../contracts/ocpp-klopft-an.md); Fähigkeit `geraetesuche` in [`edge-supports.md`](../../contracts/v2/edge-supports.md) und [`edge-capabilities.json`](../../contracts/v2/edge-capabilities.json); Routen im OpenAPI-Tag `geraetesuche` |
 | Box (Go, beide Box-Arten) | `edge-app/core/internal/geraetesuche/vertrag.go` (Vertragswörter, `Pruefe`), `klopftan.go`; Suchmodul `…/geraetesuche/suche/` (`leitung.go` Zulassung und Ablauf, `netze.go` Bereich, `takt.go`, `werkzeug.go` Budget je Gerät, `erkenner.go`/`solarman.go`/`netztechnik.go` Erkenner, `rundruf.go` mDNS/SSDP/Speedwire nur Edge Light); Anbindung `internal/agent/geraetesuche.go`, `internal/cloud/geraetesuche.go`; Simulator `…/geraetesuche/geraetesim` (`cmd/vp-geraete-sim`) |
 | Edge Light | Unterschiede je Box-Art: Vertrag §3 „Je Box-Art“ und [Paritätsliste](../../../edge-light/docs/paritaet.md) (Zeile „Gerätesuche“) |
-| API | [Gerätesuche, API-Seite](geraetesuche-api.md): `web/GeraetesucheController`, Paket `com.voltpilot.api.geraetesuche`, Migration `V20261030140000__geraetesuche.sql` |
-| Portal | Routen-Typen `src/geraetesuche.ts`; Regeln und Sätze `src/geraetesucheAnsicht.ts`; Modal `components/GeraetesucheDialog.tsx`, Knöpfe `components/GeraetesucheEinstieg.tsx`; Bedienung in [`docs/portal.md`](../../portal.md) („Geräte suchen“); Kundenwörter `UEMS_GERAETE_SUCHEN` … in `src/glossar.ts` und im [Glossar](../../fachmodell/glossar.md) |
+| API | [Gerätesuche, API-Seite](geraetesuche-api.md): `web/GeraetesucheController`, Paket `com.voltpilot.api.geraetesuche`, Migrationen `V20261030140000__geraetesuche.sql` und `V20261030181500__geraetesuche_herkunft.sql` (Herkunft) |
+| Portal | Routen-Typen `src/geraetesuche.ts`; Regeln und Sätze `src/geraetesucheAnsicht.ts`; Herkunft und Aktivität `src/geraetesucheHerkunft.ts`; Modal `components/GeraetesucheDialog.tsx`, Knöpfe `components/GeraetesucheEinstieg.tsx`; Bedienung in [`docs/portal.md`](../../portal.md) („Geräte suchen“); Kundenwörter `UEMS_GERAETE_SUCHEN` … in `src/glossar.ts` und im [Glossar](../../fachmodell/glossar.md) |
 | Hilfe | Artikel `geraete-suchen` in `frontend/portal/src/help/content/anlage.ts` (Abschnitte `nur-lesen`, `wer-und-was-bleibt`, `gruppen`, `nicht-gefunden`, `box-auf-rechner`) und der Abschnitt `anlagenmodell` › `geraete-suchen` |
 
 ## Was gilt
@@ -26,6 +26,9 @@ einem Tipp in den bestehenden Anlege-Fluss. V3 (gezieltes Wiederfinden von der G
   30 Tage, das Protokoll bleibt. **Recht** `geraet.einrichten` an der Anlage (DP-4 A).
 - **Gleichheit sagt allein der Server** (`abgleich`), nie dieselbe Adresse; eine neue Adresse ist ein Vorschlag, den ein
   Tipp übernimmt (DP-7 A).
+- **Herkunft nur aus dem Protokoll:** wer aus der Suche übernimmt („Übernehmen“ und „Selbst beschreiben“), schickt den
+  Bezug `{ suchId, fund }` mit; der Server prüft ihn und schreibt `uebernommen`. Daraus liest die Komponente „aus der
+  Gerätesuche vom …“ und die Aktivität der Box den fünften Strom `geraetesuche`; ohne Bezug keine Herkunft, nie geraten.
 - **Hilfe-Artikel und Modal sprechen dieselben Wörter:** `help.test.ts` liest die Gruppen-Überschriften
   (`GRUPPEN_TITEL`) und die Prüffragen (`nichtsGefundenFragen`) aus `geraetesucheAnsicht.ts`. Wer dort ein Wort ändert,
   ändert den Artikel mit.
@@ -45,7 +48,7 @@ einem Tipp in den bestehenden Anlege-Fluss. V3 (gezieltes Wiederfinden von der G
 
 ```bash
 (cd edge-app/core && go test ./internal/geraetesuche/... ./internal/agent/ ./internal/cloud/)
-(cd frontend/portal && npx vitest run --maxWorkers=2 --minWorkers=1 src/geraetesuche.test.ts src/geraetesucheAnsicht.test.ts src/components/GeraetesucheDialog.test.tsx src/help/help.test.ts src/copy.test.ts)
+(cd frontend/portal && npx vitest run --maxWorkers=2 --minWorkers=1 src/geraetesuche.test.ts src/geraetesucheAnsicht.test.ts src/geraetesucheHerkunft.test.ts src/selbstbau.test.ts src/components/GeraetesucheDialog.test.tsx src/components/AnlegenFlow.test.tsx src/help/help.test.ts src/copy.test.ts)
 (cd frontend/portal && npx playwright test e2e/geraetesuche.spec.ts)
 ```
 

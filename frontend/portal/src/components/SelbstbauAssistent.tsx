@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { VpPicker } from './VpPicker';
-import { api, ApiError, type SiteComponents, type SiteComponentTemplate } from '../api';
+import { api, ApiError, type GeraetesucheBezug, type SiteComponents, type SiteComponentTemplate } from '../api';
 import { prefill } from '../eigeneVorlagen';
 import { AUTO_TEST_MS, neueKomponente } from '../anlegenFlow';
 import {
@@ -60,6 +60,7 @@ export function SelbstbauAssistent({
   vorlage,
   vorher,
   startAdresse = null,
+  startFund = null,
   onZurueck,
   zurueckLabel,
   onClose,
@@ -80,6 +81,8 @@ export function SelbstbauAssistent({
    * Kennung) - seine Adresse und sein Port stehen schon im Anschluss; die Messwerte beschreibt der Kunde selbst.
    */
   startAdresse?: { host: string; port: number | null } | null;
+  /** Der Bezug auf diesen Fund und seine Suche - das Anlegen schickt ihn mit; null = ohne Bezug. */
+  startFund?: GeraetesucheBezug | null;
   /** Zurück in den Katalog; null = die Seite wurde nicht aus dem Katalog geöffnet. */
   onZurueck?: (() => void) | null;
   zurueckLabel?: string;
@@ -188,7 +191,7 @@ export function SelbstbauAssistent({
     setSpeichern(true);
     setFehler(null);
     try {
-      const result = await api.createCustomComponent(siteId, speicherRumpf(name, verbindung, zeilen));
+      const result = await api.createCustomComponent(siteId, speicherRumpf(name, verbindung, zeilen, startFund));
       const id = neueKomponente(vorher, result.components);
       const titel = name.trim() || 'Eigenes Modbus-Gerät';
       let hinweis: string | null = null;

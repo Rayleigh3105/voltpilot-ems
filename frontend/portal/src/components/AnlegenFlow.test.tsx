@@ -534,6 +534,7 @@ describe('die anderen Türen desselben Flusses', () => {
       connection: { host: '192.168.1.50', port: 502, unitId: 1 },
       channels: [{ label: 'Vorlauf', address: 100 }],
     });
+    expect(createCustomComponent.mock.calls[0][1].geraetesuche).toBeUndefined();
     // Die Vorlage entsteht aus dem NEUEN Gerät - ohne Adresse.
     await waitFor(() => expect(duplicateCustomComponent).toHaveBeenCalledWith('s1', 'sb-1', 'Eigenes Modbus-Gerät'));
     expect(onFertig).toHaveBeenCalledWith({
@@ -543,6 +544,33 @@ describe('die anderen Türen desselben Flusses', () => {
       hinweis: 'Die Vorlage steht im Katalog unter „Selbst beschreiben".',
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('„Vielleicht · selbst beschreiben" aus der Gerätesuche: Adresse vorbelegt, das Anlegen trägt den Bezug', async () => {
+    readCustomComponent.mockResolvedValue({ ok: true, raw: 1, value: 1, receipt: true });
+    createCustomComponent.mockResolvedValue({ components: [{ id: 'sb-3' }] });
+    const bezug = { suchId: '5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d', fund: 'modbus_offen:192.168.178.70:502' };
+    render(
+      <AnlegenFlow
+        siteId="s1"
+        initialTyp="eigenbau"
+        startVerbindung={{ communication: 'modbus_tcp', ip: '192.168.178.70', port: 502 }}
+        startFund={bezug}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    expect((screen.getByLabelText('IP-Adresse des Geräts') as HTMLInputElement).value).toBe('192.168.178.70');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Vorlauf' } });
+    fireEvent.change(screen.getByLabelText('Register'), { target: { value: '100' } });
+    await waitFor(() => expect(screen.getByTestId('einrichten-speichern')).toBeEnabled(), { timeout: 2500 });
+    fireEvent.click(screen.getByTestId('einrichten-speichern'));
+    await waitFor(() => expect(createCustomComponent).toHaveBeenCalled());
+    expect(createCustomComponent.mock.calls[0][1]).toMatchObject({
+      connection: { host: '192.168.178.70', port: 502 },
+      geraetesuche: bezug,
+    });
   });
 
   it('rechnet eine Handbuch-Nummer nie still um - die Modicon-Lesart ist ein Knopf', async () => {

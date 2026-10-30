@@ -8048,6 +8048,11 @@ paths:
         `components/custom/read` for this plant + connection (422 otherwise).
         Only on a PORTAL-managed plant (409 on a box-managed one). This stage
         creates measuring devices only - switching is a later stage.
+        With `geraetesuche` (a find „Vielleicht · selbst beschreiben" adopted
+        from the device search) the same check as `POST …/components` runs
+        before anything else: 422 without any change for a foreign, unknown or
+        expired reference; otherwise the protocol row `uebernommen` and the
+        component's `herkunft`. Without it the path is unchanged.
       requestBody:
         required: true
         content:
@@ -8063,7 +8068,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
         "409": { description: The plant's devices are managed on the box. }
-        "422": { description: No connection test on record for this connection. }
+        "422": { description: No connection test on record for this connection, or a `geraetesuche` reference that is not a find of this plant within 30 days. }
         "503": { description: The read plan could not be built or distributed. }
   /api/v1/sites/{siteId}/components/custom/{entityId}:
     parameters:
@@ -8083,7 +8088,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SiteComponents" }
-        "400": { description: Channel/poll-budget/LAN rule violated. }
+        "400": { description: Channel/poll-budget/LAN rule violated, or a `geraetesuche` reference (only valid on create). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site or component not found for this tenant. }
         "422": { description: Not a self-built component, or no connection test on record. }
@@ -23274,6 +23279,18 @@ components:
           maxItems: 16
           items: { $ref: "#/components/schemas/SelfBuildChannel" }
         note: { type: string, maxLength: 200 }
+        geraetesuche:
+          type: object
+          nullable: true
+          description: >
+            Derselbe Bezug wie in `SaveComponentRequest.geraetesuche`: das
+            Portal sendet ihn, wenn ein Fund „Vielleicht · selbst beschreiben“
+            übernommen wird. Nur beim Anlegen (POST); PUT lehnt ihn mit 400 ab.
+            Absent = der Weg wie bisher.
+          required: [suchId, fund]
+          properties:
+            suchId: { type: string, format: uuid }
+            fund: { type: string, maxLength: 200, description: "Der `schluessel` des Fundes." }
     SocCurveTemplate:
       type: object
       required: [id, label, curveCharge]

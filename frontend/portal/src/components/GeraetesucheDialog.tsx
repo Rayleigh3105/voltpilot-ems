@@ -143,8 +143,8 @@ export function GeraetesucheDialog({
   zuletzt?: { titel: string; n: number } | null;
   onClose: () => void;
   onUebernehmen: (u: GeraetesucheUebernahme) => void;
-  /** „Selbst beschreiben": ein Modbus-Gerät ohne Kennung mit vorbelegter Adresse. */
-  onSelbst: (fund: GeraetesucheFund) => void;
+  /** „Selbst beschreiben": ein Modbus-Gerät ohne Kennung mit vorbelegter Adresse; `suchId` wie beim Übernehmen. */
+  onSelbst: (fund: GeraetesucheFund, suchId: string | null) => void;
   /** „Von Hand hinzufügen": der Katalog. */
   onVonHand: () => void;
   onAdresseGespeichert: (result: SiteComponents, satz: string) => void;
@@ -541,7 +541,7 @@ export function GeraetesucheDialog({
         onUebernehmen={(f) => (f.erkennung === 'wahrscheinlich' && bestaetigen !== f.schluessel ? setBestaetigen(f.schluessel) : uebernehmen(f))}
         onBestaetigenAbbrechen={() => setBestaetigen(null)}
         onAdresse={(f, k) => void adresseUebernehmen(f, k)}
-        onSelbst={onSelbst}
+        onSelbst={(f) => onSelbst(f, suche?.suchId ?? null)}
         onZulassen={(id) => void zulassen(id)}
         onVonHand={onVonHand}
         onVerlauf={() => setAnsicht({ art: 'verlauf', zurueck: true })}

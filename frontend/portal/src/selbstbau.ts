@@ -16,6 +16,7 @@
  * ohne es wird nichts gelesen; Datentyp, Skalierung und Co. bleiben unter
  * „Weitere Angaben".
  */
+import type { GeraetesucheBezug } from './api';
 
 /** Höchstens so viele Messwerte je Gerät (§2.6 Poll-Budget). */
 export const MAX_CHANNELS = 16;
@@ -318,11 +319,15 @@ export function leseErgebnis(antwort: LeseAntwort | null | undefined): LeseErgeb
   };
 }
 
-/** Der Rumpf, den `POST .../components/custom` erwartet. */
+/**
+ * Der Rumpf, den `POST .../components/custom` erwartet. `geraetesuche` ist der Bezug auf einen Fund „Vielleicht ·
+ * selbst beschreiben" (Protokoll „übernommen", Herkunft „aus der Gerätesuche vom …"); ohne ihn fehlt das Feld.
+ */
 export function speicherRumpf(
   name: string,
   verbindung: VerbindungForm,
   zeilen: MesswertZeile[],
+  geraetesuche: GeraetesucheBezug | null = null,
 ): Record<string, unknown> {
   return {
     label: name.trim() === '' ? undefined : name.trim(),
@@ -338,6 +343,7 @@ export function speicherRumpf(
       offset: zahl(z.offset),
       minReadIntervalS: zahl(z.minReadIntervalS),
     })),
+    ...(geraetesuche ? { geraetesuche } : {}),
   };
 }
 

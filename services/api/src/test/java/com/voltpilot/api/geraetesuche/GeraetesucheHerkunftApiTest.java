@@ -14,7 +14,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.components.ComponentConnectionReceipts;
+import com.voltpilot.api.components.SelfBuildComponentService;
+import com.voltpilot.api.components.SelfBuildDefinition;
+import com.voltpilot.api.flows.FlowCompilerHttp;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -29,7 +35,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -47,7 +55,8 @@ import org.testcontainers.utility.DockerImageName;
 /**
  * Die Herkunft aus der Gerätesuche (Folgepaket vp-gs-folge-herkunft): der Haken im Anlege-Weg
  * ({@code POST …/components} mit {@code geraetesuche: {suchId, fund}}), die neue Adresse über denselben Haken
- * (DP-7 A, {@code PUT …/components/{id}}) und die Aktivität der Box (Bild d1) im Kommando-Verlauf.
+ * (DP-7 A, {@code PUT …/components/{id}}), derselbe Haken an der Selbstbau-Tür ({@code POST …/components/custom},
+ * „Vielleicht · selbst beschreiben") und die Aktivität der Box (Bild d1) im Kommando-Verlauf.
  *
  * <p>Die Suche entsteht über die echte Route und das echte Ergebnis der Box (Listener) - das Protokoll, aus dem die
  * Aktivität liest, ist also genau das, was der Dienst schreibt. Geprüft: ein gültiger Bezug legt an, protokolliert
@@ -65,6 +74,8 @@ class GeraetesucheHerkunftApiTest {
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String FRONIUS = "builtin:fronius_sunspec:fronius-eco-27-3-s";
     private static final String FUND = "sunspec:192.168.178.40:502";
+    /** Ein offener Modbus-Port ohne Erkennung: „Vielleicht · selbst beschreiben". */
+    private static final String OFFEN = "modbus_offen:192.168.178.70:502";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -88,6 +99,17 @@ class GeraetesucheHerkunftApiTest {
                 () -> "http://127.0.0.1:9/realms/voltpilot");
         registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
                 () -> "http://127.0.0.1:9/realms/voltpilot/protocol/openid-connect/certs");
+    }
+
+    /** Die flowc-Naht wie in {@code SelfBuildComponentApiTest}: die Selbstbau-Tür rollt einen Lese-Flow aus. */
+    @TestConfiguration
+    static class Fakes {
+        @Bean
+        FlowCompilerHttp flowCompilerHttp() throws IOException {
+            String artifact = Files.readString(Path.of("..", "..", "docs", "contracts", "v2",
+                    "examples", "flow-artifact.valid.artifact.json"));
+            return (uri, body) -> new FlowCompilerHttp.Response(200, artifact);
+        }
     }
 
     @Autowired
@@ -222,6 +244,81 @@ class GeraetesucheHerkunftApiTest {
                 .isEqualTo(gesucht);
     }
 
+    // ============================================================================ Selbstbau-Tür
+
+    @Test
+    void selbstBeschreibenMitGueltigemBezugLegtAnUndProtokolliert() throws Exception {
+        Welt w = welt();
+        UUID suchId = gefunden(w, w.anlage(), w.box());
+        selbstbauBeleg(w.anlage());
+
+        Antwort a = kunde(w, post(w.komponenten() + "/custom").content(selbstbau(Map.of(
+                "suchId", suchId.toString(), "fund", OFFEN))));
+
+        assertThat(a.status()).as(a.body().toString()).isEqualTo(200);
+        JsonNode zeile = selbstgebaut(a.body());
+        UUID entity = UUID.fromString(zeile.path("id").asText());
+        assertThat(zeile.path("herkunft").path("art").asText()).isEqualTo("geraetesuche");
+        assertThat(zeile.path("herkunft").path("suchId").asText()).isEqualTo(suchId.toString());
+        Map<String, Object> p = root.queryForMap("SELECT such_id, device_id, actor_name, fund_schluessel "
+                + "FROM geraetesuche_protokoll WHERE art = 'uebernommen' AND entity_id = ?", entity);
+        assertThat(p.get("such_id")).isEqualTo(suchId);
+        assertThat(p.get("device_id")).isEqualTo(w.box());
+        assertThat(p.get("actor_name")).isEqualTo("Jonas Wendlinger");
+        assertThat(p.get("fund_schluessel")).isEqualTo(OFFEN);
+        assertThat(arten(verlauf(w, "device=" + w.boxRef()))).contains("geraet_uebernommen");
+    }
+
+    @Test
+    void selbstBeschreibenMitFremdemOderUnbekanntemBezugLegtNichtsAn() throws Exception {
+        Welt w = welt();
+        UUID eigene = gefunden(w, w.anlage(), w.box());
+        UUID andereAnlage = gefunden(w, w.andereAnlage(), w.andereBox());
+        selbstbauBeleg(w.anlage());
+        long vorher = komponentenZahl(w);
+
+        Map<String, Map<String, Object>> faelle = new LinkedHashMap<>();
+        faelle.put("andere Anlage desselben Kunden", Map.of("suchId", andereAnlage.toString(), "fund", OFFEN));
+        faelle.put("unbekannter Fund", Map.of("suchId", eigene.toString(), "fund", "modbus_offen:192.168.178.99:502"));
+        faelle.put("unbekannte Suche", Map.of("suchId", UUID.randomUUID().toString(), "fund", OFFEN));
+        for (Map.Entry<String, Map<String, Object>> f : faelle.entrySet()) {
+            Antwort a = kunde(w, post(w.komponenten() + "/custom").content(selbstbau(f.getValue())));
+            assertThat(a.status()).as(f.getKey() + ": " + a.body()).isEqualTo(422);
+            assertThat(a.body().path("message").asText()).as(f.getKey()).contains("keiner Gerätesuche dieser Anlage");
+        }
+        zurueck(eigene, Duration.ofDays(31));
+        Antwort alt = kunde(w, post(w.komponenten() + "/custom").content(selbstbau(Map.of(
+                "suchId", eigene.toString(), "fund", OFFEN))));
+        assertThat(alt.status()).as(alt.body().toString()).isEqualTo(422);
+
+        assertThat(komponentenZahl(w)).as("nichts angelegt").isEqualTo(vorher);
+        assertThat(root.queryForObject("SELECT count(*) FROM geraetesuche_protokoll WHERE tenant_id = ? "
+                + "AND art = 'uebernommen'", Long.class, w.mandant())).isZero();
+    }
+
+    @Test
+    void selbstBeschreibenOhneBezugBleibtWieBisherUndAendernNimmtKeinenBezug() throws Exception {
+        Welt w = welt();
+        UUID suchId = gefunden(w, w.anlage(), w.box());
+        selbstbauBeleg(w.anlage());
+
+        Antwort a = kunde(w, post(w.komponenten() + "/custom").content(selbstbau(null)));
+
+        assertThat(a.status()).as(a.body().toString()).isEqualTo(200);
+        JsonNode zeile = selbstgebaut(a.body());
+        assertThat(zeile.has("herkunft")).as("keine Herkunft, nie geraten").isFalse();
+        assertThat(root.queryForObject("SELECT count(*) FROM geraetesuche_protokoll WHERE site_id = ? "
+                + "AND art IN ('uebernommen', 'adresse_uebernommen')", Long.class,
+                w.anlage())).isZero();
+
+        Antwort aendern = kunde(w, put(w.komponenten() + "/custom/" + zeile.path("id").asText())
+                .content(selbstbau(Map.of("suchId", suchId.toString(), "fund", OFFEN))));
+        assertThat(aendern.status()).as(aendern.body().toString()).isEqualTo(400);
+        assertThat(root.queryForObject("SELECT count(*) FROM geraetesuche_protokoll WHERE site_id = ? "
+                + "AND art IN ('uebernommen', 'adresse_uebernommen')", Long.class,
+                w.anlage())).isZero();
+    }
+
     // ============================================================================ DP-7 A: neue Adresse
 
     @Test
@@ -339,6 +436,11 @@ class GeraetesucheHerkunftApiTest {
         f.putArray("merkmale").add("sunspec_kopf");
         f.putObject("verbindung").put("ip", "192.168.178.40").put("port", 502).put("communication", "sunspec_tcp")
                 .put("unit_id", 1);
+        ObjectNode offen = e.withArray("funde").addObject().put("schluessel", OFFEN).put("erkenner", "modbus_offen")
+                .put("art", "modbus_geraet").put("erkennung", "unbekannt").put("anbindung", "selbst_beschreiben")
+                .put("liest_box_schon", false);
+        offen.putArray("merkmale").add("modbus_port_offen");
+        offen.putObject("verbindung").put("communication", "modbus_tcp").put("ip", "192.168.178.70").put("port", 502);
         e.putObject("weitere").put("unbekannt", 2);
         String topic = "ems/" + w.mandant() + "/" + anlage + "/" + box + "/v2/geraetesuche-ergebnis";
         assertThat(listener.handle(topic, MAPPER.writeValueAsBytes(e), Instant.now())).as(e.toString()).isTrue();
@@ -386,6 +488,41 @@ class GeraetesucheHerkunftApiTest {
         body.put("connection", verbindung("192.168.178.40"));
         body.put("geraetesuche", Map.of("suchId", suchId.toString(), "fund", fund));
         return MAPPER.writeValueAsString(body);
+    }
+
+    /** Der Beleg eines Selbstbau-Tests unter der Adresse des offenen Modbus-Ports. */
+    private void selbstbauBeleg(UUID anlage) {
+        receipts.record(anlage, SelfBuildComponentService.RECEIPT_REF, SelfBuildComponentService.receiptFields(
+                new SelfBuildDefinition.Transport("192.168.178.70", 502, 1)));
+    }
+
+    /** Ein Selbstbau-Gerät am offenen Modbus-Port, mit {@code geraetesuche} nur, wenn ein Bezug übergeben ist. */
+    private static String selbstbau(Map<String, Object> bezug) throws Exception {
+        Map<String, Object> kanal = new LinkedHashMap<>();
+        kanal.put("label", "Vorlauf");
+        kanal.put("unit", "°C");
+        kanal.put("registerKind", "holding");
+        kanal.put("address", 100);
+        kanal.put("dataType", "s16");
+        kanal.put("wordOrder", "big");
+        kanal.put("scale", 0.1);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("label", "Wärmepumpe Keller");
+        body.put("connection", Map.of("host", "192.168.178.70", "port", 502, "unitId", 1));
+        body.put("channels", List.of(kanal));
+        if (bezug != null) {
+            body.put("geraetesuche", bezug);
+        }
+        return MAPPER.writeValueAsString(body);
+    }
+
+    private static JsonNode selbstgebaut(JsonNode komponenten) {
+        for (JsonNode c : komponenten.path("components")) {
+            if ("Wärmepumpe Keller".equals(c.path("label").asText())) {
+                return c;
+            }
+        }
+        throw new AssertionError("kein Selbstbau-Gerät in " + komponenten);
     }
 
     private static String bearbeiten(UUID suchId, int fassung) throws Exception {

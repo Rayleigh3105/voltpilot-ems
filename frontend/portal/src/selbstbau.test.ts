@@ -117,6 +117,15 @@ describe('Poll-Budget + Kanal-Form', () => {
     expect(leselastHinweis([])).toBeNull();
   });
 
+  it('schickt den Bezug auf die Gerätesuche nur mit, wenn es einen gibt', () => {
+    const bezug = { suchId: 'a1b2c3d4-0000-4000-8000-000000000001', fund: 'modbus_offen:192.168.178.70:502' };
+    expect(speicherRumpf('X', lan(), [zeile()], bezug).geraetesuche).toEqual(bezug);
+    // Ohne Bezug derselbe Rumpf wie vor der Gerätesuche - kein leeres Feld.
+    const ohne = speicherRumpf('X', lan(), [zeile()]);
+    expect('geraetesuche' in ohne).toBe(false);
+    expect(JSON.stringify(speicherRumpf('X', lan(), [zeile()], null))).toBe(JSON.stringify(ohne));
+  });
+
   it('zeigt die Wortreihenfolge nur bei 32 Bit', () => {
     expect(istBreit('u16')).toBe(false);
     expect(istBreit('s16')).toBe(false);

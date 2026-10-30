@@ -179,6 +179,16 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
     });
   });
 
+  it('„Selbst beschreiben" gibt den Fund mit dem Bezug auf diese Suche weiter', async () => {
+    starten(F.breit);
+    const { props } = rendere();
+    fireEvent.click(await screen.findByRole('button', { name: /selbst beschreiben$/ }));
+    expect(props.onSelbst).toHaveBeenCalledWith(
+      expect.objectContaining({ schluessel: 'modbus_offen:192.168.178.70:502' }),
+      GS_SUCH_ID,
+    );
+  });
+
   it('Deye: nur das Modell vom Typenschild wählen - die acht passenden, danach der Anlege-Fluss', async () => {
     starten(F.fertig);
     const { props } = rendere();
