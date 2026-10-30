@@ -278,6 +278,7 @@ func TestEdgeLightSiehtBeideNetzeUndDieWege(t *testing.T) {
 	p := &geraetesim.Protokoll{}
 	n.http(t, "192.168.178.1:80", geraetesim.Router(p, "FRITZ!Box 7590"))
 	n.http(t, "192.168.178.2:49000", geraetesim.FritzBeschreibung(p, "/fboxdesc.xml", "FRITZ!Repeater 1200 AX"))
+	n.http(t, "192.168.178.24:80", geraetesim.TPLink(p, "TL-WR840N"))
 	n.solarman(t, "192.168.178.34:8899", 3115580613, 0x0006, "2409066698")
 	fronius := n.modbus(t, "192.168.178.40:502")
 	fronius.SunSpec(1, 40000, "Fronius", "Symo GEN24 10.0 Plus", "1.30.7-1", "31234567")
@@ -294,7 +295,8 @@ func TestEdgeLightSiehtBeideNetzeUndDieWege(t *testing.T) {
 	}
 	arp := []Nachbar{
 		{IP: netip.MustParseAddr("192.168.178.1"), MAC: mac("3c:a6:2f:01:02:03"), Schnittstelle: "eth0"},
-		{IP: netip.MustParseAddr("192.168.178.34"), MAC: mac("ac:cf:23:11:22:33"), Schnittstelle: "eth0"},
+		{IP: netip.MustParseAddr("192.168.178.24"), MAC: mac("dc:62:79:01:02:03"), Schnittstelle: "eth0"},
+		{IP: netip.MustParseAddr("192.168.178.34"), MAC: mac("d4:27:87:11:22:33"), Schnittstelle: "eth0"},
 		{IP: netip.MustParseAddr("192.168.178.40"), MAC: mac("00:03:ac:01:02:03"), Schnittstelle: "eth0"},
 		{IP: netip.MustParseAddr("192.168.178.52"), MAC: mac("a8:48:fa:01:02:03"), Schnittstelle: "eth0"},
 		{IP: netip.MustParseAddr("192.168.178.60"), MAC: mac("da:a1:19:01:02:03"), Schnittstelle: "eth0"},
@@ -358,7 +360,7 @@ func TestEdgeLightSiehtBeideNetzeUndDieWege(t *testing.T) {
 		aus.Netze[0].Ausschnitt == nil || *aus.Netze[0].Ausschnitt {
 		t.Fatalf("networks: %+v", aus.Netze)
 	}
-	if aus.Netze[0].Aktiv != 8 || aus.Netze[1].Aktiv != 2 {
+	if aus.Netze[0].Aktiv != 9 || aus.Netze[1].Aktiv != 2 {
 		t.Fatalf("aktiv: %d / %d", aus.Netze[0].Aktiv, aus.Netze[1].Aktiv)
 	}
 	if anstoesse != 506 {
@@ -389,6 +391,11 @@ func TestEdgeLightSiehtBeideNetzeUndDieWege(t *testing.T) {
 	if rep := fundVon(t, aus.Funde, "netztechnik:192.168.178.2:49000"); rep.Art != "zugangspunkt" ||
 		rep.Modell != "FRITZ!Repeater 1200 AX" || rep.Hersteller != "avm" || rep.Merkmale[0] != "ssdp_fboxdesc" {
 		t.Fatalf("repeater: %+v", rep)
+	}
+	// The TL-WR840N names its model only in var modelName (M3).
+	if ap := fundVon(t, aus.Funde, "netztechnik:192.168.178.24:80"); ap.Art != "zugangspunkt" ||
+		ap.Modell != "TL-WR840N" || ap.Hersteller != "tp-link" || len(ap.Merkmale) != 1 || ap.Merkmale[0] != "seitenmodell" {
+		t.Fatalf("access point: %+v", ap)
 	}
 	if z := fundVon(t, aus.Funde, "sma:3006054321"); z.Art != "zaehler" || z.Anbindung != "kein_leseweg" ||
 		z.Verbindung.Port != 9522 {

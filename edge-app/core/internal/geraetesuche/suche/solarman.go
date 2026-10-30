@@ -57,8 +57,13 @@ func erkenneSolarman(ctx context.Context, g *geraet, port int, _ *modbus) (gerae
 	if len(regs) >= 8 {
 		// The inverter answered through the logger: that is the self-report.
 		f.Erkennung = geraetesuche.ErkennungSicher
-		if klasse, ok := deyedecode.Spannungsklasse(regs[0]); ok {
-			f.Hersteller, f.Spannung = "deye", klasse
+		// The type code names the voltage class and the family (the API offers
+		// only the templates of that family); deye_typ_0x.... is the merkmal
+		// of both. A code outside the source's lists names neither.
+		klasse, mitKlasse := deyedecode.Spannungsklasse(regs[0])
+		familie, mitFamilie := deyedecode.FamilieAusTyp(regs[0])
+		if mitKlasse || mitFamilie {
+			f.Hersteller, f.Spannung, f.Familie = "deye", klasse, familie
 			f.Merkmale = append(f.Merkmale, fmt.Sprintf("deye_typ_0x%04x", regs[0]))
 		}
 		if sn := seriennr(regText(regs[3:8])); sn != "" {

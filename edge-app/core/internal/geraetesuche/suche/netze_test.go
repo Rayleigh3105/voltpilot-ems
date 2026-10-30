@@ -131,3 +131,52 @@ func TestRestSekunden(t *testing.T) {
 		t.Fatalf("beyond the time limit: %d", r)
 	}
 }
+
+// rest_s is 0 only when all is done (VoltPilotGATE 30.10.2026: it showed 0
+// from progress 7 on while ~3.5 s still followed).
+func TestRestSekundenNieNullSolangeEtwasOffenIst(t *testing.T) {
+	if r, _ := restSekunden(15*time.Second, 316, 323, geraetesuche.MaxDauer); r != 1 {
+		t.Fatalf("open units, rest %d", r)
+	}
+	if r, _ := restSekunden(17*time.Second, 323, 323, geraetesuche.MaxDauer); r != 0 {
+		t.Fatalf("done, rest %d", r)
+	}
+	if r, _ := restSekunden(geraetesuche.MaxDauer, 1, 100, geraetesuche.MaxDauer); r != 0 {
+		t.Fatalf("time limit reached, rest %d", r)
+	}
+}
+
+// The steps of the GATE run with its numbers: 253 nudges, 2 s listening at 20
+// per second, 25 port checks of 5 devices, 5 to recognise. gesamt holds the
+// listening and the recognising before they run, so the units never all look
+// done while a step still follows.
+func TestGesamtRechnetNachlaufUndErkennenVorab(t *testing.T) {
+	l := &Lauf{}
+	nachlauf := int(Takt{}.nachlauf() * time.Duration(Takt{}.jeSekunde()) / time.Second)
+	if nachlauf != 40 {
+		t.Fatalf("nachlauf %d units", nachlauf)
+	}
+	l.schritte("nachbarn_finden", 253+nachlauf, 0)
+	l.erledige(253)
+	if z := l.Stand(); z.Erledigt != 253 || z.Gesamt != 293 {
+		t.Fatalf("after the nudges: %d/%d", z.Erledigt, z.Gesamt)
+	}
+	if r, _ := restSekunden(12600*time.Millisecond, 253, 293, geraetesuche.MaxDauer); r != 2 {
+		t.Fatalf("listening still follows, rest %d", r)
+	}
+	l.erledige(nachlauf)
+	l.schritte("geraete_ansprechen", 25, 5)
+	l.erledige(25)
+	if z := l.Stand(); z.Erledigt != 318 || z.Gesamt != 323 {
+		t.Fatalf("after the port checks: %d/%d", z.Erledigt, z.Gesamt)
+	}
+	l.schritte("geraete_erkennen", 3, 0)
+	l.erledige(2)
+	if z := l.Stand(); z.Erledigt != 320 || z.Gesamt != 321 {
+		t.Fatalf("recognising: %d/%d", z.Erledigt, z.Gesamt)
+	}
+	l.erledige(1)
+	if z := l.Stand(); z.Erledigt != z.Gesamt {
+		t.Fatalf("done: %d/%d", z.Erledigt, z.Gesamt)
+	}
+}

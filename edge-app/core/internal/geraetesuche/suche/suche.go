@@ -148,9 +148,12 @@ type Lauf struct {
 	schritt  string
 	erledigt int
 	gesamt   int
-	netze    []geraetesuche.Netz
-	funde    []geraetesuche.Fund
-	liefen   map[string]bool
+	// vorbehalt is the part of gesamt that stands for a step still to come
+	// whose units are not known yet; that step replaces it with its own.
+	vorbehalt int
+	netze     []geraetesuche.Netz
+	funde     []geraetesuche.Fund
+	liefen    map[string]bool
 }
 
 // ErkennerDerBox lists the recognisers and ways this box type runs, in
@@ -213,10 +216,14 @@ func (l *Lauf) Stand() Zwischen {
 		Netze: append([]geraetesuche.Netz{}, l.netze...), Funde: append([]geraetesuche.Fund{}, l.funde...)}
 }
 
-func (l *Lauf) schritte(schritt string, mehr int) {
+// schritte enters a step with its units and a reserve for the step after it
+// (VoltPilotGATE 30.10.2026: rest_s stood at 0 while the follow-up still ran,
+// because gesamt only grew when a step began).
+func (l *Lauf) schritte(schritt string, mehr, vorbehalt int) {
 	l.mu.Lock()
 	l.schritt = schritt
-	l.gesamt += mehr
+	l.gesamt += mehr - l.vorbehalt + vorbehalt
+	l.vorbehalt = vorbehalt
 	l.mu.Unlock()
 }
 
@@ -356,7 +363,10 @@ func (l *Lauf) nachbarnFinden(ctx context.Context) []*geraet {
 			}
 		}
 	}
-	l.schritte("nachbarn_finden", len(adressen))
+	// The listening after the last nudge counts as the nudges it could have
+	// sent at the pace: the rest stays above 0 until the ARP table is read.
+	nachlauf := int(l.u.Takt.nachlauf() * time.Duration(l.u.Takt.jeSekunde()) / time.Second)
+	l.schritte("nachbarn_finden", len(adressen)+nachlauf, 0)
 
 	// The multicast ways listen while the nudges go out.
 	var antworten Antworten
@@ -383,6 +393,7 @@ func (l *Lauf) nachbarnFinden(ctx context.Context) []*geraet {
 	case <-time.After(l.u.Takt.nachlauf()):
 	case <-ctx.Done():
 	}
+	l.erledige(nachlauf)
 	hoerEnde()
 	<-fertig
 
@@ -483,7 +494,9 @@ func werte(m map[netip.Addr]*geraet) []*geraet {
 // of them share the pace of JeSekunde.
 func (l *Lauf) geraeteAnsprechen(ctx context.Context, ziele []*geraet) {
 	ports := l.ports()
-	l.schritte("geraete_ansprechen", len(ziele)*len(ports))
+	// Recognising follows: at most one unit per device until it knows which
+	// ones answered.
+	l.schritte("geraete_ansprechen", len(ziele)*len(ports), len(ziele))
 	l.parallel(ctx, ziele, func(g *geraet) {
 		for _, p := range ports {
 			if ctx.Err() != nil {
@@ -565,7 +578,7 @@ func (l *Lauf) geraeteErkennen(ctx context.Context, ziele []*geraet) weitereZahl
 			kandidaten = append(kandidaten, g)
 		}
 	}
-	l.schritte("geraete_erkennen", len(kandidaten))
+	l.schritte("geraete_erkennen", len(kandidaten), 0)
 	for _, k := range kette {
 		for _, e := range k.erkenner {
 			if l.erkenner[e.name] {

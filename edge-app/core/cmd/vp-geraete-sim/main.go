@@ -1,6 +1,7 @@
 // vp-geraete-sim serves simulated devices for the device search on fixed
-// addresses: a Shelly Pro 3, a go-e charger, a Fronius Datamanager (Solar API)
-// and a SunSpec inverter (Modbus TCP). With vp-solarman-sim it gives a lab
+// addresses: a Shelly Pro 3, a go-e charger, a Fronius Datamanager (Solar API),
+// a TP-Link access point (login page without a title) and a SunSpec inverter
+// (Modbus TCP). With vp-solarman-sim it gives a lab
 // network to search (edge-light/docs/paritaet.md, Gerätesuche). Dev/test tool
 // - never part of a customer install; its answers are no hardware evidence.
 package main
@@ -20,6 +21,7 @@ func main() {
 	shelly := flag.String("shelly", "", "Listen-Adresse des Shelly Pro 3 (HTTP), leer = aus")
 	goe := flag.String("goe", "", "Listen-Adresse des go-e (HTTP), leer = aus")
 	fronius := flag.String("fronius", "", "Listen-Adresse des Fronius Datamanager (HTTP), leer = aus")
+	tplink := flag.String("tplink", "", "Listen-Adresse des TP-Link TL-WR840N (HTTP, Anmeldeseite ohne Titel), leer = aus")
 	sunspec := flag.String("sunspec", "", "Listen-Adresse des SunSpec-Wechselrichters (Modbus TCP), leer = aus")
 	flag.Parse()
 
@@ -38,6 +40,7 @@ func main() {
 	serve("Shelly Pro 3", *shelly, geraetesim.ShellyGen2(protokoll, "SPSW-003XE16EU", "1.4.4", 3, false, false))
 	serve("go-e", *goe, geraetesim.Goe(protokoll, "204117", "go-eCharger_V4", "56.1"))
 	serve("Fronius", *fronius, geraetesim.Fronius(protokoll, "31234567"))
+	serve("TP-Link", *tplink, geraetesim.TPLink(protokoll, "TL-WR840N"))
 	if *sunspec != "" {
 		m, err := geraetesim.StartModbus(*sunspec)
 		if err != nil {

@@ -106,11 +106,13 @@ func (SystemRundruf) Hoeren(ctx context.Context, schnittstellen []string, wege [
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				speedwireHoeren(ctx, ifi, func(ip netip.Addr, sn uint32) {
+				if speedwireHoeren(ctx, ifi, func(ip netip.Addr, sn uint32) {
 					mu.Lock()
 					out.Speedwire[ip] = sn
 					mu.Unlock()
-				})
+				}) {
+					lief("speedwire")
+				}
 			}()
 		}
 	}
@@ -240,11 +242,12 @@ func ssdpFragen(ctx context.Context, quelle netip.Addr, melde func(netip.Addr, s
 }
 
 // speedwireHoeren listens for the SMA energy meter's multicast and keeps its
-// serial (protocol 0x6069: SUSy-ID at 18, serial at 20).
-func speedwireHoeren(ctx context.Context, ifi *net.Interface, melde func(netip.Addr, uint32)) {
+// serial (protocol 0x6069: SUSy-ID at 18, serial at 20). false = the socket
+// did not open: not listened, which is not "no meter there".
+func speedwireHoeren(ctx context.Context, ifi *net.Interface, melde func(netip.Addr, uint32)) bool {
 	c, err := net.ListenMulticastUDP("udp4", ifi, &net.UDPAddr{IP: net.IPv4(239, 12, 255, 254), Port: 9522})
 	if err != nil {
-		return
+		return false
 	}
 	defer c.Close()
 	lesen(ctx, c, func(quelle netip.Addr, p []byte) {
@@ -254,6 +257,7 @@ func speedwireHoeren(ctx context.Context, ifi *net.Interface, melde func(netip.A
 			}
 		}
 	})
+	return true
 }
 
 // lesen hands every datagram to f until ctx ends.

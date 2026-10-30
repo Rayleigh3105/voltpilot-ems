@@ -263,18 +263,24 @@ func (l *Leitung) zwischenstand(la *laufend, nr, gesendet int) int {
 
 // restSekunden estimates the rest from the pace so far, never beyond the
 // time limit. ok=false while nothing is done yet (unknown is no number).
+// While units are open and time is left it says at least 1: 0 means done.
 func restSekunden(vergangen time.Duration, erledigt, gesamt int, max time.Duration) (int, bool) {
 	if erledigt <= 0 || gesamt <= 0 {
 		return 0, false
 	}
 	rest := time.Duration(float64(vergangen) * float64(gesamt-erledigt) / float64(erledigt))
-	if grenze := max - vergangen; rest > grenze {
+	grenze := max - vergangen
+	if rest > grenze {
 		rest = grenze
 	}
 	if rest < 0 {
 		rest = 0
 	}
-	return int(rest.Round(time.Second) / time.Second), true
+	s := int(rest.Round(time.Second) / time.Second)
+	if s == 0 && erledigt < gesamt && grenze >= time.Second {
+		s = 1
+	}
+	return s, true
 }
 
 func (l *Leitung) abschliessen(ctx context.Context, la *laufend, aus Ausgang) {

@@ -17,6 +17,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -301,6 +302,17 @@ func Kaco(p *Protokoll, isn string) Geraet {
 func Router(p *Protokoll, titel string) Geraet {
 	return Geraet{Protokoll: p, Pfade: map[string]Antwort{
 		"/": {Body: "<html><head><title>" + titel + "</title></head><body>Anmeldung</body></html>"},
+	}}
+}
+
+// TPLink is the login page of a TP-Link router like the TL-WR840N on
+// VoltPilotGATE (30.10.2026): no <title>, the model only in a script variable
+// at the end of the page.
+func TPLink(p *Protokoll, modell string) Geraet {
+	return Geraet{Protokoll: p, Pfade: map[string]Antwort{
+		"/": {Body: "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body><div id=\"login\"></div>" +
+			"<script type=\"text/javascript\">var modelName=\"" + modell + "\"; " +
+			"var modelDesc=\"TP-Link Wireless N Router " + strings.TrimPrefix(modell, "TL-") + " \";</script></body></html>"},
 	}}
 }
 
