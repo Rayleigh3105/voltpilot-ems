@@ -193,6 +193,98 @@ class GeraetesucheAbgleichTest {
                 .containsExactly("builtin:deye:sun-12k-sg04lp3", "builtin:deye:sun-8k-g");
     }
 
+    @Test
+    void einDeyeHybridMitGemeldeterSpannungBekommtNurDieModelleDieserSpannung() throws Exception {
+        List<ComponentTemplateDto> katalog = builtinKatalog();
+        GeraetesucheBericht.Fund hv = fund(docker, "solarman:3115580613");
+        assertThat(hv.spannung()).isEqualTo("hv"); // wie der Deye am VoltPilotGATE: Gerätetyp 0x0006
+
+        List<String> hochvolt = GeraetesucheAbgleich.vorlagen(hv, katalog);
+        assertThat(hochvolt).hasSize(8).allMatch(r -> r.contains("-sg01hp3") || r.contains("-sg02hp3"));
+        List<String> niedervolt = GeraetesucheAbgleich.vorlagen(mitSpannung(hv, "lv"), katalog);
+        assertThat(niedervolt).hasSize(5).allMatch(r -> r.contains("-sg04lp3"));
+        // Ohne Spannung bleibt die ganze Familie.
+        assertThat(GeraetesucheAbgleich.vorlagen(mitSpannung(hv, null), katalog)).hasSize(13)
+                .containsAll(hochvolt).containsAll(niedervolt);
+    }
+
+    @Test
+    void eineSpannungOhnePassendeVorlageEngtNichtAufNichtsEin() {
+        List<ComponentTemplateDto> nurNiedervolt = List.of(
+                vorlage("builtin:deye:sun-12k-sg04lp3", "deye", "sun-12k-sg04lp3", "hybrid_3p", "solarman_v5"));
+        assertThat(GeraetesucheAbgleich.vorlagen(fund(docker, "solarman:3115580613"), nurNiedervolt))
+                .containsExactly("builtin:deye:sun-12k-sg04lp3");
+    }
+
+    /** Die Spannung, die der Abgleich aus dem Modell liest, ist die, die der Katalog in seiner Notiz nennt. */
+    @Test
+    void dieSpannungEinerVorlageFolgtIhremTypschluesselWieIhreNotiz() throws Exception {
+        JsonNode templates = JSON.readTree(getClass().getResourceAsStream("/componenttemplates/builtin.json"))
+                .path("templates");
+        int hv = 0;
+        int lv = 0;
+        for (JsonNode t : templates) {
+            String model = t.path("model").asText();
+            String note = t.path("note").asText();
+            String erwartet = note.contains("Hochvolt-Speicher (HV)") ? "hv"
+                    : note.contains("Niedervolt-Speicher (LV)") ? "lv" : null;
+            if (erwartet != null) {
+                assertThat(GeraetesucheAbgleich.spannung(model)).as(model).isEqualTo(erwartet);
+                hv += "hv".equals(erwartet) ? 1 : 0;
+                lv += "lv".equals(erwartet) ? 1 : 0;
+            } else if ("hybrid_3p".equals(t.path("family").asText())) {
+                throw new AssertionError("hybrid_3p ohne Spannung in der Notiz: " + model);
+            }
+        }
+        assertThat(hv).isEqualTo(8);
+        assertThat(lv).isEqualTo(5);
+        assertThat(GeraetesucheAbgleich.spannung("sun-10k-g03")).isNull();
+        assertThat(GeraetesucheAbgleich.spannung(null)).isNull();
+    }
+
+    @Test
+    void einShellyBekommtDenProduktnamenNurZuEinemBelegtenCode() {
+        GeraetesucheBericht.Fund pro3 = fund(docker, "shelly:192.168.178.50:80");
+        assertThat(pro3.modell()).isEqualTo("SPSW-003XE16EU");
+        assertThat(ShellyModellnamen.name(pro3)).isEqualTo("Shelly Pro 3");
+        assertThat(ShellyModellnamen.name(mitModell(pro3, "shem-3"))).isEqualTo("Shelly 3EM"); // Gen1 type
+        assertThat(ShellyModellnamen.name(mitModell(pro3, "SPEM-003CEBEU"))).isEqualTo("Shelly Pro 3EM");
+        // Unbekannter Code: kein Name, das Portal zeigt den Code.
+        assertThat(ShellyModellnamen.name(mitModell(pro3, "SXXX-999ZZ"))).isNull();
+        assertThat(ShellyModellnamen.name(mitModell(pro3, null))).isNull();
+        // Derselbe Code eines anderen Herstellers ist kein Shelly.
+        GeraetesucheBericht.Fund deye = fund(docker, "solarman:3115580613");
+        assertThat(ShellyModellnamen.name(mitModell(deye, "SPSW-003XE16EU"))).isNull();
+    }
+
+    private static GeraetesucheBericht.Fund mitSpannung(GeraetesucheBericht.Fund d, String spannung) {
+        return new GeraetesucheBericht.Fund(d.schluessel(), d.erkenner(), d.art(), d.hersteller(), d.modell(),
+                d.seriennummer(), d.firmware(), d.familie(), spannung, d.kanaele(), d.erkennung(), d.merkmale(),
+                d.anbindung(), d.hindernis(), d.verbindung(), d.liestBoxSchon());
+    }
+
+    private static GeraetesucheBericht.Fund mitModell(GeraetesucheBericht.Fund d, String modell) {
+        return new GeraetesucheBericht.Fund(d.schluessel(), d.erkenner(), d.art(), d.hersteller(), modell,
+                d.seriennummer(), d.firmware(), d.familie(), d.spannung(), d.kanaele(), d.erkennung(), d.merkmale(),
+                d.anbindung(), d.hindernis(), d.verbindung(), d.liestBoxSchon());
+    }
+
+    private List<ComponentTemplateDto> builtinKatalog() throws Exception {
+        List<ComponentTemplateDto> out = new java.util.ArrayList<>();
+        for (JsonNode t : JSON.readTree(getClass().getResourceAsStream("/componenttemplates/builtin.json"))
+                .path("templates")) {
+            out.add(vorlage(t.path("template_ref").asText(), t.path("brand").asText(), t.path("model").asText(),
+                    t.path("family").asText(), t.path("communication").asText()));
+        }
+        return out;
+    }
+
+    private static ComponentTemplateDto vorlage(String ref, String brand, String model, String family,
+            String communication) {
+        return new ComponentTemplateDto(ref, "builtin", 1, brand, brand, model, model, "[]", "inverter", null, family,
+                family, communication, communication, "[]", "[]", "[]", null, 0, null, null, null, null, null);
+    }
+
     private static ComponentTemplateDto vorlage(String ref, String brand, String family, String communication) {
         return new ComponentTemplateDto(ref, "builtin", 1, brand, brand, ref, ref, "[]", "inverter", null, family,
                 family, communication, communication, "[]", "[]", "[]", null, 0, null, null, null, null, null);

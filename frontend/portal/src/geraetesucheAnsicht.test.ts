@@ -105,9 +105,11 @@ describe('Gerätesuche · Fortschritt', () => {
 });
 
 describe('Gerätesuche · ein Fund in Worten', () => {
-  it('erfindet keinen Modellnamen: Hersteller und Bauart, sonst das Modell der Box', () => {
+  it('erfindet keinen Modellnamen: belegter Produktname, sonst Hersteller und Bauart oder das Modell der Box', () => {
     expect(fundTitel(gsDeye)).toBe('Deye Hybrid-Wechselrichter');
-    expect(fundTitel(gsShelly)).toBe('Shelly SPSW-003XE16EU');
+    expect(fundTitel(gsShelly)).toBe('Shelly Pro 3');
+    // Ein Code ohne belegten Namen bleibt der Code der Box.
+    expect(fundTitel(fund({ ...gsShelly, modell: 'SXXX-999ZZ', modellName: null }))).toBe('Shelly SXXX-999ZZ');
     expect(fundTitel(gsGoe)).toBe('go-e Wallbox');
     expect(fundTitel(fund({ hersteller: null, modell: null, art: 'modbus_geraet' }))).toBe('Modbus-Gerät');
     expect(fundTitel(fund({ hersteller: 'Unbekannt AG', modell: null, art: 'zaehler' }))).toBe('Unbekannt AG Zähler');

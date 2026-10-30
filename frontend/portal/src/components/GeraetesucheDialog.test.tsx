@@ -65,7 +65,7 @@ describe('GeraetesucheDialog · Suche läuft (m2/d2)', () => {
     expect(screen.getByRole('dialog', { name: 'Geräte suchen' })).toBeInTheDocument();
     expect(screen.getByText('Noch etwa 15 Sekunden · Schritt 2 von 3 · Geräte ansprechen')).toHaveAttribute('role', 'status');
     expect(screen.getByRole('progressbar', { name: 'Fortschritt der Suche' })).toHaveAttribute('aria-valuenow', '58');
-    expect(screen.getByText('Shelly SPSW-003XE16EU')).toBeInTheDocument();
+    expect(screen.getByText('Shelly Pro 3')).toBeInTheDocument();
     expect(screen.getByText('Sie können das Fenster schließen – die Suche läuft weiter.')).toBeInTheDocument();
   });
 
@@ -97,7 +97,7 @@ describe('GeraetesucheDialog · Suche läuft (m2/d2)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Abbrechen' }));
     expect(abbruch).toHaveBeenCalledWith(GS_SITE_ID, GS_SUCH_ID);
     expect(await screen.findByText('Die Suche wurde abgebrochen. Was bis dahin gefunden war, steht unten.')).toBeInTheDocument();
-    expect(screen.getByText('Shelly SPSW-003XE16EU')).toBeInTheDocument();
+    expect(screen.getByText('Shelly Pro 3')).toBeInTheDocument();
   });
 
   it('„Mitansehen": eine laufende Suche zeigen, ohne eine zweite zu starten', async () => {
@@ -154,6 +154,17 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
     expect(within(zeile).getByText('sicher erkannt')).toBeInTheDocument();
   });
 
+  it('Shelly: die Zeile nennt den belegten Produktnamen, „Woran erkannt?" den Modellcode der Box', async () => {
+    starten(F.fertig);
+    rendere();
+    await screen.findByTestId('gs-ergebnis');
+    const zeile = document.querySelector(`[data-fund="${gsShelly.schluessel}"]`) as HTMLElement;
+    expect(within(zeile).getByText('Shelly Pro 3')).toBeInTheDocument();
+    fireEvent.click(within(zeile).getByRole('button', { name: 'Woran erkannt?' }));
+    expect(within(zeile).getByText('Modellcode')).toBeVisible();
+    expect(within(zeile).getByText('SPSW-003XE16EU')).toBeVisible();
+  });
+
   it('go-e: ein Tipp übernimmt mit Vorlage und Anschluss aus der Suche', async () => {
     starten(F.breit);
     const { props } = rendere();
@@ -187,7 +198,7 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
   it('Shelly: je Ausgang eine Komponente; ein übernommener Ausgang steht als übernommen', async () => {
     starten(F.fertig);
     const { props } = rendere({ uebernommen: new Map([[`${gsShelly.schluessel}#0`, 'Heizstab']]) });
-    fireEvent.click(await screen.findByRole('button', { name: 'Shelly SPSW-003XE16EU übernehmen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Shelly Pro 3 übernehmen' }));
     expect(await screen.findByRole('heading', { name: 'Welcher Ausgang steuert ein Gerät?' })).toBeInTheDocument();
     expect(screen.getByText('Heizstab')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Ausgang 1/ })).toBeNull();
@@ -338,7 +349,7 @@ describe('GeraetesucheDialog · wenn es nicht geht', () => {
     starten(F.keineAntwort);
     rendere();
     expect(await screen.findByText('Ihre Box hat die Suche nicht zu Ende gemeldet. Was bis dahin gefunden war, steht unten.')).toBeInTheDocument();
-    expect(screen.getByText('Shelly SPSW-003XE16EU')).toBeInTheDocument();
+    expect(screen.getByText('Shelly Pro 3')).toBeInTheDocument();
   });
 
   it('abgelehnt von der Box: der Grund in Worten', async () => {

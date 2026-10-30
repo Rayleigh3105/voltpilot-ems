@@ -38,7 +38,7 @@ public final class GeraetesucheDto {
      *                   {@code POST …/component-test}
      */
     public record Fund(String schluessel, String erkenner, String art, String hersteller, String modell,
-            String seriennummer, String firmware, String familie, String spannung, Integer kanaele, String erkennung,
+            String modellName, String seriennummer, String firmware, String familie, String spannung, Integer kanaele, String erkennung,
             List<String> merkmale, String anbindung, String hindernis, Map<String, Object> verbindung,
             boolean liestBoxSchon, String abgleich, Komponente komponente, String bekannteAdresse,
             List<String> vorlagen) {

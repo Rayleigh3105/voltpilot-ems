@@ -157,8 +157,12 @@ export function herstellerName(h: string | null): string | null {
   return HERSTELLER[h.trim().toLowerCase()] ?? h.trim();
 }
 
-/** „Deye Hybrid-Wechselrichter", „Shelly SPSW-003XE16EU", „Modbus-Gerät" - ohne erfundenen Modellnamen. */
+/**
+ * „Deye Hybrid-Wechselrichter", „Shelly Pro 3", „Shelly SPSW-XXXX", „Modbus-Gerät" - ohne erfundenen Modellnamen:
+ * den Produktnamen nur, wo die API ihn aus einer Herstellerquelle kennt (`modellName`), sonst den Code der Box.
+ */
 export function fundTitel(f: GeraetesucheFund): string {
+  if (f.modellName && f.modellName.trim()) return f.modellName.trim();
   const h = herstellerName(f.hersteller);
   if (f.modell && f.modell.trim()) return h && !f.modell.toLowerCase().startsWith(h.toLowerCase()) ? `${h} ${f.modell.trim()}` : f.modell.trim();
   if (h && f.art === 'wechselrichter' && f.familie?.startsWith('hybrid')) return `${h} Hybrid-Wechselrichter`;

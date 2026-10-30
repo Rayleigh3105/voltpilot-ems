@@ -10,6 +10,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Der Abgleich eines Fundes mit den Komponenten der Anlage ({@code docs/contracts/v2/mqtt-geraetesuche.md} §7). Rein:
@@ -129,7 +131,8 @@ public final class GeraetesucheAbgleich {
     /**
      * Die Vorlagen ({@code templateRef}), die zu einem übernehmbaren Fund passen: dieselbe Kommunikationsart, derselbe
      * Hersteller und — wo die Box eine Bauart nennt und der Katalog sie kennt — dieselbe Bauart (Deye: nur die Modelle
-     * der gemeldeten Familie). Leer, wenn der Fund sich nicht übernehmen lässt oder keine Vorlage passt.
+     * der gemeldeten Familie) und dieselbe Speicherspannung (Deye-Hybrid HV: nur SG01HP3/SG02HP3, LV: nur SG04LP3).
+     * Leer, wenn der Fund sich nicht übernehmen lässt oder keine Vorlage passt.
      */
     public static List<String> vorlagen(GeraetesucheBericht.Fund fund, List<ComponentTemplateDto> katalog) {
         String communication = fund.verbindung().communication();
@@ -147,9 +150,31 @@ public final class GeraetesucheAbgleich {
                 passend = bauart;
             }
         }
+        if (fund.spannung() != null) {
+            List<ComponentTemplateDto> gleicheSpannung = passend.stream()
+                    .filter(t -> fund.spannung().equals(spannung(t.model()))).toList();
+            if (!gleicheSpannung.isEmpty()) {
+                passend = gleicheSpannung;
+            }
+        }
         List<String> refs = new ArrayList<>();
         passend.forEach(t -> refs.add(t.templateRef()));
         return List.copyOf(refs);
+    }
+
+    /** Deyes Typschlüssel trägt die Speicherspannung: SG04LP3 = Niedervolt, SG01HP3/SG02HP3 = Hochvolt. */
+    private static final Pattern DEYE_SPANNUNG = Pattern.compile("-sg\\d{2}([lh])p\\d", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Die Speicherspannung einer Vorlage aus ihrem Modell ({@code hv}, {@code lv}); null, wenn das Modell keine nennt.
+     * {@code GeraetesucheAbgleichTest} bindet sie an die Notiz „Hoch-/Niedervolt-Speicher“ im Vorlagenkatalog.
+     */
+    static String spannung(String model) {
+        if (model == null) {
+            return null;
+        }
+        Matcher m = DEYE_SPANNUNG.matcher(model);
+        return m.find() ? (m.group(1).equalsIgnoreCase("h") ? "hv" : "lv") : null;
     }
 
     private static boolean gleicheAdresse(String ip, Integer unitId, Komponente k) {

@@ -144,7 +144,7 @@ for (const breite of BREITEN) {
     test('Shelly: je Ausgang ein Gerät (m6)', async ({ page }, info) => {
       const fehler = konsole(page);
       await oeffne(page, breite, 'fall=fertig');
-      await modal(page).getByRole('button', { name: 'Shelly SPSW-003XE16EU übernehmen' }).click();
+      await modal(page).getByRole('button', { name: 'Shelly Pro 3 übernehmen' }).click();
       const wahl = modal(page, 'Schalter hinzufügen');
       await expect(wahl.getByRole('heading', { name: 'Welcher Ausgang steuert ein Gerät?' })).toBeVisible();
       await expect(wahl.getByRole('button', { name: /Ausgang \d/ })).toHaveCount(3);

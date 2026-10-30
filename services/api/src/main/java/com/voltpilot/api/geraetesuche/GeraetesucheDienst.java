@@ -256,7 +256,7 @@ public class GeraetesucheDienst {
         GeraetesucheDto.Komponente komponente = a.komponente() == null ? null
                 : new GeraetesucheDto.Komponente(a.komponente().id(), a.komponente().name());
         return new GeraetesucheDto.Fund(f.schluessel(), f.erkenner(), f.art(), f.hersteller(), f.modell(),
-                f.seriennummer(), f.firmware(), f.familie(), f.spannung(), f.kanaele(), f.erkennung(), f.merkmale(),
+                ShellyModellnamen.name(f), f.seriennummer(), f.firmware(), f.familie(), f.spannung(), f.kanaele(), f.erkennung(), f.merkmale(),
                 f.anbindung(), f.hindernis(), verbindung, f.liestBoxSchon(), a.abgleich(), komponente,
                 a.bekannteAdresse(), vorlagen);
     }

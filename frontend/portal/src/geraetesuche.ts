@@ -96,7 +96,10 @@ export interface GeraetesucheFund {
   erkenner: Exclude<GeraetesucheErkenner, 'mdns' | 'ssdp' | 'funkmodul'>;
   art: GeraetesucheArt;
   hersteller: string | null;
+  /** Wie die Box es meldet; bei Shelly der Modellcode (`SPSW-003XE16EU`). */
   modell: string | null;
+  /** Der Produktname zum Code, wo der Hersteller ihn belegt („Shelly Pro 3"); null = unbekannt, `modell` gilt. */
+  modellName: string | null;
   seriennummer: string | null;
   firmware: string | null;
   familie: string | null;

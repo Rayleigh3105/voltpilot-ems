@@ -1021,6 +1021,7 @@ function FundZeile({
       <dl>
         {f.seriennummer && telefon && (<div><dt>Seriennummer</dt><dd className="vp-mono">{f.seriennummer}</dd></div>)}
         {fundAdresse(f, true) && telefon && (<div><dt>Adresse</dt><dd className="vp-mono">{fundAdresse(f, true)}</dd></div>)}
+        {f.modellName && f.modell && (<div><dt>Modellcode</dt><dd className="vp-mono">{f.modell}</dd></div>)}
         {bauart(f) && (<div><dt>Bauart</dt><dd>{bauart(f)}</dd></div>)}
         {f.firmware && (<div><dt>Firmware</dt><dd className="vp-mono">{f.firmware}</dd></div>)}
         <div><dt>Erkennung</dt><dd><span className={`vp-gs-wort is-${ew.ton}`}>{ew.wort}</span></dd></div>

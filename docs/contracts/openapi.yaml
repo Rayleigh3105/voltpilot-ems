@@ -38020,8 +38020,8 @@ components:
       description: >
         Ein Fund der Box (mqtt-geraetesuche §6), abgeglichen mit den Komponenten der Anlage. Übernehmen öffnet den
         Anlege-Fluss mit `vorlagen` und `verbindung` vorbelegt; der Verbindungstest startet von selbst.
-      required: [schluessel, erkenner, art, hersteller, modell, seriennummer, firmware, familie, spannung, kanaele,
-        erkennung, merkmale, anbindung, hindernis, verbindung, liestBoxSchon, abgleich, komponente, bekannteAdresse,
+      required: [schluessel, erkenner, art, hersteller, modell, modellName, seriennummer, firmware, familie, spannung,
+        kanaele, erkennung, merkmale, anbindung, hindernis, verbindung, liestBoxSchon, abgleich, komponente, bekannteAdresse,
         vorlagen]
       properties:
         schluessel: { type: string, example: "solarman:3115580613" }
@@ -38033,7 +38033,14 @@ components:
           type: string
           enum: [wechselrichter, wallbox, schaltaktor, zaehler, io_modul, sps, dtu, modbus_geraet, router, zugangspunkt]
         hersteller: { type: string, nullable: true, example: deye }
-        modell: { type: string, nullable: true }
+        modell: { type: string, nullable: true, description: Wie die Box es meldet (Shelly den Modellcode). }
+        modellName:
+          type: string
+          nullable: true
+          example: Shelly Pro 3
+          description: >
+            Der Produktname zum gemeldeten Modellcode, wo der Hersteller ihn belegt (Shelly-Knowledge-Base,
+            Gen1-API-Doku); null = unbekannter Code, das Portal zeigt dann `modell`.
         seriennummer: { type: string, nullable: true }
         firmware: { type: string, nullable: true }
         familie: { type: string, nullable: true, example: hybrid_3p }
