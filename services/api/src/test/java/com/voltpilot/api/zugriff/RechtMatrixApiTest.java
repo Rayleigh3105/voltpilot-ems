@@ -250,6 +250,11 @@ class RechtMatrixApiTest {
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/components", "ee4433e33"));
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A2}/components", "eee443443"));
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/modbus-probe", "ee4433e33"));
+        // Gerätesuche (DP-4 A): Starten und Abbrechen tragen dasselbe Recht wie Verbindungstest und Probe.
+        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/geraetesuche", "ee4433e33"));
+        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A2}/geraetesuche", "eee443443"));
+        z.add(new Zeile("geraet.einrichten", HttpMethod.DELETE, "/api/v1/sites/{A1}/geraetesuche/{FREMD}",
+                "ee4433e33"));
         z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/devices/claim", "eee333e33"));
         z.add(new Zeile("komponente.loeschen", HttpMethod.DELETE, "/api/v1/devices/{D1}", "ee4433333"));
         z.add(new Zeile("komponente.loeschen", HttpMethod.DELETE, "/api/v1/sites/{A1}/components/custom/{FREMD}",
@@ -473,6 +478,43 @@ class RechtMatrixApiTest {
                 + "4 außerhalb):");
         tabelle.forEach((k, v) -> System.out.println("  " + v + "  " + k));
         assertThat(abweichungen).as("Abweichungen von der Matrix").isEmpty();
+    }
+
+    /**
+     * Die lesenden Routen der Gerätesuche tragen kein {@link Recht} (Leseroute), prüfen {@code geraet.einrichten} aber
+     * im Handler (DP-4 A, OpenAPI-Tag {@code geraetesuche}): dieselbe Erwartung wie das Starten an der Anlage. Erlaubt:
+     * der Verlauf ist 200, eine unbekannte Suche 404; ohne Recht 403 {@code recht_fehlt}; außerhalb 404
+     * {@code nicht_gefunden} - dieselbe Antwort wie für eine Anlage, die es nicht gibt.
+     */
+    @Test
+    void dieLesendenRoutenDerGeraetesuchePruefenGeraetEinrichtenImHandler() throws Exception {
+        String erwartet = "ee4433e33";
+        List<String> abweichungen = new ArrayList<>();
+        for (int i = 0; i < PERSONEN.size(); i++) {
+            Person p = PERSONEN.get(i);
+            char soll = erwartet.charAt(i);
+            MvcResult verlauf = ruf(HttpMethod.GET, pfad("/api/v1/sites/{A1}/geraetesuche"), p, false, null);
+            MvcResult eine = ruf(HttpMethod.GET, pfad("/api/v1/sites/{A1}/geraetesuche/{FREMD}"), p, false, null);
+            for (MvcResult r : List.of(verlauf, eine)) {
+                int status = r.getResponse().getStatus();
+                String code = status == 200 ? "" : MAPPER.readTree(r.getResponse().getContentAsString(
+                        StandardCharsets.UTF_8)).path("code").asText();
+                String ist = status + " " + code;
+                String richtig = switch (soll) {
+                    case 'e' -> r == verlauf ? "200 " : "404 nicht_gefunden";
+                    case '3' -> "403 recht_fehlt";
+                    default -> "404 nicht_gefunden";
+                };
+                if (!richtig.equals(ist)) {
+                    abweichungen.add(p.kurz() + " " + r.getRequest().getRequestURI() + ": erwartet " + richtig
+                            + ", ist " + ist);
+                }
+            }
+        }
+        assertThat(abweichungen).as("lesende Routen der Gerätesuche").isEmpty();
+        // Die Verläufe sind dieselben: keiner sieht eine Suche, die es nicht gibt.
+        assertThat(MAPPER.readTree(ruf(HttpMethod.GET, pfad("/api/v1/sites/{A1}/geraetesuche"), JW, false, null)
+                .getResponse().getContentAsString(StandardCharsets.UTF_8)).path("suchen").isArray()).isTrue();
     }
 
     /** Jede Zeile der Gruppen 1–3 hat eine Route oben oder einen Grund. */

@@ -60,5 +60,5 @@ einer Anlage unsichtbar. Ohne beides bleibt der Herzschlag byte-gleich.
 | Seite | Ort |
 |---|---|
 | Box (schreibt, Paket Stufe 2) | `internal/csms` merkt sich die Abweisung, `internal/cloud` (`ChargersSummary`) sendet; Prüfer `internal/geraetesuche/klopftan.go` |
-| API (liest) | `geraetesuche/KlopftAn.lesen`; Speicher und Route im Paket Stufe 2 |
+| API (liest) | `geraetesuche/KlopftAn.lesen`; Spiegel je Box `KlopftAnSpeicher` (aus `ChargerStatusListener`), Antwort der Gerätesuche `ladesaeulenKlopfenAn` |
 | Portal (zeigt) | Gruppe „Ladesäule klopft an“ und „Zulassen“, Paket Stufe 2 |

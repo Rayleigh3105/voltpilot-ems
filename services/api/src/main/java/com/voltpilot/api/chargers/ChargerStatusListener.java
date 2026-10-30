@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.command.CommandLogWriter;
 import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
+import com.voltpilot.api.geraetesuche.KlopftAnSpeicher;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.BudgetRow;
@@ -31,6 +32,7 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
@@ -136,6 +138,11 @@ public class ChargerStatusListener extends Rueckmeldeweg {
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
+    /**
+     * OCPP „klopft an“ ({@code docs/contracts/ocpp-klopft-an.md}): die abgewiesenen Kennungen des Blocks für die
+     * Antwort der Gerätesuche. Per Setter, damit die Tests ihren Aufruf behalten; ohne ihn bleibt alles wie vorher.
+     */
+    private KlopftAnSpeicher klopftAn;
 
     public ChargerStatusListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -153,6 +160,11 @@ public class ChargerStatusListener extends Rueckmeldeweg {
         this.composer = composer;
         this.commandLog = commandLog;
         this.vehicles = vehicles;
+    }
+
+    @Autowired(required = false)
+    public void setKlopftAn(KlopftAnSpeicher klopftAn) {
+        this.klopftAn = klopftAn;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -231,6 +243,7 @@ public class ChargerStatusListener extends Rueckmeldeweg {
         }
         JsonNode block = json == null ? null : json.get("chargers");
         if (block == null || !block.isObject()) {
+            ohneBlock(topic, json); // wer anklopft, ist damit unbekannt
             return; // ein Herzschlag ohne Ladepunkt-Block
         }
         JsonNode list = block.get("chargers");
@@ -286,6 +299,9 @@ public class ChargerStatusListener extends Rueckmeldeweg {
             }
             chargerStatus.replaceForDevice(deviceId, tenantId, siteId, reportedAt, budget,
                     chargers);
+            if (klopftAn != null) {
+                klopftAn.merken(tenantId, deviceId, block, Instant.now());
+            }
             JsonNode controlStatus = block.get("control_status");
             if (validControlStatus(controlStatus))
                 chargerStatus.replaceOcppControlStatus(deviceId, controlStatus.toString());
@@ -314,6 +330,21 @@ public class ChargerStatusListener extends Rueckmeldeweg {
             }
         } finally {
             TenantContext.clear();
+        }
+    }
+
+    /**
+     * Ein Herzschlag ohne Block {@code chargers}: ob eine Säule anklopft, ist unbekannt (ältere Box oder nichts zu
+     * melden lässt sich nicht unterscheiden). Nur die Box des Topics, und nur wenn die Nutzlast sie selbst nennt.
+     */
+    private void ohneBlock(String topic, JsonNode json) {
+        if (klopftAn == null || json == null) {
+            return;
+        }
+        String[] parts = topic.split("/");
+        UUID deviceId = parts.length == 5 ? parseUuid(parts[3]) : null;
+        if (deviceId != null && deviceId.toString().equals(json.path("device_id").asText())) {
+            klopftAn.vergessen(deviceId);
         }
     }
 

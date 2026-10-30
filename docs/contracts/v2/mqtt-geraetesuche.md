@@ -7,9 +7,10 @@ Schemas: [Auftrag](mqtt-geraetesuche.schema.json), [Zwischenstand](mqtt-geraetes
 [`geraetesuche-vectors.json`](geraetesuche-vectors.json). Bereichsregel: [`lan-range-vectors.json`](../lan-range-vectors.json).
 HTTP: Tag `geraetesuche` in [`openapi.yaml`](../openapi.yaml). Abgewiesene Ladesäulen: [OCPP „klopft an“](../ocpp-klopft-an.md).
 
-**Stand:** nur der Vertrag mit seinen Lesern und Prüfern (Go `internal/geraetesuche` und `internal/probe/bereich.go`,
-Java `geraetesuche`, TS `geraetesuche.ts`). Suchmodul, Erkenner, Tabellen, Routen und Oberfläche kommen in eigenen
-Paketen. Bis eine Box die Fähigkeit `geraetesuche` meldet, antwortet die Route 409 `nicht_unterstuetzt`.
+**Stand:** der Vertrag mit seinen Lesern und Prüfern (Go `internal/geraetesuche` und `internal/probe/bereich.go`,
+Java `geraetesuche`, TS `geraetesuche.ts`) und die API-Seite: Tabellen, Routen, Listener, Abgleich
+([Wegweiser](../../agents/root/geraetesuche-api.md)). Suchmodul, Erkenner und Oberfläche kommen in eigenen Paketen. Bis
+eine Box die Fähigkeit `geraetesuche` meldet, antwortet die Route 409 `nicht_unterstuetzt`.
 
 ## 1. Topics
 
@@ -183,5 +184,6 @@ Verlauf wie Verbindungstest und Probe; Mandant aus JWT, Standort-Zaun):
 ```bash
 (cd edge-app/core && go test ./internal/geraetesuche/ ./internal/probe/ && go test ./internal/cloud/ -run BuiltSupports)
 (cd services/api && ./mvnw test -Dtest='GeraetesucheVertragTest,GeraetesucheSchnittstelleVertragTest,SuchbereichTest,KlopftAnTest,EdgeSupportsListenerTest')
+(cd services/api && ./mvnw test -Dtest='GeraetesucheAbgleichTest,GeraetesucheAntwortFormTest,GeraetesucheApiTest')
 (cd frontend/portal && npx vitest run --minWorkers=1 --maxWorkers=2 src/geraetesuche.test.ts src/edgeSupportsVectors.test.ts)
 ```
