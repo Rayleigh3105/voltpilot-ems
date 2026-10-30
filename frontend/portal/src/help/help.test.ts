@@ -8,10 +8,12 @@ import { HELP_FIGURES, figureUrl } from './figures';
 import { searchHelp } from './search';
 import { anlageRoute, auditRoute, dokumentRoute, energiemanagementRoute, hashForRoute, managementbewertungRoute, pageRoute, parseRoute, personRoute } from '../nav';
 import { canonicalShellRoute } from '../betriebsart';
+import { GRUPPEN_TITEL, nichtsGefundenFragen } from '../geraetesucheAnsicht';
+import type { Geraetesuche } from '../geraetesuche';
 
 describe('help handbook integrity', () => {
   it('ships the full handbook with unique slugs, sections and valid related articles', () => {
-    expect(HELP_ARTICLES).toHaveLength(29);
+    expect(HELP_ARTICLES).toHaveLength(30);
     expect(new Set(HELP_ARTICLES.map((a) => a.id)).size).toBe(HELP_ARTICLES.length);
     for (const article of HELP_ARTICLES) {
       expect(HELP_CATEGORIES.some((c) => c.id === article.category)).toBe(true);
@@ -56,6 +58,32 @@ describe('help handbook integrity', () => {
       expect(helpForRoute(route), hashForRoute(route)).toBe('energiemanagement');
     }
     expect(findArticle('energiemanagement')?.category).toBe('verstehen');
+  });
+});
+
+describe('Hilfe „Geräte suchen“ spricht die Wörter des Such-Modals (Konzept „Geräte suchen“, Paket B4)', () => {
+  const artikel = findArticle('geraete-suchen')!;
+  const text = artikel.sections.flatMap((s) => [s.title, ...s.paragraphs]).join(' ');
+
+  it('nennt jede Gruppe mit ihrer Überschrift aus dem Modal', () => {
+    for (const titel of Object.values(GRUPPEN_TITEL)) {
+      if (titel === GRUPPEN_TITEL.weitere) continue;
+      expect(text, titel).toContain(`„${titel}“`);
+    }
+  });
+
+  it('stellt die festen Prüffragen von „nichts gefunden“ und ihre Schnittstellen-Antwort', () => {
+    const fragen = nichtsGefundenFragen({ netze: [], erkenner: null } as unknown as Geraetesuche);
+    for (const f of fragen) expect(text, f.frage).toContain(f.frage);
+    expect(text).toContain('Modbus TCP');
+    expect(text).toContain('„HTTP API v2“');
+    expect(text).toContain('Nicht gesucht?');
+  });
+
+  it('sagt nur lesen, 30 Tage, nur Anzahl, keine MAC – und ist über die Suche erreichbar', () => {
+    for (const satz of ['Es wird nur gelesen', '30 Tagen', 'nur als Anzahl', 'MAC-Adressen', '/24']) expect(text, satz).toContain(satz);
+    expect(searchHelp(HELP_ARTICLES, 'Gerätesuche Datenschutz')[0].id).toBe('geraete-suchen');
+    expect(searchHelp(HELP_ARTICLES, 'noch nicht anbindbar').some((a) => a.id === 'geraete-suchen')).toBe(true);
   });
 });
 

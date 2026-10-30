@@ -91,6 +91,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Geräteseiten Stufe 1: die BOX ist eine TOR-Seite (`/box`)](root/geraeteseiten-stufe-1-die-box-ist-eine-t.md)
 - [Geräteseiten Stufe 2: die LANE verschwindet für den Benutzer (E4)](root/geraeteseiten-stufe-2-die-lane-verschwin.md)
 - [Gerätesuche, API-Seite: vier Routen, drei Tabellen, ein eigener Listener (Paket 3)](root/geraetesuche-api.md)
+- [Gerätesuche: Wegweiser über Vertrag, Box, API, Portal und Belege](root/geraetesuche.md)
 - [„Grenzen & Wächter" Stufe 0: der Einspeisewächter und die Grenze IM GERÄT](root/grenzen-waechter-stufe-0-der-einspeisewa.md)
 - [Historie (history/reporting: `services/api` history package + portal "Historie" page)](root/historie-history-reporting-services-api.md)
 - [In-slot load following: the DISCHARGE mirror of the trim (2026-07-30, P1)](root/in-slot-load-following-the-discharge-mir.md)

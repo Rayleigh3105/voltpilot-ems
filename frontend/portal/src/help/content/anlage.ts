@@ -36,7 +36,36 @@ export const plantArticles: HelpArticle[] = [
       { id: 'unvollstaendig', title: 'Wenn das Modell unvollständig ist', paragraphs: [
         "Fehlende Komponenten oder Zuordnungen können Werte und Ansichten unvollständig machen. Prüfen Sie vorhandene Einträge, Synchronisation und Messwerte, bevor Sie ein Gerät erneut hinzufügen.",
       ] },
-    ], related: ['geraete', 'box-verbinden', 'probleme'],
+    ], related: ['geraete', 'geraete-suchen', 'box-verbinden', 'probleme'],
+  },
+  {
+    id: 'geraete-suchen', category: 'anlage', title: 'Geräte suchen: was die Box liest und was bleibt',
+    summary: 'Was die Gerätesuche im Heimnetz tut und nicht tut, was gespeichert wird und warum ein Gerät fehlen kann.',
+    keywords: ['Gerätesuche', 'Geräte suchen', 'Heimnetz', 'Suche', 'finden', 'nicht gefunden', 'Datenschutz', 'Passwort',
+      'anbindbar', 'Netz der Box', 'Docker', 'Rechner', 'Letzte Suchen', 'Modbus TCP'],
+    prerequisite: 'Eine VoltPilot-Box, die sich gerade meldet und die Gerätesuche kennt. Ohne sie nennt der Knopf „Geräte suchen“ den Grund, etwa „Update nötig für: Gerätesuche“.',
+    sections: [
+      { id: 'nur-lesen', title: 'Was die Suche tut – und was nicht', paragraphs: [
+        "Auf Knopfdruck fragt Ihre VoltPilot-Box die Geräte in ihrem Netz, wer sie sind. Es wird nur gelesen: Die Box meldet sich nirgends an, probiert kein Passwort aus und ändert an keinem Gerät eine Einstellung. Verlangt ein Gerät eine Anmeldung, sagt die Suche das; den Passwortschutz schalten Sie dann in der App des Geräts aus.",
+        "Gesucht wird nur in privaten Netzen der Box: im Heimnetz, in dem sie hängt, und im Netz der Box, wenn sie selbst eines aufspannt – je Netz in höchstens 254 Adressen (ein /24-Netz). Eine Suche dauert höchstens drei Minuten, meist unter einer; je Box sind 6 Suchen pro Stunde möglich.",
+      ] },
+      { id: 'wer-und-was-bleibt', title: 'Wer suchen darf und was gespeichert wird', paragraphs: [
+        "Suchen und die Ergebnisse ansehen darf, wer an der Anlage Geräte einrichten darf – dasselbe Recht wie für „Gerät hinzufügen“. Fehlt es, steht statt des Knopfs, wer es darf. Unter „Letzte Suchen“ sehen Sie, wer wann gesucht hat.",
+        "VoltPilot speichert Energie-Geräte (Wechselrichter, Zähler, Wallboxen, Schalter) und Netz-Technik wie Router oder WLAN-Zugangspunkte mit Hersteller, Modell und Adresse. Nach 30 Tagen werden die Suche und ihre Funde gelöscht; festgehalten bleibt nur, wer wann gesucht hat und wie viele Geräte es waren. Telefone, Tablets und Rechner erscheinen nur als Anzahl. MAC-Adressen und die Namen, die Geräte im Heimnetz tragen, speichert VoltPilot nicht.",
+      ] },
+      { id: 'gruppen', title: 'Die Gruppen der Ergebnisse', paragraphs: [
+        "„Bereit zum Übernehmen“ führt mit einem Tipp in die Einrichten-Seite; der Test startet von selbst. „Braucht Ihre Hilfe“ nennt, was Sie zuerst tun müssen, etwa eine Schnittstelle einschalten oder eine neue Adresse bestätigen. „Schon eingerichtet“ zeigt, was die Anlage bereits kennt.",
+        "„Erkannt, mit dieser Box noch nicht anbindbar“ heißt: Die Box weiß, was das Gerät ist, kann es aber noch nicht lesen. Entweder liest es eine andere Art von VoltPilot-Box schon, oder VoltPilot hat dafür noch keinen Leseweg. Einrichten lässt es sich darum hier nicht. „Vielleicht ein Energie-Gerät“ antwortet, verrät aber nicht genug über sich; „Woran erkannt?“ zeigt, was das Gerät gesagt hat.",
+      ] },
+      { id: 'nicht-gefunden', title: 'Wenn ein Gerät nicht gefunden wird', paragraphs: [
+        "Findet die Suche kein Energie-Gerät, stellt sie vier Fragen. Gerät aus? Manche Datenlogger schlafen nachts, wenn keine Sonne scheint. Anderes Netz? Die Box nennt die Netze, in denen sie gesucht hat; ein Gerät in einem anderen Netz findet sie nicht. Schnittstelle aus? Bei SMA, Fronius, KOSTAL und Huawei muss am Gerät Modbus TCP eingeschaltet sein, bei go-e in der App „HTTP API v2“. Nicht gesucht? Dann nennt die Box die Hersteller, nach denen sie noch nicht suchen kann.",
+        "Ein Gerät, das nicht dabei ist, ist deshalb nicht „nicht vorhanden“. Suchen Sie bei schwachem WLAN oder am Morgen ruhig ein zweites Mal, oder fügen Sie das Gerät von Hand hinzu.",
+      ] },
+      { id: 'box-auf-rechner', title: 'Eine Box auf einem eigenen Rechner', paragraphs: [
+        "Läuft Ihre VoltPilot-Box als Programm auf einem eigenen Rechner (Docker), sucht sie durch dessen Netzanschluss: in den Adressen um die Adresse im Heimnetz, die bei der Einrichtung eingetragen wurde. Fehlt diese Adresse, beginnt die Suche nicht und sagt das – fragen Sie dann Ihren Installateur.",
+        "Eine solche Box hört keine Rundrufe im Heimnetz. Sie kann Telefone, Rechner und andere Geräte darum nicht unterscheiden und zählt sie als „unbekannte Geräte“. Energie-Geräte findet sie über dieselben Fragen an jede Adresse.",
+      ] },
+    ], related: ['anlagenmodell', 'geraete', 'box-verbinden'],
   },
   {
     id: 'geraete', category: 'anlage', title: 'Box, Geräte und Befehle prüfen',

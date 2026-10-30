@@ -1,6 +1,6 @@
 # Portal-Hilfe pflegen
 
-29 deutsche Artikel unter `#/hilfe` und im kontextbezogenen Dialog. Artikelquelle: `content/`; Darstellung: `HelpArticleView`. Die Hilfe ist ohne aktuelle Messdaten erreichbar.
+30 deutsche Artikel unter `#/hilfe` und im kontextbezogenen Dialog. Artikelquelle: `content/`; Darstellung: `HelpArticleView`. Die Hilfe ist ohne aktuelle Messdaten erreichbar.
 
 ## Redaktion
 
