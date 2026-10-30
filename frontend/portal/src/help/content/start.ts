@@ -98,10 +98,10 @@ export const startArticles: HelpArticle[] = [
     id: 'box-verbinden', category: 'start', title: 'Die Box verbinden und erste Daten prüfen',
     summary: 'Die Geräte-ID zuordnen und erkennen, ob Messwerte wirklich ankommen.',
     keywords: ['Kennung', 'Geräte-ID', 'edge', 'VP', 'Aufkleber', 'Claim', 'Verbinden', 'Erste Daten', 'Unbekannt'],
-    prerequisite: 'Eine eingerichtete VoltPilot Box und eine Anlage im Portal.',
+    prerequisite: 'Eine angeschlossene VoltPilot Box und eine Anlage im Portal.',
     sections: [
       { id: 'vorbereiten', title: 'Die richtige Geräte-ID verwenden', paragraphs: [
-        "Die Kennung zeigt Ihre Box in ihrer App unter „Einrichten“ (Referenz-ID dieses Geräts), sobald ein Wechselrichter oder eine Ladesäule Daten liefert. Verwenden Sie diese Kennung, nicht die Seriennummer des Wechselrichters. Schließen Sie zuerst die lokale Einrichtung ab.",
+        "Die Kennung zeigt Ihre Box in ihrer App unter „Einrichten“ (Referenz-ID dieses Geräts) gleich nach dem ersten Start – ein Gerät muss dafür nicht verbunden sein. Verwenden Sie diese Kennung, nicht die Seriennummer des Wechselrichters. Die Box wird zuerst verbunden; Wechselrichter, Zähler und Ladepunkte legen Sie danach im Aufbau der Anlage an.",
       ], figure: 'box-verbinden' },
       { id: 'verbinden', title: 'Verbinden und den Eingang kontrollieren', paragraphs: [], steps: [
         'Im Aufbau der Anlage „VoltPilot-Box hinzufügen“ wählen (beim Anlegen einer Anlage fragt der Assistent danach) und die gewünschte Anlage prüfen.',

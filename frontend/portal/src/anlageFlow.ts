@@ -52,15 +52,16 @@ export function normalizeDeviceIdInput(value: string): string {
  * is no sticker (Captain, Anlage-Flow a1 Runde 1: „Wir haben keinen Aufkleber,
  * sag einfach das man die Kennung eintragen soll“). The path and labels are the
  * box web app's (edge-app/core/internal/web/static/einrichten.html, card
- * #portal); the box withholds the reference until data arrives
- * (commissioning.js, claim_unlocked). The check itself lives in `edgeRef.ts`.
+ * #portal); the box shows the reference from its first start, with no device
+ * connected - coupling comes first, the devices are then added in the portal.
+ * The check itself lives in `edgeRef.ts`.
  */
 export const DEVICE_ID_FIELD = {
   label: 'Kennung',
   placeholder: 'z. B. edge-k7m2xq3',
   // Die Einrichtungsseite der Box nennt sie „Referenz-ID dieses Geräts“ (edge-app `web/static/einrichten.html`,
   // Karte #portal); einen Menüpunkt „Gerät verbinden“ gibt es dort nicht.
-  help: 'Die Kennung zeigt Ihre Box in ihrer App unter „Einrichten" → „Kopplung mit dem VoltPilot-Portal" als „Referenz-ID dieses Geräts". Sie erscheint dort, sobald ein Wechselrichter oder eine Ladesäule Daten liefert.',
+  help: 'Die Kennung zeigt Ihre Box in ihrer App unter „Einrichten" → „Kopplung mit dem VoltPilot-Portal" als „Referenz-ID dieses Geräts". Sie steht dort gleich nach dem ersten Start - ein Gerät muss dafür nicht verbunden sein.',
 } as const;
 
 /** One 422 message for both gates (unknown register ID OR a ref that is no box Kennung). */

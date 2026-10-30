@@ -150,7 +150,7 @@ edge-light/test/mango-labtest.sh stop <mango-ip>
 1. Root-Passwort setzen und den Notfall-Schlüssel hinterlegen, einen **RSA**-Schlüssel (Dropbear kennt kein Ed25519): [Werkstatt-Regel](#werkstatt-regel-10102026).
 2. `edge-light/scripts/build.sh mipsle`, dann `edge-light/openwrt/install.sh root@<mango-ip>` – legt die gepackte Kopie in den Flash; ein Download-Server ist nicht nötig (optional als zweites Argument `<base_url>`).
 3. `/etc/init.d/vp-edge-light restart`, `logread -f -e vp-edge-light`. Am Mango geprüft: Start, Absturz, Neustart, kein Schreiben in den Flash ([mango.md](mango.md#lokale-kopie-im-flash-gebaut-am-gerät-geprüft-03102026)).
-4. Auf `:8484` den Deye einrichten, die Box im Portal koppeln.
+4. Die Box im Portal koppeln (die Referenz steht auf `:8484` sofort), dann den Deye einrichten.
 5. go-e per OCPP anbinden: in der go-e-App als OCPP-Server `ws://<mango-ip>:8887/ocpp/<kennung>` eintragen, die Kennung im Portal hinzufügen, Überschussladen „Nur Sonnenstrom" wählen. **Vorher** DHCP-Reservierung für den Mango im Kundenrouter und Firewall-Regel für 8887 aus dem Kundennetz – beides fehlt in `install.sh` (am Gerät gefunden, siehe [mango.md](mango.md#ocpp-mit-einer-echten-go-e-03102026-box-ungekoppelt-keine-anschlussgrenze)). Die Verbindung selbst ist mit einer echten go-e belegt.
 6. 48 h beobachten (Pilotplan in [mango.md](mango.md)).
 

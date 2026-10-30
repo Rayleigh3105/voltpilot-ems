@@ -84,18 +84,6 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 
 /* ---------------- Pairing / onboarding ---------------- */
 
-/* Step 2 locked note */
-.step-locked-note { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
-.step-locked-note .lock-ico {
-  width: 38px; height: 38px; flex: none; border-radius: 11px; display: grid; place-items: center;
-  background: #EEF2F7; color: var(--muted); border: 1px solid var(--line);
-}
-.step-locked-note .lock-ico svg { width: 20px; height: 20px; }
-.step-locked-note p { margin: 0; color: var(--muted); font-size: 13.5px; }
-/* EZ-5: the "Anlagensteuerung (SPS)" way below the locked claim note. */
-.pair-plc { margin-top: 12px; }
-.pair-plc p { margin: 0 0 8px; color: var(--muted); font-size: 13.5px; }
-
 .ref-block { margin-top: 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .ref-label { font-size: 12.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .ref-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

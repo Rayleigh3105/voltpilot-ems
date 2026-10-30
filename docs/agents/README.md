@@ -333,7 +333,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Ebyte-I/O-Modul: EIN Gerät, N Kanäle, der Core besitzt den Socket](edge/ebyte-io-modul-ein-geraet-n-kanaele.md)
 - [Stufe 2: das Ladebudget FOLGT dem gemessenen Netzanschluss (`lastmgmt/budget.go`)](edge/stufe-2-das-ladebudget-folgt-dem-gemesse.md)
 - [Stufe 2 „Freie Register": die Allowlist wird durch LANE-Regeln abgeloest](edge/stufe-2-freie-register-die-allowlist-wir.md)
-- [Stufe 3: der Herzschlag trägt die Ladepunkte, und das Tor kennt sie](edge/stufe-3-der-herzschlag-traegt-die-ladepu.md)
+- [Stufe 3: der Herzschlag trägt die Ladepunkte, und die Einrichtung kennt sie](edge/stufe-3-der-herzschlag-traegt-die-ladepu.md)
 - [Stufe 3: die Anschlussgrenze kann aus dem PORTAL kommen (`internal/chargingcfg`)](edge/stufe-3-die-anschlussgrenze-kann-aus-dem.md)
 - [Stufe 4: die FAHRPLAN-Bahn — der Plan reicht eine OBERGRENZE herunter](edge/stufe-4-die-fahrplan-bahn-der-plan-reich.md)
 - [Stufe 4: „Jetzt voll laden" kommt als EINMAL-Freigabe aus dem Portal (`internal/chargingboost`)](edge/stufe-4-jetzt-voll-laden-kommt-als-einma.md)

@@ -70,14 +70,6 @@ type InverterController interface {
 	PortalManagedComponents() bool
 }
 
-// AnlagensteuerungController is the OPTIONAL setter of the local choice "this
-// box reads a plant controller (SPS), no inverter" (EZ-5). The agent implements
-// it next to InverterController; the handler finds it by type assertion, so the
-// Handler signature and every caller stay as they are.
-type AnlagensteuerungController interface {
-	SetAnlagensteuerung(aktiv bool) error
-}
-
 // SourcesController backs the "Energiequellen" surface: the ADDITIONAL read-only
 // measurement points (Phase 1: Erzeuger/PV) a site has beyond its one
 // battery-hybrid inverter. The agent implements it; adding/removing a source
@@ -262,36 +254,23 @@ type InstallerWriteController interface {
 
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
 // the browser can compute accurate "vor X" ages and align chart axes even when
-// its own clock drifts from the edge device's, plus the derived onboarding-gate
-// signals the guided two-step onboarding needs.
+// its own clock drifts from the edge device's, plus two derived facts the
+// setup page names (which component has proven itself).
+//
+// ⚠ Nothing here gates the coupling: the reference is always part of the
+// envelope. A box is coupled with the portal FIRST and set up there; no device
+// type and no measured data is a prerequisite.
 type stateEnvelope struct {
 	state.Snapshot
 	ServerNowMs int64 `json:"server_now_ms"`
 
-	// InverterConnected is the gate for the portal-claim step: an inverter is
-	// configured AND at least one telemetry reading has arrived (the inverter is
-	// proven to actually deliver data). Only then may the customer claim the
-	// device in the portal.
+	// InverterConnected is a fact, not a gate: an inverter is configured AND at
+	// least one telemetry reading has arrived.
 	InverterConnected bool `json:"inverter_connected"`
-	// OnboardingStep is the current guided step: "inverter" (connect the
-	// inverter first), "claim" (inverter delivers data -> claim in the portal),
-	// or "done" (device already claimed/paired - onboarding no longer governs).
-	OnboardingStep string `json:"onboarding_step"`
-	// ClaimUnlocked is true once the reference may be shown (gate satisfied or
-	// the device is already paired). While false the reference is withheld from
-	// the envelope entirely so the UI cannot accidentally reveal it (the
-	// belt-and-suspenders half of the enforcement).
-	ClaimUnlocked bool `json:"claim_unlocked"`
-	// ChargePointConnected is the SECOND way through the gate (Lastmanagement
-	// Stufe 3, concept §5.1): a charging park has no inverter at all, and a box
-	// whose gate keys on one alone could never be commissioned. It is true once
-	// at least one REGISTERED charge point has spoken to this box - a
-	// BootNotification IS the connection proof for a charge point (the
-	// assistant's "Verbindungstest" is exactly that).
-	//
-	// ⚠ It is ADDITIVE and never loosens the inverter rule: a plant WITH an
-	// inverter is byte-identical to before, and a plant with neither component
-	// stays locked, which is the honest state of a box that measures nothing.
+	// ChargePointConnected is true once at least one REGISTERED charge point
+	// has spoken to this box - a BootNotification IS the connection proof for a
+	// charge point (Lastmanagement Stufe 3, concept §5.1). Same rule as the
+	// heartbeat (state.Snapshot.HasReportedChargePoint).
 	ChargePointConnected bool `json:"charge_point_connected"`
 
 	// Topology is the additive AE1 Anlagen-Topologie-Read-Model: the site's v2
@@ -308,70 +287,14 @@ type stateEnvelope struct {
 	ActiveControl cloud.ActiveControl `json:"active_control"`
 }
 
-// paired reports whether a certificate is already on disk (the device is
-// claimed), mirroring the frontend's step derivation: any post-claim pairing
-// state counts, including the transient cloud-error/disconnect states.
-// geraet_entfernt (removed/unclaimed in the cloud) is DELIBERATELY not paired:
-// a cert is still on disk, but the claim mapping is gone - the onboarding gate
-// re-opens the portal step (revealing the reference once the inverter delivers
-// data) so the customer can re-claim.
-func paired(pairingState string) bool {
-	switch pairingState {
-	case "verbunden", "zertifikat_erhalten", "cloud_getrennt", "cloud_fehler":
-		return true
-	}
-	return false
-}
-
-// deriveOnboarding computes the gate signals from a snapshot: the inverter is
-// "connected" only when it is configured AND has delivered at least one reading;
-// a charge point counts once it has reported itself to this box.
-//
-// ⚠ The gate asks "does SOME component deliver data", not "does the inverter"
-// (Lastmanagement concept §5.1): a Ladepark box has no inverter, so the
-// inverter-only rule would have locked it out of commissioning forever. The
-// generalisation is strictly ADDITIVE - the inverter branch is untouched and a
-// plant without either component stays locked, exactly as before.
-//
-// ⚠ The same holds for a box beside a plant controller (EZ-5, Konzept
-// "Erzeuger am WAGO-Modbus-Server" §4.11): it reads nothing until the portal
-// configures the controller AFTER the claim, so no component can ever prove
-// itself first. The operator says so explicitly on :8484 ("Diese Box liest
-// eine Anlagensteuerung"); only that choice opens the gate - a box without
-// inverter, charge point or that choice stays locked as before.
-func deriveOnboarding(snap state.Snapshot) (step string, inverterConnected, chargePointConnected,
-	claimUnlocked bool) {
-	inverterConfigured := snap.Inverter != nil && snap.Inverter.Configured
-	inverterConnected = inverterConfigured && !snap.LastTelemetry.IsZero()
-	chargePointConnected = snap.HasReportedChargePoint()
-	componentConnected := inverterConnected || chargePointConnected || snap.Anlagensteuerung
-	switch {
-	case paired(snap.PairingState):
-		return "done", inverterConnected, chargePointConnected, true
-	case componentConnected:
-		return "claim", inverterConnected, chargePointConnected, true
-	default:
-		return "inverter", inverterConnected, chargePointConnected, false
-	}
-}
-
 func envelope(st *state.Store, topo TopologyController, ac ActiveControlController) stateEnvelope {
 	snap := st.Get()
-	step, invConnected, cpConnected, claimUnlocked := deriveOnboarding(snap)
-	// Withhold the reference until the claim step is unlocked, so the portal
-	// reference cannot leak into the UI before the inverter is proven to work.
-	// The device's own enrollment uses the ref from its config, not this
-	// envelope, so this never blocks the background key/CSR/cert handshake.
-	if !claimUnlocked {
-		snap.Ref = ""
-	}
+	inverterConfigured := snap.Inverter != nil && snap.Inverter.Configured
 	return stateEnvelope{
 		Snapshot:             snap,
 		ServerNowMs:          time.Now().UnixMilli(),
-		InverterConnected:    invConnected,
-		ChargePointConnected: cpConnected,
-		OnboardingStep:       step,
-		ClaimUnlocked:        claimUnlocked,
+		InverterConnected:    inverterConfigured && !snap.LastTelemetry.IsZero(),
+		ChargePointConnected: snap.HasReportedChargePoint(),
 		Topology:             topo.Topology(),
 		ActiveControl:        ac.ActiveControl(),
 	}
@@ -425,31 +348,6 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	// GET /api/history?minutes=N - recent telemetry samples for the charts on
 	// first load (default 60 min, clamped to a day). server_now_ms lets the
 	// client align its time axis to the device clock.
-	// POST /api/onboarding/anlagensteuerung {"aktiv":true|false} - the local
-	// choice "this box reads a plant controller (SPS)" that opens the claim gate
-	// without an inverter (EZ-5). It changes nothing a device reads or writes.
-	mux.HandleFunc("POST /api/onboarding/anlagensteuerung", func(w http.ResponseWriter, r *http.Request) {
-		setter, ok := inv.(AnlagensteuerungController)
-		if !ok {
-			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "nicht verfügbar"})
-			return
-		}
-		var body struct {
-			Aktiv *bool `json:"aktiv"`
-		}
-		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&body); err != nil || body.Aktiv == nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "aktiv (true/false) fehlt"})
-			return
-		}
-		if err := setter.SetAnlagensteuerung(*body.Aktiv); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Die Wahl konnte nicht gespeichert werden."})
-			return
-		}
-		writeJSON(w, http.StatusOK, envelope(st, topo, ac))
-	})
-
 	mux.HandleFunc("GET /api/history", func(w http.ResponseWriter, r *http.Request) {
 		minutes := 60
 		if q := r.URL.Query().Get("minutes"); q != "" {

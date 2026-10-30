@@ -33,8 +33,9 @@ Inhaltsstand), Metadaten `V20261021234700`, wirksam mit dem Box-Release, das die
   (`internal/probe`, `agent/probe.go` `erzeugerKopfResult`), `BuiltSupports` meldet `erzeuger_registerbild`.
 - Palette: `vp-modbus-probe.js` `runErzeugerKopf` liest Kopf, Einheiten-Blöcke und Namen in Teilen
   dokumentierter Länge.
-- `:8484`: die Wahl „Diese Box liest eine Anlagensteuerung“ (`POST /api/onboarding/anlagensteuerung`,
-  `<DataDir>/onboarding-anlagensteuerung`) öffnet das Kopplungstor ohne Wechselrichter oder Ladepunkt.
+- `:8484`: die Kopplung hängt an keinem Gerät; die frühere Wahl „Diese Box liest eine Anlagensteuerung“
+  (`POST /api/onboarding/anlagensteuerung`) ist mit der Sperre entfallen. Eine alte
+  `<DataDir>/onboarding-anlagensteuerung` liest niemand mehr.
 
 ## Standort-Sample (EZ-17 Scheibe 1, 27.10.2026)
 
@@ -89,4 +90,4 @@ Rollen `pv-generation`/`grid-meter`, und die Rolle `plant-controller` las kein F
 `erzeuger-registerbild.test.js` (Vorlage ⟷ Leser, Gore, Büttner, Fehlerfälle, Stufe, Melde-Regel),
 `erzeuger-laufzeit.test.js` (Ende zu Ende über den Modbus-Weg der WAGO-Bühne), `vp-palette/test/erzeuger_kopf_spec.js`
 (Mocha, `npm test`), Go `measurements` (`TestErzeugerbild*`), `probe` und `agent` (`*ErzeugerKopf*`),
-`agent/anlagensteuerung_test.go`, `web` (`TestOnboardingGateOpensForAPlantControllerBox`), `jstest/ui.test.js`.
+`web` (`TestTheRetiredAnlagensteuerungChoiceIsGone`), `jstest/ui.test.js`.

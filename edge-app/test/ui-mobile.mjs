@@ -64,6 +64,18 @@ try {
         }
       }
       await page.setViewportSize({ width: 375, height: 812 });
+      // Coupling comes first: a fresh box without any device shows its
+      // reference right away and leads with "Mit dem Portal koppeln" - no
+      // device type is a prerequisite, no step is locked.
+      await page.goto(base + '/einrichten.html');
+      await expect(page.locator('#setupSteps .setup-step').first()).toContainText('Mit dem Portal koppeln');
+      await expect(page.locator('#setupSteps .setup-step').nth(1)).toContainText('Geräte einrichten');
+      await expect(page.locator('#setupProgress')).toHaveText('Schritt 1 von 3');
+      await expect(page.locator('#ref')).toHaveText(/^edge-[a-z0-9]{7}$/);
+      await expect(page.locator('#copyBtn')).toBeVisible();
+      await expect(page.getByText(/Zuerst den Wechselrichter|Noch gesperrt|Erst den Wechselrichter/)).toHaveCount(0);
+      await page.goto(base + '/index.html');
+      await expect(page.getByText(/Wechselrichter noch nicht eingerichtet|Es ist kein Wechselrichter ausgewählt/)).toHaveCount(0);
       await page.goto(base + '/einrichten.html#quellen');
       const trigger = page.locator('#erzAdd');
       await trigger.click();

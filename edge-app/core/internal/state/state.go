@@ -28,13 +28,6 @@ type Snapshot struct {
 	TenantID     string `json:"tenant_id,omitempty"`
 	MqttHost     string `json:"mqtt_host,omitempty"`
 
-	// Anlagensteuerung is the local choice "this box reads a plant controller
-	// (SPS) instead of an inverter" (EZ-5, finding :8484): such a box measures
-	// only what the portal configures after the claim, so the claim gate opens
-	// without an inverter or charge point (web.deriveOnboarding). Persisted by
-	// the agent in its data dir.
-	Anlagensteuerung bool `json:"anlagensteuerung"`
-
 	CloudConnected bool      `json:"cloud_connected"`
 	LastTelemetry  time.Time `json:"last_telemetry,omitzero"`
 	LastCloudPub   time.Time `json:"last_cloud_publish,omitzero"`

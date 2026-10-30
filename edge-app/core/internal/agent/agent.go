@@ -774,10 +774,6 @@ func New(cfg config.Config) (*Agent, error) {
 			LoadKw: guards.Unknown(), GridLimitKw: guards.Unknown(),
 		},
 	}
-	// The local "Anlagensteuerung" choice survives a restart (EZ-5).
-	if loadAnlagensteuerung(cfg.DataDir) {
-		a.State.Update(func(s *state.Snapshot) { s.Anlagensteuerung = true })
-	}
 	// The native supervision's proof grace derives from the setpoint cadence, so
 	// it is constructed after the Agent literal (a.Cfg is set there).
 	a.native = guards.NewNativeMode(a.nativeProofGrace())

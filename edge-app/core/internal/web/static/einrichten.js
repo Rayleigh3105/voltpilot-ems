@@ -2,8 +2,9 @@
 //
 // One rule governs this page: it shows BIG what needs an action, finished
 // things shrink to one line, rare things fold away. Concretely:
-//   * While the plant is not commissioned, the guided four-step flow leads
-//     the page (commissioning.js) together with the Portal-Kopplung block.
+//   * While the plant is not commissioned, the guided three-step flow leads
+//     the page (commissioning.js) together with the Portal-Kopplung block -
+//     coupling first, the devices are then set up in the portal.
 //   * Once everything runs, BOTH disappear (no green banner - Betrieb's status
 //     hero is the single health voice) and the steady state is exactly FOUR
 //     quiet accordion rows: Anlage / Steuerung / Datenfreigabe / Erweitert.
@@ -14,7 +15,7 @@
 // This file owns only what is NOT already owned by the per-card scripts
 // (inverter.js, sources.js, mirror.js, control.js, calibration.js, curtail.js,
 // einstellungen.js):
-//   * the derived four-step flow (commissioning.js)
+//   * the derived three-step flow (commissioning.js)
 //   * the portal pairing block (reference + copy + honest error copy),
 //     tech-only once paired
 //   * the accordion shell: summaries (groups.js), auto-open, deep-link anchors
@@ -55,6 +56,8 @@
       pill.className = "state-chip ok"; txt.textContent = "Portal verbunden"; dot.classList.add("live");
     } else if (s.pairing_state === "geraet_entfernt") {
       pill.className = "state-chip off"; txt.textContent = "Aus dem Portal entfernt"; dot.classList.remove("live");
+    } else if (window.VPCommissioning && !window.VPCommissioning.paired(s.pairing_state)) {
+      pill.className = "state-chip off"; txt.textContent = "Nicht gekoppelt"; dot.classList.remove("live");
     } else {
       pill.className = "state-chip off"; txt.textContent = "Portal getrennt"; dot.classList.remove("live");
     }
@@ -142,12 +145,13 @@
     return html + "</div></li>";
   }
 
-  // Once all four steps are done the WHOLE flow disappears - finished is
+  // Once all three steps are done the WHOLE flow disappears - finished is
   // finished, there is no receded green line (Betrieb's status hero is the
   // single health voice). It returns, leading again, when a step regresses.
   function renderSetup(s) {
     if (!window.VPCommissioning) return;
-    var res = window.VPCommissioning.derive(s, sourcesData.sources.length, deviceNow(),
+    var res = window.VPCommissioning.derive(s,
+      sourcesData.sources.length + sourcesData.custom.length, deviceNow(),
       sourcesData.portalManaged);
     var card = $("setupCard");
     if (card) card.hidden = res.allDone;
@@ -178,31 +182,23 @@
   var PAIR_SOFT = { cloud_getrennt: "Verbindung zu VoltPilot unterbrochen - sie wird automatisch wiederhergestellt." };
 
   function renderPairing(s) {
+    // The reference is shown from the start: coupling comes first and needs
+    // no device and no measured data.
     var refEl = $("ref");
     if (refEl) refEl.textContent = s.ref || "…";
 
-    var unlocked = !!s.claim_unlocked;
     var isPaired = window.VPCommissioning && window.VPCommissioning.paired(s.pairing_state);
 
     // Once paired, the pairing card leaves the normal-mode page entirely - the
     // reference lives only in the Technikmodus identity block (next to the
     // version). While NOT paired (incl. geraet_entfernt) the guided flow still
     // needs it, so it renders as today. A regression of the cloud LINK on a
-    // paired device is carried by the guided flow's step 3 + Betrieb's status
+    // paired device is carried by the guided flow's step 1 + Betrieb's status
     // hero - one message, one place.
     var isTechOnly = !!isPaired;
     var area = $("portal"), card = $("pairingCard");
     if (area) area.classList.toggle("tech-only", isTechOnly);
     if (card) card.classList.toggle("tech-only", isTechOnly);
-
-    var locked = $("pairLocked"), open = $("pairUnlocked");
-    if (locked) locked.hidden = unlocked;
-    if (open) open.hidden = !unlocked;
-    var plcBox = $("pairPlc");
-    if (plcBox) plcBox.hidden = unlocked;
-    // EZ-5: the choice "Anlagensteuerung" can be taken back until the box is paired.
-    var plcUndo = $("plcUndoBtn");
-    if (plcUndo) plcUndo.hidden = !(s.anlagensteuerung && !isPaired);
 
     var state = $("pairState");
     if (state) {
@@ -212,12 +208,9 @@
       } else if (isPaired) {
         state.className = "pair-state warn";
         state.textContent = "Gerät ist gekoppelt – die Verbindung zum Portal wird gerade aufgebaut.";
-      } else if (unlocked) {
+      } else {
         state.className = "pair-state warn";
         state.textContent = "Noch nicht gekoppelt. Tragen Sie die Referenz-ID im Portal ein.";
-      } else {
-        state.className = "pair-state";
-        state.textContent = "Die Kopplung wird freigeschaltet, sobald der Wechselrichter Daten liefert.";
       }
     }
 
@@ -231,7 +224,7 @@
     var tech = $("pairTech");
     if (tech) {
       var rows = [
-        ["Referenz", s.ref || "(noch nicht freigegeben)"],
+        ["Referenz", s.ref || "–"],
         ["Version", (!s.version || s.version === "dev") ? "dev" : "v" + s.version],
         ["Kopplungszustand", s.pairing_state || "–"],
         ["Geräte-ID", s.device_id || "–"],
@@ -376,34 +369,6 @@
         });
     });
   }
-
-  // EZ-5: "Diese Box liest eine Anlagensteuerung" - the one local act that opens
-  // the claim gate without an inverter or charge point. The server answers with
-  // the new state, so the reference appears without waiting for the next poll.
-  function setAnlagensteuerung(aktiv, btn) {
-    var err = $("plcError");
-    if (btn) btn.disabled = true;
-    fetch("/api/onboarding/anlagensteuerung", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ aktiv: aktiv })
-    })
-      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
-      .then(function (res) {
-        if (!res.ok) throw new Error(res.body && res.body.error);
-        if (err) err.hidden = true;
-        applyState(res.body);
-      })
-      .catch(function (e) {
-        if (!err) return;
-        err.hidden = false;
-        err.textContent = (e && e.message) || "Die Wahl konnte nicht gespeichert werden. Bitte erneut versuchen.";
-      })
-      .then(function () { if (btn) btn.disabled = false; });
-  }
-  var plcBtn = $("plcBtn");
-  if (plcBtn) plcBtn.addEventListener("click", function () { setAnlagensteuerung(true, plcBtn); });
-  var plcUndoBtn = $("plcUndoBtn");
-  if (plcUndoBtn) plcUndoBtn.addEventListener("click", function () { setAnlagensteuerung(false, plcUndoBtn); });
 
   $("purgeOpenBtn").addEventListener("click", function () { purgeConfirmOpen(true); });
   $("purgeCancelBtn").addEventListener("click", function () { purgeConfirmOpen(false); });

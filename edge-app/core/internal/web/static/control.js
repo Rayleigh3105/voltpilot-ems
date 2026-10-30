@@ -131,7 +131,7 @@
       return {
         chip: null,
         title: "Noch keine Steuerung.",
-        text: "Wählen Sie zuerst Ihren Wechselrichter aus. Danach schreibt VoltPilot den " +
+        text: "Es ist kein Wechselrichter eingerichtet. Steuert VoltPilot einen, schreibt es den " +
           "Fahrplan und liest ihn zurück - hier sehen Sie, ob der Wechselrichter ihn übernimmt.",
         showNow: false, showTable: false, calibrating: false, banner: null,
         stateKey: "no-inverter"

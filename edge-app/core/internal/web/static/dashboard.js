@@ -279,6 +279,8 @@
       pill.className = "state-chip off"; txt.textContent = "Aus dem Portal entfernt"; dot.classList.remove("live");
     } else if (s.last_telemetry && serverAge(s.last_telemetry) < 90) {
       pill.className = "state-chip warn"; txt.textContent = "Lokal aktiv"; dot.classList.remove("live");
+    } else if (window.VPStatus && !window.VPStatus.paired(s.pairing_state)) {
+      pill.className = "state-chip off"; txt.textContent = "Nicht gekoppelt"; dot.classList.remove("live");
     } else {
       pill.className = "state-chip off"; txt.textContent = "Portal getrennt"; dot.classList.remove("live");
     }
@@ -296,7 +298,7 @@
   function renderStatusHero(s) {
     var hero = $("statusHero");
     if (!hero || !window.VPStatus) return;
-    var v = window.VPStatus.derive(s, deviceNow());
+    var v = window.VPStatus.derive(s, deviceNow(), techSourceCount());
     hero.className = "status-hero " + v.tone;
     $("statusHeroTitle").textContent = v.title;
     var det = $("statusHeroDetail");
@@ -312,7 +314,7 @@
     }
   }
 
-  // The guided onboarding (Wechselrichter -> Portal koppeln) moved to the
+  // The guided onboarding (Portal koppeln -> Geräte im Portal) lives on the
   // "Einrichten" page (einrichten.js): one job, one page. This page only ever
   // SHOWS the resulting state, via the status hero above.
 
@@ -336,7 +338,7 @@
     syncClock(s.server_now_ms);
     renderPill(s);
     renderStatusHero(s);
-    renderInverterCta(s);
+    renderSetupCta(s);
     renderKpis(s);
     renderStatus(s);
     renderFlow();
@@ -368,6 +370,13 @@
   // already says so in the status hero and on "Einrichten".
   var techSources = null;      // last /api/sources payload
   var techSourcesAt = 0;
+
+  // Further sources + own devices - a device just as an inverter is (the
+  // status hero and the setup banner ask "is ANY device set up").
+  function techSourceCount() {
+    if (!techSources) return 0;
+    return (techSources.sources || []).length + (techSources.custom_devices || []).length;
+  }
 
   var CHANNEL_LABEL = {
     pv_power_kw: "PV", power_kw: "Netz", load_kw: "Haus",
@@ -430,13 +439,22 @@
   }
 
 
-  // Prominent CTA while no inverter is configured: without it the Node-RED
-  // read flow is idle and NO telemetry ever reaches the device (M1). The guided
-  // commissioning lives on "Einrichten" now, so this banner is simply the way
-  // over there and no longer duplicates an onboarding card on this page.
-  function renderInverterCta(s) {
-    var el = $("inverterBanner");
-    if (el) el.hidden = !!(s.inverter && s.inverter.configured);
+  // Prominent CTA while NO device is set up - whichever kind (status.js
+  // hasDevice); no device type is a prerequisite. The guided commissioning
+  // lives on "Einrichten", so this banner is simply the way over there: first
+  // the coupling, then the devices in the portal.
+  function renderSetupCta(s) {
+    var el = $("setupBanner");
+    var none = !!window.VPStatus && !window.VPStatus.hasDevice(s, techSourceCount());
+    if (el) el.hidden = !none;
+    if (none) {
+      var coupled = window.VPStatus.paired(s.pairing_state);
+      // The hero above explains; the banner only points the way.
+      $("setupBannerTitle").textContent = coupled ? "Zur Einrichtung" : "Zur Kopplung";
+      $("setupBannerText").textContent = coupled
+        ? "Stand der Einrichtung ansehen."
+        : "Referenz-ID ansehen und kopieren.";
+    }
     var v = $("version");
     if (v) v.textContent = (!s.version || s.version === "dev") ? "" : "v" + s.version;
   }

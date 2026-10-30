@@ -57,10 +57,12 @@
 
   <main>
     <!-- ============ The guided flow, ending at "Daten kommen an" ============
+         Coupling comes FIRST and is never locked; the devices are then set up
+         in the portal (no device type is a prerequisite).
          Releasing CONTROL is deliberately NOT part of it - that is the
          Steuerung group further down, behind its own gate. Every step's state
          is DERIVED from the existing APIs (commissioning.js); nothing stored.
-         ONCE ALL FOUR STEPS ARE DONE THE WHOLE BLOCK DISAPPEARS - no green
+         ONCE ALL THREE STEPS ARE DONE THE WHOLE BLOCK DISAPPEARS - no green
          banner, no receded line. Betrieb's status hero is the single health
          voice; the flow returns only when a step regresses (device swapped,
          pairing lost) and then it leads again. -->
@@ -70,42 +72,24 @@
         <span class="setup-progress" id="setupProgress"></span>
       </div>
       <p class="page-lead" id="setupLead" style="margin-top:6px">
-        Vier Schritte bis die Messwerte ankommen. Sie können jederzeit weiterspringen –
-        der Stand oben zeigt immer, was noch fehlt.
+        Zuerst die Box mit dem VoltPilot-Portal koppeln, danach die Geräte im Portal
+        anlegen. Der Stand oben zeigt immer, was noch fehlt.
       </p>
       <ol class="setup-steps" id="setupSteps"></ol>
     </section>
 
     <!-- ============ Portal-Kopplung (companion of the guided flow) ==========
-         Visible while the device is NOT paired: the guided flow's step 3 leads
-         here, the reference + honest error copy live here. ONCE PAIRED the
-         whole block leaves the normal-mode page (einrichten.js toggles it
-         tech-only) - the reference then lives only in the Technikmodus
-         identity block below, next to the version stamp. The claim gate itself
-         stays server-side: /api/state withholds the reference while
-         claim_unlocked is false. -->
+         Visible while the device is NOT paired: the guided flow's step 1 leads
+         here, the reference + honest error copy live here - from the start,
+         with no device and no measured data required. ONCE PAIRED the whole
+         block leaves the normal-mode page (einrichten.js toggles it tech-only) -
+         the reference then lives only in the Technikmodus identity block below,
+         next to the version stamp. -->
     <div class="area-title" id="portal">Kopplung mit dem VoltPilot-Portal</div>
     <section class="card pair-card" id="pairingCard">
       <p class="pair-state" id="pairState">–</p>
 
-      <div class="step-locked-note" id="pairLocked" hidden>
-        <span class="lock-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        </span>
-        <p>Zuerst den Wechselrichter verbinden. Sobald er Daten liefert, erscheint hier Ihre Referenz-ID für das Portal.</p>
-      </div>
-      <!-- EZ-5: a box beside a plant controller (SPS) has no inverter to prove
-           itself with - its controller is connected in the portal AFTER the
-           claim. The explicit choice opens the gate (POST
-           /api/onboarding/anlagensteuerung); nothing on this box reads or
-           writes differently because of it. Shown exactly while pairLocked is. -->
-      <div class="pair-plc" id="pairPlc" hidden>
-        <p>Kein Wechselrichter, sondern eine Anlagensteuerung (SPS) mit VoltPilot-Registerbild? Dann wird die Steuerung nach der Kopplung im Portal verbunden.</p>
-        <button type="button" class="btn-ghost" id="plcBtn">Diese Box liest eine Anlagensteuerung – Referenz anzeigen</button>
-        <p class="pairing-error" id="plcError" hidden></p>
-      </div>
-
-      <div id="pairUnlocked" hidden>
+      <div id="pairRef">
         <div class="ref-block" id="refBlock">
           <div>
             <div class="ref-label">Referenz-ID dieses Geräts</div>
@@ -121,8 +105,8 @@
         <p class="ref-hint" id="refHint">
           Portal öffnen und unter <strong>Geräte → ＋ Gerät hinzufügen</strong> diese
           Referenz eintragen. Das Gerät wird danach automatisch freigeschaltet.
+          Wechselrichter, Zähler und Ladepunkte legen Sie anschließend im Portal an.
         </p>
-        <button type="button" class="btn-ghost" id="plcUndoBtn" hidden>Doch keine Anlagensteuerung – zurück zum Wechselrichter</button>
       </div>
 
       <p class="pairing-error" id="pairingError" hidden></p>

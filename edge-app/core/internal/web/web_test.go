@@ -704,16 +704,15 @@ func TestStateExposesBufferDataLoss(t *testing.T) {
 	}
 }
 
-// gateBody is the onboarding-gate half of /api/state.
+// gateBody is the coupling half of /api/state: the reference and the two
+// component facts the setup page names.
 type gateBody struct {
 	Ref                  string `json:"ref"`
-	OnboardingStep       string `json:"onboarding_step"`
 	InverterConnected    bool   `json:"inverter_connected"`
 	ChargePointConnected bool   `json:"charge_point_connected"`
-	ClaimUnlocked        bool   `json:"claim_unlocked"`
 }
 
-// getState fetches /api/state and decodes the onboarding-gate fields.
+// getState fetches /api/state and decodes the coupling fields.
 func getState(t *testing.T, srv *httptest.Server) gateBody {
 	t.Helper()
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -732,81 +731,62 @@ func configuredInverter() *state.InverterInfo {
 	return &state.InverterInfo{Brand: "deye", Label: "Deye Hybrid 3-Phasen", Configured: true}
 }
 
-// The enforced onboarding gate: the reference stays withheld and the customer is
-// held on the inverter step until an inverter is configured AND has delivered at
-// least one telemetry reading - only then does the portal-claim step unlock.
-func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
-	// (a) No inverter configured -> step "inverter", locked, no reference.
+// Coupling comes first: a freshly installed box with NO device - no inverter,
+// no charge point, no measured data - shows its reference right away, so it can
+// be claimed in the portal and set up there. Neither a configured device nor
+// its first reading changes that.
+func TestReferenceIsShownBeforeAnyDeviceIsSetUp(t *testing.T) {
 	st := state.New("edge-gate", "test")
+	st.Update(func(s *state.Snapshot) { s.PairingState = "warte_auf_beanspruchung" })
 	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
 	defer srv.Close()
 
+	// (a) No device at all: the reference is there, no component is claimed.
 	b := getState(t, srv)
-	if b.OnboardingStep != "inverter" || b.InverterConnected || b.ClaimUnlocked {
-		t.Fatalf("no inverter: got %+v", b)
-	}
-	if b.Ref != "" {
-		t.Fatalf("reference must be withheld before the gate, got %q", b.Ref)
+	if b.Ref != "edge-gate" || b.InverterConnected || b.ChargePointConnected {
+		t.Fatalf("fresh box without a device: got %+v", b)
 	}
 
-	// (b) Inverter configured but no telemetry yet -> still locked, no reference.
+	// (b) An inverter is configured but silent: the reference stays, the fact
+	// "delivers data" is not claimed.
 	st.Update(func(s *state.Snapshot) { s.Inverter = configuredInverter() })
-	b = getState(t, srv)
-	if b.OnboardingStep != "inverter" || b.InverterConnected || b.ClaimUnlocked {
+	if b = getState(t, srv); b.Ref != "edge-gate" || b.InverterConnected {
 		t.Fatalf("configured, no data: got %+v", b)
 	}
-	if b.Ref != "" {
-		t.Fatalf("reference must stay withheld until data arrives, got %q", b.Ref)
-	}
 
-	// (c) Inverter delivers data -> step "claim", unlocked, reference revealed.
+	// (c) The inverter delivers: only the fact changes.
 	st.Update(func(s *state.Snapshot) { s.LastTelemetry = time.Now().UTC() })
-	b = getState(t, srv)
-	if b.OnboardingStep != "claim" || !b.InverterConnected || !b.ClaimUnlocked {
+	if b = getState(t, srv); b.Ref != "edge-gate" || !b.InverterConnected {
 		t.Fatalf("inverter delivering: got %+v", b)
-	}
-	if b.Ref != "edge-gate" {
-		t.Fatalf("reference must be revealed once unlocked, got %q", b.Ref)
 	}
 }
 
-// A paired device (certificate on disk) is past onboarding: the gate no longer
-// governs and the reference is always available, even without live telemetry.
-func TestOnboardingGateDoneOncePaired(t *testing.T) {
+// A paired device (certificate on disk) keeps its reference in the envelope,
+// even without live telemetry.
+func TestPairedDeviceKeepsItsReference(t *testing.T) {
 	st := state.New("edge-paired", "test")
 	st.Update(func(s *state.Snapshot) { s.PairingState = "verbunden" })
 	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
 	defer srv.Close()
 
-	b := getState(t, srv)
-	if b.OnboardingStep != "done" || !b.ClaimUnlocked {
-		t.Fatalf("paired device: got %+v", b)
-	}
-	if b.Ref != "edge-paired" {
+	if b := getState(t, srv); b.Ref != "edge-paired" {
 		t.Fatalf("paired device keeps its reference, got %q", b.Ref)
 	}
 }
 
-// A device removed (unclaimed) in the cloud - geraet_entfernt - is DELIBERATELY
-// not "paired": the onboarding gate re-opens the portal-claim step so the
-// customer can re-claim, revealing the reference once the inverter delivers
-// data. /health carries the state for headless tooling (installer/watchdogs).
-func TestRemovedDeviceReopensClaimStepAndSurfacesOnHealth(t *testing.T) {
+// A device removed (unclaimed) in the cloud - geraet_entfernt - shows its
+// reference for the re-claim, with or without a device behind it. /health
+// carries the state for headless tooling (installer/watchdogs).
+func TestRemovedDeviceShowsItsReferenceAndSurfacesOnHealth(t *testing.T) {
 	st := state.New("edge-removed", "test")
 	st.Update(func(s *state.Snapshot) {
 		s.PairingState = "geraet_entfernt"
-		s.Inverter = configuredInverter()
-		s.LastTelemetry = time.Now().UTC()
 		s.BufferPaused = true
 	})
 	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
 	defer srv.Close()
 
-	b := getState(t, srv)
-	if b.OnboardingStep != "claim" || !b.ClaimUnlocked {
-		t.Fatalf("removed device with a delivering inverter must re-open the claim step: %+v", b)
-	}
-	if b.Ref != "edge-removed" {
+	if b := getState(t, srv); b.Ref != "edge-removed" {
 		t.Fatalf("removed device must reveal the reference for the re-claim, got %q", b.Ref)
 	}
 
@@ -1955,8 +1935,8 @@ func TestEinrichtenPageServesTheGuidedFlowAndItsAreas(t *testing.T) {
 		// the legacy anchors, still landing inside the accordion groups
 		`id="wechselrichter"`, `id="quellen"`, `id="portal"`, `id="steuerung"`,
 		`id="messwerte"`, `id="purgeCard"`,
-		// the portal pairing block (reference is withheld until unlocked)
-		`id="pairLocked"`, `id="pairUnlocked"`, `id="ref"`, `id="copyBtn"`, `id="pairingError"`,
+		// the portal pairing block - the reference from the start, no lock
+		`id="pairRef"`, `id="ref"`, `id="copyBtn"`, `id="pairingError"`,
 		`src="commissioning.js"`, `src="groups.js"`, `src="einrichten.js"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -1974,12 +1954,19 @@ func TestEinrichtenPageServesTheGuidedFlowAndItsAreas(t *testing.T) {
 	if strings.Index(page, `id="setupCard"`) > strings.Index(page, `id="steuerung"`) {
 		t.Error("einrichten.html: the control-release block must sit BELOW the guided flow")
 	}
+	// Coupling comes first: no lock note, no "choose a device type to unlock".
+	for _, forbidden := range []string{`id="pairLocked"`, `id="pairPlc"`, `id="plcBtn"`,
+		`Zuerst den Wechselrichter verbinden`, `Referenz anzeigen`} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("einrichten.html: the coupling lock must be gone, found %s", forbidden)
+		}
+	}
 
 	js := get("/commissioning.js")
 	for _, want := range []string{
-		"VPCommissioning", "derive", "Wechselrichter verbinden",
-		"Erzeuger & Zähler erfassen", "Mit dem Portal koppeln", "Messwerte prüfen",
-		"claim_unlocked", "last_telemetry", "inverter_link",
+		"VPCommissioning", "derive", "Mit dem Portal koppeln",
+		"Geräte einrichten", "Geräte im Portal anlegen", "Messwerte prüfen",
+		"pairing_state", "last_telemetry", "inverter_link",
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("commissioning.js: missing %s", want)
@@ -2085,8 +2072,8 @@ func TestEinrichtenAccordionIsFourClosedGroups(t *testing.T) {
 		}
 	}
 	// Once paired, the pairing card leaves the normal-mode page (tech-only);
-	// while unpaired the guided flow still shows it. The mechanism is a class
-	// toggle - the server keeps withholding the reference until claim_unlocked.
+	// while unpaired the guided flow shows it, reference included. The
+	// mechanism is a class toggle.
 	if !strings.Contains(ej, `classList.toggle("tech-only", isTechOnly)`) {
 		t.Error("einrichten.js: the paired pairing card must recede to Technikmodus")
 	}
@@ -4114,74 +4101,40 @@ func TestTheBoostRouteOverridesOneSessionAndNothingElse(t *testing.T) {
 	}
 }
 
-// A LADEPARK box has no inverter at all, and before Lastmanagement Stufe 3 the
-// commissioning gate keyed on one alone - so a plant made of charge points plus
-// a grid meter could never reveal its reference and could never be claimed.
-// The gate now asks "does SOME component deliver data": a REGISTERED charge
-// point that has reported itself opens it, and nothing else changes.
-func TestOnboardingGateOpensForACharginParkWithoutAnInverter(t *testing.T) {
+// A LADEPARK box has no inverter at all: the envelope names a REGISTERED charge
+// point that has reported itself as connected, never an inverter - and the
+// reference is there from the start, whichever component the plant has.
+func TestChargePointFactWithoutAnInverter(t *testing.T) {
 	st := state.New("edge-ladepark", "test")
 	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
 	defer srv.Close()
 
-	// (a) A registered station that has NEVER spoken keeps the gate shut - a
-	// name on an allowlist is not a component that delivers data.
+	// (a) A registered station that has NEVER spoken is no connected charge
+	// point - a name on an allowlist is not a component that delivers data.
 	st.Update(func(s *state.Snapshot) {
 		s.Ocpp = &state.OcppInfo{Enabled: true, Listening: true,
 			Chargers: []state.OcppCharger{{ID: "saeule-1"}}}
 	})
 	b := getState(t, srv)
-	if b.ChargePointConnected || b.ClaimUnlocked || b.OnboardingStep != "inverter" {
-		t.Fatalf("a never-seen station must not open the gate: %+v", b)
-	}
-	if b.Ref != "" {
-		t.Fatalf("reference must stay withheld, got %q", b.Ref)
+	if b.ChargePointConnected || b.Ref != "edge-ladepark" {
+		t.Fatalf("a never-seen station: %+v", b)
 	}
 
-	// (b) The station reports itself -> the gate opens, WITHOUT ever claiming
-	// an inverter is connected.
+	// (b) The station reports itself, WITHOUT ever claiming an inverter.
 	st.Update(func(s *state.Snapshot) {
 		s.Ocpp.Chargers[0].LastSeenMs = time.Now().UnixMilli()
 		s.Ocpp.Chargers[0].Connected = true
 	})
 	b = getState(t, srv)
-	if !b.ChargePointConnected || !b.ClaimUnlocked || b.OnboardingStep != "claim" {
-		t.Fatalf("a reporting station must open the gate: %+v", b)
-	}
-	if b.InverterConnected {
-		t.Fatal("there is no inverter on this plant - the gate must not claim one")
-	}
-	if b.Ref != "edge-ladepark" {
-		t.Fatalf("reference must be revealed once unlocked, got %q", b.Ref)
+	if !b.ChargePointConnected || b.InverterConnected {
+		t.Fatalf("a reporting station: %+v", b)
 	}
 
-	// (c) The station drops off the websocket. The gate stays OPEN: a step that
-	// was passed must not re-lock because a socket flapped.
+	// (c) The station drops off the websocket: it HAS reported itself, a
+	// flapping socket does not take that back.
 	st.Update(func(s *state.Snapshot) { s.Ocpp.Chargers[0].Connected = false })
-	b = getState(t, srv)
-	if !b.ChargePointConnected || !b.ClaimUnlocked {
-		t.Fatalf("a flapping socket must not re-lock the gate: %+v", b)
-	}
-}
-
-// A plant with an inverter is BYTE-IDENTICAL to before the generalisation: the
-// charge-point signal is false, and a box with neither component stays locked.
-func TestTheGateGeneralisationChangesNothingWithoutChargePoints(t *testing.T) {
-	st := state.New("edge-classic", "test")
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
-	defer srv.Close()
-
-	b := getState(t, srv)
-	if b.ChargePointConnected || b.ClaimUnlocked || b.OnboardingStep != "inverter" {
-		t.Fatalf("empty box: %+v", b)
-	}
-	st.Update(func(s *state.Snapshot) {
-		s.Inverter = configuredInverter()
-		s.LastTelemetry = time.Now().UTC()
-	})
-	b = getState(t, srv)
-	if !b.InverterConnected || b.ChargePointConnected || b.OnboardingStep != "claim" {
-		t.Fatalf("inverter plant: %+v", b)
+	if b = getState(t, srv); !b.ChargePointConnected {
+		t.Fatalf("a flapping socket: %+v", b)
 	}
 }
 
@@ -4539,80 +4492,19 @@ func TestNativePilotRoutesAreOpenToReadAndGuardedToAct(t *testing.T) {
 	}
 }
 
-// fakeAnlagensteuerung is a fakeInverter that also takes the local
-// "Anlagensteuerung" choice, the way the agent does: persisted elsewhere,
-// mirrored into the snapshot.
-type fakeAnlagensteuerung struct {
-	*fakeInverter
-	st  *state.Store
-	err error
-}
-
-func (f *fakeAnlagensteuerung) SetAnlagensteuerung(aktiv bool) error {
-	if f.err != nil {
-		return f.err
-	}
-	f.st.Update(func(s *state.Snapshot) { s.Anlagensteuerung = aktiv })
-	return nil
-}
-
-func postAnlagensteuerung(t *testing.T, srv *httptest.Server, body string) (int, gateBody) {
-	t.Helper()
-	resp, err := http.Post(srv.URL+"/api/onboarding/anlagensteuerung", "application/json", strings.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var b gateBody
-	_ = json.NewDecoder(resp.Body).Decode(&b)
-	return resp.StatusCode, b
-}
-
-// EZ-5 (finding of the Erzeuger concept): a box beside a plant controller reads
-// nothing before the portal configures it AFTER the claim - neither inverter nor
-// charge point can ever prove itself. The explicit local choice opens the gate
-// and reveals the reference; without it the gate stays exactly as before.
-func TestOnboardingGateOpensForAPlantControllerBox(t *testing.T) {
-	st := state.New("VP-7K3M-Q2", "test")
-	inv := &fakeAnlagensteuerung{fakeInverter: &fakeInverter{cat: inverter.DefaultCatalog()}, st: st}
-	srv := httptest.NewServer(Handler(st, inv, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
-	defer srv.Close()
-
-	if b := getState(t, srv); b.ClaimUnlocked || b.Ref != "" || b.OnboardingStep != "inverter" {
-		t.Fatalf("without the choice the gate stays shut: %+v", b)
-	}
-	code, b := postAnlagensteuerung(t, srv, `{"aktiv":true}`)
-	if code != http.StatusOK || !b.ClaimUnlocked || b.OnboardingStep != "claim" || b.Ref != "VP-7K3M-Q2" {
-		t.Fatalf("choice must open the gate and reveal the reference: %d %+v", code, b)
-	}
-	if b := getState(t, srv); !b.ClaimUnlocked || b.InverterConnected || b.ChargePointConnected {
-		t.Fatalf("the choice is no inverter and no charge point: %+v", b)
-	}
-	// Taking it back closes the gate again.
-	if code, b := postAnlagensteuerung(t, srv, `{"aktiv":false}`); code != http.StatusOK || b.ClaimUnlocked || b.Ref != "" {
-		t.Fatalf("taken back: %d %+v", code, b)
-	}
-	for _, body := range []string{`{}`, `{"aktiv":"ja"}`, `{"aktiv":true,"x":1}`, `nicht json`} {
-		if code, _ := postAnlagensteuerung(t, srv, body); code != http.StatusBadRequest {
-			t.Fatalf("%s: code %d", body, code)
-		}
-	}
-	inv.err = errors.New("platte voll")
-	if code, _ := postAnlagensteuerung(t, srv, `{"aktiv":true}`); code != http.StatusInternalServerError {
-		t.Fatalf("a failed save must not report success: %d", code)
-	}
-	if getState(t, srv).ClaimUnlocked {
-		t.Fatal("a failed save must not open the gate")
-	}
-}
-
-// A runtime whose controller does not offer the choice answers 501 - never a
-// silent success that leaves the page waiting.
-func TestAnlagensteuerungChoiceWithoutSetterIsNotImplemented(t *testing.T) {
+// The local choice "Diese Box liest eine Anlagensteuerung" only ever opened the
+// coupling lock; with the lock gone the route is gone too - a stale page or
+// script gets an honest 404/405, never a silent success.
+func TestTheRetiredAnlagensteuerungChoiceIsGone(t *testing.T) {
 	st := state.New("edge-x", "test")
 	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
 	defer srv.Close()
-	if code, _ := postAnlagensteuerung(t, srv, `{"aktiv":true}`); code != http.StatusNotImplemented {
-		t.Fatalf("code %d", code)
+	resp, err := http.Post(srv.URL+"/api/onboarding/anlagensteuerung", "application/json", strings.NewReader(`{"aktiv":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("code %d", resp.StatusCode)
 	}
 }

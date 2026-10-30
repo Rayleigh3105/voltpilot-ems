@@ -531,6 +531,6 @@ WireGuard bleibt der Servicezugang, künftig zum Wartungsserver (UDP 51820, [obe
 1. Auf einer Anlage mit Deye: **Home Assistant für diesen Logger abschalten** – der Logger bedient nur einen Client.
 2. `df -h`, `free -m` notieren (Ausgangslage).
 3. `edge-light/openwrt/install.sh root@<mango-ip>`, Dienst starten, `logread -f -e vp-edge-light`.
-4. Auf `:8484` den Deye einrichten, „Verbindung testen", im Portal koppeln.
+4. Die Box im Portal koppeln (die Referenz steht auf `:8484` sofort), dann den Deye einrichten und „Verbindung testen".
 5. 48 h laufen lassen und festhalten: Speicher (`free -m`, `/proc/<pid>/status` VmRSS), CPU (`top`), Ladezeit nach Neustart, Lücken im Verlauf, Vergleich mit den bisherigen Home-Assistant-Werten.
 6. Danach: go-e per OCPP an `ws://<mango>:8887/ocpp/<kennung>` anbinden, Kennung im Portal eintragen, Überschussladen beobachten. Vorher DHCP-Reservierung für den Mango und Firewall-Regel für 8887 aus dem Kundennetz (siehe [OCPP-Test](#ocpp-mit-einer-echten-go-e-03102026-box-ungekoppelt-keine-anschlussgrenze)).
