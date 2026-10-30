@@ -24,6 +24,7 @@ import (
 // nothing else. The logger serves ONE client: one short session, replies
 // checked against the request (on 30.10. the first answer was a foreign
 // 118-byte frame), and on Edge Light the Layer-1 logger lane is taken first.
+// An unanswered first frame is sent once more on a second session.
 func erkenneSolarman(ctx context.Context, g *geraet, port int, _ *modbus) (geraetesuche.Fund, bool) {
 	l := g.lauf
 	if l.u.Spur != nil {
@@ -34,19 +35,35 @@ func erkenneSolarman(ctx context.Context, g *geraet, port int, _ *modbus) (gerae
 		defer release()
 	}
 	b := g.budget()
+	frist := loggerFrist(l.u.Takt)
 	c, err := l.verbinde(ctx, g.ip, port)
 	if err != nil {
 		return geraetesuche.Fund{}, false
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	seq := zufallSeq()
-	serial, regs, err := v5Lesen(ctx, c, b, 0, seq, l.u.Takt.zeitlimit())
+	serial, regs, err := v5Lesen(ctx, c, b, 0, seq, frist)
+	if err != nil && ctx.Err() == nil {
+		// No reply to the first frame (VoltPilotGATE 30.10.2026, N1: silent
+		// for more than 1.5 s, two minutes later 113 ms). Once more on a fresh
+		// connection, through the pacer, after a pause: the budget holds
+		// frame 1, this repeat and frame 2 with the serial.
+		_ = c.Close()
+		if !ruhe(ctx, loggerPause(l.u.Takt)) {
+			return geraetesuche.Fund{}, false
+		}
+		if c, err = l.verbinde(ctx, g.ip, port); err != nil {
+			return geraetesuche.Fund{}, false
+		}
+		seq++
+		serial, regs, err = v5Lesen(ctx, c, b, 0, seq, frist)
+	}
 	if err != nil || serial == 0 {
 		return geraetesuche.Fund{}, false
 	}
 	if regs == nil {
-		_, regs, _ = v5Lesen(ctx, c, b, serial, seq+1, l.u.Takt.zeitlimit())
+		_, regs, _ = v5Lesen(ctx, c, b, serial, seq+1, frist)
 	}
 	unit := 1
 	logger := strconv.FormatUint(uint64(serial), 10)
@@ -72,6 +89,25 @@ func erkenneSolarman(ctx context.Context, g *geraet, port int, _ *modbus) (gerae
 		}
 	}
 	return f, true
+}
+
+// loggerFrist is the reply deadline of one V5 frame: twice Zeitlimit (3 s),
+// because the logger forwards the frame over RS485 to the inverter.
+func loggerFrist(t Takt) time.Duration { return 2 * t.zeitlimit() }
+
+// loggerPause is the wait before the repeat of the first frame (1 s).
+func loggerPause(t Takt) time.Duration { return t.zeitlimit() * 2 / 3 }
+
+// ruhe waits d; false when ctx ended first.
+func ruhe(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 func zufallSeq() uint16 {

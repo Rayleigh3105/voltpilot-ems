@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche/geraetesim"
@@ -31,13 +32,16 @@ import (
 type v5Logger struct {
 	ln        net.Listener
 	serial    uint32
-	fremd     bool   // send a foreign frame before every answer
-	nullStumm bool   // serial 0: header only, no inverter reply
-	schlaeft  bool   // the inverter behind it never answers
-	typ       uint16 // Deye device-type code at 0x0000 (0 = 0x0005)
-	seriennr  string // inverter serial at 0x0003 ("" = 2201234567)
+	fremd     bool          // send a foreign frame before every answer
+	nullStumm bool          // serial 0: header only, no inverter reply
+	schlaeft  bool          // the inverter behind it never answers
+	typ       uint16        // Deye device-type code at 0x0000 (0 = 0x0005)
+	seriennr  string        // inverter serial at 0x0003 ("" = 2201234567)
+	verzug    time.Duration // before every answer
 	mu        sync.Mutex
+	stumm     int // this many first frames get no answer at all
 	anfragen  int
+	verbunden []time.Time
 }
 
 func startV5Logger(t *testing.T, l *v5Logger) string {
@@ -54,6 +58,9 @@ func startV5Logger(t *testing.T, l *v5Logger) string {
 			if err != nil {
 				return
 			}
+			l.mu.Lock()
+			l.verbunden = append(l.verbunden, time.Now())
+			l.mu.Unlock()
 			go l.handle(c)
 		}
 	}()
@@ -76,7 +83,15 @@ func (l *v5Logger) handle(c net.Conn) {
 		angefragt := binary.LittleEndian.Uint32(frame[7:])
 		l.mu.Lock()
 		l.anfragen++
+		schweigt := l.stumm > 0
+		if schweigt {
+			l.stumm--
+		}
 		l.mu.Unlock()
+		if schweigt {
+			continue
+		}
+		time.Sleep(l.verzug)
 		if l.fremd {
 			fremd := v5sim.ResponseFrame(l.serial, seq+7, 0x01, 0x00, make([]byte, 90))
 			binary.LittleEndian.PutUint16(fremd[3:], 0x4710) // the logger's own heartbeat
@@ -111,10 +126,14 @@ func (l *v5Logger) handle(c net.Conn) {
 }
 
 func einGeraet(t *testing.T, addr string, port int) (*Lauf, *geraet) {
+	return einGeraetMit(t, addr, port, testTakt)
+}
+
+func einGeraetMit(t *testing.T, addr string, port int, takt Takt) (*Lauf, *geraet) {
 	t.Helper()
 	n := neuesTestnetz()
 	n.ziele["10.77.0.34:"+strconv.Itoa(port)] = addr
-	l, grund := Neu(Umgebung{BoxArt: geraetesuche.BoxArtDocker, LANHost: "10.77.0.20", Dial: n.dial, Takt: testTakt}, nil)
+	l, grund := Neu(Umgebung{BoxArt: geraetesuche.BoxArtDocker, LANHost: "10.77.0.20", Dial: n.dial, Takt: takt}, nil)
 	if grund != "" {
 		t.Fatal(grund)
 	}
@@ -146,6 +165,71 @@ func TestSolarmanUeberliestFremdeRahmenUndLerntDieSeriennummer(t *testing.T) {
 		f.logger.mu.Unlock()
 		if anfragen != f.anfragen {
 			t.Fatalf("%s: %d requests, want %d", f.name, anfragen, f.anfragen)
+		}
+	}
+}
+
+// VoltPilotGATE 30.10.2026 (N1): the logger was silent on the first frame for
+// more than 1.5 s, two minutes later it answered in 113 ms. The repeat on a
+// fresh session finds the Deye; a slow logger gets twice Zeitlimit.
+func TestSolarmanWiederholtDenErstenRahmen(t *testing.T) {
+	takt := Takt{JeSekunde: 100000, Zeitlimit: 150 * time.Millisecond}
+	for _, f := range []struct {
+		name                string
+		logger              *v5Logger
+		anfragen, verbunden int
+	}{
+		{"erster Rahmen ohne Antwort", &v5Logger{stumm: 1}, 2, 2},
+		{"Antwort nach 1,5 Zeitlimit", &v5Logger{verzug: 225 * time.Millisecond}, 1, 1},
+	} {
+		f.logger.serial, f.logger.typ, f.logger.seriennr = 3115580613, 0x0006, "2409066698"
+		addr := startV5Logger(t, f.logger)
+		_, g := einGeraetMit(t, addr, 8899, takt)
+		fund, ok := erkenneSolarman(context.Background(), g, 8899, nil)
+		if !ok || fund.Schluessel != "solarman:3115580613" || fund.Erkennung != "sicher" ||
+			fund.Familie != "hybrid_3p" || fund.Seriennummer != "2409066698" || *fund.Verbindung.Serial != 3115580613 {
+			t.Fatalf("%s: %+v", f.name, fund)
+		}
+		f.logger.mu.Lock()
+		anfragen, verbunden := f.logger.anfragen, len(f.logger.verbunden)
+		f.logger.mu.Unlock()
+		if anfragen != f.anfragen || verbunden != f.verbunden {
+			t.Fatalf("%s: %d requests on %d connections, want %d on %d", f.name, anfragen, verbunden, f.anfragen, f.verbunden)
+		}
+	}
+}
+
+// The repeat opens its session through the pacer and stays inside
+// AnfragenJeErkenner: frame 1, the repeat and frame 2 with the serial, never
+// a fourth; a logger that stays silent gets two frames and no find.
+func TestSolarmanWiederholungImTaktUndImBudget(t *testing.T) {
+	takt := Takt{JeSekunde: 1, Zeitlimit: 150 * time.Millisecond}
+	for _, f := range []struct {
+		name     string
+		logger   *v5Logger
+		fund     bool
+		anfragen int
+	}{
+		{"Wiederholung, dann Seriennummer", &v5Logger{stumm: 1, nullStumm: true}, true, AnfragenJeErkenner},
+		{"bleibt stumm", &v5Logger{stumm: 99}, false, 2},
+	} {
+		f.logger.serial = 3115580613
+		addr := startV5Logger(t, f.logger)
+		_, g := einGeraetMit(t, addr, 8899, takt)
+		fund, ok := erkenneSolarman(context.Background(), g, 8899, nil)
+		if ok != f.fund || (ok && (fund.Schluessel != "solarman:3115580613" || fund.Erkennung != "sicher")) {
+			t.Fatalf("%s: %v %+v", f.name, ok, fund)
+		}
+		f.logger.mu.Lock()
+		anfragen, verbunden := f.logger.anfragen, f.logger.verbunden
+		f.logger.mu.Unlock()
+		if anfragen != f.anfragen || len(verbunden) != 2 {
+			t.Fatalf("%s: %d requests on %d connections, want %d on 2", f.name, anfragen, len(verbunden), f.anfragen)
+		}
+		// One new connection per second: the second session waits for its
+		// slot, not only for the deadline and the pause (0.4 s).
+		if d := verbunden[1].Sub(verbunden[0]); d < 900*time.Millisecond {
+			t.Fatalf("%s: second session after %v, the pacer allows one per second", f.name, d)
 		}
 	}
 }
