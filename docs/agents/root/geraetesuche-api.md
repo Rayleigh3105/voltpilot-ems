@@ -29,7 +29,7 @@ Konzept `vp-portal-geraetesuche-konzept` (30.10.2026, DP-1 C, DP-2 bis DP-7 A). 
 - **Gruppen werden beim Lesen gebildet** (Detail und Verlauf), gegen die Komponenten von heute; das Protokoll
   `beendet` hält die Zähler zum Zeitpunkt des Ergebnisses fest.
 - **Datenschutz (DP-3 A):** keine Spalte für MAC, Hostname oder Gerätenamen; die Verbindung steht in Spalten, nicht als
-  JSON. Suchen und Funde gehen nach 30 Tagen, das Protokoll bleibt (Person, Zähler).
+  JSON. Suchen und Funde gehen nach 30 Tagen, das Protokoll bleibt (Person, Zähler, Übernahmen).
 
 ## ⚠ Fallen
 

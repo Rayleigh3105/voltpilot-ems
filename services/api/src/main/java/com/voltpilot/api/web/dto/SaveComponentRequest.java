@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
@@ -32,6 +33,10 @@ import java.util.Map;
  *     fehlend ausgewiesen hat - ein Client kann damit keine Zustimmung zu einem
  *     Kanal behaupten, der nie das Problem war. Absent = die unveränderte
  *     Pflicht „nur ein vollständiger Test speichert".
+ * @param geraetesuche der Bezug auf einen Fund der Gerätesuche, wenn das Portal ihn
+ *     über „Übernehmen" vorbelegt hat (Folgepaket vp-gs-folge-herkunft). Der Server
+ *     prüft ihn gegen Anlage, Mandant und die 30 Tage (DP-3 A), schreibt das Protokoll
+ *     und hält die Herkunft an der Komponente fest. Absent = der Weg wie bisher.
  */
 public record SaveComponentRequest(
         @NotBlank @Size(max = 200) String templateRef,
@@ -44,13 +49,22 @@ public record SaveComponentRequest(
         @Size(max = 200) String note,
         @Size(max = 40) String acceptMissingChannel,
         Integer expectedRevision,
-        Instant effectiveAt) {
+        Instant effectiveAt,
+        @Valid GeraetesucheBezug geraetesuche) {
+
+    /** Der Weg ohne Gerätesuche - jeder Aufrufer vor dem Folgepaket „Herkunft". */
+    public SaveComponentRequest(String templateRef, Integer templateVersion, String label, String role,
+            Map<String, Object> connection, BigDecimal capacityKwp, Integer intervalS, String note,
+            String acceptMissingChannel, Integer expectedRevision, Instant effectiveAt) {
+        this(templateRef, templateVersion, label, role, connection, capacityKwp, intervalS, note,
+                acceptMissingChannel, expectedRevision, effectiveAt, null);
+    }
 
     /** Der Bequemlichkeits-Konstruktor der Aufrufer VOR dem Override-Weg. */
     public SaveComponentRequest(String templateRef, String label, String role,
             Map<String, Object> connection, BigDecimal capacityKwp, Integer intervalS,
             String note) {
         this(templateRef, null, label, role, connection, capacityKwp, intervalS, note,
-                null, null, null);
+                null, null, null, null);
     }
 }

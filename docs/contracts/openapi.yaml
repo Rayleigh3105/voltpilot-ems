@@ -24056,6 +24056,21 @@ components:
                   cross-tenant fleet view knows every value except
                   `no_gateway_device` - it does not know about receivers and must
                   not invent a reason.
+              herkunft:
+                type: object
+                description: >
+                  Woher die Komponente stammt - nur gesetzt, wenn sie über
+                  „Übernehmen“ aus einer Gerätesuche angelegt wurde (POST mit
+                  `geraetesuche`); sonst abwesend, nie geraten. Gelesen aus dem
+                  nur anfügenden Protokoll der Suche, das den Läufer nach 30 Tagen
+                  (DP-3 A) überlebt: „aus der Gerätesuche vom `gesuchtAm`“ bleibt
+                  lesbar, wenn Suche und Fund gelöscht sind.
+                required: [art, suchId, gesuchtAm, uebernommenAm]
+                properties:
+                  art: { type: string, enum: [geraetesuche] }
+                  suchId: { type: string, format: uuid }
+                  gesuchtAm: { type: string, format: date-time }
+                  uebernommenAm: { type: string, format: date-time }
     SaveComponentRequest:
       type: object
       required: [templateRef, role]
@@ -24091,6 +24106,22 @@ components:
           format: date-time
           nullable: true
           description: Effective marker; PUT currently activates atomically now.
+        geraetesuche:
+          type: object
+          nullable: true
+          description: >
+            Der Bezug auf einen Fund der Gerätesuche, den das Portal bei
+            „Übernehmen“ mitsendet. Der Server prüft, dass Suche und Fund in
+            DIESER Anlage (Mandant aus dem Token) liegen und die Suche keine 30
+            Tage alt ist (DP-3 A); sonst 422 ohne jede Änderung - fremd,
+            unbekannt und abgelaufen sagen dasselbe. POST schreibt die
+            Protokollzeile `uebernommen` und die `herkunft` der Komponente; PUT
+            (DP-7 A, neue Adresse) schreibt `adresse_uebernommen`, wenn sich die
+            Verbindung ändert. Absent = der Weg wie bisher.
+          required: [suchId, fund]
+          properties:
+            suchId: { type: string, format: uuid }
+            fund: { type: string, maxLength: 200, description: "Der `schluessel` des Fundes." }
     ComponentDefinition:
       type: object
       description: >
@@ -24575,18 +24606,25 @@ components:
         id: { type: integer, format: int64 }
         stream:
           type: string
-          enum: [batterie, abregelung, verbraucher, waechter, register]
+          enum: [batterie, abregelung, verbraucher, waechter, register, geraetesuche]
           description: >
             `register` ist der VIERTE Strom: die Einmal-Schreibvorgaenge auf
             Geraete-Register, zur Lesezeit aus dem append-only Journal
             register_write_event eingemischt (KEINE Doppel-Speicherung). Ein
             aelteres Portal kennt das Wort nicht und laesst die Zeile wortlos
-            aus - die Unbekannt-bleibt-ohne-Behauptung-Regel.
+            aus - die Unbekannt-bleibt-ohne-Behauptung-Regel. `geraetesuche` ist
+            der FUENFTE, ebenso zur Lesezeit aus geraetesuche_protokoll: eine
+            Suche im Heimnetz (eine Zeile vom Start bis zum Ergebnis) und die
+            Uebernahmen aus ihr. Die Box traegt ihre Suchen und Uebernahmen,
+            eine Komponente bzw. ein Geraet dahinter nur die Uebernahmen, die zu
+            ihr wurden. Er ist nicht filterbar und erscheint nur ohne Strom-,
+            Ergebnis- und mit hoechstens dem Herkunfts-Filter `portal`.
         kind: { type: string, enum: [periode, ereignis] }
         eventKind:
           type: string
           nullable: true
-          enum: [notaus_ein, notaus_aus, freigabe_erteilt, freigabe_widerrufen, luecke, verlauf_gedeckelt, register_geschrieben]
+          enum: [notaus_ein, notaus_aus, freigabe_erteilt, freigabe_widerrufen, luecke, verlauf_gedeckelt, register_geschrieben,
+                 geraetesuche, geraet_uebernommen, adresse_uebernommen]
         startedAt: { type: string, format: date-time }
         endedAt:
           type: string
@@ -24623,7 +24661,8 @@ components:
           description: >
             Die Herkunft der Zeile. `portal` gehoert dem Strom `register`: der
             Schreibvorgang wurde ueber das Portal ausgeloest (gegenueber
-            `geraet` = am Wartungszugang der Box).
+            `geraet` = am Wartungszugang der Box) - und dem Strom
+            `geraetesuche` (im Portal gestartet bzw. uebernommen).
         detail:
           type: object
           nullable: true
@@ -24647,7 +24686,43 @@ components:
           description: >
             AP-03 IP-7: wer die Zeile ausgelöst hat, im Akteur-Vokabular - nur an
             Zeilen, die ein Mensch auslöst (Register-Vorgang, „Jetzt voll laden“ /
-            „Laden pausieren“). null an abgeleiteten Zeilen und im Bestand.
+            „Laden pausieren“, Gerätesuche und Übernahme). null an abgeleiteten
+            Zeilen und im Bestand.
+        geraetesuche:
+          type: object
+          nullable: true
+          description: >
+            NUR auf den Zeilen des Stroms `geraetesuche` gesetzt. Die Art steht
+            in `eventKind`, die Person in `urheber`; `endedAt` ist die Ankunft
+            des Ergebnisses (null, solange keines kam). `kind` ist `ereignis`,
+            `source` ist `portal`. Die Kennung ist `-(2^50 + Protokollzeile)`,
+            damit sie keiner Halteperiode und keinem Register-Vorgang gleicht.
+          properties:
+            suchId: { type: string, format: uuid }
+            zustand:
+              type: string
+              nullable: true
+              enum: [wartet, laeuft, fertig, abgebrochen, fehlgeschlagen, abgelehnt, keine_antwort]
+              description: >
+                Nur bei `geraetesuche`: was die Box meldete; ohne Ergebnis die
+                Regel der Suche (offen bis 30 s ohne Meldung, dann
+                `keine_antwort`).
+            grund: { type: string, nullable: true }
+            dauerMs: { type: integer, nullable: true, description: Die Dauer laut Box. }
+            zaehler:
+              type: object
+              nullable: true
+              additionalProperties: { type: integer }
+              description: Funde je Gruppe zum Zeitpunkt des Ergebnisses; null ohne Ergebnis (nie 0).
+            abgebrochenVon:
+              allOf: [{ $ref: "#/components/schemas/ProtokollUrheber" }]
+              nullable: true
+            komponente:
+              type: string
+              nullable: true
+              description: Bei einer Übernahme der heutige Name der Komponente; null, wenn sie entfernt ist.
+            fund: { type: string, nullable: true, description: Bei einer Übernahme der Schlüssel des Fundes. }
+            gesuchtAm: { type: string, format: date-time, nullable: true }
     RuleEvents:
       type: object
       description: >

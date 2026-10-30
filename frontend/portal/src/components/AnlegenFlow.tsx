@@ -10,6 +10,7 @@ import {
   ApiError,
   type ComponentTemplate,
   type Device,
+  type GeraetesucheBezug,
   type SiteComponents,
   type SiteComponentTemplate,
   type SiteComponentRow,
@@ -126,6 +127,7 @@ export function AnlegenFlow({
   onZurueck = null,
   zurueckLabel,
   startHerkunft = null,
+  startFund = null,
   onFertig,
   onClose,
   onSaved,
@@ -183,6 +185,11 @@ export function AnlegenFlow({
    * Gerätesuche - dann bittet der Fluss nach dem bestandenen Test zusätzlich, die Richtung am Gerät zu vergleichen.
    */
   startHerkunft?: string | null;
+  /**
+   * Der Fund, aus dem „Übernehmen" vorbelegt hat (Suche + Schlüssel). Er reist beim Anlegen mit - der Server prüft
+   * ihn, schreibt das Protokoll „übernommen" und hält die Herkunft „aus der Gerätesuche vom …" an der Komponente fest.
+   */
+  startFund?: GeraetesucheBezug | null;
   /** Nach dem Anlegen: was entstanden ist - der Wirt springt darauf und sagt es. */
   onFertig?: (info: { id: string | null; titel: string; uebernommen: boolean; hinweis?: string | null }) => void;
   onClose: () => void;
@@ -609,6 +616,7 @@ export function AnlegenFlow({
         acceptMissingChannel: ohneKanal?.channel,
         expectedRevision: edit?.definitionVersion,
         effectiveAt: edit ? new Date().toISOString() : undefined,
+        geraetesuche: !edit && startFund ? startFund : undefined,
       };
       const result = edit
         ? await api.updateComponent(siteId, edit.id, body)

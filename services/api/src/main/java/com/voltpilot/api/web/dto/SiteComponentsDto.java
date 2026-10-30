@@ -60,6 +60,9 @@ public record SiteComponentsDto(
      *     abgeleitet aus Soll- und Ist-Revision plus dem, was die Box über sich
      *     selbst meldet, nie geraten
      *     ({@link com.voltpilot.api.components.ComponentService#syncStatus})
+     * @param herkunft woher die Komponente stammt, wenn sie über „Übernehmen" aus
+     *     einer Gerätesuche angelegt wurde; sonst abwesend (nie geraten). Gelesen
+     *     aus dem Protokoll der Suche, das den Läufer nach 30 Tagen überlebt.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ComponentRowDto(
@@ -78,5 +81,21 @@ public record SiteComponentsDto(
             int definitionVersion,
             BigDecimal capacityKwp,
             String edgeSourceId,
-            String syncStatus) {}
+            String syncStatus,
+            HerkunftDto herkunft) {}
+
+    /**
+     * Die Herkunft einer Komponente - heute nur die Gerätesuche (Folgepaket
+     * vp-gs-folge-herkunft): „aus der Gerätesuche vom {@code gesuchtAm}".
+     *
+     * @param art           {@code geraetesuche}; ein Portal, das ein Wort nicht
+     *                      kennt, behauptet nichts
+     * @param suchId        die Suche - nach 30 Tagen gelöscht (DP-3 A), die
+     *                      Herkunft bleibt
+     * @param gesuchtAm     wann gesucht wurde
+     * @param uebernommenAm wann der Fund zur Komponente wurde
+     */
+    public record HerkunftDto(String art, UUID suchId, Instant gesuchtAm, Instant uebernommenAm) {
+        public static final String GERAETESUCHE = "geraetesuche";
+    }
 }

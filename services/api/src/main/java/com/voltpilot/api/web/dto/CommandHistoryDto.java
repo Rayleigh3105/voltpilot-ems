@@ -86,6 +86,10 @@ public record CommandHistoryDto(Instant recordingSince, int accuracySeconds, Ins
      *                die Befehle-Seite mischt dieselben Zeilen zur Lesezeit ein.
      *                Ein älteres Portal kennt das Strom-Wort nicht und lässt die
      *                Zeile wortlos aus (die Unbekannt-bleibt-ohne-Behauptung-Regel).
+     * @param geraetesuche NUR auf den Zeilen des fünften Stroms {@code geraetesuche}:
+     *                eine Suche im Heimnetz bzw. eine Übernahme aus ihr, zur
+     *                Lesezeit aus dem nur anfügenden {@code geraetesuche_protokoll}
+     *                eingemischt (dieselbe Regel wie {@code register}).
      * @param source  {@code cloud_abgeleitet} (V1) oder {@code geraet} (Stufe 2)
      *                - die Herkunft steht an der Zeile, damit die Fläche nie
      *                mehr behauptet, als ihre Quelle hergibt.
@@ -96,7 +100,8 @@ public record CommandHistoryDto(Instant recordingSince, int accuracySeconds, Ins
             Double commandedKwMax, String verdict, Integer cycles, Integer cyclesConfirmed,
             Integer cyclesNoAnswer, Integer cyclesMismatch, Boolean controlEnabled,
             Boolean released, Boolean foreignInfluence, String entityId, String source,
-            CommandDetailDto detail, RegisterWriteEventDto register, ProtokollDto.Urheber urheber) {
+            CommandDetailDto detail, RegisterWriteEventDto register, ProtokollDto.Urheber urheber,
+            GeraetesucheAktivitaetDto geraetesuche) {
     }
 
     /**

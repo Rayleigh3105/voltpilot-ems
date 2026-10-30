@@ -83,6 +83,12 @@ function konsole(page: Page): string[] {
 
 const modal = (page: Page, name = 'Geräte suchen') => page.getByRole('dialog', { name });
 
+/** Die Suche der Bühne (`GS_SUCH_ID` der Fixture - die Spec importiert keine Fixtures). */
+const SUCH_ID = '5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d';
+/** Was die Bühne zuletzt an `createComponent` bzw. `updateComponent` geschickt hat. */
+const gesendet = (page: Page, route: 'createComponent' | 'updateComponent') =>
+  page.evaluate((r) => (window as unknown as { __gesendet: Record<string, Record<string, unknown>> }).__gesendet[r], route);
+
 for (const breite of BREITEN) {
   test.describe(`Gerätesuche · ${breite} px`, () => {
     test('Suche läuft (m2/d2): Schritte, Fortschritt als Ansage, Abbrechen behält die Funde', async ({ page }, info) => {
@@ -136,6 +142,8 @@ for (const breite of BREITEN) {
 
       await seite.getByTestId('einrichten-speichern').click();
       await expect(modal(page).getByText(/„.+“ ist angelegt\./)).toBeVisible();
+      // Folgepaket „Herkunft": der Bezug auf Suche und Fund reist beim Anlegen mit.
+      expect((await gesendet(page, 'createComponent'))?.geraetesuche).toEqual({ suchId: SUCH_ID, fund: 'solarman:3115580613' });
       await expect(modal(page).getByRole('heading', { name: 'Noch 1 Gerät' })).toBeVisible();
       await pruefeUndFotografiere(page, info, breite, 'm5c-zurueck-zur-liste');
       expect(fehler).toEqual([]);
@@ -175,6 +183,7 @@ for (const breite of BREITEN) {
       await pruefeUndFotografiere(page, info, breite, 'm9-adresse-geaendert', true);
       await modal(page).getByRole('button', { name: 'Neue Adresse 192.168.178.52:80 für Wallbox Garage übernehmen' }).click();
       await expect(modal(page).getByText('Neue Adresse für „Wallbox Garage“ übernommen – dasselbe Gerät.')).toBeVisible();
+      expect((await gesendet(page, 'updateComponent'))?.geraetesuche).toEqual({ suchId: SUCH_ID, fund: 'goe:204117' });
       await pruefeUndFotografiere(page, info, breite, 'm9-uebernommen');
       expect(fehler).toEqual([]);
     });
@@ -237,6 +246,11 @@ for (const breite of BREITEN) {
       await oeffne(page, breite, 'flaeche=box');
       await expect(page.getByTestId('geraete-suchen')).toBeVisible();
       await expect(page.getByTestId('letzte-suche')).toContainText('Letzte Suche heute');
+      // Die Aktivität (d1): die Übernahme über der Suche, die Suche mit Dauer und „nur gelesen".
+      const aktivitaet = page.getByTestId('baustein-aktivitaet');
+      await expect(aktivitaet.getByText('Gerät angelegt: Wechselrichter (aus der Gerätesuche)')).toBeVisible();
+      await expect(aktivitaet.getByText('Gerätesuche im Heimnetz')).toBeVisible();
+      await expect(aktivitaet.getByText(/· 38 s · nur gelesen$/)).toBeVisible();
       await pruefeUndFotografiere(page, info, breite, 'd1-box-seite', true);
 
       await oeffne(page, breite, 'flaeche=box&geraete=0');

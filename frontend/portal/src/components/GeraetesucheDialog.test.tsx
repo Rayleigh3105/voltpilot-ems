@@ -165,7 +165,7 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
     expect(within(zeile).getByText('SPSW-003XE16EU')).toBeVisible();
   });
 
-  it('go-e: ein Tipp übernimmt mit Vorlage und Anschluss aus der Suche', async () => {
+  it('go-e: ein Tipp übernimmt mit Vorlage und Anschluss aus der Suche - und dem Bezug auf diese Suche', async () => {
     starten(F.breit);
     const { props } = rendere();
     fireEvent.click(await screen.findByRole('button', { name: 'go-e Wallbox übernehmen' }));
@@ -175,6 +175,7 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
       verbindung: { ip: '192.168.178.52', port: 80 },
       kanal: null,
       schluessel: 'goe:204117',
+      suchId: GS_SUCH_ID,
     });
   });
 
@@ -270,6 +271,8 @@ describe('GeraetesucheDialog · Adresse geändert (DP-7 A, m9)', () => {
     }));
     expect(speichern).toHaveBeenCalledWith(GS_SITE_ID, gsWallboxZeile.id, expect.objectContaining({
       expectedRevision: 3, role: 'consumer', label: 'Wallbox Garage', connection: { ip: '192.168.178.52', port: 80 },
+      // DP-7 A über denselben Haken: der Server protokolliert „Adresse übernommen" mit Suche und Fund.
+      geraetesuche: { suchId: GS_SUCH_ID, fund: 'goe:204117' },
     }));
     expect(props.onAdresseGespeichert).toHaveBeenCalled();
   });

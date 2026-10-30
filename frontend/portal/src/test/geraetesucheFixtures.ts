@@ -1,4 +1,4 @@
-import type { Device, SiteComponentRow, SiteComponents, Site } from '../api';
+import type { CommandEntry, Device, SiteComponentRow, SiteComponents, Site } from '../api';
 import type {
   Geraetesuche,
   GeraetesucheFund,
@@ -411,3 +411,34 @@ export const gsWallboxZeile: SiteComponentRow = {
 };
 
 export const gsKomponenten: SiteComponents = { componentAuthority: 'portal', components: [gsWallboxZeile] };
+
+/**
+ * Die Aktivität der Box nach Bild d1 (Folgepaket vp-gs-folge-herkunft): eine Suche vor 3 min (38 s, nur gelesen) und
+ * eine Übernahme aus ihr vor 1 min - die Zeilen des fünften Stroms `geraetesuche` im Kommando-Verlauf.
+ */
+export function gsAktivitaet(jetzt: number): CommandEntry[] {
+  const vor = (s: number) => new Date(jetzt - s * 1000).toISOString();
+  const leer = {
+    kind: 'ereignis' as const, mode: null, path: null, whyKind: null, whyRef: null, commandedKwFirst: null,
+    commandedKwLast: null, commandedKwMin: null, commandedKwMax: null, verdict: null, cycles: null,
+    cyclesConfirmed: null, cyclesNoAnswer: null, cyclesMismatch: null, controlEnabled: null, released: null,
+    foreignInfluence: null, source: 'portal', detail: null, stream: 'geraetesuche', urheber: VON_IHNEN,
+  };
+  return [
+    {
+      ...leer, id: -(2 ** 50 + 41), eventKind: 'geraetesuche', startedAt: vor(180), endedAt: vor(142), entityId: null,
+      geraetesuche: {
+        suchId: GS_SUCH_ID, zustand: 'fertig', grund: null, dauerMs: 38_120, zaehler: zaehler({ bereit: 2, weitere: 2 }),
+        abgebrochenVon: null, komponente: null, fund: null, gesuchtAm: null,
+      },
+    },
+    {
+      ...leer, id: -(2 ** 50 + 44), eventKind: 'geraet_uebernommen', startedAt: vor(60), endedAt: null,
+      entityId: 'e-wr',
+      geraetesuche: {
+        suchId: GS_SUCH_ID, zustand: null, grund: null, dauerMs: null, zaehler: null, abgebrochenVon: null,
+        komponente: 'Wechselrichter', fund: 'solarman:3115580613', gesuchtAm: vor(180),
+      },
+    },
+  ];
+}

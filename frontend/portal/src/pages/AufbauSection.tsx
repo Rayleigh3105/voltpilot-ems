@@ -97,6 +97,7 @@ import {
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { AnlegenFlow } from '../components/AnlegenFlow';
 import { GeraetesucheDialog, type GeraetesucheUebernahme } from '../components/GeraetesucheDialog';
+import { geraetesucheBezug } from '../geraetesucheHerkunft';
 import type { GeraetesucheFund } from '../geraetesuche';
 import { felder } from '../komponentenAssistent';
 import { AddDeviceDrawer, DeviceDetailDrawer } from '../components/DeviceDrawers';
@@ -1036,6 +1037,7 @@ export function AufbauSection({
           startRolle={start?.rolle ?? null}
           startVerbindung={sucheVorbelegung ?? (addWeg ? gatewayVorbelegung(addWeg) : null)}
           startHerkunft={sucheHerkunft}
+          startFund={sucheFund?.art === 'vorlage' ? geraetesucheBezug(sucheFund.u.suchId, sucheFund.u.fund.schluessel) : null}
           zurueckLabel={sucheFund ? 'Zurück zur Gerätesuche' : undefined}
           onZurueck={() => {
             const ausSuche = sucheFund !== null;

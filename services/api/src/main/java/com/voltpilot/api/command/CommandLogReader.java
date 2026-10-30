@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
+import com.voltpilot.api.geraetesuche.GeraetesucheAktivitaet;
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.registerwrite.RegisterWriteEvents;
 import com.voltpilot.api.repo.CommandLogRepository;
 import com.voltpilot.api.repo.ControlStatusRepository;
@@ -13,6 +15,7 @@ import com.voltpilot.api.repo.RegisterWriteEventRepository;
 import com.voltpilot.api.web.dto.CommandHistoryDto;
 import com.voltpilot.api.web.dto.CommandHistoryDto.CommandDetailDto;
 import com.voltpilot.api.web.dto.CommandHistoryDto.CommandEntryDto;
+import com.voltpilot.api.web.dto.GeraetesucheAktivitaetDto;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -53,21 +56,45 @@ public class CommandLogReader {
     /** Die Ereignis-Art seiner Zeilen - ein Punkt-Ereignis, keine Halteperiode. */
     static final String EVENT_REGISTER_WRITE = "register_geschrieben";
 
+    /**
+     * Der Deckel des FÜNFTEN Stroms - wie beim vierten ein eigener, damit die
+     * Halteperioden die seltenen Suchen nie verdrängen.
+     */
+    static final int MAX_GERAETESUCHE_ENTRIES = 50;
+    /** Das Strom-Wort des fünften Stroms (Folgepaket vp-gs-folge-herkunft, Bild d1). */
+    public static final String STREAM_GERAETESUCHE = "geraetesuche";
+    /** Eine Suche im Heimnetz: Start bis Ergebnis in EINER Zeile. */
+    static final String EVENT_GERAETESUCHE = "geraetesuche";
+    /** Ein Fund wurde über „Übernehmen" zu einer Komponente. */
+    static final String EVENT_GERAET_UEBERNOMMEN = "geraet_uebernommen";
+    /** Die neue Adresse eines Fundes ging an eine bestehende Komponente (DP-7 A). */
+    static final String EVENT_ADRESSE_UEBERNOMMEN = "adresse_uebernommen";
+    /**
+     * Der Abstand der Kennungen des fünften Stroms: {@code -(2^50 + id)}. Drei
+     * Speicher, drei Sequenzen - die Halteperioden sind positiv, die
+     * Register-Vorgänge {@code -id}; ohne Abstand teilten sich eine Suche und
+     * ein Register-Vorgang eine Kennung und überschrieben einander im Portal.
+     * 2^50 bleibt unter der sicheren Ganzzahl von JavaScript (2^53).
+     */
+    static final long GERAETESUCHE_ID_BASIS = 1L << 50;
+
     private final CommandLogRepository store;
     private final EntityRegistryRepository entities;
     private final ControlStatusRepository controlStatus;
     private final CurtailmentStatusRepository curtailmentStatus;
     private final RegisterWriteEventRepository registerWrites;
+    private final GeraetesucheAktivitaet geraetesuche;
     private static final ObjectMapper SHARED = new ObjectMapper();
 
     public CommandLogReader(CommandLogRepository store, EntityRegistryRepository entities,
             ControlStatusRepository controlStatus, CurtailmentStatusRepository curtailmentStatus,
-            RegisterWriteEventRepository registerWrites) {
+            RegisterWriteEventRepository registerWrites, GeraetesucheAktivitaet geraetesuche) {
         this.store = store;
         this.entities = entities;
         this.controlStatus = controlStatus;
         this.curtailmentStatus = curtailmentStatus;
         this.registerWrites = registerWrites;
+        this.geraetesuche = geraetesuche;
     }
 
     /**
@@ -152,9 +179,22 @@ public class CommandLogReader {
             writes = writes.subList(0, registerLimit);
             truncated = true;
         }
+        // Der fünfte Strom: Suchen im Heimnetz und Übernahmen aus ihnen, mit
+        // eigenem Deckel - nur im ungefilterten Verlauf.
+        int sucheLimit = Math.min(limit, MAX_GERAETESUCHE_ENTRIES);
+        List<GeraetesucheAktivitaet.Zeile> suchen = List.of();
+        if (filter.includesGeraetesuche()) {
+            suchen = geraetesuche.zeilen(siteId, umfang(entityId, scope), from, to, before,
+                    sucheLimit + 1, Instant.now());
+        }
+        if (suchen.size() > sucheLimit) {
+            suchen = suchen.subList(0, sucheLimit);
+            truncated = true;
+        }
         List<CommandEntryDto> entries = new ArrayList<>(
                 rows.stream().map(CommandLogReader::toDto).toList());
         entries.addAll(registerEntries(writes));
+        entries.addAll(geraetesucheEntries(suchen));
         // Chronologisch, damit der Film EINE Zeitachse hat; ein fehlender Beginn
         // (den es hier nicht geben kann) sortiert ans Ende statt zu werfen.
         entries.sort(Comparator.comparing(CommandEntryDto::startedAt,
@@ -192,7 +232,26 @@ public class CommandLogReader {
                     byDevice && !scope.box() ? scope.entityIds() : null, from, to,
                     byDevice && scope.box(), filter);
         }
+        if (filter.includesGeraetesuche()) {
+            n += geraetesuche.zahl(siteId, umfang(entityId, scope), from, to);
+        }
         return n;
+    }
+
+    /**
+     * Wessen Suchen und Übernahmen: die BOX trägt ihre Suchen und was aus ihnen
+     * übernommen wurde (Bild d1); eine Komponente und ein Gerät dahinter nur die
+     * Übernahmen, die zu ihnen wurden; ohne Auswahl die ganze Anlage.
+     */
+    private static GeraetesucheAktivitaet.Umfang umfang(UUID entityId, DeviceScopes.Scope scope) {
+        if (entityId != null) {
+            return GeraetesucheAktivitaet.Umfang.komponenten(List.of(entityId));
+        }
+        if (scope == null) {
+            return GeraetesucheAktivitaet.Umfang.ANLAGE;
+        }
+        return scope.box() ? GeraetesucheAktivitaet.Umfang.box(scope.deviceId())
+                : GeraetesucheAktivitaet.Umfang.komponenten(scope.entityIds());
     }
 
     /** Ob es die Komponente in dieser Anlage überhaupt gibt (sonst 404). */
@@ -271,8 +330,44 @@ public class CommandLogReader {
                         null, null, e.source(), null,
                         RegisterWriteEvents.toDto(e),
                         e.actorArt() == null ? null
-                                : new ProtokollDto.Urheber(e.actorName(), e.actorRolle(), e.actorArt())))
+                                : new ProtokollDto.Urheber(e.actorName(), e.actorRolle(), e.actorArt()),
+                        null))
                 .toList();
+    }
+
+    /**
+     * Der FÜNFTE Strom {@code geraetesuche}: Suchen im Heimnetz und Übernahmen
+     * aus ihnen, zur LESEZEIT aus dem nur anfügenden {@code geraetesuche_protokoll}
+     * eingemischt - dieselbe Regel wie beim vierten: keine Doppel-Speicherung,
+     * kein zweiter Strom neben dem Verlauf (Konzept §13).
+     *
+     * <p>Eine Suche ist EINE Zeile vom Start ({@code startedAt}, die Person) bis
+     * zum Ergebnis ({@code endedAt}; {@code null}, solange keines kam). Die
+     * Herkunft ist {@code portal}: gestartet und übernommen wird im Portal.
+     */
+    private static List<CommandEntryDto> geraetesucheEntries(List<GeraetesucheAktivitaet.Zeile> zeilen) {
+        return zeilen.stream()
+                .map(z -> new CommandEntryDto(-(GERAETESUCHE_ID_BASIS + z.id()), STREAM_GERAETESUCHE,
+                        "ereignis", eventKind(z.art()), z.am(), z.beendetAm(), null, null, null, null, null,
+                        null, null, null, null, null, null, null, null, null, null, null,
+                        z.entityId() == null ? null : z.entityId().toString(), "portal", null, null,
+                        urheber(z.wer()),
+                        new GeraetesucheAktivitaetDto(z.suchId(), z.zustand(), z.grund(), z.dauerMs(),
+                                z.zaehler(), urheber(z.abbruchVon()), z.komponente(), z.fund(),
+                                z.gesuchtAm())))
+                .toList();
+    }
+
+    private static String eventKind(String art) {
+        return switch (art) {
+            case "gestartet" -> EVENT_GERAETESUCHE;
+            case "adresse_uebernommen" -> EVENT_ADRESSE_UEBERNOMMEN;
+            default -> EVENT_GERAET_UEBERNOMMEN;
+        };
+    }
+
+    private static ProtokollDto.Urheber urheber(ProtokollAkteur a) {
+        return a == null || a.name() == null ? null : new ProtokollDto.Urheber(a.name(), a.rolle(), a.art());
     }
 
     private static CommandEntryDto toDto(CommandLogRepository.Row r) {
@@ -286,6 +381,6 @@ public class CommandLogReader {
                 d == null ? null : new CommandDetailDto(d.mismatchRoles(), d.certSource(),
                         d.units(), d.certifiedUnits(), d.state(), d.reasonCode()),
                 null, r.actorArt() == null ? null
-                        : new ProtokollDto.Urheber(r.actorName(), r.actorRolle(), r.actorArt()));
+                        : new ProtokollDto.Urheber(r.actorName(), r.actorRolle(), r.actorArt()), null);
     }
 }

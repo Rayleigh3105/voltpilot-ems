@@ -21,7 +21,7 @@ import {
 } from '../api';
 import { consumersApi } from '../consumers/consumersApi';
 import { gatewayForm, goreForm } from '../test/boxGeraeteFixtures';
-import { gsVerlauf } from '../test/geraetesucheFixtures';
+import { gsAktivitaet, gsVerlauf } from '../test/geraetesucheFixtures';
 import { aufbauHash } from '../nav';
 
 const site: Site = {
@@ -699,6 +699,23 @@ describe('BoxSeiteSection · Gerätesuche (Bericht §4 „Einstiege“, m1/m8/d1
     expect(await screen.findByTestId('geraetesuche-grund')).toHaveTextContent(/Suche läuft · seit 1\d s · gestartet von Anna Weber \(VoltPilot-Service\)/);
     expect(screen.getByRole('link', { name: 'Mitansehen' }))
       .toHaveAttribute('href', aufbauHash(site.id, 'suche', { box: box.id, such: zweite.suchId }));
+  });
+
+  it('die Aktivität (d1): die Suche mit Person, Dauer und „nur gelesen“, darüber die Übernahme aus ihr', async () => {
+    const jetzt = Date.now();
+    stub({ commands: commands({ entries: gsAktivitaet(jetzt), from: new Date(jetzt - 86_400_000).toISOString(),
+      to: new Date(jetzt).toISOString() }) });
+    vi.spyOn(api, 'geraetesucheVerlauf').mockResolvedValue({ suchen: verlauf() });
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    const aktivitaet = await screen.findByTestId('baustein-aktivitaet');
+    const zeilen = await within(aktivitaet).findAllByRole('listitem');
+    const saetze = zeilen.map((z) => z.textContent ?? '').filter((t) => t.includes('Gerät'));
+    expect(saetze).toHaveLength(2);
+    expect(saetze[0]).toMatch(/Gerät angelegt: Wechselrichter \(aus der Gerätesuche\)/);
+    expect(saetze[1]).toMatch(/Gerätesuche im Heimnetz/);
+    expect(saetze[1]).toMatch(/2 neue Geräte/);
+    // Die eigene Person heißt „Sie“ - wie in Bild d1.
+    expect(saetze[1]).toMatch(/Sie · 38 s · nur gelesen/);
   });
 
   it('leere Box (m1): „An dieser Box meldet sich noch kein Gerät.“ mit dem Hauptknopf; offline sagt es warum', async () => {

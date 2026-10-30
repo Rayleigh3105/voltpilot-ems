@@ -43,7 +43,9 @@ public final class CommandFilter {
      * Die Ströme, nach denen gefiltert werden darf. Es sind die vier Ströme des
      * Speichers plus der vierte, zur Lesezeit eingemischte Strom
      * {@code register} - genau die Wörter, die {@code CommandEntryDto.stream}
-     * je trägt.
+     * je trägt. Der fünfte Strom {@code geraetesuche} ist bewusst NICHT
+     * filterbar: er erscheint nur im ungefilterten Verlauf
+     * ({@link Filter#includesGeraetesuche()}).
      */
     public static final Set<String> STREAMS = Set.of(CommandLog.STREAM_BATTERIE,
             CommandLog.STREAM_ABREGELUNG, CommandLog.STREAM_VERBRAUCHER,
@@ -173,6 +175,18 @@ public final class CommandFilter {
                 return false;
             }
             return results.isEmpty() || results.stream().anyMatch(LOG_RESULTS::contains);
+        }
+
+        /**
+         * Ob der fünfte Strom {@code geraetesuche} (Suchen im Heimnetz und
+         * Übernahmen aus ihnen) vorkommen kann. Seine Zeilen tragen keinen
+         * Schreibweg und kein Ergebnis-Wort - jeder Strom- oder Ergebnis-Filter
+         * schließt sie also aus. Sie sind über das Portal ausgelöst; ein
+         * Herkunfts-Filter ohne {@code portal} trifft sie ebenso nicht.
+         */
+        public boolean includesGeraetesuche() {
+            return streams.isEmpty() && results.isEmpty()
+                    && (sources.isEmpty() || sources.contains("portal"));
         }
 
         /** Die Ströme OHNE {@code register} - das Vokabular des Speichers. */

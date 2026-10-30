@@ -51,7 +51,7 @@ export const plantArticles: HelpArticle[] = [
       ] },
       { id: 'wer-und-was-bleibt', title: 'Wer suchen darf und was gespeichert wird', paragraphs: [
         "Suchen und die Ergebnisse ansehen darf, wer an der Anlage Geräte einrichten darf – dasselbe Recht wie für „Gerät hinzufügen“. Fehlt es, steht statt des Knopfs, wer es darf. Unter „Letzte Suchen“ sehen Sie, wer wann gesucht hat.",
-        "VoltPilot speichert Energie-Geräte (Wechselrichter, Zähler, Wallboxen, Schalter) und Netz-Technik wie Router oder WLAN-Zugangspunkte mit Hersteller, Modell und Adresse. Nach 30 Tagen werden die Suche und ihre Funde gelöscht; festgehalten bleibt nur, wer wann gesucht hat und wie viele Geräte es waren. Telefone, Tablets und Rechner erscheinen nur als Anzahl. MAC-Adressen und die Namen, die Geräte im Heimnetz tragen, speichert VoltPilot nicht.",
+        "VoltPilot speichert Energie-Geräte (Wechselrichter, Zähler, Wallboxen, Schalter) und Netz-Technik wie Router oder WLAN-Zugangspunkte mit Hersteller, Modell und Adresse. Nach 30 Tagen werden die Suche und ihre Funde gelöscht; festgehalten bleibt nur, wer wann gesucht hat, wie viele Geräte es waren und welche gefundenen Geräte Sie übernommen haben. Telefone, Tablets und Rechner erscheinen nur als Anzahl. MAC-Adressen und die Namen, die Geräte im Heimnetz tragen, speichert VoltPilot nicht.",
       ] },
       { id: 'gruppen', title: 'Die Gruppen der Ergebnisse', paragraphs: [
         "„Bereit zum Übernehmen“ führt mit einem Tipp in die Einrichten-Seite; der Test startet von selbst. „Braucht Ihre Hilfe“ nennt, was Sie zuerst tun müssen, etwa eine Schnittstelle einschalten oder eine neue Adresse bestätigen. „Schon eingerichtet“ zeigt, was die Anlage bereits kennt.",

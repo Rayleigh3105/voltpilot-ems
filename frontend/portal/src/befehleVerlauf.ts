@@ -100,6 +100,8 @@ export interface VerlaufView {
  *            ist und wie „Heute"/„Gestern" heißen
  * @param opts.gefiltert ob eine Komponente ODER ein Gerät gewählt ist (der
  *                       Leer-Satz unterscheidet die Fälle)
+ * @param opts.ich der Name der eigenen Person - eine Suche, die man selbst
+ *                 gestartet hat, nennt „Sie" statt des Namens (Bild d1)
  *
  * Vier Regeln tragen die Funktion:
  * 1. **Umgekehrte Film-Ordnung.** `film()` liefert ÄLTESTE zuerst (so kommen
@@ -117,7 +119,7 @@ export interface VerlaufView {
 export function neuesteZuerst(
   seiten: readonly (CommandHistory | null | undefined)[],
   now: number,
-  opts: { gefiltert?: boolean } = {},
+  opts: { gefiltert?: boolean; ich?: string | null } = {},
 ): VerlaufView {
   const echte = seiten.filter((h): h is CommandHistory => Boolean(h));
   const neueste = echte[0] ?? null;
@@ -129,7 +131,7 @@ export function neuesteZuerst(
     // ⚠ `datiert: false`: das Datum trägt hier die GRUPPEN-Zeile. Beides
     // zugleich wäre dieselbe Auskunft zweimal („18.08. 22:00" unter der
     // Überschrift „Montag, 18. August 2026").
-    const zeilen = film(h, now, { datiert: false });
+    const zeilen = film(h, now, { datiert: false, ich: opts.ich ?? null });
     for (let i = zeilen.length - 1; i >= 0; i -= 1) {
       const z = zeilen[i];
       if (gesehen.has(z.id)) continue;

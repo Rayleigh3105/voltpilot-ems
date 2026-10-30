@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api';
 import { AnlegenFlow } from './AnlegenFlow';
@@ -397,6 +397,35 @@ describe('die Aufgabe folgt dem Modell', () => {
     fireEvent.click(speichernKnopf());
     await waitFor(() => expect(createComponent).toHaveBeenCalled());
     expect(createComponent.mock.calls[0][1]).toMatchObject({ role: 'grid-meter' });
+  });
+
+  it('aus der Gerätesuche: der Bezug auf Suche und Fund reist beim Anlegen mit - ohne Fund keiner', async () => {
+    const wallbox = {
+      ...template,
+      templateRef: 'builtin:go-e:charger',
+      brand: 'go-e',
+      brandLabel: 'go-e',
+      model: 'charger',
+      modelLabel: 'go-e Charger',
+      deviceType: 'wallbox',
+    };
+    componentTemplates.mockResolvedValue([wallbox]);
+    const bezug = { suchId: '5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d', fund: 'goe:204117' };
+    await bisZurVerbindung({ startTemplate: wallbox as never, startFund: bezug });
+    fuelleFormular();
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1]).toMatchObject({ geraetesuche: bezug });
+
+    cleanup();
+    createComponent.mockClear();
+    await bisZurVerbindung({ startTemplate: wallbox as never });
+    fuelleFormular();
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1].geraetesuche).toBeUndefined();
   });
 
   it('sperrt den zweiten Netz-Zähler mit seinem Grund - auch im Fuß', async () => {

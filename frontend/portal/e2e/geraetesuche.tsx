@@ -14,6 +14,7 @@ import {
   GS_SUCH_ID,
   GS_TEMPLATES,
   geraetesucheFaelle,
+  gsAktivitaet,
   gsAnlage,
   gsBox,
   gsVerlauf,
@@ -41,6 +42,8 @@ import '../src/index.css';
  * `breit`, `hinweis`, `nichts`, `abgebrochen`, `keineAntwort`, `abgelehnt`, `fehlgeschlagen`, `fremd`, `ablauf` = läuft,
  * dann fertig) oder eine Ablehnung beim Start (`offline`, `update`, `zuoft`, `laeuftschon`); `&ansicht=verlauf`;
  * `&geraete=0` = die Box ohne Geräte (m1); `&box=offline|update|laeuft` stellt die Lage des Knopfs auf der Box-Seite.
+ * Die Box-Seite trägt in „Aktivität" die Suche und eine Übernahme aus ihr (d1, Folgepaket „Herkunft"); was Anlegen und
+ * Bearbeiten an die API schicken, liegt für die Spec in `window.__gesendet`.
  */
 const frage = new URLSearchParams(window.location.search);
 const flaeche = frage.get('flaeche') ?? 'aufbau';
@@ -65,6 +68,13 @@ const topology = {
 } as unknown as SiteTopology;
 
 const ok = <T,>(wert: T) => () => Promise.resolve(structuredClone(wert));
+/** Merkt sich den Rumpf (für die Spec: reist der Bezug auf die Suche mit?) und antwortet wie `ok`. */
+const gesendet: Record<string, unknown> = {};
+(window as unknown as { __gesendet: Record<string, unknown> }).__gesendet = gesendet;
+const merke = <T,>(name: string, wert: T) => (...args: unknown[]) => {
+  gesendet[name] = structuredClone(args[args.length - 1]);
+  return Promise.resolve(structuredClone(wert));
+};
 const nein = (status: number, body: Record<string, unknown>) => () =>
   Promise.reject(new ApiError(status, String(body.message ?? 'abgelehnt'), {
     suchId: null, zuletztGesehen: null, wiederAb: null, message: '', ...body,
@@ -115,12 +125,13 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   geraetesucheVerlauf: ok({ suchen: verlauf }),
   testComponentConnection: ok({ results: [{ ok: true, reading: { value: 3.2, unit: 'kW' } }] }),
   matchComponent: ok(undefined),
-  createComponent: ok({ componentAuthority: 'portal', components: [gsWallboxZeile] }),
-  updateComponent: ok({ componentAuthority: 'portal', components: [gsWallboxZeile] }),
+  createComponent: merke('createComponent', { componentAuthority: 'portal', components: [gsWallboxZeile] }),
+  updateComponent: merke('updateComponent', { componentAuthority: 'portal', components: [gsWallboxZeile] }),
   admitChargePoint: ok({}),
   commandHistory: ok({
     recordingSince: null, accuracySeconds: 60, from: new Date(jetzt - 86_400_000).toISOString(), to: new Date(jetzt).toISOString(),
-    entityId: null, entityLabel: null, writes: false, truncated: false, total: 0, entries: [],
+    entityId: null, entityLabel: null, writes: false, truncated: false, total: ohneGeraete ? 0 : 2,
+    entries: ohneGeraete ? [] : gsAktivitaet(jetzt),
   }),
   registerWriteTargets: ok([]),
   registerWriteHistory: ok([]),

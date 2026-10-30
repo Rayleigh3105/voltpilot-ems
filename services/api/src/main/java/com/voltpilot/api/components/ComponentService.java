@@ -7,6 +7,7 @@ import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityTypeCatalog;
+import com.voltpilot.api.geraetesuche.GeraetesucheHerkunft;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
@@ -16,6 +17,7 @@ import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.templates.BuiltinComponentTemplates;
 import com.voltpilot.api.templates.ComponentTemplateRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.QuelleEinstellungService;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
 import com.voltpilot.api.web.dto.ComponentMatchDto;
@@ -31,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -130,6 +133,11 @@ public class ComponentService {
     private final DeviceRepository deviceTopology;
     private final EntityTypeCatalog entityTypes;
     private final QuelleEinstellungService einstellungen;
+    /**
+     * Die Herkunft aus der Gerätesuche (Folgepaket vp-gs-folge-herkunft). Optional, damit die Tests, die diesen
+     * Dienst von Hand bauen, unverändert bleiben; im Kontext ist sie immer da.
+     */
+    private GeraetesucheHerkunft geraetesuche;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ComponentService(Geltungsbereich geltungsbereich, MeasurementPointRepository points,
@@ -153,6 +161,11 @@ public class ComponentService {
         this.deviceTopology = deviceTopology;
         this.entityTypes = entityTypes;
         this.einstellungen = einstellungen;
+    }
+
+    @Autowired(required = false)
+    void setGeraetesucheHerkunft(GeraetesucheHerkunft geraetesuche) {
+        this.geraetesuche = geraetesuche;
     }
 
     // ---- Lesen ------------------------------------------------------------
@@ -182,9 +195,12 @@ public class ComponentService {
                 && !ComponentService.holds(soll, held)
                 && !ComponentAuthority.BOX.equals(reportedAuthority)
                 && entityRegistry.gatewayAmbiguous(siteId);
+        Map<UUID, GeraetesucheHerkunft.Herkunft> herkunft = geraetesuche == null ? Map.of()
+                : geraetesuche.herkunft(siteId);
         List<SiteComponentsDto.ComponentRowDto> rows = new ArrayList<>();
         for (EntityRow row : entityRepo.entitiesForSite(siteId)) {
-            rows.add(toRow(row, soll, applied, held, reportedAuthority, gatewayAmbiguous));
+            rows.add(toRow(row, soll, applied, held, reportedAuthority, gatewayAmbiguous,
+                    herkunft.get(row.id())));
         }
         return new SiteComponentsDto(authority, soll, applied,
                 ist == null ? null : ist.appliedAt(),
@@ -253,6 +269,9 @@ public class ComponentService {
         deviceTopology.lockTopology(siteId);
         requireSite(siteId);
         requirePortalManaged(siteId);
+        // Ein Bezug auf die Gerätesuche wird VOR allem anderen geprüft: ein fremder, unbekannter oder abgelaufener
+        // Fund legt nichts an (Folgepaket vp-gs-folge-herkunft).
+        GeraetesucheHerkunft.Fund fund = fundAusSuche(siteId, req);
         String role = requireRole(req.role());
         ComponentTemplateDto template = requireTemplate(req.templateRef(), req.templateVersion());
         TestedConnection tested = requireTestedConnection(siteId, req, template);
@@ -261,6 +280,10 @@ public class ComponentService {
         UUID entityId = resolveOrCreatePoint(siteId, tenantId, role, req, template);
         int version = writeDefinition(siteId, tenantId, entityId, role, req, template, tested,
                 subject, "Angelegt");
+        if (fund != null) {
+            geraetesuche.protokollieren(tenantId, siteId, fund, GeraetesucheHerkunft.UEBERNOMMEN, entityId,
+                    akteur());
+        }
         // L9: NACH dem Commit und mit Wiederholung, wie Bearbeiten und Rollback.
         // Ein Push INNERHALB der Transaktion hat zwei Fehlerformen, die beide
         // still sind: ein Broker-Ausfall genau hier wird nie wiederholt (erst
@@ -284,6 +307,7 @@ public class ComponentService {
         requireSite(siteId);
         requirePortalManaged(siteId);
         EntityRow existing = requireComponent(siteId, entityId);
+        GeraetesucheHerkunft.Fund fund = fundAusSuche(siteId, req);
         if (req.expectedRevision() == null || req.expectedRevision() < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Zum Bearbeiten fehlt die gelesene Fassung. Bitte laden Sie das Gerät neu.");
@@ -388,8 +412,31 @@ public class ComponentService {
                     "family_changed", effectiveAt, existing.family(), template.family(), subject,
                     "Gerätefamilie geändert; frühere Messwerte behalten ihre damalige Interpretation.");
         }
+        if (fund != null && connectionChanged) {
+            // DP-7 A: dieselbe Komponente, neue Adresse aus der Suche. Ohne Änderung der Verbindung gibt es nichts
+            // zu protokollieren - der Bezug ist dann trotzdem geprüft.
+            geraetesuche.protokollieren(TenantContext.get(), siteId, fund,
+                    GeraetesucheHerkunft.ADRESSE_UEBERNOMMEN, entityId, akteur());
+        }
         activationOutbox.enqueue(TenantContext.get(), siteId, entityId, applied.version(), "component_edit");
         return list(siteId);
+    }
+
+    /** Der geprüfte Bezug auf einen Fund der Gerätesuche, oder {@code null} ohne Bezug (der Weg wie bisher). */
+    private GeraetesucheHerkunft.Fund fundAusSuche(UUID siteId, SaveComponentRequest req) {
+        if (req.geraetesuche() == null) {
+            return null;
+        }
+        if (geraetesuche == null) {
+            throw new IllegalStateException("Gerätesuche-Herkunft ist nicht verdrahtet");
+        }
+        return geraetesuche.pruefen(siteId, req.geraetesuche());
+    }
+
+    /** Die Person der Anfrage im Protokoll-Vokabular - aus dem Token, nie aus dem Rumpf. */
+    private static ProtokollAkteur akteur() {
+        return ProtokollAkteur.aus(SecurityContextHolder.getContext().getAuthentication())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
 
     /**
@@ -995,7 +1042,8 @@ public class ComponentService {
     }
 
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied,
-            String held, String reportedAuthority, boolean gatewayAmbiguous) {
+            String held, String reportedAuthority, boolean gatewayAmbiguous,
+            GeraetesucheHerkunft.Herkunft herkunft) {
         ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
         boolean failClosed = template == null && !selfAuthored(row.communication());
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
@@ -1004,7 +1052,10 @@ public class ComponentService {
                         : ComponentSecrets.maskedJson(row.connectionJson(), ComponentSecrets.keys(template), failClosed),
                 row.sourceKind(), row.templateRef(), row.templateVersion(),
                 row.definitionVersion(), row.capacityKwp(), row.edgeSourceId(),
-                syncStatus(soll, applied, held, reportedAuthority, gatewayAmbiguous));
+                syncStatus(soll, applied, held, reportedAuthority, gatewayAmbiguous),
+                herkunft == null ? null : new SiteComponentsDto.HerkunftDto(
+                        SiteComponentsDto.HerkunftDto.GERAETESUCHE, herkunft.suchId(), herkunft.gesuchtAm(),
+                        herkunft.uebernommenAm()));
     }
 
     private ComponentTemplateDto exactTemplate(String templateRef, Integer templateVersion) {

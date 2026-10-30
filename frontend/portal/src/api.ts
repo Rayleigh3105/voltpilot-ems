@@ -41,7 +41,13 @@ export type { Fahrzeug, FahrzeugWunsch, SiteFahrzeuge } from './fahrzeugProfile'
 import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
 import type { ComponentMatch } from './komponentenAssistent';
-import type { Geraetesuche, GeraetesucheVerlaufEintrag } from './geraetesuche';
+import type {
+  Geraetesuche,
+  GeraetesucheGrund,
+  GeraetesucheGruppeWort,
+  GeraetesucheVerlaufEintrag,
+  GeraetesucheZustand,
+} from './geraetesuche';
 
 /** AP-08 IP-16: Prüfseite und Ersatzwerte; Werte entstehen erst nach Freigabe im Rechenlauf. */
 export type ErsatzwertMethode = 'gleichmaessig_verteilen' | 'profil_vorperiode' | 'profil_vergleichsquelle'
@@ -1853,6 +1859,29 @@ export interface SaveComponentBody {
   expectedRevision?: number;
   /** Ab wann diese Änderung gilt; aktuell atomisch beim Speichern. */
   effectiveAt?: string;
+  /**
+   * Der Bezug auf den Fund, aus dem „Übernehmen" (bzw. „Adresse übernehmen", DP-7 A) vorbelegt hat. Der Server prüft
+   * ihn gegen Anlage, Mandant und die 30 Tage der Suche (422 ohne jede Änderung) und schreibt das Protokoll; beim
+   * Anlegen hält er die `herkunft` der Komponente fest. Ohne ihn: der Weg wie bisher.
+   */
+  geraetesuche?: GeraetesucheBezug;
+}
+
+/** Welcher Fund welcher Gerätesuche eine Komponente vorbelegt hat (`schluessel` des Fundes). */
+export interface GeraetesucheBezug {
+  suchId: string;
+  fund: string;
+}
+
+/**
+ * Woher eine Komponente stammt - heute nur „aus der Gerätesuche vom `gesuchtAm`". Gelesen aus dem Protokoll der
+ * Suche; es überlebt den Läufer nach 30 Tagen, die Suche selbst nicht. Ein unbekanntes `art` behauptet nichts.
+ */
+export interface KomponenteHerkunft {
+  art: 'geraetesuche' | string;
+  suchId: string;
+  gesuchtAm: string;
+  uebernommenAm: string;
 }
 
 /**
@@ -2027,6 +2056,8 @@ export interface SiteComponentRow {
   capacityKwp?: number | null;
   edgeSourceId?: string | null;
   syncStatus?: string | null;
+  /** Nur nach „Übernehmen" aus der Gerätesuche; sonst abwesend (nie geraten). */
+  herkunft?: KomponenteHerkunft | null;
 }
 
 export interface SiteEntities {
@@ -7447,6 +7478,27 @@ export interface CommandEntry {
   register?: RegisterWriteEvent | null;
   /** AP-03 IP-7: wer die Zeile ausgelöst hat (Register-Vorgang, „Jetzt voll laden“); null an abgeleiteten Zeilen. */
   urheber?: ProtokollUrheber | null;
+  /**
+   * NUR auf den Zeilen des fünften Stroms `geraetesuche`: eine Suche im Heimnetz (`eventKind` `geraetesuche`) oder
+   * eine Übernahme aus ihr (`geraet_uebernommen`, `adresse_uebernommen`), gelesen aus dem Protokoll der Suche.
+   */
+  geraetesuche?: GeraetesucheAktivitaet | null;
+}
+
+/** Der Block einer Zeile des Stroms `geraetesuche` (OpenAPI `CommandEntry.geraetesuche`). */
+export interface GeraetesucheAktivitaet {
+  suchId: string;
+  /** Bei einer Suche: was die Box meldete, ohne Ergebnis die Regel der Suche; bei einer Übernahme null. */
+  zustand: GeraetesucheZustand | null;
+  grund: GeraetesucheGrund | null;
+  dauerMs: number | null;
+  /** Funde je Gruppe zum Zeitpunkt des Ergebnisses; null ohne Ergebnis (nie 0). */
+  zaehler: Record<GeraetesucheGruppeWort, number> | null;
+  abgebrochenVon: ProtokollUrheber | null;
+  /** Bei einer Übernahme: der heutige Name der Komponente; null, wenn sie entfernt ist. */
+  komponente: string | null;
+  fund: string | null;
+  gesuchtAm: string | null;
 }
 
 export interface CommandDetail {

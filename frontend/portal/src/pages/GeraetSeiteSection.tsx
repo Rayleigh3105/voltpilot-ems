@@ -58,6 +58,7 @@ import { GeraetHerkunft } from '../components/GeraetHerkunft';
 import { GeraetGefahrenzone, gefahrMenueLabel } from '../components/GeraetGefahrenzone';
 import { GeraetSummenwerte } from '../components/GeraetSummenwerte';
 import { gefahrenzone } from '../geraetLoeschen';
+import { herkunftZeile } from '../geraetesucheHerkunft';
 import {
   anlageRoute,
   befehleGeraetHash,
@@ -1516,8 +1517,12 @@ function GeraetSeiteKern({
         const verbindungZeilen = mitAnbindung
           ? view.verbindung.filter((z) => !ANBINDUNG_TRAEGT.has(z.label))
           : view.verbindung;
+        // Woher das Gerät stammt („aus der Gerätesuche vom …") - nur, wenn der Server eine Herkunft liest.
+        const herkunft = herkunftZeile((components?.components ?? [])
+          .find((row) => row.herkunft && view.komponenten.some((c) => c.entityId === row.id))?.herkunft);
         const detailZeilen: Zeile[] = [
           ...(view.kopf.modell ? [{ label: 'Modell', wert: view.kopf.modell }] : []),
+          ...(herkunft ? [herkunft] : []),
           ...verbindungZeilen,
           ...(misst.length > 0
             ? [{ label: 'Misst', wert: Array.from(new Set(misst)).join(' · ') }]

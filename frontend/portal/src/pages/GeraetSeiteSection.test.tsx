@@ -517,6 +517,30 @@ describe('GeraetSeiteSection', () => {
     expect(zentrale.getAttribute('href')).toBe('#/anlage/s-1/modell');
   });
 
+  it('nennt unter „Gerät & Verbindung“, woher das Gerät stammt - nur mit einer Herkunft vom Server', async () => {
+    stub();
+    const { unmount } = render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+    );
+    expect(within(await screen.findByTestId('baustein-details')).queryByText('Angelegt')).toBeNull();
+    unmount();
+
+    vi.mocked(api.siteComponents).mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{
+        id: 'batt', definitionVersion: 2, templateRef: 'builtin:deye:sun-30k-sg01hp3', templateVersion: 1,
+        herkunft: {
+          art: 'geraetesuche', suchId: '5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d',
+          gesuchtAm: '2026-10-30T08:12:00Z', uebernommenAm: '2026-10-30T08:14:00Z',
+        },
+      }],
+    });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    const details = await screen.findByTestId('baustein-details');
+    const angelegt = (await within(details).findByText('Angelegt')).parentElement as HTMLElement;
+    expect(angelegt).toHaveTextContent('aus der Gerätesuche vom 30.10.2026');
+  });
+
   // P4: „BMS" - nur da, wenn eine Batterie per CAN am Gerät hängt. Heute hängt
   // an keiner Anlage eine, also ist die Abwesenheit des Kastens der Normalfall
   // (und ausdrücklich kein Kasten, der erklärt, dass er nichts weiß).

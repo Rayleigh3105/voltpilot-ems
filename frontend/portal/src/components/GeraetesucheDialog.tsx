@@ -46,6 +46,7 @@ import {
   weitereTitel,
   wer,
 } from '../geraetesucheAnsicht';
+import { geraetesucheBezug } from '../geraetesucheHerkunft';
 import { UEMS_GERAETE_SUCHEN } from '../glossar';
 import { testErgebnis, type ComponentTemplate } from '../komponentenAssistent';
 import { hashForRoute, pageRoute } from '../nav';
@@ -87,6 +88,11 @@ export interface GeraetesucheUebernahme {
   kanal: number | null;
   /** Der Schlüssel in `uebernommen`, sobald gespeichert ist. */
   schluessel: string;
+  /**
+   * Die Suche, aus der übernommen wird - mit `fund.schluessel` der Bezug, den das Anlegen mitschickt (Protokoll
+   * „übernommen", Herkunft „aus der Gerätesuche vom …"). null = keine Suche zur Hand: dann ohne Bezug.
+   */
+  suchId: string | null;
 }
 
 type Ansicht =
@@ -308,12 +314,15 @@ export function GeraetesucheDialog({
     }
   };
 
+  /** Übernehmen aus der gezeigten Suche: der Bezug auf sie reist mit. */
+  const uebernimm = (u: Omit<GeraetesucheUebernahme, 'suchId'>) => onUebernehmen({ ...u, suchId: suche?.suchId ?? null });
+
   const uebernehmen = (f: GeraetesucheFund) => {
     setAktionFehler(null);
     if (!templates) return;
     const weg = uebernahmeWeg(f, templates);
     if (weg.art === 'direkt') {
-      onUebernehmen({ fund: f, template: weg.template, verbindung: vorbelegung(f, weg.template), kanal: null, schluessel: f.schluessel });
+      uebernimm({ fund: f, template: weg.template, verbindung: vorbelegung(f, weg.template), kanal: null, schluessel: f.schluessel });
     } else if (weg.art === 'modell') {
       setAnsicht({ art: 'modell', fund: f, templates: weg.templates });
     } else if (weg.art === 'ausgang') {
@@ -358,6 +367,8 @@ export function GeraetesucheDialog({
         capacityKwp: zeile.capacityKwp ?? undefined,
         expectedRevision: zeile.definitionVersion,
         effectiveAt: new Date().toISOString(),
+        // DP-7 A über denselben Haken: das Protokoll hält „Adresse übernommen" mit Suche und Fund fest.
+        geraetesuche: geraetesucheBezug(suche?.suchId, f.schluessel) ?? undefined,
       });
       const satz = `Neue Adresse für „${komponente.name}“ übernommen – dasselbe Gerät.`;
       setAdressen((a) => ({ ...a, [f.schluessel]: { zustand: 'ok', satz } }));
@@ -398,7 +409,7 @@ export function GeraetesucheDialog({
         titelRef={titelRef}
         fund={ansicht.fund}
         templates={ansicht.templates}
-        onWahl={(t) => onUebernehmen({ fund: ansicht.fund, template: t, verbindung: vorbelegung(ansicht.fund, t), kanal: null, schluessel: ansicht.fund.schluessel })}
+        onWahl={(t) => uebernimm({ fund: ansicht.fund, template: t, verbindung: vorbelegung(ansicht.fund, t), kanal: null, schluessel: ansicht.fund.schluessel })}
       />
     );
   } else if (ansicht.art === 'ausgang') {
@@ -410,7 +421,7 @@ export function GeraetesucheDialog({
         fund={ansicht.fund}
         uebernommen={uebernommen}
         onWahl={(kanal) =>
-          onUebernehmen({
+          uebernimm({
             fund: ansicht.fund,
             template: ansicht.template,
             verbindung: vorbelegung(ansicht.fund, ansicht.template, kanal),
