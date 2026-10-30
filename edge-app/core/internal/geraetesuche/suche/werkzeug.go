@@ -41,14 +41,24 @@ func (b *budget) nimm() error {
 }
 
 // verbinde opens one paced TCP connection to the device. Every connection of
-// the search goes through here: the range rule is checked again at the
-// opener (the address of an SSDP answer, too).
+// the search takes its slot here or, for an HTTP request, in get; the range
+// rule is checked again at the opener, oeffne (the address of an SSDP answer,
+// too).
 func (l *Lauf) verbinde(ctx context.Context, ip netip.Addr, port int) (net.Conn, error) {
 	if probeZiel(ip, l.bereiche) != "" {
 		return nil, errNichtIm
 	}
 	if err := l.takt.warte(ctx); err != nil {
 		return nil, err
+	}
+	return l.oeffne(ctx, ip, port)
+}
+
+// oeffne dials once the slot is taken: verbinde, and get for the one
+// connection of its request.
+func (l *Lauf) oeffne(ctx context.Context, ip netip.Addr, port int) (net.Conn, error) {
+	if probeZiel(ip, l.bereiche) != "" {
+		return nil, errNichtIm
 	}
 	dctx, cancel := context.WithTimeout(ctx, l.u.Takt.zeitlimit())
 	defer cancel()
@@ -78,16 +88,57 @@ type antwort struct {
 
 // get sends ONE GET on a fixed path, without credentials, without following a
 // redirect, and reads at most 64 KiB.
+//
+// The device's first HTTP request is repeated once when no answer came in
+// time or the connection broke (VoltPilotGATE 30.10.2026: the Shelly Pro 3 at
+// -80 dBm missed one search of three with port 80 open). The repeat is a
+// request of the recogniser's budget and opens its connection through the
+// pacer; an answer - whatever it says - is never repeated, and neither is a
+// later request of the device, so the chain of a port does not double.
 func (b *budget) get(ctx context.Context, port int, pfad string) (antwort, error) {
 	if err := b.nimm(); err != nil {
 		return antwort{}, err
 	}
-	return b.g.lauf.get(ctx, b.g.ip, port, pfad)
+	l := b.g.lauf
+	a, err := l.get(ctx, b.g.ip, port, pfad)
+	erste := !b.g.httpGefragt
+	b.g.httpGefragt = true
+	if err == nil || !erste || ctx.Err() != nil || !abgerissen(err) {
+		return a, err
+	}
+	if b.nimm() != nil || !ruhe(ctx, httpPause(l.u.Takt)) {
+		return antwort{}, err
+	}
+	return l.get(ctx, b.g.ip, port, pfad)
+}
+
+// httpPause is the wait before the repeat of the first HTTP request (1 s).
+func httpPause(t Takt) time.Duration { return t.zeitlimit() * 2 / 3 }
+
+// abgerissen: no answer in time, or the connection broke before the answer
+// was read. A refused connection is the device's answer, not a lost one.
+func abgerissen(err error) bool {
+	var ne net.Error
+	switch {
+	case errors.Is(err, errBudget), errors.Is(err, errNichtIm), errors.Is(err, syscall.ECONNREFUSED):
+		return false
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF),
+		errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.EPIPE):
+		return true
+	}
+	return errors.As(err, &ne) && ne.Timeout()
 }
 
 func (l *Lauf) get(ctx context.Context, ip netip.Addr, port int, pfad string) (antwort, error) {
 	if probeZiel(ip, l.bereiche) != "" {
 		return antwort{}, errNichtIm
+	}
+	// The request opens exactly one connection (no keep-alive): its slot is
+	// taken here, so that Zeitlimit bounds the request and not the wait for
+	// the slot - with 32 devices at 20 connections a second the slot can be
+	// further away than Zeitlimit.
+	if err := l.takt.warte(ctx); err != nil {
+		return antwort{}, err
 	}
 	rctx, cancel := context.WithTimeout(ctx, l.u.Takt.zeitlimit())
 	defer cancel()
@@ -120,7 +171,7 @@ func (l *Lauf) neuerHTTPClient() *http.Client {
 			if err != nil {
 				return nil, err
 			}
-			return l.verbinde(ctx, ap.Addr(), int(ap.Port()))
+			return l.oeffne(ctx, ap.Addr(), int(ap.Port()))
 		},
 		DisableKeepAlives:      true,
 		DisableCompression:     true,

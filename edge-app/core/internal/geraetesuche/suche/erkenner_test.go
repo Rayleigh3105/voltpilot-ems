@@ -12,12 +12,15 @@ import (
 	"encoding/json"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -463,4 +466,192 @@ func mustRow(t *testing.T, f geraetesuche.Fund) geraetesuche.KatalogZeile {
 		t.Fatalf("pair (%s, %s)", f.Erkenner, f.Art)
 	}
 	return z
+}
+
+// wackel is an HTTP device on a weak Wi-Fi link: the first requests the test
+// chooses are lost - delayed beyond Zeitlimit or the connection is cut - and
+// the rest reach the simulator. It notes when each connection came.
+type wackel struct {
+	geraet    http.Handler
+	verzug    time.Duration // a lost request waits this long, then the connection is cut
+	mu        sync.Mutex
+	verloren  int // this many first requests are lost
+	pfade     []string
+	verbunden []time.Time
+}
+
+func (w *wackel) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	w.mu.Lock()
+	w.pfade = append(w.pfade, r.URL.RequestURI())
+	verloren := w.verloren > 0
+	if verloren {
+		w.verloren--
+	}
+	w.mu.Unlock()
+	if !verloren {
+		w.geraet.ServeHTTP(rw, r)
+		return
+	}
+	select {
+	case <-time.After(w.verzug):
+	case <-r.Context().Done():
+	}
+	if c, _, err := rw.(http.Hijacker).Hijack(); err == nil {
+		_ = c.Close()
+	}
+}
+
+func (w *wackel) gesehen() ([]string, []time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]string(nil), w.pfade...), append([]time.Time(nil), w.verbunden...)
+}
+
+func startWackel(t *testing.T, w *wackel) string {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(w)
+	srv.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			w.mu.Lock()
+			w.verbunden = append(w.verbunden, time.Now())
+			w.mu.Unlock()
+		}
+	}
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return strings.TrimPrefix(srv.URL, "http://")
+}
+
+// VoltPilotGATE 30.10.2026: in one search of three the Shelly Pro 3 at
+// 192.168.178.43 (-80 dBm) had port 80 open and was no find. Its first request
+// is repeated once when the answer is late or the connection breaks; the
+// repeat is in the recogniser's budget: /shelly, the repeat, GetStatus.
+func TestShellyWiederholtDieErsteAnfrage(t *testing.T) {
+	takt := Takt{JeSekunde: 100000, Zeitlimit: 150 * time.Millisecond}
+	for _, f := range []struct {
+		name   string
+		verzug time.Duration
+	}{
+		{"Antwort nach dem Zeitlimit", 400 * time.Millisecond},
+		{"Verbindung abgerissen", 0},
+	} {
+		w := &wackel{geraet: geraetesim.ShellyGen2(nil, "SPSW-003XE16EU", "1.4.4", 3, false, false),
+			verzug: f.verzug, verloren: 1}
+		_, g := einGeraetMit(t, startWackel(t, w), 80, takt)
+		fund, ok := erkenneShelly(context.Background(), g, 80, nil)
+		if !ok || fund.Schluessel != "shelly:10.77.0.34:80" || fund.Modell != "SPSW-003XE16EU" ||
+			fund.Art != "schaltaktor" || fund.Kanaele != 3 || fund.Erkennung != "sicher" {
+			t.Fatalf("%s: %v %+v", f.name, ok, fund)
+		}
+		pfade, _ := w.gesehen()
+		if want := []string{"/shelly", "/shelly", "/rpc/Shelly.GetStatus"}; !reflect.DeepEqual(pfade, want) ||
+			len(pfade) != AnfragenJeErkenner {
+			t.Fatalf("%s: %v, want %v", f.name, pfade, want)
+		}
+	}
+}
+
+// The repeat opens its connection through the pacer: with one new connection
+// per second it comes a slot later, not only after the deadline and the pause.
+func TestHTTPWiederholungImTakt(t *testing.T) {
+	w := &wackel{geraet: geraetesim.ShellyGen2(nil, "SPSW-003XE16EU", "1.4.4", 3, false, false), verloren: 1}
+	_, g := einGeraetMit(t, startWackel(t, w), 80, Takt{JeSekunde: 1, Zeitlimit: 150 * time.Millisecond})
+	if _, ok := erkenneShelly(context.Background(), g, 80, nil); !ok {
+		t.Fatal("no find after the repeat")
+	}
+	_, verbunden := w.gesehen()
+	if len(verbunden) != 3 {
+		t.Fatalf("%d connections, want 3 (lost, repeat, GetStatus)", len(verbunden))
+	}
+	for i := 1; i < len(verbunden); i++ {
+		if d := verbunden[i].Sub(verbunden[i-1]); d < 900*time.Millisecond {
+			t.Fatalf("connection %d after %v, the pacer allows one per second", i+1, d)
+		}
+	}
+}
+
+// Only the device's first request, only once: a device that never answers in
+// time gets /shelly twice and every later request of the port 80 chain (and
+// of the network gear) once - the chain does not double. An answer that does
+// not match is never repeated.
+func TestHTTPWiederholungNurEinmalJeGeraet(t *testing.T) {
+	takt := Takt{JeSekunde: 100000, Zeitlimit: 100 * time.Millisecond}
+	stumm := &wackel{geraet: http.NotFoundHandler(), verzug: 300 * time.Millisecond, verloren: 99}
+	l, g := einGeraetMit(t, startWackel(t, stumm), 80, takt)
+	if l.erkenne(context.Background(), g) {
+		t.Fatal("a silent device became a find")
+	}
+	pfade, _ := stumm.gesehen()
+	want := []string{"/shelly", "/shelly", "/api/status?filter=sse,typ,fwv", "/solar_api/GetAPIVersion.cgi",
+		"/api/system/status", "/api/system", "/"}
+	if !reflect.DeepEqual(pfade, want) {
+		t.Fatalf("silent device: %v, want %v", pfade, want)
+	}
+
+	p := &geraetesim.Protokoll{}
+	for _, f := range []struct {
+		name   string
+		geraet http.Handler
+		want   []string
+	}{
+		{"404", http.NotFoundHandler(), []string{"GET /shelly"}},
+		{"kein Shelly", geraetesim.Goe(p, "012345", "go-eCharger", "56.1"), []string{"GET /shelly"}},
+		{"Anmeldung", geraetesim.Geraet{Protokoll: p, Pfade: map[string]geraetesim.Antwort{
+			"/shelly": {Status: 401, Body: map[string]any{"code": 401}}}}, []string{"GET /shelly"}},
+	} {
+		w := &wackel{geraet: f.geraet}
+		_, g := einGeraetMit(t, startWackel(t, w), 80, takt)
+		if fund, ok := erkenneShelly(context.Background(), g, 80, nil); ok {
+			t.Fatalf("%s: %+v", f.name, fund)
+		}
+		pfade, _ := w.gesehen()
+		got := make([]string, len(pfade))
+		for i, pf := range pfade {
+			got[i] = "GET " + pf
+		}
+		if !reflect.DeepEqual(got, f.want) {
+			t.Fatalf("%s: %v, want %v", f.name, got, f.want)
+		}
+	}
+}
+
+func TestAbgerissenUnterscheidetAntwortUndVerlust(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	reset := &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ECONNRESET)}
+	for _, f := range []struct {
+		err  error
+		want bool
+	}{
+		{context.DeadlineExceeded, true},
+		{io.EOF, true},
+		{io.ErrUnexpectedEOF, true},
+		{reset, true},
+		{refused, false},
+		{errBudget, false},
+		{errNichtIm, false},
+	} {
+		if got := abgerissen(f.err); got != f.want {
+			t.Fatalf("%v: %v, want %v", f.err, got, f.want)
+		}
+	}
+}
+
+// Zeitlimit bounds the request, not the wait for its slot: with the pacer
+// busy for longer than Zeitlimit a healthy Shelly answers its first request -
+// no repeat, no lost find.
+func TestHTTPZeitlimitBeginntNachDemTakt(t *testing.T) {
+	w := &wackel{geraet: geraetesim.ShellyGen2(nil, "SPSW-003XE16EU", "1.4.4", 3, false, false)}
+	l, g := einGeraetMit(t, startWackel(t, w), 80, Takt{JeSekunde: 2, Zeitlimit: 150 * time.Millisecond})
+	for i := 0; i < 2; i++ { // other devices took the next slots (0.5 s each)
+		if err := l.takt.warte(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fund, ok := erkenneShelly(context.Background(), g, 80, nil)
+	if !ok || fund.Modell != "SPSW-003XE16EU" {
+		t.Fatalf("%v %+v", ok, fund)
+	}
+	if pfade, _ := w.gesehen(); !reflect.DeepEqual(pfade, []string{"/shelly", "/rpc/Shelly.GetStatus"}) {
+		t.Fatalf("%v", pfade)
+	}
 }

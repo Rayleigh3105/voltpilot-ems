@@ -102,6 +102,9 @@ type geraet struct {
 	alive   bool
 	offen   map[int]bool
 	hinweis hinweise
+	// httpGefragt: the device's first HTTP request is sent - only that one
+	// may be repeated (werkzeug.go, budget.get).
+	httpGefragt bool
 }
 
 // hinweise are what the multicast ways and the vendor list said about an
