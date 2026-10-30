@@ -17,6 +17,7 @@ import (
 	"net/netip"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -475,7 +476,8 @@ type wackel struct {
 	geraet    http.Handler
 	verzug    time.Duration // a lost request waits this long, then the connection is cut
 	mu        sync.Mutex
-	verloren  int // this many first requests are lost
+	verloren  int            // this many first requests are lost
+	je        map[string]int // when set: this many first requests of each path are lost
 	pfade     []string
 	verbunden []time.Time
 }
@@ -486,6 +488,12 @@ func (w *wackel) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	verloren := w.verloren > 0
 	if verloren {
 		w.verloren--
+	}
+	if w.je != nil {
+		verloren = w.je[r.URL.RequestURI()] > 0
+		if verloren {
+			w.je[r.URL.RequestURI()]--
+		}
 	}
 	w.mu.Unlock()
 	if !verloren {
@@ -547,6 +555,80 @@ func TestShellyWiederholtDieErsteAnfrage(t *testing.T) {
 		if want := []string{"/shelly", "/shelly", "/rpc/Shelly.GetStatus"}; !reflect.DeepEqual(pfade, want) ||
 			len(pfade) != AnfragenJeErkenner {
 			t.Fatalf("%s: %v, want %v", f.name, pfade, want)
+		}
+	}
+}
+
+// VoltPilotGATE 30.10.2026: in one search of three the Shelly Pro 3 was found
+// without its channels - /shelly answered, Shelly.GetStatus was lost. The
+// follow-up request is repeated once like the first one; lost twice, the
+// Shelly stays a find without channels, as before.
+func TestShellyWiederholtGetStatus(t *testing.T) {
+	takt := Takt{JeSekunde: 100000, Zeitlimit: 150 * time.Millisecond}
+	const status = "/rpc/Shelly.GetStatus"
+	for _, f := range []struct {
+		name     string
+		verzug   time.Duration
+		verloren int
+		kanaele  int
+	}{
+		{"einmal Antwort nach dem Zeitlimit", 400 * time.Millisecond, 1, 3},
+		{"einmal Verbindung abgerissen", 0, 1, 3},
+		{"immer Antwort nach dem Zeitlimit", 400 * time.Millisecond, 99, 0},
+		{"immer Verbindung abgerissen", 0, 99, 0},
+	} {
+		w := &wackel{geraet: geraetesim.ShellyGen2(nil, "SPSW-003XE16EU", "1.4.4", 3, false, false),
+			verzug: f.verzug, je: map[string]int{status: f.verloren}}
+		_, g := einGeraetMit(t, startWackel(t, w), 80, takt)
+		fund, ok := erkenneShelly(context.Background(), g, 80, nil)
+		if !ok || fund.Schluessel != "shelly:10.77.0.34:80" || fund.Modell != "SPSW-003XE16EU" ||
+			fund.Art != "schaltaktor" || fund.Kanaele != f.kanaele || fund.Erkennung != "sicher" ||
+			fund.Verbindung.Communication != "shelly_http" {
+			t.Fatalf("%s: %v %+v", f.name, ok, fund)
+		}
+		if got := slices.Contains(fund.Merkmale, "shelly_status"); got != (f.kanaele > 0) {
+			t.Fatalf("%s: merkmale %v", f.name, fund.Merkmale)
+		}
+		pfade, _ := w.gesehen()
+		if want := []string{"/shelly", status, status}; !reflect.DeepEqual(pfade, want) {
+			t.Fatalf("%s: %v, want %v", f.name, pfade, want)
+		}
+	}
+}
+
+// Both requests lost once: the repeat of /shelly takes the second request of
+// the budget, GetStatus the third - no request is left for its repeat, the
+// Shelly is a find without channels (contract §3: at most 3 per recogniser).
+func TestShellyGetStatusWiederholungImBudget(t *testing.T) {
+	w := &wackel{geraet: geraetesim.ShellyGen2(nil, "SPSW-003XE16EU", "1.4.4", 3, false, false),
+		je: map[string]int{"/shelly": 1, "/rpc/Shelly.GetStatus": 1}}
+	_, g := einGeraetMit(t, startWackel(t, w), 80, Takt{JeSekunde: 100000, Zeitlimit: 150 * time.Millisecond})
+	fund, ok := erkenneShelly(context.Background(), g, 80, nil)
+	if !ok || fund.Modell != "SPSW-003XE16EU" || fund.Kanaele != 0 {
+		t.Fatalf("%v %+v", ok, fund)
+	}
+	pfade, _ := w.gesehen()
+	if want := []string{"/shelly", "/shelly", "/rpc/Shelly.GetStatus"}; !reflect.DeepEqual(pfade, want) ||
+		len(pfade) != AnfragenJeErkenner {
+		t.Fatalf("%v, want %v", pfade, want)
+	}
+}
+
+// The repeat of GetStatus opens its connection through the pacer as well.
+func TestShellyGetStatusWiederholungImTakt(t *testing.T) {
+	w := &wackel{geraet: geraetesim.ShellyGen2(nil, "SPSW-003XE16EU", "1.4.4", 3, false, false),
+		je: map[string]int{"/rpc/Shelly.GetStatus": 1}}
+	_, g := einGeraetMit(t, startWackel(t, w), 80, Takt{JeSekunde: 1, Zeitlimit: 150 * time.Millisecond})
+	if fund, ok := erkenneShelly(context.Background(), g, 80, nil); !ok || fund.Kanaele != 3 {
+		t.Fatalf("%v %+v", ok, fund)
+	}
+	_, verbunden := w.gesehen()
+	if len(verbunden) != 3 {
+		t.Fatalf("%d connections, want 3 (/shelly, lost GetStatus, repeat)", len(verbunden))
+	}
+	for i := 1; i < len(verbunden); i++ {
+		if d := verbunden[i].Sub(verbunden[i-1]); d < 900*time.Millisecond {
+			t.Fatalf("connection %d after %v, the pacer allows one per second", i+1, d)
 		}
 	}
 }

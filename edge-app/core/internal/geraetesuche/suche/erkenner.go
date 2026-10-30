@@ -173,7 +173,7 @@ func erkenneShelly(ctx context.Context, g *geraet, port int, _ *modbus) (geraete
 		f.Merkmale = []string{"shelly_gen2_antwort"}
 		zaehler := shellyZaehlerModell(modell)
 		if !auth {
-			if st, err := b.get(ctx, port, "/rpc/Shelly.GetStatus"); err == nil {
+			if st, err := b.folge(ctx, port, "/rpc/Shelly.GetStatus"); err == nil {
 				if s, ok := jsonObjekt(st); ok {
 					schalter, em := 0, false
 					for k := range s {

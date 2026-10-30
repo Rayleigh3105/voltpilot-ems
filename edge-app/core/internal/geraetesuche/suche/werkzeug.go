@@ -94,25 +94,48 @@ type antwort struct {
 // -80 dBm missed one search of three with port 80 open). The repeat is a
 // request of the recogniser's budget and opens its connection through the
 // pacer; an answer - whatever it says - is never repeated, and neither is a
-// later request of the device, so the chain of a port does not double.
+// later request of the device, so the chain of a port does not double - a
+// recogniser repeats its follow-up request with folge.
 func (b *budget) get(ctx context.Context, port int, pfad string) (antwort, error) {
 	if err := b.nimm(); err != nil {
 		return antwort{}, err
 	}
-	l := b.g.lauf
-	a, err := l.get(ctx, b.g.ip, port, pfad)
+	a, err := b.g.lauf.get(ctx, b.g.ip, port, pfad)
 	erste := !b.g.httpGefragt
 	b.g.httpGefragt = true
-	if err == nil || !erste || ctx.Err() != nil || !abgerissen(err) {
+	if !erste {
 		return a, err
 	}
+	return b.nochmal(ctx, port, pfad, a, err)
+}
+
+// folge sends a recogniser's follow-up request once the device has named
+// itself, and repeats it once like the first request (VoltPilotGATE
+// 30.10.2026: the Shelly Pro 3 was found without its channels when
+// Shelly.GetStatus was lost). The repeat is in the same budget: after a
+// repeated first request there is no request left for it.
+func (b *budget) folge(ctx context.Context, port int, pfad string) (antwort, error) {
+	if err := b.nimm(); err != nil {
+		return antwort{}, err
+	}
+	a, err := b.g.lauf.get(ctx, b.g.ip, port, pfad)
+	return b.nochmal(ctx, port, pfad, a, err)
+}
+
+// nochmal repeats a lost request once, after the pause and through the
+// pacer; an answer is never repeated.
+func (b *budget) nochmal(ctx context.Context, port int, pfad string, a antwort, err error) (antwort, error) {
+	if err == nil || ctx.Err() != nil || !abgerissen(err) {
+		return a, err
+	}
+	l := b.g.lauf
 	if b.nimm() != nil || !ruhe(ctx, httpPause(l.u.Takt)) {
 		return antwort{}, err
 	}
 	return l.get(ctx, b.g.ip, port, pfad)
 }
 
-// httpPause is the wait before the repeat of the first HTTP request (1 s).
+// httpPause is the wait before the repeat of an HTTP request (1 s).
 func httpPause(t Takt) time.Duration { return t.zeitlimit() * 2 / 3 }
 
 // abgerissen: no answer in time, or the connection broke before the answer
