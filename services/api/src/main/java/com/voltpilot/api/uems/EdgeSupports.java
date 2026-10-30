@@ -11,7 +11,8 @@ public final class EdgeSupports {
     public static final List<String> NAMES = List.of(
             "data_sources", "assignment_effective_at", "measurement_sample_provenance", "events",
             "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe",
-            "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle");
+            "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle",
+            "geraetesuche");
     private EdgeSupports() {}
 
     public static List<String> parse(JsonNode block, Consumer<String> unknown) {

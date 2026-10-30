@@ -76,6 +76,16 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   `edge-capabilities.json`: eine Zeile gälte für jeden Stand ab einem Release-Tag, und ein Tag, das diesen Applier
   doch nicht trägt, bekäme den Treiber und verweigerte damit jede Konfiguration der Anlage — nur die eigene Meldung
   der Box ist dafür sicher.
+- `geraetesuche` (Gerätesuche, 30.10.2026): die Box sucht auf `.../v2/geraetesuche` lesend im Heimnetz, meldet alle 2 s
+  auf `.../v2/geraetesuche-stand` und genau ein Ergebnis auf `.../v2/geraetesuche-ergebnis`
+  ([Gerätesuche](mqtt-geraetesuche.md)). Die Route `POST /api/v1/sites/{siteId}/geraetesuche` fragt dieses Wort
+  (409 `nicht_unterstuetzt`). **Bekannt, noch nicht gesendet** (`advertised: false`): Vertrag und Leser sind gebaut, das
+  Suchmodul der Box nicht. **Noch keine Zeile in `edge-capabilities.json`**: sie kommt mit dem Portal-Paket zusammen
+  mit dem Knopf „Geräte suchen“ - vorher sagte jede Box-Karte und die Flotte „Update nötig für: Gerätesuche“ für einen
+  Knopf, den es nicht gibt. Anders als bei `sprungprobe` soll die Fläche dann „Update nötig für: Gerätesuche“ und
+  „Update planen“ sagen (`ab_release` null, siehe „Je Box-Art“).
+  Das Wort wird **je Box-Art** gemeldet (siehe unten); welche Erkenner eine Box-Art wirklich laufen ließ, nennt das
+  Ergebnis, nicht dieses Wort.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).
@@ -90,6 +100,21 @@ Release-Eintrag. Fehlend, `null` und `[]` lassen die Tabelle gelten; eine Teilme
 entzieht keine dort belegte Fähigkeit. Ein unbekannter Name gilt nie als unterstützt.
 Die Tabelle bleibt Daten (`edge-capabilities.json`); die Ordnung kommt aus `release_seq`.
 Das ersetzt die frühere, alleinige Auswertung eines vorhandenen `supports`-Blocks.
+
+## Je Box-Art
+
+`supports[]` und das Update-Backend (`update.backend` im Herzschlag) meldet jede Box **aus ihrem eigenen Build**: Edge
+Light (`vp-edge-light`, Backend `light`) und die Docker-Box (`edge-app`, Backend `compose`, `quadlet` oder `mender`)
+tragen je eine eigene Liste der gebauten Fähigkeiten. Ein Wort heißt „diese Box-Art in diesem Build kann es“; die Cloud
+schließt nie von der einen Box-Art auf die andere (`ota/BoxArt`). Heute ist `BuiltSupports()` eine feste Liste für beide
+Builds und der Core meldet `backend` fest `compose`, auch in Edge Light (`cloud/data_source_status.go`,
+`agent/ota.go`); die API erkennt Edge Light deshalb übergangsweise am Versionsstempel. Das Paket, das das Suchmodul der
+Box baut, macht beides je Build richtig, bevor eine Box `geraetesuche` meldet.
+
+Auch die Tabelle `edge-capabilities.json` kennt die Box-Art nicht: `BoxFaehigkeiten.effective` ordnet nach `release_seq`
+über beide Linien, ein Edge-Light-Stand hinter dem `ab_release` eines Docker-Tags gälte also mit. Kommt die Zeile
+`geraetesuche`, bleibt ihr `ab_release` deshalb null, bis die Tabelle je Box-Art liest; bis dahin belegt allein die
+eigene Meldung der Box die Fähigkeit.
 
 ## Speicherung und Mischbetrieb
 

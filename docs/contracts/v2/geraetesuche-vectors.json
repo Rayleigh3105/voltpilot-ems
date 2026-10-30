@@ -1,0 +1,5544 @@
+{
+  "$comment": "Die GETEILTEN Vektoren des Vertrags mqtt-geraetesuche 1.0 (mqtt-geraetesuche.md). Drei Seiten lesen sie PER PFAD: Go edge-app/core/internal/geraetesuche (Box: liest den Auftrag tolerant, prüft Stand und Ergebnis streng vor dem Senden), Java services/api .../geraetesuche (API: baut den Auftrag, liest Stand und Ergebnis tolerant, ordnet Funde den Gruppen zu), TS frontend/portal/src/geraetesuche.ts (Portal: Vokabular der Antwort). Die Schemas prüfen die SENDE-Form (streng); die Leser sind tolerant. Wer eine Regel ändert, ändert alle Seiten UND diese Datei zusammen.",
+  "$faelle": "gueltig: das Schema nimmt an, beide Leser nehmen an. ungueltig: der Leser verwirft die ganze Nachricht (schema_lehnt_ab sagt, ob schon das Schema sie ablehnt). fund_ueberlesen: die Nachricht gilt, die Funde an den Stellen in ueberlesen werden nicht übernommen - ein falscher Fund kostet nie die ganze Suche und wird nie gespeichert. toleriert: die Nachricht gilt, die Felder bzw. Werte in ueberlesen werden überlesen (additive Felder einer neueren Seite; eine fehlerhaft gesendete MAC). Die Box sendet nie etwas, das das Schema ablehnt: ihr Prüfer lehnt alles außer gueltig ab.",
+  "schema_version": "1.0",
+  "topics": {
+    "auftrag": "geraetesuche",
+    "stand": "geraetesuche-stand",
+    "ergebnis": "geraetesuche-ergebnis"
+  },
+  "grenzen": {
+    "frist_s": 120,
+    "stand_takt_s": 2,
+    "max_dauer_s": 180,
+    "max_je_stunde": 6,
+    "max_netze": 2,
+    "max_praefix": 24,
+    "max_funde": 256,
+    "max_merkmale": 8,
+    "keine_antwort_s": 30
+  },
+  "gruende": {
+    "fertig": [],
+    "abgebrochen": [
+      "auf_wunsch",
+      "neustart",
+      "zeitlimit"
+    ],
+    "abgelehnt": [
+      "laeuft_schon",
+      "zu_oft",
+      "abgelaufen",
+      "lan_host_fehlt",
+      "kein_privates_netz"
+    ],
+    "fehlgeschlagen": [
+      "interner_fehler"
+    ]
+  },
+  "erkenner": [
+    "solarman",
+    "shelly",
+    "goe",
+    "netztechnik",
+    "modbus_offen",
+    "sunspec",
+    "fronius_solar_api",
+    "kaco_aiswei",
+    "kostal",
+    "huawei",
+    "sma",
+    "victron",
+    "opendtu_ahoy",
+    "ebyte",
+    "wago",
+    "mdns",
+    "ssdp",
+    "funkmodul"
+  ],
+  "wege": {
+    "namen": [
+      "mdns",
+      "ssdp",
+      "funkmodul"
+    ],
+    "box_arten": [
+      "edge_light"
+    ],
+    "warum": "Multicast und die MAC-Adressen der Nachbarn sieht nur Edge Light; die Docker-Box im Bridge-Netz nie (DP-2 A). Wege erzeugen keinen eigenen Fund: sie liefern Merkmale für die Erkenner und die Zählung in weitere."
+  },
+  "netztechnik_arten": [
+    "router",
+    "zugangspunkt"
+  ],
+  "weitere_arten": [
+    "telefon_tablet",
+    "rechner",
+    "unbekannt"
+  ],
+  "erkennungskatalog": [
+    {
+      "erkenner": "solarman",
+      "art": "wechselrichter",
+      "schnitt": 1,
+      "communication": "solarman_v5",
+      "docker": "uebernehmen",
+      "edge_light": "uebernehmen",
+      "wie": "Deye hinter Solarman-Logger: TCP 8899, V5-Rahmen; Logger-Seriennummer aus dem Kopf, Typ 0x0000 und Seriennummer 0x0003-0x0007 über die Logger-Spur."
+    },
+    {
+      "erkenner": "shelly",
+      "art": "schaltaktor",
+      "schnitt": 1,
+      "communication": "shelly_http",
+      "docker": "uebernehmen",
+      "edge_light": "uebernehmen",
+      "wie": "Shelly Gen1-Gen4: HTTP 80 GET /shelly ohne Anmeldung; Modell, Generation, Kanäle, Firmware, auth_en."
+    },
+    {
+      "erkenner": "shelly",
+      "art": "zaehler",
+      "schnitt": 2,
+      "communication": null,
+      "docker": "kein_leseweg",
+      "edge_light": "kein_leseweg",
+      "wie": "Shelly 3EM / Pro 3EM / EM über /shelly: der Treiber kennt nur Relais."
+    },
+    {
+      "erkenner": "goe",
+      "art": "wallbox",
+      "schnitt": 1,
+      "communication": "goe_http_api",
+      "docker": "uebernehmen",
+      "edge_light": "uebernehmen",
+      "wie": "go-e: HTTP 80 GET /api/status?filter=sse,typ,fwv (lokale API v2 muss an sein)."
+    },
+    {
+      "erkenner": "netztechnik",
+      "art": "router",
+      "schnitt": 1,
+      "communication": null,
+      "docker": "nur_anzeige",
+      "edge_light": "nur_anzeige",
+      "wie": "Router: Seitentitel (beide), SSDP fboxdesc.xml und Funkmodul-Liste (nur Edge Light). Nur Modell und Adresse."
+    },
+    {
+      "erkenner": "netztechnik",
+      "art": "zugangspunkt",
+      "schnitt": 1,
+      "communication": null,
+      "docker": "nur_anzeige",
+      "edge_light": "nur_anzeige",
+      "wie": "Zugangspunkt/Repeater wie Router."
+    },
+    {
+      "erkenner": "modbus_offen",
+      "art": "modbus_geraet",
+      "schnitt": 1,
+      "communication": "modbus_tcp",
+      "docker": "selbst_beschreiben",
+      "edge_light": "selbst_beschreiben",
+      "wie": "Offener Modbus-Port (502/1502) ohne Kennung: „Modbus-Gerät selbst beschreiben“ mit vorbelegter Adresse."
+    },
+    {
+      "erkenner": "sunspec",
+      "art": "wechselrichter",
+      "schnitt": 2,
+      "communication": "sunspec_tcp",
+      "docker": "uebernehmen",
+      "edge_light": "nicht_mit_dieser_box",
+      "wie": "SunSpec: TCP 502/1502, Unit-IDs 1/2/3/71/126, „SunS“ an 40000/50000/0, Common Model 1."
+    },
+    {
+      "erkenner": "fronius_solar_api",
+      "art": "wechselrichter",
+      "schnitt": 2,
+      "communication": "fronius_solar_api",
+      "docker": "uebernehmen",
+      "edge_light": "nicht_mit_dieser_box",
+      "wie": "Fronius Solar API: GET /solar_api/GetAPIVersion.cgi, dann /solar_api/v1/GetInverterInfo.cgi."
+    },
+    {
+      "erkenner": "kaco_aiswei",
+      "art": "wechselrichter",
+      "schnitt": 2,
+      "communication": "kaco_http",
+      "docker": "uebernehmen",
+      "edge_light": "nicht_mit_dieser_box",
+      "wie": "KACO/AISWEI-Stick: HTTP 8484 GET /getdev.cgi?device=2; nie in den Modbus-Modus schalten."
+    },
+    {
+      "erkenner": "kostal",
+      "art": "wechselrichter",
+      "schnitt": 2,
+      "communication": "kostal_modbus",
+      "docker": "uebernehmen",
+      "edge_light": "nicht_mit_dieser_box",
+      "wie": "KOSTAL PLENTICORE: TCP 1502, Unit 71; SunSpec an 40000."
+    },
+    {
+      "erkenner": "huawei",
+      "art": "wechselrichter",
+      "schnitt": 2,
+      "communication": "huawei_modbus",
+      "docker": "uebernehmen",
+      "edge_light": "nicht_mit_dieser_box",
+      "wie": "Huawei SUN2000: TCP 502, Unit 0 bzw. 1 hinter dem Smart Dongle; Modell ab 30000, Seriennummer ab 30015."
+    },
+    {
+      "erkenner": "sma",
+      "art": "wechselrichter",
+      "schnitt": 2,
+      "communication": null,
+      "docker": "kein_leseweg",
+      "edge_light": "kein_leseweg",
+      "wie": "SMA: TCP 502, SunSpec Unit 126 bzw. SMA-Profil Unit 3; nur erkennen."
+    },
+    {
+      "erkenner": "sma",
+      "art": "zaehler",
+      "schnitt": 2,
+      "communication": null,
+      "docker": null,
+      "edge_light": "kein_leseweg",
+      "wie": "SMA Energy Meter / Home Manager 2.0: nur zuhören (Speedwire-Multicast), daher nur Edge Light."
+    },
+    {
+      "erkenner": "victron",
+      "art": "wechselrichter",
+      "schnitt": 2,
+      "communication": null,
+      "docker": "kein_leseweg",
+      "edge_light": "kein_leseweg",
+      "wie": "Victron GX: TCP 502, Unit 100; nur erkennen."
+    },
+    {
+      "erkenner": "opendtu_ahoy",
+      "art": "dtu",
+      "schnitt": 2,
+      "communication": null,
+      "docker": "kein_leseweg",
+      "edge_light": "kein_leseweg",
+      "wie": "OpenDTU/AhoyDTU (Hoymiles): HTTP 80 GET /api/system/status bzw. /api/system; nur erkennen."
+    },
+    {
+      "erkenner": "ebyte",
+      "art": "io_modul",
+      "schnitt": 2,
+      "communication": "ebyte_modbus_tcp",
+      "docker": "uebernehmen",
+      "edge_light": "uebernehmen",
+      "wie": "eByte M31: TCP 502, Unit 1, Modelltabelle 0x0C80. Seine Identität ist die MAC (0x7534) - sie verlässt die Box nicht (DP-3 A)."
+    },
+    {
+      "erkenner": "wago",
+      "art": "sps",
+      "schnitt": 2,
+      "communication": "modbus_tcp",
+      "docker": "uebernehmen",
+      "edge_light": "nicht_mit_dieser_box",
+      "wie": "WAGO-SPS / Anlagensteuerung: Signatur „VPRB“ bzw. „VPEZ“ an der Basisadresse."
+    }
+  ],
+  "$erkennungskatalog": "Je Paar (erkenner, art): Schnitt laut Konzept §6, die Kommunikationsart der Vorlage (null = kein Leser in VoltPilot) und die anbindung, die diese Box-Art meldet; null = das Paar kommt auf dieser Box-Art nicht vor. Ein Fund mit einem Paar außerhalb der Tabelle wird überlesen.",
+  "auftrag": {
+    "gueltig": [
+      {
+        "name": "starten_minimal",
+        "warum": "Die Form, die die Cloud sendet: alle Erkenner der Box.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:02:00Z"
+        }
+      },
+      {
+        "name": "starten_eingeengt",
+        "warum": "Nur der erste Schnitt, mit Papier-Spur.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:02:00Z",
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe"
+          ],
+          "ausgeloest_von": "8c4f0d2e-6d0a-4f3e-9a51-2b7c1e0f9d11"
+        }
+      },
+      {
+        "name": "abbrechen",
+        "warum": "Ein Abbruch verfällt nicht und trägt kein gueltig_bis.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "abbrechen",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:20Z"
+        }
+      }
+    ],
+    "ungueltig": [
+      {
+        "name": "identitaet_falsch",
+        "warum": "Topic-Mandant und Payload-Mandant weichen ab: still verworfen.",
+        "topic": "ems/55555555-5555-4555-8555-555555555555/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": false,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:02:00Z"
+        }
+      },
+      {
+        "name": "frist_zu_lang",
+        "warum": "gueltig_bis liegt 10 min nach dem Auslösen; die Cloud kann die Frist nicht verlängern.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": false,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:10:00Z"
+        }
+      },
+      {
+        "name": "frist_rueckwaerts",
+        "warum": "gueltig_bis vor ausgeloest_am.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": false,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T08:59:00Z"
+        }
+      },
+      {
+        "name": "starten_ohne_frist",
+        "warum": "Ein Start ohne gueltig_bis.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": true,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z"
+        }
+      },
+      {
+        "name": "aktion_unbekannt",
+        "warum": "Nur starten und abbrechen.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": true,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "pausieren",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:02:00Z"
+        }
+      },
+      {
+        "name": "such_id_keine_uuid",
+        "warum": "such_id ist die UUID der Zeile.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": true,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "7f3a",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:02:00Z"
+        }
+      },
+      {
+        "name": "erkenner_leer",
+        "warum": "Eine leere Liste hieße „nichts suchen“; ohne Einengung fehlt das Feld.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": true,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:02:00Z",
+          "erkenner": []
+        }
+      },
+      {
+        "name": "version_2",
+        "warum": "Eine andere Hauptversion ist ein anderer Vertrag.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": true,
+        "payload": {
+          "schema_version": "2.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:02:00Z"
+        }
+      },
+      {
+        "name": "falsches_topic",
+        "warum": "Ein Auftrag kommt nur auf .../v2/geraetesuche.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-stand",
+        "schema_lehnt_ab": false,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:02:00Z"
+        }
+      }
+    ],
+    "toleriert": [
+      {
+        "name": "netze_vorgeben",
+        "warum": "Die Cloud versucht, Netze zu nennen (DP-5 A: die Box bestimmt sie selbst). Die Box überliest das Feld und sucht in ihren eigenen Netzen.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          "netze"
+        ],
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:02:00Z",
+          "netze": [
+            "10.0.0.0/8"
+          ]
+        }
+      },
+      {
+        "name": "erkenner_unbekannt",
+        "warum": "Ein Erkenner, den diese Box nicht kennt (neuere Cloud): überlesen; das Ergebnis nennt, was wirklich lief.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          "erkenner[1]"
+        ],
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "starten",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:00Z",
+          "gueltig_bis": "2026-11-02T09:02:00Z",
+          "erkenner": [
+            "solarman",
+            "zukunft"
+          ]
+        }
+      },
+      {
+        "name": "abbrechen_mit_frist",
+        "warum": "Ein Abbruch mit gueltig_bis: das Feld wird überlesen, der Abbruch gilt.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          "gueltig_bis"
+        ],
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "aktion": "abbrechen",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ausgeloest_am": "2026-11-02T09:00:20Z",
+          "gueltig_bis": "2026-11-02T09:02:20Z"
+        }
+      }
+    ]
+  },
+  "frist": [
+    {
+      "name": "rechtzeitig",
+      "ausgeloest_am": "2026-11-02T09:00:00Z",
+      "gueltig_bis": "2026-11-02T09:02:00Z",
+      "jetzt": "2026-11-02T09:00:03Z",
+      "beginnt": true
+    },
+    {
+      "name": "letzte_sekunde",
+      "ausgeloest_am": "2026-11-02T09:00:00Z",
+      "gueltig_bis": "2026-11-02T09:02:00Z",
+      "jetzt": "2026-11-02T09:02:00Z",
+      "beginnt": true
+    },
+    {
+      "name": "nachgeliefert",
+      "ausgeloest_am": "2026-11-02T09:00:00Z",
+      "gueltig_bis": "2026-11-02T09:02:00Z",
+      "jetzt": "2026-11-02T09:02:01Z",
+      "beginnt": false,
+      "warum": "Der Broker liefert nach einem Wiederverbinden nach: die Box sucht nicht mehr und meldet abgelehnt/abgelaufen."
+    }
+  ],
+  "stand": {
+    "gueltig": [
+      {
+        "name": "docker_laeuft",
+        "warum": "Docker-Box spricht alle Adressen an; ein neuer Fund.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-stand",
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "nr": 7,
+          "ts": "2026-11-02T09:00:16Z",
+          "schritt": "geraete_ansprechen",
+          "erledigt": 412,
+          "gesamt": 1012,
+          "rest_s": 25,
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ]
+        }
+      },
+      {
+        "name": "edge_light_nachbarn",
+        "warum": "Edge Light sucht Nachbarn; Restzeit noch unbekannt (fehlt, nie 0).",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-stand",
+        "box_art": "edge_light",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "nr": 2,
+          "ts": "2026-11-02T09:00:04Z",
+          "schritt": "nachbarn_finden",
+          "erledigt": 120,
+          "gesamt": 508,
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.21",
+              "ausschnitt": false,
+              "erreichbar": true,
+              "aktiv": 11
+            },
+            {
+              "rolle": "box_netz",
+              "netz": "192.168.2.0/24",
+              "box_adresse": "192.168.2.1",
+              "ausschnitt": false,
+              "erreichbar": true,
+              "aktiv": 3
+            }
+          ],
+          "funde": []
+        }
+      }
+    ],
+    "ungueltig": [
+      {
+        "name": "erledigt_ueber_gesamt",
+        "warum": "erledigt > gesamt.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-stand",
+        "schema_lehnt_ab": false,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "nr": 7,
+          "ts": "2026-11-02T09:00:16Z",
+          "schritt": "geraete_ansprechen",
+          "erledigt": 1013,
+          "gesamt": 1012,
+          "rest_s": 25,
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ]
+        }
+      },
+      {
+        "name": "nr_null",
+        "warum": "nr beginnt bei 1.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-stand",
+        "schema_lehnt_ab": true,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "nr": 0,
+          "ts": "2026-11-02T09:00:16Z",
+          "schritt": "geraete_ansprechen",
+          "erledigt": 412,
+          "gesamt": 1012,
+          "rest_s": 25,
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ]
+        }
+      },
+      {
+        "name": "identitaet_falsch",
+        "warum": "Topic und Payload nennen verschiedene Mandanten.",
+        "topic": "ems/55555555-5555-4555-8555-555555555555/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-stand",
+        "schema_lehnt_ab": false,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "nr": 7,
+          "ts": "2026-11-02T09:00:16Z",
+          "schritt": "geraete_ansprechen",
+          "erledigt": 412,
+          "gesamt": 1012,
+          "rest_s": 25,
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ]
+        }
+      },
+      {
+        "name": "netz_ohne_rolle",
+        "warum": "Ein Netz ohne Rolle.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-stand",
+        "schema_lehnt_ab": true,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "nr": 7,
+          "ts": "2026-11-02T09:00:16Z",
+          "schritt": "geraete_ansprechen",
+          "erledigt": 412,
+          "gesamt": 1012,
+          "rest_s": 25,
+          "netze": [
+            {
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ]
+        }
+      }
+    ],
+    "fund_ueberlesen": [
+      {
+        "name": "fund_ausserhalb",
+        "warum": "Ein Fund außerhalb der gemeldeten Netze wird nie gespeichert.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-stand",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          0
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "nr": 7,
+          "ts": "2026-11-02T09:00:16Z",
+          "schritt": "geraete_ansprechen",
+          "erledigt": 412,
+          "gesamt": 1012,
+          "rest_s": 25,
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.5.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ]
+        }
+      }
+    ],
+    "toleriert": [
+      {
+        "name": "feld_unbekannt",
+        "warum": "Ein künftiges, additives Feld: überlesen.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-stand",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          "zukunft"
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "nr": 7,
+          "ts": "2026-11-02T09:00:16Z",
+          "schritt": "geraete_ansprechen",
+          "erledigt": 412,
+          "gesamt": 1012,
+          "rest_s": 25,
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "zukunft": {
+            "a": 1
+          }
+        }
+      }
+    ]
+  },
+  "ergebnis": {
+    "gueltig": [
+      {
+        "name": "docker_fertig",
+        "warum": "Docker-Box im Kundennetz: Deye, Shelly Pro 3, go-e, ein offener Modbus-Port, der Router; ohne mdns/ssdp/funkmodul, alles andere nur als Anzahl.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "edge_light_fertig",
+        "warum": "Edge Light in beiden Netzen: Deye liest sie schon, Fronius noch nicht mit dieser Box, SMA und Shelly-Zähler ohne Leseweg, ein geschützter Shelly, Repeater über SSDP, eByte am LAN-Port.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "box_art": "edge_light",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 34410,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago",
+            "mdns",
+            "ssdp",
+            "funkmodul"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.21",
+              "ausschnitt": false,
+              "erreichbar": true,
+              "aktiv": 11
+            },
+            {
+              "rolle": "box_netz",
+              "netz": "192.168.2.0/24",
+              "box_adresse": "192.168.2.1",
+              "ausschnitt": false,
+              "erreichbar": true,
+              "aktiv": 3
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "laufender_leser"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": true
+            },
+            {
+              "schluessel": "fronius_solar_api:31234567",
+              "erkenner": "fronius_solar_api",
+              "art": "wechselrichter",
+              "hersteller": "fronius",
+              "modell": "Symo GEN24 10.0 Plus",
+              "seriennummer": "31234567",
+              "erkennung": "sicher",
+              "merkmale": [
+                "solar_api_version",
+                "solar_api_inverter_info"
+              ],
+              "anbindung": "nicht_mit_dieser_box",
+              "verbindung": {
+                "communication": "fronius_solar_api",
+                "ip": "192.168.178.40",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "sma:3006012345",
+              "erkenner": "sma",
+              "art": "wechselrichter",
+              "hersteller": "sma",
+              "modell": "STP 10.0-3AV-40",
+              "seriennummer": "3006012345",
+              "erkennung": "sicher",
+              "merkmale": [
+                "sma_modbus_unit_3",
+                "sma_seriennummer_30057"
+              ],
+              "anbindung": "kein_leseweg",
+              "verbindung": {
+                "ip": "192.168.178.45",
+                "port": 502,
+                "unit_id": 3
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.52:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SNSW-001X16EU",
+              "kanaele": 1,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort",
+                "auth_en"
+              ],
+              "anbindung": "uebernehmen",
+              "hindernis": "geschuetzt",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.52",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.2:49000",
+              "erkenner": "netztechnik",
+              "art": "zugangspunkt",
+              "hersteller": "avm",
+              "modell": "FRITZ!Repeater 1200 AX",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "ssdp_fboxdesc"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.2",
+                "port": 49000
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.2.30:80",
+              "erkenner": "shelly",
+              "art": "zaehler",
+              "hersteller": "shelly",
+              "modell": "SPEM-003CEBEU",
+              "firmware": "1.4.4",
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "kein_leseweg",
+              "verbindung": {
+                "ip": "192.168.2.30",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "ebyte:192.168.2.40:502",
+              "erkenner": "ebyte",
+              "art": "io_modul",
+              "hersteller": "ebyte",
+              "modell": "M31-AXAX4040G",
+              "erkennung": "sicher",
+              "merkmale": [
+                "ebyte_modelltabelle_0x0c80"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "ebyte_modbus_tcp",
+                "ip": "192.168.2.40",
+                "port": 502,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "telefon_tablet": 2,
+            "rechner": 1,
+            "unbekannt": 1
+          }
+        }
+      },
+      {
+        "name": "abgebrochen_auf_wunsch",
+        "warum": "Abgebrochen: die Funde bis dahin gelten.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "abgebrochen",
+          "grund": "auf_wunsch",
+          "dauer_ms": 14020,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 2
+          }
+        }
+      },
+      {
+        "name": "abgelehnt_laeuft_schon",
+        "warum": "Abgelehnt: die Box sucht schon; leer, dauer 0.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "box_art": null,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:01Z",
+          "zustand": "abgelehnt",
+          "grund": "laeuft_schon",
+          "dauer_ms": 0,
+          "erkenner": [],
+          "netze": [],
+          "funde": [],
+          "weitere": {}
+        }
+      },
+      {
+        "name": "abgelehnt_lan_host_fehlt",
+        "warum": "Docker-Box ohne VP_LAN_HOST: keine Suche, benannter Grund.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:01Z",
+          "zustand": "abgelehnt",
+          "grund": "lan_host_fehlt",
+          "dauer_ms": 0,
+          "erkenner": [],
+          "netze": [],
+          "funde": [],
+          "weitere": {}
+        }
+      }
+    ],
+    "ungueltig": [
+      {
+        "name": "identitaet_falsch",
+        "warum": "Topic und Payload nennen verschiedene Mandanten.",
+        "topic": "ems/55555555-5555-4555-8555-555555555555/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "version_2",
+        "warum": "Andere Hauptversion.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": true,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "2.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "grund_fehlt",
+        "warum": "abgelehnt ohne Grund.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "box_art": null,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:01Z",
+          "zustand": "abgelehnt",
+          "dauer_ms": 0,
+          "erkenner": [],
+          "netze": [],
+          "funde": [],
+          "weitere": {}
+        }
+      },
+      {
+        "name": "grund_bei_fertig",
+        "warum": "fertig trägt keinen Grund.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          },
+          "grund": "zeitlimit"
+        }
+      },
+      {
+        "name": "grund_passt_nicht",
+        "warum": "zu_oft ist ein Grund für abgelehnt, nicht für abgebrochen.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "abgebrochen",
+          "grund": "zu_oft",
+          "dauer_ms": 14020,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 2
+          }
+        }
+      },
+      {
+        "name": "abgelehnt_mit_funden",
+        "warum": "Wer nicht gesucht hat, hat nichts gefunden.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "box_art": null,
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:01Z",
+          "zustand": "abgelehnt",
+          "grund": "laeuft_schon",
+          "dauer_ms": 0,
+          "erkenner": [],
+          "netze": [],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {}
+        }
+      },
+      {
+        "name": "drei_netze",
+        "warum": "Höchstens 2 Netze (DP-5 A).",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "box_art": "edge_light",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 34410,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago",
+            "mdns",
+            "ssdp",
+            "funkmodul"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.21",
+              "ausschnitt": false,
+              "erreichbar": true,
+              "aktiv": 11
+            },
+            {
+              "rolle": "box_netz",
+              "netz": "192.168.2.0/24",
+              "box_adresse": "192.168.2.1",
+              "ausschnitt": false,
+              "erreichbar": true,
+              "aktiv": 3
+            },
+            {
+              "rolle": "box_netz",
+              "netz": "10.0.0.0/24",
+              "box_adresse": "10.0.0.1",
+              "erreichbar": true,
+              "aktiv": 0
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "laufender_leser"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": true
+            },
+            {
+              "schluessel": "fronius_solar_api:31234567",
+              "erkenner": "fronius_solar_api",
+              "art": "wechselrichter",
+              "hersteller": "fronius",
+              "modell": "Symo GEN24 10.0 Plus",
+              "seriennummer": "31234567",
+              "erkennung": "sicher",
+              "merkmale": [
+                "solar_api_version",
+                "solar_api_inverter_info"
+              ],
+              "anbindung": "nicht_mit_dieser_box",
+              "verbindung": {
+                "communication": "fronius_solar_api",
+                "ip": "192.168.178.40",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "sma:3006012345",
+              "erkenner": "sma",
+              "art": "wechselrichter",
+              "hersteller": "sma",
+              "modell": "STP 10.0-3AV-40",
+              "seriennummer": "3006012345",
+              "erkennung": "sicher",
+              "merkmale": [
+                "sma_modbus_unit_3",
+                "sma_seriennummer_30057"
+              ],
+              "anbindung": "kein_leseweg",
+              "verbindung": {
+                "ip": "192.168.178.45",
+                "port": 502,
+                "unit_id": 3
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.52:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SNSW-001X16EU",
+              "kanaele": 1,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort",
+                "auth_en"
+              ],
+              "anbindung": "uebernehmen",
+              "hindernis": "geschuetzt",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.52",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.2:49000",
+              "erkenner": "netztechnik",
+              "art": "zugangspunkt",
+              "hersteller": "avm",
+              "modell": "FRITZ!Repeater 1200 AX",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "ssdp_fboxdesc"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.2",
+                "port": 49000
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.2.30:80",
+              "erkenner": "shelly",
+              "art": "zaehler",
+              "hersteller": "shelly",
+              "modell": "SPEM-003CEBEU",
+              "firmware": "1.4.4",
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "kein_leseweg",
+              "verbindung": {
+                "ip": "192.168.2.30",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "ebyte:192.168.2.40:502",
+              "erkenner": "ebyte",
+              "art": "io_modul",
+              "hersteller": "ebyte",
+              "modell": "M31-AXAX4040G",
+              "erkennung": "sicher",
+              "merkmale": [
+                "ebyte_modelltabelle_0x0c80"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "ebyte_modbus_tcp",
+                "ip": "192.168.2.40",
+                "port": 502,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "telefon_tablet": 2,
+            "rechner": 1,
+            "unbekannt": 1
+          }
+        }
+      },
+      {
+        "name": "rolle_doppelt",
+        "warum": "Jede Rolle höchstens einmal.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "box_art": "edge_light",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 34410,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago",
+            "mdns",
+            "ssdp",
+            "funkmodul"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.21",
+              "ausschnitt": false,
+              "erreichbar": true,
+              "aktiv": 11
+            },
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.2.0/24",
+              "box_adresse": "192.168.2.1",
+              "ausschnitt": false,
+              "erreichbar": true,
+              "aktiv": 3
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "laufender_leser"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": true
+            },
+            {
+              "schluessel": "fronius_solar_api:31234567",
+              "erkenner": "fronius_solar_api",
+              "art": "wechselrichter",
+              "hersteller": "fronius",
+              "modell": "Symo GEN24 10.0 Plus",
+              "seriennummer": "31234567",
+              "erkennung": "sicher",
+              "merkmale": [
+                "solar_api_version",
+                "solar_api_inverter_info"
+              ],
+              "anbindung": "nicht_mit_dieser_box",
+              "verbindung": {
+                "communication": "fronius_solar_api",
+                "ip": "192.168.178.40",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "sma:3006012345",
+              "erkenner": "sma",
+              "art": "wechselrichter",
+              "hersteller": "sma",
+              "modell": "STP 10.0-3AV-40",
+              "seriennummer": "3006012345",
+              "erkennung": "sicher",
+              "merkmale": [
+                "sma_modbus_unit_3",
+                "sma_seriennummer_30057"
+              ],
+              "anbindung": "kein_leseweg",
+              "verbindung": {
+                "ip": "192.168.178.45",
+                "port": 502,
+                "unit_id": 3
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.52:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SNSW-001X16EU",
+              "kanaele": 1,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort",
+                "auth_en"
+              ],
+              "anbindung": "uebernehmen",
+              "hindernis": "geschuetzt",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.52",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.2:49000",
+              "erkenner": "netztechnik",
+              "art": "zugangspunkt",
+              "hersteller": "avm",
+              "modell": "FRITZ!Repeater 1200 AX",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "ssdp_fboxdesc"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.2",
+                "port": 49000
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.2.30:80",
+              "erkenner": "shelly",
+              "art": "zaehler",
+              "hersteller": "shelly",
+              "modell": "SPEM-003CEBEU",
+              "firmware": "1.4.4",
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "kein_leseweg",
+              "verbindung": {
+                "ip": "192.168.2.30",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "ebyte:192.168.2.40:502",
+              "erkenner": "ebyte",
+              "art": "io_modul",
+              "hersteller": "ebyte",
+              "modell": "M31-AXAX4040G",
+              "erkennung": "sicher",
+              "merkmale": [
+                "ebyte_modelltabelle_0x0c80"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "ebyte_modbus_tcp",
+                "ip": "192.168.2.40",
+                "port": 502,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "telefon_tablet": 2,
+            "rechner": 1,
+            "unbekannt": 1
+          }
+        }
+      },
+      {
+        "name": "netz_zu_gross",
+        "warum": "Ein /16 ist kein Suchnetz; die Box sucht höchstens ein /24.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": true,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.0.0/16",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "netz_oeffentlich",
+        "warum": "Ein öffentliches Netz ist nie ein Suchnetz (Bereichsregel netz).",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "8.8.8.0/24",
+              "box_adresse": "8.8.8.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "box_ausserhalb_netz",
+        "warum": "Die Box-Adresse liegt nicht im Netz.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.179.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "weitere_mit_adressen",
+        "warum": "DP-3 A: weitere sind Zahlen, keine Listen.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": true,
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "telefon_tablet": [
+              {
+                "ip": "192.168.178.77"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "fund_ueberlesen": [
+      {
+        "name": "telefon_als_fund",
+        "warum": "DP-3 A: ein Telefon ist nie ein Fund; die Cloud speichert ihn nicht.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          5
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.77:62078",
+              "erkenner": "netztechnik",
+              "art": "telefon",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "lockdown_port"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.77",
+                "port": 62078
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "weg_als_erkenner",
+        "warum": "mdns ist ein Weg, kein Fund-Erzeuger.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          1
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "mdns",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "paar_nicht_im_katalog",
+        "warum": "go-e ist keine Router-Art: das Paar steht nicht im Erkennungskatalog.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          2
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "router",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "ip_ist_box",
+        "warum": "Die eigene Adresse ist nie ein Fund (Bereichsregel ziel).",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          3
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.20",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "ip_ausserhalb",
+        "warum": "Außerhalb der gemeldeten Netze.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          0
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "10.1.2.3",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "uebernehmen_ohne_communication",
+        "warum": "Übernehmen braucht die Kommunikationsart der Vorlage.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          2
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "communication_passt_nicht",
+        "warum": "go-e verbindet sich nie über shelly_http: die Kommunikationsart ist die des Katalog-Paars.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          2
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "solarman_ohne_serial",
+        "warum": "Ohne Logger-Seriennummer lässt sich kein Solarman-Logger verbinden.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          0
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "netztechnik_mit_seriennummer",
+        "warum": "DP-3 A: Netz-Technik nur mit Modell und Adresse.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          4
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false,
+              "seriennummer": "A1B2C3"
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "unbekannt_uebernehmen",
+        "warum": "Was die Box nur erreicht, lässt sich nicht übernehmen.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          1
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "zu_viele_merkmale",
+        "warum": "Höchstens 8 Merkmale.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          1
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "m0",
+                "m1",
+                "m2",
+                "m3",
+                "m4",
+                "m5",
+                "m6",
+                "m7",
+                "m8"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "schluessel_doppelt",
+        "warum": "Je schluessel ein Fund; der zweite wird überlesen.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": false,
+        "ueberlesen": [
+          2
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "fund_ohne_verbindung",
+        "warum": "Ein Fund ohne Adresse.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          4
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      }
+    ],
+    "toleriert": [
+      {
+        "name": "fund_mit_mac",
+        "warum": "DP-3 A: eine (fehlerhaft gesendete) MAC wird überlesen und erreicht nie eine Tabelle; der Fund gilt ohne sie.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          "funde[1].mac"
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false,
+              "mac": "34:98:7A:67:E3:C0"
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "fund_mit_hostname",
+        "warum": "DP-3 A: ein Hostname wird überlesen.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          "funde[4].hostname"
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false,
+              "hostname": "fritz.box"
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      },
+      {
+        "name": "weitere_art_unbekannt",
+        "warum": "Eine künftige Zählart: überlesen.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          "weitere.fernseher"
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4,
+            "fernseher": 1
+          }
+        }
+      },
+      {
+        "name": "erkenner_unbekannt",
+        "warum": "Ein Erkenner einer neueren Box: überlesen.",
+        "topic": "ems/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/v2/geraetesuche-ergebnis",
+        "schema_lehnt_ab": true,
+        "ueberlesen": [
+          "erkenner[15]"
+        ],
+        "box_art": "docker",
+        "payload": {
+          "schema_version": "1.0",
+          "tenant_id": "11111111-1111-4111-8111-111111111111",
+          "site_id": "22222222-2222-4222-8222-222222222222",
+          "device_id": "33333333-3333-4333-8333-333333333333",
+          "such_id": "44444444-4444-4444-8444-444444444444",
+          "ts": "2026-11-02T09:00:40Z",
+          "zustand": "fertig",
+          "dauer_ms": 38120,
+          "erkenner": [
+            "solarman",
+            "shelly",
+            "goe",
+            "netztechnik",
+            "modbus_offen",
+            "sunspec",
+            "fronius_solar_api",
+            "kaco_aiswei",
+            "kostal",
+            "huawei",
+            "sma",
+            "victron",
+            "opendtu_ahoy",
+            "ebyte",
+            "wago",
+            "zukunft"
+          ],
+          "netze": [
+            {
+              "rolle": "kundennetz",
+              "netz": "192.168.178.0/24",
+              "box_adresse": "192.168.178.20",
+              "erreichbar": true,
+              "aktiv": 9
+            }
+          ],
+          "funde": [
+            {
+              "schluessel": "solarman:3115580613",
+              "erkenner": "solarman",
+              "art": "wechselrichter",
+              "hersteller": "deye",
+              "familie": "hybrid_3p",
+              "spannung": "hv",
+              "seriennummer": "2409066698",
+              "erkennung": "sicher",
+              "merkmale": [
+                "v5_kopf_seriennummer",
+                "deye_typ_0x0006",
+                "deye_seriennummer_0x0003"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "solarman_v5",
+                "ip": "192.168.178.34",
+                "port": 8899,
+                "serial": 3115580613,
+                "unit_id": 1
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "shelly:192.168.178.50:80",
+              "erkenner": "shelly",
+              "art": "schaltaktor",
+              "hersteller": "shelly",
+              "modell": "SPSW-003XE16EU",
+              "firmware": "1.4.4",
+              "kanaele": 3,
+              "erkennung": "sicher",
+              "merkmale": [
+                "shelly_gen2_antwort"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "shelly_http",
+                "ip": "192.168.178.50",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "goe:204117",
+              "erkenner": "goe",
+              "art": "wallbox",
+              "hersteller": "go-e",
+              "seriennummer": "204117",
+              "firmware": "56.1",
+              "erkennung": "sicher",
+              "merkmale": [
+                "goe_api_v2_sse"
+              ],
+              "anbindung": "uebernehmen",
+              "verbindung": {
+                "communication": "goe_http_api",
+                "ip": "192.168.178.61",
+                "port": 80
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "modbus_offen:192.168.178.70:502",
+              "erkenner": "modbus_offen",
+              "art": "modbus_geraet",
+              "erkennung": "unbekannt",
+              "merkmale": [
+                "modbus_port_offen"
+              ],
+              "anbindung": "selbst_beschreiben",
+              "verbindung": {
+                "communication": "modbus_tcp",
+                "ip": "192.168.178.70",
+                "port": 502
+              },
+              "liest_box_schon": false
+            },
+            {
+              "schluessel": "netztechnik:192.168.178.1:80",
+              "erkenner": "netztechnik",
+              "art": "router",
+              "hersteller": "avm",
+              "modell": "FRITZ!Box 7590",
+              "erkennung": "wahrscheinlich",
+              "merkmale": [
+                "seitentitel"
+              ],
+              "anbindung": "nur_anzeige",
+              "verbindung": {
+                "ip": "192.168.178.1",
+                "port": 80
+              },
+              "liest_box_schon": false
+            }
+          ],
+          "weitere": {
+            "unbekannt": 4
+          }
+        }
+      }
+    ]
+  },
+  "api": {
+    "gruppen": [
+      "braucht_hilfe",
+      "bereit",
+      "nicht_anbindbar",
+      "vielleicht",
+      "schon_eingerichtet",
+      "weitere"
+    ],
+    "abgleich": [
+      "neu",
+      "schon_eingerichtet",
+      "adresse_geaendert",
+      "anderes_geraet_an_bekannter_adresse",
+      "adresse_bekannt_kennung_offen"
+    ],
+    "zustand": [
+      "wartet",
+      "laeuft",
+      "fertig",
+      "abgebrochen",
+      "fehlgeschlagen",
+      "abgelehnt",
+      "keine_antwort"
+    ],
+    "fehler_start": {
+      "409": [
+        "laeuft_schon",
+        "nicht_unterstuetzt",
+        "box_offline"
+      ],
+      "429": [
+        "zu_oft"
+      ]
+    },
+    "$gruppe": "Reihenfolge der Regel: (1) adresse_geaendert oder anderes_geraet_an_bekannter_adresse -> braucht_hilfe; (2) schon_eingerichtet oder adresse_bekannt_kennung_offen -> schon_eingerichtet; (3) ein Hindernis an einem neuen, übernehmbaren Fund -> braucht_hilfe; (4) sonst nach anbindung: uebernehmen -> bereit, nicht_mit_dieser_box und kein_leseweg -> nicht_anbindbar, selbst_beschreiben -> vielleicht, nur_anzeige -> weitere.",
+    "gruppe_faelle": [
+      {
+        "anbindung": "uebernehmen",
+        "abgleich": "neu",
+        "gruppe": "bereit"
+      },
+      {
+        "anbindung": "uebernehmen",
+        "abgleich": "neu",
+        "hindernis": "geschuetzt",
+        "gruppe": "braucht_hilfe"
+      },
+      {
+        "anbindung": "uebernehmen",
+        "abgleich": "neu",
+        "hindernis": "lokale_api_aus",
+        "gruppe": "braucht_hilfe"
+      },
+      {
+        "anbindung": "uebernehmen",
+        "abgleich": "adresse_geaendert",
+        "gruppe": "braucht_hilfe"
+      },
+      {
+        "anbindung": "uebernehmen",
+        "abgleich": "anderes_geraet_an_bekannter_adresse",
+        "gruppe": "braucht_hilfe"
+      },
+      {
+        "anbindung": "uebernehmen",
+        "abgleich": "schon_eingerichtet",
+        "gruppe": "schon_eingerichtet"
+      },
+      {
+        "anbindung": "uebernehmen",
+        "abgleich": "adresse_bekannt_kennung_offen",
+        "gruppe": "schon_eingerichtet"
+      },
+      {
+        "anbindung": "uebernehmen",
+        "abgleich": "schon_eingerichtet",
+        "hindernis": "geschuetzt",
+        "gruppe": "schon_eingerichtet"
+      },
+      {
+        "anbindung": "kein_leseweg",
+        "abgleich": "neu",
+        "hindernis": "geschuetzt",
+        "gruppe": "nicht_anbindbar"
+      },
+      {
+        "anbindung": "nicht_mit_dieser_box",
+        "abgleich": "adresse_geaendert",
+        "gruppe": "braucht_hilfe"
+      },
+      {
+        "anbindung": "nicht_mit_dieser_box",
+        "abgleich": "neu",
+        "gruppe": "nicht_anbindbar"
+      },
+      {
+        "anbindung": "kein_leseweg",
+        "abgleich": "neu",
+        "gruppe": "nicht_anbindbar"
+      },
+      {
+        "anbindung": "nicht_mit_dieser_box",
+        "abgleich": "schon_eingerichtet",
+        "gruppe": "schon_eingerichtet"
+      },
+      {
+        "anbindung": "selbst_beschreiben",
+        "abgleich": "neu",
+        "gruppe": "vielleicht"
+      },
+      {
+        "anbindung": "selbst_beschreiben",
+        "abgleich": "adresse_bekannt_kennung_offen",
+        "gruppe": "schon_eingerichtet"
+      },
+      {
+        "anbindung": "nur_anzeige",
+        "abgleich": "neu",
+        "gruppe": "weitere"
+      }
+    ]
+  }
+}

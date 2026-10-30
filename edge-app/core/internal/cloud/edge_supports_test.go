@@ -36,7 +36,10 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 		t.Fatalf("supports = %v; want %v", BuiltSupports(), expected)
 	}
 	for _, name := range BuiltSupports() {
-		if name == "assignment_effective_at" {
+		// geraetesuche: contract and readers exist (internal/geraetesuche), the
+		// search module does not - and once it does, each box type reports it
+		// from its own build (edge-supports.md "Je Box-Art").
+		if name == "assignment_effective_at" || name == "geraetesuche" {
 			t.Fatalf("unbuilt capability: %s", name)
 		}
 	}

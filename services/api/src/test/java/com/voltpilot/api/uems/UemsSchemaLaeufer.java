@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
  * (benutzt von {@code uemsReferenzunternehmen.test.ts} und
  * {@code uemsMessstelle.test.ts}).
  */
-final class UemsSchemaLaeufer {
+public final class UemsSchemaLaeufer {
     private final JsonNode wurzel;
     private final List<String> fehler;
     private final Map<String, Pattern> muster = new HashMap<>();
@@ -39,7 +39,7 @@ final class UemsSchemaLaeufer {
     }
 
     /** Alle Verstöße von {@code daten} gegen {@code schema}, je mit Pfad; leer heißt: hält. */
-    static List<String> verstoesse(JsonNode daten, JsonNode schema) {
+    public static List<String> verstoesse(JsonNode daten, JsonNode schema) {
         List<String> fehler = new ArrayList<>();
         new UemsSchemaLaeufer(schema, fehler).pruefe(daten, schema, "$");
         return fehler;

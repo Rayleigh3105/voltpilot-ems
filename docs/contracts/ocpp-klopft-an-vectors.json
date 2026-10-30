@@ -1,0 +1,219 @@
+{
+  "$comment": "Die GETEILTEN Fälle von OCPP „klopft an“ (ocpp-klopft-an.md): das Feld `rejected` im Herzschlag-Block `chargers` (ChargersSummary). Go edge-app/core/internal/geraetesuche (KlopftAn: die Box prüft streng, bevor sie sendet), Java services/api .../geraetesuche/KlopftAn (die API liest tolerant: ein falscher Eintrag wird überlesen, der Rest gilt), TS über das Schema. Wer eine Regel ändert, ändert alle Seiten UND diese Datei zusammen.",
+  "schema_version": "1.0",
+  "grenzen": {
+    "fenster_h": 24,
+    "max_eintraege": 16,
+    "max_versuche": 100000
+  },
+  "box_adressen": [
+    "192.168.178.20"
+  ],
+  "lesen": [
+    {
+      "name": "feld_fehlt",
+      "warum": "Ältere Box: unbekannt, nie „niemand klopft an“.",
+      "block": {
+        "enabled": true,
+        "chargers": []
+      },
+      "erwartet": null
+    },
+    {
+      "name": "leer",
+      "warum": "Die Box meldet ausdrücklich: in 24 h hat keine fremde Säule angeklopft.",
+      "block": {
+        "enabled": true,
+        "chargers": [],
+        "rejected": []
+      },
+      "erwartet": []
+    },
+    {
+      "name": "zwei_saeulen",
+      "warum": "Eine Säule mit falsch eingetippter Kennung im Kundennetz; eine zweite, deren Adresse die Box nicht sieht.",
+      "block": {
+        "enabled": true,
+        "chargers": [
+          {
+            "id": "CP-HALLE-1",
+            "connected": false,
+            "ready": false
+          }
+        ],
+        "rejected": [
+          {
+            "id": "CP-HALLE1",
+            "ip": "192.168.178.80",
+            "first_seen": "2026-11-02T08:10:00Z",
+            "last_seen": "2026-11-02T08:59:30Z",
+            "attempts": 50
+          },
+          {
+            "id": "wallbox.garage_2",
+            "first_seen": "2026-11-02T07:00:00Z",
+            "last_seen": "2026-11-02T07:00:00Z",
+            "attempts": 1
+          }
+        ]
+      },
+      "erwartet": [
+        {
+          "id": "CP-HALLE1",
+          "ip": "192.168.178.80"
+        },
+        {
+          "id": "wallbox.garage_2",
+          "ip": null
+        }
+      ]
+    },
+    {
+      "name": "eintrag_ueberlesen",
+      "warum": "Eine Kennung, die die Freigabeliste nie aufnehmen könnte: überlesen. Eine öffentliche Adresse: nur die Adresse wird überlesen, die Kennung gilt.",
+      "block": {
+        "enabled": true,
+        "chargers": [],
+        "rejected": [
+          {
+            "id": "CP 7",
+            "first_seen": "2026-11-02T08:00:00Z",
+            "last_seen": "2026-11-02T08:00:00Z",
+            "attempts": 1
+          },
+          {
+            "id": "CP-8",
+            "ip": "8.8.8.8",
+            "first_seen": "2026-11-02T08:00:00Z",
+            "last_seen": "2026-11-02T08:00:00Z",
+            "attempts": 1
+          },
+          {
+            "id": "CP-9",
+            "ip": "192.168.178.90",
+            "first_seen": "2026-11-02T08:00:00Z",
+            "last_seen": "2026-11-02T08:30:00Z",
+            "attempts": 3
+          }
+        ]
+      },
+      "erwartet": [
+        {
+          "id": "CP-8",
+          "ip": null
+        },
+        {
+          "id": "CP-9",
+          "ip": "192.168.178.90"
+        }
+      ],
+      "schema_lehnt_ab": true
+    },
+    {
+      "name": "zeiten_verdreht",
+      "warum": "last_seen vor first_seen: überlesen.",
+      "block": {
+        "enabled": true,
+        "chargers": [],
+        "rejected": [
+          {
+            "id": "CP-1",
+            "first_seen": "2026-11-02T08:30:00Z",
+            "last_seen": "2026-11-02T08:00:00Z",
+            "attempts": 2
+          }
+        ]
+      },
+      "erwartet": []
+    },
+    {
+      "name": "box_selbst",
+      "warum": "Die eigene Adresse der Box ist nie die Adresse einer Säule: die Adresse wird überlesen, die Kennung gilt.",
+      "block": {
+        "enabled": true,
+        "chargers": [],
+        "rejected": [
+          {
+            "id": "CP-2",
+            "ip": "192.168.178.20",
+            "first_seen": "2026-11-02T08:00:00Z",
+            "last_seen": "2026-11-02T08:00:00Z",
+            "attempts": 1
+          }
+        ]
+      },
+      "erwartet": [
+        {
+          "id": "CP-2",
+          "ip": null
+        }
+      ]
+    },
+    {
+      "name": "doppelt",
+      "warum": "Je Kennung ein Eintrag; der zweite wird überlesen.",
+      "block": {
+        "enabled": true,
+        "chargers": [],
+        "rejected": [
+          {
+            "id": "CP-3",
+            "first_seen": "2026-11-02T08:00:00Z",
+            "last_seen": "2026-11-02T08:10:00Z",
+            "attempts": 4
+          },
+          {
+            "id": "CP-3",
+            "first_seen": "2026-11-02T08:20:00Z",
+            "last_seen": "2026-11-02T08:20:00Z",
+            "attempts": 1
+          }
+        ]
+      },
+      "erwartet": [
+        {
+          "id": "CP-3",
+          "ip": null
+        }
+      ]
+    },
+    {
+      "name": "feld_unbekannt",
+      "warum": "Ein künftiges, additives Feld je Eintrag: überlesen, der Eintrag gilt.",
+      "block": {
+        "enabled": true,
+        "chargers": [],
+        "rejected": [
+          {
+            "id": "CP-4",
+            "first_seen": "2026-11-02T08:00:00Z",
+            "last_seen": "2026-11-02T08:00:00Z",
+            "attempts": 1,
+            "vendor": "ABB"
+          }
+        ]
+      },
+      "erwartet": [
+        {
+          "id": "CP-4",
+          "ip": null
+        }
+      ],
+      "schema_lehnt_ab": true
+    },
+    {
+      "name": "kein_array",
+      "warum": "Ein Feld, das keine Liste ist: so gut wie fehlend - unbekannt.",
+      "block": {
+        "enabled": true,
+        "chargers": [],
+        "rejected": {
+          "CP-5": 1
+        }
+      },
+      "erwartet": null,
+      "schema_lehnt_ab": true
+    }
+  ],
+  "$regel": "Ein Eintrag gilt mit gültiger Kennung (Form der Freigabeliste), first_seen <= last_seen, attempts 1..100000; je Kennung der erste; höchstens 16. Die Adresse gilt nur als private RFC1918-Host-Adresse (Bereichsregel suchbereich ohne Präfix) und nie als eigene Adresse der Box - sonst wird nur sie überlesen, die Kennung bleibt. erwartet: die gelesenen Einträge in Reihenfolge (ip null = fehlt bzw. überlesen); null = unbekannt."
+}

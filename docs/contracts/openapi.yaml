@@ -183,6 +183,12 @@ tags:
       refused by the box itself with an honest not_supported. Every rule that
       can stop a device from being touched - private target, expiry, rate
       limit - lives ON THE BOX, which is the only party that knows its own LAN.
+  - name: geraetesuche
+    description: >
+      Gerätesuche (Konzept vom 30.10.2026, DP-1 C, DP-2 bis DP-7 A): „Geräte suchen“ startet auf der Box einen
+      lesenden Suchlauf im Heimnetz (docs/contracts/v2/mqtt-geraetesuche.md); die Routen starten, zeigen,
+      brechen ab und listen den Verlauf. Alle tragen das Recht `geraet.einrichten` an der Anlage. Grenzen,
+      Netze und Takt setzt die Box selbst - die Cloud kann sie nicht erweitern.
   - name: flows
     description: >
       Customer flow editor (E3b "Kunden-Freigabe"): a Portal-User builds,
@@ -7901,6 +7907,104 @@ paths:
         "400": { description: Unknown template / role. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/geraetesuche:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [geraetesuche]
+      summary: Eine Gerätesuche an einer Box starten („Geräte suchen“).
+      description: >
+        Recht `geraet.einrichten` an der Anlage (DP-4 A: dasselbe Recht wie Verbindungstest und Probe; im
+        Mandantensprung handelt die Plattform als Kundenadministrator, protokolliert wird die eigene Person mit Rolle
+        `voltpilot_betrieb`). Der Mandant kommt aus dem Token, nie aus dem Körper; eine Box, die nicht an dieser
+        Anlage hängt oder außerhalb des Zugriffs liegt, ist 404. Die API legt die Suche an und sendet den Auftrag
+        `starten` (`docs/contracts/v2/mqtt-geraetesuche.md`, nicht retained, `gueltig_bis` = jetzt + 120 s). Netze,
+        Ports, Takt und Dauer bestimmt allein die Box (DP-5 A); der Körper kann sie nicht nennen. Mit
+        `Idempotency-Key` gibt eine wiederholte Anfrage dieselbe Antwort statt einer zweiten Suche. 409
+        `laeuft_schon` (eine Suche je Box; `suchId` nennt die laufende, „Mitansehen“), `nicht_unterstuetzt` (die Box
+        meldet die Fähigkeit `geraetesuche` nicht: „Update nötig für: Gerätesuche“), `box_offline` (kein Herzschlag
+        seit 5 min; `zuletztGesehen`). 429 `zu_oft` (höchstens 6 Suchen je Stunde und Box; `wiederAb`, Kopf
+        `Retry-After`).
+      parameters:
+        - $ref: "#/components/parameters/AnfrageKennung"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [deviceId]
+              properties:
+                deviceId: { type: string, format: uuid, description: "Die Box, die sucht." }
+      responses:
+        "202":
+          description: Angenommen und gesendet; die Suche läuft auf der Box (`zustand` zuerst `wartet`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Geraetesuche" }
+        "400": { $ref: "#/components/responses/GeraetesucheAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GeraetesucheAbgelehnt" }
+        "409": { $ref: "#/components/responses/GeraetesucheAbgelehnt" }
+        "422": { $ref: "#/components/responses/GeraetesucheAbgelehnt" }
+        "429": { $ref: "#/components/responses/GeraetesucheAbgelehnt" }
+    get:
+      tags: [geraetesuche]
+      summary: Verlauf der Gerätesuchen der letzten 30 Tage.
+      description: >
+        Recht `geraet.einrichten` an der Anlage. Die Suchen der letzten 30 Tage, jüngste zuerst; mit `deviceId` nur
+        die einer Box. Je Suche Zeit, Person, Dauer, Zustand und die Zahl der Funde je Gruppe - nie die Funde selbst
+        und nie die Geräte von Personen (DP-3 A).
+      parameters:
+        - { name: deviceId, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die Suchen, jüngste zuerst.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GeraetesucheVerlauf" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GeraetesucheAbgelehnt" }
+  /api/v1/sites/{siteId}/geraetesuche/{suchId}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: suchId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraetesuche]
+      summary: Eine Gerätesuche - Zustand, Schritt, Netze und die Funde gruppiert und abgeglichen.
+      description: >
+        Recht `geraet.einrichten` an der Anlage. Solange die Suche läuft, fragt das Portal alle 2 s ab und hört danach
+        auf. Die Funde sind mit den Komponenten der Anlage abgeglichen (`abgleich`; nie über dieselbe Adresse allein)
+        und stehen in den sechs Gruppen in fester Reihenfolge. `keine_antwort`: 30 s ohne Zwischenstand oder Ergebnis;
+        die Funde bis dahin bleiben. Funde werden nach 30 Tagen gelöscht (DP-3 A).
+      responses:
+        "200":
+          description: Die Suche.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Geraetesuche" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GeraetesucheAbgelehnt" }
+    delete:
+      tags: [geraetesuche]
+      summary: Eine laufende Gerätesuche abbrechen.
+      description: >
+        Recht `geraet.einrichten` an der Anlage. Sendet den Auftrag `abbrechen` mit der vollen `such_id`; die Box
+        meldet `abgebrochen`/`auf_wunsch`, die Funde bis dahin gelten. Eine beendete Suche bleibt, wie sie ist, und es
+        geht kein Auftrag hinaus - die Antwort ist dieselbe Form.
+      responses:
+        "202":
+          description: Der Abbruch ist gesendet (oder die Suche war schon beendet).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Geraetesuche" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GeraetesucheAbgelehnt" }
   /api/v1/sites/{siteId}/components/custom/read:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -19427,6 +19531,15 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/GemeinsameSteuerungFehler" }
+    GeraetesucheAbgelehnt:
+      description: >
+        Abgelehnt, nichts gesendet, keine Suche angelegt. 400 `anfrage_ungueltig` (auch eine Kennung im Körper,
+        die nicht `deviceId` ist), `anfrage_kennung_ungueltig`; 404 `nicht_gefunden` (fremde Anlage, Box nicht an
+        dieser Anlage, unbekannte Suche - nie 403); 409 `laeuft_schon` mit `suchId`, `nicht_unterstuetzt`,
+        `box_offline` mit `zuletztGesehen`; 422 `anfrage_kennung_anders`; 429 `zu_oft` mit `wiederAb`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/GeraetesucheFehler" }
     BilanzAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben. Code, Status und der deutsche `message`-Satz kommen aus
@@ -37813,3 +37926,221 @@ components:
         rolle_noetig: { type: string, nullable: true }
         status: { type: string }
         zeichen: { type: integer }
+    Geraetesuche:
+      type: object
+      description: >
+        Eine Gerätesuche (docs/contracts/v2/mqtt-geraetesuche.md §7; Wörter in geraetesuche-vectors.json `api`). Jedes
+        Feld ist immer da; was (noch) unbekannt ist, ist null - nie 0. `gruppen` trägt immer alle sechs Gruppen in
+        fester Reihenfolge, auch leere. DP-3 A: keine MAC, kein Hostname; Geräte von Personen nur als Zahl in `weitere`.
+      required: [suchId, deviceId, zustand, grund, gestartetAm, gestartetVon, beendetAm, dauerMs, schritt, erledigt,
+        gesamt, restSekunden, netze, erkenner, gruppen, weitere, ladesaeulenKlopfenAn]
+      properties:
+        suchId: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        zustand:
+          type: string
+          enum: [wartet, laeuft, fertig, abgebrochen, fehlgeschlagen, abgelehnt, keine_antwort]
+          description: >
+            wartet = gesendet, noch kein Zwischenstand; laeuft = Zwischenstände kommen; fertig, abgebrochen,
+            fehlgeschlagen, abgelehnt = das Ergebnis der Box; keine_antwort = 30 s ohne Zwischenstand oder Ergebnis.
+        grund:
+          type: string
+          nullable: true
+          enum: [auf_wunsch, neustart, zeitlimit, laeuft_schon, zu_oft, abgelaufen, lan_host_fehlt, kein_privates_netz,
+            interner_fehler, null]
+          description: Der Grund der Box (mqtt-geraetesuche §6); null bei fertig und solange kein Ergebnis da ist.
+        gestartetAm: { type: string, format: date-time }
+        gestartetVon: { $ref: "#/components/schemas/ProtokollUrheber" }
+        beendetAm: { type: string, format: date-time, nullable: true }
+        dauerMs: { type: integer, nullable: true, description: "Dauer laut Box; null, solange kein Ergebnis da ist." }
+        schritt:
+          type: string
+          nullable: true
+          enum: [netze_bestimmen, nachbarn_finden, geraete_ansprechen, geraete_erkennen, null]
+        erledigt: { type: integer, nullable: true }
+        gesamt: { type: integer, nullable: true }
+        restSekunden: { type: integer, nullable: true, description: "Geschätzte Restzeit; null = unbekannt." }
+        netze:
+          type: array
+          items: { $ref: "#/components/schemas/GeraetesucheNetz" }
+        erkenner:
+          type: array
+          nullable: true
+          description: >
+            Die Erkenner und Wege, die wirklich liefen; null, solange kein Ergebnis da ist. Fehlt einer, heißt das
+            „nicht gesucht“, nie „nichts da“.
+          items:
+            type: string
+            enum: [solarman, shelly, goe, netztechnik, modbus_offen, sunspec, fronius_solar_api, kaco_aiswei, kostal,
+              huawei, sma, victron, opendtu_ahoy, ebyte, wago, mdns, ssdp, funkmodul]
+        gruppen:
+          type: array
+          description: Alle sechs Gruppen in der Reihenfolge von `GeraetesucheGruppe.gruppe`.
+          items: { $ref: "#/components/schemas/GeraetesucheGruppe" }
+        weitere: { $ref: "#/components/schemas/GeraetesucheWeitere" }
+        ladesaeulenKlopfenAn:
+          type: array
+          nullable: true
+          description: >
+            Ladesäulen, deren Kennung die Box in den letzten 24 h abgewiesen hat (docs/contracts/ocpp-klopft-an.md),
+            aus dem Herzschlag, nicht aus der Suche. null = die Box meldet es nicht (unbekannt); [] = niemand hat
+            angeklopft. „Zulassen“ ist `POST /api/v1/sites/{siteId}/charging-config/charge-points`.
+          items: { $ref: "#/components/schemas/GeraetesucheLadesaeuleKlopftAn" }
+    GeraetesucheNetz:
+      type: object
+      required: [rolle, netz, boxAdresse, ausschnitt, erreichbar, aktiv]
+      properties:
+        rolle: { type: string, enum: [kundennetz, box_netz] }
+        netz: { type: string, example: 192.168.178.0/24, description: "RFC1918-IPv4, höchstens /24 (lan-range-vectors.json)." }
+        boxAdresse: { type: string, example: 192.168.178.20 }
+        ausschnitt:
+          type: boolean
+          nullable: true
+          description: true = das Netz ist größer, gesucht wurde das /24 um die Box; null = unbekannt (Docker-Box).
+        erreichbar: { type: boolean }
+        aktiv: { type: integer, description: "Adressen, die geantwortet haben." }
+    GeraetesucheGruppe:
+      type: object
+      required: [gruppe, funde]
+      properties:
+        gruppe:
+          type: string
+          enum: [braucht_hilfe, bereit, nicht_anbindbar, vielleicht, schon_eingerichtet, weitere]
+          description: >
+            Feste Reihenfolge. Zuordnung (GeraetesucheVertrag.gruppe): adresse_geaendert oder
+            anderes_geraet_an_bekannter_adresse -> braucht_hilfe; schon_eingerichtet oder adresse_bekannt_kennung_offen
+            -> schon_eingerichtet; ein Hindernis an einem neuen, übernehmbaren Fund -> braucht_hilfe; sonst nach
+            anbindung (uebernehmen -> bereit, nicht_mit_dieser_box und kein_leseweg -> nicht_anbindbar,
+            selbst_beschreiben -> vielleicht, nur_anzeige -> weitere).
+        funde:
+          type: array
+          items: { $ref: "#/components/schemas/GeraetesucheFund" }
+    GeraetesucheFund:
+      type: object
+      description: >
+        Ein Fund der Box (mqtt-geraetesuche §6), abgeglichen mit den Komponenten der Anlage. Übernehmen öffnet den
+        Anlege-Fluss mit `vorlagen` und `verbindung` vorbelegt; der Verbindungstest startet von selbst.
+      required: [schluessel, erkenner, art, hersteller, modell, seriennummer, firmware, familie, spannung, kanaele,
+        erkennung, merkmale, anbindung, hindernis, verbindung, liestBoxSchon, abgleich, komponente, bekannteAdresse,
+        vorlagen]
+      properties:
+        schluessel: { type: string, example: "solarman:3115580613" }
+        erkenner:
+          type: string
+          enum: [solarman, shelly, goe, netztechnik, modbus_offen, sunspec, fronius_solar_api, kaco_aiswei, kostal,
+            huawei, sma, victron, opendtu_ahoy, ebyte, wago]
+        art:
+          type: string
+          enum: [wechselrichter, wallbox, schaltaktor, zaehler, io_modul, sps, dtu, modbus_geraet, router, zugangspunkt]
+        hersteller: { type: string, nullable: true, example: deye }
+        modell: { type: string, nullable: true }
+        seriennummer: { type: string, nullable: true }
+        firmware: { type: string, nullable: true }
+        familie: { type: string, nullable: true, example: hybrid_3p }
+        spannung: { type: string, nullable: true, enum: [hv, lv, null] }
+        kanaele: { type: integer, nullable: true }
+        erkennung: { type: string, enum: [sicher, wahrscheinlich, unbekannt] }
+        merkmale: { type: array, items: { type: string }, description: "Woran erkannt („Woran erkannt?“)." }
+        anbindung:
+          type: string
+          enum: [uebernehmen, selbst_beschreiben, nicht_mit_dieser_box, kein_leseweg, nur_anzeige]
+          description: >
+            Was diese Box-Art damit kann. nicht_mit_dieser_box und kein_leseweg sind zusammen „erkannt, mit dieser
+            Box noch nicht anbindbar“.
+        hindernis: { type: string, nullable: true, enum: [geschuetzt, lokale_api_aus, null] }
+        verbindung:
+          type: object
+          additionalProperties: true
+          description: >
+            Die Verbindungsfelder in den Schlüsseln der Vorlagen (`communication`, `ip`, `port`, `serial`, `unit_id`)
+            - genau so gehen sie als `connection` an `POST …/component-test`.
+        liestBoxSchon: { type: boolean }
+        abgleich:
+          type: string
+          enum: [neu, schon_eingerichtet, adresse_geaendert, anderes_geraet_an_bekannter_adresse,
+            adresse_bekannt_kennung_offen]
+          description: >
+            Nie über dieselbe Adresse allein. adresse_geaendert = dieselbe Kennung an neuer Adresse: Vorschlag, ein Tipp
+            übernimmt sie über den Bearbeiten-Weg, dieselbe Komponente (DP-7 A, nie still).
+            adresse_bekannt_kennung_offen = an der Adresse ist eine Komponente eingerichtet, aber einer Seite fehlt die
+            Kennung - nicht belegbar, ob es dasselbe Gerät ist.
+        komponente:
+          type: object
+          nullable: true
+          description: Die abgeglichene Komponente (nicht bei neu).
+          required: [id, name]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        bekannteAdresse:
+          type: string
+          nullable: true
+          description: Die an der Komponente gespeicherte Adresse, wenn sie von der gefundenen abweicht (adresse_geaendert).
+        vorlagen:
+          type: array
+          items: { type: string, example: "builtin:go-e:goe_http_api" }
+          description: >
+            Die Vorlagen (`templateRef`), die zum Fund passen - bei Deye nur die Modelle der gemeldeten Bauart; leer,
+            wenn der Fund sich nicht übernehmen lässt.
+    GeraetesucheWeitere:
+      type: object
+      description: DP-3 A - Geräte, die kein Energie-Gerät und keine Netz-Technik sind, nur als Zahl; null = nicht gezählt.
+      required: [telefonTablet, rechner, unbekannt]
+      properties:
+        telefonTablet: { type: integer, nullable: true }
+        rechner: { type: integer, nullable: true }
+        unbekannt: { type: integer, nullable: true }
+    GeraetesucheLadesaeuleKlopftAn:
+      type: object
+      required: [chargePointId, ip, zuerst, zuletzt, versuche]
+      properties:
+        chargePointId: { type: string, example: CP-HALLE1 }
+        ip: { type: string, nullable: true }
+        zuerst: { type: string, format: date-time }
+        zuletzt: { type: string, format: date-time }
+        versuche: { type: integer }
+    GeraetesucheVerlauf:
+      type: object
+      required: [suchen]
+      properties:
+        suchen:
+          type: array
+          items: { $ref: "#/components/schemas/GeraetesucheVerlaufEintrag" }
+    GeraetesucheVerlaufEintrag:
+      type: object
+      required: [suchId, deviceId, zustand, grund, gestartetAm, gestartetVon, dauerMs, zaehler]
+      properties:
+        suchId: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        zustand: { type: string, enum: [wartet, laeuft, fertig, abgebrochen, fehlgeschlagen, abgelehnt, keine_antwort] }
+        grund:
+          type: string
+          nullable: true
+          enum: [auf_wunsch, neustart, zeitlimit, laeuft_schon, zu_oft, abgelaufen, lan_host_fehlt, kein_privates_netz,
+            interner_fehler, null]
+        gestartetAm: { type: string, format: date-time }
+        gestartetVon: { $ref: "#/components/schemas/ProtokollUrheber" }
+        dauerMs: { type: integer, nullable: true }
+        zaehler:
+          type: object
+          description: Funde je Gruppe.
+          required: [braucht_hilfe, bereit, nicht_anbindbar, vielleicht, schon_eingerichtet, weitere]
+          properties:
+            braucht_hilfe: { type: integer }
+            bereit: { type: integer }
+            nicht_anbindbar: { type: integer }
+            vielleicht: { type: integer }
+            schon_eingerichtet: { type: integer }
+            weitere: { type: integer }
+    GeraetesucheFehler:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, anfrage_kennung_ungueltig, anfrage_kennung_anders, nicht_gefunden, laeuft_schon,
+            nicht_unterstuetzt, box_offline, zu_oft]
+        message: { type: string, description: "Der deutsche Satz für den Kunden." }
+        suchId: { type: string, format: uuid, nullable: true, description: "Bei laeuft_schon die laufende Suche." }
+        zuletztGesehen: { type: string, format: date-time, nullable: true, description: "Bei box_offline der letzte Herzschlag." }
+        wiederAb: { type: string, format: date-time, nullable: true, description: "Bei zu_oft, ab wann die nächste Suche geht." }

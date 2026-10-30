@@ -66,6 +66,12 @@
       "meaning": "Die Box leitet aus dem Registry-Treiber einer Entität vom Typ anlagensteuerung (communication modbus_tcp, connection ip/port/unit_id der Datenquelle, ohne Marke) eine Quelle der Rolle plant-controller ab, ohne Wechselrichter-Katalog und ohne sie selbst zu pollen; die Palette bindet die Komponente über ihren Pin edge_source_id daran und liest das Erzeuger-Bild (UEMS EZ-21, anlagensteuerung-quelle-vectors.json). Erst dann sendet die Cloud diesen Treiber und den Pin — ein älterer Applier lehnt einen Treiber ohne Marke und damit den ganzen Push ab.",
       "advertised": true,
       "evidence": "edge-app/core/internal/componentapply/plant_controller_test.go"
+    },
+    {
+      "name": "geraetesuche",
+      "meaning": "Die Box führt eine Gerätesuche auf .../v2/geraetesuche aus (nur lesend, nur eigene private Netze je höchstens /24, höchstens 3 min, 6 je Stunde), meldet alle 2 s auf .../v2/geraetesuche-stand und genau ein Ergebnis auf .../v2/geraetesuche-ergebnis (mqtt-geraetesuche 1.0). Je Box-Art gemeldet: Edge Light und Docker-Box melden es aus ihrem eigenen Build; die Docker-Box sucht nur durch NAT mit TCP (DP-2 A), welche Erkenner liefen, nennt das Ergebnis.",
+      "advertised": false,
+      "evidence": "docs/contracts/v2/mqtt-geraetesuche.md (Vertrag und Leser; das Suchmodul der Box ist noch nicht gebaut)"
     }
   ],
   "cases": [
@@ -204,6 +210,18 @@
       "expected": [
         "erzeuger_registerbild",
         "anlagensteuerung_quelle"
+      ]
+    },
+    {
+      "name": "reported_geraetesuche_is_recognized",
+      "supports": [
+        "data_sources",
+        "geraetesuche"
+      ],
+      "table": [],
+      "expected": [
+        "data_sources",
+        "geraetesuche"
       ]
     }
   ]

@@ -1,0 +1,397 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/mqtt-geraetesuche-ergebnis.schema.json",
+  "title": "Gerätesuche: Ergebnis Box -> Cloud (mqtt-geraetesuche 1.0)",
+  "description": "Das Ergebnis auf ems/{tenant_id}/{site_id}/{device_id}/v2/geraetesuche-ergebnis (QoS 1, NICHT retained), genau eines je such_id: fertig, abgebrochen, fehlgeschlagen oder abgelehnt (die Box hat gar nicht gesucht). Es ist verbindlich und trägt ALLE Funde der Suche; die Zwischenstände waren nur Anzeige. Vertrag: mqtt-geraetesuche.md; Fälle: geraetesuche-vectors.json (Familie ergebnis). Jede `$defs`-Form, die auch in mqtt-geraetesuche-stand.schema.json steht, ist deren Zwilling (die Tests prüfen Gleichheit). DP-3 A: kein Feld trägt eine MAC-Adresse oder einen Hostnamen; Telefone, Tablets, Rechner und Unbekanntes verlassen die Box nur als Anzahl in `weitere`.",
+  "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/v2/geraetesuche-ergebnis  (Box -> Cloud, QoS 1, NICHT retained, genau eines je such_id)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "site_id",
+    "device_id",
+    "such_id",
+    "ts",
+    "zustand",
+    "dauer_ms",
+    "erkenner",
+    "netze",
+    "funde",
+    "weitere"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "tenant_id": {
+      "$ref": "#/$defs/uuid",
+      "description": "Muss dem Topic entsprechen; sonst verwirft die Cloud das Ergebnis."
+    },
+    "site_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "device_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "such_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "ts": {
+      "$ref": "#/$defs/zeit"
+    },
+    "zustand": {
+      "enum": [
+        "fertig",
+        "abgebrochen",
+        "fehlgeschlagen",
+        "abgelehnt"
+      ],
+      "description": "abgelehnt = die Box hat nicht gesucht (Grund nennt warum); abgebrochen = Funde bis dahin gelten."
+    },
+    "grund": {
+      "enum": [
+        "auf_wunsch",
+        "neustart",
+        "zeitlimit",
+        "laeuft_schon",
+        "zu_oft",
+        "abgelaufen",
+        "lan_host_fehlt",
+        "kein_privates_netz",
+        "interner_fehler"
+      ],
+      "description": "Pflicht außer bei fertig, dort fehlt er. Welcher Grund zu welchem Zustand gehört, steht in geraetesuche-vectors.json (gruende); ein anderes Paar verwirft der Leser."
+    },
+    "dauer_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 600000,
+      "description": "Vom Annehmen des Auftrags bis zum Ergebnis; 0 bei abgelehnt."
+    },
+    "erkenner": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/erkenner"
+      },
+      "description": "Die Erkenner und Wege, die wirklich liefen. Fehlt einer, heißt das „nicht gesucht“, nie „nichts da“ (die Docker-Box hat kein mdns, ssdp, funkmodul)."
+    },
+    "netze": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/netz"
+      },
+      "description": "Höchstens 2 (Leser-Regel); leer bei abgelehnt."
+    },
+    "funde": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fund"
+      },
+      "description": "Alle Funde der Suche, je schluessel einmal; höchstens 256 (Leser-Regel)."
+    },
+    "weitere": {
+      "$ref": "#/$defs/weitere"
+    }
+  },
+  "$defs": {
+    "weitere": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "DP-3 A: Geräte, die kein Energie-Gerät und keine Netz-Technik sind, NUR als Anzahl je Art - ohne Adresse, MAC oder Namen. Ein fehlender Schlüssel = nicht gezählt (die Docker-Box kann Telefone nicht von Rechnern trennen und zählt alles unter unbekannt).",
+      "properties": {
+        "telefon_tablet": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 512
+        },
+        "rechner": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 512
+        },
+        "unbekannt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 512
+        }
+      }
+    },
+    "netz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rolle",
+        "netz",
+        "box_adresse",
+        "erreichbar",
+        "aktiv"
+      ],
+      "description": "Ein Netz, in dem die Box sucht. Nach der Bereichsregel (docs/contracts/lan-range-vectors.json): RFC1918-IPv4, höchstens /24, die Box-Adresse liegt darin.",
+      "properties": {
+        "rolle": {
+          "enum": [
+            "kundennetz",
+            "box_netz"
+          ],
+          "description": "kundennetz = das Netz der Standardroute (Edge Light: WAN; Docker-Box: das /24 um VP_LAN_HOST). box_netz = das eigene Netz von Edge Light (LAN/WLAN). Jede Rolle höchstens einmal."
+        },
+        "netz": {
+          "$ref": "#/$defs/cidr"
+        },
+        "box_adresse": {
+          "$ref": "#/$defs/ipv4",
+          "description": "Die eigene Adresse der Box in diesem Netz. Sie wird nie angesprochen und kommt nie als Fund vor."
+        },
+        "ausschnitt": {
+          "type": "boolean",
+          "description": "true = das Netz der Schnittstelle ist größer als /24, gesucht wurde nur das /24 um die Box. Fehlt = unbekannt (die Docker-Box kennt die Netzmaske des Hosts nicht)."
+        },
+        "erreichbar": {
+          "type": "boolean",
+          "description": "false = die Route in dieses Netz geht nicht über diese Schnittstelle; dann wurde darin nicht gesucht."
+        },
+        "aktiv": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 254,
+          "description": "Adressen, die geantwortet haben (Edge Light: Nachbarn in der ARP-Tabelle; Docker-Box: Verbindungsaufbau angenommen oder abgewiesen)."
+        }
+      }
+    },
+    "fund": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schluessel",
+        "erkenner",
+        "art",
+        "erkennung",
+        "anbindung",
+        "verbindung",
+        "merkmale",
+        "liest_box_schon"
+      ],
+      "description": "Ein Energie-Gerät oder ein Stück Netz-Technik (DP-3 A). Telefone, Rechner und Unbekanntes sind nie ein Fund, sondern nur eine Zahl in weitere.",
+      "properties": {
+        "schluessel": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]{1,32}:[A-Za-z0-9._:-]{1,96}$",
+          "description": "Eindeutig innerhalb der Suche: <erkenner>:<Seriennummer, Logger-Seriennummer oder ip:port>."
+        },
+        "erkenner": {
+          "$ref": "#/$defs/erkenner_fund"
+        },
+        "art": {
+          "$ref": "#/$defs/art"
+        },
+        "hersteller": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "description": "Kleingeschrieben, wie die Marken-Schlüssel der Vorlagen (deye, shelly, go-e, fronius …). Fehlt = das Gerät hat es nicht gesagt."
+        },
+        "modell": {
+          "$ref": "#/$defs/text64",
+          "description": "Wie das Gerät es nennt (z. B. SPEM-003CEBEU)."
+        },
+        "seriennummer": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$",
+          "description": "Die eigene Seriennummer des Geräts; sie trägt die Identität (DP-3 A, statt einer MAC). Nie bei Netz-Technik."
+        },
+        "firmware": {
+          "$ref": "#/$defs/text64",
+          "description": "Nie bei Netz-Technik."
+        },
+        "familie": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_]{0,31}$",
+          "description": "Die Registerkarten-Familie der Vorlagen, soweit das Gerät sie verrät (Deye: string, hybrid_1p, hybrid_3p, micro)."
+        },
+        "spannung": {
+          "enum": [
+            "hv",
+            "lv"
+          ],
+          "description": "Batterie Hoch- oder Niedervolt (Deye-Typregister 0x0000)."
+        },
+        "kanaele": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16,
+          "description": "Schaltausgänge (Shelly); das Portal legt je Ausgang eine Komponente an."
+        },
+        "erkennung": {
+          "enum": [
+            "sicher",
+            "wahrscheinlich",
+            "unbekannt"
+          ],
+          "description": "sicher = das Gerät hat Hersteller, Typ oder Seriennummer selbst gesagt; wahrscheinlich = Merkmale passen ohne Selbstauskunft; unbekannt = nur erreichbar."
+        },
+        "merkmale": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]{1,64}$"
+          },
+          "description": "Woran erkannt (z. B. v5_kopf_seriennummer, shelly_gen2_antwort); höchstens 8 (Leser-Regel)."
+        },
+        "anbindung": {
+          "$ref": "#/$defs/anbindung"
+        },
+        "hindernis": {
+          "enum": [
+            "geschuetzt",
+            "lokale_api_aus"
+          ],
+          "description": "geschuetzt = das Gerät verlangt eine Anmeldung (401/403, Shelly auth_en); die Box meldet sich nie an. lokale_api_aus = go-e antwortet ohne lokale API v2."
+        },
+        "verbindung": {
+          "$ref": "#/$defs/verbindung"
+        },
+        "liest_box_schon": {
+          "type": "boolean",
+          "description": "true = diese Box liest das Gerät schon; ein Ein-Client-Logger wurde dafür nicht neu verbunden, die Angaben kommen aus dem laufenden Leser."
+        }
+      }
+    },
+    "verbindung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ip",
+        "port"
+      ],
+      "description": "Die Verbindungsfelder in den Schlüsseln der Vorlagen (transport_schema): so übernimmt das Portal sie in den Anlege-Fluss.",
+      "properties": {
+        "communication": {
+          "enum": [
+            "solarman_v5",
+            "shelly_http",
+            "goe_http_api",
+            "fronius_solar_api",
+            "fronius_sunspec",
+            "sunspec_tcp",
+            "kaco_http",
+            "kostal_modbus",
+            "huawei_modbus",
+            "ebyte_modbus_tcp",
+            "modbus_tcp"
+          ],
+          "description": "Die Kommunikationsart der Vorlagen (builtin.json). Pflicht bei anbindung uebernehmen und selbst_beschreiben (Leser-Regel)."
+        },
+        "ip": {
+          "$ref": "#/$defs/ipv4",
+          "description": "Liegt in einem der gemeldeten Netze und ist nie die Box-Adresse (Bereichsregel ziel)."
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "serial": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295,
+          "description": "Solarman: die Logger-Seriennummer aus dem V5-Antwortkopf. Pflicht bei communication solarman_v5 (Leser-Regel)."
+        },
+        "unit_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      }
+    },
+    "erkenner_fund": {
+      "enum": [
+        "solarman",
+        "shelly",
+        "goe",
+        "netztechnik",
+        "modbus_offen",
+        "sunspec",
+        "fronius_solar_api",
+        "kaco_aiswei",
+        "kostal",
+        "huawei",
+        "sma",
+        "victron",
+        "opendtu_ahoy",
+        "ebyte",
+        "wago"
+      ],
+      "description": "Die Erkenner, die einen Fund erzeugen (Tabelle erkennungskatalog in geraetesuche-vectors.json)."
+    },
+    "art": {
+      "enum": [
+        "wechselrichter",
+        "wallbox",
+        "schaltaktor",
+        "zaehler",
+        "io_modul",
+        "sps",
+        "dtu",
+        "modbus_geraet",
+        "router",
+        "zugangspunkt"
+      ],
+      "description": "router und zugangspunkt sind Netz-Technik (nur Modell und Adresse); alles andere ein Energie-Gerät."
+    },
+    "anbindung": {
+      "enum": [
+        "uebernehmen",
+        "selbst_beschreiben",
+        "nicht_mit_dieser_box",
+        "kein_leseweg",
+        "nur_anzeige"
+      ],
+      "description": "Was diese Box-Art damit kann (Tabelle erkennungskatalog je Box-Art). nicht_mit_dieser_box und kein_leseweg zusammen sind „erkannt, mit dieser Box noch nicht anbindbar“: das eine liest die andere Box-Art schon, das andere keine."
+    },
+    "ipv4": {
+      "type": "string",
+      "pattern": "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"
+    },
+    "cidr": {
+      "type": "string",
+      "pattern": "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/(2[4-9]|30)$"
+    },
+    "text64": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f]{1,64}$"
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "zeit": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "erkenner": {
+      "enum": [
+        "solarman",
+        "shelly",
+        "goe",
+        "netztechnik",
+        "modbus_offen",
+        "sunspec",
+        "fronius_solar_api",
+        "kaco_aiswei",
+        "kostal",
+        "huawei",
+        "sma",
+        "victron",
+        "opendtu_ahoy",
+        "ebyte",
+        "wago",
+        "mdns",
+        "ssdp",
+        "funkmodul"
+      ],
+      "description": "Zwilling von $defs/erkenner in mqtt-geraetesuche.schema.json: Erkenner und Wege."
+    }
+  }
+}
