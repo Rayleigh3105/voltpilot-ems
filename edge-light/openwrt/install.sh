@@ -100,4 +100,4 @@ box_ssh "$TARGET" "uci set vp-edge-light.main.base_url='$BASE_URL' && uci set vp
 
 echo "--- fertig. Starten:  ssh $TARGET /etc/init.d/vp-edge-light restart"
 echo "    Protokoll:         ssh $TARGET logread -f -e vp-edge-light"
-echo "    Lokale Web-App:    http://<mango-ip>:8484"
+echo "    Lokale Web-App:    http://${TARGET#*@}:8484"

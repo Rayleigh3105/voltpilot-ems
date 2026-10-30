@@ -24,6 +24,7 @@ edge-light/scripts/test.sh          # Vektoren, Go-Tests (mit Race-Detector), MI
 edge-light/scripts/build.sh         # dist/vp-edge-light-linux-{mipsle,arm64,amd64} + .sha256
 edge-light/test/qemu-smoke.sh       # MIPS-Programm unter Emulation gegen simulierten Deye
 edge-light/test/install-probe.sh    # install.sh gegen OpenWrt im Container (nach build.sh amd64)
+edge-light/test/boot-speicher-probe.sh  # Speicherpruefung des Loaders gegen OpenWrt im Container
 ```
 
 Lokal ohne Router ausprobieren (amd64):

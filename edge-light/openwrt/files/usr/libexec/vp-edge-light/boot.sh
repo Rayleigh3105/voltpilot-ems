@@ -92,16 +92,45 @@ for d in $HOT_DIRS; do
   ln -s "$RAM_DIR/$d" "$DATA_DIR/$d"
 done
 
-free_kb() { awk '/^MemAvailable:/ {print $2; exit}' /proc/meminfo; }
+# --- Speicher fuer das Programm im tmpfs ---------------------------------------
+# MemAvailable rechnet vom Seitencache nur etwa die Haelfte als verfuegbar, und
+# ohne Speicherdruck raeumt der Kernel ihn nicht. Am VoltPilotGATE zeigte der
+# Router nach einem Update so nur ~39 600 kB (MemFree 45 964, Inactive(file)
+# 29 092 kB) - unter der Schwelle bei jedem Versuch procds, die Box blieb aus.
+# Deshalb: liegt der Wert unter der Schwelle, wird der Seitencache einmal
+# geraeumt und neu gemessen. Gemessen wird weiter MemAvailable, die Reserve des
+# Kernels zaehlt also nie als frei. Bewusst NICHT MemFree + Inactive(file): das
+# zaehlt Seiten, die gerade nicht frei werden (gemappt, schmutzig), und
+# uebergeht die Reserve - und das Programm im tmpfs ist ohne Swap nicht
+# verdraengbar, eine zu hohe Schaetzung endet beim OOM-Killer. Die Schwelle
+# selbst bleibt (Programm ~16 MB plus Prozess ~20 MB, die Fassung waechst).
+# VP_LOADER_PROC nur fuer edge-light/test/boot-speicher-probe.sh.
+PROC="${VP_LOADER_PROC:-/proc}"
+
+free_kb() { awk '/^MemAvailable:/ {print $2; exit}' "$PROC/meminfo"; }
+
+# genug_speicher <Folge> - 0, wenn das Programm Platz hat (oder der Wert
+# unbekannt ist); sonst Meldung "zu wenig freier Speicher ... - <Folge>".
+genug_speicher() {
+  avail="$(free_kb)"
+  if [ -z "$avail" ] || [ "$avail" -ge "$MIN_FREE_KB" ]; then return 0; fi
+  sync
+  if { echo 1 >"$PROC/sys/vm/drop_caches"; } 2>/dev/null; then
+    vorher="$avail"
+    avail="$(free_kb)"
+    log "Seitencache geraeumt: ${vorher} kB -> ${avail} kB verfuegbar"
+    if [ -z "$avail" ] || [ "$avail" -ge "$MIN_FREE_KB" ]; then return 0; fi
+  else
+    log "Seitencache nicht raeumbar ($PROC/sys/vm/drop_caches)"
+  fi
+  log "zu wenig freier Speicher (${avail} kB < ${MIN_FREE_KB} kB) - $1"
+  return 1
+}
 
 # --- Programm in den RAM laden (oder die schon geladene Fassung nehmen) -------
 fetch() {
   rm -f "$BIN.part" "$BIN.sha256"
-  avail="$(free_kb)"
-  if [ -n "$avail" ] && [ "$avail" -lt "$MIN_FREE_KB" ]; then
-    log "zu wenig freier Speicher (${avail} kB < ${MIN_FREE_KB} kB) - Download verschoben"
-    return 1
-  fi
+  genug_speicher "Download verschoben" || return 1
   uclient-fetch -q -T 30 -O "$BIN.sha256" "$URL.sha256" || { log "Pruefsumme nicht ladbar: $URL.sha256"; return 1; }
   uclient-fetch -q -T 120 -O "$BIN.part" "$URL" || { log "Programm nicht ladbar: $URL"; rm -f "$BIN.part"; return 1; }
   want="$(awk '{print $1; exit}' "$BIN.sha256")"
@@ -132,11 +161,7 @@ unpack_local() {
     rm -f "$BIN"
   fi
   rm -f "$BIN.part"
-  avail="$(free_kb)"
-  if [ -n "$avail" ] && [ "$avail" -lt "$MIN_FREE_KB" ]; then
-    log "zu wenig freier Speicher (${avail} kB < ${MIN_FREE_KB} kB) - lokale Kopie nicht entpackt"
-    return 1
-  fi
+  genug_speicher "lokale Kopie nicht entpackt" || return 1
   gunzip -c "$LOCAL_GZ" >"$BIN.part" || { log "lokale Kopie nicht entpackbar: $LOCAL_GZ"; rm -f "$BIN.part"; return 1; }
   got="$(sha256sum "$BIN.part" | awk '{print $1}')"
   if [ -z "$want" ] || [ "$want" != "$got" ]; then

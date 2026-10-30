@@ -9,7 +9,8 @@
 #   2. VP_SSH_KEY nennt die Schluesseldatei fuer JEDEN ssh-Aufruf,
 #   3. die Bauart steht danach auf der Box (uci vp-edge-light.main.arch), und
 #      der Loader startet die lokale Kopie dieser Bauart,
-#   4. ein zweiter Aufruf ohne VP_SSH_KEY ruft ssh ohne -i auf.
+#   4. ein zweiter Aufruf ohne VP_SSH_KEY ruft ssh ohne -i auf,
+#   5. die Schlusszeile nennt die Web-App unter der Adresse des Ziels.
 #
 # "ssh" ist ein Ersatz, der die Befehle per docker exec im Container
 # ausfuehrt und eine Schluesseldatei (-i) nur mitschreibt.
@@ -87,6 +88,7 @@ else
   falsch "jeder ssh-Aufruf bekommt -i <datei> ($(zeilen "$ARBEIT/ssh-i.log") von $AUFRUFE)"
 fi
 grep -q 'Pruefsumme auf dem Geraet bestaetigt' "$ARBEIT/install.1" && ok "lokale Kopie auf der Box nachgeprueft" || falsch "lokale Kopie auf der Box nachgeprueft"
+grep -qF 'Lokale Web-App:    http://box:8484' "$ARBEIT/install.1" && ok "Schlusszeile nennt die Adresse des Ziels" || falsch "Schlusszeile nennt die Adresse des Ziels"
 
 schritt "3. Die Bauart steht auf der Box, der Loader startet ihre Kopie"
 pruefe "uci vp-edge-light.main.arch = amd64" '[ "$(uci get vp-edge-light.main.arch)" = amd64 ]'

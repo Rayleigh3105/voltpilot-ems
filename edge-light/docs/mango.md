@@ -488,7 +488,9 @@ Zwei Lücken für den Pilot, beide am Gerät gefunden:
 | RAM-Verzeichnisse (Puffer bis 48 h, Ausgang, OCPP-Ereignisse) | wenige MB, wachsen bei langem Cloud-Ausfall |
 | **Reserve** | **ca. 20–35 MB** |
 
-Der Loader startet einen Download nur bei mindestens 40 MB freiem Speicher (`min_free_kb`).
+Der Loader lädt oder entpackt das Programm nur, wenn mindestens 40 MB frei sind (`min_free_kb`, Vorgabe 40000 kB). Gemessen wird `MemAvailable`. Der Kernel rechnet darin vom Seitencache nur etwa die Hälfte als verfügbar und räumt ihn ohne Speicherdruck nicht. Liegt der Wert unter der Schwelle, schreibt der Loader deshalb einmal `sync; echo 1 > /proc/sys/vm/drop_caches` und misst neu; das meldet er mit `Seitencache geraeumt: <vorher> kB -> <nachher> kB verfuegbar`. Erst wenn es auch danach nicht reicht, verschiebt er Download oder Entpacken, und procd versucht es neu.
+
+Anlass war die Abnahme am VoltPilotGATE (Mangel M1): Nach einem Update zeigte der Router bei 45 964 kB `MemFree` und 29 092 kB `Inactive(file)` nur ~39 600 kB `MemAvailable`. Die Box blieb über alle Versuche procds aus, bis jemand von Hand `drop_caches` schrieb (danach 73 980 kB). Die Schwelle zu senken wäre keine Lösung: Programm ~16 MB plus Prozess ~20 MB, und die Fassung wächst. `MemFree + Inactive(file)` zu zählen auch nicht: Das schätzt zu hoch (gemappte und schmutzige Seiten, die Reserve des Kernels), und das Programm im tmpfs lässt sich ohne Swap nicht verdrängen. Belegt im Container mit `edge-light/test/boot-speicher-probe.sh` (OpenWrt 25.12.5, nachgestelltes `/proc/meminfo` aus dem Bericht); der Lauf auf dem Gerät steht noch aus.
 
 ## Lokale Kopie im Flash (gebaut, am Gerät geprüft 03.10.2026)
 
