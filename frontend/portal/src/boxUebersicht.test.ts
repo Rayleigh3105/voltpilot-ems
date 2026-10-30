@@ -34,7 +34,7 @@ describe('Box-Übersicht · reine Ableitungen', () => {
   it('zeigt gemeldete Fähigkeiten nur an der meldenden Box und nutzt das Cloud-Urteil', () => {
     const result = boxUebersicht(
       [box('box-1', 'Alt', false), box('box-2', 'Neu', true)],
-      [{ ...version, supports: ['data_sources'], capabilities: ['data_sources'] }],
+      [{ ...version, supports: ['data_sources', 'geraetesuche'], capabilities: ['data_sources', 'geraetesuche'] }],
       new Map([['anlage-1', 'Halle 2']]), JETZT,
     );
     expect(result.find((b) => b.id === 'box-2')?.faehigkeiten).toBe('Software 2.5.0 · alle Fähigkeiten');
@@ -44,7 +44,7 @@ describe('Box-Übersicht · reine Ableitungen', () => {
   it('kein Update-Hinweis für Zuständigkeit ab Zeitpunkt: der Cloud-Zeitgeber erbringt sie für jede Box', () => {
     const [v] = boxUebersicht(
       [box('box-2', 'Box Halle 2', true)],
-      [{ ...version, capabilities: ['data_sources'] }],
+      [{ ...version, capabilities: ['data_sources', 'geraetesuche'] }],
       new Map([['anlage-1', 'Halle 2']]), JETZT,
     );
     expect(v.faehigkeiten).toBe('Software 2.5.0 · alle Fähigkeiten');
@@ -75,7 +75,7 @@ describe('Box-Übersicht · reine Ableitungen', () => {
     )[0];
     expect(v.verbindung).toBe('Verbunden');
     expect(v.rolle).toBe('Führt Halle 2');
-    expect(v.faehigkeiten).toBe('Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle');
+    expect(v.faehigkeiten).toBe('Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche');
     expect(v.updateNoetig).toBe(true);
   });
 

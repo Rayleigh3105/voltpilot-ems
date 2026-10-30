@@ -124,6 +124,8 @@ export function AnlegenFlow({
   startRolle = null,
   startVerbindung = null,
   onZurueck = null,
+  zurueckLabel,
+  startHerkunft = null,
   onFertig,
   onClose,
   onSaved,
@@ -174,6 +176,13 @@ export function AnlegenFlow({
   startVerbindung?: Readonly<Record<string, unknown>> | null;
   /** Zurück in den Katalog (Pfeil im Kopf, Hebel „Anderes Modell"). */
   onZurueck?: (() => void) | null;
+  /** Wohin der Pfeil zurückführt, wenn nicht in den Katalog (Gerätesuche: „Zurück zur Gerätesuche"). */
+  zurueckLabel?: string;
+  /**
+   * Woher die Vorbelegung stammt, als ein Satz am Anschluss („Aus der Gerätesuche: …"). Gesetzt nur aus der
+   * Gerätesuche - dann bittet der Fluss nach dem bestandenen Test zusätzlich, die Richtung am Gerät zu vergleichen.
+   */
+  startHerkunft?: string | null;
   /** Nach dem Anlegen: was entstanden ist - der Wirt springt darauf und sagt es. */
   onFertig?: (info: { id: string | null; titel: string; uebernommen: boolean; hinweis?: string | null }) => void;
   onClose: () => void;
@@ -1097,6 +1106,7 @@ export function AnlegenFlow({
         titel="Gerät einrichten"
         onClose={onClose}
         onZurueck={onZurueck}
+        zurueckLabel={zurueckLabel}
         kopf={
           <EinrichtenKopf
             titel={modellTitel(template)}
@@ -1190,6 +1200,12 @@ export function AnlegenFlow({
                 ))}
               </details>
             )}
+            {startHerkunft && (
+              <p className="vp-ein-notiz" data-testid="aus-der-suche">
+                <Icon name="search" size={15} />
+                <span>{startHerkunft}</span>
+              </p>
+            )}
           </Abschnitt>
 
           <Abschnitt
@@ -1226,6 +1242,13 @@ export function AnlegenFlow({
                   </ul>
                 )}
               </div>
+            )}
+            {/* Aus der Gerätesuche (Bericht §4 „Übernehmen"): die Werte kamen an - stimmt auch die Richtung? */}
+            {startHerkunft && testZustand === 'bestanden' && (
+              <p className="vp-ein-notiz" data-testid="richtung-pruefen">
+                <Icon name="info" size={15} />
+                <span>Stimmen Laden/Entladen und Bezug/Einspeisung mit der Anzeige am Gerät überein?</span>
+              </p>
             )}
             {(testZustand === 'bestanden' || testZustand === 'fehlgeschlagen') && (
               <Recht aktion="geraet.einrichten"><Button variant="outline" className="vp-anlegen-nochmal" onClick={testen} disabled={speichern}>
@@ -1410,7 +1433,13 @@ export function AnlegenFlow({
         siteId={siteId}
         vorlage={vorlage}
         vorher={vorherigeIds}
+        startAdresse={
+          typeof startVerbindung?.ip === 'string'
+            ? { host: startVerbindung.ip, port: typeof startVerbindung.port === 'number' ? startVerbindung.port : null }
+            : null
+        }
         onZurueck={onZurueck}
+        zurueckLabel={zurueckLabel}
         onClose={onClose}
         onGespeichert={(result, info) => {
           onSaved(result);
@@ -1444,6 +1473,7 @@ export function AnlegenFlow({
         titel="Gerät einrichten"
         onClose={onClose}
         onZurueck={onZurueck}
+        zurueckLabel={zurueckLabel}
         kopf={
           <EinrichtenKopf
             titel="Ladesäule mit OCPP 1.6"

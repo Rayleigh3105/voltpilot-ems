@@ -21,6 +21,8 @@ import {
 } from '../api';
 import { consumersApi } from '../consumers/consumersApi';
 import { gatewayForm, goreForm } from '../test/boxGeraeteFixtures';
+import { gsVerlauf } from '../test/geraetesucheFixtures';
+import { aufbauHash } from '../nav';
 
 const site: Site = {
   id: 's-1',
@@ -651,5 +653,63 @@ describe('BoxSeiteSection · Geräte an dieser Box (GE-4)', () => {
     expect(modul).not.toHaveTextContent('Anschluss ohne Gerät');
     expect(modul).not.toHaveTextContent('192.168.4.165');
     expect(screen.getByTestId('box-last')).toHaveTextContent('Last 51 %');
+  });
+});
+
+describe('BoxSeiteSection · Gerätesuche (Bericht §4 „Einstiege“, m1/m8/d1)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const verlauf = () => gsVerlauf(Date.now()).map((e) => ({ ...e, deviceId: box.id }));
+
+  it('„Geräte suchen“ im Kopf der Karte führt mit der Box in den Aufbau; die letzte Suche steht darunter', async () => {
+    stub();
+    vi.spyOn(api, 'geraetesucheVerlauf').mockResolvedValue({ suchen: verlauf() });
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    const knopf = await screen.findByTestId('geraete-suchen');
+    expect(knopf).toHaveAttribute('href', aufbauHash(site.id, 'suche', { box: box.id }));
+    expect(knopf).toHaveTextContent('Geräte suchen');
+    const letzte = await screen.findByTestId('letzte-suche');
+    expect(letzte).toHaveTextContent(/^Letzte Suche heute \d\d:\d\d · 2 Energie-Geräte, 2 davon noch nicht übernommen/);
+    expect(within(letzte).getByRole('link', { name: 'Letzte Suchen' }))
+      .toHaveAttribute('href', aufbauHash(site.id, 'suche', { box: box.id, verlauf: true }));
+    expect(screen.queryByTestId('geraetesuche-grund')).toBeNull();
+  });
+
+  it('ohne die Fähigkeit: ausgegraut, mit „Update nötig für: Gerätesuche“ und „Update planen“', async () => {
+    stub();
+    vi.mocked(api.edgeVersions).mockResolvedValue(sichtbareListe([
+      { deviceId: 'gw', siteId: 's-1', coreVersion: 'edge-2026.10.1', paletteVersion: null, reportedAt: FRISCH, capabilities: ['data_sources'] },
+    ]));
+    vi.spyOn(api, 'geraetesucheVerlauf').mockResolvedValue({ suchen: [] });
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    const grund = await screen.findByTestId('geraetesuche-grund');
+    expect(grund).toHaveTextContent('Update nötig für: Gerätesuche');
+    expect(within(grund).getByRole('link', { name: /Update planen/ })).toBeInTheDocument();
+    const knopf = screen.getByRole('button', { name: 'Geräte suchen' });
+    expect(knopf).toBeDisabled();
+    expect(knopf).toHaveAttribute('aria-describedby', 'box-geraetesuche-grund');
+  });
+
+  it('eine laufende Suche lässt sich mitansehen - mit Person und Dauer', async () => {
+    stub();
+    const [, zweite] = verlauf();
+    vi.spyOn(api, 'geraetesucheVerlauf').mockResolvedValue({
+      suchen: [{ ...zweite, zustand: 'laeuft', gestartetAm: new Date(Date.now() - 12_000).toISOString(), dauerMs: null }],
+    });
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    expect(await screen.findByTestId('geraetesuche-grund')).toHaveTextContent(/Suche läuft · seit 1\d s · gestartet von Anna Weber \(VoltPilot-Service\)/);
+    expect(screen.getByRole('link', { name: 'Mitansehen' }))
+      .toHaveAttribute('href', aufbauHash(site.id, 'suche', { box: box.id, such: zweite.suchId }));
+  });
+
+  it('leere Box (m1): „An dieser Box meldet sich noch kein Gerät.“ mit dem Hauptknopf; offline sagt es warum', async () => {
+    stub({ entities: () => Promise.resolve({ registry: null, entities: [], localSetup: [], staleOnDevice: [] }), sources: [] });
+    vi.spyOn(api, 'geraetesucheVerlauf').mockResolvedValue({ suchen: [] });
+    const alt = { ...box, lastSeenAt: new Date(Date.now() - 30 * 60_000).toISOString() };
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[alt]} />);
+    const leer = await screen.findByTestId('geraetesuche-leer');
+    expect(within(leer).getByText('An dieser Box meldet sich noch kein Gerät.')).toBeInTheDocument();
+    expect(within(leer).getByRole('button', { name: 'Geräte suchen' })).toBeDisabled();
+    expect(within(leer).getByTestId('geraetesuche-grund')).toHaveTextContent(/^Ihre Box meldet sich gerade nicht \(zuletzt \d\d:\d\d\)/);
+    expect(within(leer).getByRole('link', { name: 'Von Hand hinzufügen' })).toHaveAttribute('href', aufbauHash(site.id, 'geraet'));
   });
 });

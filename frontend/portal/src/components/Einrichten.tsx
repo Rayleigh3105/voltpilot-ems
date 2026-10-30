@@ -24,6 +24,7 @@ export function EinrichtenSeite({
   titel,
   onClose,
   onZurueck,
+  zurueckLabel = 'Zurück zum Katalog',
   kopf,
   fuss,
   children,
@@ -33,6 +34,8 @@ export function EinrichtenSeite({
   onClose: () => void;
   /** Zurück in den Katalog; null = die Seite wurde nicht aus dem Katalog geöffnet. */
   onZurueck?: (() => void) | null;
+  /** Wohin der Pfeil zurückführt (aus der Gerätesuche: „Zurück zur Gerätesuche"). */
+  zurueckLabel?: string;
   kopf?: ReactNode;
   fuss: ReactNode;
   children: ReactNode;
@@ -44,7 +47,7 @@ export function EinrichtenSeite({
       title={titel}
       icon={
         onZurueck ? (
-          <button type="button" className="vp-ein-zurueck" onClick={onZurueck} aria-label="Zurück zum Katalog">
+          <button type="button" className="vp-ein-zurueck" onClick={onZurueck} aria-label={zurueckLabel}>
             <Icon name="chevron-left" size={20} />
           </button>
         ) : undefined

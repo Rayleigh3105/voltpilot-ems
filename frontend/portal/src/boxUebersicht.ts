@@ -83,6 +83,7 @@ export function boxLast(boxId: string, datenquellen: readonly UemsDatenquelle[] 
 /** Runtime copy of the reviewed capability table; its vector test pins names and order. */
 export const BOX_FAEHIGKEITEN: TabellenEintrag[] = [
   { code: 'data_sources', name: 'Rückmeldung je Datenquelle', ab_release: null },
+  { code: 'geraetesuche', name: 'Gerätesuche', ab_release: null },
 ];
 
 export interface BoxQuelleZeile {

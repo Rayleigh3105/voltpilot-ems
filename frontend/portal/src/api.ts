@@ -41,6 +41,7 @@ export type { Fahrzeug, FahrzeugWunsch, SiteFahrzeuge } from './fahrzeugProfile'
 import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
 import type { ComponentMatch } from './komponentenAssistent';
+import type { Geraetesuche, GeraetesucheVerlaufEintrag } from './geraetesuche';
 
 /** AP-08 IP-16: Prüfseite und Ersatzwerte; Werte entstehen erst nach Freigabe im Rechenlauf. */
 export type ErsatzwertMethode = 'gleichmaessig_verteilen' | 'profil_vorperiode' | 'profil_vergleichsquelle'
@@ -10946,6 +10947,30 @@ export const api = {
   componentTemplates: () => request<ComponentTemplate[]>('/api/v1/component-templates'),
   componentTemplate: (templateRef: string) =>
     request<ComponentTemplate>(`/api/v1/component-templates/${encodeURIComponent(templateRef)}`),
+  /**
+   * „Geräte suchen" (OpenAPI-Tag `geraetesuche`, docs/contracts/v2/mqtt-geraetesuche.md §7): startet auf der Box
+   * einen lesenden Suchlauf im Heimnetz. Netze, Ports und Dauer bestimmt allein die Box; der Körper nennt nur die
+   * Box. 409 `laeuft_schon`/`nicht_unterstuetzt`/`box_offline`, 429 `zu_oft` - der Körper der Ablehnung ist ein
+   * `GeraetesucheFehler` (`ApiError.body`).
+   */
+  geraetesucheStarten: (siteId: string, deviceId: string, kennung: string) =>
+    request<Geraetesuche>(`/api/v1/sites/${siteId}/geraetesuche`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId }),
+      ...mitKennung(kennung),
+    }),
+  /** Eine Suche: solange sie läuft, fragt das Portal alle 2 s und hört danach auf. */
+  geraetesuche: (siteId: string, suchId: string, signal?: AbortSignal) =>
+    request<Geraetesuche>(`/api/v1/sites/${siteId}/geraetesuche/${suchId}`, { signal }),
+  /** Abbrechen: die Funde bis dahin gelten; eine beendete Suche bleibt, wie sie ist. */
+  geraetesucheAbbrechen: (siteId: string, suchId: string) =>
+    request<Geraetesuche>(`/api/v1/sites/${siteId}/geraetesuche/${suchId}`, { method: 'DELETE' }),
+  /** Die Suchen der letzten 30 Tage, jüngste zuerst; nur Zahlen je Gruppe, nie die Funde (DP-3 A). */
+  geraetesucheVerlauf: (siteId: string, deviceId?: string | null, signal?: AbortSignal) =>
+    request<{ suchen: GeraetesucheVerlaufEintrag[] }>(
+      `/api/v1/sites/${siteId}/geraetesuche${deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : ''}`,
+      { signal },
+    ),
   /** Die Komponenten einer Anlage samt Autoritäts- und Soll/Ist-Stand (Stufe 1). */
   siteComponents: (siteId: string) =>
     request<SiteComponents>(`/api/v1/sites/${siteId}/components`),

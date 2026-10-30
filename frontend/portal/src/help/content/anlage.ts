@@ -4,7 +4,7 @@ export const plantArticles: HelpArticle[] = [
   {
     id: 'anlagenmodell', category: 'anlage', title: 'Den Aufbau Ihrer Anlage verstehen',
     summary: 'Wie Anlage, VoltPilot-Box und Geräte zusammengehören und wie Sie ein Gerät hinzufügen.',
-    keywords: ['Aufbau', 'Standort', 'Komponente', 'Modell', 'Gerät', 'Box', 'Zuordnung', 'Messwert', 'Hinzufügen', 'Katalog', 'Suche', 'Filter', 'Modbus', 'Ladesäule', 'Batterie'],
+    keywords: ['Aufbau', 'Standort', 'Komponente', 'Modell', 'Gerät', 'Box', 'Zuordnung', 'Messwert', 'Hinzufügen', 'Katalog', 'Suche', 'Filter', 'Modbus', 'Ladesäule', 'Batterie', 'Gerätesuche', 'Geräte suchen', 'Heimnetz', 'Seriennummer'],
     sections: [
       { id: 'ordnung', title: 'Von der Anlage bis zum Messwert', paragraphs: [
         "Der Reiter „Aufbau“ zeigt Ihre Anlage als Tabelle: die Anlage, ihre VoltPilot-Boxen und die Geräte daran, jedes mit Art, Zustand und Wert. Die Suche findet Namen, Modelle und Kennungen; die Filter grenzen nach Art, Zustand, Box und Hersteller ein. Ein Gerät kann mehrere Komponenten liefern, etwa Speicher und Netzanschluss. Eine Datenverbindung allein erlaubt noch keine Steuerung.",
@@ -21,6 +21,15 @@ export const plantArticles: HelpArticle[] = [
         'Nach der Wahl öffnet die Einrichten-Seite. Tragen Sie den Anschluss ein; die Box testet dann von selbst und zeigt echte Werte.',
         'Mit echten Werten geht „Speichern“. Danach springt der Aufbau auf das neue Gerät.',
       ], figure: 'geraet-hinzufuegen' },
+      { id: 'geraete-suchen', title: 'Geräte im Heimnetz suchen lassen', paragraphs: [
+        "„Geräte suchen“ lässt Ihre VoltPilot-Box ihr Heimnetz nach Wechselrichtern, Zählern, Wallboxen und Schaltern durchsuchen. Es wird nur gelesen: die Box meldet sich nirgends an und schreibt nichts. Sie sucht höchstens drei Minuten und nur in ihren eigenen privaten Netzen.",
+        "Die Funde stehen in festen Gruppen: was Ihre Hilfe braucht (etwa eine neue Adresse oder ein Passwortschutz), was sich übernehmen lässt, was erkannt, aber mit dieser Box noch nicht anbindbar ist, und was schon eingerichtet ist. Telefone und Rechner stehen nur als Anzahl da. „Woran erkannt?“ zeigt, was das Gerät über sich gesagt hat.",
+        "Hat ein eingerichtetes Gerät eine neue Adresse, erkennt die Suche es an der Seriennummer, nie an der Adresse. Ein Tipp übernimmt die neue Adresse für dasselbe Gerät; stellen Sie im Router am besten eine feste IP ein.",
+      ], steps: [
+        'Auf der Box-Seite „Geräte suchen“ antippen – oder im Katalog „Im Heimnetz suchen“. Die Suche dauert meist unter einer Minute; Sie können das Fenster schließen, sie läuft weiter.',
+        'Beim gefundenen Gerät „Übernehmen“ antippen. Die Einrichten-Seite öffnet mit dem Anschluss aus der Suche; der Test startet von selbst. Gefragt wird nur, was die Suche nicht lesen kann, etwa das Modell vom Typenschild.',
+        'Mit echten Werten speichern. Danach führt der Weg zurück zur Liste, das nächste Gerät steht oben.',
+      ], note: 'Ist der Knopf ausgegraut, steht darunter der Grund: die Box meldet sich gerade nicht, sie braucht ein Update („Update nötig für: Gerätesuche“) oder es läuft schon eine Suche, die Sie mitansehen können.' },
       { id: 'einrichten', title: 'Die Einrichten-Seite lesen', paragraphs: [
         "Die Leiste links zeigt, was fertig ist, was jetzt dran ist und was danach kommt. Solange etwas fehlt, steht der Grund neben „Speichern“. Ein Test ohne gültige Werte speichert nichts; die Hinweise darunter nennen, was Sie prüfen können.",
       ], figure: 'geraet-einrichten' },

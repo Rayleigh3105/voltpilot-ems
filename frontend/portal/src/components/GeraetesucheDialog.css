@@ -1,0 +1,635 @@
+/*
+ * „Geräte suchen" im Haus-`Modal` (Konzept vp-portal-geraetesuche-konzept, Board-Runde 1: „auf dem Handy cleaner").
+ * Feste Regeln der ruhigen Fassung: gruppierte weiße Listen statt farbiger Karten; je Gerät Name, eine graue Zeile und
+ * eine Handlung; der Hauptknopf unten fest; Farbe nur für Zustand und Handlung; Hinweise als eine Zeile. Am Rechner
+ * dieselbe Liste mit Spalten für Seriennummer und Adresse (Tabelle ↔ Karten am Telefon).
+ *
+ * Bewegung nur über vorhandene Schleifen: die Puls-Ringe sind `.vp-loader-ring` (stehen unter reduzierter Bewegung im
+ * EINEN Block von `index.css`), der Balken wechselt seine Breite über `--vp-motion-chart-update`.
+ */
+
+.vp-gs {
+  display: grid;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+.vp-gs h3 {
+  margin: 0;
+  font-family: var(--vp-font-heading);
+  font-size: 1.25rem;
+  line-height: 1.25;
+  color: var(--vp-text-dark);
+  overflow-wrap: anywhere;
+}
+/* Der Titel bekommt beim Wechsel der Ansicht den Fokus (Ansage für Bildschirmleser) - ohne Rahmen, er ist kein Bedienelement. */
+.vp-gs h3:focus,
+.vp-gs h3:focus-visible {
+  outline: none;
+}
+.vp-gs-unter {
+  margin: 2px 0 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-gs-kopf {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* ── Leer, Start, Fehler, nichts gefunden: ein Bild, ein Satz ────────────────────────── */
+.vp-gs-leer {
+  display: grid;
+  justify-items: center;
+  gap: var(--vp-space-3);
+  text-align: center;
+  min-width: 0;
+}
+.vp-gs-leer > .vp-gs-gruppe,
+.vp-gs-leer > .vp-gs-hinweis {
+  justify-self: stretch;
+  text-align: left;
+}
+
+.vp-gs-radar {
+  width: 96px;
+  height: 96px;
+  flex: none;
+  overflow: visible;
+}
+.vp-gs-radar-feld {
+  fill: var(--vp-paleblue-start);
+}
+.vp-gs-radar-kreis {
+  fill: none;
+  stroke: color-mix(in srgb, var(--vp-action) 35%, transparent);
+  stroke-width: 1;
+}
+.vp-gs-radar-puls {
+  stroke: color-mix(in srgb, var(--vp-action) 55%, transparent);
+  stroke-width: 2;
+}
+.vp-gs-radar-box {
+  fill: var(--vp-action);
+}
+.vp-gs-radar.is-ruhig .vp-gs-radar-box {
+  fill: var(--vp-text-gray);
+}
+
+/* ── Ergebnis ──────────────────────────────────────────────────────────────────────── */
+.vp-gs-ergebnis {
+  display: grid;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+
+/* ── Suche läuft ─────────────────────────────────────────────────────────────────────── */
+.vp-gs-laeuft {
+  display: grid;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-gs-laeuft-kopf {
+  display: grid;
+  justify-items: center;
+  gap: var(--vp-space-2);
+  text-align: center;
+  min-width: 0;
+}
+.vp-gs-schritte {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--vp-space-3);
+}
+.vp-gs-schritte li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--vp-space-2);
+  align-items: start;
+  min-width: 0;
+}
+.vp-gs-schritte li.is-offen {
+  color: var(--vp-text-gray);
+}
+.vp-gs-schritt-marke {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--vp-border);
+  color: #fff;
+}
+.vp-gs-schritte li.is-fertig .vp-gs-schritt-marke {
+  background: var(--vp-ok-ink);
+  border-color: var(--vp-ok-ink);
+}
+.vp-gs-schritte li.is-aktiv .vp-gs-schritt-marke {
+  border-color: transparent;
+  color: var(--vp-action);
+}
+.vp-gs-schritt-marke .vp-spinner {
+  width: 18px;
+  height: 18px;
+}
+.vp-gs-balken {
+  height: 6px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-border);
+  overflow: hidden;
+}
+.vp-gs-balken > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--vp-action);
+  transition: width var(--vp-motion-chart-update) var(--vp-ease-out);
+}
+.vp-gs-rest {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+}
+
+/* ── Gruppen und Listen ─────────────────────────────────────────────────────────────── */
+.vp-gs-gruppe {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-gs-gruppe h4 {
+  margin: 0 2px;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  font-family: var(--vp-font-body);
+  font-size: 0.7rem;
+  font-weight: var(--vp-weight-bold);
+  letter-spacing: var(--vp-tracking-wide);
+  text-transform: uppercase;
+  color: var(--vp-text-gray);
+}
+.vp-gs-gruppe h4 small {
+  font-size: inherit;
+  font-weight: var(--vp-weight-medium);
+  letter-spacing: 0;
+}
+.vp-gs-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+  border-radius: var(--vp-radius-sm);
+  overflow: hidden;
+  background: var(--vp-surface);
+  min-width: 0;
+}
+.vp-gs-liste > li + li {
+  border-top: 1px solid var(--vp-border);
+}
+.vp-gs-zeile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--vp-space-3);
+  align-items: center;
+  padding: 10px 12px;
+  min-height: 44px;
+  min-width: 0;
+}
+.vp-gs-text {
+  display: grid;
+  justify-items: start;
+  min-width: 0;
+}
+.vp-gs-text b,
+.vp-gs-name {
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+  overflow-wrap: anywhere;
+}
+.vp-gs-text small {
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-gs-name {
+  margin: -6px 0 -2px;
+  padding: 6px 0 2px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: var(--vp-weight-semibold);
+  text-align: left;
+  cursor: pointer;
+}
+.vp-gs-name:focus-visible,
+.vp-gs-woran-knopf:focus-visible,
+.vp-gs-tun:focus-visible,
+.vp-gs-link:focus-visible,
+.vp-gs-wahl-zeile:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.vp-gs-aktion {
+  display: inline-flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+/* Die eine Handlung je Zeile: ruhig wie ein Link, Tippfläche 44 px. */
+.vp-gs-tun,
+.vp-gs-link {
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vp-gs-tun:hover,
+.vp-gs-link:hover {
+  color: var(--vp-link-hover, var(--vp-action));
+  text-decoration: underline;
+}
+.vp-gs-tun:disabled {
+  color: var(--vp-text-gray);
+  cursor: default;
+  text-decoration: none;
+}
+.vp-gs-link {
+  justify-self: center;
+  white-space: normal;
+}
+.vp-gs-wort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-bold);
+  white-space: nowrap;
+}
+.vp-gs-wort.is-ok {
+  color: var(--vp-ok-ink);
+}
+.vp-gs-wort.is-warn {
+  color: var(--vp-warn-ink);
+}
+.vp-gs-wort.is-off {
+  color: var(--vp-text-gray);
+}
+.vp-gs-punkt {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--vp-solar);
+}
+.vp-gs-zeile-satz {
+  margin: -4px 12px 10px calc(12px + 28px + var(--vp-space-3));
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-gs-zeile-satz.is-fehler {
+  color: #b91c1c;
+}
+.vp-gs-woran-knopf {
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  cursor: pointer;
+}
+.vp-gs-woran {
+  margin: 0 12px 10px;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-bg-light);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-dark);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-gs-woran[hidden] {
+  display: none;
+}
+.vp-gs-woran dl {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+.vp-gs-woran dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+}
+.vp-gs-woran dt {
+  color: var(--vp-text-gray);
+}
+.vp-gs-woran dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.vp-gs-merkmale {
+  margin: 0;
+  padding-left: 1.1em;
+  display: grid;
+  gap: 2px;
+}
+.vp-gs-merkmale code {
+  font-size: 0.85em;
+}
+.vp-gs-bestaetigen {
+  margin: 0 12px 10px;
+  display: grid;
+  gap: var(--vp-space-2);
+  font-size: var(--vp-text-sm);
+}
+.vp-gs-bestaetigen p {
+  margin: 0;
+}
+.vp-gs-bestaetigen > div {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--vp-space-2);
+}
+
+/* Ein Satz zum Zustand: eine Zeile mit Rand, kein Kasten, der wie eine Eingabe aussieht. */
+.vp-gs-hinweis {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--vp-action);
+  border-radius: 0 var(--vp-radius-sm) var(--vp-radius-sm) 0;
+  background: var(--vp-bg-light);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-dark);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.vp-gs-hinweis.is-warn {
+  border-left-color: var(--vp-solar);
+}
+.vp-gs-hinweis.is-fehler {
+  border-left-color: #b91c1c;
+}
+.vp-gs-erfolg {
+  margin: 0;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-mint-start);
+  color: var(--vp-ok-ink);
+  font-weight: var(--vp-weight-semibold);
+  overflow-wrap: anywhere;
+}
+.vp-gs-frage {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--vp-space-3);
+  align-items: start;
+  padding: 10px 12px;
+}
+.vp-gs-frage-symbol {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--vp-bg-light);
+  color: var(--vp-text-gray);
+}
+.vp-gs-frage-symbol.is-ok {
+  background: var(--vp-mint-start);
+  color: var(--vp-ok-ink);
+}
+.vp-gs-dauer {
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  white-space: nowrap;
+}
+
+/* Weitere Geräte und „Gerät nicht dabei?": eingeklappt. */
+.vp-gs-weitere,
+.vp-gs-nichtdabei {
+  min-width: 0;
+}
+.vp-gs-weitere > summary {
+  list-style: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--vp-space-3);
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  cursor: pointer;
+}
+.vp-gs-weitere[open] > summary {
+  border-radius: var(--vp-radius-sm) var(--vp-radius-sm) 0 0;
+}
+.vp-gs-weitere > summary::-webkit-details-marker,
+.vp-gs-nichtdabei > summary::-webkit-details-marker {
+  display: none;
+}
+.vp-gs-weitere > .vp-gs-liste {
+  border-top: 0;
+  border-radius: 0 0 var(--vp-radius-sm) var(--vp-radius-sm);
+}
+.vp-gs-weitere[open] > summary svg {
+  transform: rotate(180deg);
+}
+.vp-gs-nichtdabei > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  cursor: pointer;
+}
+.vp-gs-nichtdabei[open] {
+  display: grid;
+  gap: var(--vp-space-2);
+}
+.vp-gs-verlauf-link {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+}
+.vp-gs-fussnote {
+  margin: 0;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-gs-fussnote svg {
+  vertical-align: -2px;
+}
+
+/* ── Modell und Ausgang wählen ──────────────────────────────────────────────────────── */
+.vp-gs-wahl {
+  display: grid;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+.vp-gs-aus {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  min-width: 0;
+}
+.vp-gs-aus-marke {
+  font-size: 0.7rem;
+  font-weight: var(--vp-weight-bold);
+  letter-spacing: var(--vp-tracking-wide);
+  text-transform: uppercase;
+  color: var(--vp-text-gray);
+}
+.vp-gs-aus b {
+  color: var(--vp-text-dark);
+  overflow-wrap: anywhere;
+}
+.vp-gs-aus small {
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-gs-aus details {
+  margin-top: 4px;
+  font-size: var(--vp-text-sm);
+}
+.vp-gs-aus summary {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--vp-action);
+  font-weight: var(--vp-weight-semibold);
+  cursor: pointer;
+}
+.vp-gs-wahl-zeile {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--vp-space-3);
+  align-items: center;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+button.vp-gs-wahl-zeile:hover {
+  background: var(--vp-bg-light);
+}
+.vp-gs-wahl-zeile.is-fertig {
+  cursor: default;
+}
+.vp-gs-wahl-zeile > svg {
+  color: var(--vp-text-gray);
+}
+
+/* ── Verlauf ────────────────────────────────────────────────────────────────────────── */
+.vp-gs-verlauf {
+  display: grid;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+
+/* ── Fuß ────────────────────────────────────────────────────────────────────────────── */
+.vp-gs-fuss {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--vp-space-3);
+  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
+}
+.vp-gs-fuss.is-telefon,
+.vp-gs-fuss.is-laeuft {
+  display: grid;
+  /* Im Raster schrumpfte `flex-end` die eine Spalte auf Inhaltsbreite - der Hauptknopf gehört über die volle Breite. */
+  justify-content: stretch;
+  justify-items: stretch;
+  gap: 4px;
+}
+.vp-gs-fuss.is-laeuft .vp-gs-fussnote {
+  text-align: center;
+}
+@media (min-width: 721px) {
+  .vp-gs-fuss.is-laeuft {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: space-between;
+  }
+
+  /* Am Rechner: Bild links, Text daneben; Spalten für Seriennummer und Adresse. */
+  .vp-gs-laeuft-kopf {
+    grid-template-columns: auto minmax(0, 1fr);
+    justify-items: start;
+    text-align: left;
+    align-items: center;
+    gap: var(--vp-space-4);
+  }
+  .vp-gs-laeuft-kopf .vp-gs-radar {
+    width: 64px;
+    height: 64px;
+  }
+  .vp-gs-zeile.is-spalten,
+  .vp-gs-spalten {
+    grid-template-columns: 28px minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(96px, auto);
+  }
+  .vp-gs-spalten {
+    display: grid;
+    gap: var(--vp-space-3);
+    padding: 0 12px;
+    font-size: 0.7rem;
+    font-weight: var(--vp-weight-bold);
+    letter-spacing: var(--vp-tracking-wide);
+    text-transform: uppercase;
+    color: var(--vp-text-gray);
+  }
+  .vp-gs-spalten > span:first-child {
+    grid-column: 1 / span 2;
+  }
+  .vp-gs-zelle {
+    font-size: var(--vp-text-sm);
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 720px) {
+  .vp-gs-schritte,
+  .vp-gs-spalten {
+    display: none;
+  }
+}

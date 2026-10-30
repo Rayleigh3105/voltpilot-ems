@@ -46,6 +46,9 @@ import {
   aufbauHash,
   parseAufbauRef,
   ohneAufbauNeu,
+  parseAufbauSuche,
+  parseAufbauNeu,
+  standortAufbauHash,
   zustellwegBestaetigenToken,
 } from './nav';
 import { anlageSidebar } from './ebenenNav';
@@ -634,6 +637,19 @@ describe('parseGeraetRef (der Deep-Link-Vertrag)', () => {
     expect(parseAufbauRef('#/anlage/s1/modell?neu=box&ref=edge-wrk7abg')).toBe('edge-wrk7abg');
     expect(parseAufbauRef('#/anlage/s1/modell?neu=box')).toBeNull();
     expect(ohneAufbauNeu('#/anlage/s1/modell?neu=box&ref=edge-wrk7abg&x=1')).toBe('#/anlage/s1/modell?x=1');
+  });
+
+  it('„Geräte suchen“ führt mit der Box in den Aufbau (?neu=suche&box=), Mitansehen und Verlauf reisen mit', () => {
+    expect(aufbauHash('s1', 'suche', { box: 'b1' })).toBe('#/anlage/s1/modell?neu=suche&box=b1');
+    expect(aufbauHash('s1', 'suche', { box: 'b1', such: 'x9' })).toBe('#/anlage/s1/modell?neu=suche&box=b1&such=x9');
+    expect(aufbauHash('s1', 'suche', { box: 'b1', verlauf: true })).toBe('#/anlage/s1/modell?neu=suche&box=b1&ansicht=verlauf');
+    // Nur zur Suche: an „Gerät hinzufügen“ hat die Box der Suche nichts zu suchen.
+    expect(aufbauHash('s1', 'geraet', { box: 'b1' })).toBe('#/anlage/s1/modell?neu=geraet');
+    expect(standortAufbauHash('st1', { anlage: 'a1', neu: 'suche', box: 'b1' })).toBe('#/standort/st1/aufbau?anlage=a1&neu=suche&box=b1');
+    expect(parseAufbauNeu('#/anlage/s1/modell?neu=suche&box=b1')).toBe('suche');
+    expect(parseAufbauSuche('#/anlage/s1/modell?neu=suche&box=b1&such=x9&ansicht=verlauf')).toEqual({ box: 'b1', such: 'x9', verlauf: true });
+    expect(parseAufbauSuche('#/anlage/s1/modell')).toEqual({ box: null, such: null, verlauf: false });
+    expect(ohneAufbauNeu('#/anlage/s1/modell?neu=suche&box=b1&such=x9&ansicht=verlauf&x=1')).toBe('#/anlage/s1/modell?x=1');
   });
 
   // ⚠ Der No-Orphan-Wächter: der frühere SCHREIBER ist ersatzlos entfallen.

@@ -510,7 +510,8 @@ hauptlauf() {
     --aus "$ARBEIT/faehigkeiten.json"
   local text
   text="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["rest"])' "$ARBEIT/faehigkeiten.json")"
-  if [ "$text" = "Update nötig für: Rückmeldung je Datenquelle" ]; then
+  # Seit dem 30.10.2026 nennt die Tabelle auch die Gerätesuche (ab_release null, nur per supports[] belegt).
+  if [ "$text" = "Update nötig für: Rückmeldung je Datenquelle, Gerätesuche" ]; then
     melde "7 update noetig" gruen "$text" "$(cat "$ARBEIT/faehigkeiten.json")"
   else
     melde "7 update noetig" rot "unerwarteter Satz: $text" "$(cat "$ARBEIT/faehigkeiten.json")"

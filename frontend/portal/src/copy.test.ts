@@ -38,7 +38,16 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GRUENDE, KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
 import { UEMS_FUEHREND, UEMS_LEBENSZYKLUS, UEMS_MESSSTELLE, UEMS_QUELLE, UEMS_VERGLEICH } from './glossar';
-import { anschlussGespeichert, UEMS_ANBINDUNG, UEMS_ANSCHLUSS, UEMS_GATEWAY_ANBINDEN } from './glossar';
+import {
+  anschlussGespeichert,
+  UEMS_ANBINDUNG,
+  UEMS_ANSCHLUSS,
+  UEMS_GATEWAY_ANBINDEN,
+  UEMS_GERAETE_SUCHEN,
+  UEMS_GERAETESUCHE,
+  UEMS_IM_HEIMNETZ_SUCHEN,
+  UEMS_LISTE_DURCHSUCHEN,
+} from './glossar';
 import { GATEWAY_ANBINDEN, MESSEN_SCHRITTE, ZUR_DATENQUELLE } from './messenAssistent';
 import {
   UEMS_ABWEICHUNG,
@@ -1001,6 +1010,31 @@ describe('GE-6 · Anschluss statt Datenquelle (Konzept „Ein Gerät, ein Eintra
     expect(GATEWAY_ANBINDEN).toBe(UEMS_GATEWAY_ANBINDEN);
     expect(MESSEN_SCHRITTE[1]).toBe(UEMS_ANBINDUNG);
     expect(ZUR_DATENQUELLE).toBe(`Zur ${UEMS_ANBINDUNG}`);
+  });
+});
+
+describe('Gerätesuche · ein Name je Sache (Konzept „Geräte suchen“, Bericht §4 „Einstiege und Name“)', () => {
+  const lies = (datei: string) => readFileSync(join(process.cwd(), datei), 'utf8');
+
+  it('„Geräte suchen“ ist der Knopf; das Filterfeld des Aufbaus heißt „Liste durchsuchen“', () => {
+    expect(UEMS_GERAETE_SUCHEN).toBe('Geräte suchen');
+    expect(UEMS_GERAETESUCHE).toBe('Gerätesuche');
+    expect(UEMS_LISTE_DURCHSUCHEN).toBe('Liste durchsuchen');
+    expect(UEMS_IM_HEIMNETZ_SUCHEN).toBe('Im Heimnetz suchen');
+    const tabelle = lies('src/components/AufbauTabelle.tsx');
+    expect(tabelle).toContain('aria-label={UEMS_LISTE_DURCHSUCHEN}');
+    expect(tabelle).not.toContain('aria-label="Geräte suchen"');
+  });
+
+  it('die Such-Flächen sagen, dass nur gelesen wird, und das Glossar führt die Kundenwörter', () => {
+    const texte = ['src/components/GeraetesucheDialog.tsx', 'src/components/GeraetesucheEinstieg.tsx']
+      .flatMap((datei) => visibleTexts(lies(datei)));
+    expect(texte.filter((t) => /nur gelesen/.test(t)).length).toBeGreaterThan(0);
+    expect(texte.filter((t) => /Hostname|Gerätename/.test(t))).toEqual([]);
+    const glossar = readFileSync(join(process.cwd(), '../../docs/fachmodell/glossar.md'), 'utf8');
+    for (const k of ['UEMS_GERAETE_SUCHEN', 'UEMS_GERAETESUCHE', 'UEMS_IM_HEIMNETZ_SUCHEN', 'UEMS_LISTE_DURCHSUCHEN']) {
+      expect(glossar, k).toContain(k);
+    }
   });
 });
 

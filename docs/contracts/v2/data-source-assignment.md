@@ -351,8 +351,9 @@ Zeile, erreicht die Box nicht und ist darum kein Beleg.
 ## 9. Fähigkeiten einer Box (E12 = A)
 
 [`edge-capabilities.json`](./edge-capabilities.json) nennt die Fähigkeiten, deren Fehlen eine
-Fläche benennt — heute **Rückmeldung je Datenquelle** (`data_sources`) — mit dem ersten Release,
-das sie trägt (`ab_release`).
+Fläche benennt — heute **Rückmeldung je Datenquelle** (`data_sources`) und seit dem 30.10.2026
+**Gerätesuche** (`geraetesuche`, mit dem Knopf „Geräte suchen“) — mit dem ersten Release, das sie
+trägt (`ab_release`).
 
 1. Eine bekannte Fähigkeit aus `supports[]` gilt auch ohne Tabellenbeleg. Fremde Wörter
    werden verworfen; Details und Vokabular: [Fähigkeitsmeldung](edge-supports.md).
@@ -362,11 +363,12 @@ das sie trägt (`ab_release`).
    Release in der Ordnung `release_seq` nicht vor `ab_release` liegt (Captain-Entscheid D5 —
    nie ein Zeichenketten- oder SHA-Vergleich).
 3. Ein Stempel ohne Release (nackte SHA, „dev“, das semver-Beispiel „2.5.0“) beweist nichts.
-   Die Fläche zeigt „Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle“ (A7), mit
-   dem Release-Tag statt des Builds, wo es eines gibt.
+   Die Fläche zeigt „Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche“
+   (A7), mit dem Release-Tag statt des Builds, wo es eines gibt.
 
-⚠ **Heute trägt kein ausgeliefertes Release die Fähigkeit** — `ab_release` ist `null`. Wer das
-Release baut, das sie bringt, trägt sein Tag dort ein. Keine Fähigkeit sind Zustellung je Box
+⚠ **Heute trägt kein ausgeliefertes Release eine der Fähigkeiten** — `ab_release` ist `null`. Wer das
+Release baut, das `data_sources` bringt, trägt sein Tag dort ein; `geraetesuche` bleibt null, bis die Tabelle
+je Box-Art liest ([Je Box-Art](edge-supports.md#je-box-art)), und gilt bis dahin nur per `supports[]`. Keine Fähigkeit sind Zustellung je Box
 (E4, Cloud), **Zuständigkeit ab Zeitpunkt** (E8, Cloud-Zeitgeber für jede Box), Nachfolger-Anmeldung
 (E7, Cloud) und die lesende Box je Wert (Topic) — dafür gibt es nie ein „Update nötig“. Fällt bei
 einer Übergabe eine der beiden Boxen zum Zeitpunkt aus, wartet die Übergabe, bis sie wieder

@@ -66,6 +66,7 @@ import { BEFEHLE_LABEL } from '../befehle';
 import { SPEICHER_BLATT_LABEL, SPEICHER_KACHEL } from '../geraetGesicht';
 import { abschnittHash } from '../geraetRahmen';
 import {
+  aufbauHash,
   befehleHash,
   komponenteHash,
   geraetBearbeitenHash,
@@ -77,6 +78,7 @@ import {
   parseAufbauAn,
   parseAufbauRef,
   parseAufbauNeu,
+  parseAufbauSuche,
   parseKomponente,
   type AufbauNeu,
 } from '../nav';
@@ -94,6 +96,9 @@ import {
 } from '../components/TechnischeKarten';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { AnlegenFlow } from '../components/AnlegenFlow';
+import { GeraetesucheDialog, type GeraetesucheUebernahme } from '../components/GeraetesucheDialog';
+import type { GeraetesucheFund } from '../geraetesuche';
+import { felder } from '../komponentenAssistent';
 import { AddDeviceDrawer, DeviceDetailDrawer } from '../components/DeviceDrawers';
 import { AnlageAnlegenDrawerLazy } from '../components/AnlageAnlegenDrawerLazy';
 import { StandortDialog } from '../components/StandortDialog';
@@ -195,6 +200,14 @@ export function AufbauSection({
   const [anlegenLauf, setAnlegenLauf] = useState(0);
   const [erfolg, setErfolg] = useState<string | null>(null);
   const [boxAnmelden, setBoxAnmelden] = useState(false);
+  // Gerätesuche (Konzept „Geräte suchen“, Bericht §2): die Box, an der gesucht wird; `lauf` macht jedes Öffnen frisch.
+  // Solange der Anlege-Fluss darüber liegt, bleibt das Modal im Baum (verdeckt) - danach führt der Weg zur Liste zurück.
+  const [suche, setSuche] = useState<{ box: Device; suchId: string | null; start: 'suche' | 'verlauf'; lauf: number } | null>(null);
+  const [sucheFund, setSucheFund] = useState<
+    { art: 'vorlage'; u: GeraetesucheUebernahme } | { art: 'selbst'; fund: GeraetesucheFund } | null
+  >(null);
+  const [uebernommen, setUebernommen] = useState<ReadonlyMap<string, string>>(new Map());
+  const [sucheZuletzt, setSucheZuletzt] = useState<{ titel: string; n: number } | null>(null);
   const [boxVerwalten, setBoxVerwalten] = useState<string | null>(null);
   const [anlageAnlegen, setAnlageAnlegen] = useState(false);
   const [adresseNachtragen, setAdresseNachtragen] = useState(false);
@@ -534,6 +547,38 @@ export function AufbauSection({
     setErfolg(null);
     setKatalogOffen(true);
   };
+  /** „Geräte suchen“ an einer Box (Box-Seite, Katalog, leere Box im Aufbau, `?neu=suche`). */
+  const oeffneSuche = (box: Device, opts: { suchId?: string | null; start?: 'suche' | 'verlauf' } = {}) => {
+    setErfolg(null);
+    setUebernommen(new Map());
+    setSucheZuletzt(null);
+    setSucheFund(null);
+    setSuche((alt) => ({ box, suchId: opts.suchId ?? null, start: opts.start ?? 'suche', lauf: (alt?.lauf ?? 0) + 1 }));
+  };
+  /** Aus der Suche in den bestehenden Anlege-Fluss: Vorlage und Anschluss vorbelegt, der Test startet von selbst. */
+  const ausSucheAnlegen = (f: { art: 'vorlage'; u: GeraetesucheUebernahme } | { art: 'selbst'; fund: GeraetesucheFund }) => {
+    if (!suche) return;
+    setSucheFund(f);
+    setAddBox(suche.box);
+    setAddAn(null);
+    setAnlegenLauf((n) => n + 1);
+    if (f.art === 'vorlage') setStart({ template: f.u.template, rolle: null });
+    else setAddTyp('eigenbau');
+    setAddOpen(true);
+  };
+  // Woher die Vorbelegung des Anlege-Flusses stammt: „Aus der Gerätesuche: IP-Adresse, Port, …“.
+  const sucheHerkunft = sucheFund?.art === 'vorlage'
+    ? `Aus der Gerätesuche: ${felder(sucheFund.u.template)
+      .filter((x) => sucheFund.u.verbindung[x.key] !== undefined && x.key !== 'channel')
+      .map((x) => x.label)
+      .join(', ')}${sucheFund.u.kanal !== null ? ` · Ausgang ${sucheFund.u.kanal + 1}` : ''}.`
+    : null;
+  const sucheVorbelegung = sucheFund?.art === 'vorlage'
+    ? sucheFund.u.verbindung
+    : sucheFund?.art === 'selbst'
+      ? sucheFund.fund.verbindung
+      : null;
+
   // Der Weg des Gateways, an dem das Gerät hinzukommt — aus den geladenen Wegen dieser Anlage, nie geraten.
   const addWeg = addAn
     ? (datenquellen ?? []).find((q) => q.kennzeichen === addAn && q.anlage === site.id && q.archiviert_am == null) ?? null
@@ -566,6 +611,7 @@ export function AufbauSection({
     setAddTyp(null);
     setStart(null);
     setVorlage(null);
+    setSucheFund(null);
   };
 
   const WEG_TYP: Record<Exclude<KatalogWeg, 'anlagensteuerung'>, TypId> = {
@@ -619,6 +665,9 @@ export function AufbauSection({
   const [neuRef, setNeuRef] = useState<string | null>(() =>
     typeof window === 'undefined' ? null : parseAufbauRef(window.location.hash),
   );
+  const [neuSuche, setNeuSuche] = useState(() =>
+    typeof window === 'undefined' ? parseAufbauSuche('') : parseAufbauSuche(window.location.hash),
+  );
   const [boxVorschlag, setBoxVorschlag] = useState<string | null>(null);
   const [neuHinweis, setNeuHinweis] = useState<string | null>(null);
   useEffect(() => {
@@ -628,6 +677,7 @@ export function AufbauSection({
         setNeu(n);
         setNeuAn(parseAufbauAn(window.location.hash));
         setNeuRef(parseAufbauRef(window.location.hash));
+        setNeuSuche(parseAufbauSuche(window.location.hash));
       }
     };
     window.addEventListener('hashchange', onHash);
@@ -635,11 +685,18 @@ export function AufbauSection({
   }, []);
   useEffect(() => {
     if (!neu) return;
-    if (neu === 'geraet' && (!data || !componentsDa)) return;
+    if ((neu === 'geraet' || neu === 'suche') && (!data || !componentsDa)) return;
     replaceCurrentNavigation(ohneAufbauNeu(window.location.hash));
     setNeu(null);
     setNeuAn(null);
     setNeuRef(null);
+    if (neu === 'suche') {
+      // Gesucht wird auch an einer Anlage, deren Geräte die Box pflegt - nur das Übernehmen entfällt dort.
+      const b = eigeneBoxen.find((d) => d.id === neuSuche.box) ?? fuehrendeBoxOf(devices, site.id);
+      if (b) oeffneSuche(b, { suchId: neuSuche.such, start: neuSuche.verlauf ? 'verlauf' : 'suche' });
+      else setNeuHinweis('An dieser Anlage ist noch keine VoltPilot-Box angemeldet – gesucht wird auf der Box.');
+      return;
+    }
     if (neu === 'box') {
       setBoxVorschlag(neuRef);
       setBoxAnmelden(true);
@@ -819,6 +876,10 @@ export function AufbauSection({
           onGeraetHinzufuegen={
             portalManaged ? (b) => oeffneAnlegen(b ? eigeneBoxen.find((d) => d.id === b.id) ?? null : fuehrendeBoxOf(devices, site.id)) : null
           }
+          onGeraeteSuchen={(b) => {
+            const d = eigeneBoxen.find((x) => x.id === b.id);
+            if (d) oeffneSuche(d);
+          }}
           geraetGesperrt={
             components && !portalManaged
               ? components.componentAuthority === 'box'
@@ -923,7 +984,44 @@ export function AufbauSection({
         funde={katalogOffen ? katalogFunde(baum) : []}
         onClose={() => setKatalogOffen(false)}
         onWahl={katalogWahl}
+        onSuche={(() => {
+          const b = addBox ?? fuehrendeBoxOf(devices, site.id);
+          return b ? () => {
+            setKatalogOffen(false);
+            oeffneSuche(b);
+          } : null;
+        })()}
       />
+
+      {suche && (
+        <GeraetesucheDialog
+          // Eigener Präfix: der Anlege-Fluss daneben zählt seine Läufe ebenfalls ab 1.
+          key={`suche-${suche.lauf}`}
+          open={!addOpen && !katalogOffen && !vorlage}
+          siteId={site.id}
+          boxId={suche.box.id}
+          boxName={aktuelleAnlage.boxen.find((b) => b.id === suche.box.id)?.name ?? suche.box.name ?? 'VoltPilot-Box'}
+          zuletztGesehen={suche.box.lastSeenAt}
+          portalVerwaltet={portalManaged}
+          komponenten={components?.components ?? []}
+          suchId={suche.suchId}
+          start={suche.start}
+          uebernommen={uebernommen}
+          zuletzt={sucheZuletzt}
+          onClose={() => setSuche(null)}
+          onUebernehmen={(u) => ausSucheAnlegen({ art: 'vorlage', u })}
+          onSelbst={(fund) => ausSucheAnlegen({ art: 'selbst', fund })}
+          onVonHand={() => {
+            const b = suche.box;
+            setSuche(null);
+            oeffneAnlegen(b);
+          }}
+          onAdresseGespeichert={(result) => {
+            setComponents(result);
+            reload();
+          }}
+        />
+      )}
 
       {(addOpen || vorlage) && (
         <AnlegenFlow
@@ -936,14 +1034,25 @@ export function AufbauSection({
           initialTyp={vorlage || start ? null : addTyp}
           startTemplate={start?.template ?? null}
           startRolle={start?.rolle ?? null}
-          startVerbindung={addWeg ? gatewayVorbelegung(addWeg) : null}
+          startVerbindung={sucheVorbelegung ?? (addWeg ? gatewayVorbelegung(addWeg) : null)}
+          startHerkunft={sucheHerkunft}
+          zurueckLabel={sucheFund ? 'Zurück zur Gerätesuche' : undefined}
           onZurueck={() => {
+            const ausSuche = sucheFund !== null;
             schliesseAnlegen();
-            setKatalogOffen(true);
+            // Aus der Suche zurück in die Suche (Modellwahl bzw. Liste), sonst in den Katalog.
+            if (!ausSuche) setKatalogOffen(true);
           }}
           onFertig={(info) => {
             const satz = [abschlussTitel(info.titel, info.uebernommen), info.hinweis].filter(Boolean).join(' ');
             setErfolg(satz);
+            if (sucheFund) {
+              // Zurück zur Liste der Suche (m5c): was übernommen ist, wandert nach unten - kein Sprung auf das Gerät.
+              const schluessel = sucheFund.art === 'vorlage' ? sucheFund.u.schluessel : sucheFund.fund.schluessel;
+              setUebernommen((m) => new Map(m).set(schluessel, info.titel));
+              setSucheZuletzt((z) => ({ titel: info.titel, n: (z?.n ?? 0) + 1 }));
+              return;
+            }
             if (addWeg && info.id) anGatewayHaengen(addWeg, info.id, satz);
             // Auf das neue Gerät springen - die Zeile leuchtet kurz auf.
             if (info.id) window.location.hash = komponenteHash(site.id, info.id);
@@ -988,6 +1097,13 @@ export function AufbauSection({
           setBoxVorschlag(null);
         }}
         onClaimed={() => onReload?.(site.id)}
+        onGeraeteSuchen={(d) => {
+          setBoxAnmelden(false);
+          setBoxVorschlag(null);
+          // Nur eine Box DIESER Anlage sucht hier; eine Box für eine andere Anlage des Standorts sucht in deren Aufbau.
+          if (d.siteId === site.id) oeffneSuche(d);
+          else window.location.hash = aufbauHash(d.siteId, 'suche', { box: d.id });
+        }}
       />
 
       {/* Die Box wohnt seit E5 hier: Name, Typ, Neu-Verbinden und Entfernen

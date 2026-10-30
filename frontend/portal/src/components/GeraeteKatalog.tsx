@@ -17,6 +17,8 @@ import {
 import { hervorheben, suchBegriffe } from '../picker/suche';
 import { useIsPhone } from '../useIsPhone';
 import { AufbauSymbol } from './AufbauSymbol';
+import { Recht } from './Recht';
+import { UEMS_IM_HEIMNETZ_SUCHEN } from '../glossar';
 import { EigeneVorlagenPanel } from './EigeneVorlagenPanel';
 import { ErrorState, TextSkeleton } from './States';
 import type { AufbauKategorie } from '../aufbauBaum';
@@ -65,6 +67,7 @@ export function GeraeteKatalog({
   funde,
   onClose,
   onWahl,
+  onSuche = null,
 }: {
   open: boolean;
   siteId: string;
@@ -72,6 +75,11 @@ export function GeraeteKatalog({
   funde: KatalogFund[];
   onClose: () => void;
   onWahl: (wahl: KatalogWahl) => void;
+  /**
+   * Gerätesuche (Bericht §4 „Einstiege"): die Kachel „Im Heimnetz suchen" ganz oben; null = an dieser Anlage gibt es
+   * keine Box, die suchen könnte.
+   */
+  onSuche?: (() => void) | null;
 }) {
   const isPhone = useIsPhone();
   const [templates, setTemplates] = useState<ComponentTemplate[] | null>(null);
@@ -180,6 +188,24 @@ export function GeraeteKatalog({
 
         {!fehler && templates && (
           <div className="vp-kat-inhalt" key={`${chip}:${marke ?? ''}`}>
+            {onSuche && !q.trim() && chip === 'alle' && !marke && (
+              <Recht aktion="geraet.einrichten">
+                <ul className="vp-kat-liste vp-kat-heimnetz">
+                  <li>
+                    <button type="button" className="vp-kat-eintrag is-suche" onClick={onSuche} data-testid="kat-heimnetz">
+                      <AufbauSymbol kategorie="navy" icon="target" />
+                      <span className="vp-kat-text">
+                        <b>{UEMS_IM_HEIMNETZ_SUCHEN}</b>
+                        <small>Ihre Box findet Geräte und füllt alles vor – es wird nur gelesen</small>
+                      </span>
+                      <span className="vp-kat-ende" aria-hidden="true">
+                        <Icon name="chevron-right" size={16} />
+                      </span>
+                    </button>
+                  </li>
+                </ul>
+              </Recht>
+            )}
             {ansicht.zurueck && (
               <button type="button" className="vp-kat-zurueck" onClick={() => setMarke(null)}>
                 <Icon name="chevron-left" size={16} /> {ansicht.zurueck}

@@ -981,10 +981,13 @@ export function standortRoute(standortId: string): Route {
  */
 export type StandortBereich = 'aufbau' | 'netzanschluesse' | 'gebaeude' | 'messstellen' | 'kennzahlen' | 'berichte';
 
-/** Was der Aufbau beim Öffnen gleich anbietet (`?neu=`): der Weg aus Cockpit, Kopf und Assistent in den EINEN Ort. */
-export type AufbauNeu = 'box' | 'geraet' | 'anlage';
+/**
+ * Was der Aufbau beim Öffnen gleich anbietet (`?neu=`): der Weg aus Cockpit, Kopf und Assistent in den EINEN Ort.
+ * `suche` öffnet „Geräte suchen" an der Box aus `box=` (Gerätesuche, Bericht §2: Geräte entstehen nur im Aufbau).
+ */
+export type AufbauNeu = 'box' | 'geraet' | 'anlage' | 'suche';
 
-const AUFBAU_NEU: ReadonlySet<string> = new Set<AufbauNeu>(['box', 'geraet', 'anlage']);
+const AUFBAU_NEU: ReadonlySet<string> = new Set<AufbauNeu>(['box', 'geraet', 'anlage', 'suche']);
 
 /**
  * Der Aufbau einer Anlage, optional mit einer Handlung, die er beim Öffnen gleich anbietet:
@@ -994,13 +997,14 @@ const AUFBAU_NEU: ReadonlySet<string> = new Set<AufbauNeu>(['box', 'geraet', 'an
 export function aufbauHash(
   siteId: string,
   neu?: AufbauNeu | null,
-  opts: { an?: string | null; ref?: string | null } = {},
+  opts: { an?: string | null; ref?: string | null } & AufbauSuche = {},
 ): string {
   const params = new URLSearchParams();
   if (neu) params.set('neu', neu);
   if (neu === 'geraet' && opts.an) params.set('an', opts.an);
   // Der Direktlink vom Gehäuse (`koppelLink.ts`): die Referenz, die „Box hinzufügen“ vorausfüllt.
   if (neu === 'box' && opts.ref) params.set('ref', opts.ref);
+  if (neu === 'suche') sucheParams(params, opts);
   const q = params.toString();
   return `#/anlage/${siteId}/modell${q ? `?${q}` : ''}`;
 }
@@ -1009,15 +1013,44 @@ export function aufbauHash(
  * Der Aufbau eines Standorts: `#/standort/{id}/aufbau[?anlage=…][&neu=…]`. `anlage` wählt, welche Anlage des
  * Standorts aufgeklappt und bearbeitbar ist (ohne: die erste).
  */
-export function standortAufbauHash(standortId: string, opts: { anlage?: string | null; neu?: AufbauNeu | null } = {}): string {
+export function standortAufbauHash(
+  standortId: string,
+  opts: { anlage?: string | null; neu?: AufbauNeu | null } & AufbauSuche = {},
+): string {
   const params = new URLSearchParams();
   if (opts.anlage) params.set('anlage', opts.anlage);
   if (opts.neu) params.set('neu', opts.neu);
+  if (opts.neu === 'suche') sucheParams(params, opts);
   const q = params.toString();
   return `#/standort/${standortId}/aufbau${q ? `?${q}` : ''}`;
 }
 
-/** Die Handlung aus `?neu=` (nur die drei bekannten), sonst null. */
+/**
+ * Die Gerätesuche aus `?neu=suche`: `box` = die Box, die sucht (ihre Kennung, nie eine Adresse), `such` = eine laufende
+ * Suche zum Mitansehen, `ansicht=verlauf` = erst „Letzte Suchen".
+ */
+export interface AufbauSuche {
+  box?: string | null;
+  such?: string | null;
+  verlauf?: boolean;
+}
+
+function sucheParams(params: URLSearchParams, opts: AufbauSuche): void {
+  if (opts.box) params.set('box', opts.box);
+  if (opts.such) params.set('such', opts.such);
+  if (opts.verlauf) params.set('ansicht', 'verlauf');
+}
+
+/** Box, laufende Suche und Ansicht aus `?neu=suche&box=…`; ohne `box` ist es die führende Box. */
+export function parseAufbauSuche(hash: string): Required<AufbauSuche> {
+  return {
+    box: befehleParam(hash, 'box'),
+    such: befehleParam(hash, 'such'),
+    verlauf: befehleParam(hash, 'ansicht') === 'verlauf',
+  };
+}
+
+/** Die Handlung aus `?neu=` (nur die bekannten), sonst null. */
 export function parseAufbauNeu(hash: string): AufbauNeu | null {
   const wert = befehleParam(hash, 'neu');
   return wert && AUFBAU_NEU.has(wert) ? (wert as AufbauNeu) : null;
@@ -1046,6 +1079,9 @@ export function ohneAufbauNeu(hash: string): string {
   params.delete('neu');
   params.delete('an');
   params.delete('ref');
+  params.delete('box');
+  params.delete('such');
+  params.delete('ansicht');
   const query = params.toString();
   return `${path}${query ? `?${query}` : ''}`;
 }

@@ -924,6 +924,17 @@ export const UEMS_ANBINDUNG = 'Anbindung';
 export const UEMS_ANSCHLUSS = 'Anschluss';
 export const UEMS_GATEWAY_ANBINDEN = 'Gateway oder Logger anbinden';
 
+/**
+ * Gerätesuche (Konzept „Geräte suchen“, Captain 30.10.2026, DP-1 C, DP-2 bis DP-7 A): der Knopf heißt „Geräte suchen“,
+ * die Sache „Gerätesuche“ (auch im Satz „Update nötig für: Gerätesuche“). Das Filterfeld des Aufbaus trägt darum
+ * „Liste durchsuchen“ - zwei Dinge mit einem Namen wären eins zu viel. Die Kachel im Katalog heißt „Im Heimnetz suchen“.
+ * Glossar: `docs/fachmodell/glossar.md` › Gerät (Abschnitt „Gerätesuche“).
+ */
+export const UEMS_GERAETE_SUCHEN = 'Geräte suchen';
+export const UEMS_GERAETESUCHE = 'Gerätesuche';
+export const UEMS_IM_HEIMNETZ_SUCHEN = 'Im Heimnetz suchen';
+export const UEMS_LISTE_DURCHSUCHEN = 'Liste durchsuchen';
+
 /** Der Zwischenstand im Schritt „Anschluss“: der Weg ist gespeichert, das Gerät entsteht erst am Ende. */
 export function anschlussGespeichert(kennzeichen: string, abschluss: string): string {
   return `${UEMS_ANSCHLUSS} gespeichert (Kennung ${kennzeichen}). Das Gerät entsteht erst mit „${abschluss}“.`;

@@ -323,6 +323,13 @@ Kundenwörter: `UEMS_ANBINDUNG`, `UEMS_ANSCHLUSS`, `UEMS_GATEWAY_ANBINDEN` (PORT
 
 > **Verfeinert durch AP-04 E10:** Ein Controller-Wechsel ist EIN Vorgang am Gerät: Karten gelten als übernommen, je Karte abwählbar; alle Komponenten wechseln auf das neue Gerät, alle Messstellen binden automatisch an die neuen Kanäle.
 
+**Gerätesuche (Konzept „Geräte suchen“, Captain 30.10.2026, DP-1 C, DP-2 bis DP-7 A).**
+„Geräte suchen“ startet auf der VoltPilot-Box einen lesenden Suchlauf in ihrem Heimnetz (höchstens 3 Minuten, je Netz höchstens /24); die Sache heißt „Gerätesuche“, auch im Satz „Update nötig für: Gerätesuche“. Das Filterfeld im Aufbau heißt darum „Liste durchsuchen“, die Kachel im Katalog „Im Heimnetz suchen“.
+Die Funde stehen in sechs Gruppen in fester Reihenfolge: „Braucht Ihre Hilfe“, „Bereit zum Übernehmen“, „Erkannt, mit dieser Box noch nicht anbindbar“, „Vielleicht ein Energie-Gerät“, „Schon eingerichtet“ und „Weitere Geräte im Heimnetz“ (Telefone und Rechner nur als Anzahl, nie mit Namen oder MAC-Adresse).
+Die Erkennung steht als Wort: „sicher erkannt“ (das Gerät hat Hersteller, Typ oder Seriennummer selbst gesagt), „wahrscheinlich“ (Merkmale passen, Übernehmen nur mit Bestätigung), „nur erreichbar“; „Woran erkannt?“ nennt die Merkmale.
+„Übernehmen“ öffnet den bestehenden Anlege-Fluss mit dem Anschluss aus der Suche; der Verbindungstest startet von selbst und liest nur. Gleich ist ein Fund nur über seine Seriennummer, nie über dieselbe Adresse; eine neue Adresse desselben Geräts ist ein Vorschlag, den ein Tipp übernimmt (dieselbe Komponente, eine neue Fassung).
+Kundenwörter: `UEMS_GERAETE_SUCHEN`, `UEMS_GERAETESUCHE`, `UEMS_IM_HEIMNETZ_SUCHEN`, `UEMS_LISTE_DURCHSUCHEN` (PORTAL/glossar.ts).
+
 ## Komponente
 
 *Sicht: Erfassung*

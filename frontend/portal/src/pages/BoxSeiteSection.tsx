@@ -42,6 +42,14 @@ import { AddDeviceDrawer, unclaimConsequences } from '../components/DeviceDrawer
 import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
 import { DatenquelleAnlegen } from '../components/DatenquelleAnlegen';
 import { Recht } from '../components/Recht';
+import {
+  GeraeteSuchenKnopf,
+  GeraetesucheGrund,
+  GeraetesucheLeer,
+  LetzteSuche,
+  useGeraetesucheLage,
+  useGeraetesucheVerlauf,
+} from '../components/GeraetesucheEinstieg';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { anlageRoute, aufbauHash, boxSeiteHash, hashForRoute, pageRoute } from '../nav';
 import { einstellungenHash } from '../settingsNav';
@@ -199,6 +207,14 @@ export function BoxSeiteSection({
 
   // Die Wege aller Anlagen am Standort (wie im Aufbau): die Last einer Box zählt alles, was sie liest — auch für eine
   // Nachbaranlage. Bis die Standorte da sind, nur die eigene Anlage.
+  // Gerätesuche (Bericht §4 „Einstiege", d1/m1/m8): Knopf, Grund und letzte Suche dieser Box.
+  const sucheVerlauf = useGeraetesucheVerlauf(site.id, boxDevice?.id ?? null);
+  const sucheLage = useGeraetesucheLage(
+    boxDevice?.lastSeenAt ?? null,
+    edgeVersions?.find((e) => e.deviceId === boxDevice?.id) ?? null,
+    sucheVerlauf,
+    now,
+  );
   const standortDerAnlage = standorte?.standorte.find((st) => st.anlagen.some((a) => a.id === site.id)) ?? null;
   const anlagenIds = (standortDerAnlage ? standortDerAnlage.anlagen.map((a) => a.id) : [site.id]).join(',');
   useEffect(() => {
@@ -400,11 +416,18 @@ export function BoxSeiteSection({
         const liste = block.eintraege.length + block.gateways.length + block.offen.length > 0;
         const modul: BausteinInhalt = {
           titel: 'Geräte an dieser Box',
+          // „Geräte suchen" im Kartenkopf; im Leerzustand steht er groß im Inhalt (m1).
+          kopfRechts: boxDevice && !view.geraeteLeer
+            ? <GeraeteSuchenKnopf siteId={site.id} boxId={boxDevice.id} lage={sucheLage} grundId="box-geraetesuche-grund" />
+            : undefined,
           inhalt: (
             <div className="vp-box-geraete-block" data-testid="box-geraete-block">
+              {boxDevice && !view.geraeteLeer && <GeraetesucheGrund lage={sucheLage} id="box-geraetesuche-grund" />}
               {block.summe && <p className="vp-box-last" data-testid="box-last">{block.summe}</p>}
               {block.summeLeer && <p className="vp-note">{block.summeLeer}</p>}
-              {view.geraeteLeer && <p className="vp-note">{view.geraeteLeer}</p>}
+              {view.geraeteLeer && (boxDevice
+                ? <GeraetesucheLeer siteId={site.id} boxId={boxDevice.id} satz={view.geraeteLeer} lage={sucheLage} />
+                : <p className="vp-note">{view.geraeteLeer}</p>)}
               {liste && (
                 <ul className="vp-geraet-liste vp-box-liste" data-testid="box-geraete">
                   {block.eintraege.map((e) => (
@@ -458,6 +481,7 @@ export function BoxSeiteSection({
               )}
               {block.fremd && <p className="vp-note">{block.fremd}</p>}
               {liste && <p className="vp-note">{GERAETE_HINWEIS}</p>}
+              {boxDevice && <LetzteSuche siteId={site.id} boxId={boxDevice.id} verlauf={sucheVerlauf} jetzt={now} />}
               {/* Datenquellen entstehen hier, an der Box, die sie liest — nicht mehr nur im Messen-Assistenten.
                   GE-6 (GD-5): von Hand ist das ein Gateway oder Logger; ein einzelnes Gerät kommt über „Gerät hinzufügen“. */}
               {standortDerAnlage && (

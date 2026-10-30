@@ -200,9 +200,11 @@ ist das noch nicht - der Lauf braucht die gebauten Bilder des Paars.
 
 ## X2 ist kein Fehlerbild
 
-Die Fähigkeit der Tabelle `docs/contracts/v2/edge-capabilities.json` trägt
+Die Fähigkeiten der Tabelle `docs/contracts/v2/edge-capabilities.json` tragen
 `ab_release: null`. Darum sagt die Fläche „Update nötig für: Rückmeldung je
-Datenquelle" (bis B06, 23.09.2026, zusätzlich „Zuständigkeit ab Zeitpunkt“; das
-Protokoll vom 19.09.2026 zeigt noch den alten Satz) auch für die **neueste ausgelieferte**
-Box, und ob ihr Release im Register steht, ändert daran nichts. Das ist der
+Datenquelle, Gerätesuche" (bis B06, 23.09.2026, zusätzlich „Zuständigkeit ab Zeitpunkt“;
+„Gerätesuche“ seit dem 30.10.2026 mit dem Knopf „Geräte suchen“ - die Protokolle bis 10.1
+zeigen den Satz ohne sie, das vom 19.09.2026 noch den alten) auch für die **neueste ausgelieferte**
+Box, und ob ihr Release im Register steht, ändert daran nichts. Punkt 7 von `nw3.sh` erwartet den
+Satz mit beiden Namen. Das ist der
 Zustand der ganzen Flotte bis zum Edge-Release, das eine Fähigkeit mitbringt.

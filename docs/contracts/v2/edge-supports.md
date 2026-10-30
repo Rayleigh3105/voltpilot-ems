@@ -82,10 +82,10 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   (409 `nicht_unterstuetzt`). **Gesendet von beiden Box-Arten** (Paket 2, 30.10.2026): das Suchmodul
   `edge-app/core/internal/geraetesuche/suche` steckt in `vp-edge-core` und `vp-edge-light`, verdrahtet in
   `agent/geraetesuche.go` (Beleg `suche/suche_test.go`: eine ganze Suche je Box-Art gegen simulierte Geräte). Eine ältere
-  Box meldet das Wort nicht und bekommt nie einen Auftrag. **Noch keine Zeile in `edge-capabilities.json`**: sie kommt mit dem Portal-Paket zusammen
-  mit dem Knopf „Geräte suchen“ - vorher sagte jede Box-Karte und die Flotte „Update nötig für: Gerätesuche“ für einen
-  Knopf, den es nicht gibt. Anders als bei `sprungprobe` soll die Fläche dann „Update nötig für: Gerätesuche“ und
-  „Update planen“ sagen (`ab_release` null, siehe „Je Box-Art“).
+  Box meldet das Wort nicht und bekommt nie einen Auftrag. **Die Zeile in `edge-capabilities.json`** kam mit dem
+  Portal-Paket zusammen mit dem Knopf „Geräte suchen“ (vorher hätte jede Box-Karte und die Flotte „Update nötig für:
+  Gerätesuche“ für einen Knopf gesagt, den es nicht gab). Anders als bei `sprungprobe` sagt die Fläche einer älteren Box
+  „Update nötig für: Gerätesuche“ und „Update planen“ (`ab_release` null, siehe „Je Box-Art“).
   Das Wort wird **je Box-Art** gemeldet (siehe unten); welche Erkenner eine Box-Art wirklich laufen ließ, nennt das
   Ergebnis, nicht dieses Wort.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
@@ -119,9 +119,9 @@ Node-RED-Palette und meldet darum `measurement_config_per_component`, `erzeuger_
 Go-Test (`cloud/edge_supports_test.go`); Java und TS überlesen es.
 
 Auch die Tabelle `edge-capabilities.json` kennt die Box-Art nicht: `BoxFaehigkeiten.effective` ordnet nach `release_seq`
-über beide Linien, ein Edge-Light-Stand hinter dem `ab_release` eines Docker-Tags gälte also mit. Kommt die Zeile
-`geraetesuche`, bleibt ihr `ab_release` deshalb null, bis die Tabelle je Box-Art liest; bis dahin belegt allein die
-eigene Meldung der Box die Fähigkeit.
+über beide Linien, ein Edge-Light-Stand hinter dem `ab_release` eines Docker-Tags gälte also mit. Die Zeile
+`geraetesuche` trägt deshalb `ab_release` null, bis die Tabelle je Box-Art liest; bis dahin belegt allein die eigene
+Meldung der Box die Fähigkeit.
 
 ## Speicherung und Mischbetrieb
 

@@ -165,6 +165,8 @@ export type TabellenZeile =
       text: string;
       /** Führt die Zeile zum Hinzufügen einer Box (nur an der geöffneten Anlage)? */
       boxHinzufuegen: boolean;
+      /** Die leere Box („Noch kein Gerät an dieser Box"): dort steht „Geräte suchen" (Gerätesuche, Bericht §4). */
+      box: AufbauBox | null;
     };
 
 export interface Aufklappzustand {
@@ -296,6 +298,7 @@ export function tabellenZeilen(
           anlage: a,
           text: a.aktuell || a.geraeteZahl != null ? 'Noch kein Gerät an dieser Box' : 'Wird geladen …',
           boxHinzufuegen: false,
+          box: b,
         });
       }
     }
@@ -308,6 +311,7 @@ export function tabellenZeilen(
         anlage: a,
         text: 'Noch keine VoltPilot-Box',
         boxHinzufuegen: a.aktuell,
+        box: null,
       });
     }
   }

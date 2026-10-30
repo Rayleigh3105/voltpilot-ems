@@ -32,6 +32,7 @@ import {
 import type { ComponentHealth, ComponentRole, PlantComponent } from '../komponenten';
 import type { AdoptableSource } from '../rollen';
 import { anlageRoute, hashForRoute } from '../nav';
+import { UEMS_GERAETE_SUCHEN, UEMS_LISTE_DURCHSUCHEN } from '../glossar';
 import { mitStaffel, useStaffel } from '../staffel';
 
 /**
@@ -125,6 +126,8 @@ export interface AufbauTabelleProps {
   onTechnischUebernehmen: ((q: AdoptableSource) => void) | null;
   /** Gerät hinzufügen (an einer Box oder allgemein); null = hier nicht möglich. */
   onGeraetHinzufuegen: ((box: AufbauBox | null) => void) | null;
+  /** „Geräte suchen" an einer leeren Box (Gerätesuche); null/absent = hier nicht angeboten. */
+  onGeraeteSuchen?: ((box: AufbauBox) => void) | null;
   /** Warum „Gerät hinzufügen" gesperrt ist - nie ein stummer grauer Knopf. */
   geraetGesperrt: string | null;
   onBoxHinzufuegen: () => void;
@@ -173,7 +176,7 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
           <input
             type="text"
             role="searchbox"
-            aria-label="Geräte suchen"
+            aria-label={UEMS_LISTE_DURCHSUCHEN}
             placeholder="Name, Modell, Kennung …"
             value={p.filter.q}
             autoComplete="off"
@@ -418,6 +421,16 @@ function Zeile({ z, begriffe, p }: { z: TabellenZeile; begriffe: string[]; p: Au
               </button></Recht>
             ) : (
               <span className="vp-auf-t-leer">{z.text}</span>
+            )}
+            {z.box && z.anlage.aktuell && p.onGeraeteSuchen && (
+              <Recht aktion="geraet.einrichten"><button
+                type="button"
+                className="vp-auf-t-leer is-aktion vp-auf-t-suchen"
+                onClick={() => z.box && p.onGeraeteSuchen?.(z.box)}
+                aria-label={`${UEMS_GERAETE_SUCHEN} an ${z.box.name}`}
+              >
+                <Icon name="target" size={15} /> {UEMS_GERAETE_SUCHEN}
+              </button></Recht>
             )}
           </span>
         </div>

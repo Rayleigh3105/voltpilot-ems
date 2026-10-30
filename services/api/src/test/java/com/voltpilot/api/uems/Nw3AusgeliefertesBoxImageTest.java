@@ -27,11 +27,13 @@ import org.junit.jupiter.api.Test;
  * und er entsteht aus dem Versionsstempel der CI ({@code <tag>-<12 Zeichen der SHA>},
  * {@code .forgejo/workflows/edge-images.yaml}).
  *
- * <p>Der Punkt der Regel: es ist NICHT so, dass nur alte Boxen den Satz sehen. Die Fähigkeit der
- * Tabelle trägt {@code ab_release: null} — <em>kein</em> ausgeliefertes Release trägt sie. Darum sagt
+ * <p>Der Punkt der Regel: es ist NICHT so, dass nur alte Boxen den Satz sehen. Die Fähigkeiten der
+ * Tabelle tragen {@code ab_release: null} — <em>kein</em> ausgeliefertes Release trägt sie. Darum sagt
  * die Fläche den Satz auch für die NEUESTE ausgelieferte Box, und ob ihr Release im Register
  * steht, ändert daran nichts. Das ist der Zustand der Flotte, kein Fehlerbild (X2). „Zuständigkeit
  * ab Zeitpunkt“ nennt der Satz seit B06 nicht mehr: der Cloud-Zeitgeber erbringt sie für jede Box.
+ * „Gerätesuche“ nennt er seit dem 30.10.2026 (Zeile mit dem Knopf „Geräte suchen“): keine
+ * ausgelieferte Box meldet sie in {@code supports[]}, auch 10.0 und 10.1 nicht.
  */
 class Nw3AusgeliefertesBoxImageTest {
 
@@ -45,7 +47,7 @@ class Nw3AusgeliefertesBoxImageTest {
     private static final String RELEASE = "edge-2026.09.4";
 
     private static final String SATZ = "Software " + GEMELDETER_STAND
-            + " · Update nötig für: Rückmeldung je Datenquelle";
+            + " · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche";
 
     /**
      * Der Stand, den die Box im NW-3-Lauf des jüngeren Tags meldete
@@ -99,7 +101,7 @@ class Nw3AusgeliefertesBoxImageTest {
                 new Stand(GEMELDETER_STAND, RELEASE, null), tabelle(), List.of(RELEASE));
 
         assertThat(e.text()).isEqualTo("Software " + RELEASE
-                + " · Update nötig für: Rückmeldung je Datenquelle");
+                + " · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche");
         assertThat(e.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
     }
 
@@ -125,9 +127,9 @@ class Nw3AusgeliefertesBoxImageTest {
                 new Stand(GEMELDETER_STAND_095, RELEASE_095, null), tabelle(), List.of(RELEASE_095));
 
         assertThat(ohne.text()).isEqualTo("Software " + GEMELDETER_STAND_095
-                + " · Update nötig für: Rückmeldung je Datenquelle");
+                + " · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche");
         assertThat(mit.text()).isEqualTo("Software " + RELEASE_095
-                + " · Update nötig für: Rückmeldung je Datenquelle");
+                + " · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche");
         assertThat(mit.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
     }
 
@@ -141,9 +143,9 @@ class Nw3AusgeliefertesBoxImageTest {
                 new Stand(GEMELDETER_STAND_096, RELEASE_096, null), tabelle(), List.of(RELEASE_096));
 
         assertThat(ohne.text()).isEqualTo("Software " + GEMELDETER_STAND_096
-                + " · Update nötig für: Rückmeldung je Datenquelle");
+                + " · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche");
         assertThat(mit.text()).isEqualTo("Software " + RELEASE_096
-                + " · Update nötig für: Rückmeldung je Datenquelle");
+                + " · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche");
         assertThat(mit.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
     }
 
@@ -158,27 +160,26 @@ class Nw3AusgeliefertesBoxImageTest {
                 new Stand(GEMELDETER_STAND_100, RELEASE_100, null), tabelle(), List.of(RELEASE_100));
 
         assertThat(ohne.text()).isEqualTo("Software " + GEMELDETER_STAND_100
-                + " · Update nötig für: Rückmeldung je Datenquelle");
+                + " · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche");
         assertThat(mit.text()).isEqualTo("Software " + RELEASE_100
-                + " · Update nötig für: Rückmeldung je Datenquelle");
+                + " · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche");
         assertThat(mit.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
     }
 
     @Test
-    void dasReleaseMitDemUemsStandMeldetSupportsUndBrauchtDarumKeinUpdate() throws Exception {
+    void dasReleaseMitDemUemsStandMeldetSupportsUndBrauchtNurNochDieGeraetesuche() throws Exception {
         // Anders als 09.4 bis 09.6 trägt der Herzschlag von edge-2026.10.0 den Block
         // `supports[]` (Beleg: Punkt 1a des Protokolls, acht Namen, darunter `data_sources`).
         // Punkt 7 des Werkzeugs liest diesen Block nicht; die Fläche liest ihn, und mit der
-        // gemeldeten Liste fehlt der Box nichts - der Satz „Update nötig“ fällt weg.
+        // gemeldeten Liste fehlt der Box nur, was sie nicht meldet: die Gerätesuche.
         List<String> gemeldet = List.of("data_sources", "measurement_sample_provenance", "events",
                 "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil",
                 "sprungprobe", "measurement_config_per_component");
         FaehigkeitenErgebnis e = DatenquelleRegeln.faehigkeiten(
                 new Stand(GEMELDETER_STAND_100, null, gemeldet), tabelle(), List.of());
 
-        assertThat(e.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(true);
-        assertThat(e.text()).startsWith("Software " + GEMELDETER_STAND_100 + " · ")
-                .doesNotContain("Update nötig");
+        assertThat(e.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsExactly(true, false);
+        assertThat(e.text()).isEqualTo("Software " + GEMELDETER_STAND_100 + " · Update nötig für: Gerätesuche");
     }
 
     @Test
@@ -186,7 +187,7 @@ class Nw3AusgeliefertesBoxImageTest {
         // edge-2026.10.1 (12.10.2026, Speicher-Korrekturen UE-1 bis UE-4 im Go-Core) ist die neueste
         // ausgelieferte Box. An der Fähigkeitsaussage ändert das Release nichts: über die Tabelle
         // (ab_release = null) derselbe Satz wie für 10.0, und mit dem gemeldeten `supports[]`
-        // (Punkt 1a des Protokolls, dieselben acht Namen wie 10.0) fehlt der Box nichts.
+        // (Punkt 1a des Protokolls, dieselben acht Namen wie 10.0) fehlt der Box nur die Gerätesuche.
         FaehigkeitenErgebnis ohne = DatenquelleRegeln.faehigkeiten(
                 new Stand(GEMELDETER_STAND_101, null, null), tabelle(), List.of());
         FaehigkeitenErgebnis mit = DatenquelleRegeln.faehigkeiten(
@@ -198,13 +199,12 @@ class Nw3AusgeliefertesBoxImageTest {
                 new Stand(GEMELDETER_STAND_101, null, gemeldet), tabelle(), List.of());
 
         assertThat(ohne.text()).isEqualTo("Software " + GEMELDETER_STAND_101
-                + " · Update nötig für: Rückmeldung je Datenquelle");
+                + " · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche");
         assertThat(mit.text()).isEqualTo("Software " + RELEASE_101
-                + " · Update nötig für: Rückmeldung je Datenquelle");
+                + " · Update nötig für: Rückmeldung je Datenquelle, Gerätesuche");
         assertThat(mit.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
-        assertThat(gemeldetes.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(true);
-        assertThat(gemeldetes.text()).startsWith("Software " + GEMELDETER_STAND_101 + " · ")
-                .doesNotContain("Update nötig");
+        assertThat(gemeldetes.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsExactly(true, false);
+        assertThat(gemeldetes.text()).isEqualTo("Software " + GEMELDETER_STAND_101 + " · Update nötig für: Gerätesuche");
     }
 
     private static List<TabellenEintrag> tabelle() throws Exception {

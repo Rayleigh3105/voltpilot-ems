@@ -49,14 +49,18 @@ describe('Gerätesuche: Vertrag im Portal', () => {
     expect([...GERAETESUCHE_SCHRITTE]).toEqual((schemas.stand.properties as Record<string, { enum: string[] }>).schritt.enum);
   });
 
-  it('kennt das Fähigkeitswort aus dem Herzschlag, die Tabellenzeile kommt mit dem Knopf', () => {
+  it('kennt das Fähigkeitswort aus dem Herzschlag, die Tabellenzeile kam mit dem Knopf', () => {
     const supports = vertrag('v2/edge-supports-vectors.json') as { capabilities: { name: string; advertised: boolean }[] };
-    const tabelle = vertrag('v2/edge-capabilities.json') as { faehigkeiten: { code: string; ab_release: string | null }[] };
+    const tabelle = vertrag('v2/edge-capabilities.json') as {
+      faehigkeiten: { code: string; name: string; ab_release: string | null }[];
+    };
     // Gemeldet von beiden Box-Arten, seit das Suchmodul der Box gebaut ist (Paket 2).
     expect(supports.capabilities.find((c) => c.name === GERAETESUCHE_FAEHIGKEIT)?.advertised).toBe(true);
-    // Ohne Knopf kein „Update nötig für: Gerätesuche“ auf Box-Karte und Flotte. Das Portal-Paket trägt die Zeile
-    // zusammen mit dem Knopf ein, mit `ab_release` null (edge-supports.md „Je Box-Art“).
-    expect(tabelle.faehigkeiten.find((f) => f.code === GERAETESUCHE_FAEHIGKEIT)).toBeUndefined();
+    // Mit dem Knopf „Geräte suchen“ sagen Box-Karte und Flotte einer älteren Box „Update nötig für: Gerätesuche“, bis
+    // sie das Wort meldet: `ab_release` bleibt null, bis die Tabelle je Box-Art liest (edge-supports.md „Je Box-Art“).
+    const zeile = tabelle.faehigkeiten.find((f) => f.code === GERAETESUCHE_FAEHIGKEIT);
+    expect(zeile?.name).toBe('Gerätesuche');
+    expect(zeile?.ab_release).toBeNull();
   });
 
   it('„noch nicht anbindbar“ ist genau die Gruppe nicht_anbindbar', () => {

@@ -1,4 +1,5 @@
 import { Recht } from './Recht';
+import { UEMS_GERAETE_SUCHEN } from '../glossar';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -69,6 +70,7 @@ export function AddDeviceDrawer({
   // EIN Name je Handlung: eine Box anmelden heißt überall „VoltPilot-Box hinzufügen“ — „Gerät hinzufügen“
   // ist der Gerätekatalog (Zähler, Wechselrichter, Ladesäule hinter der Box).
   title = 'VoltPilot-Box hinzufügen',
+  onGeraeteSuchen = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -81,6 +83,11 @@ export function AddDeviceDrawer({
   datenquellen?: UemsDatenquelle[];
   /** Titel und Knopf; der Aufbau nennt die Box beim Namen („VoltPilot-Box hinzufügen"). */
   title?: string;
+  /**
+   * Gerätesuche (Bericht §4 „Einstiege"): nach dem Anmelden ist „Geräte suchen" der nächste Schritt; null = der Wirt
+   * bietet ihn hier nicht an (Box-Tausch, Flotte).
+   */
+  onGeraeteSuchen?: ((device: Device) => void) | null;
 }) {
   const [externalRef, setExternalRef] = useState('');
   const [siteId, setSiteId] = useState('');
@@ -174,6 +181,13 @@ export function AddDeviceDrawer({
               {busy ? 'Wird vorbereitet …' : 'Box-Tausch bestätigen'}
             </Button></Recht>
           </>
+        ) : claimed && onGeraeteSuchen ? (
+          <>
+            <Button variant="ghost" onClick={close}>Fertig</Button>
+            <Recht aktion="geraet.einrichten"><Button variant="primary" onClick={() => onGeraeteSuchen(claimed)} data-testid="box-angemeldet-suchen">
+              {UEMS_GERAETE_SUCHEN}
+            </Button></Recht>
+          </>
         ) : claimed ? (
           <Button variant="primary" onClick={close}>
             Fertig
@@ -215,6 +229,7 @@ export function AddDeviceDrawer({
           ) : !nachfolgerVon ? <p style={{ margin: 'var(--vp-space-4) 0' }}>
             Mehr ist nicht zu tun: sobald die Box mit dieser Referenz online geht,
             erhält sie ihre Konfiguration automatisch und beginnt zu senden.
+            {onGeraeteSuchen && ' Danach findet „Geräte suchen“ Wechselrichter, Zähler, Wallboxen und Schalter in Ihrem Heimnetz – es wird nur gelesen.'}
           </p> : null}
           {error && <div className="vp-alert vp-alert-err">{error}</div>}
           {!nachfolgerVon && (

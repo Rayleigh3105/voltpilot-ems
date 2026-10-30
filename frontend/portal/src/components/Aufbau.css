@@ -881,6 +881,12 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   color: var(--vp-action);
   cursor: pointer;
 }
+/* „Geräte suchen" neben „Noch kein Gerät an dieser Box" (Gerätesuche): dieselbe ruhige Handlung, Tippfläche 44 px. */
+.vp-auf-t-leer.vp-auf-t-suchen {
+  margin-left: var(--vp-space-3);
+  min-height: 44px;
+  border-style: solid;
+}
 .vp-auf-t-nichts > span {
   display: grid;
   justify-items: center;

@@ -18,6 +18,7 @@ import { consumersApi } from '../consumers/consumersApi';
 import { OHNE_STANDORT } from '../aufbauBaum';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
+import { GS_GOE, GS_TEMPLATES, geraetesucheFaelle } from '../test/geraetesucheFixtures';
 
 /*
   Der Reiter „Aufbau" (Konzept „Anlage – neu gedacht", E1–E6 = A). Die
@@ -403,13 +404,13 @@ describe('AufbauSection · der Baum', () => {
     stub();
     rendere();
     await zeile('inv');
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Geräte suchen' }), { target: { value: 'sun30k' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Liste durchsuchen' }), { target: { value: 'sun30k' } });
     await waitFor(() => expect(document.querySelector('[data-aufbau-geraet="src-1"]')).toBeNull());
     expect(await zeile('inv')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'VoltPilot-Box' })).toBeInTheDocument();
     expect(screen.getByText(/von \d+ Geräten/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Geräte suchen' }), { target: { value: 'gibtsnicht' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Liste durchsuchen' }), { target: { value: 'gibtsnicht' } });
     expect(await screen.findByText(/Kein Gerät passt zu „gibtsnicht"/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Suche und Filter zurücksetzen' }));
     expect(await zeile('src-1')).toBeInTheDocument();
@@ -1319,5 +1320,79 @@ describe('AufbauSection · die technische Sicht', () => {
     expect(screen.queryByRole('button', { name: /Komponente anlegen \(technisch\)/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^technisch/ })).toBeNull();
     expect(api.entityStrategies).not.toHaveBeenCalled();
+  });
+});
+
+describe('AufbauSection · Gerätesuche (Konzept „Geräte suchen“)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const F = geraetesucheFaelle(Date.now());
+  const bestanden = { results: [{ ok: true, reading: { value: 7.4, unit: 'kW' } }] };
+
+  it('`?neu=suche&box=` öffnet „Geräte suchen“ an genau dieser Box; der Parameter ist danach verbraucht', async () => {
+    stub(`#/anlage/${site.id}/modell?neu=suche&box=gw`);
+    portalVerwaltet();
+    const start = vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.fertig));
+    rendere();
+    expect(await screen.findByRole('dialog', { name: 'Geräte suchen' })).toBeInTheDocument();
+    expect(start).toHaveBeenCalledWith(site.id, 'gw', expect.stringMatching(/^portal-/));
+    expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
+  });
+
+  it('an einer leeren Box steht „Geräte suchen“ neben „Noch kein Gerät an dieser Box“', async () => {
+    stub();
+    portalVerwaltet();
+    vi.mocked(api.siteEntities).mockResolvedValue({ registry: null, entities: [], localSetup: [], staleOnDevice: [] });
+    vi.mocked(api.siteSources).mockResolvedValue([]);
+    const start = vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.laeuft));
+    rendere();
+    fireEvent.click(await screen.findByRole('button', { name: 'Geräte suchen an VoltPilot-Box' }));
+    expect(await screen.findByRole('heading', { name: 'Suche im Heimnetz …' })).toBeInTheDocument();
+    expect(start).toHaveBeenCalledWith(site.id, 'gw', expect.any(String));
+  });
+
+  it('der Katalog „Gerät hinzufügen“ beginnt mit „Im Heimnetz suchen“', async () => {
+    stub();
+    portalVerwaltet();
+    const start = vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.laeuft));
+    rendere();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerät hinzufügen' }));
+    const katalog = await screen.findByRole('dialog', { name: 'Gerät hinzufügen' });
+    fireEvent.click(await within(katalog).findByRole('button', { name: /Im Heimnetz suchen/ }));
+    expect(await screen.findByRole('dialog', { name: 'Geräte suchen' })).toBeInTheDocument();
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('„Übernehmen“ öffnet den Anlege-Fluss vorbelegt, der Test startet von selbst; danach zurück zur Liste', async () => {
+    stub(`#/anlage/${site.id}/modell?neu=suche&box=gw`);
+    portalVerwaltet();
+    vi.mocked(api.componentTemplates).mockResolvedValue(GS_TEMPLATES as never);
+    vi.spyOn(api, 'geraetesucheStarten').mockResolvedValue(structuredClone(F.breit));
+    const test = vi.spyOn(api, 'testComponentConnection').mockResolvedValue(bestanden as never);
+    vi.spyOn(api, 'matchComponent').mockResolvedValue(undefined);
+    const anlegen = vi.spyOn(api, 'createComponent').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{ id: 'goe-neu', role: 'consumer', templateRef: GS_GOE.templateRef, definitionVersion: 1, syncStatus: 'pending' }],
+    } as never);
+    rendere();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'go-e Wallbox übernehmen' }));
+    const seite = await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    expect((within(seite).getByLabelText(/IP-Adresse der Wallbox/) as HTMLInputElement).value).toBe('192.168.178.52');
+    expect(within(seite).getByTestId('aus-der-suche')).toHaveTextContent('Aus der Gerätesuche: IP-Adresse der Wallbox, Port.');
+    await waitFor(() => expect(test).toHaveBeenCalledWith(site.id, expect.objectContaining({
+      deviceId: 'gw', templateRef: GS_GOE.templateRef, connection: { ip: '192.168.178.52', port: 80 },
+    })), { timeout: 3_000 });
+    expect(await within(seite).findByTestId('richtung-pruefen')).toBeInTheDocument();
+    expect(within(seite).getByRole('button', { name: 'Zurück zur Gerätesuche' })).toBeInTheDocument();
+    const speichern = within(seite).getByTestId('einrichten-speichern');
+    await waitFor(() => expect(speichern).toBeEnabled());
+    fireEvent.click(speichern);
+    await waitFor(() => expect(anlegen).toHaveBeenCalled());
+
+    const suche = await screen.findByRole('dialog', { name: 'Geräte suchen' });
+    expect(await within(suche).findByText(/„go-e Charger“ ist angelegt\./)).toBeInTheDocument();
+    expect(within(suche).getByRole('region', { name: 'Übernommen' })).toHaveTextContent('go-e Charger');
+    // Kein Sprung auf das neue Gerät - der Weg führt zurück zur Liste (m5c).
+    expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
   });
 });
