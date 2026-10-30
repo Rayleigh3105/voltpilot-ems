@@ -1,6 +1,9 @@
 package cloud
 
-import "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
+import (
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
+)
 
 // StatusExtension keeps independent additive heartbeat blocks beside the legacy fields.
 // Nil omits a block. An empty DataSources slice clears the complete source set.
@@ -44,8 +47,33 @@ type StatusExtension struct {
 // (componentapply/plant_controller_test.go). The cloud sends that driver only
 // to a box reporting this word - an older applier refuses a driver without a
 // brand and with it the whole push.
-func BuiltSupports() []string {
-	return []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
-		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component",
-		"erzeuger_registerbild", "anlagensteuerung_quelle"}
+//
+// geraetesuche (Gerätesuche, mqtt-geraetesuche 1.0): the agent runs a
+// device-search order with the search module of internal/geraetesuche/suche
+// and reports progress and one result (agent/geraetesuche.go). Both builds
+// carry it; what each box type can see differs (DP-2 A) and the result names
+// the recognisers that ran.
+//
+// EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
+// Edge Light has no Node-RED palette, so the words whose way ends in the
+// palette - the shared point read once per target, the Erzeuger image reader
+// and the plant-controller binding - are the Docker box's only
+// (edge-supports-vectors.json box_arten).
+func BuiltSupports(boxArt string) []string {
+	out := []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
+		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe"}
+	if boxArt != geraetesuche.BoxArtEdgeLight {
+		out = append(out, "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle")
+	}
+	return append(out, "geraetesuche")
+}
+
+// UpdateBackend is the apply backend a box type reports in update.backend and
+// verifies a release against: light for Edge Light (vp-edge-light), compose
+// for the Docker box.
+func UpdateBackend(boxArt string) string {
+	if boxArt == geraetesuche.BoxArtEdgeLight {
+		return UpdateBackendLight
+	}
+	return UpdateBackendCompose
 }

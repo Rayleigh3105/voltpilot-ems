@@ -22,6 +22,9 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 | Lokale Web-App `:8484` (Betrieb, Einrichten) | ✅ |
 | Modbus-Datenspiegel (Server-Seite) | ✅ · Lernblöcke lesen ⬜ (D) |
 | Datenlöschung, Einspeisewächter, Lastspitzen-Wächter | ✅ Logik |
+| **Gerätesuche** („Geräte suchen“ im Portal, [Vertrag](../../docs/contracts/v2/mqtt-geraetesuche.md)): Suchmodul und Erkenner im Core (`internal/geraetesuche/suche`) | ✅ gebaut, gegen Simulatoren geprüft · 🔒 Abnahme am VoltPilotGATE offen (Paket 5, nur als Pilot von Hand, DP-6 A). Edge Light sieht mehr als die Docker-Box: UDP-Anstoß + ARP-Tabelle (nur aktive Nachbarn werden angesprochen), mDNS, SSDP, Speedwire (SMA-Zähler) und die eingebaute Herstellerliste der Funkmodule; der offene Auftrag bleibt im RAM (kein Flash). Solarman-Logger nur über die Logger-Spur der Schicht 1. SunSpec, Fronius, KACO, KOSTAL, Huawei und WAGO meldet es als „mit dieser Box noch nicht anbindbar“, bis die Lesewege aus B/D da sind. Am Gerät zu klären: Antworten auf mDNS/SSDP und der Speedwire-Multicast kommen auf der WAN-Seite nur an, wenn die Firewall (fw4, Eingang WAN) sie durchlässt |
+| OCPP „klopft an“ (abgewiesene Ladesäulen 24 h im Herzschlag, [Vertrag](../../docs/contracts/ocpp-klopft-an.md)) | ✅ (Core) |
+| Fähigkeiten und Update-Backend je Box-Art: `supports[]` ohne die Palette-Wörter (`measurement_config_per_component`, `erzeuger_registerbild`, `anlagensteuerung_quelle`), `update.backend` `light` | ✅ |
 
 ## B. Lesen (Schicht 1)
 

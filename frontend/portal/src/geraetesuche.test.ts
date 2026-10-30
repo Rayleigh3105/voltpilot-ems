@@ -52,8 +52,8 @@ describe('Gerätesuche: Vertrag im Portal', () => {
   it('kennt das Fähigkeitswort aus dem Herzschlag, die Tabellenzeile kommt mit dem Knopf', () => {
     const supports = vertrag('v2/edge-supports-vectors.json') as { capabilities: { name: string; advertised: boolean }[] };
     const tabelle = vertrag('v2/edge-capabilities.json') as { faehigkeiten: { code: string; ab_release: string | null }[] };
-    // Bekannt, aber noch von keiner Box gemeldet: das Suchmodul der Box ist nicht gebaut.
-    expect(supports.capabilities.find((c) => c.name === GERAETESUCHE_FAEHIGKEIT)?.advertised).toBe(false);
+    // Gemeldet von beiden Box-Arten, seit das Suchmodul der Box gebaut ist (Paket 2).
+    expect(supports.capabilities.find((c) => c.name === GERAETESUCHE_FAEHIGKEIT)?.advertised).toBe(true);
     // Ohne Knopf kein „Update nötig für: Gerätesuche“ auf Box-Karte und Flotte. Das Portal-Paket trägt die Zeile
     // zusammen mit dem Knopf ein, mit `ab_release` null (edge-supports.md „Je Box-Art“).
     expect(tabelle.faehigkeiten.find((f) => f.code === GERAETESUCHE_FAEHIGKEIT)).toBeUndefined();

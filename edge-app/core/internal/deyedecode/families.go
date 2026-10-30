@@ -37,6 +37,23 @@ var (
 	deviceTypesHV = []int{0x0006, 0x0007, 0x0600, 0x0008, 0x0601}
 )
 
+// Spannungsklasse names the class of a device-identity code: "hv", "lv", or
+// ok=false for a code outside both lists (the device search reports no class
+// then - never a guessed one).
+func Spannungsklasse(code uint16) (string, bool) {
+	for _, c := range deviceTypesHV {
+		if int(code) == c {
+			return "hv", true
+		}
+	}
+	for _, c := range deviceTypesLV {
+		if int(code) == c {
+			return "lv", true
+		}
+	}
+	return "", false
+}
+
 // The BMS block a CAN-coupled battery fills (P4), 0x00D2..0x00DF.
 const (
 	bmsBlockStart = 0x00d2

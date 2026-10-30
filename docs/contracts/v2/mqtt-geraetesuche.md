@@ -8,9 +8,11 @@ Schemas: [Auftrag](mqtt-geraetesuche.schema.json), [Zwischenstand](mqtt-geraetes
 HTTP: Tag `geraetesuche` in [`openapi.yaml`](../openapi.yaml). Abgewiesene Ladesäulen: [OCPP „klopft an“](../ocpp-klopft-an.md).
 
 **Stand:** der Vertrag mit seinen Lesern und Prüfern (Go `internal/geraetesuche` und `internal/probe/bereich.go`,
-Java `geraetesuche`, TS `geraetesuche.ts`) und die API-Seite: Tabellen, Routen, Listener, Abgleich
-([Wegweiser](../../agents/root/geraetesuche-api.md)). Suchmodul, Erkenner und Oberfläche kommen in eigenen Paketen. Bis
-eine Box die Fähigkeit `geraetesuche` meldet, antwortet die Route 409 `nicht_unterstuetzt`.
+Java `geraetesuche`, TS `geraetesuche.ts`), die API-Seite (Paket 3): Tabellen, Routen, Listener, Abgleich
+([Wegweiser](../../agents/root/geraetesuche-api.md)), und die Box-Seite (Paket 2): Suchmodul und Erkenner
+`edge-app/core/internal/geraetesuche/suche`, Verdrahtung `agent/geraetesuche.go`, OCPP „klopft an“ `internal/csms`;
+beide Box-Arten melden `geraetesuche`. Die Oberfläche kommt in einem eigenen Paket. Bis eine Box die Fähigkeit
+`geraetesuche` meldet, antwortet die Route 409 `nicht_unterstuetzt`.
 
 ## 1. Topics
 
@@ -61,11 +63,11 @@ die nicht zur Suche passt (Identität, Version, Grund, Netze, Grenzen), wird gan
 | Regel | Wert (`grenzen` der Vektoren) |
 |---|---|
 | Netze | nur eigene private Netze (Bereichsregel §4), je höchstens /24, höchstens 2: `kundennetz` und `box_netz` (DP-5 A, automatisch) |
-| Takt | ≤ 20 neue Verbindungen/s, ≤ 2 gleichzeitig je Gerät, ≤ 3 Erkennungsanfragen je Gerät, 1,5 s Zeitlimit |
+| Takt | ≤ 20 neue Verbindungen/s, ≤ 2 gleichzeitig je Gerät, ≤ 3 Erkennungsanfragen je Gerät und Erkenner (die Erkenner eines Geräts laufen nacheinander und enden beim ersten Fund), 1,5 s Zeitlimit |
 | Dauer | eine Suche je Box, höchstens 180 s (`zeitlimit`), Zwischenstand alle 2 s |
 | Häufigkeit | höchstens 6 angenommene Starts je Stunde und Box (`zu_oft`) |
 | Nur lesen | TCP-Verbindungsaufbau, HTTP-GET auf feste Pfade, Modbus FC 3/4 auf Kennungsregister, Solarman V5 FC 3 auf 0x0000–0x0007, mDNS/SSDP-Anfragen. Nie: Anmeldung, Standardpasswort, Schreibfunktion, AT-Befehl, Konfigurationsseite. 401/403 endet mit `hindernis: geschuetzt`. |
-| Ein-Client-Geräte | Logger, die die Box schon liest, werden nicht neu verbunden (`liest_box_schon: true`); neue nur über die Logger-Spur bzw. den Bus-Arbiter, nie parallel |
+| Ein-Client-Geräte | Logger, die die Box schon liest, werden nicht neu verbunden (`liest_box_schon: true`); neue nur über die Logger-Spur bzw. den Bus-Arbiter, nie parallel. Die Box verbindet keine Adresse neu, deren Gerät sie schon liest (Wechselrichter-Auswahl, Quellen, Registry); sie meldet es aus ihrer Einrichtung (Merkmal `laufender_leser`) |
 | Neustart | Docker-Box: der offene Auftrag liegt auf der Platte, nach einem Neustart meldet sie `abgebrochen`/`neustart`. Edge Light hält ihn nur im RAM (kein Flash-Schreiben): dort endet die Suche ohne Ergebnis, die Cloud sagt nach 30 s ohne Stand „nicht zu Ende gemeldet“ |
 
 **Je Box-Art.** Das Suchmodul ist derselbe Go-Code; es unterscheidet sich nur darin, was die Box sieht (DP-2 A):

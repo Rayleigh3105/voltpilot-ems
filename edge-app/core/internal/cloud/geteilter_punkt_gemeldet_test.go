@@ -5,6 +5,8 @@ import (
 	"os"
 	"slices"
 	"testing"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 )
 
 // AP-07 IP-18b Einschalten, Entscheid firstmate 23.09.2026 A: the shared point
@@ -14,7 +16,7 @@ import (
 // So the box reports measurement_config_per_component, and the shared vector
 // says so too. Until PR 1128 this test held the opposite (the word dormant).
 func TestGeteilterPunktIstGebautUndDieBoxMeldetDasWort(t *testing.T) {
-	if !slices.Contains(BuiltSupports(), "measurement_config_per_component") {
+	if !slices.Contains(BuiltSupports(geraetesuche.BoxArtDocker), "measurement_config_per_component") {
 		t.Fatal("measurement_config_per_component built but not advertised")
 	}
 	raw, err := os.ReadFile("../../../../docs/contracts/v2/edge-supports-vectors.json")

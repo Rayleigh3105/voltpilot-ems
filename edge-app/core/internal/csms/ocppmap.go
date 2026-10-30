@@ -74,7 +74,7 @@ func newTransport(s *Server, port int, path string) *transport {
 
 	// The allowlist gate. Returning false makes the library refuse the
 	// websocket upgrade, so an unregistered station never reaches a handler.
-	cs.SetNewChargingStationValidationHandler(func(id string, _ *http.Request) bool {
+	cs.SetNewChargingStationValidationHandler(func(id string, r *http.Request) bool {
 		if t.stopping.Load() {
 			return false
 		}
@@ -83,6 +83,13 @@ func newTransport(s *Server, port int, path string) *transport {
 		}
 		s.log.Warn("unbekannte Ladesäule abgewiesen — die Kennung steht nicht in der Freigabeliste",
 			"charge_point_id", id)
+		// "klopft an": remembered 24 h, reported in the heartbeat - admitted
+		// only by a person through the allowlist (klopftan.go).
+		remote := ""
+		if r != nil {
+			remote = r.RemoteAddr
+		}
+		s.merkeAbgewiesen(id, remote, s.opts.Now())
 		return false
 	})
 	cs.SetNewChargePointHandler(func(cp ocpp16.ChargePointConnection) { s.onConnect(cp.ID()) })

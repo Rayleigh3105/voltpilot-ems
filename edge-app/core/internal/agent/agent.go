@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -38,6 +39,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flexfallback"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche/suche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
@@ -422,6 +424,14 @@ type Agent struct {
 	// edge-entity-config.md): the applied registry, its persistence, the
 	// latest per-entity readings and the live v2 uplink queue. Empty registry
 	// = byte-for-byte v1 behavior.
+	// Gerätesuche (geraetesuche.go): the one search at a time and its
+	// admission. geraetesucheSpur is Edge Light's Layer-1 logger lane;
+	// geraetesucheDialer replaces the TCP dialer in tests only.
+	geraetesuche       *suche.Leitung
+	geraetesucheMu     sync.Mutex
+	geraetesucheSpur   func(ctx context.Context, addr string) (func(), bool)
+	geraetesucheDialer func(ctx context.Context, addr string) (net.Conn, error)
+
 	entMu        sync.Mutex
 	entStore     *entities.Store
 	entRegistry  entities.Registry
@@ -875,6 +885,7 @@ func New(cfg config.Config) (*Agent, error) {
 	a.restoreAnteile(as)
 	a.restoreVerlust(cfg.DataDir)
 	a.restoreSprungprobe(time.Now())
+	a.geraetesuche = a.neueGeraetesuche()
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
 	if sel, ok, err := is.Load(); err == nil && ok {
@@ -1051,6 +1062,10 @@ func (a *Agent) Start(ctx context.Context) error {
 	// this loop only ever reads files and forms an opinion.
 	a.done.Add(1)
 	go a.otaCheckLoop(ctx)
+
+	// Gerätesuche: an order open at the last stop is reported once
+	// ("neustart", Docker box); waiting results keep going out.
+	a.geraetesuche.Start(ctx)
 
 	// OTA Stufe 3: der Zustandskanal zum Sidecar und der Selbsttest eines
 	// frisch getauschten Standes. Beide sind harmlos ohne Sidecar - der eine
@@ -1381,6 +1396,9 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		// AP-15 IP-21: a Sprungprobe order - run bounded, reported once
 		// (sprungprobe.go).
 		OnSprungprobe: a.onSprungprobe,
+		// Gerätesuche: a one-shot search order - admitted cheaply here, run
+		// on its own goroutine, reported once (geraetesuche.go).
+		OnGeraetesuche: a.onGeraetesuche,
 		// OTA Stufe 2: das zugewiesene Release kommt retained ueber denselben
 		// Link. Es wird geprueft, abgelegt und gemeldet - angewandt wird es
 		// beaufsichtigt (update.sh --from-target).
@@ -1462,7 +1480,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
 					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
 					a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
-					a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now()), Supports: cloud.BuiltSupports(),
+					a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now()), Supports: cloud.BuiltSupports(a.boxArt()),
 						GemeinsameSteuerung: a.gemeinsameSteuerung()}); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}

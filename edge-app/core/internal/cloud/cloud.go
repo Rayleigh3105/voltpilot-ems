@@ -21,6 +21,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 )
 
 // Link is the cloud MQTT connection.
@@ -46,6 +47,7 @@ type Link struct {
 	onPlanV2            func(payload []byte)
 	onVerbundAnteile    func(payload []byte)
 	onSprungprobe       func(payload []byte)
+	onGeraetesuche      func(payload []byte)
 	onFlows             func(payload []byte)
 	onUpdateTarget      func(payload []byte)
 	onProbeRequest      func(payload []byte)
@@ -98,6 +100,10 @@ type Options struct {
 	// (docs/contracts/v2/mqtt-sprungprobe.md, AP-15 IP-21). NOT retained, an
 	// empty payload is never delivered. nil = not wired.
 	OnSprungprobe func(payload []byte)
+	// OnGeraetesuche receives a device-search order (starten, abbrechen) on
+	// .../v2/geraetesuche (docs/contracts/v2/mqtt-geraetesuche.md). NOT
+	// retained, an empty payload is never delivered. nil = not wired.
+	OnGeraetesuche func(payload []byte)
 	// OnFlows receives the retained flow deployment set on .../v2/flows
 	// (docs/contracts/v2/flow-artifact.md §3). Empty payload = retained
 	// clear (every artifact tab removed). nil = flow deployment not wired.
@@ -227,6 +233,7 @@ func New(o Options) (*Link, error) {
 		onControlCert:       o.OnControlCert,
 		onVerbundAnteile:    o.OnVerbundAnteile,
 		onSprungprobe:       o.OnSprungprobe,
+		onGeraetesuche:      o.OnGeraetesuche,
 		onChargingConfig:    o.OnChargingConfig,
 		onChargingBoost:     o.OnChargingBoost,
 		onProbeRequest:      o.OnProbeRequest,
@@ -311,6 +318,7 @@ func (l *Link) buildDownlinkRoutes() []downlinkRoute {
 	add("v2/plan", l.onPlanV2, true)
 	add("v2/verbund-anteile", l.onVerbundAnteile, true)
 	add("v2/sprungprobe", l.onSprungprobe, false)
+	add("v2/geraetesuche", l.onGeraetesuche, false)
 	add("v2/flows", l.onFlows, true)
 	add("v2/update", l.onUpdateTarget, true)
 	add("v2/control-certification", l.onControlCert, true)
@@ -799,6 +807,13 @@ type ChargersSummary struct {
 	// Chargers are the registered charge points, id-sorted. Never nil when the
 	// block is present.
 	Chargers []ChargerEntry `json:"chargers"`
+
+	// Rejected are the charge points refused in the last 24 h because their
+	// identity is not on the allowlist (docs/contracts/ocpp-klopft-an.md),
+	// newest first, at most 16. [] = the box reports that none knocked; the
+	// block also goes out for a knock alone, with an empty Chargers list -
+	// otherwise the FIRST station of a plant would stay invisible.
+	Rejected []geraetesuche.KlopftAn `json:"rejected"`
 }
 
 // maxChargerEntries / maxChargerConnectors bound the block. A charging park of
@@ -1038,6 +1053,11 @@ const (
 // because the contract is deliberately runtime-agnostic - a podman/quadlet or
 // Mender box reports its own backend and nothing above it changes.
 const UpdateBackendCompose = "compose"
+
+// UpdateBackendLight is Edge Light's backend: one program per architecture,
+// fetched at boot (edge-light/docs/boot-und-updates.md). The box type reports
+// it from its own build (UpdateBackend).
+const UpdateBackendLight = "light"
 
 // UpdateSummary is the additive `update` block of the status heartbeat (scout
 // vp-ota-rollout-h4 §5), the device's own answer to "what am I running and
@@ -1653,9 +1673,12 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	if registerWrites != nil && len(registerWrites.Entries) > 0 {
 		payload["register_writes"] = registerWrites
 	}
-	if chargers != nil && len(chargers.Chargers) > 0 {
+	if chargers != nil && (len(chargers.Chargers) > 0 || len(chargers.Rejected) > 0) {
 		if len(chargers.Chargers) > maxChargerEntries {
 			chargers.Chargers = chargers.Chargers[:maxChargerEntries]
+		}
+		if len(chargers.Rejected) > geraetesuche.MaxKlopftAn {
+			chargers.Rejected = chargers.Rejected[:geraetesuche.MaxKlopftAn]
 		}
 		payload["chargers"] = chargers
 	}

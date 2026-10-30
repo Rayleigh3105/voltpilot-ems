@@ -342,6 +342,14 @@ type lanes struct {
 
 func newLanes() *lanes { return &lanes{locks: map[string]chan struct{}{}} }
 
+// LoggerSpur takes the lane of a logger address ("ip:port") for a one-shot of
+// the core - the device search speaks to a Solarman logger only while the lane
+// is its own, never next to a poll or a connection test. It waits at most
+// LaneWait; ok=false = the lane stayed busy.
+func (r *Runtime) LoggerSpur(ctx context.Context, addr string) (release func(), ok bool) {
+	return r.lanes.acquire(ctx, addr, r.opts.LaneWait)
+}
+
 func (l *lanes) lane(addr string) chan struct{} {
 	l.mu.Lock()
 	defer l.mu.Unlock()

@@ -24,6 +24,10 @@ import (
 type Options struct {
 	// Name is the program name in the start/stop log lines.
 	Name string
+	// BoxArt is the box type this binary is (geraetesuche.BoxArtDocker or
+	// BoxArtEdgeLight): it decides supports[], update.backend and what the
+	// device search can see (edge-supports.md "Je Box-Art").
+	BoxArt string
 	// Extra runs after the agent started (its local bus is up) and until ctx
 	// ends. It returns a stop function called BEFORE the agent stops, so an
 	// in-process Layer 1 never talks to a bus that is going away. nil = none.
@@ -39,6 +43,7 @@ func Main(o Options) {
 		slog.Error("configuration invalid", "err", err)
 		os.Exit(1)
 	}
+	cfg.BoxArt = o.BoxArt
 
 	a, err := agent.New(cfg)
 	if err != nil {

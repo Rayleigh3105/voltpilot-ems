@@ -312,3 +312,36 @@ func TestTheHeartbeatCarriesThePseudonymAndNeverThePlaintextCard(t *testing.T) {
 		t.Fatalf("the same card must keep its pseudonym: %q vs %q", got, ref)
 	}
 }
+
+// OCPP "klopft an" (docs/contracts/ocpp-klopft-an.md): a station the box
+// refused shows up as `rejected` - also before a single charge point is
+// managed, otherwise the FIRST station of a plant would stay invisible. The
+// loopback is no customer-network address: the entry goes without it.
+func TestEineAbgewieseneSaeuleSendetDenBlockAuchOhneGefuehrteSaeule(t *testing.T) {
+	a := ocppAgent(t, nil)
+	ocppSite(t, a, 0)
+	st := ocppsim.New(ocppsim.Config{ID: "CP-HALLE1", Connectors: 1})
+	t.Cleanup(st.Stop)
+	if err := st.Connect(ocppEndpoint(a)); err == nil {
+		t.Fatal("an unregistered station was admitted")
+	}
+	sum := a.chargersSummary()
+	if sum == nil || len(sum.Chargers) != 0 || len(sum.Rejected) != 1 {
+		t.Fatalf("knock not reported: %+v", sum)
+	}
+	k := sum.Rejected[0]
+	if k.ID != "CP-HALLE1" || k.Attempts != 1 || k.IP != "" || k.LastSeen.Before(k.FirstSeen) {
+		t.Fatalf("entry: %+v", k)
+	}
+	raw, _ := json.Marshal(sum)
+	if !strings.Contains(string(raw), `"chargers":[]`) || !strings.Contains(string(raw), `"rejected":[{"id":"CP-HALLE1"`) {
+		t.Fatalf("wire: %s", raw)
+	}
+	// Admitted by a person: gone with the next heartbeat.
+	if _, err := a.ocpp.srv.Add(csmsAdd("CP-HALLE1", 1, 11)); err != nil {
+		t.Fatal(err)
+	}
+	if sum := a.chargersSummary(); sum == nil || len(sum.Rejected) != 0 || sum.Rejected == nil {
+		t.Fatalf("after admission: %+v", sum)
+	}
+}

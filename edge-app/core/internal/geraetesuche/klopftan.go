@@ -36,6 +36,10 @@ const (
 // box remembers no other identity, it could never be admitted.
 var ladesaeulenKennung = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
+// KlopftAnKennung says whether id has the form the allowlist accepts - the
+// only identities the box remembers.
+func KlopftAnKennung(id string) bool { return ladesaeulenKennung.MatchString(id) }
+
 // PruefeKlopftAn checks the list strictly before the box sends it: at most 16,
 // newest last_seen first, each identity once, first_seen <= last_seen,
 // attempts 1..100000, an address only as a private RFC1918 host address that

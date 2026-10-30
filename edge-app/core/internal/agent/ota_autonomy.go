@@ -126,7 +126,7 @@ func (a *Agent) otaPublishApplying(up *otaapply.UpdaterState) error {
 		return fmt.Errorf("keine Cloud-Verbindung")
 	}
 	sum := cloud.UpdateSummary{
-		Backend: cloud.UpdateBackendCompose,
+		Backend: cloud.UpdateBackend(a.boxArt()),
 		Current: Version,
 		State:   cloud.UpdateStateApplying,
 		Reason: "Die Aktualisierung wird jetzt angewandt - das Geraet stoppt gleich " +

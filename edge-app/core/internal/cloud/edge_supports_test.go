@@ -5,10 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 )
 
 func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.T) {
@@ -21,27 +23,50 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 			Name       string
 			Advertised bool
 			Evidence   string
+			BoxArten   []string `json:"box_arten"`
 		}
 	}
 	if err := json.Unmarshal(raw, &vectors); err != nil {
 		t.Fatal(err)
 	}
-	var expected []string
-	for _, c := range vectors.Capabilities {
-		if c.Advertised {
-			expected = append(expected, c.Name)
+	// Each box type reports from its own build (edge-supports.md "Je
+	// Box-Art"): box_arten names the types that carry a word, absent = both.
+	erwartet := func(boxArt string) []string {
+		var out []string
+		for _, c := range vectors.Capabilities {
+			if c.Advertised && (c.BoxArten == nil || slices.Contains(c.BoxArten, boxArt)) {
+				out = append(out, c.Name)
+			}
+		}
+		return out
+	}
+	expected := erwartet(geraetesuche.BoxArtDocker)
+	for _, boxArt := range []string{geraetesuche.BoxArtDocker, geraetesuche.BoxArtEdgeLight} {
+		if got := BuiltSupports(boxArt); !reflect.DeepEqual(got, erwartet(boxArt)) {
+			t.Fatalf("%s: supports = %v; want %v", boxArt, got, erwartet(boxArt))
+		}
+		if !slices.Contains(BuiltSupports(boxArt), "geraetesuche") {
+			t.Fatalf("%s: the search module is built into both binaries but not advertised", boxArt)
 		}
 	}
-	if !reflect.DeepEqual(BuiltSupports(), expected) {
-		t.Fatalf("supports = %v; want %v", BuiltSupports(), expected)
+	if !reflect.DeepEqual(BuiltSupports(""), expected) {
+		t.Fatal("an unnamed box type is not the Docker box")
 	}
-	for _, name := range BuiltSupports() {
-		// geraetesuche: contract and readers exist (internal/geraetesuche), the
-		// search module does not - and once it does, each box type reports it
-		// from its own build (edge-supports.md "Je Box-Art").
-		if name == "assignment_effective_at" || name == "geraetesuche" {
+	// Edge Light has no Node-RED palette: the words whose way ends there are
+	// not its own.
+	for _, name := range []string{"measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle"} {
+		if slices.Contains(BuiltSupports(geraetesuche.BoxArtEdgeLight), name) {
+			t.Fatalf("Edge Light advertises %s", name)
+		}
+	}
+	for _, name := range BuiltSupports(geraetesuche.BoxArtDocker) {
+		if name == "assignment_effective_at" {
 			t.Fatalf("unbuilt capability: %s", name)
 		}
+	}
+	if UpdateBackend(geraetesuche.BoxArtEdgeLight) != "light" || UpdateBackend(geraetesuche.BoxArtDocker) != "compose" ||
+		UpdateBackend("") != "compose" {
+		t.Fatal("update.backend does not name the box type")
 	}
 	// "Only what is built" is checked, not promised: every advertised capability
 	// names a file in this tree, and that file has to exist. events (AP-07 IP-19)
@@ -81,7 +106,7 @@ func TestBuiltSupportsMatchesContractAndDoesNotInventLocalScheduling(t *testing.
 	}
 	sink := startStatusSink(t)
 	link := connectedLink(t, sink, "unchanged-version")
-	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, StatusExtension{Supports: BuiltSupports()}); err != nil {
+	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, StatusExtension{Supports: BuiltSupports(geraetesuche.BoxArtDocker)}); err != nil {
 		t.Fatal(err)
 	}
 	wire := sink.last(t)

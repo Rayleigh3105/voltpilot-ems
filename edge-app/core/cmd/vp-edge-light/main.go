@@ -17,21 +17,25 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/agent"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/edgemain"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/layer1"
 )
 
 func main() {
-	edgemain.Main(edgemain.Options{Name: "vp-edge-light", Extra: startLayer1})
+	edgemain.Main(edgemain.Options{Name: "vp-edge-light", BoxArt: geraetesuche.BoxArtEdgeLight, Extra: startLayer1})
 }
 
-// startLayer1 connects the Go Layer 1 to the core's local bus.
-func startLayer1(ctx context.Context, cfg config.Config, _ *agent.Agent) (func(), error) {
+// startLayer1 connects the Go Layer 1 to the core's local bus. The device
+// search of the core takes Layer 1's logger lane before it speaks to a
+// Solarman logger.
+func startLayer1(ctx context.Context, cfg config.Config, a *agent.Agent) (func(), error) {
 	bus, err := layer1.DialMQTT(cfg.LocalMQTTAddr, "vp-edge-light-layer1")
 	if err != nil {
 		return nil, err
 	}
 	l1ctx, cancel := context.WithCancel(ctx)
 	rt := layer1.New(bus, layer1.Options{Logger: slog.Default().WithGroup("layer1")})
+	a.SetGeraetesucheSpur(rt.LoggerSpur)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

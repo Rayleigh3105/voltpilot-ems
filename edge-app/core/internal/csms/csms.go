@@ -141,6 +141,8 @@ type Server struct {
 	rejectedRevision   int64
 	controlRejection   string
 	measurementDesired MeasurementConfiguration
+	// klopfen remembers refused identities for 24 h (klopftan.go).
+	klopfen klopfListe
 }
 
 // New builds the server and loads the persisted allowlist. It never opens a

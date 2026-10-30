@@ -8,8 +8,11 @@
 // binary adds nothing to it - Layer 1 is Node-RED, a separate container.
 package main
 
-import "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/edgemain"
+import (
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/edgemain"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
+)
 
 func main() {
-	edgemain.Main(edgemain.Options{Name: "vp-edge-core"})
+	edgemain.Main(edgemain.Options{Name: "vp-edge-core", BoxArt: geraetesuche.BoxArtDocker})
 }

@@ -211,7 +211,7 @@ func (a *Agent) otaVerify(dir string) otaVerdict {
 		TrustSetSig: read(otaTrustSetFile + otaSigSuffix),
 		Manifest:    read(otaManifestFile),
 		ManifestSig: read(otaManifestFile + otaSigSuffix),
-		Backend:     cloud.UpdateBackendCompose,
+		Backend:     cloud.UpdateBackend(a.boxArt()),
 		// Der Build-Stempel: daraus erkennt der Verifizierer, ob das gepruefte
 		// Release genau das ist, was hier laeuft.
 		RunningVersion: Version,
@@ -445,7 +445,7 @@ func (a *Agent) otaSnapshot() otaVerdict {
 func (a *Agent) updateSummary() *cloud.UpdateSummary {
 	v := a.otaSnapshot()
 	sum := &cloud.UpdateSummary{
-		Backend:       cloud.UpdateBackendCompose,
+		Backend:       cloud.UpdateBackend(a.boxArt()),
 		Current:       Version,
 		State:         v.state,
 		Reason:        v.reason,

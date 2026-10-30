@@ -32,6 +32,11 @@ type Config struct {
 	Ref string `json:"ref"`
 	// DataDir holds identity, certs, the telemetry buffer and the cached plan.
 	DataDir string `json:"data_dir"`
+	// BoxArt is the box type of the BINARY (geraetesuche.BoxArtDocker for
+	// vp-edge-core, BoxArtEdgeLight for vp-edge-light), set by
+	// edgemain.Options - never from the environment: what a build can do is
+	// a property of the build. "" = the Docker box.
+	BoxArt string `json:"-"`
 
 	// LocalMQTTAddr is the listen address of the embedded local bus that
 	// Layer 1 (Node-RED) connects to.

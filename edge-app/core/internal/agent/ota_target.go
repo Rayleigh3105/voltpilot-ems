@@ -155,7 +155,7 @@ func (a *Agent) otaVerifyTarget(raw []byte) otaVerdict {
 		TrustSetSig:    readFileOrNil(dir, otaTrustSetFile+otaSigSuffix),
 		Manifest:       env.Manifest,
 		ManifestSig:    env.Signature,
-		Backend:        cloud.UpdateBackendCompose,
+		Backend:        cloud.UpdateBackend(a.boxArt()),
 		RunningVersion: Version,
 		Now:            time.Now(),
 	}
