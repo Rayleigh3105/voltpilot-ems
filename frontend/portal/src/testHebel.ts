@@ -96,10 +96,13 @@ export function hebel(ctx: HebelKontext): Hebel[] {
       out.push({
         id: 'logger',
         titel: `${ziel.label} prüfen`,
+        // Ohne Seriennummer-Feld ist das Gerät KEIN Solarman-Logger (Shelly,
+        // go-e, Fronius, SunSpec …) - der Satz spricht deshalb vom Gerät, nicht
+        // von WLAN-Namen und Statusseite eines Datenloggers.
         satz:
           ziel.key === 'serial'
             ? 'Die häufigste Verwechslung: hier gehört die Seriennummer des DATENLOGGERS hin, nicht die des Wechselrichters.'
-            : 'Antwortet unter dieser Adresse wirklich Ihr Datenlogger? Er steht im WLAN-Namen und auf seiner Statusseite.',
+            : 'Antwortet unter dieser Adresse wirklich dieses Gerät? Seine aktuelle Adresse zeigt die Geräteliste Ihres Routers.',
         aktion: 'Angabe korrigieren',
         feld: ziel.key,
       });

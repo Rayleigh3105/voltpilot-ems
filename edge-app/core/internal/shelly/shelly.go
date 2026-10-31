@@ -210,13 +210,52 @@ func classify(code int, err error) *DriverError {
 // gate is named, and metering is only claimed when the device itself shows the
 // documented evidence (Gen2 `apower` present / Gen1 `meters[ch].is_valid`).
 func Detect(ctx context.Context, doer Doer, cfg Config) (Identity, error) {
+	ident, _, err := detect(ctx, doer, cfg)
+	return ident, err
+}
+
+// DetectState is Detect plus the relay state, taken from the status answer the
+// capability probe has ALREADY read (Gen2 Switch.GetStatus, Gen1 /status) -
+// the very request ReadState would send again right after. Two requests
+// instead of three: the connection test answers a person waiting in the
+// portal, and a Shelly on a weak WLAN needs 1.5-3.5 s per request (VoltPilotGATE,
+// Shelly Pro 3, 31.10.2026), so the redundant third read alone could push the
+// answer past the portal's wait. The state is judged exactly like ReadState
+// judges it (same parser, same refusals); a state that does not parse is that
+// error.
+func DetectState(ctx context.Context, doer Doer, cfg Config) (Identity, State, error) {
+	ident, status, err := detect(ctx, doer, cfg)
+	if err != nil {
+		return Identity{}, State{}, err
+	}
+	var st State
+	var de *DriverError
+	if ident.Gen == Gen2 {
+		st, de = gen2State(status.gen2, ident)
+	} else {
+		st, de = gen1State(status.gen1, cfg, ident)
+	}
+	if de != nil {
+		return Identity{}, State{}, de
+	}
+	return ident, st, nil
+}
+
+// probedStatus is the status answer the capability probe read on its way: the
+// Gen2 Switch.GetStatus body or the Gen1 /status document.
+type probedStatus struct {
+	gen2 []byte
+	gen1 gen1StatusDoc
+}
+
+func detect(ctx context.Context, doer Doer, cfg Config) (Identity, probedStatus, error) {
 	if cfg.IP == "" {
-		return Identity{}, &DriverError{Code: ErrInvalidRequest, Message: "keine IP-Adresse"}
+		return Identity{}, probedStatus{}, &DriverError{Code: ErrInvalidRequest, Message: "keine IP-Adresse"}
 	}
 	base := "http://" + cfg.HostPort()
 	code, body, err := doer.Get(ctx, base+"/shelly")
 	if de := classify(code, err); de != nil {
-		return Identity{}, de
+		return Identity{}, probedStatus{}, de
 	}
 	var probe struct {
 		Gen    *int   `json:"gen"`
@@ -227,11 +266,11 @@ func Detect(ctx context.Context, doer Doer, cfg Config) (Identity, error) {
 		Auth   *bool  `json:"auth"`
 	}
 	if e := json.Unmarshal(body, &probe); e != nil {
-		return Identity{}, &DriverError{Code: ErrInvalidResponse,
+		return Identity{}, probedStatus{}, &DriverError{Code: ErrInvalidResponse,
 			Message: "Die Antwort des Geräts war kein Shelly-Format."}
 	}
 	if (probe.AuthEn != nil && *probe.AuthEn) || (probe.Auth != nil && *probe.Auth) {
-		return Identity{}, &DriverError{Code: ErrInvalidResponse,
+		return Identity{}, probedStatus{}, &DriverError{Code: ErrInvalidResponse,
 			Message: "Das Shelly-Gerät ist passwortgeschützt - der Passwortschutz wird nicht unterstützt (siehe SHELLY.md)."}
 	}
 	switch {
@@ -241,36 +280,36 @@ func Detect(ctx context.Context, doer Doer, cfg Config) (Identity, error) {
 		// status (the documented Plus1 vs Plus1PM difference).
 		code, body, err = doer.Get(ctx, base+"/rpc/Switch.GetStatus?id="+strconv.Itoa(cfg.Channel))
 		if de := classify(code, err); de != nil {
-			return Identity{}, de
+			return Identity{}, probedStatus{}, de
 		}
 		var st map[string]json.RawMessage
 		if e := json.Unmarshal(body, &st); e != nil {
-			return Identity{}, &DriverError{Code: ErrInvalidResponse,
+			return Identity{}, probedStatus{}, &DriverError{Code: ErrInvalidResponse,
 				Message: "Der Schaltkanal hat nicht verständlich geantwortet (falscher Kanal?)."}
 		}
 		if _, isErr := st["code"]; isErr && st["output"] == nil {
 			// RPC error object (e.g. unknown component id).
-			return Identity{}, &DriverError{Code: ErrInvalidResponse,
+			return Identity{}, probedStatus{}, &DriverError{Code: ErrInvalidResponse,
 				Message: "Diesen Schaltkanal kennt das Gerät nicht (Kanal prüfen)."}
 		}
 		_, ident.HasMetering = st["apower"]
-		return ident, nil
+		return ident, probedStatus{gen2: body}, nil
 	case probe.Type != "":
 		ident := Identity{Gen: Gen1, Model: probe.Type, DetectedAt: time.Now().UTC()}
 		st, de := gen1Status(ctx, doer, cfg)
 		if de != nil {
-			return Identity{}, de
+			return Identity{}, probedStatus{}, de
 		}
 		if cfg.Channel >= len(st.Relays) {
-			return Identity{}, &DriverError{Code: ErrInvalidResponse,
+			return Identity{}, probedStatus{}, &DriverError{Code: ErrInvalidResponse,
 				Message: "Diesen Schaltkanal kennt das Gerät nicht (Kanal prüfen)."}
 		}
 		// Gen1 metering rule (VERIFY-on-device, the aioshelly/HA discipline):
 		// a meter entry exists for the channel AND declares itself valid.
 		ident.HasMetering = cfg.Channel < len(st.Meters) && st.Meters[cfg.Channel].IsValid
-		return ident, nil
+		return ident, probedStatus{gen1: st}, nil
 	default:
-		return Identity{}, &DriverError{Code: ErrInvalidResponse,
+		return Identity{}, probedStatus{}, &DriverError{Code: ErrInvalidResponse,
 			Message: "Die Antwort des Geräts war kein Shelly-Format."}
 	}
 }
@@ -310,42 +349,53 @@ func ReadState(ctx context.Context, doer Doer, cfg Config, ident Identity) (Stat
 		if de := classify(code, err); de != nil {
 			return State{}, de
 		}
-		var st struct {
-			Output *bool    `json:"output"`
-			Apower *float64 `json:"apower"` // W
-		}
-		if e := json.Unmarshal(body, &st); e != nil || st.Output == nil {
-			return State{}, &DriverError{Code: ErrInvalidResponse,
-				Message: "Der Schaltkanal hat nicht verständlich geantwortet."}
-		}
-		out := State{On: st.Output}
-		if ident.HasMetering && st.Apower != nil && !math.IsNaN(*st.Apower) && !math.IsInf(*st.Apower, 0) {
-			// W -> kW at 3dp; a consumer load is >= 0 (the goe nrg discipline).
-			kw := math.Round(math.Max(0, *st.Apower)) / 1000
-			out.PowerKw = &kw
-		}
-		return out, nil
+		return gen2State(body, ident)
 	case Gen1:
 		st, de := gen1Status(ctx, doer, cfg)
 		if de != nil {
 			return State{}, de
 		}
-		if cfg.Channel >= len(st.Relays) || st.Relays[cfg.Channel].IsOn == nil {
-			return State{}, &DriverError{Code: ErrInvalidResponse,
-				Message: "Der Schaltkanal hat nicht verständlich geantwortet."}
-		}
-		out := State{On: st.Relays[cfg.Channel].IsOn}
-		if ident.HasMetering && cfg.Channel < len(st.Meters) {
-			m := st.Meters[cfg.Channel]
-			if m.IsValid && m.Power != nil && !math.IsNaN(*m.Power) && !math.IsInf(*m.Power, 0) {
-				kw := math.Round(math.Max(0, *m.Power)) / 1000
-				out.PowerKw = &kw
-			}
-		}
-		return out, nil
+		return gen1State(st, cfg, ident)
 	default:
 		return State{}, &DriverError{Code: ErrInvalidRequest, Message: "unbekannter Shelly-Dialekt"}
 	}
+}
+
+// gen2State judges one Gen2 Switch.GetStatus answer (ReadState and DetectState
+// share it, so both refuse the same answers).
+func gen2State(body []byte, ident Identity) (State, *DriverError) {
+	var st struct {
+		Output *bool    `json:"output"`
+		Apower *float64 `json:"apower"` // W
+	}
+	if e := json.Unmarshal(body, &st); e != nil || st.Output == nil {
+		return State{}, &DriverError{Code: ErrInvalidResponse,
+			Message: "Der Schaltkanal hat nicht verständlich geantwortet."}
+	}
+	out := State{On: st.Output}
+	if ident.HasMetering && st.Apower != nil && !math.IsNaN(*st.Apower) && !math.IsInf(*st.Apower, 0) {
+		// W -> kW at 3dp; a consumer load is >= 0 (the goe nrg discipline).
+		kw := math.Round(math.Max(0, *st.Apower)) / 1000
+		out.PowerKw = &kw
+	}
+	return out, nil
+}
+
+// gen1State judges one Gen1 /status document for the configured channel.
+func gen1State(st gen1StatusDoc, cfg Config, ident Identity) (State, *DriverError) {
+	if cfg.Channel >= len(st.Relays) || st.Relays[cfg.Channel].IsOn == nil {
+		return State{}, &DriverError{Code: ErrInvalidResponse,
+			Message: "Der Schaltkanal hat nicht verständlich geantwortet."}
+	}
+	out := State{On: st.Relays[cfg.Channel].IsOn}
+	if ident.HasMetering && cfg.Channel < len(st.Meters) {
+		m := st.Meters[cfg.Channel]
+		if m.IsValid && m.Power != nil && !math.IsNaN(*m.Power) && !math.IsInf(*m.Power, 0) {
+			kw := math.Round(math.Max(0, *m.Power)) / 1000
+			out.PowerKw = &kw
+		}
+	}
+	return out, nil
 }
 
 // SetURL builds the relay write of the detected dialect. An ON write carries

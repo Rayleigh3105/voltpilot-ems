@@ -17,7 +17,7 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 | **OCPP-Server, Lastmanagement, PV-Überschussladen „Nur Sonnenstrom", „Jetzt voll laden"** | ✅ 🔒 (Ladesäulen-Typ noch `simulator_only`) |
 | go-e **steuern** (HTTP-API v2, Phasenumschaltung) | ✅ 🔒 (Typ `wallbox` noch `simulator_only`) |
 | „Sonne + Speicher“ (Speicherenergie über der Untergrenze fürs Auto) | 🟡 ohne Speichersteuerung als beobachteter Speicher (`frei_beobachtet`, #1449): Untergrenze, „Speicher zuerst“ an der Grenze und die Wirkungsprüfung wirken; der Wechselrichter muss die Wallbox im Eigenverbrauch selbst decken · ⬜ Ladungsabsenkung einer geplanten Ladung und die gesteuerte Stufe `frei` brauchen die Wechselrichter-Steuerung (C) |
-| Shelly lesen und schalten | ✅ |
+| Shelly lesen und schalten | ✅ · „Verbindung testen“ läuft im Core (`agent.shellyTest`, zwei Anfragen: Erkennung und Zustand aus einer Antwort) und besteht am VoltPilotGATE gegen den Shelly Pro 3 im WLAN (0,6–7,2 s je Test, 31.10.2026); das Portal wartet darauf 12 s (`ProbeService.TEST_TIMEOUT`). Ein Verbraucher hat genau einen Schaltweg: je Shelly-Kanal eine Komponente |
 | eByte-IO-Modul | ✅ |
 | Lokale Web-App `:8484` (Betrieb, Einrichten) | ✅ |
 | Modbus-Datenspiegel (Server-Seite) | ✅ · Lernblöcke lesen ⬜ (D) |
@@ -40,7 +40,7 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 | KACO HTTP, AISWEI NH3 | `kaco/*.js` | ⬜ |
 | Generisches Modbus TCP | `modbus-tcp.js` | ⬜ |
 | **Weitere Energiequellen** (Erzeuger, Netz-Zähler, Verbraucher – alle obigen Wege) | Tab „Energiequellen (automatisch)" | 🟡 go-e als Verbraucher; jede andere Anbindung wird je Quelle im Protokoll benannt |
-| Verbindung testen für alle obigen, Suche nach weiteren Wechselrichtern (Unit-IDs) | `test-read.js` | 🟡 go-e ✅; übrige: benannte Ablehnung |
+| Verbindung testen für alle obigen, Suche nach weiteren Wechselrichtern (Unit-IDs) | `test-read.js` | 🟡 go-e ✅; übrige: benannte Ablehnung der Schicht 1 (sofort, z. B. Fronius 0,2 s am VoltPilotGATE) |
 
 ## C. Steuern (Schicht 1) – nur mit Prüfstand
 

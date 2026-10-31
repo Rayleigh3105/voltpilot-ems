@@ -313,6 +313,10 @@ func (a *Agent) runShellySourcePass(ctx context.Context, doer shelly.Doer) {
 // on the wizard's explicit control_test - the non-disruptive switch test
 // (shelly.ControlCheck: a value-identical off-write ONLY while the relay is
 // off; a running heat cycle is read-only + honestly named).
+//
+// The relay state comes from the status answer the detection already read
+// (shelly.DetectState): two HTTP requests, not three. The portal waits for this
+// answer, and a Shelly on a weak WLAN needs seconds per request.
 func (a *Agent) shellyTest(req testconn.Request) testconn.Result {
 	raw, _ := json.Marshal(req.Connection)
 	var cfg shelly.Config
@@ -321,13 +325,9 @@ func (a *Agent) shellyTest(req testconn.Request) testconn.Result {
 	ctx, cancel := context.WithTimeout(context.Background(), testReadTimeout)
 	defer cancel()
 
-	ident, err := shelly.Detect(ctx, doer, cfg)
+	_, st, err := shelly.DetectState(ctx, doer, cfg)
 	if err != nil {
 		return shellyTestFailure(err)
-	}
-	st, de := shelly.ReadState(ctx, doer, cfg, ident)
-	if de != nil {
-		return shellyTestFailure(de)
 	}
 	res := testconn.Result{OK: true, Reading: &testconn.Reading{}}
 	if st.PowerKw != nil {

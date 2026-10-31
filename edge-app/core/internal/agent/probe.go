@@ -470,6 +470,7 @@ func (a *Agent) runProbeTestConnection(op probe.Op) probe.OpResult {
 		return probe.Failed(op.ID, probe.ErrInvalidRequest,
 			"Die Verbindungsdaten sind nicht lesbar.")
 	}
+	start := time.Now()
 	res := a.TestConnection(testconn.Request{
 		Role:       op.Role,
 		Brand:      op.Brand,
@@ -477,6 +478,13 @@ func (a *Agent) runProbeTestConnection(op probe.Op) probe.OpResult {
 		Family:     op.Family,
 		Connection: conn,
 	})
+	// One line per portal test: without it the box log showed nothing for a
+	// test the portal reported as timed out, and only a stopwatch at the device
+	// could tell a slow answer from a missing one. The connection itself is not
+	// logged (it may carry a password).
+	slog.Info("Verbindungstest aus dem Portal", "op", op.ID, "brand", op.Brand,
+		"model", op.Model, "family", op.Family, "ok", res.OK, "error_code", res.ErrorCode,
+		"dauer_ms", time.Since(start).Milliseconds())
 	if !res.OK {
 		code, msg := res.ErrorCode, res.Message
 		if code == "" {

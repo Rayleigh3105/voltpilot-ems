@@ -26,7 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
  * <p><b>Synchronous, with a short timeout, and nothing persisted.</b> This is
  * the opposite end of the {@code SimulationClient}: a simulation is a long job
  * with an id you poll, a probe answers in a second or two and is worthless
- * afterwards. So the request thread waits (bounded by {@link #TIMEOUT}), the
+ * afterwards. So the request thread waits (bounded by {@link #TIMEOUT}, a
+ * connection test by {@link #TEST_TIMEOUT}), the
  * correlation lives in memory only, and a timeout is an honest OUTCOME the
  * assistant renders - not an error.
  *
@@ -54,6 +55,25 @@ public class ProbeService {
      * arrives after this is simply dropped by the registry, which costs nothing.
      */
     static final Duration TIMEOUT = Duration.ofSeconds(5);
+
+    /**
+     * How long the portal waits for a CONNECTION TEST: the box's own budget for
+     * one test (10 s, {@code testReadTimeout} in
+     * {@code edge-app/core/internal/agent/agent.go}) plus the way there and back
+     * over MQTT.
+     *
+     * <p>Not {@link #TIMEOUT}: a register read is one Modbus frame, a connection
+     * test talks to a device on the customer's LAN in several steps - a Shelly
+     * is detected, then read. Live-Fall VoltPilotGATE (31.10.2026): a Shelly
+     * Pro 3 on a weak WLAN needed 1.5-3.5 s per request, the box's test took
+     * 0.6-7.2 s and PASSED, and the portal still showed "nicht rechtzeitig
+     * geantwortet" because the answer arrived after five seconds and was
+     * dropped. Waiting as long as the box may take means a slow device gets its
+     * verdict - passed, or the box's own named refusal - instead of a timeout
+     * that only says the portal stopped listening. A test that really gets no
+     * answer still ends here, bounded.
+     */
+    static final Duration TEST_TIMEOUT = Duration.ofSeconds(12);
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -123,8 +143,9 @@ public class ProbeService {
      * (Einheitsmodell Stufe 1): one {@code test_connection} op, generalized to
      * every transport.
      *
-     * <p>Identical machinery to {@link #probe}: same correlation, same short
-     * wait, same honest timeout outcome, nothing persisted. Only the op differs.
+     * <p>Identical machinery to {@link #probe}: same correlation, same honest
+     * timeout outcome, nothing persisted. The op differs, and so does the wait
+     * ({@link #TEST_TIMEOUT}: as long as the box may take for one test).
      *
      * @param siteId the site, already proven to belong to the current tenant
      */
@@ -159,7 +180,7 @@ public class ProbeService {
                     "Die Anlage ist gerade nicht erreichbar. Bitte in einem Moment erneut versuchen.");
         }
         try {
-            ProbeResult result = registry.await(future, TIMEOUT);
+            ProbeResult result = registry.await(future, TEST_TIMEOUT);
             if (result != null) {
                 return result;
             }

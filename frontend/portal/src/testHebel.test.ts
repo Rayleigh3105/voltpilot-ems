@@ -76,6 +76,28 @@ describe('Logger-Hebel', () => {
     expect(h.find((x) => x.id === 'logger')?.feld).toBe('ip');
   });
 
+  it('spricht ohne Seriennummer-Feld vom Gerät, nicht von einem Datenlogger (Shelly, 31.10.2026)', () => {
+    const shelly = {
+      ...FRONIUS,
+      templateRef: 'builtin:shelly:shelly_http',
+      brand: 'shelly', brandLabel: 'Shelly',
+      model: 'shelly_http', modelLabel: 'Shelly Relais / Schaltaktor',
+      communication: 'shelly_http',
+      transportSchema: [
+        { key: 'ip', label: 'IP-Adresse des Shelly', type: 'text', required: true },
+        { key: 'port', label: 'Port', type: 'number', default: 80 },
+        { key: 'channel', label: 'Schaltkanal', type: 'number', default: 0 },
+      ],
+    } as unknown as ComponentTemplate;
+    const logger = hebel(ctx({ template: shelly, ergebnis: erg({ errorCode: 'timeout' }) }))
+      .find((x) => x.id === 'logger');
+    expect(logger?.titel).toBe('IP-Adresse des Shelly prüfen');
+    expect(logger?.satz).toBe(
+      'Antwortet unter dieser Adresse wirklich dieses Gerät? Seine aktuelle Adresse zeigt die Geräteliste Ihres Routers.',
+    );
+    expect(logger?.satz).not.toMatch(/Datenlogger|WLAN/);
+  });
+
   it('erscheint nicht bei einem bestandenen Test', () => {
     const h = hebel(ctx({ ergebnis: erg({ zustand: 'bestanden', errorCode: null }) }));
     expect(h.map((x) => x.id)).not.toContain('logger');
