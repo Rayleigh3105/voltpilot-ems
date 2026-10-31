@@ -141,6 +141,9 @@ func (a *Agent) consumersSummary() cloud.ConsumersSummary {
 		// A consumer switched in stages over an output set (a heating rod per
 		// phase) reports its commanded and CONFIRMED stage - additive.
 		entry.Stage = a.shellyGroupStage(v.id)
+		// ...and, where the box's heating-rod controller drives it, the stage
+		// the controller wants and why (heizstab.go).
+		entry.Heizstab = a.heizstabSummary(v.id)
 
 		out[v.id] = entry
 	}

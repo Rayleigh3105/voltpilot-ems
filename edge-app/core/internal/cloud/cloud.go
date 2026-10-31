@@ -1019,6 +1019,27 @@ type ConsumerRuntime struct {
 	// ledger counts instead of "rated power x time". Additive; absent for
 	// every other consumer.
 	Stage *ConsumerStage `json:"stage,omitempty"`
+	// Heizstab is the box's heating-rod controller verdict (internal/
+	// heizstab, docs/contracts/v2/heizstab-regler.md): the stage it wants, why,
+	// the surplus it sees and when a higher stage may start. Additive; absent
+	// for every consumer without the controller block.
+	Heizstab *ConsumerHeizstab `json:"heizstab,omitempty"`
+}
+
+// ConsumerHeizstab is the controller's view of one heating rod.
+type ConsumerHeizstab struct {
+	Stufe     int     `json:"stufe"`
+	Ausgaenge int     `json:"ausgaenge"`
+	Kw        float64 `json:"kw"`
+	Code      string  `json:"code"`
+	Grund     string  `json:"grund"`
+	// VerfuegbarKw is the surplus the rod may use; absent while blind.
+	VerfuegbarKw *float64 `json:"verfuegbar_kw,omitempty"`
+	// HoeherAb is the earliest moment a higher stage may start (RFC 3339);
+	// absent = now or not applicable.
+	HoeherAb string `json:"hoeher_ab,omitempty"`
+	// Seit is when the controller last changed the stage (RFC 3339).
+	Seit string `json:"seit,omitempty"`
 }
 
 // ConsumerStage is the stage view of a consumer switched over an output set.

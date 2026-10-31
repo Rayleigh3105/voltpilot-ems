@@ -198,6 +198,9 @@ func (a *Agent) arbitrationLoop(ctx context.Context) {
 		// plan's market desire is already in place when the fallback withdraws
 		// (Inkrement 6; no-op unless VP_CONSUMER_CONTROL_ENABLED).
 		a.runFlexFallback(now)
+		// The heating-rod controller wishes in class 'flow'; the plan
+		// executors above already left the rods it owns alone (heizstabOwns).
+		a.runHeizstab(now)
 		a.arb.Tick()
 	}
 }
@@ -352,6 +355,9 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 			}
 			if reg.Claimed(pe.ID) {
 				continue // Stufe 3: an active customer rule owns this component
+			}
+			if a.heizstabOwns(pe.ID) {
+				continue // the box's heating-rod controller is that rule (heizstab.go)
 			}
 			cmds, slotStart, ok := v2.ActiveCommands(pe.ID, now)
 			if !ok {

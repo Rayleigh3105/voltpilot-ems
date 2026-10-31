@@ -344,6 +344,60 @@
         }
       }
     },
+    "heizstab": {
+      "type": "object",
+      "title": "Parameterblock des Heizstab-Reglers der Box (heizstab-regler.md)",
+      "description": "OPTIONAL + ADDITIV (Heizstab-Konzept V1): die Steuerart eines Heizstabs mit Shelly-Ausgangsmenge (driver.connection.channels, heizstab-shelly.md) als Parameter des Reglers im Go-Core statt eines Regel-Flows. Fehlt der Block oder nennt er keinen Modus, den die Box ausführt, gibt es keinen Regler (byte-gleich). Die Cloud sendet ihn nur an eine Box mit der Fähigkeit heizstab_regler.",
+      "additionalProperties": false,
+      "required": [
+        "modus"
+      ],
+      "properties": {
+        "modus": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "ueberschuss = PV-Überschuss in Stufen (V1). Jeder andere Wert: kein Regler."
+        },
+        "reserve_kw": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Was als Einspeisung stehen bleibt (Vorgabe 0,2 kW)."
+        },
+        "hoechste_stufe": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Höchstens so viele Ausgänge zugleich (0/fehlt = die oberste Stufe des Treibers)."
+        },
+        "vorrang": {
+          "enum": [
+            "speicher_zuerst",
+            "heizstab_zuerst"
+          ],
+          "description": "Aus der Reihenfolge bei knapper Leistung (HZ-6): unter dem Speicher = speicher_zuerst (Vorgabe), darüber = heizstab_zuerst (die gemessene Ladeleistung des Speichers zählt als verfügbar). Eine Entladung zählt in beiden Fällen gegen den Stab."
+        },
+        "mindestlauf_s": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Vorgabe 300."
+        },
+        "mindestpause_s": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Vorgabe 300."
+        },
+        "haltezeit_s": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Wartezeit nach jedem Wechsel, bevor es aufwärts geht. Vorgabe 120."
+        },
+        "schaltungen_je_stunde": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Schaltungen (je geschaltetem Ausgang gezählt) in der gleitenden Stunde. Vorgabe 12."
+        }
+      }
+    },
     "descriptor": {
       "type": "object",
       "description": "One entity as the registry knows it. driver is an OPTIONAL opaque connection block for Layer-1 self-wiring (brand/model/family/communication/connection in the v1 sources busEntry shape); E1a carries it through verbatim, the v2 driver layer consumes it in a later increment.",
@@ -419,6 +473,9 @@
           "type": "object",
           "description": "Der OPAQUE Layer-1-Anbindungsblock (brand/model/family/communication/connection in der v1-sources-busEntry-Form). Seit Stufe 1 ist er fuer eine PORTAL-verwaltete Anlage der LESEPFAD selbst: die Box leitet daraus ihre lokale Geraete-Konfiguration ab. Fuer eine box-verwaltete Anlage bleibt er - wie seit E1a - reine Durchreichung fuer die Schreib-Executoren (go-e/Shelly)."
         },
+        "heizstab": {
+          "$ref": "#/$defs/heizstab"
+        },
         "flex_requirements": {
           "type": "array",
           "maxItems": 32,
@@ -470,6 +527,9 @@
         },
         "driver": {
           "type": "object"
+        },
+        "heizstab": {
+          "$ref": "#/$defs/heizstab"
         },
         "flex_requirements": {
           "type": "array",

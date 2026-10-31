@@ -54,6 +54,12 @@ type StatusExtension struct {
 // carry it; what each box type can see differs (DP-2 A) and the result names
 // the recognisers that ran.
 //
+// heizstab_regler (Heizstab-Konzept V1): the agent runs the `heizstab` block of
+// a heating rod with a Shelly output set itself (internal/heizstab,
+// agent/heizstab.go) - surplus in stages without the cloud and without
+// Node-RED, so both builds carry it. The cloud sends the block only to a box
+// reporting this word; an older box would just ignore it.
+//
 // EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
 // Edge Light has no Node-RED palette, so the words whose way ends in the
 // palette - the shared point read once per target, the Erzeuger image reader
@@ -65,7 +71,7 @@ func BuiltSupports(boxArt string) []string {
 	if boxArt != geraetesuche.BoxArtEdgeLight {
 		out = append(out, "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle")
 	}
-	return append(out, "geraetesuche")
+	return append(out, "geraetesuche", "heizstab_regler")
 }
 
 // UpdateBackend is the apply backend a box type reports in update.backend and

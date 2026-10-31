@@ -66,6 +66,7 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 | Funktion | Node-RED heute | Edge Light |
 |---|---|---|
 | Verbraucher-Regeln (reaktiv, Hysterese, Fristen) | `vp-consumer-policy`, `reactive-eval.js` | ⬜ |
+| Heizstab „Solar-Überschuss in Stufen“ (Heizstab-Regler, [Vertrag](../../docs/contracts/v2/heizstab-regler.md)) | – (im Core, kein Flow) | ✅ 🔒 im Core für beide Box-Arten (Überschuss mit Eigenlast, Vorrang zum Speicher, Haltezeit, Mindestlauf/-pause, Schaltgrenze, ohne Cloud weiter, Zustand auf der Platte) · ⬜ die Cloud sendet den Block erst mit Paket 3 (API); bis zum Katalog-Flip nur an die Prüfstand-Box |
 | Selbstbau-Geräte lesen/schalten (`vp.modbus.read`, `vp.modbus.switch`, HTTP/MQTT lesen, SoC ableiten, Grenzschutz) | generierte Flows + Palette | ⬜ |
 | **Kundenautomationen aus dem Flow-Editor** | flowc → Node-RED-Flows | ⬜ **größter Baustein**: eine Go-Laufzeit für den geschlossenen Knotenkatalog; der Vertrag muss dem Gerät dann den Flow-Graphen statt eines Node-RED-Artefakts liefern |
 | Code-Knoten `vp.logic.function` (Kunden-JavaScript in der Sandbox) | Node-RED-`function` mit Wachhund | ⬜ **offene Entscheidung**: JS-Interpreter in Go (z. B. goja) oder den Knoten ablösen |

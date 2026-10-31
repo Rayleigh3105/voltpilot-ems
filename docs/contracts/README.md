@@ -38,6 +38,7 @@ flowchart LR
 | Werkstatt: Prüfungen der Werkstatt-Regel für die Abnahme einer Box (API und Portal) | [Vektor](werkstatt-pruefungen.json), Routen im OpenAPI-Tag `werkstatt`, [Werkstatt](../werkstatt.md) |
 | Werkstatt: Beschriftung des Gehäuses, Referenz und QR-Code mit dem Direktlink (Portal und Gehäuse-Programm) | [Vektor](werkstatt-beschriftung.json), [Gehäuse](../../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md) |
 | Heizstab über eine Shelly-Ausgangsmenge: Treiberblock `channels`/`output_kw`/`stages`, Stufen-Rücklesung, Herzschlag-Stufe, Probe `ausgaenge` und `nach_stromausfall_aus` | [Vertrag](v2/heizstab-shelly.md), [Vektoren](v2/heizstab-stufen-vectors.json) |
+| Heizstab-Regler der Box: Parameterblock `heizstab` im Registry-Push, Stufe aus dem Überschuss mit Eigenlast, Vorrang zum Speicher, Herzschlag `consumers.{id}.heizstab`, Fähigkeit `heizstab_regler` | [Vertrag](v2/heizstab-regler.md), [Vektoren](v2/heizstab-regler-vectors.json) |
 | Beispiele | [v1-Fixtures](examples/README.md), [v2-Fixtures](v2/examples/README.md) |
 
 Die Dateien in diesem Verzeichnis sind die vollständige Schemaablage; die Tabelle gruppiert die wichtigsten Grenzen.

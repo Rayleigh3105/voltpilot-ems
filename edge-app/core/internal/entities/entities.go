@@ -181,6 +181,12 @@ type Entity struct {
 	// classes and D-4/D-5/D-6 stay untouched. ABSENT = false: an older cloud
 	// and every unclaimed component behave byte-for-byte as before.
 	OwnerClaimed bool `json:"owner_claimed,omitempty"`
+	// Heizstab is the heating-rod controller block (Heizstab-Konzept V1,
+	// docs/contracts/v2/heizstab-regler.md): the cloud's Steuerart of a
+	// heating rod as parameters for the box's own controller (internal/
+	// heizstab) instead of a Node-RED flow. OPTIONAL + ADDITIVE: absent = no
+	// controller, byte-identical; an older box ignores it.
+	Heizstab json.RawMessage `json:"heizstab,omitempty"`
 	// RoleAssignment is the portal's stored capability->role assignment of
 	// this component (Befund L4). Until it travelled, PUT …/topology-roles
 	// only wrote the cloud table and the box always resolved through

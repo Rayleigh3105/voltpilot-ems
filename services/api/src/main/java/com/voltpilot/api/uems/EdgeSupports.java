@@ -12,7 +12,7 @@ public final class EdgeSupports {
             "data_sources", "assignment_effective_at", "measurement_sample_provenance", "events",
             "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe",
             "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle",
-            "geraetesuche");
+            "geraetesuche", "heizstab_regler");
     private EdgeSupports() {}
 
     public static List<String> parse(JsonNode block, Consumer<String> unknown) {

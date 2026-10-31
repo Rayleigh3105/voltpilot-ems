@@ -85,6 +85,13 @@ const (
 // flow/UI publisher can impersonate the fallback.
 const SourceDeadlineFallback SourceKind = "deadline-fallback"
 
+// SourceHeizstab is the CORE-INTERNAL heating-rod controller (internal/
+// heizstab, Heizstab-Konzept V1): the customer's Steuerart of a heating rod,
+// run on the box instead of a Node-RED flow. It wishes in class 'flow' (a
+// rule, rank 40) and only ever enters via SubmitInternal - Parse rejects the
+// kind, so no publisher can impersonate the controller.
+const SourceHeizstab SourceKind = "heizstab"
+
 // Source identifies a desired's emitter. Flow sources carry the compiler-
 // stamped flow identity.
 type Source struct {

@@ -75,6 +75,12 @@
       "meaning": "Die Box führt eine Gerätesuche auf .../v2/geraetesuche aus (nur lesend, nur eigene private Netze je höchstens /24, höchstens 3 min, 6 je Stunde), meldet alle 2 s auf .../v2/geraetesuche-stand und genau ein Ergebnis auf .../v2/geraetesuche-ergebnis (mqtt-geraetesuche 1.0). Je Box-Art gemeldet: Edge Light und Docker-Box melden es aus ihrem eigenen Build; die Docker-Box sucht nur durch NAT mit TCP (DP-2 A), welche Erkenner liefen, nennt das Ergebnis.",
       "advertised": true,
       "evidence": "edge-app/core/internal/geraetesuche/suche/suche_test.go"
+    },
+    {
+      "name": "heizstab_regler",
+      "meaning": "Die Box führt den Parameterblock heizstab eines Heizstabs mit Shelly-Ausgangsmenge selbst aus (heizstab-regler.md, Heizstab-Konzept V1): Stufe aus dem Überschuss mit Eigenlast, Vorrang zum Speicher nach der Reihenfolge, Haltezeit, Mindestlauf und Mindestpause, Schaltungen je Stunde, ohne Cloud weiter, ohne frische Messwerte keine neue Stufe und nach 60 s aus; Wunsch der Klasse Regel (Rang 40) an den Arbiter, Zustand auf der Platte. Erst dann sendet die Cloud den Block statt einen Regel-Flow zu bauen; eine ältere Box überliest ihn.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/agent/heizstab_test.go"
     }
   ],
   "cases": [

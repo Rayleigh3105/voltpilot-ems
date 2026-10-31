@@ -558,6 +558,11 @@ type Agent struct {
 	// (shelly_group.go). RAM only: after a restart the first readback refills it.
 	shellyGroupMu sync.Mutex
 	shellyGroups  map[string]*shellyGroupRun
+	// heiz is the heating-rod controller's memory (heizstab.go): its state
+	// per rod (persisted, data_dir/heizstab-state.json), its last verdict and
+	// the newest house measurements it decides on.
+	heizMu sync.Mutex
+	heiz   heizstabRun
 	// ebyteDial opens the Ebyte I/O module's Modbus TCP connection (nil = the
 	// default dialer; injectable for tests). ebyteStore pins MAC + module
 	// layout per address (data_dir/ebyte-devices.json); ebyteRun is the
@@ -1851,6 +1856,9 @@ func (a *Agent) foldSiteSample(ts time.Time, measurements, primary map[string]fl
 	// battKw is passed EXPLICITLY - it is not in `measurements` (see the parse
 	// above: it is an internal channel, never a published one).
 	a.ocppObserve(ts, measurements, battKw)
+	// The heating-rod controller (heizstab.go) decides on the SAME gated
+	// composite connection point and the explicitly passed battery power.
+	a.heizstabObserve(ts, measurements, battKw)
 
 	// Netz-Sollwert-Test (agent/gridtest.go): der PV-Stabilitaets-Beobachter
 	// laeuft IMMER (die Voraussetzung „Sonne stabil" muss schon VOR dem

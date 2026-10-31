@@ -154,6 +154,20 @@ func (c Config) stageCeilingKw(s int) float64 {
 	return sum
 }
 
+// StageCeilings lists the allowed stages of a valid output set: outputs on
+// together and the most each stage can draw (the restrict-only ceiling the
+// driver judges a setpoint against). Empty for anything but a valid set.
+func (c Config) StageCeilings() (outputs []int, kw []float64) {
+	if !c.IsGroup() || c.GroupError() != "" {
+		return nil, nil
+	}
+	for _, s := range c.stages() {
+		outputs = append(outputs, s)
+		kw = append(kw, math.Round(c.stageCeilingKw(s)*1000)/1000)
+	}
+	return outputs, kw
+}
+
 // GroupPrev is what the executor last commanded and last read, per output
 // (index into Config.Channels). Empty slices = nothing known yet (first pass,
 // restart): the selection then just keeps outputs that are on.
