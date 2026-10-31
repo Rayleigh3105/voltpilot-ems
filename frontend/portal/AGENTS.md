@@ -38,7 +38,7 @@ React/Vite/TypeScript. [Bedienmodell](../../docs/portal.md), [Hilfe bearbeiten](
 - Globale Hilfe vor Mandanten-, Fehler- und Onboarding-Sperren rendern. Artikel und Hilfedialog teilen dieselbe Datenquelle.
 - Artikel-/Abschnittskennungen sind Lesezeichen. Screenshots nur aus den fiktiven E2E-Fixtures erzeugen; Fixtures nie ins Produktionsbundle importieren.
 - Capture zuerst, danach Tests des generierten Screenshot-Indexes. Keine parallelen Schreib-/Leseläufe auf diesen Dateien.
-- Auth-Token-Store bleibt tabbezogen. `initAuth` validiert gespeicherte Tokens vor Initialisierung; keycloak-js nicht zweimal initialisieren.
+- Auth-Token-Store bleibt im Browser-Tab tabbezogen (`sessionStorage`); nur die installierte App hält ihn im `localStorage`, nie für `platform-admin`. `initAuth` validiert gespeicherte Tokens vor Initialisierung; keycloak-js nicht zweimal initialisieren.
 - Anonyme Registrierung darf nicht über einen Request-Wrapper laufen, der Token-Refresh und Login erzwingt.
 - Referenznormalisierung mit API/Go-Prüfungen synchron halten; gemeinsame Texte aus `anlageFlow.ts` wiederverwenden.
 - Direktlink vom Gehäuse `/k/<ref>`: `nginx.conf`, `koppelLink.ts` (angenommen in `main.tsx` vor `initAuth`, Ziel in `App.tsx`) und `werkstatt.ts` (`beschriftung`) gemeinsam ändern. Die Referenz liegt nur im `sessionStorage` und füllt ein Feld vor; verbunden wird nie von selbst.

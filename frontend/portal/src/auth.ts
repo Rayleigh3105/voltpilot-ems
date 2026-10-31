@@ -1,4 +1,5 @@
 import Keycloak from 'keycloak-js';
+import { isStandalone } from './installApp';
 
 const KC_URL = import.meta.env.VITE_KEYCLOAK_URL ?? 'http://localhost:8081';
 const KC_REALM = import.meta.env.VITE_KEYCLOAK_REALM ?? 'voltpilot';
@@ -81,7 +82,7 @@ export function kontoAktionAusfuehren(action: KontoAktion): void {
 }
 
 // ---------------------------------------------------------------------------
-// The TAB TOKEN STORE - one mechanism, two feeders.
+// The TOKEN STORE - one mechanism, two feeders.
 //
 // (1) Seamless post-registration login (Direct Access Grant). A fresh customer
 //     just typed their email + password into OUR registration form; sending
@@ -96,12 +97,23 @@ export function kontoAktionAusfuehren(action: KontoAktion): void {
 //     3p-cookies probe, auth?prompt=none, token - because nothing was stored
 //     and initAuth always fell through to the full check-sso dance. The tokens
 //     of a successful login are therefore remembered here too, so the next load
-//     in this tab takes the SAME proven ONE-request refresh path as (1).
+//     in this tab (or app) takes the SAME proven ONE-request refresh path as (1).
 //
-// The store lives in sessionStorage, so it dies with the tab and is never
-// shared between tabs - a deliberate scope/lifetime trade-off (see AGENTS.md).
-// A failing/expired/refused refresh ALWAYS degrades to the normal check-sso
-// path, so the store can only ever make a boot faster, never break it.
+// WHERE the store lives depends on how the portal runs:
+//  - In a browser TAB: sessionStorage, so it dies with the tab and is never
+//    shared between tabs - a deliberate scope/lifetime trade-off (AGENTS.md).
+//  - As the INSTALLED app (display-mode standalone, iOS `navigator.standalone`):
+//    localStorage. Every app start is a fresh browsing context, so a
+//    sessionStorage store died with each close and the boot fell back to
+//    check-sso, which only works while a persistent Keycloak cookie survives
+//    in the app (none after the registration grant or without "Angemeldet
+//    bleiben"). The persisted refresh token lives exactly as long as its
+//    Keycloak session: with "Angemeldet bleiben" 90 d idle / 180 d max,
+//    without it and after the registration's password grant 12 h / 24 h
+//    (realm template; measured 2026-10-31). NEVER for platform-admin: that
+//    token set stays in sessionStorage, as in a tab.
+// A refused/expired refresh ALWAYS degrades to the normal check-sso path, so
+// the store can only ever make a boot faster, never break it.
 // ---------------------------------------------------------------------------
 
 const TOKEN_STORE_KEY = 'vp.auth.tokens';
@@ -192,12 +204,60 @@ async function tokenGrant(form: Record<string, string>): Promise<TokenSet> {
   return (await res.json()) as TokenSet;
 }
 
+/** Runs the portal as the installed app? Then the store outlives the window. */
+function alsApp(): boolean {
+  return typeof window !== 'undefined' && isStandalone(window);
+}
+
+/** Realm roles inside a raw access token (JWT payload); null when unreadable. */
+function realmRollen(accessToken: string): string[] | null {
+  try {
+    const teil = (accessToken.split('.')[1] ?? '').replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = Uint8Array.from(atob(teil.padEnd(Math.ceil(teil.length / 4) * 4, '=')), (c) =>
+      c.charCodeAt(0),
+    );
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as {
+      realm_access?: { roles?: unknown };
+    };
+    const rollen = payload.realm_access?.roles;
+    return Array.isArray(rollen) ? rollen.filter((r): r is string => typeof r === 'string') : [];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * May this token set outlive the app window? Only in the installed app, and
+ * never for platform-admin - an unreadable token counts as platform-admin.
+ */
+function bleibtUeberAppStart(t: TokenSet): boolean {
+  if (!alsApp()) return false;
+  const rollen = realmRollen(t.access_token);
+  return rollen !== null && !rollen.includes(PLATFORM_ADMIN_ROLE);
+}
+
 function storeTokens(t: TokenSet): void {
-  sessionStorage.setItem(TOKEN_STORE_KEY, JSON.stringify(t));
+  const raw = JSON.stringify(t);
+  if (bleibtUeberAppStart(t)) {
+    localStorage.setItem(TOKEN_STORE_KEY, raw);
+    sessionStorage.removeItem(TOKEN_STORE_KEY);
+    return;
+  }
+  sessionStorage.setItem(TOKEN_STORE_KEY, raw);
+  // Only the app drops its persisted copy here. A tab leaves it alone: on
+  // Android and the desktop the installed app shares this origin's storage.
+  if (alsApp()) localStorage.removeItem(TOKEN_STORE_KEY);
+}
+
+function readStoredTokens(): string | null {
+  const imFenster = sessionStorage.getItem(TOKEN_STORE_KEY);
+  if (imFenster !== null || !alsApp()) return imFenster;
+  return localStorage.getItem(TOKEN_STORE_KEY);
 }
 
 function clearStoredTokens(): void {
   sessionStorage.removeItem(TOKEN_STORE_KEY);
+  if (alsApp()) localStorage.removeItem(TOKEN_STORE_KEY);
 }
 
 /**
@@ -206,7 +266,7 @@ function clearStoredTokens(): void {
  * stored session or it has expired.
  */
 async function refreshStoredTokens(): Promise<TokenSet | null> {
-  const raw = sessionStorage.getItem(TOKEN_STORE_KEY);
+  const raw = readStoredTokens();
   if (!raw) return null;
   let stored: TokenSet;
   try {
@@ -249,6 +309,10 @@ async function refreshStoredTokens(): Promise<TokenSet | null> {
         return null;
       }
       if (attempt === 1) {
+        // The installed app keeps its store when Keycloak is merely unreachable
+        // (no signal at app start, 5xx): that is no refusal, and dropping it
+        // would cost the months-long session. The next start tries again.
+        if (alsApp()) return null;
         // A stored session existed but could not be refreshed - the session is
         // truly gone. Flag it so the login screen says "Sitzung abgelaufen".
         storedSessionExpired = true;
@@ -261,7 +325,7 @@ async function refreshStoredTokens(): Promise<TokenSet | null> {
 }
 
 /**
- * Write the LIVE keycloak-js session into the tab store. Called on every
+ * Write the LIVE keycloak-js session into the token store. Called on every
  * authenticated boot and again after each background token refresh, because
  * keycloak-js rotates the refresh token - a store left at the token of an hour
  * ago would present a superseded (idle-timed-out) one on the next reload and
@@ -309,8 +373,8 @@ export async function loginWithCredentials(username: string, password: string): 
  * Initialise Keycloak.
  *
  * FAST path: a stored session (fresh registration OR the last successful login
- * in this tab) is re-validated with ONE refresh grant and injected - no SSO
- * iframe, no auth?prompt=none redirect.
+ * in this tab or app) is re-validated with ONE refresh grant and injected - no
+ * SSO iframe, no auth?prompt=none redirect.
  *
  * FALLBACK path: no store, or the stored session could not be refreshed for ANY
  * reason (expired, revoked, throttled, corrupt, Keycloak unreachable) - then the
@@ -354,8 +418,8 @@ export async function initAuth(): Promise<boolean> {
     responseMode: 'query',
   });
   // Remember the session this login/SSO check just established, so the NEXT
-  // load in this tab takes the fast path above instead of these three round
-  // trips. Nothing else about this path changes.
+  // load in this tab (or app) takes the fast path above instead of these three
+  // round trips. Nothing else about this path changes.
   if (authenticated) onAuthenticated();
   return authenticated;
 }
@@ -366,8 +430,15 @@ export function login(loginHint?: string): void {
   void keycloak.login(loginHint ? { loginHint } : undefined);
 }
 
+/**
+ * Sign out: drop every stored token set, then end the Keycloak session. The
+ * persisted app store goes from a tab too - on Android and the desktop the
+ * installed app shares this origin's storage (and its Keycloak cookie), and
+ * signing out must not leave a months-long token on the device.
+ */
 export function logout(): void {
   clearStoredTokens();
+  localStorage.removeItem(TOKEN_STORE_KEY);
   void keycloak.logout({ redirectUri: window.location.origin });
 }
 

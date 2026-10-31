@@ -30,7 +30,7 @@ Der Client `grafana` hat deshalb keinen Platzhalter und keine Variable: Sein Geh
 | Normal | 12 Stunden | 24 Stunden |
 | „Angemeldet bleiben“ | 90 Tage | 180 Tage |
 
-Zugriffstokens leben 900 Sekunden und werden erneuert. Das Remember-Me-Häkchen ist im Theme vorbelegt; die Sitzungsdauer gehört zum Realm.
+Zugriffstokens leben 900 Sekunden und werden erneuert. Das Remember-Me-Häkchen ist im Theme vorbelegt; die Sitzungsdauer gehört zum Realm. Die installierte Portal-App behält ihren Token-Satz über App-Starts hinweg, angemeldet bleibt sie so lange wie ihre Sitzung nach dieser Tabelle (nach dem Passwort-Grant der Registrierung: „Normal“); Konten mit `platform-admin` behalten ihn nur bis zum Schließen der App.
 
 ## Anmeldung härten (UEMS AP-20 IP-20, E12)
 
