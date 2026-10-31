@@ -11,8 +11,9 @@ HTTP: Tag `geraetesuche` in [`openapi.yaml`](../openapi.yaml). Abgewiesene Lades
 Java `geraetesuche`, TS `geraetesuche.ts`), die API-Seite (Paket 3): Tabellen, Routen, Listener, Abgleich
 ([Wegweiser](../../agents/root/geraetesuche-api.md)), und die Box-Seite (Paket 2): Suchmodul und Erkenner
 `edge-app/core/internal/geraetesuche/suche`, Verdrahtung `agent/geraetesuche.go`, OCPP „klopft an“ `internal/csms`;
-beide Box-Arten melden `geraetesuche`. Die Oberfläche kommt in einem eigenen Paket. Bis eine Box die Fähigkeit
-`geraetesuche` meldet, antwortet die Route 409 `nicht_unterstuetzt`.
+beide Box-Arten melden `geraetesuche`. Die Oberfläche kommt in einem eigenen Paket. Meldet eine Box ihren
+Status-Herzschlag ohne die Fähigkeit `geraetesuche`, antwortet die Route 409 `nicht_unterstuetzt`; eine Box ohne
+Herzschlag seit 5 min (auch eine eben gekoppelte vor dem ersten) bekommt 409 `box_offline`.
 
 ## 1. Topics
 

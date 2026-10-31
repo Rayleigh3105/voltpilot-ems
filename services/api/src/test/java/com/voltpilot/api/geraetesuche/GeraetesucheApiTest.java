@@ -19,7 +19,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.uems.BoxFaehigkeiten;
+import com.voltpilot.api.uems.DataSourceStatusListener;
+import com.voltpilot.api.uems.DeviceDataSourceStatusRepository;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
@@ -105,6 +111,15 @@ class GeraetesucheApiTest {
 
     @MockBean
     GeraetesucheVersand versand;
+
+    @Autowired
+    DeviceRepository geraete;
+
+    @Autowired
+    DeviceDataSourceStatusRepository quellenStatus;
+
+    @Autowired
+    BoxFaehigkeiten faehigkeiten;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -229,6 +244,35 @@ class GeraetesucheApiTest {
         assertThat(zeilen(w)).as("keine Ablehnung legt eine Suche an").isZero();
         assertThat(root.queryForObject("SELECT count(*) FROM geraetesuche_protokoll WHERE site_id = ?", Long.class,
                 w.anlage())).isZero();
+    }
+
+    /**
+     * Die Box ist eben gekoppelt, ihr erster Status-Herzschlag steht noch aus: sie holt ihr Zertifikat alle 10-60 s ab
+     * und meldet sich 15 s nach dem Verbinden zum ersten Mal - und genau dann bietet „VoltPilot-Box hinzufügen" den
+     * Knopf „Geräte suchen" an. Die Fähigkeiten kommen erst mit diesem Herzschlag; bis dahin ist die Box offline, nicht
+     * veraltet (vorher: 409 {@code nicht_unterstuetzt} = „Update nötig für: Gerätesuche", ohne „Erneut suchen").
+     * Mit dem ersten Herzschlag einer Edge Light (ihre {@code supports} aus den Vertragsvektoren) beginnt die Suche.
+     */
+    @Test
+    void eineEbenGekoppelteBoxIstBisZumErstenHerzschlagOfflineUndSuchtDanach() throws Exception {
+        Welt w = welt();
+        // So steht die Box nach DeviceRepository#claim da: nie gehört, nichts gemeldet, keine Fassung bekannt.
+        root.update("UPDATE device SET supports = NULL, supports_reported_at = NULL, device_status_seen_at = NULL "
+                + "WHERE id = ?", w.box());
+
+        Antwort vorher = kunde(w, post(w.pfad()).content(koerper(w.box())));
+        assertThat(vorher.status()).as(vorher.body().toString()).isEqualTo(409);
+        assertThat(vorher.code()).as("nie gehört heißt offline, nicht Update nötig").isEqualTo("box_offline");
+        assertThat(vorher.body().path("zuletztGesehen").asText(null)).isNull();
+        assertThat(zeilen(w)).isZero();
+
+        new DataSourceStatusListener("tcp://unused", "", "", geraete, quellenStatus, faehigkeiten)
+                .handle("ems/" + w.mandant() + "/" + w.anlage() + "/" + w.box() + "/status",
+                        MAPPER.writeValueAsBytes(ersterHerzschlagEinerEdgeLight(w)));
+
+        Antwort nachher = kunde(w, post(w.pfad()).content(koerper(w.box())));
+        assertThat(nachher.status()).as(nachher.body().toString()).isEqualTo(202);
+        assertThat(zeilen(w)).isOne();
     }
 
     @Test
@@ -533,6 +577,23 @@ class GeraetesucheApiTest {
 
     private static long zeilen(Welt w) {
         return root.queryForObject("SELECT count(*) FROM geraetesuche WHERE device_id = ?", Long.class, w.box());
+    }
+
+    /** Der Status-Herzschlag einer Edge Light: {@code supports} ohne die Palette-Wörter ({@code box_arten}). */
+    private static ObjectNode ersterHerzschlagEinerEdgeLight(Welt w) throws Exception {
+        JsonNode vektoren = MAPPER.readTree(Files.readString(Path.of("../../docs/contracts/v2/edge-supports-vectors.json")));
+        ObjectNode herzschlag = MAPPER.createObjectNode().put("schema_version", "1.0")
+                .put("tenant_id", w.mandant().toString()).put("site_id", w.anlage().toString())
+                .put("device_id", w.box().toString()).put("ts", Instant.now().toString()).put("online", true)
+                .put("version", "edge-light-ge78a7722b");
+        ArrayNode supports = herzschlag.putArray("supports");
+        for (JsonNode f : vektoren.path("capabilities")) {
+            boolean beideArten = !f.has("box_arten");
+            boolean edgeLight = beideArten || f.path("box_arten").toString().contains("\"edge_light\"");
+            if (f.path("advertised").asBoolean() && edgeLight) supports.add(f.path("name").asText());
+        }
+        assertThat(supports.toString()).contains("\"geraetesuche\"").doesNotContain("erzeuger_registerbild");
+        return herzschlag;
     }
 
     private static String koerper(UUID box) {

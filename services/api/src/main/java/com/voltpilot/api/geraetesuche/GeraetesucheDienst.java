@@ -77,10 +77,14 @@ public class GeraetesucheDienst {
     // ------------------------------------------------------------------ Starten und Abbrechen
 
     /**
-     * Startet eine Suche an der Box: sie hängt an dieser Anlage, meldet die Fähigkeit {@code geraetesuche}, war in den
-     * letzten 5 Minuten zu hören, sucht nicht schon und hat in der letzten Stunde weniger als sechsmal gesucht. Die
+     * Startet eine Suche an der Box: sie hängt an dieser Anlage, war in den letzten 5 Minuten zu hören, meldet die
+     * Fähigkeit {@code geraetesuche}, sucht nicht schon und hat in der letzten Stunde weniger als sechsmal gesucht. Die
      * Suche, ihr Protokoll und {@code vorDemVersand} (die Anfrage-Kennung) stehen in derselben Transaktion; der Auftrag
      * geht als letzter Schritt hinaus. Erreicht er die Box nicht, ist nichts geschrieben (409 {@code box_offline}).
+     *
+     * <p>Erst „zu hören?", dann „kann sie es?": die Fähigkeiten kommen mit dem Status-Herzschlag. Eine Box ohne
+     * Herzschlag - auch eine, die eben gekoppelt wurde und ihr Zertifikat noch nicht abgeholt hat - hat noch nichts
+     * gemeldet; sie ist offline, nicht veraltet ({@code nicht_unterstuetzt} hieße „Update nötig“).
      */
     @Transactional
     public GeraetesucheDto.Suche starten(UUID siteId, UUID deviceId, ProtokollAkteur wer,
@@ -92,11 +96,11 @@ public class GeraetesucheDienst {
                 .orElseThrow(GeraetesucheAbgelehnt::nichtGefunden);
         suchen.sperren(deviceId);
         Instant jetzt = uhr.instant();
-        if (!faehigkeiten.kann(deviceId, FAEHIGKEIT)) {
-            throw GeraetesucheAbgelehnt.nichtUnterstuetzt();
-        }
         if (box.zuletztGesehen() == null || box.zuletztGesehen().isBefore(jetzt.minus(OFFLINE_NACH))) {
             throw GeraetesucheAbgelehnt.boxOffline(box.zuletztGesehen());
+        }
+        if (!faehigkeiten.kann(deviceId, FAEHIGKEIT)) {
+            throw GeraetesucheAbgelehnt.nichtUnterstuetzt();
         }
         Optional<Zeile> offen = suchen.offene(deviceId);
         if (offen.isPresent() && !KEINE_ANTWORT.equals(zustand(offen.get(), jetzt))) {

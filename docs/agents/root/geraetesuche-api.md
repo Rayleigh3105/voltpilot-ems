@@ -21,8 +21,10 @@ Konzept `vp-portal-geraetesuche-konzept` (30.10.2026, DP-1 C, DP-2 bis DP-7 A). 
 - **Recht `geraet.einrichten` an der Anlage (DP-4 A):** POST und DELETE über `@Recht`; die zwei GET-Routen prüfen im
   Handler (`RechtPruefung#pruefen`), weil `RechtRoutenArchitekturTest` `@Recht` an Leserouten ablehnt. Außerhalb und
   unbekannt sind dieselbe 404 `nicht_gefunden` (`RechtMatrixApiTest#dieLesendenRoutenDerGeraetesuchePruefen…`).
-- **Ablehnungen in dieser Folge:** 404 → `nicht_unterstuetzt` (Fähigkeit) → `box_offline` (kein Status-Herzschlag
-  seit 5 min) → `laeuft_schon` → 429 `zu_oft` (6 Starts je Stunde ohne die abgelehnten, `wiederAb` + `Retry-After`).
+- **Ablehnungen in dieser Folge:** 404 → `box_offline` (kein Status-Herzschlag seit 5 min) → `nicht_unterstuetzt`
+  (Fähigkeit) → `laeuft_schon` → 429 `zu_oft` (6 Starts je Stunde ohne die abgelehnten, `wiederAb` + `Retry-After`).
+  Erst offline, dann Fähigkeit: die Fähigkeiten kommen mit dem Herzschlag, eine eben gekoppelte Box ohne ersten
+  Herzschlag ist offline, nicht „Update nötig“ (`GeraetesucheApiTest#eineEbenGekoppelteBox…`).
 - **Der Auftrag geht als letzter Schritt der Transaktion hinaus** (nach Suche, Protokoll und Anfrage-Kennung).
   Erreicht er die Box nicht, rollt alles zurück und die Route sagt 409 `box_offline`; ein eigenes Wort dafür hat der
   Vertrag nicht.
