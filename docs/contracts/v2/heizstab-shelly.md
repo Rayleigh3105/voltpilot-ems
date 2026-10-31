@@ -19,6 +19,8 @@ Der Treiber bleibt `communication: "shelly_http"`. In `driver.connection` kommen
 
 Die übrigen Felder bleiben wie bisher: `ip`, `port`, `on_timer_s`.
 
+Die Cloud legt einen solchen Stab als Gerät vom Typ `heating-rod` an (`POST …/components` mit `consumerType: heating-rod`). In der Verbindung steht dann zusätzlich `anschluss` (`stern_mit_n` | `ohne_n` | `dreieck` | `unbekannt`); die Box überliest dieses Feld. Mehrere Ausgänge gibt es nur bei `stern_mit_n`. Bei `unbekannt` schaltet der Stab nicht, weder automatisch noch von Hand, bis der Anschluss bestätigt ist. Die Cloud prüft außerdem, dass jeder Ausgang genau einem Gerät gehört und die Box `heizstab_regler` meldet. Das Verbraucherprofil wird ein Stufenprofil: `stepped`, `levels_kw = [0, kW je Stufe …]`, `storage_first`. Ein Handeingriff wählt eine dieser Stufen (`stufe`, 1-basiert), nie einen Wert dazwischen.
+
 Die Box lehnt eine ungültige Menge mit einem deutschen Satz ab und schaltet dann nichts. Die Sätze stehen in den Vektoren unter `validate`. Teilstufen gibt es nur mit Elementen bis 4,6 kW, sonst entstünde mehr Schieflast, als VDE-AR-N 4100 erlaubt.
 
 Für den Lesepfad (Quelle der Box) zählt nur `channels`. Die Quelle eines Stabs bekommt eine eigene Identität (`set:0,1,2`) und teilt sie nie mit einem einzelnen Ausgang desselben Geräts.
@@ -60,7 +62,7 @@ Zu `consumers.{id}` kommt additiv `stage` hinzu:
 - `mismatch_since`: Beginn der ältesten noch laufenden Abweichung
 - `at`: Zeitpunkt der Lesung
 
-Das ist der Beleg, mit dem das Ledger die Energie aus den kW der **bestätigten** Stufe rechnet statt aus Nennleistung × Zeit.
+Das ist der Beleg, mit dem das Ledger die Energie aus den kW der **bestätigten** Stufe rechnet statt aus Nennleistung × Zeit. Die Cloud schreibt dafür je Herzschlag die Laufzeit-Differenz der Box × kW der zuvor gemeldeten Stufe fort (`consumer_runtime_status.stufe_energie_kwh_heute`); fällt der Laufzeit-Zähler der Box, beginnt ein neuer Tag.
 
 ## Verbindungstest und „nach Stromausfall“ (Probe, [mqtt-probe.schema.json](../mqtt-probe.schema.json))
 

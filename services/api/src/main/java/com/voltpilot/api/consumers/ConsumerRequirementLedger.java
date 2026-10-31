@@ -108,7 +108,16 @@ public final class ConsumerRequirementLedger {
      */
     public record Evidence(int runtimeSecondsToday, String reportedState, String reportedReason,
             Boolean confirmed, EnergyConfirmation confirmationLevel, BigDecimal measuredEnergyKwh,
-            BigDecimal ratedPowerKw) {}
+            BigDecimal ratedPowerKw, BigDecimal stageEnergyKwh) {
+
+        /** Every consumer without stages - the shape before Heizstab V1. */
+        public Evidence(int runtimeSecondsToday, String reportedState, String reportedReason,
+                Boolean confirmed, EnergyConfirmation confirmationLevel, BigDecimal measuredEnergyKwh,
+                BigDecimal ratedPowerKw) {
+            this(runtimeSecondsToday, reportedState, reportedReason, confirmed, confirmationLevel,
+                    measuredEnergyKwh, ratedPowerKw, null);
+        }
+    }
 
     /** One computed ledger row (matches consumer_requirement_state). */
     public record Row(UUID instanceId, String requirementId, Instant periodStart, Instant deadline,
@@ -202,11 +211,19 @@ public final class ConsumerRequirementLedger {
         };
     }
 
-    /** Assumed energy = Nennleistung × Laufzeit; measured/integrated come in. */
+    /**
+     * Assumed energy = Nennleistung × Laufzeit; measured/integrated come in. A heating rod switched
+     * in STAGES (Heizstab V1) brings its own assumed energy: the kW of the CONFIRMED stage × the time
+     * it ran at that stage (HeizstabStufe#energieFortschreiben) - one phase of three is a third of
+     * the rated power, never all of it.
+     */
     private static BigDecimal actualEnergy(Evidence ev, int runtimeSeconds) {
         EnergyConfirmation level = ev.confirmationLevel();
         if (level == EnergyConfirmation.MEASURED || level == EnergyConfirmation.INTEGRATED) {
             return ev.measuredEnergyKwh(); // may be null when telemetry is missing
+        }
+        if (level == EnergyConfirmation.ASSUMED && ev.stageEnergyKwh() != null) {
+            return ev.stageEnergyKwh();
         }
         if (level == EnergyConfirmation.ASSUMED && ev.ratedPowerKw() != null && runtimeSeconds > 0) {
             return ev.ratedPowerKw()

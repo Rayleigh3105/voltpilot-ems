@@ -164,6 +164,17 @@ public class EntityRegistryService {
     }
 
     /**
+     * Heizstab V1, Paket 3: der Parameterblock {@code heizstab} je Heizstab, nur an eine Box, die
+     * den Regler kann und für die die Automatik freigegeben ist (HeizstabPush); ohne Spring keiner.
+     */
+    private com.voltpilot.api.consumers.HeizstabPush heizstabPush;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void heizstabPush(com.voltpilot.api.consumers.HeizstabPush heizstabPush) {
+        this.heizstabPush = heizstabPush;
+    }
+
+    /**
      * The @Autowired is LOAD-BEARING (the BrokerAuthzReloader two-constructor
      * footgun): with the package-private test-seam constructor below and no
      * annotation, Spring cannot pick an injection constructor and crash-loops
@@ -1259,6 +1270,10 @@ public class EntityRegistryService {
         // der Treiber höchstens mit data_source_id.
         Map<UUID, PushAnbindungen.Anbindung> angebunden = anbindungen == null ? Map.of()
                 : anbindungen.fuerBox(siteId, deviceId);
+        // Heizstab V1: der Regler der Box statt eines Regel-Flows - additiv wie flex_requirements;
+        // ohne einen einzigen Block ist die Nutzlast byte-gleich.
+        Map<UUID, ObjectNode> heizstaebe = heizstabPush == null ? Map.of()
+                : heizstabPush.fuerBox(siteId, deviceId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
@@ -1283,6 +1298,12 @@ public class EntityRegistryService {
                 mergeCycleLimits(d, cl);
             }
             if (claimed.containsKey(row.id())) {
+                d.put("owner_claimed", true);
+            }
+            ObjectNode heizstabBlock = heizstaebe.get(row.id());
+            if (heizstabBlock != null) {
+                // Der Regler der Box IST die Regel dieses Heizstabs: der Plan bleibt draußen.
+                d.set("heizstab", heizstabBlock.deepCopy());
                 d.put("owner_claimed", true);
             }
             String chargePointId = chargePoints.get(row.id());

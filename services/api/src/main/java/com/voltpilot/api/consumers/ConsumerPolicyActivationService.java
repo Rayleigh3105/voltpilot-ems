@@ -85,6 +85,14 @@ public class ConsumerPolicyActivationService {
     private final boolean compilerEnabled;
     private final Clock clock;
 
+    /** Heizstab V1, Paket 3 (optional, damit von Hand gebaute Tests unverändert bleiben). */
+    private HeizstabGeraet heizstab;
+
+    @Autowired(required = false)
+    void heizstab(HeizstabGeraet heizstab) {
+        this.heizstab = heizstab;
+    }
+
     /** The @Autowired is LOAD-BEARING (two-constructor footgun, BrokerAuthzReloader). */
     @Autowired
     public ConsumerPolicyActivationService(ConsumerRepository repo,
@@ -189,7 +197,12 @@ public class ConsumerPolicyActivationService {
         // Compile FIRST (no state change yet). null = no reactive-with-local
         // part, the market plan alone carries the policy (D1 split).
         UUID generatedFlowId = ConsumerPolicyCompiler.generatedFlowId(entityId);
-        ObjectNode generatedDoc = compiler.compile(document, row, siteId, TenantContext.get(),
+        // Heizstab V1: für einen Heizstab über eine Ausgangsmenge führt der Regler der Box den
+        // Solar-Überschuss aus (Parameterblock heizstab im Registry-Push, HeizstabPush) - ein
+        // zusätzlicher Regel-Flow wäre ein zweiter Regler auf demselben Stab.
+        JsonNode zuKompilieren = heizstab != null && heizstab.regeltDieBox(siteId, entityId)
+                ? HeizstabPush.ohneBoxRegel(document) : document;
+        ObjectNode generatedDoc = compiler.compile(zuKompilieren, row, siteId, TenantContext.get(),
                 latest.policyId(), latest.version(), windowSource, clock.instant());
         JsonNode artifact = null;
         if (generatedDoc != null) {

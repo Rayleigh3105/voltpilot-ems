@@ -7850,6 +7850,44 @@ paths:
         "404": { description: Site (or component) not found for this tenant. }
         "409": { description: The plant has no device, or several and none was named. }
         "503": { description: The plant is not reachable right now. }
+  /api/v1/sites/{siteId}/component-nach-stromausfall-aus:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: Shelly - „nach Stromausfall“ an jedem Ausgang auf „aus“ stellen (Heizstab V1, HZ-5).
+      description: >
+        Nur auf den ausdrücklichen Klick „Auf ‚aus‘ stellen“: die Box schreibt an jedem Ausgang der
+        Verbindung (channel oder channels) die Einstellung „nach Stromausfall: aus“ (Probe-Op
+        `nach_stromausfall_aus`, docs/contracts/mqtt-probe.schema.json) und meldet die danach
+        gelesene Einstellung je Ausgang (`results[0].ausgaenge`). Eine Geräte-EINSTELLUNG, kein
+        Schaltbefehl. Nur für Shelly-Vorlagen (sonst 400). Ein Timeout ist ein ehrlicher Ausgang
+        (HTTP 200 mit `errorCode: timeout`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [templateRef, connection]
+              properties:
+                templateRef: { type: string }
+                templateVersion: { type: integer, minimum: 1 }
+                role: { type: string }
+                connection: { type: object, additionalProperties: true }
+                deviceId: { type: string, format: uuid }
+                entityId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Die Antwort der Box (ehrlich, auch ein Timeout).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProbeResult" }
+        "400": { description: Keine Shelly-Vorlage / fehlerhafte Anfrage. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage oder Komponente nicht gefunden. }
+        "409": { description: Die Anlage hat keine Box, oder mehrere und keine wurde genannt. }
+        "503": { description: Die Anlage ist gerade nicht erreichbar. }
   /api/v1/sites/{siteId}/component-match:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -24139,6 +24177,19 @@ components:
           properties:
             suchId: { type: string, format: uuid }
             fund: { type: string, maxLength: 200, description: "Der `schluessel` des Fundes." }
+        consumerType:
+          type: string
+          nullable: true
+          enum: [heating-rod]
+          description: >
+            Heizstab V1 (docs/contracts/v2/heizstab-shelly.md): `heating-rod` legt EIN Gerät vom Typ
+            heating-rod über die Ausgangsmenge eines Shelly an - `connection` trägt dann `channels`
+            (Ausgänge in Phasenfolge), `output_kw` (kW je Element), optional `stages` und
+            `rotation`, und `anschluss` (stern_mit_n | ohne_n | dreieck | unbekannt). Mehrere
+            Ausgänge nur bei stern_mit_n (240-V-Regel); jeder Ausgang gehört genau einem Gerät
+            (409); die Box der Anlage muss `heizstab_regler` melden (409). Das Profil entsteht als
+            Stufenprofil (stepped, levels_kw = kW je Stufe, storage_first). Absent = der Weg wie
+            bisher (generic-load).
     ComponentDefinition:
       type: object
       description: >
@@ -24515,6 +24566,24 @@ components:
             mapping - what really arrived during the listening window. ABSENT
             when the box cannot listen yet, which means "this box cannot do it",
             never "nothing arrived".
+        ausgaenge:
+          type: array
+          items: { $ref: "#/components/schemas/ProbeAusgang" }
+          description: >
+            Nur bei einem Shelly mit Ausgangsmenge (Heizstab V1): je Ausgang Schaltzustand und
+            Einstellung „nach Stromausfall“ - bei test_connection neben den samples
+            relay_on_<kanal>, bei nach_stromausfall_aus allein.
+    ProbeAusgang:
+      type: object
+      required: [kanal]
+      properties:
+        kanal: { type: integer, minimum: 0, maximum: 3 }
+        ein: { type: boolean, nullable: true, description: Fehlt, wenn nicht gelesen. }
+        nach_stromausfall:
+          type: string
+          nullable: true
+          enum: [off, on, restore_last, match_input]
+          description: Alles außer off lässt einen Heizstab nach einem Stromausfall ohne Box weiterheizen.
     ProbeSample:
       type: object
       required: [channel, count]
@@ -24851,6 +24920,27 @@ components:
         runtimeSecondsToday: { type: integer, nullable: true }
         startsToday: { type: integer, nullable: true }
         reportedAt: { type: string, format: date-time }
+        stufe:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: >
+            Heizstab V1 (heizstab-shelly.md): die gemeldete Stufe - commanded/commanded_kw,
+            confirmed/confirmed_kw (fehlen, solange unbekannt), outputs_on, mismatch_since, at.
+            Null für jeden Verbraucher ohne Stufen.
+        heizstab:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: >
+            Heizstab V1 (heizstab-regler.md): der Befund des Reglers der Box - stufe, ausgaenge,
+            kw, code, grund, verfuegbar_kw, hoeher_ab, seit. Null ohne Regler.
+        stufeEnergieKwhHeute:
+          type: number
+          nullable: true
+          description: >
+            Die angenommene Energie des Tages aus den kW der BESTÄTIGTEN Stufen (nicht
+            Nennleistung × Zeit) - was das Ledger für einen Heizstab in Stufen zählt.
     CreateConsumerRequest:
       type: object
       required: [type, ratedPowerKw]

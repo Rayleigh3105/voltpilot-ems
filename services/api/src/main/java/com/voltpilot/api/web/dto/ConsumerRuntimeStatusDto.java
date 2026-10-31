@@ -16,5 +16,20 @@ import java.util.UUID;
  */
 public record ConsumerRuntimeStatusDto(UUID entityId, String state, String reasonCode,
         Double actualKw, Boolean confirmed, Integer runtimeSecondsToday, Integer startsToday,
-        Instant reportedAt) {
+        Instant reportedAt, com.fasterxml.jackson.databind.JsonNode stufe,
+        com.fasterxml.jackson.databind.JsonNode heizstab, java.math.BigDecimal stufeEnergieKwhHeute) {
+
+    /**
+     * Every consumer without stages - the shape before Heizstab V1. For a heating rod over an
+     * output set {@code stufe} is the reported stage (commanded/CONFIRMED with kW, outputs on,
+     * mismatch_since - heizstab-shelly.md), {@code heizstab} the box controller's verdict
+     * (heizstab-regler.md) and {@code stufeEnergieKwhHeute} the assumed energy of the day from
+     * the confirmed stages; all three null otherwise.
+     */
+    public ConsumerRuntimeStatusDto(UUID entityId, String state, String reasonCode,
+            Double actualKw, Boolean confirmed, Integer runtimeSecondsToday, Integer startsToday,
+            Instant reportedAt) {
+        this(entityId, state, reasonCode, actualKw, confirmed, runtimeSecondsToday, startsToday,
+                reportedAt, null, null, null);
+    }
 }

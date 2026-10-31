@@ -234,8 +234,19 @@ public class ProbeResultListener extends Rueckmeldeweg {
                     // auch bei ok=false stehen: „im Fenster kam nichts an" ist
                     // genau die Auskunft, wegen der die Vorschau existiert.
                     List<ProbeResult.Sample> samples = samples(samplesNode);
-                    results.add(new ProbeResult.OpResult(id, ok, ok ? null : code(line),
-                            ok ? null : text(line), samples));
+                    List<ProbeResult.Ausgang> ausgaenge = ausgaenge(line.get("ausgaenge"));
+                    results.add(ausgaenge == null
+                            ? new ProbeResult.OpResult(id, ok, ok ? null : code(line), ok ? null : text(line), samples)
+                            : ProbeResult.OpResult.ausAusgaengen(id, ok, ok ? null : code(line),
+                                    ok ? null : text(line), samples, ausgaenge));
+                    continue;
+                }
+                List<ProbeResult.Ausgang> nurAusgaenge = ausgaenge(line.get("ausgaenge"));
+                if (nurAusgaenge != null) {
+                    // Heizstab V1: the answer of nach_stromausfall_aus - the setting per output
+                    // as the box read it back, no measurement.
+                    results.add(ProbeResult.OpResult.ausAusgaengen(id, ok, ok ? null : code(line),
+                            ok ? null : text(line), null, nurAusgaenge));
                     continue;
                 }
                 JsonNode erzeugerNode = line.get("erzeuger_kopf");
@@ -439,6 +450,31 @@ public class ProbeResultListener extends Rueckmeldeweg {
      * Register-Lesen: ohne BEIDE Zahlen ist es keine Lesung, und die Zeile
      * steht dann als „empfangen, aber nicht auswertbar" da.
      */
+    /** The outputs of a Shelly output set (contract op_result.ausgaenge); null when absent. */
+    private static final java.util.Set<String> NACH_STROMAUSFALL =
+            java.util.Set.of("off", "on", "restore_last", "match_input");
+
+    private static List<ProbeResult.Ausgang> ausgaenge(JsonNode arr) {
+        if (arr == null || !arr.isArray()) {
+            return null;
+        }
+        List<ProbeResult.Ausgang> out = new ArrayList<>();
+        for (JsonNode n : arr) {
+            if (out.size() >= 4) {
+                break;
+            }
+            JsonNode k = n.get("kanal");
+            if (k == null || !k.isIntegralNumber() || k.asInt() < 0 || k.asInt() > 3) {
+                continue;
+            }
+            JsonNode ein = n.get("ein");
+            String nach = n.path("nach_stromausfall").asText("");
+            out.add(new ProbeResult.Ausgang(k.asInt(), ein != null && ein.isBoolean() ? ein.asBoolean() : null,
+                    NACH_STROMAUSFALL.contains(nach) ? nach : null));
+        }
+        return List.copyOf(out);
+    }
+
     private static List<ProbeResult.Sample> samples(JsonNode arr) {
         List<ProbeResult.Sample> out = new ArrayList<>();
         for (JsonNode n : arr) {

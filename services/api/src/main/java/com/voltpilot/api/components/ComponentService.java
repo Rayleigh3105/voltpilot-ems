@@ -169,6 +169,36 @@ public class ComponentService {
         this.geraetesuche = geraetesuche;
     }
 
+    /** Heizstab V1, Paket 3: ein Heizstab als EIN Gerät über die Ausgänge eines Shelly. */
+    private com.voltpilot.api.consumers.HeizstabGeraet heizstab;
+
+    @Autowired(required = false)
+    void setHeizstabGeraet(com.voltpilot.api.consumers.HeizstabGeraet heizstab) {
+        this.heizstab = heizstab;
+    }
+
+    /** Ob dieses Anlegen einen Heizstab über eine Ausgangsmenge meint - und das prüfen. */
+    private boolean heizstabAnlegen(UUID siteId, String role, SaveComponentRequest req,
+            ComponentTemplateDto template) {
+        if (!com.voltpilot.api.consumers.HeizstabGeraet.gemeint(req.consumerType())) {
+            if (req.consumerType() != null && !req.consumerType().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unbekannte Verbraucherart.");
+            }
+            return false;
+        }
+        if (!ROLE_CONSUMER.equals(role)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Ein Heizstab ist ein Verbraucher.");
+        }
+        if (heizstab == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Ein Heizstab lässt sich derzeit nicht anlegen.");
+        }
+        heizstab.pruefe(siteId, null, template.communication(),
+                req.connection() == null ? Map.of() : req.connection());
+        return true;
+    }
+
     // ---- Lesen ------------------------------------------------------------
 
     /** Die Komponenten dieser Anlage samt Soll/Ist-Stand. */
@@ -275,12 +305,18 @@ public class ComponentService {
         GeraetesucheHerkunft.Fund fund = fundAusSuche(siteId, req);
         String role = requireRole(req.role());
         ComponentTemplateDto template = requireTemplate(req.templateRef(), req.templateVersion());
+        // Heizstab V1: VOR der Verbindungstest-Pflicht geprüft - die Ablehnung soll den echten
+        // Grund nennen (Anschluss, belegter Ausgang, Box ohne Update), nicht das Folgeproblem.
+        boolean heizstabGeraet = heizstabAnlegen(siteId, role, req, template);
         TestedConnection tested = requireTestedConnection(siteId, req, template);
 
         UUID tenantId = TenantContext.get();
         UUID entityId = resolveOrCreatePoint(siteId, tenantId, role, req, template);
         int version = writeDefinition(siteId, tenantId, entityId, role, req, template, tested,
                 subject, "Angelegt");
+        if (heizstabGeraet) {
+            heizstab.profil(tenantId, siteId, entityId, tested.fields());
+        }
         uebernommen(tenantId, siteId, fund, entityId);
         // L9: NACH dem Commit und mit Wiederholung, wie Bearbeiten und Rollback.
         // Ein Push INNERHALB der Transaktion hat zwei Fehlerformen, die beide
@@ -334,6 +370,12 @@ public class ComponentService {
         if (interval != null && interval > 0) desired.put("interval_s", interval);
         else desired.remove("interval_s");
 
+        boolean heizstabGeraet = heizstab != null
+                && com.voltpilot.api.consumers.HeizstabGeraet.TYP.equals(existing.entityType())
+                && com.voltpilot.api.consumers.HeizstabAusgaenge.istMenge(desired);
+        if (heizstabGeraet) {
+            heizstab.pruefe(siteId, entityId, template.communication(), desired);
+        }
         Map<String, Object> oldFingerprint = connectionFingerprint(old);
         Map<String, Object> newFingerprint = connectionFingerprint(desired);
         boolean clearReadingOverride = old.containsKey("reading_override")
@@ -415,6 +457,10 @@ public class ComponentService {
             // zu protokollieren - der Bezug ist dann trotzdem geprüft.
             geraetesuche.protokollieren(TenantContext.get(), siteId, fund,
                     GeraetesucheHerkunft.ADRESSE_UEBERNOMMEN, entityId, akteur());
+        }
+        if (heizstabGeraet) {
+            // Neue Leistungen oder Stufen: das Stufenprofil folgt (levels_kw, Nennleistung).
+            heizstab.profil(TenantContext.get(), siteId, entityId, desired);
         }
         activationOutbox.enqueue(TenantContext.get(), siteId, entityId, applied.version(), "component_edit");
         return list(siteId);
@@ -675,6 +721,19 @@ public class ComponentService {
      */
     private UUID resolveOrCreatePoint(UUID siteId, UUID tenantId, String role,
             SaveComponentRequest req, ComponentTemplateDto template) {
+        if (heizstab != null && com.voltpilot.api.consumers.HeizstabGeraet.gemeint(req.consumerType())) {
+            // Heizstab V1: ein NEUES Gerät vom Typ heating-rod über die Ausgangsmenge - nie die
+            // Übernahme einer verwaisten Zeile (die gehörte zu einem einzelnen Ausgang).
+            Map<String, Object> conn = req.connection() == null ? Map.of() : req.connection();
+            UUID id = points.create(tenantId, siteId, role,
+                    ComponentLabels.toWrite(null, req.label(), "Heizstab"),
+                    template.brand(), template.model(), null, null);
+            entityRepo.setEntityConfig(id, com.voltpilot.api.consumers.HeizstabGeraet.TYP,
+                    ComponentDefaults.capabilities(mapper, entityTypes,
+                            com.voltpilot.api.consumers.HeizstabGeraet.TYP, role),
+                    heizstab.guards(conn));
+            return id;
+        }
         String entityType = entityTypeFor(role, template);
 
         // Wechselrichter und Netz-Zähler sind PLATTFORM-KOMPONIERT: die

@@ -33,7 +33,26 @@ public record ProbeResult(String requestId, String errorCode, String message,
     public record OpResult(String id, boolean ok, Double raw, List<Integer> registers,
             Double value, String errorCode, String message, Reading reading, Switched switched,
             Finding finding, List<Sample> samples, @JsonProperty("wago_kopf") WagoKopf wagoKopf,
-            @JsonProperty("erzeuger_kopf") ErzeugerKopf erzeugerKopf) {
+            @JsonProperty("erzeuger_kopf") ErzeugerKopf erzeugerKopf, List<Ausgang> ausgaenge) {
+
+        /** Every shape before the Shelly output set (Heizstab V1) - unchanged. */
+        public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
+                Double value, String errorCode, String message, Reading reading, Switched switched,
+                Finding finding, List<Sample> samples, WagoKopf wagoKopf, ErzeugerKopf erzeugerKopf) {
+            this(id, ok, raw, registers, value, errorCode, message, reading, switched, finding, samples,
+                    wagoKopf, erzeugerKopf, null);
+        }
+
+        /**
+         * The outputs of a Shelly OUTPUT SET (heizstab-shelly.md, contract op_result.ausgaenge): the
+         * named samples (relay_on_&lt;kanal&gt;) next to the outputs block, or the block alone (the
+         * answer of nach_stromausfall_aus).
+         */
+        public static OpResult ausAusgaengen(String id, boolean ok, String errorCode, String message,
+                List<Sample> samples, List<Ausgang> ausgaenge) {
+            return new OpResult(id, ok, null, null, null, errorCode, message, null, null, null, samples,
+                    null, null, ausgaenge);
+        }
 
         /** Every shape before the WAGO head (AP-05 IP-7) — unchanged. */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
@@ -88,6 +107,14 @@ public record ProbeResult(String requestId, String errorCode, String message,
                 List<Sample> samples) {
             this(id, ok, null, null, null, errorCode, message, null, null, null, samples);
         }
+    }
+
+    /**
+     * One output of a Shelly output set: the read switch state and the "nach Stromausfall" setting
+     * (off | on | restore_last | match_input). Both stay null when not read - never guessed.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Ausgang(int kanal, Boolean ein, @JsonProperty("nach_stromausfall") String nachStromausfall) {
     }
 
     /**

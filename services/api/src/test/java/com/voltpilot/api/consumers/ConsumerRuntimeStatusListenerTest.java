@@ -74,6 +74,32 @@ class ConsumerRuntimeStatusListenerTest {
         return rows.getValue();
     }
 
+    /**
+     * Heizstab V1: ein Heizstab über eine Ausgangsmenge meldet seine Stufe (befohlen und
+     * BESTÄTIGT, mit kW) und den Befund des Reglers - beides kommt als geprüfter Auszug in die
+     * Zeile; ein Verbraucher ohne Stufe bleibt ohne.
+     */
+    @Test
+    void dieStufeEinesHeizstabsReistMit() {
+        List<ConsumerRuntimeStatusRepository.Row> rows = ingest("{\"" + ROD + "\":{\"state\":\"running_optimized\","
+                + "\"confirmed\":false,\"requirement_progress\":{\"runtime_seconds_today\":600,\"starts_today\":1},"
+                + "\"stage\":{\"commanded\":3,\"commanded_kw\":6.0,\"confirmed\":2,\"confirmed_kw\":4.0,"
+                + "\"outputs_on\":[0,2],\"mismatch_since\":\"2026-08-10T11:58:00Z\",\"at\":\"2026-08-10T12:00:00Z\"},"
+                + "\"heizstab\":{\"stufe\":3,\"ausgaenge\":3,\"kw\":6.0,\"code\":\"ueberschuss\",\"grund\":\"Heizt\"}},"
+                + "\"" + WALLBOX + "\":{\"state\":\"waiting\"}}");
+        ConsumerRuntimeStatusRepository.Row rod = rows.stream().filter(r -> r.entityId().equals(ROD)).findFirst()
+                .orElseThrow();
+        assertThat(rod.stufe().bestaetigt()).isEqualTo(2);
+        assertThat(rod.stufe().bestaetigtKw()).isEqualTo(4.0);
+        assertThat(rod.stufe().ausgaengeAn()).containsExactly(0, 2);
+        assertThat(rod.stufe().abweichungSeit()).isEqualTo("2026-08-10T11:58:00Z");
+        assertThat(rod.reglerJson()).contains("\"code\":\"ueberschuss\"");
+        ConsumerRuntimeStatusRepository.Row box = rows.stream().filter(r -> r.entityId().equals(WALLBOX)).findFirst()
+                .orElseThrow();
+        assertThat(box.stufe()).isNull();
+        assertThat(box.reglerJson()).isNull();
+    }
+
     private void assertNothingStored() {
         verify(store, never()).replaceForDevice(any(), any(), any(), any());
     }
