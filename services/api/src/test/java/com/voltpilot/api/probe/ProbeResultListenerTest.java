@@ -540,4 +540,52 @@ class ProbeResultListenerTest {
         assertThat(samples).hasSize(1);
         assertThat(samples.get(0).channel()).isEqualTo("voltage_v");
     }
+
+    // ---- Ein Schaltaktor ohne Leistungsmessung (Shelly Pro 3, VoltPilotGATE 31.10.2026) ----
+
+    /**
+     * So antwortete die Box bis zu diesem Fix für einen Shelly Pro 3 (drei Ausgänge, keine
+     * Leistungsmessung): {@code ok}, aber KEIN einziger Kanal. Die Ehrlichkeitsregel bleibt - ein
+     * Gerät, das nichts gemeldet hat, ist nicht gelesen. Ohne Code und Satz der Box landet diese
+     * Zeile im Portal als „Die Prüfung ist fehlgeschlagen", und ohne bestandenen Test wird nicht
+     * gespeichert: genau das sah der Kunde, obwohl die Box den Schaltzustand gelesen hatte.
+     */
+    @Test
+    void einSchaltaktorMitLeeremReadingIstNichtGelesen() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"verbindung\",\"ok\":true,\"reading\":{}}")));
+
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isFalse();
+        assertThat(line.reading()).isNull();
+        assertThat(line.errorCode()).isNull();
+    }
+
+    /**
+     * Der echte Wert eines Schaltaktors ist sein Schaltzustand: die Box schickt ihn als benannten
+     * Kanal {@code relay_on} (0 aus, 1 ein) - wörtlich die Zeile, die
+     * {@code TestShellyPortalTestAnswerNamesTheRelayStateNotAnEmptyReading} (Go) für den Pro 3
+     * festhält. Sie besteht, also gibt der Test das Speichern frei.
+     */
+    @Test
+    void derSchaltzustandIstDerGeleseneWertEinesSchaltaktors() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"verbindung\",\"ok\":true,\"samples\":"
+                        + "[{\"channel\":\"relay_on\",\"raw\":0,\"value\":0,\"count\":1}]}")));
+
+        ProbeResult res = get(f);
+        assertThat(res.errorCode()).isNull();
+        ProbeResult.OpResult line = res.results().get(0);
+        assertThat(line.ok()).isTrue();
+        assertThat(line.errorCode()).isNull();
+        assertThat(line.reading()).isNull();
+        assertThat(line.samples()).hasSize(1);
+        ProbeResult.Sample s = line.samples().get(0);
+        assertThat(s.channel()).isEqualTo("relay_on");
+        assertThat(s.raw()).isEqualTo(0.0);
+        assertThat(s.value()).isEqualTo(0.0);
+        assertThat(s.count()).isEqualTo(1);
+    }
 }

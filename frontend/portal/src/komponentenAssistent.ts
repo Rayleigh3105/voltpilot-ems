@@ -291,6 +291,20 @@ export function messwerte(reading: Record<string, unknown> | null | undefined): 
   return rows;
 }
 
+/** Eine benannte Zeile des Tests (`samples` des Vertrags), wie sie die Box gelesen hat. */
+export type TestKanal = { channel: string; value?: number | null; count?: number | null };
+
+/**
+ * Der Schaltzustand des geprüften Ausgangs - der echte Wert eines Schaltaktors
+ * ohne Leistungsmessung (Shelly Pro 3: `relay_on`, 0 aus, 1 ein). Ohne gelesene
+ * Zeile steht hier nichts; ein anderer Wert als 0 oder 1 ist keine Aussage.
+ */
+export function schaltzustand(samples: TestKanal[] | null | undefined): TestMesswert[] {
+  const z = samples?.find((s) => s.channel === 'relay_on');
+  if (!z || !z.count || (z.value !== 0 && z.value !== 1)) return [];
+  return [{ label: 'Schaltzustand', wert: z.value === 1 ? 'ein' : 'aus' }];
+}
+
 /**
  * Die deutschen Sätze zu den Fehlerklassen des Tests. Sie sind bewusst hier und
  * nicht im Server: dieselbe Klasse braucht am Gerät und im Portal denselben
@@ -335,6 +349,7 @@ export type ProbeAntwort = {
     message?: string | null;
     reading?: Record<string, unknown> | null;
     finding?: ProbeBefund | null;
+    samples?: TestKanal[] | null;
   }[];
 };
 
@@ -487,7 +502,7 @@ export function testErgebnis(antwort: ProbeAntwort | null | undefined): TestErge
       override: befund ? overrideFuer(befund) : undefined,
     };
   }
-  const rows = messwerte(line.reading);
+  const rows = [...messwerte(line.reading), ...schaltzustand(line.samples)];
   return {
     zustand: 'bestanden',
     text:

@@ -332,6 +332,16 @@ func (a *Agent) shellyTest(req testconn.Request) testconn.Result {
 	res := testconn.Result{OK: true, Reading: &testconn.Reading{}}
 	if st.PowerKw != nil {
 		res.Reading.LoadKw = st.PowerKw
+	} else if st.On != nil {
+		// A Shelly WITHOUT a power reading (Pro 3, Plus 1, a metering model
+		// whose status carried no apower) has exactly one real value: the relay
+		// state of this output - the same relay_on its source publishes in
+		// operation. It travels as the channel state, like an I/O module's
+		// (runProbeTestConnection: States -> samples). An empty four-channel
+		// reading is, rightly, "not read" in the cloud: the portal showed
+		// "Die Prüfung ist fehlgeschlagen" for a Pro 3 the box had read fine
+		// (VoltPilotGATE, 31.10.2026).
+		res.States = []testconn.ChannelState{{Channel: shellyRelayChannel, Value: b01(*st.On)}}
 	}
 	if req.ControlTest {
 		out := shelly.ControlCheck(ctx, doer, cfg)
@@ -343,6 +353,10 @@ func (a *Agent) shellyTest(req testconn.Request) testconn.Result {
 	}
 	return res
 }
+
+// shellyRelayChannel names the relay state of the tested output (0 = off,
+// 1 = on) in a connection test - the key of the source telemetry.
+const shellyRelayChannel = "relay_on"
 
 // shellyTestFailure maps a driver error onto the testconn vocabulary with the
 // specific German message preserved.

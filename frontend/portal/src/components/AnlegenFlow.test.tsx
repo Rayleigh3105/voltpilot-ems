@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api';
 import { AnlegenFlow } from './AnlegenFlow';
+import { GS_SHELLY } from '../test/geraetesucheFixtures';
 import {
   recordCurrentNavigation,
   recordNewNavigation,
@@ -249,6 +250,51 @@ describe('die Einrichten-Seite eines Katalog-Geräts', () => {
     fireEvent.change(screen.getByLabelText(/Seriennummer/), { target: { value: '2985159064' } });
     expect(testComponentConnection).not.toHaveBeenCalled();
     await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(1), { timeout: 2500 });
+  });
+
+  // Shelly Pro 3 an der VoltPilotGATE (31.10.2026), übernommen aus der Gerätesuche: „Ausgang 1"
+  // ist Schaltkanal 0. Er misst keine Leistung - sein echter Wert ist der Schaltzustand.
+  describe('Shelly Pro 3 aus der Gerätesuche', () => {
+    const oeffneShelly = () =>
+      render(
+        <AnlegenFlow
+          siteId="s1"
+          startTemplate={GS_SHELLY as never}
+          startVerbindung={{ ip: '192.168.178.43', port: 80, channel: 0 }}
+          startHerkunft="Aus der Gerätesuche: IP-Adresse des Shelly, Port · Ausgang 1."
+          onClose={() => {}}
+          onSaved={() => {}}
+        />,
+      );
+
+    it('so sah es bis zum Fix aus: ok ohne einen Kanal kam als Nein ohne Grund an', async () => {
+      componentTemplate.mockResolvedValue(GS_SHELLY);
+      testComponentConnection.mockResolvedValue({ requestId: 'r', results: [{ id: 'verbindung', ok: false }] });
+      oeffneShelly();
+      await screen.findByText('Die Prüfung ist fehlgeschlagen.');
+      expect(screen.getByText('Ohne gültige Werte des Geräts wird nicht gespeichert.')).toBeInTheDocument();
+      expect(speichernKnopf()).toBeDisabled();
+    });
+
+    it('der gelesene Schaltzustand besteht den Test - Ausgang 1 lässt sich speichern', async () => {
+      componentTemplate.mockResolvedValue(GS_SHELLY);
+      testComponentConnection.mockResolvedValue({
+        requestId: 'r',
+        results: [{ id: 'verbindung', ok: true, samples: [{ channel: 'relay_on', raw: 0, value: 0, count: 1 }] }],
+      });
+      oeffneShelly();
+      await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(1));
+      expect(testComponentConnection.mock.calls[0][1].connection).toMatchObject({
+        ip: '192.168.178.43',
+        channel: 0,
+      });
+      await screen.findByText(/Diese Messwerte kommen gerade an/);
+      expect(screen.getByText('Schaltzustand')).toBeInTheDocument();
+      expect(screen.getByText('aus')).toBeInTheDocument();
+      expect(screen.getByText('bestanden')).toBeInTheDocument();
+      expect(screen.queryByText('Ohne gültige Werte des Geräts wird nicht gespeichert.')).toBeNull();
+      expect(screen.queryByText('Die Prüfung ist fehlgeschlagen.')).toBeNull();
+    });
   });
 
   it('hält „Speichern" zu, bis das Gerät wirklich geantwortet hat', async () => {
