@@ -552,6 +552,12 @@ type Agent struct {
 	shellyDoer    shelly.Doer
 	shellyStoreMu sync.Mutex
 	shellyStore   *shelly.Store
+	// shellyGroups is the executor's memory per OUTPUT-SET entity (a heating
+	// rod over several outputs): what it last commanded and read per output,
+	// since when an output deviates, and the stage the heartbeat reports
+	// (shelly_group.go). RAM only: after a restart the first readback refills it.
+	shellyGroupMu sync.Mutex
+	shellyGroups  map[string]*shellyGroupRun
 	// ebyteDial opens the Ebyte I/O module's Modbus TCP connection (nil = the
 	// default dialer; injectable for tests). ebyteStore pins MAC + module
 	// layout per address (data_dir/ebyte-devices.json); ebyteRun is the

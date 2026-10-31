@@ -303,8 +303,14 @@ func TransportIdentity(s Source) string {
 		parts = append(parts, strings.TrimSpace(s.Connection.Serial))
 	case inverter.CommShellyHTTP:
 		// A multi-channel Shelly (2PM) is one box with two independent relays:
-		// each channel is its own physical measurement point.
-		parts = append(parts, strconv.Itoa(s.Connection.Channel))
+		// each channel is its own physical measurement point. An output SET
+		// (one heating rod over several outputs) is one device of its own -
+		// "set:" keeps it apart from every single output.
+		if s.Connection.Channels != "" {
+			parts = append(parts, "set:"+string(s.Connection.Channels))
+		} else {
+			parts = append(parts, strconv.Itoa(s.Connection.Channel))
+		}
 	}
 	return strings.Join(parts, "\n")
 }

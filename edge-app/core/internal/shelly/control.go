@@ -136,11 +136,14 @@ func PlanFor(cfg Config, cmd Command) Plan {
 // Register is the commanded-vs-actual relay readback entry (the v1 all_match
 // register shape: 1 = on, 0 = off).
 type Register struct {
-	Role      string `json:"role"`
-	Key       string `json:"key"`
-	Commanded int    `json:"commanded"`
-	Actual    *int   `json:"actual"`
-	Match     bool   `json:"match"`
+	Role string `json:"role"`
+	Key  string `json:"key"`
+	// Channel names the output on the stage path (one register per output);
+	// absent on the single-output path, so its payload stays byte-identical.
+	Channel   *int `json:"channel,omitempty"`
+	Commanded int  `json:"commanded"`
+	Actual    *int `json:"actual"`
+	Match     bool `json:"match"`
 }
 
 // Verdict is the evaluated readback.

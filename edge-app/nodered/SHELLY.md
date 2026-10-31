@@ -122,6 +122,12 @@ Nur `ip` ist Pflicht. `channel` nur bei Mehrkanal-Geräten (2PM: 0/1);
 Cloud-Verbraucherakte bleibt die Autorität); `on_timer_s` steuert den
 Abfall-Timer (0/fehlend = 180).
 
+Ein Heizstab über mehrere Ausgänge (ein Element je Phase, nur Stern mit N)
+trägt statt `channel` die Ausgangsmenge `channels` mit `output_kw` je Ausgang,
+optional `stages` und `rotation`; er schaltet in Stufen (1/2/3 Phasen), jeder
+Ausgang mit eigenem Abfall-Timer. Felder und Regeln:
+[heizstab-shelly.md](../../docs/contracts/v2/heizstab-shelly.md).
+
 ## 7. Sicherheits-Rahmen (unverändert)
 
 Der Executor läuft nur mit `VP_CONTROL_ENABLED` **und**

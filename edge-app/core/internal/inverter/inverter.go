@@ -1903,6 +1903,10 @@ type Connection struct {
 	// first). Generation + metering are DETECTED per device (internal/shelly),
 	// never configured.
 	Channel int `json:"channel,omitempty"`
+	// Channels is the OUTPUT SET of one shelly_http device over several
+	// outputs (a heating rod with one element per phase - shelly.Config.Channels;
+	// docs/contracts/v2/heizstab-shelly.md). Absent = the single output above.
+	Channels ChannelSet `json:"channels,omitempty"`
 
 	// kaco_serial: the RS485 bus address (1-32) of the Powador device behind
 	// the RS485-to-Ethernet converter - NOT a Modbus unit id (this platform
@@ -2083,6 +2087,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	// once instead of per-case; the shelly case validates it below).
 	if transport.Communication != CommShellyHTTP {
 		conn.Channel = 0
+		conn.Channels = ""
 	}
 	// The pinned MAC belongs to the Ebyte I/O module only (validated below).
 	if transport.Communication != CommEbyteModbusTCP {
@@ -2336,6 +2341,14 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		}
 		if conn.Channel < 0 || conn.Channel > 3 {
 			return Selection{}, invalid("Der Schaltkanal muss zwischen 0 und 3 liegen.")
+		}
+		if conn.Channels != "" {
+			// One device over several outputs: the set replaces the single
+			// channel (shelly.ChannelsError has the same three rules).
+			if msg := conn.Channels.Problem(); msg != "" {
+				return Selection{}, invalid("%s", msg)
+			}
+			conn.Channel = 0
 		}
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""

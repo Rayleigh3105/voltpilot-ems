@@ -97,6 +97,9 @@
               },
               {
                 "$ref": "#/$defs/op_switch_set"
+              },
+              {
+                "$ref": "#/$defs/op_nach_stromausfall_aus"
               }
             ]
           }
@@ -600,6 +603,47 @@
         }
       }
     },
+    "op_nach_stromausfall_aus": {
+      "type": "object",
+      "title": "op 'nach_stromausfall_aus' - einen Shelly nach einem Stromausfall aus bleiben lassen (Heizstab-Konzept HZ-5)",
+      "description": "Stellt an JEDEM Ausgang der genannten Shelly-Verbindung die Einstellung 'nach Stromausfall' auf 'aus' (Gen2 Switch.SetConfig initial_state=off, Gen1 /settings/relay/N default_state=off), damit ein Heizstab nach einem Stromausfall ohne Box nicht von selbst weiterheizt. Nur auf ausdrueckliche Zustimmung im Portal ('Auf aus stellen'), ein Schreibbefehl je Ausgang; es ist eine Geraete-EINSTELLUNG, kein Schaltbefehl - kein Ausgang schaltet dadurch ein oder aus. Die Verbindung hat die Form des Verbindungstests (ip, port und channel ODER die Ausgangsmenge channels, heizstab-shelly.md). Antwort: op_result mit ok=true und 'ausgaenge' (die danach gelesene Einstellung je Ausgang) oder ok=false mit dem Ausgang, der die Einstellung nicht angenommen hat. Eine Box, die diese Op nicht kennt, antwortet 'not_supported'.",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "id",
+        "brand",
+        "connection"
+      ],
+      "properties": {
+        "op": {
+          "const": "nach_stromausfall_aus"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+        },
+        "brand": {
+          "const": "shelly",
+          "description": "Nur ein Shelly kennt diese Einstellung; jede andere Marke ist 'not_supported'."
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "family": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "role": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "connection": {
+          "type": "object",
+          "description": "Die Verbindungsfelder wie beim Verbindungstest: ip (privates Ziel), port, channel oder channels."
+        }
+      }
+    },
     "probe_result": {
       "type": "object",
       "title": "probe_result (Edge -> Cloud, .../v2/probe-result)",
@@ -752,7 +796,7 @@
         "samples": {
           "type": "array",
           "maxItems": 16,
-          "description": "Nur bei op 'test_connection' eines SELBST ANGEBUNDENEN Geraets (P5, transport mqtt_local ODER http_local) ODER eines I/O-Moduls (ebyte_modbus_tcp: je Kanal di_k/do_k der gelesene Zustand 0/1, count 1, Ausgaenge zuerst, hoechstens 16 Zeilen) ODER eines Schaltaktors ohne Leistungsmessung (shelly_http, etwa Shelly Pro 3: genau eine Zeile relay_on, der gelesene Schaltzustand des geprueften Ausgangs 0/1, count 1 - ein messender Shelly antwortet weiter mit 'reading'): was je ZUORDNUNG wirklich hereinkam - beim MQTT-Lesetyp in dem Lauschfenster ('listen_s'), beim HTTP-Lesetyp in der EINEN abgerufenen Antwort (dort gibt es kein Fenster, und 'topic' fehlt entsprechend) - die Zeile, an der ein falscher Topic, ein falscher Wertepfad oder eine falsche Skalierung sichtbar wird.\n\nEIGENER Block, nicht 'reading': 'reading' ist die geschlossene Vier-Kanal-Momentaufnahme eines KATALOG-Geraets, hier steht dagegen je Zuordnung eine Zeile mit dem Namen, den der Kunde gerade eingetippt hat.\n\nEhrlichkeit wie ueberall: eine Zuordnung, die im Fenster NICHTS empfangen hat, steht mit count=0 und OHNE raw/value da - nie mit einer erfundenen 0. Eine aeltere Box sendet den Block gar nicht; das heisst 'diese Box kann noch nicht lauschen', nie 'es kam nichts an'.",
+          "description": "Nur bei op 'test_connection' eines SELBST ANGEBUNDENEN Geraets (P5, transport mqtt_local ODER http_local) ODER eines I/O-Moduls (ebyte_modbus_tcp: je Kanal di_k/do_k der gelesene Zustand 0/1, count 1, Ausgaenge zuerst, hoechstens 16 Zeilen) ODER eines Schaltaktors ohne Leistungsmessung (shelly_http, etwa Shelly Pro 3: genau eine Zeile relay_on, der gelesene Schaltzustand des geprueften Ausgangs 0/1, count 1 - ein messender Shelly antwortet weiter mit 'reading'; eine AUSGANGSMENGE meldet je Ausgang eine Zeile relay_on_<kanal> und dazu den Block 'ausgaenge'): was je ZUORDNUNG wirklich hereinkam - beim MQTT-Lesetyp in dem Lauschfenster ('listen_s'), beim HTTP-Lesetyp in der EINEN abgerufenen Antwort (dort gibt es kein Fenster, und 'topic' fehlt entsprechend) - die Zeile, an der ein falscher Topic, ein falscher Wertepfad oder eine falsche Skalierung sichtbar wird.\n\nEIGENER Block, nicht 'reading': 'reading' ist die geschlossene Vier-Kanal-Momentaufnahme eines KATALOG-Geraets, hier steht dagegen je Zuordnung eine Zeile mit dem Namen, den der Kunde gerade eingetippt hat.\n\nEhrlichkeit wie ueberall: eine Zuordnung, die im Fenster NICHTS empfangen hat, steht mit count=0 und OHNE raw/value da - nie mit einer erfundenen 0. Eine aeltere Box sendet den Block gar nicht; das heisst 'diese Box kann noch nicht lauschen', nie 'es kam nichts an'.",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -788,6 +832,34 @@
                 "type": "string",
                 "format": "date-time",
                 "description": "Wann die letzte davon ankam. Fehlt bei count=0."
+              }
+            }
+          }
+        },
+        "ausgaenge": {
+          "type": "array",
+          "maxItems": 4,
+          "description": "Nur bei einem Shelly mit AUSGANGSMENGE (ein Heizstab ueber mehrere Ausgaenge, connection.channels - heizstab-shelly.md): bei op 'test_connection' und 'nach_stromausfall_aus' je Ausgang der gelesene Schaltzustand und die Einstellung 'nach Stromausfall'. Was nicht gelesen wurde, FEHLT (nie geraten). Die Schaltzustaende stehen zusaetzlich als samples-Zeilen relay_on_<kanal> (0/1), damit eine Flaeche, die nur samples kennt, das Geraet als gelesen sieht.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kanal"
+            ],
+            "properties": {
+              "kanal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3,
+                "description": "Der Ausgang (Shelly-id, 0 = erster)."
+              },
+              "ein": {
+                "type": "boolean",
+                "description": "Der gelesene Schaltzustand. Fehlt, wenn nicht gelesen."
+              },
+              "nach_stromausfall": {
+                "enum": ["off", "on", "restore_last", "match_input"],
+                "description": "Die Einstellung 'nach Stromausfall' im Gen2-Wortschatz (Gen1 last -> restore_last, switch -> match_input). Alles ausser 'off' laesst einen Heizstab nach einem Stromausfall ohne Box weiterheizen (bis der Totmann greift - ohne Box nie). Fehlt, wenn nicht gelesen."
               }
             }
           }

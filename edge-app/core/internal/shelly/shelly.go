@@ -65,6 +65,7 @@ import (
 	"math"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -105,6 +106,22 @@ type Config struct {
 	// dead edge then leaves the relay on - only for devices whose firmware
 	// mishandles the timer, named in SHELLY.md).
 	OnTimerS int `json:"on_timer_s,omitempty"`
+
+	// Channels is the OUTPUT SET of one device over several outputs - a
+	// heating rod with one element per phase (Pro 3: 0, 1, 2 = L1, L2, L3),
+	// switched in stages (group.go). Absent = the single-output path above,
+	// byte-identical; Channel is then the one output.
+	Channels []int `json:"channels,omitempty"`
+	// OutputKw is the power of the element behind each output (same order as
+	// Channels, from the nameplate) - what a stage draws and what the ledger
+	// counts. Required for a set.
+	OutputKw []float64 `json:"output_kw,omitempty"`
+	// Stages are the allowed numbers of outputs on together, ascending;
+	// absent = only all outputs together.
+	Stages []int `json:"stages,omitempty"`
+	// Rotation is the phase choice of a partial stage: RotationDaily (the
+	// default) or RotationFixed.
+	Rotation string `json:"rotation,omitempty"`
 }
 
 // HostPort renders the target host (port only when non-default).
@@ -115,13 +132,28 @@ func (c Config) HostPort() string {
 	return c.IP
 }
 
-// Key identifies one physical device+channel for the identity store.
+// Key identifies one physical device+channel for the identity store. An
+// output set gets its own key (ip:port/0,1,2): its metering verdict covers
+// every output, so it must never be served a single output's identity.
 func (c Config) Key() string {
 	port := c.Port
 	if port == 0 {
 		port = DefaultPort
 	}
+	if c.IsGroup() {
+		chs := make([]string, len(c.Channels))
+		for i, ch := range c.Channels {
+			chs[i] = strconv.Itoa(ch)
+		}
+		return fmt.Sprintf("%s:%d/%s", c.IP, port, strings.Join(chs, ","))
+	}
 	return fmt.Sprintf("%s:%d/%d", c.IP, port, c.Channel)
+}
+
+// output is the single-output view of one output of a set: the transport and
+// the dead-man window, no set - what the per-output writes use.
+func (c Config) output(ch int) Config {
+	return Config{IP: c.IP, Port: c.Port, Channel: ch, OnTimerS: c.OnTimerS}
 }
 
 // onTimerS resolves the dead-man window: default, explicit, or disabled (-1).

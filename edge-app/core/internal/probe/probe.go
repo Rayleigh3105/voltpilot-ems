@@ -81,6 +81,12 @@ const (
 	// driver re-checks identity, stack and ownership. A free Modbus register
 	// has no such net and never gets this op.
 	OpSwitchSet = "switch_set"
+	// OpNachStromausfallAus sets "nach Stromausfall: aus" on every output of a
+	// Shelly connection (HZ-5 = A of the heating-rod concept): the one write
+	// the operator triggers with explicit consent ("Auf ‚aus' stellen"), so a
+	// heating rod never comes back on after a power cut without the box. It
+	// changes a relay SETTING, not a switch state - nothing turns on or off.
+	OpNachStromausfallAus = "nach_stromausfall_aus"
 )
 
 // The finding vocabulary this package adds to the testconn rules. A finding is
@@ -301,6 +307,21 @@ type OpResult struct {
 	// op_result.samples): one row per channel for a device whose readings are
 	// not the closed four-channel Reading - an I/O module's di_k/do_k states.
 	Samples []Sample `json:"samples,omitempty"`
+	// Ausgaenge are the outputs of a Shelly OUTPUT SET (one heating rod over
+	// several outputs, docs/contracts/v2/heizstab-shelly.md): per output the
+	// read switch state and the "nach Stromausfall" setting. Rides a
+	// test_connection of such a set and the nach_stromausfall_aus answer.
+	Ausgaenge []Ausgang `json:"ausgaenge,omitempty"`
+}
+
+// Ausgang is one output of a Shelly output set. Ein and NachStromausfall stay
+// ABSENT when not read - never a guessed value.
+type Ausgang struct {
+	Kanal int   `json:"kanal"`
+	Ein   *bool `json:"ein,omitempty"`
+	// NachStromausfall is the device's setting in the Gen2 vocabulary:
+	// off | on | restore_last | match_input.
+	NachStromausfall string `json:"nach_stromausfall,omitempty"`
 }
 
 // WagoKopf is the decoded head of a "VoltPilot-Registerbild WAGO v1". Every
@@ -529,6 +550,11 @@ func ValidateOp(op Op) (code string, message string) {
 		return validateWagoKopf(op)
 	case OpSwitchSet:
 		return validateSwitchSet(op)
+	case OpNachStromausfallAus:
+		if !strings.EqualFold(strings.TrimSpace(op.Brand), "shelly") {
+			return ErrNotSupported, "Diese Einstellung gibt es nur an einem Shelly."
+		}
+		return validateTestConnection(op)
 	default:
 		return ErrNotSupported, "Diesen Prüfschritt kennt diese VoltPilot-Box nicht."
 	}
@@ -888,6 +914,15 @@ func SucceededSamples(id string, samples []Sample) OpResult {
 		samples = samples[:MaxSamples]
 	}
 	return OpResult{ID: id, OK: true, Samples: samples}
+}
+
+// SucceededAusgaenge builds an answered line of a Shelly output set: the named
+// samples (relay_on_<kanal>, so a surface that only knows samples still sees
+// a read device) plus the outputs block.
+func SucceededAusgaenge(id string, samples []Sample, ausgaenge []Ausgang) OpResult {
+	r := SucceededSamples(id, samples)
+	r.Ausgaenge = ausgaenge
+	return r
 }
 
 // FailedReading builds a REFUSED test_connection line that still shows what the

@@ -616,3 +616,46 @@ func TestAnIOModuleBecomesOneConsumerSideSourceAndItsChannelsNone(t *testing.T) 
 		t.Fatalf("module source %+v", s)
 	}
 }
+
+// A heating rod over the three outputs of a Shelly Pro 3 (an output SET,
+// docs/contracts/v2/heizstab-shelly.md) derives ONE source that keeps the set,
+// with an identity of its own: it never shares an id with a single output of
+// the same device, and a redelivery is a no-op.
+func TestAShellyOutputSetDerivesOneSourceWithItsOwnIdentity(t *testing.T) {
+	rod := ent("aaaa0000-0000-0000-0000-0000000000a1", "heating-rod",
+		`{"brand":"shelly","model":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","port":80,"channels":[0,1,2],
+		  "output_kw":[2.0,2.0,2.0],"stages":[1,2,3]}}`)
+	rod.Capabilities.Actuate = []entities.ActuateCap{{Command: entities.CmdOnOff}}
+	single := ent("aaaa0000-0000-0000-0000-0000000000a2", "generic-load",
+		`{"brand":"shelly","model":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","port":80,"channel":0}}`)
+	single.Capabilities.Actuate = []entities.ActuateCap{{Command: entities.CmdOnOff}}
+	plan, err := Derive(portal(rod, single), cat(), nil, now)
+	if err != nil || len(plan.Sources) != 2 {
+		t.Fatalf("plan=%+v err=%v", plan, err)
+	}
+	set, one := plan.Sources[0], plan.Sources[1]
+	if set.Connection.Channels != "0,1,2" || one.Connection.Channels != "" || set.ID == one.ID {
+		t.Fatalf("set=%+v single=%+v", set.Connection, one.Connection)
+	}
+	raw, _ := json.Marshal(set.Connection)
+	if !strings.Contains(string(raw), `"channels":[0,1,2]`) || strings.Contains(string(raw), "output_kw") {
+		t.Fatalf("source connection = %s", raw)
+	}
+	again, err := Derive(portal(single, rod), cat(), plan.Sources, now)
+	if err != nil || !again.SameAs(nil, plan.Sources) {
+		t.Fatalf("a redelivery must be a no-op: %+v err=%v", again, err)
+	}
+}
+
+func TestAShellyOutputSetWithADoubleOutputIsRefused(t *testing.T) {
+	rod := ent("aaaa0000-0000-0000-0000-0000000000a3", "heating-rod",
+		`{"brand":"shelly","model":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","channels":[0,0]}}`)
+	rod.Capabilities.Actuate = []entities.ActuateCap{{Command: entities.CmdOnOff}}
+	if _, err := Derive(portal(rod), cat(), nil, now); err == nil ||
+		!strings.Contains(err.Error(), "Ausgang 0 steht zweimal in der Ausgangsmenge.") {
+		t.Fatalf("err = %v", err)
+	}
+}

@@ -1013,6 +1013,31 @@ type ConsumerRuntime struct {
 	// commanded runtime + starts; the cloud-side fulfilment ledger keys on
 	// telemetry, this is the device's own honest counter).
 	RequirementProgress *ConsumerRequirementProgress `json:"requirement_progress,omitempty"`
+	// Stage is set only for a consumer switched in STAGES over an output set
+	// (a heating rod per phase, docs/contracts/v2/heizstab-shelly.md): the
+	// commanded and the CONFIRMED stage with their kW - the evidence the
+	// ledger counts instead of "rated power x time". Additive; absent for
+	// every other consumer.
+	Stage *ConsumerStage `json:"stage,omitempty"`
+}
+
+// ConsumerStage is the stage view of a consumer switched over an output set.
+type ConsumerStage struct {
+	// Commanded is the number of outputs the executor lets run, CommandedKw
+	// their elements' power.
+	Commanded   int     `json:"commanded"`
+	CommandedKw float64 `json:"commanded_kw"`
+	// Confirmed/ConfirmedKw is what the device REPORTS (outputs on and their
+	// power); absent while any output is unread - unknown is never "off".
+	Confirmed   *int     `json:"confirmed,omitempty"`
+	ConfirmedKw *float64 `json:"confirmed_kw,omitempty"`
+	// OutputsOn names the outputs reported on (Shelly ids).
+	OutputsOn []int `json:"outputs_on,omitempty"`
+	// MismatchSince is when the oldest still-running deviation of an output
+	// from its command began (RFC 3339); absent = every output as commanded.
+	MismatchSince string `json:"mismatch_since,omitempty"`
+	// At is when the stage was read (RFC 3339).
+	At string `json:"at"`
 }
 
 // ConsumerRequirementProgress carries the edge's per-day counters.

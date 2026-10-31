@@ -74,6 +74,20 @@ type Result struct {
 	// States are the named 0/1 channel states of an I/O module (di_k/do_k) the
 	// test read - its readings, which the four-channel Reading cannot carry.
 	States []ChannelState `json:"states,omitempty"`
+	// Outputs is set only for a shelly_http OUTPUT SET (one heating rod over
+	// several outputs): per output the read switch state and the
+	// "nach Stromausfall" setting (HZ-5 - shown and warned about, changed only
+	// on explicit consent). An unread value stays absent, never guessed.
+	Outputs []OutputState `json:"outputs,omitempty"`
+}
+
+// OutputState is one output of a shelly_http output set in a connection test.
+type OutputState struct {
+	Channel int   `json:"channel"`
+	On      *bool `json:"on,omitempty"`
+	// InitialState is the device's "nach Stromausfall" setting in the Gen2
+	// vocabulary (off | on | restore_last | match_input); "" = not read.
+	InitialState string `json:"initial_state,omitempty"`
 }
 
 // ChannelState is one named channel state read by a connection test.

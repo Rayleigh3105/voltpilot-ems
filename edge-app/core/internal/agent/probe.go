@@ -191,6 +191,12 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 			results[i] = a.runSwitchOp(op)
 			continue
 		}
+		if op.Op == probe.OpNachStromausfallAus {
+			// The one SETTING write of a Shelly (HZ-5): inline and one at a
+			// time like a connection test - it is its own bounded round trip.
+			results[i] = a.runShellyNachStromausfallAus(op)
+			continue
+		}
 		if op.Op == probe.OpTestConnection {
 			// SEQUENTIALLY and one at a time on purpose: each connection test is
 			// its own bounded round trip, and several of them usually aim at the
@@ -523,6 +529,16 @@ func (a *Agent) runProbeTestConnection(op probe.Op) probe.OpResult {
 			v := s.Value
 			samples = append(samples, probe.Sample{Channel: s.Channel, Raw: &v, Value: &v, Count: 1})
 		}
+		if len(res.Outputs) > 0 {
+			// A Shelly output set: the outputs block rides along (switch state
+			// and "nach Stromausfall" per output), and a measuring set keeps
+			// its summed reading.
+			line := probe.SucceededAusgaenge(op.ID, samples, probeAusgaenge(res.Outputs))
+			if r := probeReading(res.Reading); r != nil && r.LoadKw != nil {
+				line.Reading = r
+			}
+			return line
+		}
 		return probe.SucceededSamples(op.ID, samples)
 	}
 	return probe.SucceededReading(op.ID, probeReading(res.Reading))
@@ -558,4 +574,14 @@ func probeTestMessage(code string) string {
 	default:
 		return "Die Prüfung ist fehlgeschlagen."
 	}
+}
+
+// probeAusgaenge maps the outputs of a Shelly output set onto the contract
+// block (ausgaenge); an unread value stays absent.
+func probeAusgaenge(outs []testconn.OutputState) []probe.Ausgang {
+	out := make([]probe.Ausgang, 0, len(outs))
+	for _, o := range outs {
+		out = append(out, probe.Ausgang{Kanal: o.Channel, Ein: o.On, NachStromausfall: o.InitialState})
+	}
+	return out
 }

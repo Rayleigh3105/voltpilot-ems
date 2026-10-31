@@ -82,7 +82,13 @@ func (a *Agent) shellyIdentity(ctx context.Context, doer shelly.Doer, cfg shelly
 			return id, nil
 		}
 	}
-	id, err := shelly.Detect(ctx, doer, cfg)
+	var id shelly.Identity
+	var err error
+	if cfg.IsGroup() {
+		id, _, err = shelly.DetectGroup(ctx, doer, cfg)
+	} else {
+		id, err = shelly.Detect(ctx, doer, cfg)
+	}
 	if err != nil {
 		return shelly.Identity{}, err
 	}
@@ -149,12 +155,28 @@ func (a *Agent) runShellyControlPass(ctx context.Context, doer shelly.Doer,
 		return
 	}
 	seen := map[string]bool{}
+	doubles := shellyDoubleClaims(reg)
 	for _, e := range reg.Entities {
 		cfg, ok := shelly.ParseDriver(e.Driver)
 		if !ok {
 			continue // not a shelly-backed entity
 		}
 		seen[e.ID] = true
+		if ch, double := doubles[e.ID]; double {
+			// Two entities claim one output (an output set over a per-output
+			// component): neither writes - two writers would undo each other.
+			if now.Sub(lastAssert[e.ID]) >= goeReassertInterval {
+				slog.Warn("shelly output claimed twice; not driven", "entity", e.ID, "channel", ch)
+				a.publishShellyDoubleClaim(e, cfg, ch, now)
+				lastAssert[e.ID] = now
+				delete(lastFP, e.ID)
+			}
+			continue
+		}
+		if cfg.IsGroup() {
+			a.runShellyGroupEntity(ctx, doer, e, cfg, lastFP, lastAssert, now)
+			continue
+		}
 		cmd := a.shellyCommandFor(e.ID)
 		plan := shelly.PlanFor(cfg, cmd)
 		fp := shellyPlanFingerprint(plan)
@@ -192,6 +214,7 @@ func (a *Agent) runShellyControlPass(ctx context.Context, doer shelly.Doer,
 			delete(lastAssert, id)
 		}
 	}
+	a.forgetShellyGroups(seen)
 }
 
 // publishShellyReadback publishes the per-entity readback (NOT retained - a
@@ -268,7 +291,8 @@ func (a *Agent) runShellySourcePass(ctx context.Context, doer shelly.Doer) {
 		if s.Communication != inverter.CommShellyHTTP {
 			continue
 		}
-		cfg := shelly.Config{IP: s.Connection.IP, Port: s.Connection.Port, Channel: s.Connection.Channel}
+		cfg := shelly.Config{IP: s.Connection.IP, Port: s.Connection.Port, Channel: s.Connection.Channel,
+			Channels: s.Connection.Channels.Ints()}
 		counted := &sourceStatusDoer{inner: doer}
 		ident, err := a.shellyIdentity(ctx, counted, cfg)
 		if err != nil {
@@ -276,7 +300,24 @@ func (a *Agent) runShellySourcePass(ctx context.Context, doer shelly.Doer) {
 			slog.Warn("shelly source detect failed", "source", s.ID, "target", cfg.HostPort(), "err", err)
 			continue
 		}
-		st, de := shelly.ReadState(ctx, counted, cfg, ident)
+		var payload map[string]any
+		var de *shelly.DriverError
+		if cfg.IsGroup() {
+			// An output set (one heating rod over several outputs): every
+			// output from one status answer.
+			payload, de = shellyGroupSourceReading(ctx, counted, cfg, ident)
+		} else {
+			var st shelly.State
+			if st, de = shelly.ReadState(ctx, counted, cfg, ident); de == nil {
+				payload = map[string]any{}
+				if st.On != nil {
+					payload["relay_on"] = *st.On
+				}
+				if st.PowerKw != nil {
+					payload["load_kw"] = *st.PowerKw
+				}
+			}
+		}
 		if de != nil {
 			a.observeShellySource(s, counted.requests, 0, de)
 			slog.Warn("shelly source read failed", "source", s.ID, "target", cfg.HostPort(), "err", de)
@@ -284,13 +325,6 @@ func (a *Agent) runShellySourcePass(ctx context.Context, doer shelly.Doer) {
 				a.shellyForgetIdentity(cfg)
 			}
 			continue
-		}
-		payload := map[string]any{}
-		if st.On != nil {
-			payload["relay_on"] = *st.On
-		}
-		if st.PowerKw != nil {
-			payload["load_kw"] = *st.PowerKw
 		}
 		a.observeShellySource(s, counted.requests, len(payload), nil)
 		if len(payload) == 0 {
@@ -321,6 +355,9 @@ func (a *Agent) shellyTest(req testconn.Request) testconn.Result {
 	raw, _ := json.Marshal(req.Connection)
 	var cfg shelly.Config
 	_ = json.Unmarshal(raw, &cfg)
+	if cfg.IsGroup() {
+		return a.shellyGroupTest(req, cfg)
+	}
 	doer := a.shellyDoerRef()
 	ctx, cancel := context.WithTimeout(context.Background(), testReadTimeout)
 	defer cancel()
