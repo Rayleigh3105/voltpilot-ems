@@ -1,12 +1,26 @@
 # Werkstatt: Einlösen des Einmal-Codes durch die Box (v1)
 
-Eine frisch eingerichtete Box löst in der Werkstatt einen Einmal-Code ein. Damit hält die API ihren Geräteschlüssel fest (D2), hinterlegt ihren Tunnel-Schlüssel und öffnet das Probe-Fenster für den Techniker-Zugang des Werkstatt-Dienstes. Hintergrund: [Werkstatt](../werkstatt.md), [Werkstatt-Dienst](../../services/werkstatt-dienst/README.md). API-Seite: `services/api/…/werkstatt/EinloesenVertrag.java` und `EinloesungService.java`. Box-Seite: der Befehl `werkstatt-anmelden` im Go-Core (Paket P7). Beide lesen die [Vektoren](werkstatt-einloesen-vectors.json); kanonischer Text, Formen und Vektoren ändern sich nur gemeinsam.
+Eine frisch eingerichtete Box löst in der Werkstatt einen Einmal-Code ein. Damit hält die API ihren Geräteschlüssel fest (D2), hinterlegt ihren Tunnel-Schlüssel und öffnet das Probe-Fenster für den Techniker-Zugang des Werkstatt-Dienstes. Hintergrund: [Werkstatt](../werkstatt.md), [Werkstatt-Dienst](../../services/werkstatt-dienst/README.md). API-Seite: `services/api/…/werkstatt/EinloesenVertrag.java` und `EinloesungService.java`. Box-Seite: der Befehl `werkstatt-anmelden` im Go-Core (`edge-app/core/internal/werkstatt`, in `vp-edge-core` und `vp-edge-light` über den gemeinsamen Programmrahmen). Beide lesen die [Vektoren](werkstatt-einloesen-vectors.json); kanonischer Text, Formen und Vektoren ändern sich nur gemeinsam.
 
 ## Ablauf
 
 1. Der Werkstatt-Dienst holt für genau diese Box einen Code: `POST /api/v1/werkstatt-dienst/codes` mit `{"edgeRef": "edge-…"}` (nur Rolle `werkstatt-dienst`). Es gibt ihn nur in einer laufenden Freigabe, für eine erzeugte Kennung mit gültigem Prüfzeichen, die nicht gekoppelt ist und noch kein Zertifikat hat. Er gilt 30 Minuten und einmal; die API speichert nur seinen sha256. Ein neuer Code ersetzt den offenen.
 2. Der Dienst reicht ihn über die SSH-Standardeingabe an die Box weiter. Der Code steht weder im Log noch in einem Beleg.
 3. Die Box schickt `POST /api/v1/werkstatt/einloesen` (ohne Konto, Rate-Limit je Absender und gesamt).
+
+## Der Befehl auf der Box
+
+```
+printf '%s\n' "$CODE" | vp-edge-light werkstatt-anmelden --wireguard <öffentlicher WireGuard-Schlüssel> \
+    --host-schluessel SHA256:… [--daten <Datenverzeichnis>] [--portal <Portal-Adresse>] [--zeit 30s]
+```
+
+- Der Code kommt als erste Zeile über die **Standardeingabe**, nie als Argument (er stünde sonst in der Prozessliste). Er steht in keiner Ausgabe.
+- Kennung (`<daten>/ref`) und Geräteschlüssel (`<daten>/identity/device.key`) legt der erste Start an; der Befehl liest sie nur und erzeugt nie etwas. Fehlt eines, endet er mit 2. Nur eine erzeugte Kennung mit gültigem Prüfzeichen kann einlösen.
+- Die Fassung ist die des laufenden Programms (dieselbe, die `/health` meldet). Die Zertifikatsanfrage baut der Befehl neu aus dem Geräteschlüssel.
+- Tunnel- und Host-Schlüssel nennt der Aufrufer: der Werkstatt-Dienst, der sie selbst von der Box gelesen hat.
+- `--daten` und `--portal` ersetzen `VP_DATA_DIR` und `VP_PORTAL_BASE_URL`; ohne sie gilt die Konfiguration der Box. Auf Edge Light stehen beide in UCI (`vp-edge-light.main.data_dir`, `…portal_url`).
+- stdout: bei Erfolg die Antwort des Portals als JSON, sonst nichts. Rückgabe `0` eingelöst, `2` Aufruf oder auf der Box fehlt etwas, `3` vom Portal abgelehnt (4xx, Grund und gegebenenfalls `schluessel_festgehalten` auf stderr), `4` Portal nicht erreicht oder 5xx.
 
 ## Anfrage
 
@@ -80,4 +94,4 @@ Signiert wird mit dem Geräteschlüssel, der auch die Zertifikatsanfrage trägt.
 
 ## Vektoren
 
-[`werkstatt-einloesen-vectors.json`](werkstatt-einloesen-vectors.json): ein Test-Geräteschlüssel (nur für Tests erzeugt, PKCS#8), eine vollständige Anfrage mit gültiger Signatur, ihr kanonischer Text, `csr_sha256` und `geraete_schluessel_sha256`. Dazu Änderungen eines Feldes, nach denen die Signatur nicht mehr gilt (`signatur_ungueltig`), und Formfehler (`formfehler`). ECDSA ist nicht deterministisch: Ein Leser prüft die Signatur des Vektors und, wenn er selbst signiert, dass die API seine Signatur annimmt; Byte-gleich ist nur der kanonische Text.
+[`werkstatt-einloesen-vectors.json`](werkstatt-einloesen-vectors.json): ein Test-Geräteschlüssel (nur für Tests erzeugt, PKCS#8), eine vollständige Anfrage mit gültiger Signatur (aus Python), ihr kanonischer Text, `csr_sha256` und `geraete_schluessel_sha256`, dazu `signatur_go`: derselbe Text, vom Go-Core signiert. Java prüft beide Signaturen, Go die aus Python; so ist belegt, dass die API annimmt, was die Box signiert. Dazu Änderungen eines Feldes, nach denen die Signatur nicht mehr gilt (`signatur_ungueltig`), und Formfehler (`formfehler`). ECDSA ist nicht deterministisch: Ein Leser prüft die Signatur des Vektors und, wenn er selbst signiert, dass die API seine Signatur annimmt; Byte-gleich ist nur der kanonische Text.

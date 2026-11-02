@@ -13,20 +13,10 @@ import (
 
 // refValid mirrors EdgeRef.isValid on the api side: an "edge-" ref must be the
 // prefix + six body chars + one matching check char, all in the alphabet.
+// refValid ist die Prüfung der Produktion (GueltigeKennung); die Vektoren
+// unten binden sie an EdgeRef.java und das Portal.
 func refValid(ref string) bool {
-	if !strings.HasPrefix(ref, generatedRefPrefix) {
-		return false
-	}
-	rest := ref[len(generatedRefPrefix):]
-	if len(rest) != 7 {
-		return false
-	}
-	for i := 0; i < 6; i++ {
-		if strings.IndexByte(refAlphabet, rest[i]) < 0 {
-			return false
-		}
-	}
-	return rest[6] == refCheckChar(rest[:6])
+	return GueltigeKennung(ref)
 }
 
 func TestGeneratedRefIsValid(t *testing.T) {

@@ -661,6 +661,25 @@ func refCheckChar(body string) byte {
 	return refAlphabet[sum%len(refAlphabet)]
 }
 
+// GueltigeKennung prüft eine erzeugte Kennung: Präfix, sechs Zeichen aus dem
+// Alphabet, Prüfzeichen (docs/contracts/edge-ref-vectors.json, wie
+// EdgeRef.isValid in der API). Nur für erzeugte Kennungen, nicht für Sticker.
+func GueltigeKennung(ref string) bool {
+	if !strings.HasPrefix(ref, generatedRefPrefix) {
+		return false
+	}
+	rest := ref[len(generatedRefPrefix):]
+	if len(rest) != 7 {
+		return false
+	}
+	for i := 0; i < 6; i++ {
+		if strings.IndexByte(refAlphabet, rest[i]) < 0 {
+			return false
+		}
+	}
+	return rest[6] == refCheckChar(rest[:6])
+}
+
 func randomToken(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

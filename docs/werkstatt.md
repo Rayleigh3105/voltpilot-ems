@@ -111,6 +111,6 @@ Verbunden wird nie von selbst; der Kunde drückt selbst auf „Verbinden“.
 | Was | Warum noch nicht |
 |---|---|
 | Probedruck der Kennung | Die Druckdatei je Box gibt es (`bauen.sh --referenz <referenz>`, [Kennung](../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md)); geprüft ist sie bis zum G-Code, gedruckt nicht. Ob ein Telefon den gedruckten Code liest, zeigt erst der Probedruck des Betreibers. |
-| Einmal-Code und D2 an der Box | Die API kann es (siehe unten); den Befehl `werkstatt-anmelden` auf der Box und die Probe des Dienstes bringen die nächsten Pakete (P7, P8). |
+| Einmal-Code und D2 im Ablauf des Dienstes | API und der Befehl `werkstatt-anmelden` auf der Box sind da ([Vertrag](contracts/werkstatt-einloesen-v1.md#der-befehl-auf-der-box)); dass der Dienst ihn im Lauf aufruft, die Probe über den Tunnel und die Abnahme mit Belegen schreibt, bringt P8. |
 | Zweiter Faktor am Portal | Entscheid 10b: später |
 | Die kleinen Korrekturen aus Abschnitt 3.5 | laufen in einem eigenen PR (`install.sh`, `schluessel-holen.sh`, `mango.md`) |

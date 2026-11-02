@@ -18,6 +18,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/agent"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/web"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/werkstatt"
 )
 
 // Options select the binary's personality.
@@ -34,8 +35,14 @@ type Options struct {
 	Extra func(ctx context.Context, cfg config.Config, a *agent.Agent) (stop func(), err error)
 }
 
-// Main runs the box process and exits the program on a fatal error.
+// Main runs the box process and exits the program on a fatal error. As
+// "<programm> werkstatt-anmelden …" it instead redeems a workshop code and
+// exits (internal/werkstatt, docs/contracts/werkstatt-einloesen-v1.md) - in
+// both binaries, from the same code.
 func Main(o Options) {
+	if len(os.Args) > 1 && os.Args[1] == werkstatt.BefehlName {
+		os.Exit(werkstatt.Befehl(os.Args[2:], agent.Version, os.Stdin, os.Stdout, os.Stderr))
+	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	cfg, err := config.Load()

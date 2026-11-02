@@ -24,7 +24,8 @@ import org.junit.jupiter.api.Test;
 /**
  * Rein, ohne Docker: {@link EinloesenVertrag} liest die Vektoren
  * {@code docs/contracts/werkstatt-einloesen-vectors.json} - kanonischer Text
- * Byte für Byte, die Signatur des Vektors gilt, jede Änderung eines Feldes
+ * Byte für Byte, die Signatur des Vektors gilt (auch die des Go-Core,
+ * {@code signatur_go}), jede Änderung eines Feldes
  * bricht sie, jeder Formfehler wird erkannt, und eine eigene Signatur mit dem
  * Testschlüssel gilt ebenso (ECDSA ist nicht deterministisch).
  */
@@ -59,6 +60,10 @@ class EinloesenVertragTest {
         assertThat(EinloesenVertrag.sha256Hex(Base64.getDecoder().decode(a.geraeteSchluessel())))
                 .isEqualTo(v.get("geraete_schluessel_sha256").asText());
         assertThat(EinloesenVertrag.signaturGueltig(a)).isTrue();
+        // Querbeleg: dieselbe Anfrage, signiert vom Go-Core (ecdsa.SignASN1), gilt ebenso.
+        Anfrage go = new Anfrage(a.edgeRef(), a.code(), a.fassung(), a.geraeteSchluessel(), a.wireguardSchluessel(),
+                a.hostSchluessel(), a.csrPem(), v.get("signatur_go").asText());
+        assertThat(EinloesenVertrag.signaturGueltig(go)).as("signatur_go").isTrue();
         // Die Zertifikatsanfrage trägt denselben Schlüssel, in derselben festgehaltenen Form.
         assertThat(Csrs.schluesselSpki(Csrs.parseAndValidate(a.csrPem())))
                 .isEqualTo(EinloesenVertrag.spki(EinloesenVertrag.geraeteSchluessel(a.geraeteSchluessel())))

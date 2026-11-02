@@ -1,6 +1,6 @@
 {
   "vertrag": "Einlösen eines Werkstatt-Codes durch die Box (vp-werkstatt-einloesen.v1)",
-  "beschreibung": "Die Box signiert den kanonischen Text mit ihrem Geräteschlüssel (EC P-256, ECDSA mit SHA-256, ASN.1 DER, Base64). Leser: services/api …/werkstatt/EinloesenVertrag.java und der Befehl werkstatt-anmelden im Go-Core (P7). Vertrag: docs/contracts/werkstatt-einloesen-v1.md. Der Schlüssel unten ist NUR für Tests erzeugt und gehört zu keiner Box.",
+  "beschreibung": "Die Box signiert den kanonischen Text mit ihrem Geräteschlüssel (EC P-256, ECDSA mit SHA-256, ASN.1 DER, Base64). Leser: services/api …/werkstatt/EinloesenVertrag.java und der Befehl werkstatt-anmelden im Go-Core (edge-app/core/internal/werkstatt). Vertrag: docs/contracts/werkstatt-einloesen-v1.md. Der Schlüssel unten ist NUR für Tests erzeugt und gehört zu keiner Box.",
   "test_privater_schluessel_pkcs8_pem": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgKMvAu5O3Zziw9mbY\nyRM1kqAj8C5F/3hOY/tgoduCadihRANCAATaNevqJuq4rPHWgD8vJ7Agdzrd2gtx\n+SjTGXrLEsiiBbUC6InUtDugsfWVTrCHpjDVxpvWCf5DpSouSpVpaNth\n-----END PRIVATE KEY-----\n",
   "anfrage": {
     "edgeRef": "edge-k7m2xq3",
@@ -15,6 +15,8 @@
   "kanonisch": "vp-werkstatt-einloesen.v1\nedge_ref=edge-k7m2xq3\ncode=wk-abcdefghijklmnopqrstuvwxyz\nfassung=edge-light-2026.11.0\ngeraete_schluessel=MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2jXr6ibquKzx1oA/LyewIHc63doLcfko0xl6yxLIogW1AuiJ1LQ7oLH1lU6wh6Yw1cab1gn+Q6UqLkqVaWjbYQ==\nwireguard_schluessel=/iwscgv6ILyS1xKzB+lbL/O57nrWajmiSQdU6qaQU0A=\nhost_schluessel=SHA256:2SDE0cZR4XtlVLjiHnsD7uTHNtWugyfzDJt4URFUDik\ncsr_sha256=422ec698a088e6258eace08a15da34c930f974c7b451fea87889986eaa01b4a4\n",
   "csr_sha256": "422ec698a088e6258eace08a15da34c930f974c7b451fea87889986eaa01b4a4",
   "geraete_schluessel_sha256": "83f3172bab953aac385e0fa51fe80ec317e9b7c8fd065284e4fbbbd6c8afdcb6",
+  "signatur_go": "MEUCIQDjkVUoCMeAwwO09kTZkg7t8joH3iZEx+3iqG2vMYTG5gIgDHRRJdlKEwWYgaewayswwjEEaswCgLMdyR6wfETyEA0=",
+  "signatur_go_beschreibung": "Signatur desselben kanonischen Textes mit demselben Testschlüssel, erzeugt von Go (ecdsa.SignASN1): der Querbeleg, dass die API eine Signatur des Go-Core annimmt.",
   "signatur_ungueltig": [
     {
       "name": "andere Referenz",
