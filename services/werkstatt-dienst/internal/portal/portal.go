@@ -102,6 +102,12 @@ func (c Client) FensterSchliessen(ctx context.Context, fensterID string) (schonZ
 	return false, err
 }
 
+// AnsichtMelden meldet die Ansicht des Dienstes (PUT /ansicht,
+// docs/contracts/werkstatt-ansicht-v1.md); die Werkstatt-Bildschirme lesen sie.
+func (c Client) AnsichtMelden(ctx context.Context, ansicht any) error {
+	return c.rufe(ctx, http.MethodPut, "/ansicht", ansicht, http.StatusNoContent, nil)
+}
+
 // AbnahmeSchreiben schreibt die Abnahme mit Belegen (POST /abnahmen/{ref}).
 func (c Client) AbnahmeSchreiben(ctx context.Context, edgeRef string, a Abnahme) (Angenommen, error) {
 	var out Angenommen

@@ -3,6 +3,7 @@ package dienst_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/netip"
 	"os"
@@ -265,5 +266,40 @@ func TestOffeneLaeufeNachNeustart(t *testing.T) {
 	}
 	if o, _ := a.d.Ablage.Offene(); len(o) != 0 {
 		t.Fatal(o)
+	}
+}
+
+// melderAttrappe nimmt die Ansicht an oder scheitert.
+type melderAttrappe struct {
+	gesehen []dienst.Ansicht
+	fehler  error
+}
+
+func (m *melderAttrappe) AnsichtMelden(_ context.Context, a any) error {
+	m.gesehen = append(m.gesehen, a.(dienst.Ansicht))
+	return m.fehler
+}
+
+func TestAnsichtGehtJedenTaktAnsPortal(t *testing.T) {
+	a := neu(t, time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC))
+	m := &melderAttrappe{}
+	a.d.Melder = m
+	a.d.Runde(context.Background())
+	a.d.Runde(context.Background())
+	if len(m.gesehen) != 2 || m.gesehen[0].Schema != dienst.AnsichtSchema || !m.gesehen[1].Werkbank.Bereit {
+		t.Fatalf("%+v", m.gesehen)
+	}
+	// Ein Fehler hält nichts an und steht einmal im Log, nicht je Takt.
+	m.fehler = errors.New("Portal: HTTP 503: kaputt")
+	for i := 0; i < 3; i++ {
+		a.d.Runde(context.Background())
+	}
+	if n := strings.Count(a.log.String(), "Ansicht ans Portal nicht gemeldet"); n != 1 {
+		t.Fatalf("%d mal geloggt:\n%s", n, a.log.String())
+	}
+	m.fehler = nil
+	a.d.Runde(context.Background())
+	if !strings.Contains(a.log.String(), "Ansicht ans Portal: wieder gemeldet") || !a.d.Ansicht().Werkbank.Bereit {
+		t.Fatal(a.log.String())
 	}
 }

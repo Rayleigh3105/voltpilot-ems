@@ -1,0 +1,87 @@
+{
+  "schema": "vp-werkstatt-ansicht.v1",
+  "zeit": "2026-11-02T10:12:00Z",
+  "werkbank": {
+    "adresse": "192.168.0.50",
+    "bereit": true,
+    "fassung_soll": "werkbank-2026.11.1",
+    "host_schluessel": "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc",
+    "status": {
+      "schema": "vp-werkbank-status.v1",
+      "fassung": "werkbank-2026.11.1",
+      "zeit": "2026-11-02T10:11:58Z",
+      "werkstatt": {
+        "schnittstelle": "eth0",
+        "kabel": true,
+        "adressen": [
+          "192.168.8.2/24",
+          "192.168.1.2/24",
+          "10.213.0.2/24"
+        ]
+      },
+      "netz": {
+        "schnittstelle": "wlan0",
+        "oben": true,
+        "adressen": [
+          "192.168.0.50/24"
+        ],
+        "energiesparen": "aus"
+      },
+      "durchleitung": {
+        "ip_forward": true,
+        "firewall": true
+      },
+      "antworten": [
+        {
+          "adresse": "192.168.1.1",
+          "macs": [
+            "94:83:c4:12:34:56"
+          ]
+        }
+      ]
+    },
+    "status_zeit": "2026-11-02T10:11:58Z"
+  },
+  "freigabe": {
+    "laufend": true,
+    "freigabe": {
+      "schema": "vp-werkstatt-freigabe.v1",
+      "kennung": "2026-11-mango-1",
+      "box_art": "mango",
+      "erteilt_von": "Admin",
+      "erteilt_am": "2026-11-02T08:00:00Z",
+      "gueltig_bis": "2026-11-30T08:00:00Z",
+      "obergrenze": 20,
+      "openwrt": {
+        "fassung": "25.12.5",
+        "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+      },
+      "edge_light": {
+        "fassung": "edge-light-2026.11.1",
+        "quelle": "https://git.tecmaxx.de/mamotec/voltpilot-ems/releases/download/edge-light-2026.11.1/",
+        "programm_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "skripte_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      }
+    },
+    "boxen": 3
+  },
+  "anschluss": "eine Mango mit frischem OpenWrt",
+  "lauf": {
+    "kennung": "2026-11-02T10-05-00-mango",
+    "freigabe": "2026-11-mango-1",
+    "box_art": "mango",
+    "beginn": "2026-11-02T10:05:00Z",
+    "zustand": "laeuft",
+    "schritt": "programm",
+    "titel": "Edge Light einspielen",
+    "erledigt": [
+      "erkennen",
+      "fassungen",
+      "internet",
+      "passwort",
+      "notfall"
+    ]
+  }
+}

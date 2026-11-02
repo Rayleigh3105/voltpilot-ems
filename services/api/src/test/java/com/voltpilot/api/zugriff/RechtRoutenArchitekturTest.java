@@ -57,6 +57,7 @@ class RechtRoutenArchitekturTest {
         m.put("WerkstattDienstController#code", werkstattDienst);
         m.put("WerkstattDienstController#fensterSchliessen", werkstattDienst);
         m.put("WerkstattDienstController#abnahme", werkstattDienst);
+        m.put("WerkstattDienstController#ansicht", werkstattDienst);
         m.put("WerkstattEinloesenController#einloesen",
                 "öffentlich (SecurityConfig permitAll, exakter Pfad) wie die Zertifikatsanfrage: die frisch "
                         + "eingerichtete Box hat kein Konto; Nachweis sind Einmal-Code und Signatur mit dem "

@@ -6,6 +6,7 @@ import com.voltpilot.api.fernwartung.Akteur;
 import com.voltpilot.api.werkstatt.LanNetz;
 import com.voltpilot.api.werkstatt.WerkstattPruefungen;
 import com.voltpilot.api.werkstatt.WerkstattRepository.Abnahme;
+import com.voltpilot.api.werkstatt.DienstAnsichtService;
 import com.voltpilot.api.werkstatt.FreigabeRepository;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Abbild;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Programm;
@@ -107,6 +108,25 @@ public class AdminWerkstattController {
         }
     }
 
+    /** Der letzte Stand eines Laufs des Werkstatt-Dienstes. */
+    public record LaufDto(String kennung, String freigabe, String boxArt, String zustand, String schritt, String titel,
+            String grund, Instant beginn, Instant ende, Instant aktualisiertAm, JsonNode stand) {
+        static LaufDto of(DienstAnsichtService.Lauf l) {
+            return new LaufDto(l.kennung(), l.freigabe(), l.boxArt(), l.zustand(), l.schritt(), l.titel(), l.grund(),
+                    l.beginn(), l.ende(), l.aktualisiertAm(), l.stand());
+        }
+    }
+
+    /**
+     * Was der Werkstatt-Dienst zuletzt gemeldet hat ({@code ansicht}, Vertrag
+     * werkstatt-ansicht-v1) mit seinem Alter: {@code aktuell} ist false, wenn
+     * die letzte Meldung älter als 60 s ist oder nie eine kam ({@code ansicht}
+     * dann null). Dazu die letzten Läufe.
+     */
+    public record DienstDto(JsonNode ansicht, Instant gemeldetAm, Instant dienstZeit, Long alterSekunden,
+            boolean aktuell, List<LaufDto> laeufe) {
+    }
+
     // ── Anfragen ──────────────────────────────────────────────────────────
 
     /** Werkstatt freigeben: Box-Art (Vorgabe mango), wie viele Tage ab jetzt, Obergrenze, Fassungen. */
@@ -131,12 +151,26 @@ public class AdminWerkstattController {
 
     private final WerkstattService service;
     private final FreigabeService freigaben;
+    private final DienstAnsichtService ansichten;
     private final ObjectMapper json;
 
-    public AdminWerkstattController(WerkstattService service, FreigabeService freigaben, ObjectMapper json) {
+    public AdminWerkstattController(WerkstattService service, FreigabeService freigaben,
+            DienstAnsichtService ansichten, ObjectMapper json) {
         this.service = service;
         this.freigaben = freigaben;
+        this.ansichten = ansichten;
         this.json = json;
+    }
+
+    /** Was der Werkstatt-Dienst gerade tut (für die Werkstatt-Bildschirme). */
+    @GetMapping("/dienst")
+    public DienstDto dienst() {
+        List<LaufDto> laeufe = ansichten.laeufe(30).stream().map(LaufDto::of).toList();
+        return ansichten.gemeldet().map(g -> {
+            long alter = Math.max(0, java.time.Duration.between(g.gemeldetAm(), ansichten.jetzt()).toSeconds());
+            return new DienstDto(g.ansicht(), g.gemeldetAm(), g.dienstZeit(), alter,
+                    alter <= DienstAnsichtService.AKTUELL.toSeconds(), laeufe);
+        }).orElse(new DienstDto(null, null, null, null, false, laeufe));
     }
 
     @GetMapping("/grundlagen")

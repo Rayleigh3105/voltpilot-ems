@@ -30,8 +30,14 @@ import (
 // der Dienst es erst nach dieser Zeit wieder (Status liest er weiter im Takt).
 const EinrichtenPause = 10 * time.Minute
 
-// Ansicht ist der Stand für Anzeige und Metriken.
+// AnsichtSchema ist das Schema der Ansicht, wie sie an die Portal-API geht
+// (docs/contracts/werkstatt-ansicht-v1.md).
+const AnsichtSchema = "vp-werkstatt-ansicht.v1"
+
+// Ansicht ist der Stand für Anzeige, Metriken und die Werkstatt-Bildschirme
+// im Portal.
 type Ansicht struct {
+	Schema   string          `json:"schema"`
 	Zeit     time.Time       `json:"zeit"`
 	Werkbank WerkbankAnsicht `json:"werkbank"`
 	Freigabe FreigabeAnsicht `json:"freigabe"`
@@ -82,6 +88,10 @@ type Dienst struct {
 	// Mango: Konfiguration der Läufe an der Box; nil heißt: keine Läufe
 	// (nur Brücke und Freigabe).
 	Mango *mango.Konfig
+	// Melder meldet die Ansicht jeden Takt an die Portal-API (V1, die
+	// Werkstatt-Bildschirme); nil heißt: nur die eigene Anzeige.
+	Melder       Melder
+	melderFehler string
 
 	ctx      context.Context
 	aktiv    *aktiverLauf
@@ -130,11 +140,17 @@ func Neu(d *Dienst, reg *metriken.Register) *Dienst {
 // Bereit sagt, ob die Schleife läuft (Readiness).
 func (d *Dienst) Bereit() bool { return d.laeuft.Load() && !d.beendet.Load() }
 
+// Melder nimmt die Ansicht entgegen (portal.Client).
+type Melder interface {
+	AnsichtMelden(ctx context.Context, ansicht any) error
+}
+
 // Ansicht gibt eine Kopie des Stands.
 func (d *Dienst) Ansicht() Ansicht {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	a := d.ansicht
+	a.Schema = AnsichtSchema
 	switch {
 	case d.aktiv != nil:
 		s := d.aktiv.l.Stand()
@@ -212,6 +228,30 @@ func (d *Dienst) Runde(ctx context.Context) {
 	wartet := d.aktiv != nil && d.aktiv.l.Stand().Zustand == lauf.Wartet
 	d.mu.Unlock()
 	d.mWartet.Wahr(wartet)
+	d.melde(ctx)
+}
+
+// melde gibt die Ansicht an das Portal. Ein Fehler hält nichts an; geloggt
+// wird nur der Wechsel, nicht jeder Takt.
+func (d *Dienst) melde(ctx context.Context) {
+	if d.Melder == nil {
+		return
+	}
+	mctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	err := d.Melder.AnsichtMelden(mctx, d.Ansicht())
+	text := ""
+	if err != nil {
+		text = geheim.Schwaerze(err.Error())
+	}
+	if text != d.melderFehler {
+		if text == "" {
+			d.Log.Info("Ansicht ans Portal: wieder gemeldet")
+		} else {
+			d.Log.Warn("Ansicht ans Portal nicht gemeldet", "fehler", text)
+		}
+		d.melderFehler = text
+	}
 }
 
 // runeAnschluss sieht nach, was am Werkstatt-Anschluss steckt, und beginnt

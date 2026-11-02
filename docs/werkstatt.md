@@ -37,6 +37,10 @@ sie in der API (`/api/v1/admin/werkstatt/freigaben`, nur `platform-admin`; Tabel
 Ende ändert sich, nichts wird gelöscht); der Dienst liest die laufende über sein Dienstkonto im eigenen Baum
 `/api/v1/werkstatt-dienst/**` und kann dort nicht freigeben ([Runbook](../services/werkstatt-dienst/docs/runbook.md#werkstatt-freigeben)).
 
+Was der Dienst gerade tut (Werkbank, Anschluss, laufender Lauf), meldet er jeden Takt als
+[Ansicht](contracts/werkstatt-ansicht-v1.md); `GET /api/v1/admin/werkstatt/dienst` gibt sie mit ihrem Alter und den
+letzten Läufen an die Werkstatt-Bildschirme (älter als 60 s: „der Dienst meldet sich nicht“).
+
 **Einmal-Code und D2** ([Vertrag](contracts/werkstatt-einloesen-v1.md)): In einer laufenden Freigabe holt der Dienst
 für genau eine ungekoppelte Box einen Code (30 Minuten, einmal, in der API nur gehasht). Die Box löst ihn ohne Konto
 selbst ein, signiert mit ihrem Geräteschlüssel und mit ihrer Zertifikatsanfrage. Die API hält dabei den

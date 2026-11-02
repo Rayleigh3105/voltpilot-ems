@@ -209,6 +209,10 @@ func dienstLaufen(log *slog.Logger) error {
 		return err
 	}
 	freigaben, ptl := apiZugang(k)
+	var melder dienst.Melder
+	if c, ok := ptl.(portal.Client); ok {
+		melder = c
+	}
 	var probe mango.Probe
 	if ptl != nil && k.TechnikerSSH != nil {
 		probe = wartung.Probe{Zugang: wartung.Zugang{Privat: k.TechnikerWG, Adresse: k.TechnikerAdresse}, SSH: k.TechnikerSSH}
@@ -236,6 +240,7 @@ func dienstLaufen(log *slog.Logger) error {
 		Werkbank:  wb,
 		Adresse:   k.Werkbank.Adresse,
 		Freigaben: freigaben,
+		Melder:    melder,
 		Ablage:    ablage,
 		Laeufer:   lauf.NeuerLaeufer(ablage, log.With("logger", "lauf"), reg),
 		Takt:      k.Takt,

@@ -268,6 +268,66 @@ class WerkstattFreigabeApiTest {
                 .rootCause().hasMessageContaining("permission denied");
     }
 
+    @Test
+    @Order(5)
+    void dienstMeldetSeineAnsicht_nurAdminsLesenSie() throws Exception {
+        String admin = token("admin", "admin");
+        String dienst = serviceToken("voltpilot-werkstatt-dienst", "voltpilot-werkstatt-dienst-dev-secret");
+        String vektor = java.nio.file.Files.readString(
+                java.nio.file.Path.of("..", "..", "docs", "contracts", "werkstatt-ansicht-v1.example.json"));
+        // Noch nie gemeldet: keine Ansicht, nicht aktuell.
+        JsonNode leer = json.readTree(send(HttpMethod.GET, "/api/v1/admin/werkstatt/dienst", admin, null).getBody());
+        assertThat(leer.get("ansicht").isNull()).isTrue();
+        assertThat(leer.get("aktuell").asBoolean()).isFalse();
+
+        assertThat(roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", dienst, vektor).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        JsonNode d = json.readTree(send(HttpMethod.GET, "/api/v1/admin/werkstatt/dienst", admin, null).getBody());
+        assertThat(d.get("aktuell").asBoolean()).isTrue();
+        assertThat(d.get("alterSekunden").asLong()).isLessThan(60);
+        assertThat(d.get("ansicht").get("schema").asText()).isEqualTo("vp-werkstatt-ansicht.v1");
+        assertThat(d.get("ansicht").get("werkbank").get("status").get("werkstatt").get("kabel").asBoolean()).isTrue();
+        assertThat(d.get("laeufe")).hasSize(1);
+        assertThat(d.get("laeufe").get(0).get("zustand").asText()).isEqualTo("laeuft");
+
+        // Derselbe Lauf, jetzt fertig: eine Zeile, neuer Stand.
+        String fertig = vektor.replace("\"zustand\": \"laeuft\"", "\"zustand\": \"fertig\"");
+        assertThat(roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", dienst, fertig).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        d = json.readTree(send(HttpMethod.GET, "/api/v1/admin/werkstatt/dienst", admin, null).getBody());
+        assertThat(d.get("laeufe")).hasSize(1);
+        assertThat(d.get("laeufe").get(0).get("zustand").asText()).isEqualTo("fertig");
+
+        // Form falsch: 422; Schlüsselmaterial: 422; nur der Dienst meldet, nur Admins lesen.
+        assertThat(roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", dienst, "{\"schema\":\"x\"}").getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", dienst,
+                vektor.replace("eine Mango mit frischem OpenWrt", "-----BEGIN OPENSSH PRIVATE KEY-----")).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        for (String t : List.of(admin, token("demo", "demo"))) {
+            assertThat(roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", t, vektor).getStatusCode())
+                    .isEqualTo(HttpStatus.FORBIDDEN);
+        }
+        for (String t : List.of(dienst, token("demo", "demo"))) {
+            assertThat(send(HttpMethod.GET, "/api/v1/admin/werkstatt/dienst", t, null).getStatusCode())
+                    .isEqualTo(HttpStatus.FORBIDDEN);
+        }
+        JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
+        for (String tabelle : List.of("werkstatt_dienst_ansicht", "werkstatt_lauf")) {
+            assertThatThrownBy(() -> app.queryForObject("SELECT count(*) FROM " + tabelle, Long.class)).as(tabelle)
+                    .rootCause().hasMessageContaining("permission denied");
+        }
+    }
+
+    private ResponseEntity<String> roh(HttpMethod method, String pfad, String token, String body) {
+        HttpHeaders h = new HttpHeaders();
+        if (token != null) {
+            h.setBearerAuth(token);
+        }
+        h.setContentType(MediaType.APPLICATION_JSON);
+        return rest.exchange("http://localhost:" + port + pfad, method, new HttpEntity<>(body, h), String.class);
+    }
+
     // ── Hilfen ────────────────────────────────────────────────────────────
 
     private static List<String> feldnamen(JsonNode n) {

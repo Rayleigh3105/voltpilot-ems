@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.voltpilot.api.fernwartung.Akteur;
+import com.voltpilot.api.werkstatt.DienstAnsichtService;
 import com.voltpilot.api.werkstatt.EinloesungRepository;
 import com.voltpilot.api.werkstatt.EinloesungService;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Freigabe;
@@ -18,6 +19,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -128,12 +130,24 @@ public class WerkstattDienstController {
     private final FreigabeService freigaben;
     private final EinloesungService einloesung;
     private final WerkstattService werkstatt;
+    private final DienstAnsichtService ansichten;
 
     public WerkstattDienstController(FreigabeService freigaben, EinloesungService einloesung,
-            WerkstattService werkstatt) {
+            WerkstattService werkstatt, DienstAnsichtService ansichten) {
         this.freigaben = freigaben;
         this.einloesung = einloesung;
         this.werkstatt = werkstatt;
+        this.ansichten = ansichten;
+    }
+
+    /**
+     * Die Ansicht des Dienstes melden (jeden Takt, docs/contracts/werkstatt-ansicht-v1.md):
+     * 204; 422 mit Grund, wenn die Form nicht stimmt oder Schlüsselmaterial darin steht.
+     */
+    @PutMapping(value = "/ansicht", consumes = "application/json")
+    public ResponseEntity<Void> ansicht(@RequestBody String roh, @AuthenticationPrincipal Jwt caller) {
+        ansichten.melden(roh, Akteur.aus(caller));
+        return ResponseEntity.noContent().build();
     }
 
     /** Die laufende Freigabe einer Box-Art (Vorgabe mango); 404, wenn keine läuft. */

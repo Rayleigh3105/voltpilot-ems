@@ -7169,6 +7169,45 @@ paths:
         "404": { description: Nicht im Register. }
         "409": { description: Kein LAN-Netz, kein Tunnel oder das Fenster der Probe ist noch offen. }
         "422": { description: Prüfung fehlt, Form von Host-Schlüssel oder Fassung, falsches Fenster oder Docker-Box. }
+  /api/v1/admin/werkstatt/dienst:
+    get:
+      tags: [werkstatt]
+      summary: Was der Werkstatt-Dienst gerade tut (für die Werkstatt-Bildschirme).
+      description: >
+        Die zuletzt gemeldete Ansicht (Vertrag werkstatt-ansicht-v1) mit Zeitpunkt
+        und Alter; `aktuell` ist false, wenn sie älter als 60 s ist oder nie eine
+        kam (`ansicht` dann null). Dazu die letzten 30 Läufe mit ihrem letzten Stand.
+      responses:
+        "200":
+          description: Der Stand.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ansicht: { type: object, nullable: true, additionalProperties: true }
+                  gemeldetAm: { type: string, format: date-time, nullable: true }
+                  dienstZeit: { type: string, format: date-time, nullable: true }
+                  alterSekunden: { type: integer, nullable: true }
+                  aktuell: { type: boolean }
+                  laeufe:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kennung: { type: string }
+                        freigabe: { type: string, nullable: true }
+                        boxArt: { type: string, nullable: true }
+                        zustand: { type: string, enum: [laeuft, wartet, fertig, angehalten] }
+                        schritt: { type: string, nullable: true }
+                        titel: { type: string, nullable: true }
+                        grund: { type: string, nullable: true }
+                        beginn: { type: string, format: date-time }
+                        ende: { type: string, format: date-time, nullable: true }
+                        aktualisiertAm: { type: string, format: date-time }
+                        stand: { type: object, additionalProperties: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/werkstatt/freigaben:
     get:
       tags: [werkstatt]
@@ -7411,6 +7450,26 @@ paths:
         "404": { description: Nicht im Register. }
         "409": { description: Ohne Einlösung, anderer Host-Schlüssel, andere Fassung, anderer Tunnel-Schlüssel oder Probe-Fenster noch offen. }
         "422": { description: Beleg fehlt oder zu lang, Passwort nicht mit age verschlüsselt, LAN-Netz abgelehnt, keine Edge-Light-Box. }
+  /api/v1/werkstatt-dienst/ansicht:
+    put:
+      tags: [werkstatt-dienst]
+      summary: Die Ansicht des Werkstatt-Dienstes melden (jeden Takt, für die Werkstatt-Bildschirme).
+      description: >
+        Vertrag docs/contracts/werkstatt-ansicht-v1.md (Schema
+        `vp-werkstatt-ansicht.v1`, Vektor werkstatt-ansicht-v1.example.json).
+        Die API prüft nur die Form (Schema, Zeit, Werkbank, Freigabe, Lauf mit
+        Kennung und Zustand), höchstens 64 KB, kein Schlüsselmaterial, und hält
+        die letzte Ansicht und je Lauf seinen letzten Stand. Anzeige, kein Beweis.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "204": { description: Angenommen. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: Form falsch oder Schlüsselmaterial, mit Grund. }
   /api/v1/werkstatt/einloesen:
     post:
       tags: [werkstatt-dienst]

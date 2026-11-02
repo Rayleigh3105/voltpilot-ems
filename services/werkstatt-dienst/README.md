@@ -104,6 +104,7 @@ Aus der Umgebung (ConfigMap `werkstatt-dienst-konfig`), Schlüssel aus Dateien (
 | `VP_WERKSTATT_NOTFALL_PUB` | – (Pflicht) | öffentlicher Notfall-Schlüssel (Datei) |
 | `VP_WERKSTATT_FREIGABE` | `/etc/vp-werkstatt/freigabe/freigabe.json` | die Freigabe als Datei (V1a); fehlt die Datei, läuft keine |
 | `VP_WERKSTATT_API_URL` | leer | Portal-API (V1): gesetzt, liest der Dienst die laufende Freigabe dort (`GET /api/v1/werkstatt-dienst/freigabe`) statt aus der Datei |
+| (Ansicht ans Portal) | – | mit `VP_WERKSTATT_API_URL` meldet der Dienst jeden Takt seine Ansicht (`PUT /api/v1/werkstatt-dienst/ansicht`, [Vertrag](../../docs/contracts/werkstatt-ansicht-v1.md)) für die Werkstatt-Bildschirme; ein Fehler dabei hält nichts an und steht einmal im Log |
 | `VP_WERKSTATT_TOKEN_URL` | – (Pflicht mit API) | Token-Endpunkt von Keycloak (`…/realms/voltpilot/protocol/openid-connect/token`) |
 | `VP_WERKSTATT_TECHNIKER_ADRESSE` | leer | Probe über den Tunnel (V1, nur mit API): Adresse des Techniker-Zugangs „Werkstatt-Dienst“ im Techniker-Netz; dazu `techniker-wireguard` und `techniker-ssh` im Geheimnis-Verzeichnis (`vp-werkstatt-dienst techniker-schluessel <dir>` erzeugt sie). Leer: die Probe bleibt ein Handgriff |
 | `VP_WERKSTATT_CLIENT_ID` | `voltpilot-werkstatt-dienst` | Dienstkonto (client_credentials, Rolle `werkstatt-dienst`); Secret als `keycloak-client-secret` im Geheimnis-Verzeichnis |
