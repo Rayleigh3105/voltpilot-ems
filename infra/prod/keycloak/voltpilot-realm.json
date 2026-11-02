@@ -41,7 +41,8 @@
       { "name": "platform-admin", "description": "Portal-Admin: platform operator, manages tenants and users across all tenants" },
       { "name": "partner", "description": "Partner account (installer, UEMS AP-03 E7): NEVER a tenant_id; reaches a customer area only through a granted Unterstuetzung" },
       { "name": "edge-release-publisher", "description": "OTA release automation: may ONLY register a signed edge release (POST /api/v1/admin/edge-releases + its next-seq read). Never a rollout, never a device target - see docs/ota-signing.md." },
-      { "name": "tunnel-dienst", "description": "Wartungstunnel: darf AUSSCHLIESSLICH den Soll-Stand lesen (GET /api/v1/fernwartung/soll). Kein Schreibrecht, keine Admin-Route - siehe docs/fernwartung.md." }
+      { "name": "tunnel-dienst", "description": "Wartungstunnel: darf AUSSCHLIESSLICH den Soll-Stand lesen (GET /api/v1/fernwartung/soll). Kein Schreibrecht, keine Admin-Route - siehe docs/fernwartung.md." },
+      { "name": "werkstatt-dienst", "description": "Werkstatt-Dienst: nur der eigene Baum /api/v1/werkstatt-dienst/** (laufende Freigabe lesen). Nie freigeben, nie Fenster oeffnen, keine Kunden, keine Admin-Route - siehe services/werkstatt-dienst." }
     ]
   },
   "clients": [
@@ -76,6 +77,23 @@
       "serviceAccountsEnabled": true,
       "fullScopeAllowed": true,
       "secret": "${VP_TUNNEL_DIENST_SECRET:change-me}",
+      "redirectUris": [],
+      "webOrigins": []
+    },
+    {
+      "clientId": "voltpilot-werkstatt-dienst",
+      "name": "VoltPilot Werkstatt-Dienst",
+      "description": "Workshop service (services/werkstatt-dienst). Client credentials only; the token carries werkstatt-dienst only. Ships DISABLED: enable after setting VP_WERKSTATT_DIENST_SECRET (infra/prod/keycloak/README.md).",
+      "enabled": false,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "secret": "${VP_WERKSTATT_DIENST_SECRET:change-me}",
       "redirectUris": [],
       "webOrigins": []
     },
@@ -193,6 +211,12 @@
       "enabled": true,
       "serviceAccountClientId": "voltpilot-tunnel-dienst",
       "realmRoles": ["tunnel-dienst"]
+    },
+    {
+      "username": "service-account-voltpilot-werkstatt-dienst",
+      "enabled": true,
+      "serviceAccountClientId": "voltpilot-werkstatt-dienst",
+      "realmRoles": ["werkstatt-dienst"]
     },
     {
       "username": "service-account-voltpilot-api",

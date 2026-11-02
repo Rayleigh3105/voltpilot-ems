@@ -122,3 +122,27 @@ func TestFuerDienst(t *testing.T) {
 		t.Fatalf("%+v", k)
 	}
 }
+
+func TestAPIQuelle(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{DateiStatus, DateiWeiterleitung, DateiPflege} {
+		pem, _ := attrappe.SchluesselPEM(t)
+		_ = os.WriteFile(filepath.Join(dir, n), pem, 0o600)
+	}
+	pub := filepath.Join(dir, "notfall.pub")
+	_ = os.WriteFile(pub, ssh.MarshalAuthorizedKey(attrappe.Schluessel(t).PublicKey()), 0o644)
+	env := map[string]string{"VP_WERKBANK_ADRESSE": "192.0.2.50", "VP_WERKSTATT_GEHEIM": dir, "VP_WERKSTATT_NOTFALL_PUB": pub,
+		"VP_WERKSTATT_API_URL": "https://portal.example"}
+	if _, err := Lies(umgebung(env), true); err == nil || !strings.Contains(err.Error(), "VP_WERKSTATT_TOKEN_URL") || !strings.Contains(err.Error(), DateiClientSecret) {
+		t.Fatalf("%v", err)
+	}
+	env["VP_WERKSTATT_TOKEN_URL"] = "https://portal.example/auth/realms/voltpilot/protocol/openid-connect/token"
+	_ = os.WriteFile(filepath.Join(dir, DateiClientSecret), []byte("dienst-secret-123\n"), 0o600)
+	k, err := Lies(umgebung(env), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k.ClientID != "voltpilot-werkstatt-dienst" || k.ClientSecret.Offenbaren() != "dienst-secret-123" || geheim.Schwaerze("dienst-secret-123") != geheim.Ersatz {
+		t.Fatalf("%+v", k)
+	}
+}

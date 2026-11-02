@@ -29,7 +29,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class WerkstattRepository {
 
     /** Fester Schlüssel der Advisory-Sperre aller Werkstatt-Schreibvorgänge. */
-    private static final long SPERRE = 0x76705f7773L; // "vp_ws"
+    static final long SPERRE = 0x76705f7773L; // "vp_ws"
 
     private static final String BOX_SPALTEN = "b.id, b.edge_ref, b.box_art, b.lan_netz, b.schritte::text AS schritte, "
             + "b.notiz, b.angelegt_am, b.angelegt_von, b.angelegt_von_name, b.geaendert_am ";

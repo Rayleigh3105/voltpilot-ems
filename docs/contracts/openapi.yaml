@@ -375,7 +375,16 @@ tags:
       Versand, die Schritte des Ablaufs, das LAN-Netz (Entscheid 6a) und die
       Abnahme nach der Werkstatt-Regel unter /api/v1/admin/werkstatt (nur
       `platform-admin`). Tunnel-Schlüssel und Fenster laufen über die Routen
-      der Fernwartung; keine Route nimmt ein Passwort an. Siehe docs/werkstatt.md.
+      der Fernwartung; keine Route nimmt ein Passwort an. Dazu die Freigabe
+      der Werkstatt (Werkstatt-Automatik V1, WI-4 A): „Werkstatt freigeben“
+      und „Freigabe beenden“ unter /api/v1/admin/werkstatt/freigaben, nur
+      `platform-admin`. Siehe docs/werkstatt.md.
+  - name: werkstatt-dienst
+    description: >
+      Der Baum des Werkstatt-Dienstes (services/werkstatt-dienst) unter
+      /api/v1/werkstatt-dienst: nur das Dienstkonto `voltpilot-werkstatt-dienst`
+      mit der Rolle `werkstatt-dienst` (client_credentials). Kein Admin- und
+      kein Kunden-Token, und die Rolle erreicht nichts außerhalb dieses Baums.
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -7158,6 +7167,95 @@ paths:
         "404": { description: Nicht im Register. }
         "409": { description: Kein LAN-Netz, kein Tunnel oder das Fenster der Probe ist noch offen. }
         "422": { description: Prüfung fehlt, Form von Host-Schlüssel oder Fassung, falsches Fenster oder Docker-Box. }
+  /api/v1/admin/werkstatt/freigaben:
+    get:
+      tags: [werkstatt]
+      summary: Alle Freigaben der Werkstatt, neueste zuerst.
+      responses:
+        "200": { description: Die Freigaben., content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/WerkstattFreigabe" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [werkstatt]
+      summary: Werkstatt freigeben (WI-4 A).
+      description: >
+        Legt eine Freigabe an, gültig ab jetzt für `tage` Tage (1 bis 92): Box-Art
+        (V1 nur `mango`), Obergrenze (1 bis 200, nur ein Schutz), OpenWrt-Abbild
+        (Fassung, sysupgrade-Abbild dieser Fassung, sha256, https-Quelle) und
+        Edge-Light-Fassung (`edge-light-JJJJ.MM.N`, https-Quelle, sha256 von
+        Programm und Skriptstand, wie `freigabe-edge-light.json` der Fassung).
+        Die Kennung vergibt die API: `JJJJ-MM-<box-art>-<n>`. Je Box-Art läuft
+        höchstens eine Freigabe.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                boxArt: { type: string, enum: [mango], default: mango }
+                tage: { type: integer, minimum: 1, maximum: 92 }
+                obergrenze: { type: integer, minimum: 1, maximum: 200 }
+                openwrt: { $ref: "#/components/schemas/WerkstattFreigabeAbbild" }
+                edgeLight: { $ref: "#/components/schemas/WerkstattFreigabeProgramm" }
+                notiz: { type: string, maxLength: 500, nullable: true }
+      responses:
+        "201": { description: Die neue Freigabe., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattFreigabe" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Für die Box-Art läuft schon eine Freigabe. }
+        "422": { description: Freigabe ungültig, mit Grund. }
+  /api/v1/admin/werkstatt/freigaben/{kennung}/ende:
+    post:
+      tags: [werkstatt]
+      summary: Freigabe beenden.
+      description: Ab jetzt richtet der Dienst unter dieser Freigabe keine Box mehr ein. Nur das Ende ändert sich, einmal.
+      parameters:
+        - { name: kennung, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Die beendete Freigabe., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattFreigabe" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Keine Freigabe mit dieser Kennung. }
+        "409": { description: Schon beendet. }
+  /api/v1/werkstatt-dienst/freigabe:
+    get:
+      tags: [werkstatt-dienst]
+      summary: Die laufende Freigabe einer Box-Art (für den Werkstatt-Dienst).
+      description: >
+        Im Format der Freigabe-Datei des Dienstes (Schema `vp-werkstatt-freigabe.v1`,
+        Felder in snake_case); `erteilt_am` ist der Beginn der Gültigkeit. Nur die
+        Rolle `werkstatt-dienst`.
+      parameters:
+        - { name: boxArt, in: query, required: false, schema: { type: string, enum: [mango], default: mango } }
+      responses:
+        "200":
+          description: Die laufende Freigabe.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schema, kennung, box_art, erteilt_von, erteilt_am, gueltig_bis, obergrenze, openwrt, edge_light]
+                properties:
+                  schema: { type: string, enum: [vp-werkstatt-freigabe.v1] }
+                  kennung: { type: string, example: 2026-11-mango-1 }
+                  box_art: { type: string, enum: [mango] }
+                  erteilt_von: { type: string }
+                  erteilt_am: { type: string, format: date-time }
+                  gueltig_bis: { type: string, format: date-time }
+                  beendet_am: { type: string, format: date-time, description: "Feld der Datei-Form; fehlt hier immer, die Route liefert nur eine laufende Freigabe." }
+                  obergrenze: { type: integer }
+                  openwrt: { $ref: "#/components/schemas/WerkstattFreigabeAbbild" }
+                  edge_light:
+                    type: object
+                    properties:
+                      fassung: { type: string }
+                      quelle: { type: string }
+                      programm_sha256: { type: string }
+                      skripte_sha256: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Für die Box-Art läuft keine Freigabe. }
   /api/v1/fernwartung/soll:
     get:
       tags: [fernwartung]
@@ -27727,6 +27825,40 @@ components:
         technikerName: { type: string, nullable: true }
         fensterId: { type: string, format: uuid, nullable: true }
         details: { type: object, additionalProperties: true }
+    WerkstattFreigabeAbbild:
+      type: object
+      required: [fassung, datei, sha256, quelle]
+      properties:
+        fassung: { type: string, example: 25.12.5 }
+        datei: { type: string, example: openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        quelle: { type: string, format: uri }
+    WerkstattFreigabeProgramm:
+      type: object
+      required: [fassung, quelle, programmSha256, skripteSha256]
+      properties:
+        fassung: { type: string, example: edge-light-2026.11.0 }
+        quelle: { type: string, format: uri }
+        programmSha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        skripteSha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+    WerkstattFreigabe:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kennung: { type: string, example: 2026-11-mango-1 }
+        boxArt: { type: string, enum: [mango] }
+        gueltigAb: { type: string, format: date-time }
+        gueltigBis: { type: string, format: date-time }
+        obergrenze: { type: integer }
+        openwrt: { $ref: "#/components/schemas/WerkstattFreigabeAbbild" }
+        edgeLight: { $ref: "#/components/schemas/WerkstattFreigabeProgramm" }
+        notiz: { type: string, nullable: true }
+        erteiltAm: { type: string, format: date-time }
+        erteiltVon: { type: string }
+        beendetAm: { type: string, format: date-time, nullable: true }
+        beendetVon: { type: string, nullable: true }
+        zustand: { type: string, enum: [laufend, beendet, abgelaufen] }
+        grund: { type: string, nullable: true }
     WerkstattAbnahme:
       type: object
       properties:

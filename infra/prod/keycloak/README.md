@@ -13,6 +13,7 @@ Keycloak ersetzt `${VAR}` / `${VAR:default}` aus der Containerumgebung. `${env.V
 | `VP_PORTAL_ADMIN_PASSWORD` | Initialer Portal-Admin; muss die Passwort-Vorgabe erfüllen (mindestens 12 Zeichen, nicht `admin`), sonst bricht der Import ab |
 | `VP_RELEASE_PUBLISHER_SECRET` | Optionaler OTA-Publisher |
 | `VP_TUNNEL_DIENST_SECRET` | Optionaler Tunnel-Dienst der Fernwartung |
+| `VP_WERKSTATT_DIENST_SECRET` | Optionaler Werkstatt-Dienst ([services/werkstatt-dienst](../../../services/werkstatt-dienst/README.md)) |
 
 Die ersten Secret-Platzhalter haben keinen eingebauten Standardwert. Fehlende Werte außerhalb der Compose-Prüfungen können als Literal stehen bleiben; das ist kein gültiges Secret-Setup.
 
@@ -67,5 +68,7 @@ Hat der Administrator des Realms `master` den zweiten Faktor ([Blatt](live-realm
 Der Client `voltpilot-release-publisher` wird deaktiviert importiert. Sein Servicekonto besitzt nur `edge-release-publisher` für die dafür freigegebenen Release-/Trust-Set-Routen, keine Geräte-Rollout-Rechte. Vor Aktivierung ein echtes Secret setzen; den Platzhalter `change-me` nicht verwenden. [Signierung](../../../docs/ota-signing.md)
 
 Der Client `voltpilot-tunnel-dienst` wird ebenfalls deaktiviert importiert. Sein Servicekonto besitzt nur `tunnel-dienst` und liest damit ausschließlich den Soll-Stand der Fernwartung (`GET /api/v1/fernwartung/soll`). Auf einem bestehenden Realm Rolle, Client und Servicekonto-Rolle von Hand anlegen. [Fernwartung](../../../docs/fernwartung.md)
+
+Der Client `voltpilot-werkstatt-dienst` wird ebenfalls deaktiviert importiert. Sein Servicekonto besitzt nur `werkstatt-dienst` und erreicht damit nur den eigenen Baum `/api/v1/werkstatt-dienst/**`, nie `/api/v1/admin/**` und nie eine Kundenroute. Auf einem bestehenden Realm Rolle, Client und Servicekonto-Rolle von Hand anlegen ([Runbook](../../../services/werkstatt-dienst/docs/runbook.md#keycloak)).
 
 Der Import enthält den initialen Portal-Admin `admin` und keine Demo-Benutzer mehr. `demo`/`demo` und `demo2`/`demo2` hätten die Passwort-Vorgabe gebrochen und den Import abgebrochen; sie stehen nur noch im [lokalen Realm](../../local/keycloak/voltpilot-realm.json). Für den Kundenbetrieb das API-Profil leer lassen; `local` aktiviert zusätzliche Demo-Seeds. [API und Mandanten](../../../docs/api.md)

@@ -146,6 +146,9 @@ public class SecurityConfig {
                 // Bewusst ein EIGENER Baum statt unter /api/v1/admin/**, damit
                 // die Rolle dort nichts erreicht.
                 .requestMatchers("/api/v1/fernwartung/**").hasRole("tunnel-dienst")
+                // Ebenso der Baum des Werkstatt-Dienstes (WerkstattDienstController):
+                // nur das Dienstkonto mit der Rolle werkstatt-dienst.
+                .requestMatchers("/api/v1/werkstatt-dienst/**").hasRole("werkstatt-dienst")
                 .anyRequest().authenticated())
             // Map Keycloak realm roles -> ROLE_* authorities so @PreAuthorize on the
             // admin API can gate Portal-Admins (platform-admin) from Portal-Users.

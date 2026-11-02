@@ -28,4 +28,8 @@ data:
   VP_WARTUNG_BOX_NETZ: "10.10.16.0/20"
   VP_WERKSTATT_DNS: "9.9.9.9,1.1.1.1"
   VP_WERKSTATT_EDGE_BAUART: "mipsle"
+  # Ab V1: die Freigabe aus der Portal-API statt aus der Datei. Leer lassen,
+  # solange der Keycloak-Client voltpilot-werkstatt-dienst nicht angelegt ist.
+  VP_WERKSTATT_API_URL: ""
+  VP_WERKSTATT_TOKEN_URL: ""
   VOLTPILOT_LOGGING_FORMAT: "json"

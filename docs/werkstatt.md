@@ -31,6 +31,12 @@ Seite bleibt für die drei Griffe der Fernwartung (Tunnel-Schlüssel hinterlegen
 schließen) und die Abnahme mit den Belegen des Dienstes ([Runbook](../services/werkstatt-dienst/docs/runbook.md#eine-box-einrichten)).
 Die Handschritte oben bleiben der Weg ohne Dienst.
 
+Ob der Dienst überhaupt Boxen einrichtet, sagt die **Freigabe** (WI-4 A): „Werkstatt freigeben“ legt fest, welche
+Fassungen (OpenWrt-Abbild, Edge Light, je mit Prüfsumme) und bis wann, „Freigabe beenden“ hält ihn an. Ab V1 liegt
+sie in der API (`/api/v1/admin/werkstatt/freigaben`, nur `platform-admin`; Tabelle `werkstatt_freigabe`, nur das
+Ende ändert sich, nichts wird gelöscht); der Dienst liest die laufende über sein Dienstkonto im eigenen Baum
+`/api/v1/werkstatt-dienst/**` und kann dort nicht freigeben ([Runbook](../services/werkstatt-dienst/docs/runbook.md#werkstatt-freigeben)).
+
 ## Die Abnahme
 
 Die API nimmt eine Abnahme nur an, wenn

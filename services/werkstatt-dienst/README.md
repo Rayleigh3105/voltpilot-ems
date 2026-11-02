@@ -14,7 +14,7 @@ Abnahme machst du in V1a wie bisher im Portal, dann mit den Belegen dieses Diens
 | Lauf | Je Box eine feste Folge von Schritten. Jeder Schritt endet mit einem Beleg; fehlt er oder scheitert der Schritt, hält der Lauf an. Nichts wird übersprungen. | `internal/lauf` |
 | Schritt-Protokoll | Je Lauf eine Datei, eine JSON-Zeile je Ereignis, nur angehängt (`laeufe/<kennung>.jsonl` im Datenverzeichnis). | `internal/protokoll` |
 | Geheimnisse | Passwörter und private Schlüssel nur als `geheim.Geheim`: jede Formatierung ergibt `[geheim]`; Log und Protokoll schwärzen jeden bekannten Wert, auch wenn ihn eine Ausgabe zitiert. Ein Test schickt ein bekanntes Passwort durch einen Lauf und sucht es in Log, Belegen, Metriken und Stand. | `internal/geheim`, `internal/lauf/passwort_test.go` |
-| Freigabe | Dein Okay, Boxen einzurichten: Fassungen (OpenWrt, Edge Light, Skripte, je mit Prüfsumme) und bis wann; gilt für jede Box, die du in der Zeit einsteckst. Ohne laufende Freigabe richtet der Dienst keine Box ein. In V1a eine Datei aus einer ConfigMap. | `internal/freigabe`, [Runbook](docs/runbook.md#werkstatt-freigeben) |
+| Freigabe | Dein Okay, Boxen einzurichten: Fassungen (OpenWrt, Edge Light, Skripte, je mit Prüfsumme) und bis wann; gilt für jede Box, die du in der Zeit einsteckst. Ohne laufende Freigabe richtet der Dienst keine Box ein. Ab V1 im Portal (`werkstatt_freigabe`), gelesen über das Dienstkonto; ohne API eine Datei aus einer ConfigMap. | `internal/freigabe`, `internal/apikonto`, [Runbook](docs/runbook.md#werkstatt-freigeben) |
 | Werkbank-Brücke | Ein Raspberry Pi im WLAN, seine Netzwerkbuchse ist der Werkstatt-Anschluss (WI-13 B). Kein eigenes Programm, nur Konfiguration; der Dienst richtet sie ein und pflegt sie. | [bruecke/](bruecke/README.md), `internal/werkbank` |
 | Anzeige | Betriebsseite für Kubernetes (`/health`, `/ready`, `/metrics`) und die Werkstatt-Anzeige (Brücke, Freigabe, Läufe mit Belegen), die nur im Pod auf Loopback lauscht: `kubectl port-forward`. | `internal/anzeige` |
 | Betrieb | gitops-Entwurf (Namespace `werkstatt-prod`, PodSecurity `restricted`, Application mit Sync von Hand, SOPS-Vorlage, NetworkPolicy) und Runbook. | [deploy/gitops/](deploy/gitops/README.md), [docs/runbook.md](docs/runbook.md) |
@@ -101,7 +101,10 @@ Aus der Umgebung (ConfigMap `werkstatt-dienst-konfig`), Schlüssel aus Dateien (
 | `VP_WERKSTATT_ARBEIT` | `/tmp/vp-werkstatt` | Arbeitsverzeichnis der Läufe (Skriptstand, Durchreiche) |
 | `VP_WERKSTATT_GEHEIM` | `/etc/vp-werkstatt/geheim` | Verzeichnis mit `werkbank-status`, `werkbank-weiterleitung`, `werkbank-pflege` (Pflicht), `werkbank-einrichten` (nur fürs erste Einrichten) und `download-token` (optional: Lese-Token für die Release-Anhänge auf git.tecmaxx.de) |
 | `VP_WERKSTATT_NOTFALL_PUB` | – (Pflicht) | öffentlicher Notfall-Schlüssel (Datei) |
-| `VP_WERKSTATT_FREIGABE` | `/etc/vp-werkstatt/freigabe/freigabe.json` | die Freigabe; fehlt die Datei, läuft keine |
+| `VP_WERKSTATT_FREIGABE` | `/etc/vp-werkstatt/freigabe/freigabe.json` | die Freigabe als Datei (V1a); fehlt die Datei, läuft keine |
+| `VP_WERKSTATT_API_URL` | leer | Portal-API (V1): gesetzt, liest der Dienst die laufende Freigabe dort (`GET /api/v1/werkstatt-dienst/freigabe`) statt aus der Datei |
+| `VP_WERKSTATT_TOKEN_URL` | – (Pflicht mit API) | Token-Endpunkt von Keycloak (`…/realms/voltpilot/protocol/openid-connect/token`) |
+| `VP_WERKSTATT_CLIENT_ID` | `voltpilot-werkstatt-dienst` | Dienstkonto (client_credentials, Rolle `werkstatt-dienst`); Secret als `keycloak-client-secret` im Geheimnis-Verzeichnis |
 | `VP_WERKSTATT_DATEN` | `/var/lib/vp-werkstatt-dienst` | Protokolle, Host-Schlüssel der Brücke (PVC) |
 | `VP_WERKSTATT_HTTP` | `:8100` | Betriebsseite |
 | `VP_WERKSTATT_ANZEIGE` | `127.0.0.1:8101` | Werkstatt-Anzeige, nur eine Loopback-Adresse |

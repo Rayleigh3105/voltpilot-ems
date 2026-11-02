@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/anzeige"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/apikonto"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/dienst"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/durchreiche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
@@ -147,6 +148,15 @@ func werkbankEinmal(log *slog.Logger) error {
 	return err
 }
 
+// freigabeQuelle: die API, wenn sie konfiguriert ist (V1), sonst die Datei (V1a).
+func freigabeQuelle(k konfig.Konfig) freigabe.Quelle {
+	if k.APIURL == "" {
+		return freigabe.Datei{Pfad: k.FreigabeDatei}
+	}
+	return freigabe.API{URL: k.APIURL, BoxArt: freigabe.Mango,
+		Token: &apikonto.Konto{TokenURL: k.TokenURL, ClientID: k.ClientID, Secret: k.ClientSecret}}
+}
+
 func dienstLaufen(log *slog.Logger) error {
 	k, err := konfig.Lies(os.Getenv, true)
 	if err != nil {
@@ -155,7 +165,11 @@ func dienstLaufen(log *slog.Logger) error {
 	if err := k.PruefeFuerDienst(); err != nil {
 		return err
 	}
-	log.Info("Werkstatt-Dienst startet", "fassung", fassung, "werkbank", k.Werkbank.Adresse, "takt", k.Takt.String())
+	quelle := "Datei " + k.FreigabeDatei
+	if k.APIURL != "" {
+		quelle = "API " + k.APIURL
+	}
+	log.Info("Werkstatt-Dienst startet", "fassung", fassung, "werkbank", k.Werkbank.Adresse, "takt", k.Takt.String(), "freigabe", quelle)
 	ablage, err := protokoll.NeueAblage(k.Daten + "/laeufe")
 	if err != nil {
 		return err
@@ -191,7 +205,7 @@ func dienstLaufen(log *slog.Logger) error {
 		Log:       log.With("logger", "dienst"),
 		Werkbank:  wb,
 		Adresse:   k.Werkbank.Adresse,
-		Freigaben: freigabe.Datei{Pfad: k.FreigabeDatei},
+		Freigaben: freigabeQuelle(k),
 		Ablage:    ablage,
 		Laeufer:   lauf.NeuerLaeufer(ablage, log.With("logger", "lauf"), reg),
 		Takt:      k.Takt,

@@ -36,5 +36,6 @@ stringData:
   # Optional: Lese-Token für die Release-Anhänge (git.tecmaxx.de, nur Lesen
   # der Releases), wenn das Repo privat ist. Ohne: Dateien von Hand ablegen.
   # download-token: "…"
-  # Ab V1 (P6): Client-Secret des Keycloak-Clients voltpilot-werkstatt-dienst.
+  # Ab V1: Client-Secret des Keycloak-Clients voltpilot-werkstatt-dienst
+  # (Pflicht, sobald VP_WERKSTATT_API_URL gesetzt ist).
   # keycloak-client-secret: "…"

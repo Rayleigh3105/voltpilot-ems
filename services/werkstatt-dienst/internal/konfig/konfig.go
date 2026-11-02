@@ -35,6 +35,7 @@ const (
 	DateiPflege        = "werkbank-pflege"
 	DateiEinrichten    = "werkbank-einrichten"
 	DateiDownloadToken = "download-token"
+	DateiClientSecret  = "keycloak-client-secret"
 )
 
 var wgSchluessel = regexp.MustCompile(`^[A-Za-z0-9+/]{43}=$`)
@@ -60,6 +61,12 @@ type Konfig struct {
 	DNS                []netip.Addr  // für das Werkstatt-Internet der Box
 	Bauart             string        // Edge Light: mipsle
 	DownloadToken      geheim.Geheim // Lese-Token für die Release-Anhänge (optional)
+
+	// Die Portal-API (V1): leer heißt, die Freigabe kommt aus der Datei.
+	APIURL       string
+	TokenURL     string
+	ClientID     string
+	ClientSecret geheim.Geheim
 
 	Werkbank werkbank.Konfig
 }
@@ -113,6 +120,17 @@ func Lies(env Umgebung, mitSchluesseln bool) (Konfig, error) {
 		WartungPub:         strings.TrimSpace(env("VP_WARTUNG_PUBKEY")),
 		WartungEndpunkt:    strings.TrimSpace(env("VP_WARTUNG_ENDPUNKT")),
 		Bauart:             wert(env, "VP_WERKSTATT_EDGE_BAUART", "mipsle"),
+		APIURL:             strings.TrimSpace(env("VP_WERKSTATT_API_URL")),
+		TokenURL:           strings.TrimSpace(env("VP_WERKSTATT_TOKEN_URL")),
+		ClientID:           wert(env, "VP_WERKSTATT_CLIENT_ID", "voltpilot-werkstatt-dienst"),
+	}
+	for name, u := range map[string]string{"VP_WERKSTATT_API_URL": k.APIURL, "VP_WERKSTATT_TOKEN_URL": k.TokenURL} {
+		if u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+			add(fmt.Errorf("%s %q: eine http(s)-Adresse", name, u))
+		}
+	}
+	if k.APIURL != "" && k.TokenURL == "" {
+		add(errors.New("VP_WERKSTATT_TOKEN_URL fehlt (mit VP_WERKSTATT_API_URL liest der Dienst die Freigabe aus der API)"))
 	}
 	var err error
 	k.Takt, err = dauer(env, "VP_WERKSTATT_TAKT", "10s", 2*time.Second, 5*time.Minute)
@@ -186,6 +204,13 @@ func Lies(env Umgebung, mitSchluesseln bool) (Konfig, error) {
 		add(err)
 		if b, err := os.ReadFile(filepath.Join(dir, DateiDownloadToken)); err == nil && len(strings.TrimSpace(string(b))) > 0 {
 			k.DownloadToken = geheim.Neu(strings.TrimSpace(string(b)))
+		}
+		if k.APIURL != "" {
+			if b, err := os.ReadFile(filepath.Join(dir, DateiClientSecret)); err == nil && len(strings.TrimSpace(string(b))) > 0 {
+				k.ClientSecret = geheim.Neu(strings.TrimSpace(string(b)))
+			} else {
+				add(fmt.Errorf("%s fehlt im Geheimnis-Verzeichnis (Client-Secret von %s)", DateiClientSecret, k.ClientID))
+			}
 		}
 		if p := env("VP_WERKSTATT_NOTFALL_PUB"); p != "" {
 			b, err := os.ReadFile(p)

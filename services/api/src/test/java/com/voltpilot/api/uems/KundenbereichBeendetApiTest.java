@@ -128,6 +128,12 @@ class KundenbereichBeendetApiTest {
                 "Werkstatt: LAN-Netz einer Box vor dem Versand, noch in keinem Kundenbereich");
         m.put("PUT /api/v1/admin/werkstatt/boxen/{ref}/schritte/{schritt}",
                 "Werkstatt: Haken eines Schritts an einer Box vor dem Versand, noch in keinem Kundenbereich");
+        // Werkstatt-Automatik V1: die Freigabe der Werkstatt (`werkstatt_freigabe`, V20261102120000) gilt für
+        // Boxen vor dem Versand und trägt keinen Mandanten.
+        m.put("POST /api/v1/admin/werkstatt/freigaben",
+                "Werkstatt freigeben: gilt für Boxen vor dem Versand, kein Kundenbereich");
+        m.put("POST /api/v1/admin/werkstatt/freigaben/{kennung}/ende",
+                "Freigabe beenden: gilt für Boxen vor dem Versand, kein Kundenbereich");
         return m;
     }
 

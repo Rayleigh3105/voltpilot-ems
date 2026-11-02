@@ -6,6 +6,10 @@ import com.voltpilot.api.fernwartung.Akteur;
 import com.voltpilot.api.werkstatt.LanNetz;
 import com.voltpilot.api.werkstatt.WerkstattPruefungen;
 import com.voltpilot.api.werkstatt.WerkstattRepository.Abnahme;
+import com.voltpilot.api.werkstatt.FreigabeRepository;
+import com.voltpilot.api.werkstatt.FreigabeRepository.Abbild;
+import com.voltpilot.api.werkstatt.FreigabeRepository.Programm;
+import com.voltpilot.api.werkstatt.FreigabeService;
 import com.voltpilot.api.werkstatt.WerkstattService;
 import com.voltpilot.api.werkstatt.WerkstattService.Angelegt;
 import com.voltpilot.api.werkstatt.WerkstattService.SchrittStand;
@@ -45,6 +49,11 @@ import org.springframework.web.server.ResponseStatusException;
  * die Tabellen liest und schreibt nur {@code WerkstattRepository} an der
  * BYPASSRLS-Rolle.
  *
+ * <p>Dazu die Freigabe der Werkstatt (Werkstatt-Automatik V1, WI-4 A):
+ * {@code /freigaben} - „Werkstatt freigeben“ und „Freigabe beenden“. Lesen darf
+ * sie außerdem der Werkstatt-Dienst in seinem eigenen Baum
+ * ({@link WerkstattDienstController}); freigeben kann nur ein Admin.
+ *
  * <p>Tunnel-Schlüssel und Fenster legt die Seite über die Routen der
  * Fernwartung an; hier entsteht davon nichts. Keine Route nimmt ein Passwort
  * an: das Root-Passwort der Box entsteht im Browser und bleibt dort.
@@ -81,7 +90,28 @@ public class AdminWerkstattController {
     public record GrundlagenDto(List<String> pruefungen, String lanNetzVorschlag) {
     }
 
+    /**
+     * Eine Freigabe: {@code zustand} {@code laufend}, {@code beendet} oder
+     * {@code abgelaufen}, {@code grund} in Worten, wenn sie nicht läuft.
+     */
+    public record FreigabeDto(UUID id, String kennung, String boxArt, Instant gueltigAb, Instant gueltigBis,
+            int obergrenze, Abbild openwrt, Programm edgeLight, String notiz, Instant erteiltAm, String erteiltVon,
+            Instant beendetAm, String beendetVon, String zustand, String grund) {
+        static FreigabeDto of(FreigabeService.Stand st) {
+            FreigabeRepository.Freigabe f = st.freigabe();
+            return new FreigabeDto(f.id(), f.kennung(), f.boxArt(), f.gueltigAb(), f.gueltigBis(), f.obergrenze(),
+                    f.openwrt(), f.edgeLight(), f.notiz(), f.erteiltAm(), name(f.erteiltVonName(), f.erteiltVon()),
+                    f.beendetAm(), f.beendetVon() == null ? null : name(f.beendetVonName(), f.beendetVon()),
+                    st.zustand(), st.grund());
+        }
+    }
+
     // ── Anfragen ──────────────────────────────────────────────────────────
+
+    /** Werkstatt freigeben: Box-Art (Vorgabe mango), wie viele Tage ab jetzt, Obergrenze, Fassungen. */
+    public record FreigabeRequest(String boxArt, Integer tage, Integer obergrenze, Abbild openwrt,
+            Programm edgeLight, @Size(max = 500) String notiz) {
+    }
 
     /** {@code schritte}: was vor dem Aufnehmen schon erledigt war. */
     public record BoxRequest(@NotBlank String edgeRef, String boxArt, List<String> schritte,
@@ -99,10 +129,12 @@ public class AdminWerkstattController {
     }
 
     private final WerkstattService service;
+    private final FreigabeService freigaben;
     private final ObjectMapper json;
 
-    public AdminWerkstattController(WerkstattService service, ObjectMapper json) {
+    public AdminWerkstattController(WerkstattService service, FreigabeService freigaben, ObjectMapper json) {
         this.service = service;
+        this.freigaben = freigaben;
         this.json = json;
     }
 
@@ -157,6 +189,30 @@ public class AdminWerkstattController {
         Abnahme a = service.abnahme(referenz(ref), req.hostSchluessel(), req.fassung(), req.pruefungen(),
                 req.probeFensterId(), req.notiz(), Akteur.aus(caller));
         return ResponseEntity.status(HttpStatus.CREATED).body(abnahmeDto(a));
+    }
+
+    // ── Freigabe ──────────────────────────────────────────────────────────
+
+    /** Alle Freigaben, neueste zuerst. */
+    @GetMapping("/freigaben")
+    public List<FreigabeDto> freigaben() {
+        return freigaben.alle().stream().map(FreigabeDto::of).toList();
+    }
+
+    /** Werkstatt freigeben: 201; 409, wenn für die Box-Art schon eine läuft; 422 mit Grund. */
+    @PostMapping("/freigaben")
+    public ResponseEntity<FreigabeDto> freigeben(@Valid @RequestBody FreigabeRequest req,
+            @AuthenticationPrincipal Jwt caller) {
+        FreigabeRepository.Freigabe f = freigaben.erteilen(new FreigabeService.Antrag(req.boxArt(), req.tage(),
+                req.obergrenze(), req.openwrt(), req.edgeLight(), req.notiz()), Akteur.aus(caller));
+        return ResponseEntity.status(HttpStatus.CREATED).body(FreigabeDto.of(FreigabeService.stand(f, Instant.now())));
+    }
+
+    /** Freigabe beenden: 200; 404 unbekannt, 409 schon beendet. */
+    @PostMapping("/freigaben/{kennung}/ende")
+    public FreigabeDto freigabeBeenden(@PathVariable String kennung, @AuthenticationPrincipal Jwt caller) {
+        FreigabeRepository.Freigabe f = freigaben.beenden(kennung, Akteur.aus(caller));
+        return FreigabeDto.of(FreigabeService.stand(f, Instant.now()));
     }
 
     // ── intern ────────────────────────────────────────────────────────────

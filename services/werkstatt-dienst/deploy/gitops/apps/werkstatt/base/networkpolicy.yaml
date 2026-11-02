@@ -49,4 +49,15 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
       ports:
         - {protocol: TCP, port: 443}
-    # Ab V1 (P6, P8): Portal-API über den Ingress und der Wartungsserver (WireGuard).
+    # Portal-API und Keycloak (V1, VP_WERKSTATT_API_URL und VP_WERKSTATT_TOKEN_URL):
+    # Zeigen beide auf die öffentliche Adresse des Portals, deckt sie die
+    # HTTPS-Regel oben ab, solange sie außerhalb der privaten Netze auflöst.
+    # Sonst hier den Weg im Cluster freigeben (Namespace und Port wie im
+    # Cluster einsetzen):
+    # - to:
+    #     - namespaceSelector:
+    #         matchLabels:
+    #           kubernetes.io/metadata.name: voltpilot-prod
+    #   ports:
+    #     - {protocol: TCP, port: 8080}
+    # Ab V1 (P8): der Wartungsserver (WireGuard).

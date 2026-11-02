@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
@@ -36,10 +35,6 @@ const (
 	Pi    = "pi"
 )
 
-// LanVorgabe ist das Netz, auf das der Dienst das LAN einer Box stellt, wenn
-// die Freigabe keines nennt (Entscheid 6a, wie an der Labor-Mango).
-const LanVorgabe = "10.213.0.1/24"
-
 // MaxDauer begrenzt, wie lange eine Freigabe laufen darf.
 const MaxDauer = 92 * 24 * time.Hour
 
@@ -55,7 +50,9 @@ type Freigabe struct {
 	Obergrenze int        `json:"obergrenze"`
 	OpenWrt    Abbild     `json:"openwrt"`
 	EdgeLight  Programm   `json:"edge_light"`
-	LanNetz    string     `json:"lan_netz,omitempty"`
+	// Kein LAN-Netz: Auf welches Netz eine Box kommt, ist Konfiguration des
+	// Dienstes (VP_WERKSTATT_LAN_NETZ), weil die Brücke darin eine Adresse
+	// braucht. Eine Freigabe mit lan_netz scheitert am unbekannten Feld.
 }
 
 // Abbild ist das OpenWrt-Abbild der Freigabe.
@@ -95,9 +92,6 @@ func Lies(daten []byte) (Freigabe, error) {
 	}
 	if dec.More() {
 		return Freigabe{}, errors.New("Freigabe: nach dem Objekt folgt noch etwas")
-	}
-	if f.LanNetz == "" {
-		f.LanNetz = LanVorgabe
 	}
 	if err := f.pruefe(); err != nil {
 		return Freigabe{}, err
@@ -162,9 +156,6 @@ func (f Freigabe) pruefe() error {
 	}
 	if !sha256Muster.MatchString(f.EdgeLight.SkripteSha256) {
 		add("edge_light.skripte_sha256: 64 Zeichen 0-9a-f")
-	}
-	if p, err := netip.ParsePrefix(f.LanNetz); err != nil || !p.Addr().Is4() || p.Bits() != 24 {
-		add("lan_netz %q: Form 10.213.0.1/24", f.LanNetz)
 	}
 	if f.BeendetAm != nil && f.BeendetAm.Before(f.ErteiltAm) {
 		add("beendet_am liegt vor erteilt_am")

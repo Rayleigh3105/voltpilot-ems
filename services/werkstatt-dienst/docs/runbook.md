@@ -37,11 +37,16 @@ Passwortablage, Entscheid K2 a) als einziger Schlüssel mit Shell auf der Brück
 Siehe [bruecke/README.md](../bruecke/README.md): Karte mit dem Raspberry Pi Imager schreiben, Pi ins WLAN, feste
 Adresse im Router. Diese Adresse kommt in `VP_WERKBANK_ADRESSE` (ConfigMap) und in die NetworkPolicy.
 
-### Keycloak (erst ab V1 benutzt)
+### Keycloak
 
-V1a spricht nicht mit der API. Ab V1 (Paket P6: Freigabe, Einmal-Code, Abnahme mit Belegen) braucht der Dienst ein
-Dienstkonto, im Muster von `voltpilot-tunnel-dienst`. Im Live-Realm `voltpilot` von Hand anlegen (der
-Realm-Import fasst Dienstkonten im bestehenden Realm nicht an); bis P6 ausgerollt ist, darf es deaktiviert bleiben.
+Ab V1 liest der Dienst die Freigabe aus der API (`VP_WERKSTATT_API_URL`), und später holt er dort Einmal-Codes und
+legt Abnahmen ab. Dafür braucht er ein Dienstkonto im Muster von `voltpilot-tunnel-dienst`. Der Realm-Import
+(`infra/prod/keycloak/voltpilot-realm.json`) bringt Rolle, Client und Dienstkonto mit, den Client **abgeschaltet**;
+im bestehenden Live-Realm `voltpilot` legst du sie von Hand an (der Import fasst ein bestehendes Realm nicht an).
+Ohne `VP_WERKSTATT_API_URL` bleibt der Dienst bei der Datei (V1a) und braucht das Konto nicht. Mit ihr muss der Pod
+Portal und Keycloak erreichen: über die öffentliche Adresse deckt das die HTTPS-Regel der NetworkPolicy, solange die
+Adresse nicht in ein privates Netz auflöst; sonst die auskommentierte Regel für den Weg im Cluster einsetzen
+(`deploy/gitops/apps/werkstatt/base/networkpolicy.yaml`).
 
 | Einstellung | Wert |
 |---|---|
@@ -53,9 +58,10 @@ Realm-Import fasst Dienstkonten im bestehenden Realm nicht an); bis P6 ausgeroll
 | Redirect URIs, Web origins | leer |
 | Rolle des Dienstkontos | Realm-Rolle `werkstatt-dienst` (neu anlegen), **nicht** `platform-admin` |
 
-Das Client-Secret kommt als `keycloak-client-secret` in das SOPS-Secret (in der Vorlage auskommentiert). Was die
-Rolle darf, legt P6 fest: laufende Freigaben lesen, Einmal-Codes nur in einer laufenden Freigabe, das eigene
-Probe-Fenster schließen, Lauf und Abnahme schreiben. Nicht: freigeben, Fenster öffnen, Kunden, Kopplung, Updates.
+Das Client-Secret kommt als `keycloak-client-secret` in das SOPS-Secret. Die Rolle erreicht nur den Baum
+`/api/v1/werkstatt-dienst/**`: heute die laufende Freigabe lesen; mit den nächsten Paketen Einmal-Codes nur in einer
+laufenden Freigabe, das eigene Probe-Fenster schließen, die Abnahme schreiben. Nie: freigeben, Fenster öffnen,
+Kunden, Kopplung, Updates, `/api/v1/admin/**`.
 
 ### gitops
 
@@ -156,8 +162,14 @@ downloads.openwrt.org. Ohne Forgejo-Lauf geht dasselbe lokal: `edge-light/script
 
 ## Werkstatt freigeben
 
-Die Freigabe ist eine Datei (`freigabe.json`) in der ConfigMap `werkstatt-freigabe`. Sie steht bewusst nicht im
-gitops-Repo: Argo CD verwaltet sie nicht und setzt sie nicht zurück. Vorlage:
+**Mit der API (V1, `VP_WERKSTATT_API_URL` gesetzt):** Die Freigabe liegt im Portal. „Werkstatt freigeben“ ist
+`POST /api/v1/admin/werkstatt/freigaben` (nur `platform-admin`; Fassungen, Tage, Obergrenze, siehe OpenAPI), „Freigabe
+beenden“ `POST /api/v1/admin/werkstatt/freigaben/<kennung>/ende`. Die Knöpfe dafür kommen mit den
+Werkstatt-Bildschirmen (P9). Je Box-Art läuft höchstens eine Freigabe; eine neue verlangt, die laufende erst zu
+beenden. Der Dienst fragt die laufende Freigabe je Takt ab.
+
+**Ohne API (V1a):** Die Freigabe ist eine Datei (`freigabe.json`) in der ConfigMap `werkstatt-freigabe`. Sie steht
+bewusst nicht im gitops-Repo: Argo CD verwaltet sie nicht und setzt sie nicht zurück. Vorlage:
 [deploy/freigabe.beispiel.json](../deploy/freigabe.beispiel.json).
 
 ```sh
