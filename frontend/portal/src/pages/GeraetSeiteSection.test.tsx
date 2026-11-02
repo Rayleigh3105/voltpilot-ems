@@ -607,6 +607,31 @@ describe('GeraetSeiteSection', () => {
     expect(within(einrichtung).getByText('Wird im Portal gepflegt (Fassung 3).')).toBeInTheDocument();
   });
 
+  // Die Box wendet ein einzelnes Gerät nicht an (sie kann ihm keine Rolle zuordnen) und den Rest schon
+  // (VoltPilotGATE, 02.11.2026). Ihr Grund steht an GENAU diesem Gerät, und der Stand sagt nicht „aktiv“.
+  it('zeigt den Grund der Box, wenn sie genau dieses Gerät nicht anwendet', async () => {
+    stub();
+    vi.spyOn(api, 'componentVersions').mockResolvedValue([]);
+    vi.mocked(api.siteComponents).mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{
+        id: 'fr1', role: 'pv-generation', entityType: 'producer', communication: 'fronius_sunspec',
+        connection: { ip: '192.168.254.30', port: 502, unit_id: 1 },
+        templateRef: 'builtin:fronius:eco-27', templateVersion: 1,
+        definitionVersion: 3, edgeSourceId: 'src-7c1e9a2b', syncStatus: 'in_sync',
+        rejectedReason: 'für dieses Gerät (generic-load) ist nicht bestimmbar, welche Rolle es hat',
+      }],
+    });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
+    const einrichtung = await technikTeil('einrichtung');
+    const grund = await within(einrichtung).findByTestId('geraet-box-abgelehnt');
+    expect(grund).toHaveTextContent(
+      'Die Box wendet dieses Gerät nicht an: für dieses Gerät (generic-load) ist nicht bestimmbar, welche Rolle es hat.',
+    );
+    expect(within(einrichtung).getByTestId('geraet-fassungen')).toHaveTextContent('Von der Box nicht angewandt');
+    expect(within(einrichtung).getByTestId('geraet-fassungen')).not.toHaveTextContent('auf der Box aktiv');
+  });
+
   it('nennt den GRUND, wenn die Adresse kein Gerät meint - nie eine leere Seite', async () => {
     stub();
     render(

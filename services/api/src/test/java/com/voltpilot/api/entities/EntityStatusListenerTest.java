@@ -102,7 +102,7 @@ class EntityStatusListenerTest {
 
         ArgumentCaptor<String> authority = ArgumentCaptor.forClass(String.class);
         verify(componentApply).upsert(eq(DEVICE), eq(TENANT), eq(SITE), authority.capture(),
-                eq(null), eq(null), eq(null), eq(null), eq(null), eq(null), any());
+                eq(null), eq(null), eq(null), eq(null), eq(null), eq(null), any(), eq(null));
         assertThat(authority.getValue()).isEqualTo("box");
     }
 
@@ -118,7 +118,7 @@ class EntityStatusListenerTest {
     void theReturnIsRecordedAndTheRepositoryOffersNoWayToDeleteARow() {
         ingest("{\"authority\":\"box\"}");
         verify(componentApply).upsert(any(), any(), any(), eq("box"), any(), any(), any(), any(),
-                any(), any(), any());
+                any(), any(), any(), any());
         assertThat(java.util.Arrays.stream(ComponentApplyRepository.class.getDeclaredMethods())
                 .map(java.lang.reflect.Method::getName)
                 .filter(n -> n.toLowerCase().contains("delete") || n.toLowerCase().contains("clear")
@@ -136,7 +136,38 @@ class EntityStatusListenerTest {
 
         verify(componentApply).upsert(eq(DEVICE), eq(TENANT), eq(SITE), eq("portal"), eq("r9"),
                 eq(Instant.parse("2026-08-31T10:00:00Z")), eq("r8"), eq("zwei Wechselrichter"),
-                eq(null), eq(null), any());
+                eq(null), eq(null), any(), eq(null));
+    }
+
+    /**
+     * Die Geräte, die die Box beim Anwenden ÜBERSPRUNGEN hat (VoltPilotGATE,
+     * 02.11.2026: drei Shelly-Ausgänge ohne Rolle), reisen mit Kennung und
+     * Grund in die Zeile - unvollständige Einträge nicht, und ein leeres Feld
+     * ist dasselbe wie keines.
+     */
+    @Test
+    void rejectedComponentsTravelWithIdAndReasonOnly() {
+        ingest("""
+                {"authority":"portal","revision":"r9",
+                 "rejected_components":[
+                   {"entity_id":"53cfe532-0000-0000-0000-000000000000",
+                    "reason":"für dieses Gerät (generic-load) ist nicht bestimmbar, welche Rolle es hat"},
+                   {"entity_id":"","reason":"ohne Kennung"},
+                   {"entity_id":"bcb311cf-0000-0000-0000-000000000000"}]}""");
+
+        ArgumentCaptor<String> rejected = ArgumentCaptor.forClass(String.class);
+        verify(componentApply).upsert(eq(DEVICE), eq(TENANT), eq(SITE), eq("portal"), eq("r9"),
+                eq(null), eq(null), eq(null), eq(null), eq(null), any(), rejected.capture());
+        assertThat(rejected.getValue()).isEqualTo(
+                "[{\"entity_id\":\"53cfe532-0000-0000-0000-000000000000\","
+                        + "\"reason\":\"für dieses Gerät (generic-load) ist nicht bestimmbar, welche Rolle es hat\"}]");
+    }
+
+    @Test
+    void anEmptyRejectionListIsNoList() {
+        ingest("{\"authority\":\"portal\",\"revision\":\"r9\",\"rejected_components\":[]}");
+        verify(componentApply).upsert(any(), any(), any(), eq("portal"), any(), any(), any(), any(),
+                any(), any(), any(), eq(null));
     }
 
     /**

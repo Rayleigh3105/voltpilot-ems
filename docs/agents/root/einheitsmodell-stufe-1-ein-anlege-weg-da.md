@@ -54,7 +54,8 @@ Anlage ändert dadurch ihr Verhalten NICHT** (siehe die Autoritäts-Regel; der B
   `portal`** — die Bytes einer box-verwalteten Anlage sind damit unverändert.
 - **Der Box-Applier ist die Geräteseite** (`edge-app/core/internal/componentapply`, rein + `agent/component_apply.go`
   als reine Verdrahtung): er leitet Wechselrichter-Auswahl und `sources.json` aus dem Push ab, **wendet NIE
-  partiell an** (erst der ganze Plan, dann beide Speicher, dann die retained Veröffentlichung), protokolliert die
+  partiell an** (erst der ganze Plan, dann beide Speicher, dann die retained Veröffentlichung; nur ein Gerät
+  ohne zuordenbare Rolle wird übersprungen und als `rejected_components` gemeldet), protokolliert die
   angewandte Revision (`components-applied.json`, überlebt Neustart und Cloud-Ausfall) und lehnt bei einer
   box-verwalteten Anlage GAR NICHTS ab — er läuft dort nicht. Der lokale Bus (`edge/inverter/config`,
   `edge/sources/config`, Self-Wiring, Telemetrie) ist BYTE-IDENTISCH; nur der SCHREIBER der lokalen Dateien

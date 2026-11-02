@@ -188,13 +188,17 @@ for (const breite of BREITEN) {
       expect(fehler).toEqual([]);
     });
 
-    test('Shelly: je Ausgang ein Gerät (m6)', async ({ page }, info) => {
+    // Ein Ausgang als eigenes Gerät wäre ein Messgerät ohne Rolle, das die Box nicht anwendet (VoltPilotGATE,
+    // 02.11.2026): die Wahl bietet nur noch den Heizstab über alle Ausgänge.
+    test('Shelly: nur als Heizstab, kein Ausgang einzeln (m6)', async ({ page }, info) => {
       const fehler = konsole(page);
       await oeffne(page, breite, 'fall=fertig');
       await modal(page).getByRole('button', { name: 'Shelly Pro 3 übernehmen' }).click();
       const wahl = modal(page, 'Schalter hinzufügen');
       await expect(wahl.getByRole('heading', { name: 'Was schaltet der Schalter?' })).toBeVisible();
-      await expect(wahl.getByRole('button', { name: /Ausgang \d/ })).toHaveCount(3);
+      await expect(wahl.getByRole('button', { name: /Ausgang \d/ })).toHaveCount(0);
+      await expect(wahl.getByRole('button', { name: /Alle Ausgänge zusammen/ })).toBeVisible();
+      await expect(wahl.getByText(/Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht/)).toBeVisible();
       await pruefeUndFotografiere(page, info, breite, 'm6-ausgang');
       await wahl.getByRole('button', { name: 'Zurück zur Liste' }).click();
       await expect(modal(page).getByRole('heading', { name: '2 Geräte gefunden' })).toBeVisible();

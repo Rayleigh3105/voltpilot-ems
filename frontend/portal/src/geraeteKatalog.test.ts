@@ -3,7 +3,9 @@ import type { SiteComponentTemplate } from './api';
 import { keineVorlageHinweis } from './anlegenFlow';
 import type { AufbauBaum } from './aufbauBaum';
 import {
+  SCHALTER_HINWEIS,
   WEGE,
+  alsModellAngeboten,
   einrichtenUnterzeile,
   katalogAnsicht,
   katalogFunde,
@@ -94,7 +96,8 @@ describe('katalogChips', () => {
       'Alle -',
       'Wechselrichter 5',
       'Laden 2',
-      'Schalten 2',
+      // Der Shelly-Schalter zählt nicht: als Modell steht er nicht im Katalog (VoltPilotGATE, 02.11.2026).
+      'Schalten 1',
       'Batterie 1',
       'Zähler -',
       'Selbst beschreiben 2',
@@ -114,7 +117,7 @@ describe('katalogAnsicht — blättern', () => {
       'Von Ihrer Box gemeldet: Fronius gefunden',
       'Wechselrichter: Deye, KACO',
       'Laden: go-e Charger, Ladesäule mit OCPP 1.6',
-      'Schalten: Ebyte M31-AXAX8080G-U (8 Eingänge, 8 Relais), Shelly Relais / Schaltaktor',
+      'Schalten: Ebyte M31-AXAX8080G-U (8 Eingänge, 8 Relais)',
       'Batterie: Batterie mit eigenem BMS',
       'Selbst beschreiben: Modbus-TCP-Gerät, Wärmepumpe Keller',
       'Weitere Geräte: Anlagensteuerung (SPS mit VoltPilot-Bild)',
@@ -147,6 +150,26 @@ describe('katalogAnsicht — blättern', () => {
     expect(ansicht({ chip: 'laden' }).hinweis).toMatch(/meldet sich selbst bei Ihrer Box/);
     expect(ansicht({ chip: 'schalten' }).hinweis).toMatch(/jeden Ausgang einem Verbraucher/);
     expect(ansicht({ chip: 'batterie' }).hinweis).toMatch(/Fertige Batterie-Modelle gibt es im Katalog noch nicht/);
+  });
+
+  // Ein einzelner Schaltausgang als eigenes Gerät wäre ein Messgerät ohne Rolle, das die Box nicht anwendet
+  // (VoltPilotGATE, 02.11.2026: „Heizstab“, „Phase 2“, „Phase 3“). Der Katalog bietet den Schalter deshalb nicht als
+  // Modell an und sagt, wo er stattdessen entsteht - über „Zähler" bleibt er das Gerät, über das gemessen wird.
+  it('bietet einen Schalter nicht als Modell an und nennt den Weg über „Geräte suchen“', () => {
+    const schalten = ansicht({ chip: 'schalten' });
+    expect(gruppen(schalten)).toEqual(['Schalten: Ebyte M31-AXAX8080G-U (8 Eingänge, 8 Relais)']);
+    expect(schalten.hinweis).toContain(SCHALTER_HINWEIS);
+    expect(schalten.hinweis).toMatch(/jeden Ausgang einem Verbraucher/);
+    expect(ansicht({ chip: 'schalten', templates: [SHELLY] }).hinweis).toBe(SCHALTER_HINWEIS);
+
+    const suche = ansicht({ q: 'Shelly' });
+    expect(suche.gruppen.flatMap((g) => g.eintraege.map((e) => e.titel))).not.toContain('Shelly Relais / Schaltaktor');
+    expect(suche.hinweis).toBe(SCHALTER_HINWEIS);
+    expect(ansicht({ chip: 'alle', marke: 'shelly' }).gruppen.flatMap((g) => g.eintraege)).toHaveLength(0);
+
+    expect(alsModellAngeboten(SHELLY, 'alle')).toBe(false);
+    expect(alsModellAngeboten(SHELLY, 'zaehler')).toBe(true);
+    expect(alsModellAngeboten(EBYTE, 'schalten')).toBe(true);
   });
 
   it('zeigt unter „Selbst beschreiben" den Modbus-Weg und die Verwaltung eigener Vorlagen (K4)', () => {

@@ -295,7 +295,11 @@ export type UebernahmeWeg =
   | { art: 'direkt'; template: ComponentTemplate }
   /** Mehrere passende Modelle (Deye: die Leistung steht nicht im Gerät) - der Kunde wählt vom Typenschild. */
   | { art: 'modell'; templates: ComponentTemplate[] }
-  /** Ein Schalter mit mehreren Ausgängen: je Ausgang eine Komponente (`channel` 0, 1, 2). */
+  /**
+   * Ein Schalter (`deviceType: switch`, heute der Shelly): übernommen wird er nur als Heizstab über seine Ausgänge.
+   * Ein einzelner Ausgang als eigenes Gerät wäre ein Messgerät ohne Rolle, das die Box nicht anwendet; die API lehnt
+   * es ab. `kanaele` ist mindestens 1.
+   */
   | { art: 'ausgang'; template: ComponentTemplate; kanaele: number }
   /** Die Vorlagen des Fundes kennt dieser Katalog nicht (älterer Stand) - nur „von Hand". */
   | { art: 'unbekannt' };
@@ -307,10 +311,16 @@ export function uebernahmeWeg(f: GeraetesucheFund, templates: readonly Component
   if (passend.length === 0) return { art: 'unbekannt' };
   if (passend.length > 1) return { art: 'modell', templates: passend };
   const t = passend[0];
-  if (felder(t).some((x) => x.key === 'channel') && f.kanaele !== null && f.kanaele > 1) {
-    return { art: 'ausgang', template: t, kanaele: f.kanaele };
-  }
+  if (istSchalter(t)) return { art: 'ausgang', template: t, kanaele: Math.max(1, f.kanaele ?? 1) };
   return { art: 'direkt', template: t };
+}
+
+/**
+ * Ein Schalter hat für sich keine Rolle in der Anlage: als eigenes Gerät entstünde er als reines Messgerät, dem die Box
+ * keine Rolle zuordnen kann (VoltPilotGATE, 02.11.2026). Er entsteht nur als Heizstab über seine Ausgänge.
+ */
+export function istSchalter(t: Pick<ComponentTemplate, 'deviceType'>): boolean {
+  return (t.deviceType ?? '').trim() === 'switch';
 }
 
 /**

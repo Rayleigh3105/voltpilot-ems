@@ -547,3 +547,109 @@ func TestAppliedAtIsStampedNotInvented(t *testing.T) {
 		t.Fatalf("der Herzschlag traegt den Zeitpunkt: %+v", sum)
 	}
 }
+
+// --- Ein Gerät ohne Rolle versenkt nicht den ganzen Push --------------------
+
+const applyMeterDriver = `{"role":"grid-meter","brand":"generic_modbus","model":"sunspec",
+  "communication":"modbus_tcp","connection":{"ip":"192.168.210.55","port":502,"unit_id":3}}`
+
+// rolelessShellyOutput is one output of the Shelly Pro 3 as the portal created
+// it on 02.11.2026 (VoltPilotGATE): a generic-load on one channel, without
+// actuate, fallback measure-only.
+func rolelessShellyOutput(id string, channel string) entities.Entity {
+	e := applyEntity(id, entities.TypeGenericLoad,
+		`{"brand":"shelly","model":"shelly_http","family":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","port":80,"channel":`+channel+`}}`)
+	e.Guards.Failsafe.Behavior = "measure-only"
+	return e
+}
+
+func gateShellyOutputs() []entities.Entity {
+	return []entities.Entity{
+		rolelessShellyOutput("cf91e363-0000-0000-0000-000000000000", "0"),
+		rolelessShellyOutput("bcb311cf-0000-0000-0000-000000000000", "1"),
+		rolelessShellyOutput("53cfe532-0000-0000-0000-000000000000", "2"),
+	}
+}
+
+// Der echte Fall mit einem gelesenen Netzzaehler: die Box wendet Hauslast und
+// Netzzaehler an und meldet die drei Ausgaenge einzeln - im Anwende-Stand, in
+// components-applied.json und im Herzschlag.
+func TestRolelessShellyOutputsAreReportedAndTheRestIsApplied(t *testing.T) {
+	a := newGateTestAgent(t)
+	ents := append([]entities.Entity{
+		applyEntity("5ee61b0e-fca6-49eb-a36a-057fff694dad", entities.TypeHouseLoad, ""),
+		applyEntity("7946cd6a-e656-40b5-86f4-e77c3c9e4fe9", entities.TypeGridMeter, applyMeterDriver),
+	}, gateShellyOutputs()...)
+	a.applyEntityRegistry(portalPush("r1", ents...))
+
+	a.srcMu.Lock()
+	srcs := append([]sources.Source(nil), a.srcs...)
+	a.srcMu.Unlock()
+	if len(srcs) != 1 || srcs[0].Role != sources.RoleNetz {
+		t.Fatalf("der Netzzaehler muss angewandt sein: %+v", srcs)
+	}
+	rec := a.componentRecord()
+	if rec.Revision != "r1" || rec.Refused != "" || rec.Held != "" || len(rec.Rejected) != 3 {
+		t.Fatalf("Anwende-Stand: %+v", rec)
+	}
+	stored, ok, err := a.compStore.Load()
+	if err != nil || !ok || len(stored.Rejected) != 3 ||
+		stored.Rejected[0].EntityID != "53cfe532-0000-0000-0000-000000000000" {
+		t.Fatalf("components-applied.json: %+v ok=%v err=%v", stored, ok, err)
+	}
+	sum := a.componentApplySummary()
+	if sum == nil || sum.Revision != "r1" || len(sum.RejectedComponents) != 3 {
+		t.Fatalf("Herzschlag-Block: %+v", sum)
+	}
+	raw, err := json.Marshal(sum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"rejected_components":[{"entity_id":"53cfe532-0000-0000-0000-000000000000","reason":"für dieses Gerät (generic-load) ist nicht bestimmbar, welche Rolle es hat`) {
+		t.Fatalf("Drahtform: %s", raw)
+	}
+
+	// Der Kunde loescht die drei Ausgaenge: der naechste Push raeumt die
+	// Ablehnungen, ohne am laufenden Netzzaehler etwas zu aendern.
+	a.applyEntityRegistry(portalPush("r2", ents[:2]...))
+	if rec := a.componentRecord(); rec.Revision != "r2" || len(rec.Rejected) != 0 {
+		t.Fatalf("nach dem Loeschen: %+v", rec)
+	}
+	if raw, _ := json.Marshal(a.componentApplySummary()); strings.Contains(string(raw), "rejected_components") {
+		t.Fatalf("ohne Ablehnung bleibt das Feld weg: %s", raw)
+	}
+}
+
+// Dieselbe Registry, wie sie auf der Box lag (Hauslast und Netzzaehler ohne
+// Treiber): kein anwendbares Geraet bleibt, also der Halt - mit dem eigenen
+// Grund und den drei Ablehnungen statt „kein verbundenes Geraet".
+func TestTheRealGateRegistryHoldsAndNamesTheThreeOutputs(t *testing.T) {
+	a := newGateTestAgent(t)
+	if _, err := a.AddSource(sources.Request{
+		Role: sources.RoleErzeuger, Brand: inverter.BrandGenericModbus, Model: inverter.FamSunSpec,
+		Connection: inverter.Connection{IP: "10.0.0.9", UnitID: 2},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshotLocal(a)
+	ents := append([]entities.Entity{
+		applyEntity("5ee61b0e-fca6-49eb-a36a-057fff694dad", entities.TypeHouseLoad, ""),
+		applyEntity("7946cd6a-e656-40b5-86f4-e77c3c9e4fe9", entities.TypeGridMeter, ""),
+	}, gateShellyOutputs()...)
+	a.applyEntityRegistry(portalPush("2026-11-02T10:11:33.667172959Z", ents...))
+
+	if after := snapshotLocal(a); len(after.sourceIDs) != len(before.sourceIDs) {
+		t.Fatalf("der Halt hat etwas geloescht: %+v -> %+v", before, after)
+	}
+	rec := a.componentRecord()
+	if rec.Held != "2026-11-02T10:11:33.667172959Z" || rec.HeldReason != noApplicableDeviceHint ||
+		rec.Refused != "" || rec.Revision != "" || len(rec.Rejected) != 3 {
+		t.Fatalf("Anwende-Stand: %+v", rec)
+	}
+	sum := a.componentApplySummary()
+	if sum == nil || sum.HeldReason != noApplicableDeviceHint || sum.RefusedRevision != "" ||
+		len(sum.RejectedComponents) != 3 {
+		t.Fatalf("Herzschlag-Block: %+v", sum)
+	}
+}

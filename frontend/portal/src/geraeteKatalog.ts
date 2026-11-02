@@ -265,8 +265,24 @@ export interface KatalogChipInfo {
 }
 
 /** Die Arten als Filter über dem Katalog - mit ihrer Zahl, „Weitere" nur, wenn es welche gibt. */
+/**
+ * Ein Schalter (`deviceType: switch`, heute der Shelly) steht nicht als Modell im Katalog: als eigenes Gerät entstünde er
+ * als Messgerät ohne Rolle, das die Box nicht anwendet (VoltPilotGATE, 02.11.2026), und die API lehnt ihn ab. Er entsteht
+ * nur über „Geräte suchen“ als Heizstab. Über „Zähler" bleibt er wählbar: dort ist er das Gerät, über das gemessen wird,
+ * und hat damit eine Rolle.
+ */
+export function alsModellAngeboten(t: ComponentTemplate, chip: KatalogChip): boolean {
+  return chip === 'zaehler' || (t.deviceType ?? '').trim() !== 'switch';
+}
+
+/** Der Satz, der sagt, wo ein Schalter stattdessen entsteht. */
+export const SCHALTER_HINWEIS =
+  'Einen Shelly-Schalter übernehmen Sie über „Geräte suchen“ als Heizstab. Einen einzelnen Schaltausgang als eigenes '
+  + 'Gerät kann die Box keiner Rolle zuordnen.';
+
 export function katalogChips(templates: ComponentTemplate[], vorlagen: SiteComponentTemplate[]): KatalogChipInfo[] {
-  const zahl = (k: KatalogKategorie) => templates.filter((t) => kategorieVon(t) === k).length;
+  const zahl = (k: KatalogKategorie) =>
+    templates.filter((t) => kategorieVon(t) === k && alsModellAngeboten(t, 'alle')).length;
   const zaehler = zahl('zaehler');
   const chips: KatalogChipInfo[] = [
     { id: 'alle', label: 'Alle', anzahl: null },
@@ -310,9 +326,11 @@ function leereAnsicht(): KatalogAnsicht {
 /** Die Ansicht des Katalogs für Suche, Art und Marke. */
 export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
   const out = leereAnsicht();
+  const templates = e.templates.filter((t) => alsModellAngeboten(t, e.chip));
+  const schalter = e.templates.filter((t) => !alsModellAngeboten(t, e.chip));
   const begriffe = suchBegriffe(e.q);
   const inArt = (k: KatalogKategorie) => e.chip === 'alle' || e.chip === k;
-  const zaehlerVorlagen = e.templates.filter((t) => kategorieVon(t) === 'zaehler');
+  const zaehlerVorlagen = templates.filter((t) => kategorieVon(t) === 'zaehler');
 
   if (begriffe.length > 0) {
     // --- Suche: über alles, was die gewählte Art zulässt -------------------
@@ -341,9 +359,12 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
     // Über „Zähler" sucht man das Gerät, ÜBER das gemessen wird - also in allem.
     const suchraum =
       e.chip === 'alle' || (e.chip === 'zaehler' && zaehlerVorlagen.length === 0)
-        ? e.templates
-        : e.templates.filter((t) => kategorieVon(t) === e.chip);
+        ? templates
+        : templates.filter((t) => kategorieVon(t) === e.chip);
     const suche = modellSuche(suchraum, e.q);
+    if ((e.chip === 'alle' || e.chip === 'schalten') && modellSuche(schalter, e.q).treffer.length > 0) {
+      out.hinweis = SCHALTER_HINWEIS;
+    }
     const wegTreffer = (Object.keys(WEGE) as KatalogWeg[]).filter(
       (w) => inArt(WEGE[w].kategorie) && passt(normalisiereSuche(`${WEGE[w].titel} ${WEGE[w].zusatz} ${WEGE[w].stichworte}`), begriffe),
     );
@@ -373,7 +394,7 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
   // --- Eine Marke aufgeklappt: ihre Modelle ---------------------------------
   if (e.marke) {
     const raum =
-      e.chip === 'zaehler' || e.chip === 'alle' ? e.templates : e.templates.filter((t) => kategorieVon(t) === e.chip);
+      e.chip === 'zaehler' || e.chip === 'alle' ? templates : templates.filter((t) => kategorieVon(t) === e.chip);
     const modelle = raum
       .filter((t) => t.brand === e.marke)
       .sort((a, b) => deutsch(a.modelLabel, b.modelLabel));
@@ -385,7 +406,7 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
   }
 
   // --- Blättern nach Art ------------------------------------------------------
-  const vonArt = (k: KatalogKategorie) => e.templates.filter((t) => kategorieVon(t) === k);
+  const vonArt = (k: KatalogKategorie) => templates.filter((t) => kategorieVon(t) === k);
   const modelleUndWege = (k: KatalogKategorie) => [
     ...vonArt(k).sort((a, b) => deutsch(modellTitel(a), modellTitel(b))).map(modellEintrag),
     ...wegeFuer(k).map(wegEintrag),
@@ -415,7 +436,7 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
         return out;
       }
       out.hinweis = keineVorlageHinweis('zaehler');
-      out.gruppen.push(...gruppe('zaehler', 'Gerät wählen, über das gemessen wird', markenEintraege(e.templates)));
+      out.gruppen.push(...gruppe('zaehler', 'Gerät wählen, über das gemessen wird', markenEintraege(templates)));
       return out;
     case 'laden':
       out.gruppen.push(...gruppe('laden', KATEGORIE_LABEL.laden, modelleUndWege('laden')));
@@ -425,9 +446,12 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
       return out;
     case 'schalten':
       out.gruppen.push(...gruppe('schalten', KATEGORIE_LABEL.schalten, modelleUndWege('schalten')));
-      if (vonArt('schalten').some((t) => (t.deviceType ?? '') === 'io_module')) {
-        out.hinweis = 'Beim I/O-Modul ordnen Sie danach jeden Ausgang einem Verbraucher zu.';
-      }
+      out.hinweis = [
+        vonArt('schalten').some((t) => (t.deviceType ?? '') === 'io_module')
+          ? 'Beim I/O-Modul ordnen Sie danach jeden Ausgang einem Verbraucher zu.'
+          : null,
+        schalter.length > 0 ? SCHALTER_HINWEIS : null,
+      ].filter(Boolean).join(' ') || null;
       return out;
     case 'batterie':
       out.gruppen.push(...gruppe('batterie', KATEGORIE_LABEL.batterie, modelleUndWege('batterie')));

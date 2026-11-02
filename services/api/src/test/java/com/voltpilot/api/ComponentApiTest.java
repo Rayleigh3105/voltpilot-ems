@@ -481,6 +481,35 @@ class ComponentApiTest {
         }
     }
 
+    /**
+     * Ein einzelner Schaltausgang (Shelly, {@code device_type: switch}) entstünde als
+     * reines Messgerät ohne Rolle, das die Box nicht anwendet (VoltPilotGATE,
+     * 02.11.2026: „Heizstab“, „Phase 2“, „Phase 3“). Die Route lehnt ihn ab, bevor
+     * irgendetwas entsteht, und nennt den Ausweg - auch mit gültigem Testbeleg.
+     */
+    @Test
+    void aSingleSwitchOutputIsRefusedAsARolelessDevice() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Schalter-Anlage");
+        try {
+            String shelly = "builtin:shelly:shelly_http";
+            Map<String, Object> conn = Map.of("ip", "192.168.178.43", "port", 80, "channel", 0);
+            receipts.record(site, shelly, 1, conn);
+            int vorher = getJson("/api/v1/sites/" + site + "/components", customer)
+                    .path("components").size();
+
+            ResponseEntity<String> refused = post("/api/v1/sites/" + site + "/components",
+                    customer, saveBody(shelly, "consumer", conn));
+            assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(refused.getBody()).contains("einzelner Schaltausgang")
+                    .contains("Geräte suchen");
+            assertThat(getJson("/api/v1/sites/" + site + "/components", customer)
+                    .path("components").size()).isEqualTo(vorher);
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
     /** Eine unbekannte Vorlage / Rolle wird abgelehnt, bevor irgendetwas entsteht. */
     @Test
     void anUnknownTemplateOrRoleIsRefusedBeforeAnythingIsWritten() throws Exception {
@@ -630,7 +659,7 @@ class ComponentApiTest {
             applyRepo.upsert(device, UUID.fromString(TENANT_A), berlin,
                     ComponentAuthority.PORTAL, "r5", Instant.parse("2026-08-16T10:00:00Z"),
                     "r6", "Wechselrichter \"x\": Unbekannte Marke.", null, null,
-                    Instant.parse("2026-08-16T10:05:00Z"));
+                    Instant.parse("2026-08-16T10:05:00Z"), null);
         } finally {
             TenantContext.clear();
         }
@@ -699,6 +728,57 @@ class ComponentApiTest {
         assertThat(alt.has("heldReason")).isFalse();
         for (JsonNode row : alt.get("components")) {
             assertThat(row.get("syncStatus").asText()).isEqualTo("pending");
+        }
+    }
+
+    /**
+     * Ein Gerät, dem die Box keine Rolle zuordnen kann, versenkt nicht mehr den
+     * ganzen Push (VoltPilotGATE, 02.11.2026): die Box wendet den Rest an und
+     * meldet genau dieses Gerät in {@code rejected_components}. Der Grund
+     * erscheint an GENAU dieser Komponente - die übrigen bleiben ohne, und die
+     * Fassung gilt als angewandt.
+     */
+    @Test
+    void aComponentTheBoxSkippedCarriesTheBoxReasonAtItsRow() throws Exception {
+        String customer = token("demo", "demo");
+        UUID berlin = UUID.fromString(BERLIN_SITE);
+        UUID device = anyDeviceOf(berlin);
+        JsonNode before = getJson("/api/v1/sites/" + BERLIN_SITE + "/components", customer);
+        String soll = before.path("sollRevision").asText(null);
+        assertThat(before.get("components").size()).as("mindestens zwei Komponenten").isGreaterThan(1);
+        String skipped = before.get("components").get(0).get("id").asText();
+
+        var listener = new com.voltpilot.api.entities.EntityStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo, applyRepo);
+        String topic = "ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + device + "/status";
+        String grund = "für dieses Gerät (generic-load) ist nicht bestimmbar, welche Rolle es hat";
+        String beat = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT_A + "\","
+                + "\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + device + "\","
+                + "\"online\":true,\"entities\":{\"revision\":\"" + soll + "\","
+                + "\"component_apply\":{\"authority\":\"portal\",\"revision\":\"" + soll + "\","
+                + "\"applied_at\":\"2026-11-02T10:11:40Z\","
+                + "\"rejected_components\":[{\"entity_id\":\"" + skipped + "\",\"reason\":\""
+                + grund + "\"}]}}}";
+        listener.handle(topic, beat.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        JsonNode list = getJson("/api/v1/sites/" + BERLIN_SITE + "/components", customer);
+        assertThat(list.get("appliedRevision").asText()).isEqualTo(soll);
+        assertThat(list.has("refusedRevision")).as("übersprungen ist nicht abgelehnt").isFalse();
+        for (JsonNode row : list.get("components")) {
+            if (row.get("id").asText().equals(skipped)) {
+                assertThat(row.get("rejectedReason").asText()).isEqualTo(grund);
+            } else {
+                assertThat(row.has("rejectedReason")).isFalse();
+            }
+            assertThat(row.get("syncStatus").asText()).isEqualTo("in_sync");
+        }
+
+        // Der nächste Herzschlag ohne das Feld räumt den Grund.
+        listener.handle(topic, beat.replaceAll(",\"rejected_components\":\\[.*?\\]", "")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        for (JsonNode row : getJson("/api/v1/sites/" + BERLIN_SITE + "/components", customer)
+                .get("components")) {
+            assertThat(row.has("rejectedReason")).isFalse();
         }
     }
 

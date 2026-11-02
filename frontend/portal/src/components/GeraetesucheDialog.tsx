@@ -473,15 +473,6 @@ export function GeraetesucheDialog({
             alleAusgaenge: true,
           })
         }
-        onWahl={(kanal) =>
-          uebernimm({
-            fund: ansicht.fund,
-            template: ansicht.template,
-            verbindung: vorbelegung(ansicht.fund, ansicht.template, kanal),
-            kanal,
-            schluessel: uebernahmeSchluessel(ansicht.fund, kanal),
-          })
-        }
       />
     );
   } else if (ansicht.art === 'verlauf') {
@@ -1186,70 +1177,72 @@ function AusgangWahl({
   titelRef,
   fund,
   uebernommen,
-  onWahl,
   onAlle,
 }: {
   titelRef: RefObject<HTMLHeadingElement>;
   fund: GeraetesucheFund;
   uebernommen: ReadonlyMap<string, string>;
-  onWahl: (kanal: number) => void;
   onAlle: () => void;
 }) {
-  const n = fund.kanaele ?? 1;
-  // Heizstab V1: alle Ausgänge als EIN Gerät - nur solange keiner einzeln übernommen ist (ein Ausgang
-  // gehört genau einem Gerät; die API lehnt sonst mit 409 ab).
-  const alleFrei = Array.from({ length: n }, (_, k) => k).every((k) => !uebernommen.get(uebernahmeSchluessel(fund, k)))
-    && !uebernommen.get(fund.schluessel);
+  const n = Math.max(1, fund.kanaele ?? 1);
+  // Ein Schalter entsteht nur als Heizstab über seine Ausgänge. Einen einzelnen Ausgang als eigenes Gerät kann die Box
+  // keiner Rolle zuordnen und wendet ihn nicht an (VoltPilotGATE, 02.11.2026) - die API lehnt ihn ab. Früher einzeln
+  // übernommene Ausgänge bleiben sichtbar; solange es sie gibt, gehört der Schalter nicht ganz einem Heizstab (409).
+  const einzeln = Array.from({ length: n }, (_, k) => k)
+    .map((k) => ({ k, name: uebernommen.get(uebernahmeSchluessel(fund, k)) }))
+    .filter((a): a is { k: number; name: string } => Boolean(a.name));
   const alleName = uebernommen.get(fund.schluessel);
+  const alleFrei = einzeln.length === 0 && !alleName;
   return (
     <div className="vp-gs-wahlseite" data-testid="gs-ausgang">
       <AusDerSuche titel={fundTitel(fund)} zeile={[fundAdresse(fund), artText(fund)].filter(Boolean).join(' · ')} fund={fund} />
       <header className="vp-gs-kopf">
         <h3 ref={titelRef} tabIndex={-1}>Was schaltet der Schalter?</h3>
         <p className="vp-gs-unter">
-          Das lässt sich vom Netz aus nicht erkennen. Ein Heizstab mit einer Phase je Ausgang ist EIN Gerät; sonst entsteht je Ausgang ein eigenes.
+          Das lässt sich vom Netz aus nicht erkennen. VoltPilot übernimmt einen Schalter als Heizstab:{' '}
+          {n > 1 ? 'ein Gerät über alle Ausgänge, eine Phase je Ausgang.' : 'ein Gerät an diesem Ausgang.'}
         </p>
       </header>
       <ul className="vp-gs-liste">
         <li>
           {alleName ? (
             <div className="vp-gs-wahl-zeile is-fertig">
-              <span className="vp-gs-text"><b>Alle Ausgänge zusammen</b><small>{alleName}</small></span>
+              <span className="vp-gs-text"><b>{n > 1 ? 'Alle Ausgänge zusammen' : 'Als Heizstab'}</b><small>{alleName}</small></span>
               <span className="vp-gs-wort is-ok"><Icon name="check" size={16} /> übernommen</span>
             </div>
           ) : alleFrei ? (
             <button type="button" className="vp-gs-wahl-zeile" onClick={onAlle} data-testid="gs-alle-ausgaenge">
               <span className="vp-gs-text">
-                <b>Alle Ausgänge zusammen – z. B. Heizstab mit drei Phasen</b>
-                <small>Ein Gerät über alle {n} Ausgänge, geschaltet in Stufen</small>
+                <b>{n > 1 ? 'Alle Ausgänge zusammen – z. B. Heizstab mit drei Phasen' : 'Als Heizstab übernehmen'}</b>
+                <small>{n > 1 ? `Ein Gerät über alle ${n} Ausgänge, geschaltet in Stufen` : 'Ein Gerät an diesem Ausgang, geschaltet ein und aus'}</small>
               </span>
               <Icon name="chevron-right" size={16} />
             </button>
           ) : null}
         </li>
       </ul>
-      <p className="vp-gs-unter">Oder je Ausgang ein eigenes Gerät:</p>
-      <ul className="vp-gs-liste">
-        {Array.from({ length: n }, (_, k) => {
-          const name = uebernommen.get(uebernahmeSchluessel(fund, k));
-          return (
-            <li key={k}>
-              {name || alleName ? (
+      {einzeln.length > 0 && (
+        <>
+          <p className="vp-gs-unter">
+            Einzeln übernommen. Solange diese Geräte bestehen, lässt sich der Schalter nicht als Heizstab übernehmen;
+            löschen Sie sie dafür im Aufbau.
+          </p>
+          <ul className="vp-gs-liste">
+            {einzeln.map(({ k, name }) => (
+              <li key={k}>
                 <div className="vp-gs-wahl-zeile is-fertig">
-                  <span className="vp-gs-text"><b>Ausgang {k + 1}</b><small>{name ?? `gehört zu ${alleName}`}</small></span>
+                  <span className="vp-gs-text"><b>Ausgang {k + 1}</b><small>{name}</small></span>
                   <span className="vp-gs-wort is-ok"><Icon name="check" size={16} /> übernommen</span>
                 </div>
-              ) : (
-                <button type="button" className="vp-gs-wahl-zeile" onClick={() => onWahl(k)}>
-                  <span className="vp-gs-text"><b>Ausgang {k + 1}</b><small>Noch nicht übernommen</small></span>
-                  <Icon name="chevron-right" size={16} />
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      <p className="vp-gs-fussnote">Der Test liest nur den Schaltzustand; geschaltet wird erst, wenn Sie eine Regel einrichten.</p>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="vp-gs-fussnote">
+        Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht: die Box kann ihm keine Rolle in der Anlage
+        zuordnen. Der Test liest nur den Schaltzustand; geschaltet wird erst, wenn Sie eine Regel einrichten.
+      </p>
     </div>
   );
 }

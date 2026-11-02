@@ -1686,9 +1686,10 @@ function GeraetSeiteKern({
                   <div className="vp-geraet-versionen" data-testid="geraet-fassungen">
                     <p className="vp-geraet-sec-sub">
                       {(() => {
-                        const stand = editRow.syncStatus === 'in_sync' ? 'auf der Box aktiv'
-                          : editRow.syncStatus === 'pending' ? 'Aktivierung läuft'
-                            : 'Bestätigung der Box ausstehend';
+                        const stand = editRow.rejectedReason ? 'von der Box nicht angewandt'
+                          : editRow.syncStatus === 'in_sync' ? 'auf der Box aktiv'
+                            : editRow.syncStatus === 'pending' ? 'Aktivierung läuft'
+                              : 'Bestätigung der Box ausstehend';
                         return view.einrichtung.length > 0
                           ? `${stand.charAt(0).toUpperCase()}${stand.slice(1)}`
                           : `Fassung ${editRow.definitionVersion} · ${stand}`;
@@ -1697,6 +1698,11 @@ function GeraetSeiteKern({
                     {components?.refusedReason && (
                       <p className="vp-assist-error" role="alert">
                         Die Box hat die neue Fassung abgelehnt: {components.refusedReason}. Die vorige Fassung läuft weiter.
+                      </p>
+                    )}
+                    {editRow.rejectedReason && (
+                      <p className="vp-assist-error" role="alert" data-testid="geraet-box-abgelehnt">
+                        Die Box wendet dieses Gerät nicht an: {editRow.rejectedReason}. Die übrigen Geräte der Anlage hat sie angewandt.
                       </p>
                     )}
                     <p>Jede Änderung ist eine neue Fassung. Eine Rückkehr schreibt wiederum eine neue Fassung; nichts wird gelöscht.</p>

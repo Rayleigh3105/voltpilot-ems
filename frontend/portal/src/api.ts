@@ -2068,6 +2068,11 @@ export interface SiteComponentRow {
   syncStatus?: string | null;
   /** Nur nach „Übernehmen" aus der Gerätesuche; sonst abwesend (nie geraten). */
   herkunft?: KomponenteHerkunft | null;
+  /**
+   * Warum die Box GENAU DIESES Gerät nicht anwendet, wörtlich von der Box (sie kann ihm keine Rolle zuordnen und hat
+   * die übrigen trotzdem angewandt). Abwesend = nicht übersprungen oder von der Box nicht gemeldet.
+   */
+  rejectedReason?: string | null;
 }
 
 export interface SiteEntities {

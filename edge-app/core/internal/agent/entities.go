@@ -341,6 +341,10 @@ func (a *Agent) componentApplySummary() *cloud.ComponentApplySummary {
 		HeldRevision:    rec.Held,
 		HeldReason:      rec.HeldReason,
 	}
+	for _, r := range rec.Rejected {
+		out.RejectedComponents = append(out.RejectedComponents,
+			cloud.ComponentRejection{EntityID: r.EntityID, Reason: r.Reason})
+	}
 	if !rec.AppliedAt.IsZero() {
 		out.AppliedAt = rec.AppliedAt.UTC().Format(time.RFC3339)
 	}

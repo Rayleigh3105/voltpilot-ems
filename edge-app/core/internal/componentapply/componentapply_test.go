@@ -3,6 +3,7 @@ package componentapply
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -210,15 +211,17 @@ func TestTwoDevicesWithTheSameTransportAreAnAmbiguousSoll(t *testing.T) {
 func TestAnUndecidableRoleIsRefusedNeverGuessed(t *testing.T) {
 	reg := portal(ent("aaaa0000-0000-0000-0000-000000000001", "modbus-generic",
 		`{"brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.5"}}`))
-	_, err := Derive(reg, cat(), nil, now)
-	if err == nil || !strings.Contains(err.Error(), "welche Rolle") {
-		t.Fatalf("err = %v", err)
+	plan, err := Derive(reg, cat(), nil, now)
+	if !errors.Is(err, ErrNoConfiguration) || len(plan.Sources) != 0 || len(plan.Rejected) != 1 ||
+		plan.Rejected[0].EntityID != "aaaa0000-0000-0000-0000-000000000001" ||
+		!strings.Contains(plan.Rejected[0].Reason, "welche Rolle") {
+		t.Fatalf("plan=%+v err=%v", plan, err)
 	}
 	// Mit ausdruecklicher Rolle geht es - geraten wird nie.
 	reg = portal(ent("aaaa0000-0000-0000-0000-000000000001", "modbus-generic",
 		`{"role":"consumer","brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.5"}}`))
-	plan, err := Derive(reg, cat(), nil, now)
-	if err != nil || plan.Sources[0].Role != sources.RoleConsumer {
+	plan, err = Derive(reg, cat(), nil, now)
+	if err != nil || plan.Sources[0].Role != sources.RoleConsumer || len(plan.Rejected) != 0 {
 		t.Fatalf("plan=%+v err=%v", plan, err)
 	}
 }
@@ -226,8 +229,120 @@ func TestAnUndecidableRoleIsRefusedNeverGuessed(t *testing.T) {
 func TestAnUnknownRoleWordIsRefused(t *testing.T) {
 	reg := portal(ent("aaaa0000-0000-0000-0000-000000000001", entities.TypeProducer,
 		`{"role":"wallbox","brand":"generic_modbus","connection":{"ip":"192.168.0.5"}}`))
-	if _, err := Derive(reg, cat(), nil, now); err == nil ||
-		!strings.Contains(err.Error(), "unbekannte Rolle") {
+	plan, err := Derive(reg, cat(), nil, now)
+	if !errors.Is(err, ErrNoConfiguration) || len(plan.Rejected) != 1 ||
+		plan.Rejected[0].Reason != `die Anbindung nennt die unbekannte Rolle "wallbox"` {
+		t.Fatalf("plan=%+v err=%v", plan, err)
+	}
+}
+
+// --- Ein Gerät ohne Rolle versenkt nicht den ganzen Push --------------------
+
+// shellyChannel is one output of a Shelly Pro 3 (192.168.178.43) as the portal
+// created it on 02.11.2026 for the VoltPilotGATE: a generic-load on ONE channel,
+// without actuate and with fallback measure-only - a device the box cannot
+// assign any role.
+func shellyChannel(id string, channel int) entities.Entity {
+	e := ent(id, entities.TypeGenericLoad, fmt.Sprintf(
+		`{"brand":"shelly","model":"shelly_http","family":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","port":80,"channel":%d}}`, channel))
+	e.Guards.Failsafe.Behavior = "measure-only"
+	return e
+}
+
+// Der echte Fall (VoltPilotGATE, 02.11.2026): Hauslast, Netzzaehler und drei
+// Shelly-Ausgaenge als je ein Messgeraet ohne Rolle. Vorher verwarf die Box den
+// GANZEN Push; jetzt wendet sie Hauslast und Netzzaehler an und meldet genau
+// die drei Ausgaenge als abgelehnt, jeden mit Kennung und Grund.
+func TestThreeRolelessShellyOutputsAreRejectedAndTheRestIsApplied(t *testing.T) {
+	houseLoad := ent("5ee61b0e-fca6-49eb-a36a-057fff694dad", entities.TypeHouseLoad, "")
+	houseLoad.Guards.Failsafe.Behavior = "measure-only"
+	gridMeter := ent("7946cd6a-e656-40b5-86f4-e77c3c9e4fe9", entities.TypeGridMeter, meterDriver)
+	gridMeter.Guards.Failsafe.Behavior = "measure-only"
+	reg := portal(houseLoad, gridMeter,
+		shellyChannel("cf91e363-0000-0000-0000-000000000000", 0),
+		shellyChannel("bcb311cf-0000-0000-0000-000000000000", 1),
+		shellyChannel("53cfe532-0000-0000-0000-000000000000", 2))
+
+	plan, err := Derive(reg, cat(), nil, now)
+	if err != nil {
+		t.Fatalf("drei Geraete ohne Rolle duerfen den Push nicht versenken: %v", err)
+	}
+	if plan.Inverter != nil || len(plan.Sources) != 1 || plan.Sources[0].Role != sources.RoleNetz ||
+		plan.Sources[0].Connection.IP != "192.168.210.55" {
+		t.Fatalf("der Netzzaehler muss angewandt sein: %+v", plan)
+	}
+	want := []string{"53cfe532-0000-0000-0000-000000000000",
+		"bcb311cf-0000-0000-0000-000000000000", "cf91e363-0000-0000-0000-000000000000"}
+	if len(plan.Rejected) != len(want) {
+		t.Fatalf("abgelehnt = %+v", plan.Rejected)
+	}
+	for i, r := range plan.Rejected {
+		if r.EntityID != want[i] || !strings.Contains(r.Reason, "(generic-load)") ||
+			!strings.Contains(r.Reason, "welche Rolle") || strings.Contains(r.Reason, r.EntityID) {
+			t.Fatalf("Ablehnung %d = %+v", i, r)
+		}
+	}
+	// Eine Wiederholung desselben Pushs ist ein No-op - die Ablehnungen
+	// gehoeren nicht zu dem, was laeuft.
+	again, err := Derive(reg, cat(), plan.Sources, now.Add(time.Hour))
+	if err != nil || !again.SameAs(nil, plan.Sources) {
+		t.Fatalf("Wiederholung: %+v err=%v", again, err)
+	}
+}
+
+// Dieselbe Registry, wie sie auf der Box lag: Hauslast und Netzzaehler OHNE
+// Treiber (komponiert). Dann bleibt kein anwendbares Geraet - der ehrliche
+// Halt, aber MIT den drei Ablehnungen, damit das Portal sagen kann, warum.
+func TestTheRealRegistryWithComposedRowsHoldsAndStillNamesTheRejections(t *testing.T) {
+	reg := portal(
+		ent("5ee61b0e-fca6-49eb-a36a-057fff694dad", entities.TypeHouseLoad, ""),
+		ent("7946cd6a-e656-40b5-86f4-e77c3c9e4fe9", entities.TypeGridMeter, ""),
+		shellyChannel("cf91e363-0000-0000-0000-000000000000", 0),
+		shellyChannel("bcb311cf-0000-0000-0000-000000000000", 1),
+		shellyChannel("53cfe532-0000-0000-0000-000000000000", 2))
+	reg.Revision = "2026-11-02T10:11:33.667172959Z"
+	plan, err := Derive(reg, cat(), nil, now)
+	if !errors.Is(err, ErrNoConfiguration) {
+		t.Fatalf("err = %v, will ErrNoConfiguration", err)
+	}
+	if plan.Revision != reg.Revision || len(plan.Rejected) != 3 || !plan.Empty() {
+		t.Fatalf("plan = %+v", plan)
+	}
+}
+
+// Was ein kaputter Lesepfad IST, verweigert weiter den ganzen Push - auch
+// neben einem Geraet ohne Rolle.
+func TestABrokenDriverStillRefusesTheWholePushBesideARolelessDevice(t *testing.T) {
+	for name, broken := range map[string]entities.Entity{
+		"unbekannte_marke": ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer,
+			`{"role":"pv-generation","brand":"gibt-es-nicht","connection":{"ip":"192.168.0.9"}}`),
+		"ohne_marke": ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer,
+			`{"communication":"modbus_tcp","connection":{"ip":"192.168.0.9","port":502,"unit_id":1}}`),
+		"unlesbar": ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, `{"brand":`),
+		"steuerung_mit_fremder_rolle": ent("6a1e3d0f-0000-0000-0000-000000000002",
+			entities.TypeAnlagensteuerung, `{"role":"pv-generation","communication":"modbus_tcp",
+			  "connection":{"ip":"10.0.0.5","port":502,"unit_id":1}}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			plan, err := Derive(portal(
+				ent("5f0d2c9e-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
+				shellyChannel("cf91e363-0000-0000-0000-000000000000", 0),
+				broken), cat(), nil, now)
+			if err == nil || errors.Is(err, ErrNoConfiguration) {
+				t.Fatalf("ein kaputter Treiber muss den ganzen Push verweigern: err=%v", err)
+			}
+			if plan.Inverter != nil || len(plan.Sources) != 0 || len(plan.Rejected) != 0 {
+				t.Fatalf("bei einer Verweigerung darf KEIN Teilplan zurueckkommen: %+v", plan)
+			}
+		})
+	}
+	// Zwei Wechselrichter bleiben ein widerspruechliches Soll.
+	if _, err := Derive(portal(
+		ent("aaaa0000-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
+		ent("bbbb0000-0000-0000-0000-000000000002", entities.TypeBatteryHybrid, deyeDriver),
+		shellyChannel("cf91e363-0000-0000-0000-000000000000", 0)), cat(), nil, now); err == nil ||
+		!strings.Contains(err.Error(), "zwei Wechselrichter") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -331,6 +446,35 @@ func TestRecordKeepsTheLastAppliedRevisionAcrossARefusal(t *testing.T) {
 	}
 	if cleared := rec.Cleared(); cleared.Refused != "" || cleared.Revision != "r5" {
 		t.Fatalf("ein spaeterer Erfolg raeumt nur die Ablehnung: %+v", cleared)
+	}
+}
+
+// Die Ablehnungen einzelner Geraete gehoeren zu dem Stand, den der Record
+// beschreibt: eine Verweigerung des GANZEN naechsten Pushs laesst die der
+// laufenden Fassung stehen (sie laeuft weiter), raeumt aber die eines Halts.
+func TestRejectedDevicesFollowTheConfigurationTheyBelongTo(t *testing.T) {
+	one := []Rejection{{EntityID: "e1", Reason: "keine Rolle"}}
+	applied := NewRecord(AuthorityPortal, "r5", now).WithRejections(one)
+	if got := applied.WithRefusal("r6", "zwei Wechselrichter"); len(got.Rejected) != 1 || got.Revision != "r5" {
+		t.Fatalf("die laufende Fassung behaelt ihre Ablehnungen: %+v", got)
+	}
+	held := Record{Version: StateVersion, Authority: AuthorityPortal}.WithHold("r1", "nichts anwendbar", one)
+	if len(held.Rejected) != 1 || held.Held != "r1" {
+		t.Fatalf("der Halt nennt seine Ablehnungen: %+v", held)
+	}
+	if got := held.WithRefusal("r2", "zwei Wechselrichter"); len(got.Rejected) != 0 || got.Held != "" {
+		t.Fatalf("mit dem Halt gehen seine Ablehnungen: %+v", got)
+	}
+	if got := applied.WithHold("r7", "x", nil); len(got.Rejected) != 0 {
+		t.Fatalf("ein Halt ersetzt die Liste: %+v", got)
+	}
+	raw, _ := json.Marshal(applied)
+	if !strings.Contains(string(raw), `"rejected_components":[{"entity_id":"e1","reason":"keine Rolle"}]`) {
+		t.Fatalf("Drahtform = %s", raw)
+	}
+	raw, _ = json.Marshal(NewRecord(AuthorityPortal, "r5", now))
+	if strings.Contains(string(raw), "rejected_components") {
+		t.Fatalf("ohne Ablehnung bleibt das Feld weg: %s", raw)
 	}
 }
 
@@ -646,6 +790,29 @@ func TestAShellyOutputSetDerivesOneSourceWithItsOwnIdentity(t *testing.T) {
 	again, err := Derive(portal(single, rod), cat(), plan.Sources, now)
 	if err != nil || !again.SameAs(nil, plan.Sources) {
 		t.Fatalf("a redelivery must be a no-op: %+v err=%v", again, err)
+	}
+}
+
+// The heating rod exactly as the cloud creates it (POST .../components with
+// consumerType heating-rod): read-only - no actuate, failsafe off. Its role is
+// still unambiguous (consumer), so the box reads its output set instead of
+// rejecting it like a measure-only generic-load; commands stay refused by the
+// capability gate.
+func TestAHeatingRodWithoutActuateIsStillReadAsAConsumer(t *testing.T) {
+	rod := ent("aaaa0000-0000-0000-0000-0000000000a4", entities.TypeHeatingRod,
+		`{"brand":"shelly","model":"shelly_http","family":"shelly_http","communication":"shelly_http",
+		  "connection":{"ip":"192.168.178.43","port":80,"channels":[0,1,2],
+		  "output_kw":[2.0,2.0,2.0],"stages":[1,2,3],"anschluss":"stern_mit_n"}}`)
+	rod.Guards.Failsafe.Behavior = "off"
+	if rod.Category() != entities.CategoryMeasureOnly || rod.Supports(entities.CmdOnOff) {
+		t.Fatalf("fixture: a read-only rod is measure-only for the guards")
+	}
+	plan, err := Derive(portal(rod), cat(), nil, now)
+	if err != nil || len(plan.Sources) != 1 || len(plan.Rejected) != 0 {
+		t.Fatalf("plan=%+v err=%v", plan, err)
+	}
+	if s := plan.Sources[0]; s.Role != sources.RoleConsumer || s.Connection.Channels != "0,1,2" {
+		t.Fatalf("source %+v", s)
 	}
 }
 

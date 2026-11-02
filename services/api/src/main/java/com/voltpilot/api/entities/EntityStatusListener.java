@@ -277,7 +277,52 @@ public class EntityStatusListener extends Rueckmeldeweg {
                 textOrNull(block, "revision"), optInstant(block, "applied_at"),
                 textOrNull(block, "refused_revision"), textOrNull(block, "refused_reason"),
                 textOrNull(block, "held_revision"), textOrNull(block, "held_reason"),
-                reportedAt);
+                reportedAt, rejectedComponents(block.path("rejected_components")));
+    }
+
+    /** Obergrenzen für die übersprungenen Geräte eines Herzschlags. */
+    static final int MAX_REJECTED = 200;
+    static final int MAX_REJECTED_ID = 64;
+    static final int MAX_REJECTED_REASON = 500;
+
+    /**
+     * Die Geräte, die die Box beim Anwenden ÜBERSPRUNGEN hat
+     * ({@code rejected_components}: sie kann ihnen keine Rolle zuordnen und hat
+     * den Rest trotzdem angewandt), als JSON für die Spalte - oder
+     * {@code null}, wenn die Box keines meldet (auch: eine ältere Box ohne das
+     * Feld). Nur Einträge mit Kennung UND Grund reisen weiter, begrenzt in
+     * Zahl und Länge; erfunden oder ergänzt wird nichts.
+     */
+    String rejectedComponents(JsonNode list) {
+        if (list == null || !list.isArray()) {
+            return null;
+        }
+        List<Map<String, String>> out = new ArrayList<>();
+        for (JsonNode e : list) {
+            if (out.size() >= MAX_REJECTED) {
+                break;
+            }
+            String id = e.path("entity_id").asText("").trim();
+            String reason = e.path("reason").asText("").trim();
+            if (id.isEmpty() || reason.isEmpty() || id.length() > MAX_REJECTED_ID) {
+                continue;
+            }
+            if (reason.length() > MAX_REJECTED_REASON) {
+                reason = reason.substring(0, MAX_REJECTED_REASON);
+            }
+            Map<String, String> entry = new java.util.LinkedHashMap<>();
+            entry.put("entity_id", id);
+            entry.put("reason", reason);
+            out.add(entry);
+        }
+        if (out.isEmpty()) {
+            return null;
+        }
+        try {
+            return mapper.writeValueAsString(out);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            return null;
+        }
     }
 
     private static String textOrNull(JsonNode node, String field) {

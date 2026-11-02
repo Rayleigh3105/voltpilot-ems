@@ -24,6 +24,18 @@
 //     live plant's measurements down, and it is structurally impossible here
 //     because nothing is written until everything validated.
 //
+//     ONE exception, and it is not a half-applied read path: a device the box
+//     cannot assign a ROLE (roleFor: no explicit role it knows, and a type
+//     whose role is not unambiguous) is skipped and reported by id
+//     (Plan.Rejected); every other device is applied. Such a device has no
+//     place in this box's read path at all - there is nothing of it to apply
+//     halfway. Refusing the whole push for it left a plant with house load and
+//     grid meter unapplied because of three measure-only Shelly outputs
+//     (VoltPilotGATE, 02.11.2026). Everything that IS a broken read path - an
+//     unreadable driver, a driver without a brand, a model the catalog does not
+//     know, two inverters, two devices on one connection - still refuses the
+//     whole push.
+//
 //   - AN EMPTY SOLL IS NOT A SOLL - UNTIL THE PORTAL OWNS THE BOX. A push that
 //     names no device at all yields ErrNoConfiguration, never an empty plan.
 //     Wiping a working box because the portal has not been filled in yet would
@@ -190,6 +202,21 @@ type Plan struct {
 	// plant that only has meters/producers is a legitimate shape).
 	Inverter *inverter.Selection
 	Sources  []sources.Source
+	// Rejected are the devices of this push the box did NOT apply because it
+	// cannot assign them a role (sorted by entity id, like the push). They are
+	// not part of what runs; SameAs therefore ignores them. With
+	// ErrNoConfiguration Derive still returns them (and the revision), so the
+	// caller can say WHY nothing applicable is left.
+	Rejected []Rejection
+}
+
+// Rejection is one device the box skipped while applying the rest of the push.
+// The wire form is the heartbeat's component_apply.rejected_components entry.
+type Rejection struct {
+	EntityID string `json:"entity_id"`
+	// Reason is a German sentence without the id (the id travels beside it), so
+	// the portal can show it at the device as it stands.
+	Reason string `json:"reason"`
 }
 
 // Empty reports whether the plan names no device at all.
@@ -273,10 +300,22 @@ func (d Driver) connection() (inverter.Connection, error) {
 	return c, nil
 }
 
+// unassignableRole is roleFor's answer for a device this box cannot place in
+// the plant: the driver names a role this box does not know, or names none and
+// the type/category does not decide it. Derive skips exactly that device and
+// reports it (Plan.Rejected) - it never sinks the rest of the push. The text is
+// the customer-facing reason, without the entity id.
+type unassignableRole struct{ reason string }
+
+func (u *unassignableRole) Error() string { return u.reason }
+
 // roleFor decides what a device is. The driver's explicit role wins; otherwise
 // the entity TYPE decides, and only for the types whose plant role is
 // unambiguous. Anything else is refused by name - a device read into the wrong
-// role would silently land in the wrong side of the energy balance.
+// role would silently land in the wrong side of the energy balance. A device
+// whose role is merely UNKNOWN to this box is an *unassignableRole (skipped
+// and reported); a plant controller that contradicts its own role is a broken
+// driver and refuses the whole push like any other broken driver.
 func roleFor(e entities.Entity, d Driver) (string, error) {
 	// A plant controller has exactly one role. Any other explicit role would
 	// put a SPS into the energy balance or the inverter slot, so it is refused.
@@ -293,7 +332,8 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 	case "":
 		// fall through to the type-derived default
 	default:
-		return "", fmt.Errorf("Anbindung von %q nennt die unbekannte Rolle %q", e.ID, d.Role)
+		return "", &unassignableRole{fmt.Sprintf(
+			"die Anbindung nennt die unbekannte Rolle %q", d.Role)}
 	}
 	switch e.Type {
 	case entities.TypeBatteryHybrid:
@@ -302,6 +342,14 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 		return sources.RoleErzeuger, nil
 	case entities.TypeGridMeter:
 		return sources.RoleNetz, nil
+	case entities.TypeHeatingRod:
+		// A heating rod is a consumer whatever its guards say. The cloud creates
+		// it READ-ONLY (no actuate until "Steuern freigeben"), so category()
+		// calls it measure-only - which is the guard semantics (no command
+		// passes), not its place in the plant. Its read path is the Shelly
+		// output set (docs/contracts/v2/heizstab-shelly.md, "Für den Lesepfad");
+		// switching stays behind the capability gate.
+		return sources.RoleConsumer, nil
 	}
 	if e.Category() == entities.CategoryConsumer {
 		return sources.RoleConsumer, nil
@@ -314,13 +362,18 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 	if d.Communication == inverter.CommEbyteModbusTCP {
 		return sources.RoleConsumer, nil
 	}
-	return "", fmt.Errorf("für %q (%s) ist nicht bestimmbar, welche Rolle das Gerät hat",
-		e.ID, e.Type)
+	return "", &unassignableRole{fmt.Sprintf(
+		"für dieses Gerät (%s) ist nicht bestimmbar, welche Rolle es hat - es ist weder "+
+			"Wechselrichter, Erzeuger oder Netzzähler noch ein steuerbarer Verbraucher", e.Type)}
 }
 
 // Derive turns a registry push into the local configuration. It validates
 // EVERYTHING before returning anything: the returned plan is either complete and
-// applicable, or there is an error and the caller changes nothing.
+// applicable, or there is an error and the caller changes nothing. "Complete"
+// means every device except those this box cannot assign a role; those are
+// listed in Plan.Rejected (see the first rule at the top of this file). When
+// nothing applicable is left, the error is ErrNoConfiguration and the plan
+// carries only the revision and the rejections.
 //
 // The catalog is the box's own (inverter.DefaultCatalog): the box does not take
 // the cloud's word for what it can read. A model the cloud believes in but this
@@ -356,6 +409,11 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 			continue
 		}
 		role, err := roleFor(e, d)
+		var unassignable *unassignableRole
+		if errors.As(err, &unassignable) {
+			plan.Rejected = append(plan.Rejected, Rejection{EntityID: e.ID, Reason: unassignable.reason})
+			continue
+		}
 		if err != nil {
 			return Plan{}, err
 		}
@@ -436,7 +494,7 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 	}
 
 	if plan.Empty() {
-		return Plan{}, ErrNoConfiguration
+		return Plan{Revision: plan.Revision, Rejected: plan.Rejected}, ErrNoConfiguration
 	}
 	return plan, nil
 }
@@ -627,6 +685,13 @@ type Record struct {
 	// (Befund L1, Scout vp-portal-box-spiegel-s2).
 	Held       string `json:"held_revision,omitempty"`
 	HeldReason string `json:"held_reason,omitempty"`
+	// Rejected are the devices the box did not apply while it applied the rest
+	// (Plan.Rejected). They belong to the configuration the record describes:
+	// the applied revision, or - before the first apply - the held one. A
+	// whole-push refusal keeps the applied revision's list (that revision still
+	// runs) and drops a hold's list together with the hold. ADDITIVE: an older
+	// build reads this file and ignores the field.
+	Rejected []Rejection `json:"rejected_components,omitempty"`
 }
 
 // NewRecord builds the record of a successful apply.
@@ -649,6 +714,10 @@ func (r Record) WithRefusal(revision, reason string) Record {
 	r.Version = StateVersion
 	r.Refused = revision
 	r.RefusedReason = reason
+	if r.Held != "" || r.Revision == "" {
+		// The rejections belonged to the hold (or to nothing that runs).
+		r.Rejected = nil
+	}
 	r.Held, r.HeldReason = "", ""
 	return r
 }
@@ -657,11 +726,20 @@ func (r Record) WithRefusal(revision, reason string) Record {
 // revision, applied nothing and keeps its local files. Like a refusal it keeps
 // the last applied revision (that is still what runs) - and it clears a stale
 // refusal, because an older revision's reason must not outlive its answer.
-func (r Record) WithHold(revision, reason string) Record {
+// rejected are the devices of the held revision the box could not assign a
+// role - the reason nothing applicable was left.
+func (r Record) WithHold(revision, reason string, rejected []Rejection) Record {
 	r.Version = StateVersion
 	r.Held = revision
 	r.HeldReason = reason
 	r.Refused, r.RefusedReason = "", ""
+	r.Rejected = rejected
+	return r
+}
+
+// WithRejections returns the record of an apply with the devices it skipped.
+func (r Record) WithRejections(rejected []Rejection) Record {
+	r.Rejected = rejected
 	return r
 }
 

@@ -523,6 +523,19 @@ type ComponentApplySummary struct {
 	// vp-portal-box-spiegel-s2).
 	HeldRevision string `json:"held_revision,omitempty"`
 	HeldReason   string `json:"held_reason,omitempty"`
+	// RejectedComponents are the devices the box did NOT apply while it applied
+	// the rest of the push: it cannot assign them a role (componentapply,
+	// erste Regel). They belong to `revision` - or, before the first apply, to
+	// `held_revision`. ADDITIVE and absent when nothing was skipped, so a box
+	// without a skipped device sends the bytes it sent before.
+	RejectedComponents []ComponentRejection `json:"rejected_components,omitempty"`
+}
+
+// ComponentRejection is one skipped device: its entity id and the German
+// reason without the id.
+type ComponentRejection struct {
+	EntityID string `json:"entity_id"`
+	Reason   string `json:"reason"`
 }
 
 // EntityObserved is one entity's edge-side Ist in the heartbeat (E1b).

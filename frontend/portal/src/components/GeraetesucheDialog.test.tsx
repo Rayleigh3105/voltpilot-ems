@@ -244,17 +244,38 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
     expect(u.verbindung).not.toHaveProperty('gibtEsNicht');
   });
 
-  it('Shelly: je Ausgang eine Komponente; ein übernommener Ausgang steht als übernommen', async () => {
+  // Ein einzelner Ausgang als eigenes Gerät wäre ein Messgerät ohne Rolle, das die Box nicht anwendet (VoltPilotGATE,
+  // 02.11.2026). Die Wahl bietet ihn nicht mehr an; früher einzeln übernommene Ausgänge bleiben sichtbar und sperren
+  // den Heizstab mit einem Ausweg.
+  it('Shelly: kein Ausgang einzeln; ein früher einzeln übernommener Ausgang steht da und sagt, wie es zum Heizstab geht', async () => {
     starten(F.fertig);
     const { props } = rendere({ uebernommen: new Map([[`${gsShelly.schluessel}#0`, 'Heizstab']]) });
     fireEvent.click(await screen.findByRole('button', { name: 'Shelly Pro 3 übernehmen' }));
     expect(await screen.findByRole('heading', { name: 'Was schaltet der Schalter?' })).toBeInTheDocument();
     expect(screen.getByText('Heizstab')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Ausgang 1/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Ausgang 2/ }));
+    expect(screen.queryByRole('button', { name: /Ausgang \d/ })).toBeNull();
+    expect(screen.queryByTestId('gs-alle-ausgaenge')).toBeNull();
+    expect(screen.getByText(/löschen Sie sie dafür im Aufbau/)).toBeInTheDocument();
+    expect(screen.getByText(/Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht/)).toBeInTheDocument();
+    expect(props.onUebernehmen).not.toHaveBeenCalled();
+  });
+
+  it('Shelly mit EINEM Ausgang: nicht mehr direkt angelegt, sondern als Heizstab an diesem Ausgang', async () => {
+    starten({
+      ...F.fertig,
+      gruppen: F.fertig.gruppen.map((g) => ({
+        ...g,
+        funde: g.funde.map((f) => (f.schluessel === gsShelly.schluessel ? { ...f, kanaele: 1 } : f)),
+      })),
+    });
+    const { props } = rendere();
+    fireEvent.click(await screen.findByRole('button', { name: 'Shelly Pro 3 übernehmen' }));
+    const heizstab = await screen.findByRole('button', { name: /Als Heizstab übernehmen/ });
+    expect(heizstab).toHaveTextContent('Ein Gerät an diesem Ausgang');
+    expect(props.onUebernehmen).not.toHaveBeenCalled();
+    fireEvent.click(heizstab);
     expect(props.onUebernehmen).toHaveBeenCalledWith(expect.objectContaining({
-      template: GS_SHELLY, kanal: 1, schluessel: `${gsShelly.schluessel}#1`,
-      verbindung: { ip: '192.168.178.43', port: 80, channel: 1 },
+      template: GS_SHELLY, kanal: null, alleAusgaenge: true,
     }));
   });
 

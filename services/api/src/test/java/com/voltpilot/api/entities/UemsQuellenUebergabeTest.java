@@ -305,7 +305,7 @@ class UemsQuellenUebergabeTest {
         String vorher=revisionen.get(a);
         uhr.zeit=HIN; push();
         new com.voltpilot.api.components.ComponentApplyRepository(app).upsert(a,tenant,site,"portal",
-                vorher,HIN.minusSeconds(60),revisionen.get(a),"nicht anwendbar",null,null,HIN);
+                vorher,HIN.minusSeconds(60),revisionen.get(a),"nicht anwendbar",null,null,HIN,null);
         uhr.zeit=HIN.plusSeconds(15); bestaetigen(a); push();
         assertThat(repo.stand(quelle).phase()).isEqualTo("removing");
         assertThat(liest.getOrDefault(b,Set.of())).doesNotContain(entity.toString());

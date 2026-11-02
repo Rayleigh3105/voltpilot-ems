@@ -63,6 +63,12 @@ public record SiteComponentsDto(
      * @param herkunft woher die Komponente stammt, wenn sie über „Übernehmen" aus
      *     einer Gerätesuche angelegt wurde; sonst abwesend (nie geraten). Gelesen
      *     aus dem Protokoll der Suche, das den Läufer nach 30 Tagen überlebt.
+     * @param rejectedReason warum die Box GENAU DIESE Komponente nicht anwendet,
+     *     wörtlich von der Box ({@code component_apply.rejected_components}):
+     *     sie kann ihr keine Rolle zuordnen und hat den Rest trotzdem angewandt.
+     *     Abwesend heißt „nicht übersprungen" oder „die Box meldet das nicht".
+     *     Gilt für den Stand, den die Box zuletzt beantwortet hat - der
+     *     {@code syncStatus} bleibt daneben, wie er ist.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ComponentRowDto(
@@ -82,7 +88,8 @@ public record SiteComponentsDto(
             BigDecimal capacityKwp,
             String edgeSourceId,
             String syncStatus,
-            HerkunftDto herkunft) {}
+            HerkunftDto herkunft,
+            String rejectedReason) {}
 
     /**
      * Die Herkunft einer Komponente - heute nur die Gerätesuche (Folgepaket

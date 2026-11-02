@@ -201,6 +201,33 @@ public class ComponentService {
         return true;
     }
 
+    /**
+     * Der Satz, mit dem das Anlegen eines einzelnen Schaltausgangs abgelehnt wird.
+     * Er nennt den Ausweg, nicht nur die Sperre.
+     */
+    static final String SCHALTER_OHNE_ROLLE = "Ein einzelner Schaltausgang lässt sich nicht als "
+            + "eigenes Gerät anlegen: die VoltPilot-Box kann ihm keine Rolle in der Anlage zuordnen "
+            + "und würde ihn nicht anwenden. Einen Heizstab legen Sie über „Geräte suchen“ an "
+            + "(alle Ausgänge zusammen).";
+
+    /**
+     * Ein Schaltausgang (Vorlage {@code device_type: switch}, heute der Shelly) als
+     * eigenes Verbraucher-Gerät entstünde als reines Messgerät: {@code generic-load}
+     * ohne {@code actuate}, Rückfall {@code measure-only} ({@link ComponentDefaults}).
+     * Einem solchen Gerät kann die Box keine Rolle zuordnen - sie liest es nicht und
+     * meldet es als abgelehnt (am VoltPilotGATE hielten drei solche Ausgänge am
+     * 02.11.2026 sogar den ganzen Push auf). Angelegt wird ein Schalter deshalb nur
+     * als Heizstab über seine Ausgänge. Bestehende Zeilen bleiben, wie sie sind;
+     * Bearbeiten ist nicht betroffen.
+     */
+    static void requireNoRolelessSwitch(String role, ComponentTemplateDto template,
+            boolean heizstabGeraet) {
+        if (!heizstabGeraet && ROLE_CONSUMER.equals(role)
+                && "switch".equals(template.deviceType())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, SCHALTER_OHNE_ROLLE);
+        }
+    }
+
     // ---- Lesen ------------------------------------------------------------
 
     /** Die Komponenten dieser Anlage samt Soll/Ist-Stand. */
@@ -231,9 +258,10 @@ public class ComponentService {
         Map<UUID, GeraetesucheHerkunft.Herkunft> herkunft = geraetesuche == null ? Map.of()
                 : geraetesuche.herkunft(siteId);
         List<SiteComponentsDto.ComponentRowDto> rows = new ArrayList<>();
+        Map<String, String> rejected = ist == null ? Map.of() : ist.rejected();
         for (EntityRow row : entityRepo.entitiesForSite(siteId)) {
             rows.add(toRow(row, soll, applied, held, reportedAuthority, gatewayAmbiguous,
-                    herkunft.get(row.id())));
+                    herkunft.get(row.id()), rejected.get(row.id().toString())));
         }
         return new SiteComponentsDto(authority, soll, applied,
                 ist == null ? null : ist.appliedAt(),
@@ -310,6 +338,7 @@ public class ComponentService {
         // Heizstab V1: VOR der Verbindungstest-Pflicht geprüft - die Ablehnung soll den echten
         // Grund nennen (Anschluss, belegter Ausgang, Box ohne Update), nicht das Folgeproblem.
         boolean heizstabGeraet = heizstabAnlegen(siteId, role, req, template);
+        requireNoRolelessSwitch(role, template, heizstabGeraet);
         TestedConnection tested = requireTestedConnection(siteId, req, template);
 
         UUID tenantId = TenantContext.get();
@@ -1120,7 +1149,7 @@ public class ComponentService {
 
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied,
             String held, String reportedAuthority, boolean gatewayAmbiguous,
-            GeraetesucheHerkunft.Herkunft herkunft) {
+            GeraetesucheHerkunft.Herkunft herkunft, String rejectedReason) {
         ComponentTemplateDto template = exactTemplate(row.templateRef(), row.templateVersion());
         boolean failClosed = template == null && !selfAuthored(row.communication());
         return new SiteComponentsDto.ComponentRowDto(row.id(), row.role(), row.entityType(),
@@ -1132,7 +1161,8 @@ public class ComponentService {
                 syncStatus(soll, applied, held, reportedAuthority, gatewayAmbiguous),
                 herkunft == null ? null : new SiteComponentsDto.HerkunftDto(
                         SiteComponentsDto.HerkunftDto.GERAETESUCHE, herkunft.suchId(), herkunft.gesuchtAm(),
-                        herkunft.uebernommenAm()));
+                        herkunft.uebernommenAm()),
+                rejectedReason);
     }
 
     private ComponentTemplateDto exactTemplate(String templateRef, Integer templateVersion) {

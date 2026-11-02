@@ -176,9 +176,11 @@ describe('Gerätesuche · Übernehmen', () => {
     expect(w.templates.map((t) => t.ratedKw)).toEqual([25, 29.9, 29.9, 30, 30, 35, 40, 50]);
   });
 
-  it('Shelly mit drei Ausgängen: je Ausgang eine Komponente; go-e direkt; ohne Vorlage im Katalog „unbekannt"', () => {
+  it('Shelly: immer die Ausgangswahl (nur als Heizstab), auch mit einem Ausgang; go-e direkt; ohne Vorlage „unbekannt"', () => {
     expect(uebernahmeWeg(gsShelly, GS_TEMPLATES)).toEqual({ art: 'ausgang', template: GS_SHELLY, kanaele: 3 });
-    expect(uebernahmeWeg({ ...gsShelly, kanaele: 1 }, GS_TEMPLATES)).toEqual({ art: 'direkt', template: GS_SHELLY });
+    // Ein Ausgang als eigenes Gerät wäre ein Messgerät ohne Rolle (VoltPilotGATE, 02.11.2026) - nie mehr „direkt".
+    expect(uebernahmeWeg({ ...gsShelly, kanaele: 1 }, GS_TEMPLATES)).toEqual({ art: 'ausgang', template: GS_SHELLY, kanaele: 1 });
+    expect(uebernahmeWeg({ ...gsShelly, kanaele: null }, GS_TEMPLATES)).toEqual({ art: 'ausgang', template: GS_SHELLY, kanaele: 1 });
     expect(uebernahmeWeg(gsGoe, GS_TEMPLATES)).toEqual({ art: 'direkt', template: GS_GOE });
     expect(uebernahmeWeg(gsGoe, [])).toEqual({ art: 'unbekannt' });
   });

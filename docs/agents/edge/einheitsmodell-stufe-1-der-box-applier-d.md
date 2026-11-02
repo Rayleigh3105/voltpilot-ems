@@ -15,10 +15,16 @@ Was HIER gelten muss:
   `TestABoxManagedPlantIsByteIdenticalUnderEveryPush` (keine Datei geschrieben, keine Auswahl
   geaendert, keine retained Veroeffentlichung).
 - **NIE partiell anwenden.** `Derive` baut den GANZEN Plan (Wechselrichter + Quellen) und verweigert
-  ihn als Ganzes bei zwei Wechselrichtern, doppelten deterministischen IDs oder einer unentscheidbaren
-  Rolle; erst danach schreibt `writeComponentPlan` BEIDE Speicher, und erst danach wird retained
-  veroeffentlicht. Ein halb angewandtes Soll waere ein Geraet, das gegen eine Konfiguration liest, die
-  nirgends steht.
+  ihn als Ganzes bei zwei Wechselrichtern, doppelten deterministischen IDs, einem unlesbaren Treiber,
+  einer fehlenden Marke oder einem Modell, das der Katalog nicht kennt; erst danach schreibt
+  `writeComponentPlan` BEIDE Speicher, und erst danach wird retained veroeffentlicht. Ein halb
+  angewandtes Soll waere ein Geraet, das gegen eine Konfiguration liest, die nirgends steht.
+  **Ausnahme: ein Geraet ohne zuordenbare Rolle** (`roleFor`: keine bekannte Rolle im Treiber, und Typ
+  bzw. Kategorie entscheiden sie nicht - etwa ein `generic-load` ohne `actuate` mit Rueckfall
+  `measure-only`) wird uebersprungen und mit Kennung und Grund gemeldet (`Plan.Rejected` →
+  `components-applied.json`/Herzschlag `component_apply.rejected_components` → `device_component_apply`
+  → `rejectedReason` an der Komponente); alles andere wird angewandt. Ein `heating-rod` ist vom Typ her
+  Verbraucher, auch ohne `actuate`.
 - **Ein leeres Soll ist KEIN Soll — bis zur Uebernahme** (`ErrNoConfiguration`): ein Push ohne eine
   einzige `driver.connection` loescht VOR dem ersten angewandten Portal-Plan nichts (Halt, `held_*`) —
   sonst naehme ein noch leeres Portal einer laufenden Anlage ihren Lesepfad. NACH der Uebernahme stammt

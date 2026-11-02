@@ -24399,6 +24399,14 @@ components:
                   suchId: { type: string, format: uuid }
                   gesuchtAm: { type: string, format: date-time }
                   uebernommenAm: { type: string, format: date-time }
+              rejectedReason:
+                type: string
+                description: >
+                  Warum die Box GENAU DIESE Komponente nicht anwendet, wörtlich
+                  von der Box (Herzschlag `component_apply.rejected_components`):
+                  sie kann ihr keine Rolle zuordnen und hat den Rest des Pushs
+                  trotzdem angewandt. Abwesend = nicht übersprungen, oder die Box
+                  meldet das Feld nicht. `syncStatus` bleibt daneben, wie er ist.
     SaveComponentRequest:
       type: object
       required: [templateRef, role]
