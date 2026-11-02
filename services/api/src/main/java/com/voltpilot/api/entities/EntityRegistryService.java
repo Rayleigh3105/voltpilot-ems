@@ -348,7 +348,9 @@ public class EntityRegistryService {
     @Transactional
     public BackfillOutcome bootstrapIfEligible(UUID siteId) {
         BatteryAsset battery = repo.batteryAsset(siteId);
-        boolean batteryUncomposed = battery != null && repo.batteryHybridPointId(siteId) == null;
+        UUID batteryPoint = repo.batteryHybridPointId(siteId);
+        boolean batteryUncomposed = battery != null
+                && (batteryPoint == null || !composedFromAsset(siteId, batteryPoint));
         if (repo.hasEntities(siteId) && !batteryUncomposed) {
             return BackfillOutcome.ALREADY_V2;
         }
@@ -357,6 +359,29 @@ public class EntityRegistryService {
         }
         bootstrap(siteId);
         return BackfillOutcome.MIGRATED;
+    }
+
+    /**
+     * Ob die battery-hybrid-Zeile ihre Fähigkeiten und Schutzgrenzen schon aus
+     * dem Speicher-Stammsatz trägt.
+     *
+     * <p>Seit dem 02.11.2026 entsteht die Zeile auch OHNE Stammsatz - beim
+     * Speichern des Wechselrichters im Anlege-Weg oder in der Bestands-Übernahme
+     * ({@code components.KomponierteWechselrichterZeile}) - und trägt dann nur
+     * die Mess-Vorgaben des Typkatalogs. Trägt der Kunde den Speicher später ein,
+     * muss diese Zeile dieselben Grenzen bekommen wie in der Reihenfolge
+     * „Speicher zuerst"; sonst bliebe der Speicher für immer ohne Lade-/Entlade-
+     * grenzen und ohne Schreibweg. Der Stammsatz schreibt {@code limits.soc_min_pct}
+     * IMMER ({@link #batteryGuards}), die Katalog-Vorgabe nie - genau daran wird
+     * die nachzufrischende Zeile erkannt, nicht an einer Vermutung.
+     */
+    private boolean composedFromAsset(UUID siteId, UUID batteryPointId) {
+        EntityRow row = repo.entityForSite(siteId, batteryPointId);
+        if (row == null) {
+            return true;
+        }
+        JsonNode guards = parseOr(row.guardConfigJson(), mapper.createObjectNode());
+        return guards.path("limits").has("soc_min_pct");
     }
 
     // ---- Conversion preview (MIG: dry-run, writes NOTHING) ------------------

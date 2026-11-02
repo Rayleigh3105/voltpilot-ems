@@ -253,6 +253,19 @@ describe('Rolle + Bilanz', () => {
     expect(gesperrt.ok).toBe(false);
     expect(gesperrt.ok === false && gesperrt.grund).toContain('nur einer');
   });
+
+  it('nennt die Ein-Wechselrichter-Regel VOR dem Klick - mit Gerät und nächstem Schritt', () => {
+    // Bis 02.11.2026 sagte das erst der Server, als 409 nach bestandenem Test (Live-Fall „Zuhause").
+    expect(rolleVerfuegbar('inverter', ['pv-generation', 'consumer'])).toEqual({ ok: true });
+    const ohneName = rolleVerfuegbar('inverter', ['inverter']);
+    expect(ohneName.ok).toBe(false);
+    expect(ohneName.ok === false && ohneName.grund).toBe(
+      'Diese Anlage hat bereits einen Wechselrichter. Bearbeiten Sie ihn im Aufbau, statt einen zweiten '
+        + 'anzulegen - oder wählen Sie „Weiterer Erzeuger“ für einen zusätzlichen Wechselrichter.',
+    );
+    const mitName = rolleVerfuegbar('inverter', ['inverter'], { inverter: 'Deye Scheune' });
+    expect(mitName.ok === false && mitName.grund).toContain('bereits einen Wechselrichter („Deye Scheune“)');
+  });
 });
 
 describe('Prüfen & Abschluss', () => {

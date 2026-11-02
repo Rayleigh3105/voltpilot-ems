@@ -63,7 +63,9 @@ import org.springframework.web.server.ResponseStatusException;
  *       Frontend der Box ({@code static/sources.js}); ein zweiter Zähler ließe
  *       die Topologie das Netz doppelt zählen.</li>
  *   <li><b>Genau EIN Wechselrichter.</b> Er ist die {@code battery-hybrid}-Zeile
- *       der Anlage - die Auto-Komposition legt sie an, dieser Weg füllt ihre
+ *       der Anlage - die Auto-Komposition legt sie aus dem Speicher-Stammsatz
+ *       an, sonst entsteht sie beim Speichern des Wechselrichters
+ *       ({@link KomponierteWechselrichterZeile}); dieser Weg füllt ihre
  *       Anbindung. Ein zweiter wäre auf der Box nicht entscheidbar (der Applier
  *       lehnt ihn dort noch einmal ab).</li>
  *   <li><b>Marke/Modell/Familie/Kommunikationsart kommen aus der VORLAGE</b>,
@@ -716,8 +718,9 @@ public class ComponentService {
      * Findet die Zeile, in die diese Komponente gehört - oder legt sie an.
      *
      * <p>Wechselrichter und Netz-Zähler sind PLATTFORM-KOMPONIERT: die
-     * Auto-Komposition legt sie beim Geräte-Claim an, dieser Weg füllt ihre
-     * Anbindung. Erzeuger und Verbraucher entstehen hier neu.
+     * Auto-Komposition legt sie beim Geräte-Claim an (den Wechselrichter nur
+     * mit Speicher-Stammsatz - fehlt er, entsteht die Zeile hier), dieser Weg
+     * füllt ihre Anbindung. Erzeuger und Verbraucher entstehen hier neu.
      */
     private UUID resolveOrCreatePoint(UUID siteId, UUID tenantId, String role,
             SaveComponentRequest req, ComponentTemplateDto template) {
@@ -761,12 +764,14 @@ public class ComponentService {
                 return existing;
             }
             if (ROLE_INVERTER.equals(role)) {
-                // Ohne komponierte Zeile fehlt der Anlage der Speicher-Stammsatz,
-                // aus dem sie entsteht. Das ist eine Aussage über die
-                // Reihenfolge des Einrichtens, kein Fehler des Kunden.
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Für diese Anlage ist noch kein Wechselrichter angelegt. Bitte tragen Sie "
-                                + "zuerst die Eckdaten Ihres Speichers ein.");
+                // Ohne Speicher-Stammsatz hat die Plattform noch keine Zeile
+                // komponiert. Bis zum 02.11.2026 war das hier eine 409 („… tragen
+                // Sie zuerst die Eckdaten Ihres Speichers ein") - NACH bestandenem
+                // Test, zu einer Zeile, die der Kunde im Aufbau zu sehen glaubte.
+                // Die Reihenfolge des Einrichtens ist keine Bedingung mehr: die
+                // Zeile entsteht jetzt, der Speicher frischt sie später nach.
+                return KomponierteWechselrichterZeile.komponieren(entityRepo, entityRegistry,
+                        entityTypes, mapper, tenantId, siteId);
             }
         }
         if (ROLE_NETZ.equals(role) && points.countByRole(siteId, ROLE_NETZ) > 0) {

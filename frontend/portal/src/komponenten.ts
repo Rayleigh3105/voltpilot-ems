@@ -77,7 +77,7 @@ import { deviceLiveStatus } from './api';
 import { channelLabel } from './channels';
 import { deviceName } from './entityLabel';
 import { fmtNum } from './format';
-import { anlagensteuerungGeraetId } from './geraetAdresse';
+import { anlagensteuerungGeraetId, komponenteGeraetId } from './geraetAdresse';
 import { EV_CHARGER } from './ladepunkte';
 import { reconcileProducerPv } from './pvReconcile';
 import { adoptableSources, suggestEntityType, type AdoptableSource } from './rollen';
@@ -1384,6 +1384,30 @@ export function plantModel(
     linkDevice(`dev:${deviceId}`, fallbackDeviceLabel(comps), null, comps.map((c) => c.id));
   }
 
+  // 4. Was jetzt noch an keinem Gerät hängt, bekommt sein eigenes - statt zu verschwinden.
+  //    Eine im Portal angelegte Komponente trägt keinen Pin, bis die Box die daraus abgeleitete
+  //    Quelle meldet (ComponentRebind, Erstbindung), und keine Gerätebindung. Meldet die Box
+  //    einen Wechselrichter, nimmt er sie (2.); meldet sie keinen - der Wechselrichter ließ sich
+  //    nicht speichern, oder die Anlage hat gar keinen -, stand sie bisher auf KEINER Karte:
+  //    der eben eingerichtete Heizstab war „weg" (Live-Fall „Zuhause", 02.11.2026). Nur der
+  //    Hauptaspekt bekommt ein Gerät; ein PV-Aspekt folgt seinem Träger. Bewiesene Waisen
+  //    bleiben, was sie sind (R6) - sie haben ihren eigenen Wohnort in der Liste. Und die
+  //    GRUNDAUSSTATTUNG der Plattform (Netz und Haus über die Box, ein nur komponierter, nie
+  //    eingerichteter Speicher) ist kein Gerät, das jemand eingerichtet hat (EZ-20): sie bleibt
+  //    Komponente ohne Karte, wie bisher.
+  const grundausstattung = (c: PlantComponent): boolean => {
+    const e = entities.find((x) => x.id === c.entityId);
+    return e != null && e.edgeSourceId == null &&
+      ((COMPOSED_BASE_TYPES as readonly string[]).includes(e.entityType) || e.sourceKind === 'composed');
+  };
+  const ohneGeraet = new Set<string>();
+  for (const c of components) {
+    if (assigned.has(c.id) || c.orphaned || c.aspect !== 'main' || grundausstattung(c)) continue;
+    const geschwister = componentsOfEntity(c.entityId).filter((k) => !assigned.has(k.id));
+    linkDevice(komponenteGeraetId(c.entityId), c.label, null, geschwister.map((k) => k.id));
+    for (const k of geschwister) ohneGeraet.add(k.id);
+  }
+
   // Finalise device health + the verb sub-line from their components.
   const deviceLabelById = new Map(devices.map((d) => [d.id, d.label] as const));
   for (const d of devices) {
@@ -1413,7 +1437,8 @@ export function plantModel(
         c.derivedLabel = c.label;
       }
     }
-    if (c.role === 'house' || label == null) {
+    if (c.role === 'house' || label == null || ohneGeraet.has(c.id)) {
+      // Ein Gerät, das sich selbst trägt (4.), misst nicht „über" sich selbst.
       c.provenance = null;
       continue;
     }

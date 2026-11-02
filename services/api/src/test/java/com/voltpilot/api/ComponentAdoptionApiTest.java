@@ -356,16 +356,19 @@ class ComponentAdoptionApiTest {
     }
 
     /**
-     * Ohne Speicher-Stammsatz gibt es keine komponierte {@code battery-hybrid}-
-     * Zeile, in die die Anbindung des Wechselrichters gehört.
+     * Ohne Speicher-Stammsatz hat die Plattform keine {@code battery-hybrid}-
+     * Zeile komponiert, in die die Anbindung des Wechselrichters gehört.
      *
-     * <p>Die Übernahme ERFINDET dann keine - sie lehnt ab und nennt den Weg,
-     * wörtlich wie der Anlege-Weg der Stufe 1. Eine selbst gebaute Zeile wäre
-     * eine zweite Wahrheit neben der, die der Rest des Systems aus dem
-     * Speicher-Asset komponiert (und die Steuer-Zeile der Anlage ist).
+     * <p>Bis zum 02.11.2026 WARTETE die Übernahme dann - alles oder nichts, in
+     * jedem Takt, und mit dem Wechselrichter blieben auch die gemeldeten
+     * Erzeuger und Verbraucher am Gerät verwaltet, bis jemand den Speicher
+     * eintrug. Seitdem entsteht die Zeile genau wie im Anlege-Weg
+     * ({@code KomponierteWechselrichterZeile}): EINE Zeile, nur lesend, und der
+     * Speicher frischt sie später aus seinem Stammsatz nach - es bleibt bei
+     * einer Wahrheit je Anlage, nur die Reihenfolge ist frei.
      */
     @Test
-    void aPlantWithoutBatteryMasterDataIsRefusedInsteadOfInventingARow() throws Exception {
+    void aPlantWithoutBatteryMasterDataIsAdoptedAndItsInverterRowIsComposed() throws Exception {
         String customer = token("demo", "demo");
         UUID site = createSite(customer, "Anlage-ohne-Speicher");
         try {
@@ -375,20 +378,40 @@ class ComponentAdoptionApiTest {
             heartbeat(site, device, fullReport());
 
             ComponentAdoptionRunner.RunSummary summary = runner.run();
-            assertThat(summary.failed())
-                    .as("ein fehlender Stammsatz ist ein WARTEN, kein Fehlschlag")
-                    .isZero();
+            assertThat(summary.failed()).isZero();
+            assertThat(summary.adopted())
+                    .as("ein fehlender Speicher-Stammsatz hält die Übernahme nicht mehr auf")
+                    .isGreaterThanOrEqualTo(1);
 
             JsonNode list = getJson("/api/v1/sites/" + site + "/components", customer);
-            assertThat(list.get("componentAuthority").asText()).isEqualTo(ComponentAuthority.BOX);
-            for (JsonNode row : list.get("components")) {
-                assertThat(row.path("role").asText())
-                        .as("es wurde keine Wechselrichter-Zeile erfunden")
-                        .isNotEqualTo("inverter");
-                assertThat(row.has("connection"))
-                        .as("alles oder nichts - auch die Erzeuger bleiben unberührt")
-                        .isFalse();
+            assertThat(list.get("componentAuthority").asText())
+                    .isEqualTo(ComponentAuthority.PORTAL);
+            JsonNode inverter = byRole(list, "battery-hybrid");
+            assertThat(inverter.get("connection").get("serial").asText())
+                    .as("der Wechselrichter hat seine Anbindung in der EINEN battery-hybrid-Zeile")
+                    .isEqualTo("2985159064");
+            assertThat(allByRole(list, "battery-hybrid")).hasSize(1);
+            assertThat(allByRole(list, "pv-generation"))
+                    .as("die Erzeuger werden mit übernommen statt mit dem Wechselrichter zu warten")
+                    .hasSize(2);
+
+            JsonNode entities = getJson("/api/v1/sites/" + site + "/entities", customer);
+            JsonNode zeile = entityOf(entities, inverter.get("id").asText());
+            assertThat(zeile.path("capabilities").path("actuate").size())
+                    .as("ohne Eckdaten des Speichers kein Schreibweg").isZero();
+
+            // Der Speicher kommt SPÄTER und frischt genau diese Zeile nach.
+            saveBattery(customer, site);
+            entities = getJson("/api/v1/sites/" + site + "/entities", customer);
+            long zeilen = 0;
+            for (JsonNode e : entities.get("entities")) {
+                if ("battery-hybrid".equals(e.path("entityType").asText())) zeilen++;
             }
+            assertThat(zeilen).as("der Speicher legt keine zweite Zeile an").isEqualTo(1);
+            zeile = entityOf(entities, inverter.get("id").asText());
+            assertThat(zeile.path("guards").path("limits").path("max_charge_kw").asDouble())
+                    .isEqualTo(15.0);
+            assertThat(zeile.path("capabilities").path("actuate").size()).isGreaterThan(0);
         } finally {
             deleteSite(site);
         }
@@ -1195,6 +1218,16 @@ class ComponentAdoptionApiTest {
             }
         }
         return out;
+    }
+
+    /** Die Entität dieser Kennung aus {@code GET …/entities}. */
+    private static JsonNode entityOf(JsonNode entities, String id) {
+        for (JsonNode e : entities.get("entities")) {
+            if (id.equals(e.path("id").asText())) {
+                return e;
+            }
+        }
+        throw new AssertionError("keine Entität " + id);
     }
 
     /**

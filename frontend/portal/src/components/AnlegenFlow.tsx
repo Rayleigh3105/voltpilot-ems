@@ -52,8 +52,10 @@ import {
   neueKomponente,
   rollenWahl,
   typFuerTemplate,
+  vorhandeneGeraete,
   vorschlagRolle,
   type TypId,
+  type VorhandeneGeraete,
 } from '../anlegenFlow';
 import {
   auswirkungen,
@@ -260,7 +262,10 @@ export function AnlegenFlow({
   const [kwp, setKwp] = useState(edit?.capacityKwp == null ? '' : String(edit.capacityKwp));
   const [speichern, setSpeichern] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
+  // Die Geräte, die die Anlage schon hat (nur ANGEBUNDENE Zeilen, `vorhandeneGeraete`) - als
+  // Rollen für die Aufgabe-Frage und mit Namen, damit eine Sperre das Gerät nennt.
   const [vorhandene, setVorhandene] = useState<string[]>([]);
+  const [vorhandeneNamen, setVorhandeneNamen] = useState<VorhandeneGeraete['namen']>({});
   const [vorherigeIds, setVorherigeIds] = useState<{ id: string }[]>([]);
   /** Die Komponente, die gerade entstanden ist - BELEGT, nie geraten. */
   /**
@@ -294,8 +299,9 @@ export function AnlegenFlow({
       .siteComponents(siteId)
       .then((c) => {
         if (!alive) return;
-        const rollen = c.components.filter((r) => r.id !== edit?.id).map((r) => r.role ?? '');
+        const { rollen, namen } = vorhandeneGeraete(c.components, edit?.id);
         setVorhandene(rollen);
+        setVorhandeneNamen(namen);
         if (startTyp && !edit) {
           setRolle((aktuell) => {
             const wahlen = rollenWahl(startTyp, rollen);
@@ -334,7 +340,7 @@ export function AnlegenFlow({
     () => (typ ? geraeteFuerTyp(alle, typ) : { templates: [], erweitert: false }),
     [alle, typ],
   );
-  const rollen = typ ? rollenWahl(typ, vorhandene) : [];
+  const rollen = typ ? rollenWahl(typ, vorhandene, vorhandeneNamen) : [];
 
   /**
    * Die Picker-Zeilen: EINE Zeile je Modell, gruppiert nach Marke. Die
@@ -644,7 +650,9 @@ export function AnlegenFlow({
         return;
       }
       setVorherigeIds(result.components.map((r) => ({ id: r.id })));
-      setVorhandene(result.components.map((r) => r.role ?? ''));
+      const danach = vorhandeneGeraete(result.components, edit?.id);
+      setVorhandene(danach.rollen);
+      setVorhandeneNamen(danach.namen);
       onSaved(result);
     } catch (e) {
       setFehler(e instanceof ApiError

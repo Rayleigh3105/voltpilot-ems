@@ -73,6 +73,23 @@ export function anlagensteuerungGeraetId(entityId: string): string {
   return `as-${entityId}`;
 }
 
+/**
+ * Das Gerät einer Komponente, die (noch) an keinem gemeldeten Gerät hängt: im Portal angelegt, von der Box noch
+ * nicht als Quelle gemeldet, und die Box meldet auch keinen Wechselrichter, der sie mittragen könnte (Live-Fall
+ * „Zuhause", 02.11.2026: der eben eingerichtete Heizstab stand im Aufbau nirgends). Sie hat keine Geräteseite -
+ * ihre Karte führt auf ihre eigene Zeile im Anlagen-Modell (`komponenteHash`).
+ */
+export function komponenteGeraetId(entityId: string): string {
+  return `komp-${entityId}`;
+}
+
+/** Rückrichtung: `komp-…` → die Entität der Komponente; null sonst. */
+export function komponenteIdOf(geraetId: string | null): string | null {
+  if (!geraetId || !geraetId.startsWith('komp-')) return null;
+  const id = geraetId.slice(5);
+  return id ? id : null;
+}
+
 /** Rückrichtung: `as-…` → die Entität der Anlagensteuerung; null sonst (auch für eine Einheit `as-…~te-n`). */
 export function anlagensteuerungIdOf(geraetId: string | null): string | null {
   if (!geraetId || !geraetId.startsWith('as-') || geraetId.includes('~')) return null;

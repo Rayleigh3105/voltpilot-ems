@@ -400,17 +400,44 @@ describe('die Aufgabe folgt dem Modell', () => {
     expect(wahl.querySelector('.is-on')?.textContent).toContain('Vorschlag');
   });
 
-  it('schlägt auf einer Anlage MIT Wechselrichter den weiteren Erzeuger vor - und sagt warum', async () => {
+  it('schlägt auf einer Anlage MIT angebundenem Wechselrichter den weiteren Erzeuger vor - und sperrt die Rolle mit Grund', async () => {
     siteComponents.mockResolvedValue({
       componentAuthority: 'portal',
-      components: [{ id: 'wr', role: 'inverter', definitionVersion: 1 }],
+      components: [{
+        id: 'wr', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Deye Scheune',
+        connection: { ip: '192.168.0.28', serial: '2985159064' }, definitionVersion: 2,
+      }],
     });
     oeffne();
     const wahl = await screen.findByTestId('rollen-wahl');
     await waitFor(() => expect(wahl.querySelector('.is-on')?.textContent).toContain('Weiterer Erzeuger'));
     expect(screen.getByText('Vorschlag, weil Ihre Anlage schon einen Hauptwechselrichter hat.')).toBeInTheDocument();
-    // ⚠ Blockiert wird nichts: der Server übernimmt eine komponierte Zeile.
+    // Genau EIN Wechselrichter: die Sperre steht an der Aufgabe, VOR Adresse und Test - mit dem
+    // nächsten Schritt, statt als 409 nach dem bestandenen Test (Live-Fall „Zuhause").
+    const knoepfe = Array.from(wahl.querySelectorAll('button'));
+    const wr = knoepfe.find((b) => b.textContent?.startsWith('Wechselrichter / Speicher'))!;
+    expect(wr).toBeDisabled();
+    expect(wr.textContent).toContain('bereits einen Wechselrichter („Deye Scheune“)');
+    expect(wr.textContent).toContain('Bearbeiten Sie ihn im Aufbau');
+    expect(knoepfe.find((b) => b.textContent?.startsWith('Weiterer Erzeuger'))).toBeEnabled();
+  });
+
+  it('eine nur komponierte, nie eingerichtete Wechselrichter-Zeile sperrt nichts - der erste Wechselrichter bleibt der Vorschlag', async () => {
+    // Die Plattform komponiert die battery-hybrid-Zeile aus den Eckdaten des Speichers, OHNE
+    // Anbindung; der Server füllt sie beim Speichern. Für die Fläche ist das kein Gerät.
+    siteComponents.mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [
+        { id: 'wr', role: 'battery-hybrid', entityType: 'battery-hybrid', connection: null, definitionVersion: 1 },
+        { id: 'netz', role: 'grid-meter', entityType: 'grid-meter', definitionVersion: 1 },
+      ],
+    });
+    oeffne();
+    const wahl = await screen.findByTestId('rollen-wahl');
+    await waitFor(() => expect(siteComponents).toHaveBeenCalled());
+    expect(wahl.querySelector('.is-on')?.textContent).toContain('Wechselrichter / Speicher');
     for (const b of wahl.querySelectorAll('button')) expect(b).toBeEnabled();
+    expect(screen.queryByText(/bereits einen Wechselrichter/)).toBeNull();
   });
 
   it('stellt bei der Wallbox gar keine Frage und legt sie als Verbraucher an', async () => {
@@ -477,11 +504,23 @@ describe('die Aufgabe folgt dem Modell', () => {
   it('sperrt den zweiten Netz-Zähler mit seinem Grund - auch im Fuß', async () => {
     siteComponents.mockResolvedValue({
       componentAuthority: 'portal',
-      components: [{ id: 'z', role: 'grid-meter', definitionVersion: 1 }],
+      components: [{ id: 'z', role: 'grid-meter', entityType: 'grid-meter', connection: { ip: '192.168.0.9' }, definitionVersion: 2 }],
     });
     oeffne({ startRolle: 'grid-meter' });
     expect((await screen.findAllByText(/bereits einen Netz-Zähler/)).length).toBeGreaterThan(0);
     expect(speichernKnopf()).toBeDisabled();
+  });
+
+  it('die beim Verbinden der Box komponierte Netz-Zeile (ohne Anbindung) sperrt den Netz-Zähler NICHT', async () => {
+    // Jede Anlage mit Box trägt sie - der Server füllt sie, statt eine zweite anzulegen.
+    siteComponents.mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{ id: 'z', role: 'grid-meter', entityType: 'grid-meter', sourceKind: 'composed', definitionVersion: 1 }],
+    });
+    oeffne({ startRolle: 'grid-meter' });
+    await screen.findByLabelText(/IP-Adresse/);
+    await waitFor(() => expect(siteComponents).toHaveBeenCalled());
+    expect(screen.queryByText(/bereits einen Netz-Zähler/)).toBeNull();
   });
 });
 

@@ -39,7 +39,8 @@ import {
 } from './geraetSeite';
 import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten';
 import { chargerName, type ChargePoint, type SiteCharging } from './ladepunkte';
-import { boxSeiteHash, geraetSeiteHash } from './nav';
+import { komponenteIdOf } from './geraetAdresse';
+import { boxSeiteHash, geraetSeiteHash, komponenteHash } from './nav';
 import type { AdoptableSource } from './rollen';
 
 /** Welche ART von Karte die Liste zeigt. */
@@ -239,6 +240,9 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
       .filter((c): c is PlantComponent => c != null);
     const art = setupVon(d.id)?.kind === 'inverter' ? 'hauptgeraet' : 'quelle';
     const customerName = eigeneKomponente(komponenten)?.alias?.trim();
+    // Eine Komponente, die sich selbst trägt (noch an keinem gemeldeten Gerät), hat keine
+    // Geräteseite - ihre Karte führt auf ihre Zeile im Anlagen-Modell.
+    const eigeneKomponenteId = komponenteIdOf(d.id);
     karten.push({
       id: d.id,
       art: 'geraet',
@@ -247,8 +251,9 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
       untertitel: geraeteArtWort(art, rolleVon(d.id), komponenten),
       ...zustandFelder(d.state, alter(leseZeit(d.id), now)),
       ton: HEALTH_TON[d.health],
-      href:
-        boxRef && geraetAdressierbar(d.id) ? geraetSeiteHash(siteId, boxRef, d.id) : null,
+      href: eigeneKomponenteId
+        ? komponenteHash(siteId, eigeneKomponenteId)
+        : boxRef && geraetAdressierbar(d.id) ? geraetSeiteHash(siteId, boxRef, d.id) : null,
       komponenten,
       // R4: eine Karte OHNE Zeile sagt das - sonst stünde ein leerer Rahmen da.
       zusatz: komponenten.length === 0 ? 'Misst noch nichts.' : null,
