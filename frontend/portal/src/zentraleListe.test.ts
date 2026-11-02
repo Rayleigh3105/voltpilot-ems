@@ -336,8 +336,8 @@ describe('zentraleListe · Ehrlichkeit', () => {
 
   it('bietet KEINEN Weg auf ein synthetisches Gerät an', () => {
     // Eine Komponente mit Gerätebindung, aber ohne gemeldete Quelle - dahinter
-    // steckt kein Eintrag, die Seite fände nichts.
-    const nurSynthetisch = plantModel([ENTITIES[1]], TOPOLOGY, [], []);
+    // steckt kein Eintrag, die Seite fände nichts. (Netz und Haus allein sind seit Option B kein Gerät.)
+    const nurSynthetisch = plantModel([ENTITIES[0]], TOPOLOGY, [], []);
     const k = zentraleListe(input({ model: nurSynthetisch, localSetup: [], sources: [], charging: null }));
     const geraet = k.find((x) => x.art === 'geraet')!;
     expect(geraet.id.startsWith('dev:')).toBe(true);
