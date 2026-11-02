@@ -490,7 +490,7 @@
 }
 
 /* ── Modell und Ausgang wählen ──────────────────────────────────────────────────────── */
-.vp-gs-wahl {
+.vp-gs-wahlseite {
   display: grid;
   gap: var(--vp-space-4);
   min-width: 0;
@@ -550,6 +550,46 @@
 }
 button.vp-gs-wahl-zeile:hover {
   background: var(--vp-bg-light);
+}
+/* Modellzeile: Name links in einer Zeile, Leistung rechtsbündig in fester Spalte, damit sich acht Zeilen überfliegen lassen.
+   Am Telefon rutscht die Leistung unter den Namen, statt ihn an den Bindestrichen zu brechen. */
+.vp-gs-modell-zeile {
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  column-gap: var(--vp-space-4);
+  min-height: 56px;
+}
+.vp-gs-modell-name {
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vp-gs-modell-kw {
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .vp-gs-modell-zeile {
+    grid-template-columns: minmax(0, 1fr) 16px;
+    row-gap: 0;
+  }
+  .vp-gs-modell-name {
+    grid-column: 1;
+  }
+  .vp-gs-modell-kw {
+    grid-column: 1;
+    grid-row: 2;
+    text-align: left;
+    font-size: var(--vp-text-meta);
+  }
+  .vp-gs-modell-zeile > svg {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
 }
 .vp-gs-wahl-zeile.is-fertig {
   cursor: default;

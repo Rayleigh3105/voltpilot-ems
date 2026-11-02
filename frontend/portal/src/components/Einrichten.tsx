@@ -70,6 +70,7 @@ export function EinrichtenKopf({
   icon,
   brauchen,
   hinweis,
+  aendern,
 }: {
   titel: string;
   unterzeile: string;
@@ -78,14 +79,21 @@ export function EinrichtenKopf({
   /** „Sie brauchen: …" - die Pflichtangaben, bevor man anfängt. */
   brauchen: string[];
   hinweis?: ReactNode;
+  /** Das Gerät ist gewählt, ließe sich aber noch tauschen („Modell ändern"): ein leiser Link neben dem Namen. */
+  aendern?: { label: string; onClick: () => void };
 }) {
   return (
-    <div className="vp-ein-kopf">
+    <div className={`vp-ein-kopf${aendern ? ' hat-aendern' : ''}`}>
       <AufbauSymbol kategorie={kategorie} icon={icon} />
       <span className="vp-ein-kopf-text">
         <b>{titel}</b>
         <small>{unterzeile}</small>
       </span>
+      {aendern && (
+        <button type="button" className="vp-ein-aendern" onClick={aendern.onClick} data-testid="einrichten-aendern">
+          {aendern.label}
+        </button>
+      )}
       {brauchen.length > 0 && (
         <p className="vp-ein-brauchen">
           Sie brauchen:
