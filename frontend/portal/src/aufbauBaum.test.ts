@@ -580,13 +580,46 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
       expect(aufbauZahlen(baum, LEERER_FILTER).geraete).toBe(1);
     });
 
-    it('hängt wie bisher am gemeldeten Wechselrichter, sobald die Box einen meldet', () => {
+    /**
+     * Zweiter Teil des Live-Falls (Screenshot 02.11.2026, 15:45): die Box meldete den Deye SUN-29.9K, und der
+     * Aufbau zählte „1 von 1 Gerät" - der Heizstab lag als Zeile „gemessen über Deye" IN der Karte des
+     * Wechselrichters, obwohl ein Shelly am LAN hängt und der Deye ihn nicht misst. Eine über eine Vorlage angelegte
+     * Komponente (`sourceKind: builtin`) hat ihren eigenen Weg zur Box und bekommt ihre eigene Karte - bis die Box die
+     * Quelle meldet und die Erstbindung sie an ihr gemeldetes Gerät hängt.
+     */
+    it('steht auch neben einem gemeldeten Wechselrichter als eigenes Gerät - nicht „gemessen über Deye"', () => {
       const LOCAL: EntityLocalSetup[] = [
         { id: 'inverter', kind: 'inverter', role: null, brand: 'Deye', model: 'SUN-29.9K', label: null, reportedAt: FRISCH, adoptedEntityId: null } as EntityLocalSetup,
       ];
-      const { box: b } = gore([NETZ, HAUS, HEIZSTAB], LOCAL, null, []);
+      const { model, baum, box: b } = gore([NETZ, HAUS, HEIZSTAB], LOCAL, null, []);
+      expect(b.geraete.map((g) => g.id)).toEqual(['inverter', 'komp-e-hz']);
+      // Netz und Haus bleiben beim Wechselrichter (sie sind über die Box zusammengesetzt), der Stab nicht.
+      expect(b.geraete[0].karte.komponenten.map((c) => c.entityId)).toEqual(['e-netz', 'e-haus']);
+      expect(b.geraete[1].karte.komponenten.map((c) => [c.entityId, c.provenance])).toEqual([['e-hz', null]]);
+      expect(b.geraete[1].zustandWort).toBe('Noch keine Rückmeldung');
+      expect(aufbauZahlen(baum, LEERER_FILTER).geraete).toBe(2);
+      expect(model.components.find((c) => c.entityId === 'e-hz')?.deviceIds).toEqual(['komp-e-hz']);
+    });
+
+    it('eine Komponente OHNE eigene Vorlage (älterer Bestand, sourceKind null) hängt weiter am Wechselrichter', () => {
+      const LOCAL: EntityLocalSetup[] = [
+        { id: 'inverter', kind: 'inverter', role: null, brand: 'Deye', model: 'SUN-29.9K', label: null, reportedAt: FRISCH, adoptedEntityId: null } as EntityLocalSetup,
+      ];
+      const ALT = { ...HEIZSTAB, sourceKind: null } as SiteEntity;
+      const { box: b } = gore([NETZ, HAUS, ALT], LOCAL, null, []);
       expect(b.geraete.map((g) => g.id)).toEqual(['inverter']);
       expect(b.geraete[0].karte.komponenten.map((c) => c.entityId)).toEqual(['e-netz', 'e-haus', 'e-hz']);
+    });
+
+    it('ein über eine Vorlage angebundener Netz-Zähler ist ein eigenes Gerät, keine Grundausstattung', () => {
+      const LOCAL: EntityLocalSetup[] = [
+        { id: 'inverter', kind: 'inverter', role: null, brand: 'Deye', model: 'SUN-29.9K', label: null, reportedAt: FRISCH, adoptedEntityId: null } as EntityLocalSetup,
+      ];
+      // Die komponierte Netz-Zeile, über den Anlege-Weg mit einem eigenen Modbus-Zähler befüllt (deviceId bleibt).
+      const ZAEHLER = ent({ id: 'e-netz', entityType: 'grid-meter', deviceId: 'box-gore', sourceKind: 'builtin', label: 'Netz-Zähler' });
+      const { box: b } = gore([ZAEHLER, HAUS], LOCAL, null, []);
+      expect(b.geraete.map((g) => g.id)).toEqual(['inverter', 'komp-e-netz']);
+      expect(b.geraete[0].karte.komponenten.map((c) => c.entityId)).toEqual(['e-haus']);
     });
 
     it('steht nach der Erstbindung an ihrer gemeldeten Quelle - keine zweite Zeile', () => {

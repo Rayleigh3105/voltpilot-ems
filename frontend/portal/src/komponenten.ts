@@ -592,6 +592,29 @@ export const PLATFORM_COMPONENT_TYPES = ['battery-hybrid', 'house-load'] as cons
  */
 export const COMPOSED_BASE_TYPES = ['grid-meter', 'house-load'] as const;
 
+/**
+ * Die Anbindungs-Herkünfte einer Komponente, die ÜBER EINE VORLAGE im Portal
+ * angelegt wurde (Server: `ComponentService.SOURCE_KIND_BUILTIN` /
+ * `SOURCE_KIND_CERTIFIED`, Spalte `measurement_point.source_kind`). Eine solche
+ * Zeile trägt immer eine eigene Verbindung (IP, Port, Kanäle …) - sie ist ein
+ * Gerät mit eigenem Weg zur Box, auch solange die Box die daraus abgeleitete
+ * Quelle noch nicht gemeldet hat. `composed` (von der Plattform aus den
+ * Stammdaten zusammengesetzt) und `null` (vor dem Begriff entstanden) sind es
+ * nicht.
+ */
+const EIGENER_TRANSPORT_KINDS: ReadonlySet<string> = new Set(['builtin', 'certified']);
+
+/**
+ * Hat diese Komponente einen eigenen Weg zur Box, den der Wechselrichter nicht
+ * misst? Der Wechselrichter selbst (`battery-hybrid`) trägt zwar seine
+ * Verbindung aus derselben Vorlage - er IST aber das Gerät, das die Box als
+ * Wechselrichter meldet, und bleibt damit das Hauptgerät der Anlage.
+ */
+export function eigenerTransport(e: Pick<SiteEntity, 'entityType' | 'sourceKind'> | undefined | null): boolean {
+  if (!e || e.entityType === BATTERY_HYBRID_TYPE) return false;
+  return e.sourceKind != null && EIGENER_TRANSPORT_KINDS.has(e.sourceKind);
+}
+
 /** What a customer may do with one component row. */
 export interface ComponentActions {
   /** „Zuordnung ändern" — pick which reported device feeds this component. */
@@ -1339,11 +1362,25 @@ export function plantModel(
   }
 
   // 2. The inverter (gateway) feeds the composed entities — those not adopted
-  //    from a source. The first reported inverter takes them; extras get [].
+  //    from a source AND without a transport of their own. The first reported
+  //    inverter takes them; extras get [].
+  //
+  //    Eine im Portal über eine Vorlage angelegte Komponente (Heizstab am Shelly,
+  //    Fronius-Erzeuger, eigener Netz-Zähler) hat ihren EIGENEN Weg zur Box;
+  //    der Wechselrichter misst sie nicht. Bis die Box die daraus abgeleitete
+  //    Quelle meldet (Erstbindung, 1.), trägt sie keinen Pin - und landete hier
+  //    als „gemessen über Deye SUN-29.9K" auf der Karte des Wechselrichters: der
+  //    eben eingerichtete Heizstab stand im Aufbau auf KEINER eigenen Karte
+  //    (Live-Fall „Zuhause", 02.11.2026, zweiter Teil - die Box hatte den Push
+  //    mit dem Stab abgelehnt, also meldete sie die Quelle nie). Sie bleibt
+  //    unzugeordnet und bekommt in 4. ihr eigenes Gerät. Der Wechselrichter
+  //    selbst (battery-hybrid) IST das gemeldete Gerät und bleibt bei 2.
   const inverters = localSetup.filter((l) => l.kind === 'inverter');
-  const composed = components.filter(
-    (c) => !assigned.has(c.id) && !entities.find((e) => e.id === c.entityId)?.edgeSourceId,
-  );
+  const composed = components.filter((c) => {
+    if (assigned.has(c.id)) return false;
+    const e = entities.find((x) => x.id === c.entityId);
+    return !e?.edgeSourceId && !eigenerTransport(e);
+  });
   inverters.forEach((inv, i) => {
     const comps = i === 0 ? composed.map((c) => c.id) : [];
     linkDevice(
@@ -1362,7 +1399,10 @@ export function plantModel(
     // A PROVEN orphan has no reported device — inventing a synthetic box for it
     // would contradict the row's own „nicht mehr verbunden" (vp-vier-erzeuger-p9).
     if (c.orphaned) continue;
-    const deviceId = entities.find((e) => e.id === c.entityId)?.deviceId;
+    const e = entities.find((x) => x.id === c.entityId);
+    // Ein Gerät mit eigenem Weg (2.) ist kein Teil eines Ersatzgeräts der Box.
+    if (eigenerTransport(e)) continue;
+    const deviceId = e?.deviceId;
     if (deviceId == null) continue;
     const list = byDeviceId.get(deviceId) ?? [];
     list.push(c);
@@ -1399,7 +1439,7 @@ export function plantModel(
   //    Komponente ohne Karte, wie bisher.
   const grundausstattung = (c: PlantComponent): boolean => {
     const e = entities.find((x) => x.id === c.entityId);
-    return e != null && e.edgeSourceId == null &&
+    return e != null && e.edgeSourceId == null && !eigenerTransport(e) &&
       ((COMPOSED_BASE_TYPES as readonly string[]).includes(e.entityType) || e.sourceKind === 'composed');
   };
   const ohneGeraet = new Set<string>();

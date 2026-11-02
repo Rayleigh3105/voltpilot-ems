@@ -65,6 +65,31 @@ class HeizstabTest {
         assertThat(n).isGreaterThanOrEqualTo(10);
     }
 
+    /**
+     * Die Beschreibung des Geräts trägt den Schreibweg - zeichengleich zum Vektor, den die Box
+     * liest (Live-Fall „Zuhause“: ohne {@code actuate} fiel der ganze Push).
+     */
+    @Test
+    void dieFaehigkeitenTragenDenSchreibwegBisZurOberstenStufeWieImVektor() throws Exception {
+        HeizstabGeraet geraet = new HeizstabGeraet(null, null, null,
+                new com.voltpilot.api.entities.EntityTypeCatalog(JSON));
+        JsonNode ist = JSON.readTree(geraet.capabilities(pro3("stern_mit_n")));
+        JsonNode vektor = JSON.readTree(Files.readString(Path.of("../../docs/contracts/v2/heizstab-push-vectors.json")))
+                .path("descriptor").path("capabilities");
+        assertThat(ist.path("actuate").size()).isEqualTo(3);
+        for (JsonNode a : ist.path("actuate")) {
+            String befehl = a.path("command").asText();
+            if (!"on_off".equals(befehl)) {
+                assertThat(a.path("max").asDouble()).as(befehl).isEqualTo(6.0);
+            }
+        }
+        assertThat(JSON.convertValue(ist, Map.class)).isEqualTo(JSON.convertValue(vektor, Map.class));
+        // Ohne gültige Menge: die Befehle bleiben, nur ohne Obergrenze - die Box klemmt dann an der Nennleistung.
+        JsonNode ohne = JSON.readTree(geraet.capabilities(Map.of("ip", "192.168.178.43")));
+        assertThat(ohne.path("actuate").size()).isEqualTo(3);
+        assertThat(ohne.path("actuate").get(1).has("max")).isFalse();
+    }
+
     @Test
     void dieStufenTragenDieKwDerGroesstenElemente() {
         assertThat(HeizstabAusgaenge.stufen(pro3("stern_mit_n")))

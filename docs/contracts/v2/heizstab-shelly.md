@@ -25,6 +25,22 @@ Die Box lehnt eine ungültige Menge mit einem deutschen Satz ab und schaltet dan
 
 Für den Lesepfad (Quelle der Box) zählt nur `channels`. Die Quelle eines Stabs bekommt eine eigene Identität (`set:0,1,2`) und teilt sie nie mit einem einzelnen Ausgang desselben Geräts.
 
+## Entitätsbeschreibung (Registry-Push → Box)
+
+Gemeinsame Vektoren: [heizstab-push-vectors.json](heizstab-push-vectors.json). Die API prüft die komponierte Beschreibung dagegen (`HeizstabPushApiTest`), die Box ihre Ableitung (`edge-app/core/internal/componentapply/heizstab_push_vectors_test.go`).
+
+Ein Heizstab über eine Ausgangsmenge ist von Anfang an ein **geschaltetes** Gerät - anders als jede andere Komponente des Anlege-Wegs, die nur lesend entsteht und erst später freigegeben wird. Seine Beschreibung trägt deshalb schon beim Anlegen:
+
+- `capabilities.measure`: die Messkanäle des Typkatalogs (`power_kw`);
+- `capabilities.actuate`: `on_off`, `setpoint_kw` (`min` 0, `max` = kW der obersten Stufe) und `limit_kw` (`max` = kW der obersten Stufe) - die `default_actuate`-Befehle des Typs `heating-rod`;
+- `guards.limits.max_consumption_kw` = kW der obersten Stufe, `guards.failsafe.behavior` = `off`; dazu kommen Mindestlauf und Mindestpause des Stufenprofils (`min_on_seconds`, `min_off_seconds`, je 300 s);
+- die Komponente ist steuerbar (`control`).
+
+Beim Ändern der Ausgangsmenge folgen Fähigkeiten und Schutzgrenzen der neuen obersten Stufe.
+Ein Heizstab, der vor dem 02.11.2026 ohne Schreibfähigkeit angelegt wurde, bekommt sie beim nächsten Start der API nachgetragen (`HeizstabFaehigkeitenNachtrag`); seine Anlage bekommt dann einen neuen Push.
+
+**Die Rolle auf der Box.** Die Box liest einen Heizstab (wie Wallbox und `generic-load`) als Verbraucher-Quelle allein aufgrund seines Typs - auch ohne `actuate`. Die Schreibfähigkeit entscheidet, was die Box schalten darf (Guard-Kette), nie, auf welcher Seite der Bilanz das Gerät gelesen wird. Bis zum 02.11.2026 leitete die Box die Rolle aus der Guard-Kategorie ab; eine Beschreibung ohne `actuate` galt als „nur messen“, fand keine Rolle und ließ den ganzen Push der Anlage scheitern („für … (heating-rod) ist nicht bestimmbar, welche Rolle das Gerät hat“). Eine ältere Box braucht deshalb die Beschreibung mit `actuate`; eine Box ab diesem Stand kommt mit beiden Formen zurecht.
+
 ## Stufenwahl (Box, rein)
 
 - **Nie mehr als befohlen.** Ein Sollwert wählt die höchste erlaubte Stufe, deren Leistung hineinpasst. Gemessen wird mit den größten Elementen, damit auch ein Stab mit ungleichen Elementen nie mehr zieht.

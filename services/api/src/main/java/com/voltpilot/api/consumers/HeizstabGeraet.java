@@ -1,8 +1,10 @@
 package com.voltpilot.api.consumers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.uems.BoxFaehigkeiten;
 import java.math.BigDecimal;
 import java.util.List;
@@ -36,6 +38,15 @@ import org.springframework.web.server.ResponseStatusException;
  * <p>Die Verbindung selbst bleibt die Komponenten-Verbindung: der Registry-Push trägt sie
  * unverändert als {@code driver.connection} zur Box ({@code channels}, {@code output_kw},
  * {@code stages}, {@code rotation}; {@code anschluss} überliest die Box).
+ *
+ * <p><b>Die Entität trägt ihren Schreibweg von Anfang an</b> ({@link #capabilities}): anders als
+ * jede andere Komponente des Anlege-Wegs („erst messen, dann freigeben“ - {@code ComponentDefaults})
+ * ist ein Heizstab über eine Ausgangsmenge ein geschaltetes Gerät durch seine Anlage: Stufenprofil,
+ * Handeingriff mit Stufe und der Regler der Box setzen {@code actuate} voraus, und eine getrennte
+ * Freigabe gibt es für ihn nicht (sie ist dem Selbstbau vorbehalten). Ohne {@code actuate} las die
+ * Box ihn als „nur messen“, fand dafür keine Bilanzrolle und lehnte den GANZEN Push der Anlage ab
+ * (Live-Fall „Zuhause“, 02.11.2026). Zwilling der Beschreibung:
+ * {@code docs/contracts/v2/heizstab-push-vectors.json} (Box: {@code componentapply}).
  */
 @Component
 public class HeizstabGeraet {
@@ -53,12 +64,15 @@ public class HeizstabGeraet {
     private final JdbcTemplate jdbc;
     private final BoxFaehigkeiten faehigkeiten;
     private final ConsumerRepository consumers;
+    private final EntityTypeCatalog katalog;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public HeizstabGeraet(JdbcTemplate jdbc, BoxFaehigkeiten faehigkeiten, ConsumerRepository consumers) {
+    public HeizstabGeraet(JdbcTemplate jdbc, BoxFaehigkeiten faehigkeiten, ConsumerRepository consumers,
+            EntityTypeCatalog katalog) {
         this.jdbc = jdbc;
         this.faehigkeiten = faehigkeiten;
         this.consumers = consumers;
+        this.katalog = katalog;
     }
 
     /** Ob dieses Anlegen einen Heizstab über eine Ausgangsmenge meint. */
@@ -154,6 +168,38 @@ public class HeizstabGeraet {
             }
         }
         return null;
+    }
+
+    /**
+     * Die Fähigkeiten des Geräts: die Messkanäle des Typkatalogs UND seine Schreibfähigkeit - die
+     * {@code default_actuate}-Befehle des Typs ({@code on_off}, {@code setpoint_kw}, {@code limit_kw}),
+     * Sollwert und Grenze begrenzt auf die oberste Stufe (dieselbe Zahl wie {@code max_consumption_kw}
+     * in {@link #guards}). Die Box leitet daraus ihre Verbraucher-Klemme ab; ohne diese Liste wäre
+     * die Entität dort ein Sensor - und bis zum 02.11.2026 fiel darüber der ganze Push.
+     */
+    public String capabilities(Map<String, Object> connection) {
+        ObjectNode caps = mapper.createObjectNode();
+        ArrayNode measure = caps.putArray("measure");
+        ArrayNode actuate = caps.putArray("actuate");
+        EntityTypeCatalog.EntityType typ = katalog == null ? null : katalog.find(TYP);
+        if (typ != null && typ.defaultMeasure() != null && typ.defaultMeasure().isArray()) {
+            for (JsonNode m : typ.defaultMeasure()) {
+                measure.add(m.deepCopy());
+            }
+        }
+        List<HeizstabAusgaenge.Stufe> stufen = HeizstabAusgaenge.stufen(connection);
+        BigDecimal oberste = stufen.isEmpty() ? null : stufen.get(stufen.size() - 1).kw();
+        if (typ != null && typ.defaultActuate() != null && typ.defaultActuate().isArray()) {
+            for (JsonNode a : typ.defaultActuate()) {
+                ObjectNode cap = (ObjectNode) a.deepCopy();
+                String befehl = cap.path("command").asText();
+                if (oberste != null && ("setpoint_kw".equals(befehl) || "limit_kw".equals(befehl))) {
+                    cap.put("max", oberste.doubleValue());
+                }
+                actuate.add(cap);
+            }
+        }
+        return caps.toString();
     }
 
     /** Die Schutzgrenzen des Geräts: höchstens die oberste Stufe, Ausfallverhalten aus. */

@@ -934,8 +934,11 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   .vp-auf-t-kopf {
     display: none;
   }
+  /* Der Name behält am Telefon mindestens knapp die Hälfte der Zeile: ein langes Zustandswort („Noch keine
+     Rückmeldung", „Wartet auf die ersten Daten") nahm der Namensspalte sonst alles - der Gerätename stand mit
+     ein, zwei Buchstaben da oder gar nicht (Live-Fall „Zuhause", 02.11.2026). Das Wort bricht stattdessen um. */
   .vp-auf-t-zeile {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(46%, 1fr) auto;
     grid-template-areas:
       'name wert'
       'name zustand';
@@ -959,6 +962,10 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     gap: 6px;
     padding-bottom: 8px;
   }
+  .vp-auf-t-zeile > .vp-auf-t-zustand .w {
+    white-space: normal;
+    text-align: right;
+  }
   .vp-auf-t-zeile > .vp-auf-t-zustand small,
   .vp-auf-t-zeile > .vp-auf-t-art,
   .vp-auf-t-zeile > .vp-auf-t-pfeil:not(:has(.vp-rowmenu)),
@@ -968,7 +975,7 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   /* Das „…“-Menü (Zuordnung ändern, Komponente löschen, Regel erstellen) bleibt auch am Telefon erreichbar - eine
      eigene dritte Spalte, statt mit dem sonst ausgeblendeten Pfeil zu verschwinden. */
   .vp-auf-t-zeile:has(> .vp-auf-t-pfeil .vp-rowmenu) {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(42%, 1fr) auto auto;
     grid-template-areas:
       'name wert mehr'
       'name zustand mehr';
