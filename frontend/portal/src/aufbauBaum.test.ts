@@ -533,9 +533,24 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
     expect(b.geraete[0].karte.komponenten.map((c) => c.entityId)).toEqual(['e-netz', 'e-haus']);
   });
 
-  it('ohne Anlagensteuerung bleibt das Ersatzgerät für Netz und Haus wie heute', () => {
-    const { box: b } = gore([NETZ, HAUS]);
-    expect(zeilen(b)).toEqual(['Wechselrichter · Gerät an Ihrer Box']);
+  // Option B (Captain, vp-anlage-onboarding-rot): EZ-20 gilt auch ohne Anlagensteuerung. Meldet die Box keinen
+  // Wechselrichter, erfindet der Aufbau keinen - eine Anlage darf auch nur Verbraucher steuern.
+  it('ohne Anlagensteuerung und ohne gemeldeten Wechselrichter: kein Ersatzgerät, Box-Zeile und Komponenten bleiben', () => {
+    const { model, karten, box: b } = gore([NETZ, HAUS], [], null, []);
+    expect(b.geraete).toEqual([]);
+    expect(model.devices).toEqual([]);
+    expect(karten.some((k) => k.art === 'box')).toBe(true);
+    expect(model.components.filter((c) => c.role === 'grid' || c.role === 'house').map((c) => [c.entityId, c.deviceIds]))
+      .toEqual([['e-netz', []], ['e-haus', []]]);
+  });
+
+  it('Gegenprobe: meldet die Box einen Wechselrichter, erscheint er mit Netz und Haus wie bisher', () => {
+    const LOCAL: EntityLocalSetup[] = [
+      { id: 'inverter', kind: 'inverter', role: null, brand: 'Deye', model: 'SUN-12K', label: null, reportedAt: FRISCH, adoptedEntityId: null } as EntityLocalSetup,
+    ];
+    const { box: b } = gore([NETZ, HAUS], LOCAL, null, []);
+    expect(b.geraete.map((g) => g.id)).toEqual(['inverter']);
+    expect(b.geraete[0].karte.komponenten.map((c) => c.entityId)).toEqual(['e-netz', 'e-haus']);
   });
 
   /**
@@ -543,7 +558,8 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
    * Deye ließ sich nicht speichern (409), die Box meldet also keinen Wechselrichter - und der eben eingerichtete
    * Heizstab (im Portal angelegt, von der Box noch nicht als Quelle gemeldet, keine Gerätebindung) stand im Aufbau
    * NIRGENDS: `plantModel` gab ihn dem ersten gemeldeten Wechselrichter (2.), und ohne einen fiel er durch. Der
-   * Aufbau zeigte nur das Ersatzgerät „Wechselrichter" - genau die Zeile, die die 409 zu verneinen schien.
+   * Aufbau zeigte nur das Ersatzgerät „Wechselrichter" - genau die Zeile, die die 409 zu verneinen schien (seit Option B
+   * entfällt dieses Ersatzgerät, wenn die Box keinen Wechselrichter meldet).
    */
   describe('eine im Portal angelegte Komponente ohne gemeldetes Gerät (Live-Fall „Zuhause")', () => {
     const HEIZSTAB = ent({
@@ -553,15 +569,15 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
 
     it('bekommt ihre eigene Zeile unter der Box, statt zu verschwinden - und führt auf ihre Zeile im Modell', () => {
       const { model, baum, box: b } = gore([NETZ, HAUS, HEIZSTAB], [], null, []);
-      expect(zeilen(b)).toEqual(['Wechselrichter · Gerät an Ihrer Box', 'Heizstab · Gerät an Ihrer Box']);
-      const hz = b.geraete[1];
+      expect(zeilen(b)).toEqual(['Heizstab · Gerät an Ihrer Box']);
+      const hz = b.geraete[0];
       expect(hz.id).toBe('komp-e-hz');
       // Ohne Topologie und ohne Echo der Box ist das ehrliche Wort „Noch keine Rückmeldung".
       expect(hz.zustandWort).toBe('Noch keine Rückmeldung');
       expect(hz.karte.href).toBe('#/anlage/site-gore/modell?komponente=e-hz');
       expect(hz.karte.komponenten.map((c) => [c.entityId, c.provenance])).toEqual([['e-hz', null]]);
-      expect(model.devices.map((d) => d.id)).toEqual(['dev:box-gore', 'komp-e-hz']);
-      expect(aufbauZahlen(baum, LEERER_FILTER).geraete).toBe(2);
+      expect(model.devices.map((d) => d.id)).toEqual(['komp-e-hz']);
+      expect(aufbauZahlen(baum, LEERER_FILTER).geraete).toBe(1);
     });
 
     it('hängt wie bisher am gemeldeten Wechselrichter, sobald die Box einen meldet', () => {
@@ -579,7 +595,7 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
         id: PIN, kind: 'source', role: 'consumer', brand: 'Shelly', model: 'Pro 3', label: null, reportedAt: FRISCH, adoptedEntityId: 'e-hz',
       } as EntityLocalSetup;
       const { box: b } = gore([NETZ, HAUS, { ...HEIZSTAB, edgeSourceId: PIN } as SiteEntity], [QUELLE], null, []);
-      expect(b.geraete.map((g) => g.id)).toEqual([PIN, 'dev:box-gore']);
+      expect(b.geraete.map((g) => g.id)).toEqual([PIN]);
       expect(b.geraete.some((g) => g.id.startsWith('komp-'))).toBe(false);
     });
 
