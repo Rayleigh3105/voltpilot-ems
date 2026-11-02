@@ -539,6 +539,59 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
   });
 
   /**
+   * Live-Fall „Zuhause" (02.11.2026): Box verbunden (Netz und Haus komponiert), kein Speicher-Stammsatz, der
+   * Deye ließ sich nicht speichern (409), die Box meldet also keinen Wechselrichter - und der eben eingerichtete
+   * Heizstab (im Portal angelegt, von der Box noch nicht als Quelle gemeldet, keine Gerätebindung) stand im Aufbau
+   * NIRGENDS: `plantModel` gab ihn dem ersten gemeldeten Wechselrichter (2.), und ohne einen fiel er durch. Der
+   * Aufbau zeigte nur das Ersatzgerät „Wechselrichter" - genau die Zeile, die die 409 zu verneinen schien.
+   */
+  describe('eine im Portal angelegte Komponente ohne gemeldetes Gerät (Live-Fall „Zuhause")', () => {
+    const HEIZSTAB = ent({
+      id: 'e-hz', entityType: 'heating-rod', typeLabel: 'Heizstab', role: 'consumer', label: 'Heizstab', control: true,
+      sourceKind: 'builtin', syncStatus: 'pending',
+    });
+
+    it('bekommt ihre eigene Zeile unter der Box, statt zu verschwinden - und führt auf ihre Zeile im Modell', () => {
+      const { model, baum, box: b } = gore([NETZ, HAUS, HEIZSTAB], [], null, []);
+      expect(zeilen(b)).toEqual(['Wechselrichter · Gerät an Ihrer Box', 'Heizstab · Gerät an Ihrer Box']);
+      const hz = b.geraete[1];
+      expect(hz.id).toBe('komp-e-hz');
+      // Ohne Topologie und ohne Echo der Box ist das ehrliche Wort „Noch keine Rückmeldung".
+      expect(hz.zustandWort).toBe('Noch keine Rückmeldung');
+      expect(hz.karte.href).toBe('#/anlage/site-gore/modell?komponente=e-hz');
+      expect(hz.karte.komponenten.map((c) => [c.entityId, c.provenance])).toEqual([['e-hz', null]]);
+      expect(model.devices.map((d) => d.id)).toEqual(['dev:box-gore', 'komp-e-hz']);
+      expect(aufbauZahlen(baum, LEERER_FILTER).geraete).toBe(2);
+    });
+
+    it('hängt wie bisher am gemeldeten Wechselrichter, sobald die Box einen meldet', () => {
+      const LOCAL: EntityLocalSetup[] = [
+        { id: 'inverter', kind: 'inverter', role: null, brand: 'Deye', model: 'SUN-29.9K', label: null, reportedAt: FRISCH, adoptedEntityId: null } as EntityLocalSetup,
+      ];
+      const { box: b } = gore([NETZ, HAUS, HEIZSTAB], LOCAL, null, []);
+      expect(b.geraete.map((g) => g.id)).toEqual(['inverter']);
+      expect(b.geraete[0].karte.komponenten.map((c) => c.entityId)).toEqual(['e-netz', 'e-haus', 'e-hz']);
+    });
+
+    it('steht nach der Erstbindung an ihrer gemeldeten Quelle - keine zweite Zeile', () => {
+      const PIN = 'src-shelly-hz';
+      const QUELLE: EntityLocalSetup = {
+        id: PIN, kind: 'source', role: 'consumer', brand: 'Shelly', model: 'Pro 3', label: null, reportedAt: FRISCH, adoptedEntityId: 'e-hz',
+      } as EntityLocalSetup;
+      const { box: b } = gore([NETZ, HAUS, { ...HEIZSTAB, edgeSourceId: PIN } as SiteEntity], [QUELLE], null, []);
+      expect(b.geraete.map((g) => g.id)).toEqual([PIN, 'dev:box-gore']);
+      expect(b.geraete.some((g) => g.id.startsWith('komp-'))).toBe(false);
+    });
+
+    it('die Grundausstattung der Plattform bekommt weiterhin keine eigene Karte', () => {
+      // Ein nur komponierter Speicher (aus den Eckdaten, ohne Anbindung und ohne Box-Bindung) ist kein Gerät.
+      const SPEICHER_OHNE_BOX = ent({ id: 'e-batt', entityType: 'battery-hybrid', role: 'battery-hybrid', sourceKind: 'composed' });
+      const { box: b } = gore([NETZ, HAUS, SPEICHER_OHNE_BOX, STEUERUNG]);
+      expect(b.geraete.map((g) => g.id)).toEqual(['as-e-as']);
+    });
+  });
+
+  /**
    * EZ-22, Gore nach EZ-21: die Steuerung trägt ihren Pin, die Box meldet dafür eine Quelle der Rolle
    * `plant-controller`, und die Werte kommen an. Der Aufbau sagte trotzdem „Wartet auf die ersten Daten" und
    * „1 braucht Aufmerksamkeit": die Lebendigkeit der Topologie war für eine Steuerung immer `never` (kein

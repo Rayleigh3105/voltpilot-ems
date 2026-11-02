@@ -323,6 +323,91 @@ class ComponentApiTest {
         }
     }
 
+    /**
+     * Der Live-Fall „Zuhause" (02.11.2026): der Kunde legt seine Anlage OHNE
+     * Speicher-Stammsatz an, verbindet die Box (die Plattform komponiert Netz und
+     * Haus), richtet seinen Deye über die Gerätesuche ein - Test mit echten
+     * Werten bestanden - und „Speichern" antwortete „Für diese Anlage ist noch
+     * kein Wechselrichter angelegt. Bitte tragen Sie zuerst die Eckdaten Ihres
+     * Speichers ein." Die Zeile „Wechselrichter", die er im Aufbau sah, war das
+     * Ersatzgerät des Portals für Netz und Haus, keine battery-hybrid-Zeile.
+     *
+     * <p>Seitdem: die Zeile entsteht beim Speichern (nur lesend, ohne Grenzen),
+     * die 0-1-Regel bleibt, und der Speicher frischt GENAU DIESE Zeile nach,
+     * sobald der Kunde seine Eckdaten einträgt - dieselben Grenzen und derselbe
+     * Schreibweg wie in der Reihenfolge „Speicher zuerst".
+     */
+    @Test
+    void derWechselrichterWirdOhneSpeicherStammsatzGespeichertUndDerSpeicherFrischtDieZeileNach()
+            throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Zuhause");
+        try {
+            claim(customer, site, "edge-zuhause-01");
+            // ABSICHTLICH KEIN saveBattery - genau so entstand die Anlage beim Kunden.
+            JsonNode vorher = getJson("/api/v1/sites/" + site + "/components", customer);
+            assertThat(rowsByRole(vorher, "battery-hybrid"))
+                    .as("ohne Speicher-Stammsatz komponiert die Plattform keine Wechselrichter-Zeile")
+                    .isEmpty();
+            assertThat(rowsByRole(vorher, "grid-meter"))
+                    .as("Netz (und Haus) sind beim Verbinden der Box komponiert - daraus macht "
+                            + "das Portal sein Ersatzgerät „Wechselrichter\"")
+                    .hasSize(1);
+
+            Map<String, Object> conn = deyeConnection();
+            receipts.record(site, DEYE, 1, conn);
+            ResponseEntity<String> gespeichert = post("/api/v1/sites/" + site + "/components",
+                    customer, saveBody(DEYE, "inverter", conn));
+            assertThat(gespeichert.getStatusCode())
+                    .as("ein getesteter Wechselrichter wird gespeichert - ohne Speicher-"
+                            + "Stammsatz, ohne 409: %s", gespeichert.getBody())
+                    .isEqualTo(HttpStatus.OK);
+            JsonNode zeile = byRole(json.readTree(gespeichert.getBody()), "battery-hybrid");
+            assertThat(zeile.get("templateRef").asText()).isEqualTo(DEYE);
+            assertThat(zeile.get("connection").get("serial").asText()).isEqualTo("2985159064");
+            UUID entityId = UUID.fromString(zeile.get("id").asText());
+
+            // Nur lesend, ohne Grenzen: ohne Eckdaten gibt es keinen Schreibweg.
+            JsonNode entity = entityById(getJson("/api/v1/sites/" + site + "/entities", customer),
+                    entityId);
+            assertThat(entity.get("entityType").asText()).isEqualTo("battery-hybrid");
+            assertThat(entity.path("capabilities").path("actuate").size())
+                    .as("kein Schreibweg vor den Eckdaten des Speichers").isZero();
+            assertThat(entity.path("guards").path("limits").has("soc_min_pct")).isFalse();
+            assertThat(measureChannels(site, customer, "battery-hybrid"))
+                    .as("die Messkanäle kommen aus dem Typkatalog, wie bei jeder Komponente")
+                    .contains("soc_pct", "pv_power_kw");
+
+            // Die 0-1-Regel bleibt: ein zweiter Wechselrichter wird abgewiesen.
+            ResponseEntity<String> zweiter = post("/api/v1/sites/" + site + "/components",
+                    customer, saveBody(DEYE, "inverter", conn));
+            assertThat(zweiter.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(zweiter.getBody()).contains("bereits einen Wechselrichter");
+
+            // Der Speicher kommt SPÄTER - und frischt genau diese Zeile nach.
+            saveBattery(customer, site);
+            JsonNode nachher = getJson("/api/v1/sites/" + site + "/entities", customer);
+            long zeilen = 0;
+            for (JsonNode e : nachher.get("entities")) {
+                if ("battery-hybrid".equals(e.path("entityType").asText())) zeilen++;
+            }
+            assertThat(zeilen).as("der Speicher legt keine zweite Zeile an").isEqualTo(1);
+            JsonNode frisch = entityById(nachher, entityId);
+            assertThat(frisch.path("guards").path("limits").path("max_charge_kw").asDouble())
+                    .as("die Grenzen kommen jetzt aus dem Stammsatz").isEqualTo(15.0);
+            assertThat(frisch.path("guards").path("limits").path("soc_min_pct").isNumber()).isTrue();
+            assertThat(frisch.path("capabilities").path("actuate").size())
+                    .as("mit den Eckdaten hat der Speicher seinen Schreibweg - wie bei "
+                            + "„Speicher zuerst\"").isGreaterThan(0);
+            assertThat(byRole(getJson("/api/v1/sites/" + site + "/components", customer),
+                    "battery-hybrid").get("connection").get("serial").asText())
+                    .as("die Anbindung des Wechselrichters bleibt stehen")
+                    .isEqualTo("2985159064");
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
     /** Höchstens EIN Netz-Zähler je Anlage - serverseitig, nicht nur im Frontend. */
     @Test
     void atMostOneGridMeterPerPlantIsEnforcedByTheServer() throws Exception {
@@ -933,6 +1018,27 @@ class ComponentApiTest {
             }
         }
         throw new AssertionError("keine Komponente mit Rolle " + role);
+    }
+
+    /** Alle Komponenten dieser Rolle - leer ist hier ein gültiger Befund. */
+    private static List<JsonNode> rowsByRole(JsonNode response, String role) {
+        List<JsonNode> out = new java.util.ArrayList<>();
+        for (JsonNode row : response.get("components")) {
+            if (role.equals(row.path("role").asText())) {
+                out.add(row);
+            }
+        }
+        return out;
+    }
+
+    /** Die Entität dieser Kennung aus {@code GET …/entities}. */
+    private static JsonNode entityById(JsonNode entities, UUID id) {
+        for (JsonNode e : entities.get("entities")) {
+            if (id.toString().equals(e.path("id").asText())) {
+                return e;
+            }
+        }
+        throw new AssertionError("keine Entität " + id);
     }
 
     /**

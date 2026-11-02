@@ -576,12 +576,31 @@ export function bilanzHinweis(rolle: KomponentenRolle): string {
  */
 export function rolleVerfuegbar(
   rolle: KomponentenRolle,
+  /**
+   * Die Rollen der Geräte, die die Anlage SCHON HAT - mit Anbindung. Eine von der Plattform
+   * komponierte Zeile ohne Anbindung (Netz und Haus beim Verbinden der Box, der Speicher aus
+   * seinen Eckdaten) ist kein Gerät: der Server füllt sie beim Speichern (`vorhandeneGeraete`).
+   */
   vorhandeneRollen: string[],
+  /** Die Namen dieser Geräte je Rolle, damit die Sperre das Gerät nennt; ohne sie bleibt es beim Satz. */
+  namen: Partial<Record<KomponentenRolle, string | null>> = {},
 ): { ok: true } | { ok: false; grund: string } {
   if (rolle === 'grid-meter' && vorhandeneRollen.filter((r) => r === 'grid-meter').length > 0) {
     return {
       ok: false,
       grund: 'Diese Anlage hat bereits einen Netz-Zähler. Es ist nur einer möglich.',
+    };
+  }
+  // Genau EIN Wechselrichter je Anlage (die Regel des Servers, dort eine 409 beim Speichern):
+  // gesagt wird es HIER, bei der Aufgabe - bevor der Kunde Adresse und Test hinter sich hat
+  // (Live-Fall „Zuhause", 02.11.2026). Der nächste Schritt steht dabei: den vorhandenen bearbeiten.
+  if (rolle === 'inverter' && vorhandeneRollen.some((r) => r === 'inverter')) {
+    const name = namen.inverter?.trim();
+    return {
+      ok: false,
+      grund: `Diese Anlage hat bereits einen Wechselrichter${name ? ` („${name}“)` : ''}. `
+        + 'Bearbeiten Sie ihn im Aufbau, statt einen zweiten anzulegen - oder wählen Sie '
+        + '„Weiterer Erzeuger“ für einen zusätzlichen Wechselrichter.',
     };
   }
   return { ok: true };

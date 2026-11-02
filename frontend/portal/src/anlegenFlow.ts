@@ -21,6 +21,8 @@
  * WORTSCHATZ: Set A („Komponente", „Gerät", „Messwert").
  */
 
+import type { SiteComponentRow } from './api';
+import { kundenRolle } from './geraeteEdit';
 import {
   ROLLEN,
   rolleVerfuegbar,
@@ -164,10 +166,14 @@ export type RollenWahl = {
  * weiterer Erzeuger sein kann. Jede andere Art beantwortet sie selbst; dann
  * ist die Liste einelementig und die Fläche stellt keine Frage.
  */
-export function rollenWahl(typ: TypId, vorhandeneRollen: string[]): RollenWahl[] {
+export function rollenWahl(
+  typ: TypId,
+  vorhandeneRollen: string[],
+  namen: Partial<Record<KomponentenRolle, string | null>> = {},
+): RollenWahl[] {
   return TYP_ROLLEN[typ].map((rolle) => {
     const def = ROLLEN.find((r) => r.id === rolle);
-    const status = rolleVerfuegbar(rolle, vorhandeneRollen);
+    const status = rolleVerfuegbar(rolle, vorhandeneRollen, namen);
     return {
       rolle,
       label: def?.label ?? rolle,
@@ -178,14 +184,49 @@ export function rollenWahl(typ: TypId, vorhandeneRollen: string[]): RollenWahl[]
   });
 }
 
+/** Die Geräte, die eine Anlage SCHON HAT - als Rollen-Liste für {@link rollenWahl}, mit ihren Namen. */
+export type VorhandeneGeraete = {
+  rollen: string[];
+  namen: Partial<Record<KomponentenRolle, string | null>>;
+};
+
+/**
+ * Was die Anlage schon hat, aus den Zeilen von `GET …/components` - in den Rollen des Assistenten.
+ *
+ * ⚠ Eine Zeile zählt nur MIT Anbindung. Die Plattform komponiert Zeilen OHNE Anbindung (Netz und
+ * Haus beim Verbinden der Box, den Speicher aus seinen Eckdaten); der Server füllt sie beim
+ * Speichern, statt eine zweite anzulegen. Zählten sie hier, sperrte die Fläche den Netz-Zähler
+ * auf jeder Anlage mit Box und schlüge auf einer Anlage mit komponiertem, aber nie eingerichtetem
+ * Speicher „Weiterer Erzeuger“ vor - als hätte sie schon einen Hauptwechselrichter. Die Rollen
+ * der Zeilen sind das v1-Vokabular (`battery-hybrid`), die Fläche fragt in ihrem eigenen
+ * (`kundenRolle`).
+ */
+export function vorhandeneGeraete(
+  zeilen: readonly SiteComponentRow[],
+  /** Die Zeile, die gerade bearbeitet wird - sie zählt nicht als „schon da“. */
+  ausser?: string | null,
+): VorhandeneGeraete {
+  const rollen: string[] = [];
+  const namen: VorhandeneGeraete['namen'] = {};
+  for (const zeile of zeilen) {
+    if (zeile.id === ausser) continue;
+    const conn = zeile.connection;
+    const angebunden = conn != null && typeof conn === 'object' && Object.keys(conn).length > 0;
+    if (!angebunden) continue;
+    const rolle = kundenRolle(zeile);
+    rollen.push(rolle);
+    if (namen[rolle] === undefined) namen[rolle] = zeile.label?.trim() || null;
+  }
+  return { rollen, namen };
+}
+
 /**
  * Die VORGESCHLAGENE Rolle einer Art - ein Vorschlag, nie eine Entscheidung.
  *
- * ⚠ Sie fällt NICHT auf eine unverfügbare Rolle zurück und blockiert
- * umgekehrt auch nichts: eine Anlage, deren Wechselrichter-Zeile von der
- * Plattform komponiert wurde, darf sehr wohl noch einen Wechselrichter
- * bekommen (der Server übernimmt die Zeile dann). Genau deshalb bleibt die
- * zweite Möglichkeit sichtbar und wählbar.
+ * ⚠ Sie fällt NICHT auf eine unverfügbare Rolle zurück. Hat die Anlage schon einen
+ * angebundenen Wechselrichter, ist die Rolle gesperrt (der Server lehnte einen zweiten
+ * beim Speichern ab) und der weitere Erzeuger ist die Antwort; eine nur komponierte,
+ * nie eingerichtete Zeile zählt dafür nicht ({@link vorhandeneGeraete}).
  */
 export function vorschlagRolle(
   typ: TypId,
