@@ -27,10 +27,11 @@ objective consumes (:mod:`voltpilot_optimization.solver`):
 False), deliberately.** Both EEG revenues (feste Vergütung, Marktprämie) are
 subject to the Ausschließlichkeitsprinzip: energy charged from the grid may
 never be remunerated as EEG energy. In EEG mode the solver's solar-only-charge
-constraint (``charge <= pv - curtail``, PV-bus Bilanzierung since FK3 - via
-the grid balance a charging slot's import never exceeds the load, so grid
-energy can never enter the battery) makes the battery content provably solar,
-so crediting the premium/rate on ALL export is correct. In merchant mode (grid charging allowed) the battery mixes
+constraint (``charge <= pv - curtail``, FK3) together with
+``strenge_ausschliesslichkeit`` (a charging slot imports nothing, EN-2 A of
+2026-11-02) lets the battery charge only from the PV surplus, which makes the
+battery content provably solar at the grid connection point, so crediting
+the premium/rate on ALL export is correct. In merchant mode (grid charging allowed) the battery mixes
 grid energy, and crediting EEG revenue on its export would let the optimizer
 "farm" the premium with grid-charged energy - a money pump the law forbids
 (and a real objective exploit whenever the premium clears wear + round-trip

@@ -29,6 +29,8 @@ Formulation (per slot t, dt = 0.25 h):
     and, ONLY when netzladen_erlaubt is False (EEG mode, see below):
                charge_t <= max(pv_t, 0) - curtail_t                (charge from produced PV only,
                                                                     PV-bus Bilanzierung - FK3)
+               import_t <= M_imp_t * (1 - is_charging_t)           (no charging in a quarter hour
+                                                                    with grid import - EN-2 A)
     and, ONLY when leistungspreis_eur_kw is set (peak shaving, PS-1, see below):
                peak >= grid_import_t,  peak >= peak_so_far         (epigraph over the billing
                peak_below >= grid_import_t                          period's import peak)
@@ -189,42 +191,55 @@ Design decisions, deliberately:
   argument at the constant.
 
 - **The per-site grid-charging switch (``netzladen_erlaubt``, captain decision
-  2026-07-07; PV-bus semantics per FK3, captain decision 2026-07-16)** is
-  exactly ONE conditional constraint - merchant mode (``True``) builds the
+  2026-07-07; PV-bus bound per FK3, captain decision 2026-07-16; no charging
+  during import per EN-2 A, captain decision 2026-11-02)** is exactly TWO
+  conditional constraints - merchant mode (``True``) builds the
   identical model as before, so the two modes share every other rule (prices,
   forecasts, §14a, efficiency, curtailment, tie-breaks) and merchant plans are
   regression-identical to the pre-switch optimizer. EEG mode (``False``, the
-  DB default) enforces the Ausschliesslichkeitsprinzip with **PV-bus
-  Bilanzierung** (FK3, matching the captain's Excel reference spec and
-  DC-hybrid physics):
+  DB default) enforces the Ausschliesslichkeitsprinzip at the grid
+  connection point:
 
-  ``charge_t <= max(pv_t, 0) - curtail_t`` - the battery may charge up to the
-  full PV actually PRODUCED, **while the house draws its load from the grid in
-  parallel** (the PV bus feeds the battery, the grid feeds the load - two
-  separate flows on a DC-hybrid). This replaces the pre-FK3 Zähler
-  (meter-point) interpretation, which was strictly tighter (``charge <=
-  max(pv - load, 0)`` plus an import ban while charging) and forbade charging
-  on cloudy days (load > pv) that the reference spec allows. Subtracting
-  ``curtail_t`` is LOAD-BEARING: it is what keeps the documented Graustrom
-  loophole closed - at negative prices the model would otherwise curtail the
-  PV fully and cover a nominally "solar" charge with paid grid import (the
-  pre-FK3 import-ban constraint existed for exactly that and is now removed).
-  With the bound on pv - curtail, the charge power is always covered by
-  UNCURTAILED PV: in a charging slot the grid balance gives
-  ``import <= load_t`` (the import can at most feed the load, never the
-  battery), so the stored energy stays provably solar and the pricing layer
-  may still credit EEG remuneration (Marktprämie / feste Vergütung) on ALL
-  export in EEG mode - see :mod:`voltpilot_optimization.pricing`; the
-  premium-eligibility argument is preserved. Curtailment itself stays
-  unrestricted for the FEED-IN side - full curtailment while importing the
-  LOAD remains a legitimate (and EEG-clean) negative-price play; a fully
-  curtailed slot simply cannot charge.
+  ``charge_t <= max(pv_t, 0) - curtail_t`` (``solar_only_charge``, FK3) - the
+  battery never charges more than the PV actually PRODUCED. Subtracting
+  ``curtail_t`` is LOAD-BEARING: it keeps the documented Graustrom loophole
+  closed - at negative prices the model would otherwise curtail the PV fully
+  and cover a nominally "solar" charge with paid grid import. Curtailment
+  itself stays unrestricted for the FEED-IN side - full curtailment while
+  importing the LOAD remains a legitimate (and EEG-clean) negative-price
+  play; a fully curtailed slot simply cannot charge.
+
+  ``import_t <= M_imp_t * (1 - is_charging_t)`` (``strenge_ausschliesslichkeit``,
+  ported from MiSpeL MP-45) - a slot that charges imports NOTHING. FK3 alone
+  let the house import its load in parallel while the PV bus fed the battery
+  ("two separate flows on a DC-hybrid"); in the balance at the connection
+  point that is grid power in the storage, which is how the Bundesnetzagentur
+  reads it since its MiSpeL determination of 2026-10-01 („kein Verbrauch im
+  Stromspeicher ..., waehrend es gleichzeitig einen Netzbezug gibt“, Anlage 1
+  S. 11; gleichzeitig = the same 15-minute interval, Anlage 1 S. 7). At
+  Herzogau on 2026-11-02 it charged 25.6 kWh while the house imported. With
+  both rules a charging slot's grid balance gives ``charge_t + curtail_t <=
+  pv_t - load_t``: the battery charges only from the forecast PV SURPLUS, so
+  the stored energy stays provably solar and the pricing layer may still
+  credit EEG remuneration (Marktprämie / feste Vergütung) on ALL export in
+  EEG mode - see :mod:`voltpilot_optimization.pricing`. It reuses the
+  charge/discharge binary, so it adds no integer variable, and charging zero
+  always satisfies it, so it never makes a plan infeasible on its own (the
+  "Speicher jetzt laden" preview's forced charge excepted, which is the
+  caller's lower bound). No tolerance: the determination knows none. Present
+  in BOTH builds - the infeasible-§14a fallback must stay just as clean. The
+  slot grid is the quarter hour (``SLOT_MINUTES``), so the rule per slot IS
+  the rule per quarter hour. The box enforces the same rule against MEASURED
+  values (``grid_charge_allowed`` false), because a forecast surplus is not a
+  measured one.
 
 - **Ehrliche Marge on grid-sourced charge (Captain-Entscheid E6 A,
-  24.09.2026; K0 vp-wr-k0-plandaten).** FK3 is a LEGAL statement (the PV bus
-  may feed the battery while the house imports), not an economic one:
-  economically every kW charged beyond the slot's PV surplus is a kW bought
-  at the import price. At a fixed-tariff site the model used to take that
+  24.09.2026; K0 vp-wr-k0-plandaten).** Economically every kW charged beyond
+  the slot's PV surplus is a kW bought at the import price. (In EEG mode the
+  rule ``strenge_ausschliesslichkeit`` above has since 2026-11-02 made that
+  part zero, so the hurdle only still binds where grid charging is allowed;
+  the example below is from the time FK3 alone let the PV bus charge while
+  the house imported.) At a fixed-tariff site the model used to take that
   purchase for a hairline gain - Herzogau 24.09. 14:00-14:30Z charged
   7,1/5,4/4,0 kW over the PV bus at 25 ct to sell at 28,8/29,1 ct, +0,5 to
   +0,8 ct/kWh after the round trip, lambda pinned at (25 + 0,5)/eta = 26,6.
@@ -581,33 +596,43 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     )
     if not inp.netzladen_erlaubt:
         # EEG mode (site.netzladen_erlaubt = false): the battery charges ONLY
-        # from PV the site actually PRODUCES - PV-bus Bilanzierung (FK3,
-        # captain decision 2026-07-16: the house may import its load in
-        # parallel, DC-hybrid physics). Present in BOTH builds - the
-        # infeasible-§14a fallback must stay EEG-clean. Subtracting curtail is
-        # load-bearing: a fully curtailed slot cannot charge, so the Graustrom
-        # loophole (curtail PV, cover the "solar" charge with paid import at
-        # negative prices) stays closed without the pre-FK3 import ban - via
-        # the grid balance, a charging slot's import never exceeds the load.
-        # Grid-charged energy is thus impossible by construction, preserving
-        # the EEG premium-eligibility argument in pricing.py (all export in
-        # EEG mode is provably solar). max(pv, 0) guards pathological negative
-        # forecasts (curtail's own bound already uses it).
+        # from PV the site actually PRODUCES (FK3, captain decision
+        # 2026-07-16). Present in BOTH builds - the infeasible-§14a fallback
+        # must stay EEG-clean. Subtracting curtail is load-bearing: a fully
+        # curtailed slot cannot charge, so the Graustrom loophole (curtail PV,
+        # cover the "solar" charge with paid import at negative prices) stays
+        # closed. max(pv, 0) guards pathological negative forecasts (curtail's
+        # own bound already uses it).
         m.solar_only_charge = Constraint(
             m.T,
             rule=lambda model, t: model.charge[t]
             <= max(inp.pv_kw[t], 0.0) - model.curtail[t],
         )
+        # EN-2 A (captain decision 2026-11-02, "der Speicher darf nie vom Netz
+        # beladen werden, wenn Netzladen aus ist"; ported from MiSpeL MP-45):
+        # a charging slot imports NOTHING - FK3 alone let the house import in
+        # parallel, which at the connection point is grid power in the storage
+        # (BNetzA MiSpeL, Anlage 1 S. 11). No tolerance, no new integer: the
+        # charge/discharge binary carries it, and charging zero always
+        # satisfies it. Together with the grid balance a charging slot gets
+        # charge + curtail <= pv - load, i.e. charging from the forecast PV
+        # SURPLUS only, which keeps the EEG premium-eligibility argument in
+        # pricing.py (all export in EEG mode is provably solar).
+        m.strenge_ausschliesslichkeit = Constraint(
+            m.T,
+            rule=lambda model, t: model.grid_import[t]
+            <= _m_import(t) * (1 - model.is_charging[t]),
+        )
     # Ehrliche Marge (Captain-Entscheid E6 A, K0 vp-wr-k0-plandaten): at a
     # fixed-tariff site the grid-sourced part of a charge must earn the hurdle
     # AFTER the full round trip. grid_charge_kw is that part - the charge
     # beyond the slot's forecast PV surplus: in a deficit slot every charged
-    # kW is one more kW imported (FK3's PV bus feeds the battery, the grid the
-    # house), in a surplus slot only the charge above the surplus is. Adding
-    # curtail keeps "curtail PV, import the house" inside the count. FK3 itself
-    # (solar_only_charge) is untouched - EEG still lets the PV bus charge while
-    # the house imports; only the economics get the honest hurdle. Built only
-    # with a hurdle > 0, so a spot site's model is byte-identical.
+    # kW is one more kW imported, in a surplus slot only the charge above the
+    # surplus is. Adding curtail keeps "curtail PV, import the house" inside
+    # the count. In EEG mode strenge_ausschliesslichkeit above already pins
+    # that part to zero, so the hurdle binds only where grid charging is
+    # allowed. Built only with a hurdle > 0, so a spot site's model is
+    # byte-identical.
     hurdle_eur_per_kwh = inp.grid_charge_hurdle_ct_kwh / 100.0
     hurdle_cost = 0.0
     if hurdle_eur_per_kwh > 0.0:

@@ -30,8 +30,10 @@ v1 (single battery)          v2 (co-optimizer)
 ===========================  ==================================================
 ``netzladen_erlaubt=False``  every storage's effective grid-charge permission
 (EEG mode)                   is False -> the SAME solar-only-charge constraint
-                             (``charge <= pv - curtail``, PV-bus Bilanzierung
-                             per FK3) selected by the SolarOnlyCharge module
+                             (``charge <= pv - curtail``, FK3) and the same
+                             no-charging-during-import rule
+                             (``strenge_ausschliesslichkeit``, EN-2 A)
+                             selected by the SolarOnlyCharge module
 ``netzladen_erlaubt=True``   per-entity ``charge_from_grid_allowed=True`` AND
 (merchant mode)              ``dv_konform=False``
 DV-konformer Modus           ``dv_konform=True``: forces effective permission

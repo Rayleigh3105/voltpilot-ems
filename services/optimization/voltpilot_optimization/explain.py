@@ -88,6 +88,11 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         "charge_gate",
         "discharge_gate",
         "solar_only_charge",
+        # EN-2 A (2026-11-02, MiSpeL MP-45): EEG mode never charges in a slot
+        # with grid import. Like the hurdle it carries no flag of its own:
+        # where it binds the slot simply does not charge (or does not import),
+        # and the texts read the plan as it is.
+        "strenge_ausschliesslichkeit",
         "grid_import_cap",
         "grid_export_cap",
         "feed_in_cap",

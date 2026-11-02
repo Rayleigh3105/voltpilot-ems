@@ -235,16 +235,48 @@ def grid_charge(slot) -> float:
     )
 
 
+@pytest.fixture
+def fk3_allein(monkeypatch):
+    """The model as it was before EN-2 A (2026-11-02): FK3 alone, the rule
+    ``strenge_ausschliesslichkeit`` switched off. The hurdle's own mechanics
+    are only visible there in EEG mode - since EN-2 A an EEG plan never
+    charges while the house imports, so the grid-sourced part is 0 anyway
+    (``test_since_en_2_a_the_24_09_slots_never_charge_even_without_hurdle``);
+    the hurdle still binds where grid charging is allowed."""
+    from voltpilot_optimization import solver as solver_mod
+
+    bauen = solver_mod.build_model
+
+    def ohne_regel(inp, enforce_grid_limit=True):
+        m = bauen(inp, enforce_grid_limit=enforce_grid_limit)
+        m.strenge_ausschliesslichkeit.deactivate()
+        return m
+
+    monkeypatch.setattr(solver_mod, "build_model", ohne_regel)
+
+
 @needs_highs
-def test_without_the_hurdle_the_plan_buys_over_the_pv_bus_as_on_24_09():
-    """The reproduction: at hurdle 0 the model takes the +0,5-ct trade and
-    charges over the PV bus while the house imports - and the old margin rule
-    marks none of it (the plan intends the purchase, and WTP sits below
-    import + 0,5)."""
+def test_without_the_hurdle_the_plan_buys_over_the_pv_bus_as_on_24_09(fk3_allein):
+    """The reproduction (FK3 alone): at hurdle 0 the model takes the +0,5-ct
+    trade and charges over the PV bus while the house imports - and the old
+    margin rule marks none of it (the plan intends the purchase, and WTP sits
+    below import + 0,5)."""
     plan = solve(herzogau_input(SALES_24_09_CT, hurdle_ct=0.0))
     for s in plan.slots[1:4]:
         assert grid_charge(s) > PLANNED_GRID_CHARGE_DEADBAND_KW
         assert s.charge_from_surplus_only is False
+
+
+@needs_highs
+def test_since_en_2_a_the_24_09_slots_never_charge_even_without_hurdle():
+    """EN-2 A (2026-11-02): in EEG mode a slot that imports does not charge -
+    whatever the hurdle and whatever the later sale is worth."""
+    for sales in (SALES_24_09_CT, SALES_23_09_CT):
+        for hurdle in (0.0, M_E6):
+            plan = solve(herzogau_input(sales, hurdle_ct=hurdle))
+            for s in plan.slots[1:4]:
+                assert s.battery_kw <= 1e-6
+                assert grid_charge(s) <= PLANNED_GRID_CHARGE_DEADBAND_KW
 
 
 @needs_highs
@@ -264,10 +296,10 @@ def test_with_the_hurdle_the_herzogau_slots_no_longer_charge_from_the_grid():
 
 
 @needs_highs
-def test_with_the_hurdle_the_23_09_arbitrage_still_charges_from_the_grid():
-    """lambda 32,9: the purchase earns ~4 ct after the round trip AND the
-    hurdle, so the plan keeps it - and, being a planned purchase, the trim
-    leaves it alone."""
+def test_with_the_hurdle_the_23_09_arbitrage_still_charges_from_the_grid(fk3_allein):
+    """lambda 32,9 (FK3 alone): the purchase earns ~4 ct after the round trip
+    AND the hurdle, so the plan keeps it - and, being a planned purchase, the
+    trim leaves it alone."""
     plan = solve(herzogau_input(SALES_23_09_CT, hurdle_ct=M_E6))
     for s in plan.slots[1:4]:
         assert grid_charge(s) > PLANNED_GRID_CHARGE_DEADBAND_KW

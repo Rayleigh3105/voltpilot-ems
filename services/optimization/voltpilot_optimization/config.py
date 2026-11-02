@@ -329,8 +329,10 @@ SLOT_TRIM_MARGIN_CT_PER_KWH = 0.5
 
 #: Ehrliche Marge (Captain-Entscheid E6 A, 24.09.2026; Befund K0
 #: vp-wr-k0-plandaten): on a FIXED-tariff site (``tarif_art='fest'``) a kWh
-#: the battery takes from the grid - directly, or over the PV bus while the
-#: house imports in parallel (FK3) - must earn at least this much in ct per AC
+#: the battery takes from the grid - the charge beyond the slot's PV surplus;
+#: in EEG mode the rule ``strenge_ausschliesslichkeit`` (EN-2 A, 2026-11-02)
+#: has made that zero, so it binds only where grid charging is allowed -
+#: must earn at least this much in ct per AC
 #: kWh AFTER the full round trip (losses both ways + wear) before the plan
 #: buys it. ONE constant, two readers: the LP prices it on the grid-sourced
 #: part of every charge (``solver.build_model``, constraint

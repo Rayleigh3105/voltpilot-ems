@@ -526,8 +526,9 @@ class OptimizationInput:
     grid-charging switch, captain decision 2026-07-07): ``True`` = merchant
     mode, the battery may charge from the grid (price arbitrage); ``False`` =
     EEG mode, the battery charges ONLY from PV the site actually produces
-    (``charge <= pv - curtail``, PV-bus Bilanzierung per FK3, captain decision
-    2026-07-16; the house may import its load in parallel) - the
+    (``charge <= pv - curtail``, FK3, captain decision 2026-07-16) and NEVER
+    in a slot with grid import (EN-2 A, captain decision 2026-11-02 - the
+    house no longer imports in parallel), i.e. only from the PV surplus - the
     Ausschliesslichkeitsprinzip for EEG-funded plants. The field is REQUIRED
     (no default) on purpose: every caller must decide, so a forgotten wire-up
     can never silently put an EEG plant into grid arbitrage.

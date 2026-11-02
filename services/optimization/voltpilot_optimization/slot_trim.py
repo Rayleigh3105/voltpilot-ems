@@ -679,12 +679,12 @@ def charge_surplus_to_battery(
          does not bite there at all. That is the asymmetry to P1b, whose
          enforcement is bidirectional and therefore genuinely could undo a
          purchase.
-       * Excluding it would kill the money case. Under FK3 PV-bus semantics an
-         EEG plant legitimately plans "battery takes the PV, house takes its
-         load from the grid", so a perfectly ordinary charging slot plans
-         ``grid_kw = +load``. That is the H1 shape of the Pilsting morning
-         (measured: plan 6 kW against 25 kW of real PV, ~4,7 EUR/h at stake in
-         a single slot) - the very slot the duty exists for.
+       * Excluding it would kill the money case. A slot whose forecast saw
+         too little PV plans an import (in EEG mode, since EN-2 A of
+         2026-11-02, with no charge at all), while reality exports. That is
+         the H1 shape of the Pilsting morning (measured: plan 6 kW against
+         25 kW of real PV, ~4,7 EUR/h at stake in a single slot) - the very
+         slot the duty exists for.
 
     3. **The plan's own SoC trajectory still has headroom** (slot-END SoC below
        ``soc_max_kwh``): a duty the device cannot fulfil must not be published.

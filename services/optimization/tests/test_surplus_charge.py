@@ -299,14 +299,14 @@ def test_the_pilsting_negative_price_morning_is_flagged():
     morning = plan.slots[:MORNING]
     assert all(s.charge_surplus_to_battery for s in morning)
     # The shape the duty exists for: a trickle charge, an almost empty battery,
-    # and a stored kWh worth far more than the (negative) feed-in.
-    assert all(s.battery_kw == pytest.approx(6.0) for s in morning)
+    # and a stored kWh worth far more than the (negative) feed-in. Since EN-2 A
+    # (2026-11-02) an EEG plan charges only the forecast SURPLUS (6 - 4,3 kW)
+    # and imports nothing - FK3 alone charged the full 6 kW of PV while the
+    # house bought its 4,3 kW load from the grid.
+    assert all(s.battery_kw == pytest.approx(6.0 - 4.3) for s in morning)
+    assert all(abs(s.grid_kw) <= PLANNED_GRID_EXCHANGE_DEADBAND_KW for s in morning)
     assert morning[0].soc_kwh < 0.2 * BATTERY.capacity_kwh
     assert morning[0].stored_value_ct_kwh > 30.0
-    # Note the planned grid is a real IMPORT (+4,3 kW): FK3 PV-bus semantics -
-    # battery takes the PV, the house buys its load. The duty must survive that
-    # (see the rule's documented deviation), otherwise it never fires at all.
-    assert all(s.grid_kw > PLANNED_GRID_EXCHANGE_DEADBAND_KW for s in morning)
 
 
 @needs_highs
