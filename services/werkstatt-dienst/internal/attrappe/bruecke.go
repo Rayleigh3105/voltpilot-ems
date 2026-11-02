@@ -71,6 +71,9 @@ type Bruecke struct {
 	Kabel               bool
 	Ziele               map[string]string // permitopen-Ziel → lokale Adresse eines Lauschers
 	EinrichtenScheitert bool
+	// Statt Antworten und Ziele: eine Box, die ihre Adresse wechselt (Mango).
+	AntwortenFunc func() []map[string]any
+	ZielFunc      func(ziel string) (string, bool)
 
 	mu                     sync.Mutex
 	fassung                string
@@ -226,6 +229,9 @@ func (b *Bruecke) weiterleiten(nc ssh.NewChannel, rolle string, z Zeile) {
 		return
 	}
 	lokal, ok := b.Ziele[ziel]
+	if b.ZielFunc != nil {
+		lokal, ok = b.ZielFunc(ziel)
+	}
 	if !ok {
 		_ = nc.Reject(ssh.ConnectionFailed, "connect failed: No route to host")
 		return
@@ -402,9 +408,15 @@ func (b *Bruecke) einrichten(tarDaten []byte) error {
 }
 
 func (b *Bruecke) statusJSON() []byte {
+	var antworten []map[string]any
+	if b.AntwortenFunc != nil {
+		antworten = b.AntwortenFunc()
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	antworten := b.Antworten
+	if b.AntwortenFunc == nil {
+		antworten = b.Antworten
+	}
 	if antworten == nil {
 		antworten = []map[string]any{}
 	}

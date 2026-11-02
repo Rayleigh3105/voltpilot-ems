@@ -41,7 +41,7 @@ jobs:
   probe:
     name: Container-Proben
     runs-on: ubuntu-latest-mo
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -54,6 +54,10 @@ jobs:
         run: sh services/werkstatt-dienst/test/bruecke-probe.sh
       - name: Dienst-Bild unter restricted
         run: sh services/werkstatt-dienst/test/dienst-container-probe.sh
+      # Ganzer Lauf ab frischem OpenWrt (echtes OpenWrt, Brücke, Wartungsserver);
+      # braucht jq und Internet für die Box (apk, wget über die Brücke).
+      - name: Lauf ab OpenWrt im Container
+        run: sh services/werkstatt-dienst/test/box-probe.sh
 
   build:
     name: Build & Push werkstatt-dienst

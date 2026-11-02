@@ -1,8 +1,8 @@
 # Runbook: Werkstatt-Dienst
 
 Betrieb des [Werkstatt-Dienstes](../README.md) im Cluster (Namespace `werkstatt-prod`) und der
-[Werkbank-Brücke](../bruecke/README.md). Stand V1a, erster Schnitt: Brücke, Freigabe, Anzeige. Die Schritte an der
-Box (OpenWrt, Passwort, Edge Light, Tunnel) kommen mit P3 und P5 dazu; dieses Runbook wächst mit.
+[Werkbank-Brücke](../bruecke/README.md). Stand V1a: Brücke, Freigabe, Anzeige und der Lauf an der Mango von der
+Werksfirmware bis zur Neustart-Probe. Die drei Griffe der Fernwartung und die Abnahme machst du noch im Portal.
 
 Alle Befehle mit `kubectl` laufen am Rechner des Betreibers gegen das Produktionscluster.
 
@@ -86,6 +86,73 @@ Nach dem ersten Takt: „Host-Schlüssel der Brücke beim ersten Kontakt festgeh
 eingerichtet“, „Brücke bereit“. Die Anzeige zeigt die Fassung, das Kabel am Werkstatt-Anschluss und wer dort
 antwortet. Danach darf `werkbank-einrichten` aus dem Secret wieder heraus.
 
+## Eine Box einrichten
+
+Je Mango (die Werkstatt ist freigegeben, die Brücke bereit):
+
+1. Mango aus dem Karton: das orange Kabel WERKSTATT in ihre Buchse **LAN**, Strom. Die Buchse WAN bleibt frei.
+2. Die Anzeige (`kubectl -n werkstatt-prod port-forward deploy/werkstatt-dienst 8101:8101`, dann
+   http://localhost:8101) zeigt den Lauf. OpenWrt aufspielen und Neustart dauern einige Minuten (PS-3).
+3. Steht dort **„Dein Schritt“** (Lauf wartet, Metrik `vp_werkstatt_lauf_wartet`): im Portal unter
+   **Geräte › Fernwartung › Tunnel-Schlüssel hinterlegen** Referenz und Schlüssel aus der Anzeige eintragen; die
+   zugeteilte Adresse dann dem Dienst geben:
+
+   ```sh
+   kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst eingabe tunnel_adresse 10.10.16.5
+   ```
+
+   Der Dienst prüft die Adresse (Box-Netz `10.10.16.0/20`) und macht weiter: Tunnel, LAN, Neustart-Probe.
+4. Steht wieder **„Dein Schritt“** (Probe im Fenster): im Portal unter **Geräte › Werkstatt** die Box aufnehmen,
+   das Fenster „Werkstatt-Probe“ öffnen, dich durch den Tunnel anmelden, den Host-Schlüssel lesen und mit dem der
+   Anzeige vergleichen, das Fenster schließen und den abgewiesenen Versuch machen. Dann:
+
+   ```sh
+   kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst eingabe probe erledigt
+   ```
+
+   Erst danach nimmt der Dienst den Weg über die Brücke wieder heraus; ohne ihn steht der Tunnel in der Werkstatt
+   nicht mehr (beim Kunden kommt er über WAN).
+5. Ist der Lauf **fertig**: die Abnahme im Portal mit den Belegen des Laufs ausfüllen (Schritt `uebergabe`: Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, je Prüfung der Beleg); das
+   LAN-Netz (Vorgabe `10.213.0.1/24`) dort festhalten.
+6. Passwort in die Passwortablage: Beleg `passwort_age` des Schritts `passwort` (Protokoll unter
+   http://localhost:8101/laeufe/<lauf>.json) in eine Datei, dann `age -d -i <dein Schlüssel> passwort.age`.
+7. Abziehen. Gehäuse drucken und einsetzen wie bisher (`bauen.sh --referenz <referenz>`); die Box bleibt „nicht
+   versenden“ bis Stufe 2 (Entscheid 5c).
+
+Steckt eine Mango schon mit frischem OpenWrt am Kabel (192.168.1.1, root ohne Passwort), beginnt der Lauf dort.
+
+**Handgriffe, wenn ein Lauf anhält** (die Anzeige nennt Grund und Handgriff):
+
+| Grund | Handgriff |
+|---|---|
+| mehrere Geräte am Werkstatt-Anschluss | nur eine Mango an das orange Kabel |
+| die Mango verlangt ein Passwort / root hat ein Passwort / schon Edge Light | abziehen, zur Seite legen; neu aus dem Karton: Reset-Knopf 10 s halten, erneut einstecken |
+| kein GL-MT300N-V2, keine GL-Firmware | abziehen, zur Seite legen |
+| die Werksfirmware nimmt das Abbild nicht an (`sysupgrade -T`) | Startlader (M4): Reset halten und Strom stecken, bis die Leuchte fünfmal blinkt; am Rechner 192.168.1.2, http://192.168.1.1, Abbild der Freigabe hochladen; danach mit frischem OpenWrt an das orange Kabel |
+| kein Internet über die Brücke (PS-12) | WLAN und Router der Brücke prüfen, dann abziehen und neu einstecken |
+| der Dienst wurde mitten im Lauf neu gestartet | abziehen, zur Seite legen: der Stand der Box ist unbekannt; ein gesetztes Passwort steht in `passwort_age` |
+
+Nach jedem Ende (fertig oder angehalten) fasst der Dienst dieselbe Box erst wieder an, wenn sie abgezogen war. Eine
+Box unter dem LAN-Netz (10.213.0.1) ist eingerichtet und wird nie angefasst.
+
+## Fassungen der Freigabe
+
+Der Dienst legt die drei Dateien der Freigabe nach Prüfsumme im Datenverzeichnis ab
+(`/var/lib/vp-werkstatt-dienst/fassungen/<sha256>`) und lädt sie nur, wenn sie dort fehlen: das OpenWrt-Abbild von
+`openwrt.quelle`, Programm und Skriptstand von `edge_light.quelle` (Anhänge: README, „Release-Anhänge“). Eine Datei
+mit anderer Prüfsumme benutzt er nie. Ist das Release-Repo privat, gehört ein Lese-Token als `download-token` ins
+Secret (nur an git.tecmaxx.de geschickt). Ohne Internet für den Pod: die Dateien von Hand ablegen,
+
+```sh
+kubectl -n werkstatt-prod cp ./vp-edge-light-linux-mipsle werkstatt-dienst-<pod>:/var/lib/vp-werkstatt-dienst/fassungen/<sha256>
+```
+
+Bis der CI-Lauf für `edge-light-JJJJ.MM.N` steht (P4): Programm mit `VP_LIGHT_VERSION=<fassung>
+edge-light/scripts/build.sh mipsle` bauen, Skriptstand mit
+`COPYFILE_DISABLE=1 tar --no-xattrs -C edge-light -czf edge-light-openwrt.tar.gz openwrt` (auf dem Mac legt `tar`
+sonst `._`-Dateien dazu, die der Dienst ablehnt),
+beide Prüfsummen in die Freigabe.
+
 ## Werkstatt freigeben
 
 Die Freigabe ist eine Datei (`freigabe.json`) in der ConfigMap `werkstatt-freigabe`. Sie steht bewusst nicht im
@@ -129,6 +196,8 @@ Dauerhaft: `replicas: 0` im gitops-Repo. Die Protokolle bleiben auf dem Volume.
 | „Brücke nicht bereit: Firewall nicht geladen“ | Tabelle `inet werkbank` fehlt | Der Dienst spielt das Paket neu auf (nach der Pause) |
 | „Brücke nicht bereit: WLAN unten“ | WLAN der Brücke | PS-13 |
 | „Keine laufende Freigabe“ | keine Datei, abgelaufen, beendet, Obergrenze | Werkstatt freigeben |
+| „Mango erkannt, aber die Werkstatt ist nicht freigegeben“ | wie oben | Werkstatt freigeben; der Lauf beginnt im nächsten Takt |
+| Lauf hält bei `fassungen` | Datei nicht ladbar oder falsche Prüfsumme | Quelle, Prüfsumme, `download-token` prüfen oder Datei von Hand ablegen (oben) |
 
 Einmal von Hand, ohne Schleife: `kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst werkbank`
 (richtet ein bzw. prüft und gibt den Status als JSON aus).
@@ -151,4 +220,7 @@ Die Proben (`test/bruecke-probe.sh`) ersetzen keinen echten Pi und keine echte M
 | PS-11 | Erreicht ein Pod die Brücke? | Nach dem Sync: Log „Brücke bereit“. Steht die Brücke in 192.168.0.x und das Cluster in 192.168.178.x, braucht es eine Route zwischen den Netzen; sonst die Brücke ins Netz des Clusters. |
 | PS-12 | Internet für die Mango über die Brücke | Ohne Mango schon messbar: einen Rechner per Kabel an die Buchse der Brücke, feste Adresse 192.168.8.10/24, Gateway 192.168.8.2, DNS 9.9.9.9. `curl -sI https://downloads.openwrt.org` antwortet; der Router (`192.168.0.1`) und andere Geräte im Netz antworten nicht. |
 | PS-13 | WLAN der Brücke hält | In der Anzeige „Energiesparen aus“. Router kurz neu starten: die Anzeige geht auf „nicht erreichbar“ und nach dem WLAN von selbst wieder auf „Brücke bereit“. |
-| PS-1 bis PS-4 | Mango ab Werk (SSH ohne Passwort, `sysupgrade -n`, Dauer je Schritt, Startlader) | mit P3; PS-1 ist schon heute mit dem Mac messbar (Mango per Kabel an den Mac, `ssh root@192.168.8.1`) |
+| PS-1 | Mango ab Werk: SSH als root ohne Passwort (Firmware 3.216 und 4.3.x), Board, `/etc/glversion`, root ohne Passwort | erster echter Lauf: Schritt `erkennen`; vorher mit dem Mac messbar (Mango per Kabel an den Mac, `ssh root@192.168.8.1`). Der Beleg `gl_schnittstelle` hält die Antwort der GL-Schnittstelle fest: ihre Felder sind nicht nachgemessen, entschieden wird darüber noch nichts |
+| PS-2 | `sysupgrade -T` und `-n` mit dem 25.12.5-Abbild aus beiden GL-Linien, ohne `-F` | Schritte `openwrt` und `wiedererkennen` an je einer Mango mit 3.216 und 4.3.x |
+| PS-3 | Dauer je Schritt | Metrik `vp_werkstatt_schritt_letzte_dauer_seconds`, Beleg `dauer_bis_openwrt`, `dauer_bis_antwort`; Fristen in `mango.VorgabeZeiten` danach stellen |
+| PS-4 | Startlader-Hochladen | nur Rückfall (Handgriff M4); ein Hochladen durch den Dienst gibt es noch nicht |

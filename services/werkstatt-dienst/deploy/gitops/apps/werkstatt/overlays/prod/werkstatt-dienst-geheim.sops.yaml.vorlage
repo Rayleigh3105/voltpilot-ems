@@ -33,5 +33,8 @@ stringData:
     -----BEGIN OPENSSH PRIVATE KEY-----
     …
     -----END OPENSSH PRIVATE KEY-----
+  # Optional: Lese-Token für die Release-Anhänge (git.tecmaxx.de, nur Lesen
+  # der Releases), wenn das Repo privat ist. Ohne: Dateien von Hand ablegen.
+  # download-token: "…"
   # Ab V1 (P6): Client-Secret des Keycloak-Clients voltpilot-werkstatt-dienst.
   # keycloak-client-secret: "…"

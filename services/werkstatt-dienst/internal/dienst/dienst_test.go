@@ -14,10 +14,17 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/attrappe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/dienst"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/logs"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/mango"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/metriken"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/werkbank"
+
+	"filippo.io/age"
+	"golang.org/x/crypto/ssh"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
 )
 
 const freigabeJSON = `{"schema":"vp-werkstatt-freigabe.v1","kennung":"2026-11-mango-1","box_art":"mango","erteilt_von":"Betreiber",
@@ -148,4 +155,115 @@ func TestReadinessFolgtDerSchleife(t *testing.T) {
 		t.Fatal("bereit nach dem Ende")
 	}
 	_ = io.Discard
+}
+
+// Mit einer Mango am Anschluss: Lauf nur mit Freigabe, nie an einer
+// eingerichteten Box, nach dem Ende gesperrt bis zum Abziehen.
+func TestLaufAmAnschluss(t *testing.T) {
+	jetzt := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	imager := attrappe.Schluessel(t)
+	b := attrappe.NeueBruecke(t, imager.PublicKey())
+	m := attrappe.NeueMango(t, false)
+	b.AntwortenFunc, b.ZielFunc = m.Antworten, m.Ziel
+	var logbuf bytes.Buffer
+	log := logs.Neu(&logbuf, "text", nil)
+	ziele := []netip.AddrPort{netip.MustParseAddrPort("192.168.8.1:22"), netip.MustParseAddrPort("192.168.8.1:80"), netip.MustParseAddrPort("192.168.1.1:22")}
+	wb, err := werkbank.Neu(werkbank.Konfig{
+		Adresse: b.Adresse, HostDatei: filepath.Join(t.TempDir(), "host.pub"),
+		Status: attrappe.Schluessel(t), Weiterleitung: attrappe.Schluessel(t), Pflege: attrappe.Schluessel(t), Einrichten: imager,
+		Netz: "wlan0", Werkstatt: "eth0", WerkstattAdressen: []netip.Prefix{netip.MustParsePrefix("192.168.8.2/24"), netip.MustParsePrefix("192.168.1.2/24")},
+		Ziele: ziele, SSHQuellen: []netip.Prefix{netip.MustParsePrefix("192.168.178.241/32")}, Zeitlimit: 5 * time.Second,
+	}, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(wb.Schliesse)
+	ablage, _ := protokoll.NeueAblage(t.TempDir())
+	reg := metriken.Neu()
+	frei := filepath.Join(t.TempDir(), "freigabe.json")
+	id, _ := age.GenerateX25519Identity()
+	arbeit, _ := os.MkdirTemp("/tmp", "vpw-")
+	t.Cleanup(func() { _ = os.RemoveAll(arbeit) })
+	mk := &mango.Konfig{Werkbank: wb, Fassungen: &fassungen.Ablage{Dir: t.TempDir()}, Arbeit: arbeit,
+		LanNetz: netip.MustParsePrefix("10.213.0.1/24"), LanBruecke: netip.MustParseAddr("10.213.0.2"),
+		Notfall: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(attrappe.Schluessel(t).PublicKey()))), Empfaenger: id.Recipient(),
+		BoxNetz: netip.MustParsePrefix("10.10.16.0/20"), Bauart: "mipsle", Zeiten: mango.Zeiten{Takt: 10 * time.Millisecond, Verbinden: 2 * time.Second}, Log: log}
+	d := dienst.Neu(&dienst.Dienst{Log: log, Werkbank: wb, Adresse: b.Adresse, Freigaben: freigabe.Datei{Pfad: frei}, Ablage: ablage,
+		Laeufer: lauf.NeuerLaeufer(ablage, log, reg), Takt: time.Second, Jetzt: func() time.Time { return jetzt }, Mango: mk}, reg)
+	ctx := context.Background()
+
+	d.Runde(ctx)
+	if a := d.Ansicht(); !strings.Contains(a.Anschluss, "nicht freigegeben") || a.Lauf != nil {
+		t.Fatalf("ohne Freigabe: %+v", a)
+	}
+	// Die Freigabe nennt Dateien, die es nicht gibt: Der Lauf beginnt, erkennt
+	// die Mango und hält bei den Fassungen an - ohne sie anzufassen.
+	ohneNetz := strings.ReplaceAll(freigabeJSON, "https://git.tecmaxx.de/x/", "https://127.0.0.1:1/")
+	ohneNetz = strings.ReplaceAll(ohneNetz, "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/", "https://127.0.0.1:1/")
+	if strings.Contains(ohneNetz, "https://downloads") || strings.Contains(ohneNetz, "tecmaxx") {
+		t.Fatal("der Test darf nicht ins Internet")
+	}
+	_ = os.WriteFile(frei, []byte(ohneNetz), 0o644)
+	d.Runde(ctx)
+	a := d.Ansicht()
+	if a.Lauf == nil || !strings.Contains(a.Anschluss, "Nicht abziehen") {
+		t.Fatalf("kein Lauf: %+v", a)
+	}
+	for i := 0; d.Ansicht().Lauf.Zustand != lauf.Angehalten; i++ {
+		if i > 500 {
+			t.Fatalf("Lauf endet nicht: %+v", d.Ansicht().Lauf)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if s := d.Ansicht().Lauf; s.Schritt != "fassungen" || strings.Join(s.Erledigt, ",") != "erkennen" {
+		t.Fatalf("%+v", s)
+	}
+	for _, x := range m.Befehle() {
+		if strings.Contains(x, "cat >") || strings.Contains(x, "sysupgrade") {
+			t.Fatalf("Box angefasst: %s", x)
+		}
+	}
+	es, _ := ablage.Lies(d.Ansicht().Lauf.Kennung)
+	if es[0].Angaben["einstieg"] != "werk" || es[0].Angaben["freigabe"] != "2026-11-mango-1" || !strings.Contains(es[0].Angaben["openwrt"], "25.12.5") {
+		t.Fatalf("erster Eintrag %+v", es[0])
+	}
+	// gleich wieder: gesperrt, bis abgezogen (der Lauf räumt gerade noch auf)
+	for i := 0; ; i++ {
+		d.Runde(ctx)
+		if a := d.Ansicht(); strings.Contains(a.Anschluss, "hatte schon ihren Lauf") {
+			break
+		} else if i > 100 {
+			t.Fatalf("nicht gesperrt: %s", a.Anschluss)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	n, _ := ablage.Laeufe()
+	m.Abziehen()
+	d.Runde(ctx)
+	m.Einstecken()
+	m.SetzeAdresse("10.213.0.1")
+	d.Runde(ctx)
+	if a := d.Ansicht(); !strings.Contains(a.Anschluss, "eingerichtete Box") {
+		t.Fatalf("eingerichtete Box: %s", a.Anschluss)
+	}
+	if n2, _ := ablage.Laeufe(); len(n2) != len(n) {
+		t.Fatal("an einer eingerichteten Box einen Lauf begonnen")
+	}
+	if err := d.Eingabe(ctx, "tunnel_adresse", "10.10.16.5"); err == nil {
+		t.Fatal("Eingabe ohne Lauf angenommen")
+	}
+}
+
+func TestOffeneLaeufeNachNeustart(t *testing.T) {
+	a := neu(t, time.Now())
+	_ = a.d.Ablage.Schreibe(protokoll.Eintrag{Lauf: "2026-11-02-090000-ab12", Art: protokoll.LaufBegonnen})
+	_ = a.d.Ablage.Schreibe(protokoll.Eintrag{Lauf: "2026-11-02-090000-ab12", Art: protokoll.SchrittBegonnen, Schritt: "passwort"})
+	a.d.SchliesseOffene()
+	es, _ := a.d.Ablage.Lies("2026-11-02-090000-ab12")
+	if l := es[len(es)-1]; l.Art != protokoll.LaufBeendet || l.Zustand != "angehalten" || !strings.Contains(l.Grund, "neu gestartet") {
+		t.Fatalf("%+v", l)
+	}
+	if o, _ := a.d.Ablage.Offene(); len(o) != 0 {
+		t.Fatal(o)
+	}
 }

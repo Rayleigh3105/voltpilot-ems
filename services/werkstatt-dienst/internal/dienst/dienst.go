@@ -2,8 +2,11 @@
 // die Werkbank-Brücke bereit (einrichten, pflegen, Status lesen), liest die
 // Freigabe und stellt beides für Anzeige und Metriken bereit.
 //
-// Erkennen einer Box am Werkstatt-Anschluss und ihr Lauf kommen mit den
-// Paketen P3 und P5 dazu; die Schleife hat dafür schon den Läufer.
+// Steckt am Werkstatt-Anschluss genau eine Mango ab Werk (192.168.8.1) oder
+// mit frischem OpenWrt (192.168.1.1) und läuft eine Freigabe, beginnt ihr
+// Lauf (internal/mango). Eine Box, deren Lauf zu Ende ist (fertig oder
+// angehalten), fasst der Dienst nicht noch einmal an, bis sie abgezogen war.
+// Eine Box unter dem LAN-Netz ist eingerichtet und wird nie angefasst.
 package dienst
 
 import (
@@ -17,6 +20,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/mango"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/metriken"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/werkbank"
@@ -31,7 +35,9 @@ type Ansicht struct {
 	Zeit     time.Time       `json:"zeit"`
 	Werkbank WerkbankAnsicht `json:"werkbank"`
 	Freigabe FreigabeAnsicht `json:"freigabe"`
-	Lauf     *lauf.Stand     `json:"lauf,omitempty"`
+	// Anschluss sagt in Alltagsworten, was am Werkstatt-Anschluss steckt.
+	Anschluss string      `json:"anschluss,omitempty"`
+	Lauf      *lauf.Stand `json:"lauf,omitempty"`
 }
 
 // WerkbankAnsicht ist der Stand der Brücke.
@@ -73,6 +79,14 @@ type Dienst struct {
 	Laeufer   *lauf.Laeufer
 	Takt      time.Duration
 	Jetzt     func() time.Time
+	// Mango: Konfiguration der Läufe an der Box; nil heißt: keine Läufe
+	// (nur Brücke und Freigabe).
+	Mango *mango.Konfig
+
+	ctx      context.Context
+	aktiv    *aktiverLauf
+	letzter  *lauf.Lauf
+	gesperrt map[string]bool // MACs, deren Lauf zu Ende ist, bis sie abgezogen waren
 
 	mu                           sync.Mutex
 	ansicht                      Ansicht
@@ -81,8 +95,13 @@ type Dienst struct {
 	beendet                      atomic.Bool
 	letzterGrund, letzteFreigabe string
 
-	mBereit, mAlter, mKabel, mGeraete, mFreigabe, mEinrichtenFehler metriken.Messwert
-	mEinrichten                                                     metriken.Zaehler
+	mBereit, mAlter, mKabel, mGeraete, mFreigabe, mWartet metriken.Messwert
+	mEinrichten                                           metriken.Zaehler
+}
+
+type aktiverLauf struct {
+	l *lauf.Lauf
+	m *mango.Lauf
 }
 
 // Neu legt den Dienst an und meldet seine Metriken an.
@@ -98,8 +117,11 @@ func Neu(d *Dienst, reg *metriken.Register) *Dienst {
 	d.mEinrichten = reg.Zaehler("vp_werkstatt_werkbank_einrichten_total", "Einrichten und Pflegen der Brücke nach Ergebnis.", "ergebnis")
 	d.mEinrichten.Null("ok")
 	d.mEinrichten.Null("fehler")
+	d.mWartet = reg.Messwert("vp_werkstatt_lauf_wartet", "1, solange ein Lauf auf eine Eingabe des Betreibers wartet (Tunnel-Adresse aus dem Portal).")
 	d.mBereit.Setze(0)
 	d.mFreigabe.Setze(0)
+	d.mWartet.Setze(0)
+	d.gesperrt = map[string]bool{}
 	d.ansicht.Werkbank.Adresse = d.Adresse
 	d.letzterGrund, d.letzteFreigabe = "\x00", "\x00" // der erste Stand wird immer geloggt
 	return d
@@ -113,15 +135,58 @@ func (d *Dienst) Ansicht() Ansicht {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	a := d.ansicht
-	if d.Laeufer != nil && a.Lauf != nil {
-		s := *a.Lauf
+	switch {
+	case d.aktiv != nil:
+		s := d.aktiv.l.Stand()
+		a.Lauf = &s
+	case d.letzter != nil:
+		s := d.letzter.Stand()
 		a.Lauf = &s
 	}
 	return a
 }
 
+// Eingabe reicht eine Eingabe des Betreibers an den laufenden Lauf.
+func (d *Dienst) Eingabe(ctx context.Context, name, wert string) error {
+	d.mu.Lock()
+	a := d.aktiv
+	d.mu.Unlock()
+	if a == nil {
+		return errors.New("es läuft kein Lauf")
+	}
+	switch {
+	case name == "tunnel_adresse" && d.Mango != nil:
+		if _, err := mango.PruefeTunnelAdresse(wert, d.Mango.BoxNetz); err != nil {
+			return err
+		}
+	case name == "probe":
+		if err := mango.PruefeProbe(wert); err != nil {
+			return err
+		}
+	}
+	return a.l.Gib(ctx, name, wert)
+}
+
+// SchliesseOffene beendet im Protokoll die Läufe, die ein früherer Prozess
+// nicht zu Ende bringen konnte.
+func (d *Dienst) SchliesseOffene() {
+	offen, err := d.Ablage.Offene()
+	if err != nil {
+		d.Log.Error("offene Läufe nicht lesbar", "fehler", err)
+		return
+	}
+	for _, k := range offen {
+		_ = d.Ablage.Schreibe(protokoll.Eintrag{Lauf: k, Art: protokoll.LaufBeendet, Zustand: string(lauf.Angehalten),
+			Grund: "Der Dienst wurde neu gestartet; dieser Lauf ist unterbrochen. Die Box abziehen und zur Seite legen: ihr Stand ist unbekannt (ein gesetztes Passwort steht verschlüsselt im Beleg passwort_age)."})
+		d.Log.Warn("Lauf durch Neustart des Dienstes unterbrochen", "request_id", k)
+	}
+}
+
 // Laufe führt die Schleife bis zum Ende von ctx.
 func (d *Dienst) Laufe(ctx context.Context) {
+	d.mu.Lock()
+	d.ctx = ctx
+	d.mu.Unlock()
 	d.laeuft.Store(true)
 	defer d.beendet.Store(true)
 	t := time.NewTicker(d.Takt)
@@ -141,9 +206,110 @@ func (d *Dienst) Runde(ctx context.Context) {
 	jetzt := d.Jetzt()
 	d.runeWerkbank(ctx, jetzt)
 	d.runeFreigabe(jetzt)
+	d.runeAnschluss(jetzt)
 	d.mu.Lock()
 	d.ansicht.Zeit = jetzt.UTC()
+	wartet := d.aktiv != nil && d.aktiv.l.Stand().Zustand == lauf.Wartet
 	d.mu.Unlock()
+	d.mWartet.Wahr(wartet)
+}
+
+// runeAnschluss sieht nach, was am Werkstatt-Anschluss steckt, und beginnt
+// gegebenenfalls einen Lauf.
+func (d *Dienst) runeAnschluss(jetzt time.Time) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.Mango == nil || d.Laeufer == nil {
+		return
+	}
+	if d.aktiv != nil {
+		d.ansicht.Anschluss = "Ein Lauf arbeitet an der Box. Nicht abziehen."
+		return
+	}
+	w := d.ansicht.Werkbank
+	if !w.Bereit || w.Status == nil {
+		d.ansicht.Anschluss = "Die Brücke ist nicht bereit."
+		return
+	}
+	s := *w.Status
+	da := map[string]bool{}
+	for _, a := range s.Antworten {
+		for _, m := range a.MACs {
+			da[m] = true
+		}
+	}
+	for m := range d.gesperrt {
+		if !da[m] {
+			delete(d.gesperrt, m) // abgezogen: beim nächsten Einstecken ist sie neu
+		}
+	}
+	if !s.Werkstatt.Kabel {
+		d.ansicht.Anschluss = "Kein Kabel am Werkstatt-Anschluss."
+		return
+	}
+	if len(s.Antworten) == 0 {
+		d.ansicht.Anschluss = "Am orangen Kabel steckt keine Box (oder sie startet noch)."
+		return
+	}
+	e, err := mango.Einzeln(s)
+	if err != nil {
+		d.ansicht.Anschluss = geheim.Schwaerze(err.Error())
+		return
+	}
+	if d.gesperrt[e.MAC] {
+		d.ansicht.Anschluss = "Die Box " + e.MAC + " hatte schon ihren Lauf. Abziehen; dann die nächste Box einstecken."
+		return
+	}
+	var einstieg mango.Einstieg
+	switch e.Adresse {
+	case mango.WerksAdresse:
+		einstieg = mango.AbWerk
+	case mango.OpenWrtAdresse:
+		einstieg = mango.AbOpenWrt
+	default:
+		d.ansicht.Anschluss = "Unter " + e.Adresse.String() + " steckt eine eingerichtete Box. Der Dienst fasst sie nicht an: abziehen."
+		return
+	}
+	f := d.ansicht.Freigabe
+	if !f.Laufend || f.Freigabe == nil {
+		d.ansicht.Anschluss = "Mango erkannt, aber die Werkstatt ist nicht freigegeben: " + f.Grund
+		return
+	}
+	l := lauf.Neu(jetzt, f.Freigabe.Kennung, freigabe.Mango)
+	ml, err := mango.NeuerLauf(*d.Mango, *f.Freigabe, l.Kennung())
+	if err != nil {
+		d.ansicht.Anschluss = "Lauf nicht begonnen: " + geheim.Schwaerze(err.Error())
+		d.Log.Error("Lauf nicht begonnen", "fehler", err)
+		return
+	}
+	fr := f.Freigabe
+	angaben := map[string]string{
+		"einstieg":   string(einstieg),
+		"mac":        e.MAC,
+		"adresse":    e.Adresse.String(),
+		"openwrt":    fr.OpenWrt.Fassung + " " + fr.OpenWrt.Datei + " sha256 " + fr.OpenWrt.Sha256,
+		"edge_light": fr.EdgeLight.Fassung + ", Programm sha256 " + fr.EdgeLight.ProgrammSha256 + ", Skripte sha256 " + fr.EdgeLight.SkripteSha256,
+		"lan_netz":   d.Mango.LanNetz.String(),
+		"bauart":     d.Mango.Bauart,
+	}
+	d.aktiv = &aktiverLauf{l: l, m: ml}
+	d.gesperrt[e.MAC] = true
+	d.ansicht.Anschluss = "Ein Lauf arbeitet an der Box. Nicht abziehen."
+	ctx := d.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	go func() {
+		d.Laeufer.Fahre(ctx, l, angaben, ml.Schritte(einstieg))
+		mac := ml.MAC()
+		ml.Schliesse()
+		d.mu.Lock()
+		d.aktiv, d.letzter = nil, l
+		if mac != "" {
+			d.gesperrt[mac] = true
+		}
+		d.mu.Unlock()
+	}()
 }
 
 func (d *Dienst) runeWerkbank(ctx context.Context, jetzt time.Time) {

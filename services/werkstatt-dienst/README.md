@@ -18,10 +18,53 @@ Abnahme machst du in V1a wie bisher im Portal, dann mit den Belegen dieses Diens
 | Werkbank-Brücke | Ein Raspberry Pi im WLAN, seine Netzwerkbuchse ist der Werkstatt-Anschluss (WI-13 B). Kein eigenes Programm, nur Konfiguration; der Dienst richtet sie ein und pflegt sie. | [bruecke/](bruecke/README.md), `internal/werkbank` |
 | Anzeige | Betriebsseite für Kubernetes (`/health`, `/ready`, `/metrics`) und die Werkstatt-Anzeige (Brücke, Freigabe, Läufe mit Belegen), die nur im Pod auf Loopback lauscht: `kubectl port-forward`. | `internal/anzeige` |
 | Betrieb | gitops-Entwurf (Namespace `werkstatt-prod`, PodSecurity `restricted`, Application mit Sync von Hand, SOPS-Vorlage, NetworkPolicy) und Runbook. | [deploy/gitops/](deploy/gitops/README.md), [docs/runbook.md](docs/runbook.md) |
+| Mango einrichten | Erkennen, OpenWrt aufspielen, Passwort, Notfall-Schlüssel, Edge Light, Tunnel, LAN, Neustart-Probe – die Schritte unten. | `internal/mango` |
+| Box-Verbindung | SSH als root durch die Brücke; nach OpenWrt gilt für den ganzen Lauf genau ein Host-Schlüssel. | `internal/box` |
+| Durchreiche | Die Skripte des Release-Stands (`install.sh`, `service-tunnel.sh`) rufen `ssh <ziel> <befehl>` auf; ein `ssh`-Verweis auf dieses Programm reicht jeden Aufruf über eine Unix-Socket an die Verbindung des Laufs. | `internal/durchreiche` |
+| Fassungen | OpenWrt-Abbild, Programm und Skriptstand der Freigabe, geprüft nach sha256, im Zwischenspeicher nach Prüfsumme. | `internal/fassungen` |
 
-Stand der Pakete aus dem Konzept (Abschnitt 8): P1 Grundgerüst, P2 Werkbank-Brücke und P11 Betrieb sind gebaut.
-Es folgen P3 (Werksfirmware → OpenWrt), P5 (Box einrichten) und P4 (Edge-Light-Fassung je Release). Solange
-P3 fehlt, erkennt der Dienst noch keine Box am Werkstatt-Anschluss; er zeigt nur, wer dort antwortet.
+Stand der Pakete aus dem Konzept (Abschnitt 8): P1 Grundgerüst, P2 Werkbank-Brücke, P11 Betrieb, P3
+(Werksfirmware → OpenWrt) und P5 (Box einrichten) sind gebaut. Es fehlt P4: der CI-Lauf, der eine
+Edge-Light-Fassung `edge-light-JJJJ.MM.N` mit den Anhängen unten baut; bis dahin legt der Betreiber Programm und
+Skriptstand selbst in den Zwischenspeicher ([Runbook](docs/runbook.md#fassungen-der-freigabe)).
+
+## Ein Lauf an der Mango
+
+Steckt am orangen Kabel genau eine Mango ab Werk (192.168.8.1) oder mit frischem OpenWrt (192.168.1.1) und läuft
+eine Freigabe, beginnt ihr Lauf von selbst. Jeder Schritt endet mit einem Beleg; fehlt er, hält der Lauf an.
+
+| Schritt | Was | Beleg |
+|---|---|---|
+| `erkennen` | genau ein Gerät mit einer MAC; SSH als root ohne Passwort; Board `glinet,gl-mt300n-v2`; GL-Firmware (`/etc/glversion`); root hat kein Passwort (nicht eingerichtet) | MAC, Board, GL-Fassung, Host-Schlüssel ab Werk, Antwort der GL-Schnittstelle (nur festgehalten, PS-1) |
+| `fassungen` | OpenWrt-Abbild, Programm, Skriptstand der Freigabe bereitlegen, je sha256 geprüft – bevor die Box angefasst wird | Prüfsummen, Herkunft |
+| `openwrt` | Abbild nach `/tmp`, sha256 auf der Box, `sysupgrade -T`, dann `sysupgrade -n` (nie `-F`) | sha256 vorher und auf der Box, Ausgaben |
+| `wiedererkennen` | bis frisches OpenWrt unter 192.168.1.1 antwortet: Fassung der Freigabe, root ohne Passwort; ab jetzt gilt sein Host-Schlüssel | `openwrt_release`, Board, Host-Schlüssel |
+| `internet` | befristet: Standardweg und DNS über die Brücke (192.168.1.2) | Standardweg, `https://downloads.openwrt.org` erreichbar (PS-12) |
+| `passwort` | zufällig (20 Zeichen wie das Portal), erst verschlüsselt für den age-Schlüssel „Box-Passwörter“ (WI-6 A), dann über die Standardeingabe gesetzt | „ohne Passwort abgewiesen“, `passwort_age` |
+| `notfall` | der Notfall-Schlüssel als einziger dauerhafter Schlüssel | eine Zeile, Fingerabdruck |
+| `programm` | `install.sh` aus dem Skriptstand, Neustart von `vp-edge-light` | „Pruefsumme auf dem Geraet bestaetigt“, `/health` mit Referenz (Prüfzeichen gültig) und der Fassung der Freigabe |
+| `tunnel_schluessel` | `service-tunnel.sh … key` | öffentlicher Schlüssel, Referenz |
+| `tunnel_adresse` | **wartet auf dich**: Schlüssel im Portal hinterlegen, Adresse eintragen | die Adresse |
+| `tunnel` | `service-tunnel.sh … <adresse>`, dann `status` | Handshake, „SSH 2222 ausserhalb der Tunnel: abgewiesen“, Abholer mit gültiger Antwort, ein dauerhafter Schlüssel |
+| `lan` | LAN auf das LAN-Netz (Entscheid 6a), Weg über die Brücke dort, Neustart | LAN-Netz |
+| `neustart` | Neustart-Probe unter der neuen Adresse | derselbe Host-Schlüssel, dieselbe Referenz, Startdienste, ein dauerhafter Schlüssel, frischer Handshake |
+| `probe` | **wartet auf dich**: Probe im Fenster im Portal (Werkstatt-Regel 4–6), solange der Tunnel noch über die Brücke steht; dann `eingabe probe erledigt` | deine Bestätigung, Host-Schlüssel aus dem LAN zum Vergleich |
+| `internet_weg` | Werkstatt-Internet wieder aus der Netz-Einstellung | kein Gateway, kein DNS über die Brücke |
+| `uebergabe` | Belege für die Abnahme im Portal, je Prüfung der Werkstatt-Regel | Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, die acht Prüfungen |
+
+Bei dir bleiben in V1a: die Tunnel-Adresse aus dem Portal eintragen, die Probe im Fenster der Fernwartung (der
+Lauf wartet darauf, bevor er den Weg über die Brücke entfernt: ohne ihn steht der Tunnel in der Werkstatt nicht
+mehr), das Fenster schließen und die Abnahme im Portal mit diesen Belegen ([Runbook](docs/runbook.md#eine-box-einrichten)).
+Hält ein Lauf an, nennt die Werkstatt-Anzeige den Grund und – wo nötig – den Handgriff (Box zur Seite legen,
+Startlader). Eine Box, deren Lauf zu Ende ist, fasst der Dienst erst wieder an, wenn sie abgezogen war; eine Box
+unter dem LAN-Netz nie.
+
+Release-Anhänge einer Edge-Light-Fassung (unter `edge_light.quelle` der Freigabe, P4 baut sie):
+
+| Anhang | Inhalt | Prüfsumme in der Freigabe |
+|---|---|---|
+| `vp-edge-light-linux-<bauart>` | das Programm, wie `edge-light/dist/` (`mipsle` für die Mango) | `programm_sha256` |
+| `edge-light-openwrt.tar.gz` | `edge-light/openwrt/` als `openwrt/…` (`install.sh`, `service-tunnel.sh`, `files/`) | `skripte_sha256` |
 
 ## Was der Dienst nie tut
 
@@ -46,8 +89,16 @@ Aus der Umgebung (ConfigMap `werkstatt-dienst-konfig`), Schlüssel aus Dateien (
 | `VP_WERKBANK_NETZ` | `wlan0` | Schnittstelle der Brücke ins Netz |
 | `VP_WERKBANK_ANSCHLUSS` | `eth0` | Werkstatt-Anschluss der Brücke (Netzwerkbuchse) |
 | `VP_WERKBANK_EINRICHTEN_BENUTZER` | `vpwerkstatt` | Benutzer, den der Raspberry Pi Imager angelegt hat (nur fürs erste Einrichten) |
-| `VP_WERKSTATT_LAN_NETZ` | `10.213.0.1/24` | LAN, auf das eine Box gestellt wird (Entscheid 6a); die Brücke nimmt dort die `.2` |
-| `VP_WERKSTATT_GEHEIM` | `/etc/vp-werkstatt/geheim` | Verzeichnis mit `werkbank-status`, `werkbank-weiterleitung`, `werkbank-pflege` (Pflicht) und `werkbank-einrichten` (nur fürs erste Einrichten) |
+| `VP_WERKSTATT_LAN_NETZ` | `10.213.0.1/24` | LAN, auf das eine Box gestellt wird (Entscheid 6a, Regeln wie `LanNetz.java`, dazu genau /24); die Brücke nimmt dort die `.2` |
+| `VP_WERKSTATT_PASSWORT_EMPFAENGER` | – (Pflicht) | öffentlicher age-Schlüssel „Box-Passwörter“ (`age1…`, WI-6 A) |
+| `VP_WARTUNG_PUBKEY` | – (Pflicht) | öffentlicher Schlüssel des Wartungsservers (Portal, Fernwartung) |
+| `VP_WARTUNG_ENDPUNKT` | leer | Endpunkt des Wartungsservers; leer: Vorgabe von `service-tunnel.sh` (`wartung.voltpilot.de`) |
+| `VP_WARTUNG_BOX_NETZ` | `10.10.16.0/20` | aus diesem Netz kommt die Tunnel-Adresse |
+| `VP_WERKSTATT_DNS` | `9.9.9.9,1.1.1.1` | DNS für das Werkstatt-Internet der Box (öffentlich) |
+| `VP_WERKSTATT_EDGE_BAUART` | `mipsle` | Bauart des Programms (Mango) |
+| `VP_WERKSTATT_STEUERUNG` | `/tmp/vp-werkstatt-dienst.sock` | Unix-Socket für Eingaben (`vp-werkstatt-dienst eingabe`) |
+| `VP_WERKSTATT_ARBEIT` | `/tmp/vp-werkstatt` | Arbeitsverzeichnis der Läufe (Skriptstand, Durchreiche) |
+| `VP_WERKSTATT_GEHEIM` | `/etc/vp-werkstatt/geheim` | Verzeichnis mit `werkbank-status`, `werkbank-weiterleitung`, `werkbank-pflege` (Pflicht), `werkbank-einrichten` (nur fürs erste Einrichten) und `download-token` (optional: Lese-Token für die Release-Anhänge auf git.tecmaxx.de) |
 | `VP_WERKSTATT_NOTFALL_PUB` | – (Pflicht) | öffentlicher Notfall-Schlüssel (Datei) |
 | `VP_WERKSTATT_FREIGABE` | `/etc/vp-werkstatt/freigabe/freigabe.json` | die Freigabe; fehlt die Datei, läuft keine |
 | `VP_WERKSTATT_DATEN` | `/var/lib/vp-werkstatt-dienst` | Protokolle, Host-Schlüssel der Brücke (PVC) |
@@ -57,7 +108,8 @@ Aus der Umgebung (ConfigMap `werkstatt-dienst-konfig`), Schlüssel aus Dateien (
 | `VOLTPILOT_LOGGING_FORMAT` | `text` | `json`: eine JSON-Zeile je Ereignis |
 
 Befehle: `vp-werkstatt-dienst dienst` (Vorgabe), `werkbank` (Brücke einmal einrichten bzw. prüfen, Status als
-JSON), `pruefe-konfig`, `fassung`.
+JSON), `eingabe <name> <wert>` (an den laufenden Lauf, etwa `eingabe tunnel_adresse 10.10.16.5`), `pruefe-konfig`,
+`fassung`.
 
 ## Betriebsvertrag
 
@@ -79,6 +131,7 @@ Wie [docs/k8s-readiness.md](../../docs/k8s-readiness.md):
 | `vp_werkstatt_werkbank_einrichten_total{ergebnis}` | Einrichten und Pflegen der Brücke (`ok`, `fehler`) |
 | `vp_werkstatt_freigabe_laufend` | 1, solange eine Freigabe läuft |
 | `vp_werkstatt_lauf_aktiv`, `vp_werkstatt_laeufe_total{ergebnis}` | Lauf an einer Box; beendete Läufe (`fertig`, `angehalten`) |
+| `vp_werkstatt_lauf_wartet` | 1, solange ein Lauf auf deine Eingabe wartet (Tunnel-Adresse) |
 | `vp_werkstatt_schritt_letzte_dauer_seconds{schritt}` | Dauer des letzten belegten Schritts dieser Art (PS-3) |
 | `vp_werkstatt_info{fassung}` | Fassung des Dienstes |
 
@@ -89,9 +142,12 @@ cd services/werkstatt-dienst
 go vet ./... && go test -race ./...     # Go 1.24; ohne Docker, ohne Netz
 test/bruecke-probe.sh                   # Brücke im Container: einrichten.sh, nftables, OpenSSH, echtes Programm
 test/dienst-container-probe.sh          # Dienst-Bild unter PodSecurity restricted
+test/box-probe.sh                       # ganzer Lauf ab frischem OpenWrt: echtes OpenWrt, Brücke, Wartungsserver, Skripte
 ```
 
-Die Go-Tests sprechen nur mit Attrappen im Prozess (`internal/attrappe`: ein SSH-Server, der sich wie die Brücke
-verhält). Die Brücken-Probe braucht Docker mit `--privileged` (Netz-Namensräume im Container) und baut ein
+Die Go-Tests sprechen nur mit Attrappen im Prozess (`internal/attrappe`: SSH-Server, die sich wie die Brücke und
+wie eine Mango ab Werk bis zur Neustart-Probe verhalten, dazu Attrappen der beiden Skripte). Die Box-Probe fährt
+einen ganzen Lauf ab frischem OpenWrt gegen ein echtes OpenWrt 25.12.5 (x86-64) mit den echten Skripten und einem
+echten Wartungsserver (`vp-tunnel-dienst`); die GL-Werksfirmware und `sysupgrade` gibt es nur in der Attrappe. Die Brücken-Probe braucht Docker mit `--privileged` (Netz-Namensräume im Container) und baut ein
 Debian-trixie-Bild; beide Proben räumen ihre Bilder wieder weg. Am echten Gerät ersetzen sie nichts: Prüfsteine
 PS-11 bis PS-13 im [Runbook](docs/runbook.md#prüfsteine-am-echten-gerät).

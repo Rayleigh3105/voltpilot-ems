@@ -1,6 +1,7 @@
 # Werkstatt-Dienst (services/werkstatt-dienst): ein Go-Programm ohne CGO.
 # Laufzeit Alpine statt distroless: die Schritte P3/P5 rufen die Skripte des
-# Release-Stands (install.sh, service-tunnel.sh) mit /bin/sh auf.
+# Release-Stands (install.sh, service-tunnel.sh) mit /bin/sh auf; install.sh
+# braucht GNU gzip (gzip -n), das Busybox nicht kennt.
 # Läuft als Benutzer 10001 mit schreibgeschütztem Dateisystem (PodSecurity
 # restricted); schreibbar sind nur die Daten (PVC) und /tmp (emptyDir).
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS bau
@@ -15,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.fassung=${FASSUNG}" -o /out/vp-werkstatt-dienst ./cmd/vp-werkstatt-dienst
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates \
+RUN apk add --no-cache ca-certificates gzip \
  && adduser -D -H -u 10001 -s /sbin/nologin werkstatt
 COPY --from=bau /out/vp-werkstatt-dienst /usr/local/bin/vp-werkstatt-dienst
 USER 10001:10001

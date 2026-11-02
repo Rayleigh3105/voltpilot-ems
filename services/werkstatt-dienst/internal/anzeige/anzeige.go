@@ -45,6 +45,24 @@ func Betrieb(d *dienst.Dienst, reg *metriken.Register) http.Handler {
 	return mux
 }
 
+// Steuerung nimmt Eingaben des Betreibers an (nur über die Unix-Socket im
+// Pod, also nur mit kubectl exec): POST /eingabe mit name und wert.
+func Steuerung(d *dienst.Dienst) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /eingabe", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := d.Eingabe(r.Context(), r.PostForm.Get("name"), r.PostForm.Get("wert")); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		_, _ = w.Write([]byte("angenommen\n"))
+	})
+	return mux
+}
+
 // Werkstatt ist die Anzeige für den Betreiber.
 func Werkstatt(d *dienst.Dienst, ablage *protokoll.Ablage, log *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
@@ -189,6 +207,18 @@ code{word-break:break-all}
 <p>OpenWrt {{.OpenWrt.Fassung}} (<code>{{.OpenWrt.Datei}}</code>, sha256 <code>{{.OpenWrt.Sha256}}</code>) · Edge Light {{.EdgeLight.Fassung}} (Programm <code>{{.EdgeLight.ProgrammSha256}}</code>, Skripte <code>{{.EdgeLight.SkripteSha256}}</code>)</p>
 <p>Boxen unter dieser Freigabe: {{$.A.Freigabe.Boxen}} von höchstens {{.Obergrenze}}</p>
 {{end}}
+{{end}}
+</div>
+
+<h2>Werkstatt-Anschluss</h2>
+<div class="karte">
+<p>{{if .A.Anschluss}}{{.A.Anschluss}}{{else}}–{{end}}</p>
+{{with .A.Lauf}}
+<p><strong>Lauf <a href="laeufe/{{.Kennung}}.json"><code>{{.Kennung}}</code></a>: {{.Zustand}}</strong>{{if .Titel}} · {{.Titel}}{{end}}</p>
+{{if .Hinweis}}<p class="schlecht"><strong>Dein Schritt:</strong> {{.Hinweis}}</p>{{end}}
+{{if .Handgriff}}<p class="schlecht"><strong>Handgriff:</strong> {{.Handgriff}}</p>{{end}}
+{{if .Grund}}<p>Grund: {{.Grund}}</p>{{end}}
+<p>Erledigt: {{range $i, $s := .Erledigt}}{{if $i}}, {{end}}{{$s}}{{else}}noch nichts{{end}}</p>
 {{end}}
 </div>
 

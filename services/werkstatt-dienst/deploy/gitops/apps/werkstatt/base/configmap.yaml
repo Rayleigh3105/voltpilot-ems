@@ -19,4 +19,13 @@ data:
   VP_WERKSTATT_LAN_NETZ: "10.213.0.1/24"
   VP_WERKSTATT_TAKT: "10s"
   VP_WERKSTATT_NOTFALL_PUB: "/etc/vp-werkstatt/oeffentlich/voltpilot-notfall.pub"
+  # Öffentlicher age-Schlüssel „Box-Passwörter“ (WI-6 A): nur du entschlüsselst.
+  VP_WERKSTATT_PASSWORT_EMPFAENGER: "age1…"
+  # Öffentlicher Schlüssel des Wartungsservers (Portal, Geräte › Fernwartung).
+  VP_WARTUNG_PUBKEY: "…="
+  # Leer: wartung.voltpilot.de (Vorgabe von service-tunnel.sh).
+  VP_WARTUNG_ENDPUNKT: ""
+  VP_WARTUNG_BOX_NETZ: "10.10.16.0/20"
+  VP_WERKSTATT_DNS: "9.9.9.9,1.1.1.1"
+  VP_WERKSTATT_EDGE_BAUART: "mipsle"
   VOLTPILOT_LOGGING_FORMAT: "json"

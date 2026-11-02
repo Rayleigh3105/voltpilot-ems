@@ -19,6 +19,18 @@ Entscheiden des Kapitäns vom 26.10.2026. Die Seite liegt im Portal unter **Ger�
 | Versand (Entscheid 5c) | Der Ablauf endet mit der Abnahme. Oben auf der Seite und am Ende steht: keine Box mit Stufe 1 an einen Kunden, bevor Stufe 2 steht. Es gibt keinen Zustand „versandbereit“. | `VERSAND_SATZ` |
 | Docker-Box (Entscheid 9a) | Steht im Register (`boxArt: edge-app`), hat aber keinen Ablauf und keine Abnahme: Für sie gibt es keinen Wartungstunnel und damit keine Anmeldeprobe. | – |
 
+## Automatisch: der Werkstatt-Dienst (V1a)
+
+Die Schritte an der Box übernimmt der [Werkstatt-Dienst](../services/werkstatt-dienst/README.md) im Cluster: Eine
+Mango ab Werk kommt mit dem orangen Kabel WERKSTATT an die [Werkbank-Brücke](../services/werkstatt-dienst/bruecke/README.md),
+der Dienst spielt OpenWrt ohne Startlader auf (`sysupgrade -n` aus der Werksfirmware), setzt Passwort und
+Notfall-Schlüssel, spielt Edge Light und den Tunnel ein, stellt das LAN um und macht die Neustart-Probe, jeden
+Schritt mit Beleg. Das Root-Passwort erzeugt dann der Dienst (Entscheid WI-6 A statt 3a): Es steht nur
+verschlüsselt für den age-Schlüssel „Box-Passwörter“ im Protokoll des Dienstes und geht an keine Route. Diese
+Seite bleibt für die drei Griffe der Fernwartung (Tunnel-Schlüssel hinterlegen, Probe im Fenster, Fenster
+schließen) und die Abnahme mit den Belegen des Dienstes ([Runbook](../services/werkstatt-dienst/docs/runbook.md#eine-box-einrichten)).
+Die Handschritte oben bleiben der Weg ohne Dienst.
+
 ## Die Abnahme
 
 Die API nimmt eine Abnahme nur an, wenn

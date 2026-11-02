@@ -89,3 +89,20 @@ func TestWerkstattNurLokal(t *testing.T) {
 		t.Fatalf("%d %s", c, b)
 	}
 }
+
+func TestSteuerungOhneLauf(t *testing.T) {
+	d, _, _ := aufbau(t)
+	h := anzeige.Steuerung(d)
+	r := httptest.NewRequest("POST", "/eingabe", strings.NewReader("name=tunnel_adresse&wert=10.10.16.5"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "kein Lauf") {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/eingabe", nil))
+	if w.Code != 405 {
+		t.Fatalf("GET: %d", w.Code)
+	}
+}

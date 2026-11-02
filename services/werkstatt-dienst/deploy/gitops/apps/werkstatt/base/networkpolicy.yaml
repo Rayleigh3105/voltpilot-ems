@@ -40,11 +40,13 @@ spec:
         - ipBlock: {cidr: 192.168.0.250/32}
       ports:
         - {protocol: TCP, port: 22}
-    # Ab P3/P4 (Abbilder und Releases einer Freigabe holen): HTTPS nach draußen.
-    # - to:
-    #     - ipBlock:
-    #         cidr: 0.0.0.0/0
-    #         except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
-    #   ports:
-    #     - {protocol: TCP, port: 443}
+    # Fassungen einer Freigabe holen (downloads.openwrt.org, Release-Anhänge auf
+    # git.tecmaxx.de): HTTPS nach draußen, nie ins eigene Netz. Ohne diese Regel
+    # legt der Betreiber die Dateien von Hand ab (Runbook, Fassungen).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - {protocol: TCP, port: 443}
     # Ab V1 (P6, P8): Portal-API über den Ingress und der Wartungsserver (WireGuard).

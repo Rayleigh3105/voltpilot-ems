@@ -103,3 +103,22 @@ func TestSchluesselAusDateien(t *testing.T) {
 		t.Fatal("ohne Notfall-Schlüssel angenommen")
 	}
 }
+
+func TestFuerDienst(t *testing.T) {
+	k, err := Lies(umgebung(map[string]string{"VP_WERKBANK_ADRESSE": "192.0.2.50"}), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := k.PruefeFuerDienst(); err == nil || !strings.Contains(err.Error(), "VP_WERKSTATT_PASSWORT_EMPFAENGER") || !strings.Contains(err.Error(), "VP_WARTUNG_PUBKEY") {
+		t.Fatalf("%v", err)
+	}
+	k, err = Lies(umgebung(map[string]string{"VP_WERKBANK_ADRESSE": "192.0.2.50",
+		"VP_WERKSTATT_PASSWORT_EMPFAENGER": "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p",
+		"VP_WARTUNG_PUBKEY":                "c2VydmVyc2NobHVlc3NlbGRlc3dhcnR1bmdzc2VydmU="}), false)
+	if err != nil || k.PruefeFuerDienst() != nil {
+		t.Fatalf("%v", err)
+	}
+	if k.LanBruecke.String() != "10.213.0.2" || k.BoxNetz.String() != "10.10.16.0/20" || len(k.DNS) != 2 || k.Bauart != "mipsle" || k.Steuerung == "" {
+		t.Fatalf("%+v", k)
+	}
+}

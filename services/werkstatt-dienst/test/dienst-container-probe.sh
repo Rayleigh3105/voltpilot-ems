@@ -44,6 +44,11 @@ chmod 0644 "$TMP"/geheim/*
 
 [ "$(docker run --rm "$BILD" fassung)" = probe-1234 ] && ok "Fassung aus dem Bau" || nein "Fassung"
 [ "$(docker run --rm --entrypoint id "$BILD" -u)" = 10001 ] && ok "läuft als 10001" || nein "Benutzer"
+docker run --rm --entrypoint sh "$BILD" -c 'gzip --version 2>&1 | head -n1' | grep -q 'gzip 1\.' && ok "GNU gzip für install.sh (gzip -n)" || nein "GNU gzip fehlt"
+# Ohne age-Empfänger und Schlüssel des Wartungsservers startet der Dienst nicht.
+ohne=$(docker run --rm -e VP_WERKBANK_ADRESSE=127.0.0.1:1 -v "$TMP/geheim:/etc/vp-werkstatt/geheim:ro" -v "$TMP/oeffentlich:/etc/vp-werkstatt/oeffentlich:ro" \
+  -e VP_WERKSTATT_NOTFALL_PUB=/etc/vp-werkstatt/oeffentlich/voltpilot-notfall.pub "$BILD" 2>&1 || true)
+case "$ohne" in *VP_WERKSTATT_PASSWORT_EMPFAENGER*VP_WARTUNG_PUBKEY*) ok "ohne age-Empfänger und Wartungsserver: startet nicht, nennt beide" ;; *) nein "Start ohne Pflichtwerte: $ohne" ;; esac
 
 echo "== Dienst starten (wie im Pod)"
 docker volume create "$NAME-daten" >/dev/null
@@ -53,6 +58,8 @@ docker run -d --name "$NAME" \
   -v "$TMP/geheim:/etc/vp-werkstatt/geheim:ro" -v "$TMP/oeffentlich:/etc/vp-werkstatt/oeffentlich:ro" \
   -e VP_WERKBANK_ADRESSE=127.0.0.1:1 -e VP_WERKSTATT_NOTFALL_PUB=/etc/vp-werkstatt/oeffentlich/voltpilot-notfall.pub \
   -e VP_WERKSTATT_TAKT=2s -e VOLTPILOT_LOGGING_FORMAT=json \
+  -e VP_WERKSTATT_PASSWORT_EMPFAENGER=age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p \
+  -e VP_WARTUNG_PUBKEY=c2VydmVyc2NobHVlc3NlbGRlc3dhcnR1bmdzc2VydmU= \
   -p "127.0.0.1:$PORT:8100" "$BILD" >/dev/null
 # das Datenvolumen gehört root; im Pod setzt fsGroup die Rechte, hier vorher einmal
 docker run --rm -u 0 -v "$NAME-daten:/d" --entrypoint chown "$BILD" 10001:10001 /d
@@ -74,6 +81,8 @@ curl -fsS "http://127.0.0.1:$PORT/" >/dev/null 2>&1 && nein "Werkstatt-Anzeige a
 innen=$(docker exec "$NAME" wget -qO- http://127.0.0.1:8101/zustand.json 2>/dev/null || true)
 case "$innen" in *'"werkbank"'*) ok "Werkstatt-Anzeige innen auf 127.0.0.1:8101" ;; *) nein "Werkstatt-Anzeige innen: $innen" ;; esac
 docker exec "$NAME" sh -c 'netstat -ltn 2>/dev/null' | grep -q '127.0.0.1:8101' && ok "Anzeige lauscht nur auf Loopback" || nein "Anzeige nicht auf Loopback"
+e=$(docker exec "$NAME" vp-werkstatt-dienst eingabe tunnel_adresse 10.10.16.5 2>&1 || true)
+case "$e" in *"kein Lauf"*) ok "Steuerung über kubectl exec erreichbar (ohne Lauf: abgelehnt)" ;; *) nein "Steuerung: $e" ;; esac
 logs=$(docker logs "$NAME" 2>&1)
 printf '%s\n' "$logs" | grep -q '"message":"Werkstatt-Dienst startet' && ok "Log als JSON-Zeile" || nein "Log: $logs"
 printf '%s\n' "$logs" | grep -q 'Brücke nicht bereit' && ok "Log nennt die fehlende Brücke" || nein "Log ohne Grund"

@@ -5,8 +5,12 @@
 //
 //	vp-werkstatt-dienst [dienst]   die Schleife mit Betriebs- und Werkstatt-Seite
 //	vp-werkstatt-dienst werkbank   Brücke einmal einrichten bzw. prüfen, Status als JSON
+//	vp-werkstatt-dienst eingabe tunnel_adresse <adresse>   Eingabe an den laufenden Lauf
 //	vp-werkstatt-dienst pruefe-konfig
 //	vp-werkstatt-dienst fassung
+//
+// Als "ssh" aufgerufen (Verweis im Arbeitsverzeichnis eines Laufs) ist es die
+// Durchreiche der Skripte zur Box (internal/durchreiche).
 package main
 
 import (
@@ -14,21 +18,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/anzeige"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/dienst"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/durchreiche"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/konfig"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/logs"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/mango"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/metriken"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/passwort"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/werkbank"
 )
@@ -37,6 +49,9 @@ import (
 var fassung = "entwicklung"
 
 func main() {
+	if filepath.Base(os.Args[0]) == "ssh" {
+		os.Exit(durchreiche.Shim(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	}
 	befehl := "dienst"
 	if len(os.Args) > 1 {
 		befehl = os.Args[1]
@@ -48,18 +63,45 @@ func main() {
 		err = dienstLaufen(log)
 	case "werkbank":
 		err = werkbankEinmal(log)
+	case "eingabe":
+		err = eingabe(os.Args[2:])
 	case "pruefe-konfig":
 		err = pruefeKonfig()
 	case "fassung", "version", "--version":
 		fmt.Println(fassung)
 	default:
-		fmt.Fprintf(os.Stderr, "unbekannter Befehl %q (dienst, werkbank, pruefe-konfig, fassung)\n", befehl)
+		fmt.Fprintf(os.Stderr, "unbekannter Befehl %q (dienst, werkbank, eingabe, pruefe-konfig, fassung)\n", befehl)
 		os.Exit(2)
 	}
 	if err != nil {
 		log.Error("beendet mit Fehler", "fehler", err)
 		os.Exit(1)
 	}
+}
+
+func eingabe(args []string) error {
+	if len(args) != 2 {
+		return errors.New("Aufruf: vp-werkstatt-dienst eingabe <name> <wert>, etwa eingabe tunnel_adresse 10.10.16.5")
+	}
+	k, err := konfig.Lies(os.Getenv, false)
+	if err != nil && k.Steuerung == "" {
+		return err
+	}
+	cl := &http.Client{Timeout: 15 * time.Second, Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, "unix", k.Steuerung)
+	}}}
+	resp, err := cl.PostForm("http://steuerung/eingabe", url.Values{"name": {args[0]}, "wert": {args[1]}})
+	if err != nil {
+		return fmt.Errorf("Dienst nicht erreichbar (%s): %w", k.Steuerung, err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("abgelehnt: %s", strings.TrimSpace(string(b)))
+	}
+	fmt.Print(string(b))
+	return nil
 }
 
 func pruefeKonfig() error {
@@ -69,6 +111,11 @@ func pruefeKonfig() error {
 	}
 	fmt.Printf("ok: Brücke %s (Netz %s, Werkstatt-Anschluss %s), LAN %s, Takt %s\n", k.Werkbank.Adresse, k.Werkbank.Netz, k.Werkbank.Werkstatt, k.LanNetz, k.Takt)
 	fmt.Printf("ok: Ziele der Weiterleitung %v\n", k.Werkbank.Ziele)
+	if err := k.PruefeFuerDienst(); err != nil {
+		fmt.Printf("für Läufe an der Box fehlt: %v\n", err)
+	} else {
+		fmt.Printf("ok: Läufe an der Box (Bauart %s, Box-Netz %s, LAN %s über %s)\n", k.Bauart, k.BoxNetz, k.LanNetz, k.LanBruecke)
+	}
 	if _, err := (freigabe.Datei{Pfad: k.FreigabeDatei}).Aktuell(); err != nil {
 		fmt.Printf("Freigabe: %v\n", err)
 	} else {
@@ -105,6 +152,9 @@ func dienstLaufen(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	if err := k.PruefeFuerDienst(); err != nil {
+		return err
+	}
 	log.Info("Werkstatt-Dienst startet", "fassung", fassung, "werkbank", k.Werkbank.Adresse, "takt", k.Takt.String())
 	ablage, err := protokoll.NeueAblage(k.Daten + "/laeufe")
 	if err != nil {
@@ -117,6 +167,26 @@ func dienstLaufen(log *slog.Logger) error {
 		return err
 	}
 	defer wb.Schliesse()
+	empf, err := passwort.Empfaenger(k.PasswortEmpfaenger)
+	if err != nil {
+		return err
+	}
+	mk := &mango.Konfig{
+		Werkbank:   wb,
+		Fassungen:  &fassungen.Ablage{Dir: filepath.Join(k.Daten, "fassungen"), Token: k.DownloadToken, TokenHost: "git.tecmaxx.de"},
+		Arbeit:     k.Arbeit,
+		LanNetz:    k.LanNetz,
+		LanBruecke: k.LanBruecke,
+		DNS:        k.DNS,
+		Notfall:    k.Werkbank.Notfall,
+		Empfaenger: empf,
+		WartungPub: k.WartungPub,
+		WartungEP:  k.WartungEndpunkt,
+		BoxNetz:    k.BoxNetz,
+		Bauart:     k.Bauart,
+		Zeiten:     mango.VorgabeZeiten,
+		Log:        log.With("logger", "mango"),
+	}
 	d := dienst.Neu(&dienst.Dienst{
 		Log:       log.With("logger", "dienst"),
 		Werkbank:  wb,
@@ -125,13 +195,25 @@ func dienstLaufen(log *slog.Logger) error {
 		Ablage:    ablage,
 		Laeufer:   lauf.NeuerLaeufer(ablage, log.With("logger", "lauf"), reg),
 		Takt:      k.Takt,
+		Mango:     mk,
 	}, reg)
+	d.SchliesseOffene()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	betrieb := &http.Server{Addr: k.HTTP, Handler: anzeige.Betrieb(d, reg), ReadHeaderTimeout: 5 * time.Second}
 	werkstatt := &http.Server{Addr: k.Anzeige, Handler: anzeige.Werkstatt(d, ablage, log.With("logger", "anzeige")), ReadHeaderTimeout: 5 * time.Second}
+	_ = os.Remove(k.Steuerung)
+	sl, err := net.Listen("unix", k.Steuerung)
+	if err != nil {
+		return fmt.Errorf("Steuerung %s: %w", k.Steuerung, err)
+	}
+	_ = os.Chmod(k.Steuerung, 0o600)
+	steuerung := &http.Server{Handler: anzeige.Steuerung(d), ReadHeaderTimeout: 5 * time.Second}
+	go func() { _ = steuerung.Serve(sl) }()
+	defer steuerung.Close()
+
 	fehler := make(chan error, 2)
 	for _, s := range []*http.Server{betrieb, werkstatt} {
 		l, err := net.Listen("tcp", s.Addr)

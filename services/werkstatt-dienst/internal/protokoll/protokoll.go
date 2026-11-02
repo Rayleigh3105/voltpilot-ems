@@ -229,6 +229,26 @@ func (a *Ablage) Begonnen(freigabe string) (int, error) {
 	return n, nil
 }
 
+// Offene gibt die Läufe zurück, deren Protokoll nicht mit lauf_beendet endet
+// (der Dienst endete mitten im Lauf).
+func (a *Ablage) Offene() ([]string, error) {
+	laeufe, err := a.Laeufe()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, l := range laeufe {
+		es, err := a.Lies(l)
+		if err != nil {
+			return out, err
+		}
+		if len(es) > 0 && es[len(es)-1].Art != LaufBeendet {
+			out = append(out, l)
+		}
+	}
+	return out, nil
+}
+
 // Laeufe gibt die Kennungen aller Läufe zurück, neueste zuerst (die
 // Kennung beginnt mit dem Zeitpunkt).
 func (a *Ablage) Laeufe() ([]string, error) {
