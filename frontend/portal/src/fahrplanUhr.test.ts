@@ -11,6 +11,7 @@ import {
   uhrFenster,
   uhrModell,
   uhrPhasen,
+  uhrPunkt,
   uhrUnterschrift,
   uhrWinkel,
 } from './fahrplanUhr';
@@ -244,5 +245,55 @@ describe('sonnenBogen (Konzept vp-fahrplan-eigenverbrauch-konzept §4.3)', () =>
       expect(s.bis).toBeLessThanOrEqual(14 * 60 + 45);
     }
     expect(frei.length).toBeGreaterThan(0);
+  });
+});
+
+describe('das Bild vom 02.11.2026, 15:06 Uhr (Befund vp-fahrplan-anzeige-bug)', () => {
+  // Pilsting / Herzogau: der Speicher lädt Solarstrom bis 15:45, dann wartet er
+  // bis 02:00 des Folgetags, wo der Plan endet. Die Hypothese „Zeiger, Bogen und
+  // Lücke passen nicht zusammen" war falsch - das hier IST die Geometrie des
+  // Bildes, am Pixel nachgemessen (Grün 94°–113,5°, Grau bis 60°, Zeiger ~95°).
+  const TAG2 = new Date(2026, 10, 2);
+  const FOLGE = new Date(2026, 10, 3);
+  const jetzt2 = new Date(2026, 10, 2, 15, 6);
+  const tag = tagModell({
+    slots: slots(TAG2, [['warten', 48], ['pv_speichern', 15], ['warten', 33]]),
+    slotMinutes: 15,
+    now: jetzt2,
+    plantKind: 'eigenverbrauch',
+  });
+  const folge = tagModell({ slots: slots(FOLGE, [['warten', 8]]), slotMinutes: 15, now: jetzt2, plantKind: 'eigenverbrauch', tag: FOLGE });
+  const p = uhrPhasen(tag, folge);
+  const f = uhrFenster(tag, p, 'vormittag');
+  const m = uhrModell(p, f);
+  const pt = (r: number, grad: number) => {
+    const q = uhrPunkt(r, grad);
+    return `${q.x.toFixed(1)} ${q.y.toFixed(1)}`;
+  };
+
+  it('blickt ab jetzt bis zum Ende des Plans um 02:00', () => {
+    expect(f).toEqual({ von: 906, bis: 1560, zeiger: 906 });
+    expect(uhrUnterschrift(f)).toBe('Ab jetzt bis 02:00');
+  });
+
+  it('stellt den Zeiger auf 15:06 - knapp hinter die Drei, wie jede Uhr', () => {
+    expect(uhrWinkel(906)).toBeCloseTo(93, 5);
+    expect(m.zeiger?.x).toBeCloseTo(uhrPunkt(125, 93).x, 9);
+    expect(m.zeiger?.y).toBeCloseTo(uhrPunkt(125, 93).y, 9);
+  });
+
+  it('zeichnet das Laden vom Zeiger bis 15:45, das Warten von 15:45 bis 02:00 - die Lücke liegt dahinter', () => {
+    expect(m.boegen.map((b) => [b.phase.label, b.von, b.bis])).toEqual([
+      ['Sonne speichern', 906, 945],
+      ['Warten', 945, 1560],
+    ]);
+    // Die Ränder am Außenring (Spalt 0,7° je Seite): Laden 93,7°–111,8°,
+    // Warten 113,2°–419,3° (= 59,3°, also bis kurz vor die Zwei = 02:00).
+    expect(m.boegen[0].d.startsWith(`M${pt(138, 93.7)}A138 138 0 0 1 ${pt(138, 111.8)}`)).toBe(true);
+    expect(m.boegen[1].d.startsWith(`M${pt(138, 113.2)}A138 138 0 1 1 ${pt(138, 419.3)}`)).toBe(true);
+  });
+
+  it('schreibt nur den Wechsel um 15:45 an den Ring', () => {
+    expect(m.marken.map((x) => x.text)).toEqual(['15:45']);
   });
 });

@@ -2,7 +2,7 @@ import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AppShell } from './AppShell';
 import { anlageSidebar, ebenenLeiste } from '../ebenenNav';
@@ -12,12 +12,27 @@ import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../test/kennzahlenFixtures';
 import { werkAhrenberg, werkLindach } from '../test/standorteFixtures';
 import { logout } from '../auth';
+import { DESKTOP_QUERY } from '../useIsPhone';
 
 // Avoid pulling in keycloak-js: the shell only needs a name for the avatar.
 vi.mock('../auth', () => ({
   currentUser: () => ({ name: 'Erika Kaiser', email: 'erika@example.com', roles: [] }),
   logout: vi.fn(),
 }));
+
+
+/**
+ * Der Seitenleisten-Eintrag mit diesem SICHTBAREN Namen (`.vp-nav-lbl`); null =
+ * keiner. Seit dem Befund vom 02.11.2026 trägt ein Eintrag seinen Namen nicht
+ * mehr als `title`, wo der Text zu sehen ist - ein Test findet ihn am Text.
+ */
+function navEintrag(label: string): HTMLElement | null {
+  return (
+    [...document.querySelectorAll<HTMLElement>('.vp-navitem')].find(
+      (b) => b.querySelector('.vp-nav-lbl')?.textContent?.trim() === label,
+    ) ?? null
+  );
+}
 
 const baseProps = {
   page: 'anlagen' as const,
@@ -576,7 +591,7 @@ describe('AppShell: die Flotten-Ebene navigiert ohne Leiste', () => {
     // Die frühere Listen-Seite „Meine Anlagen" ist ersatzlos aufgegangen.
     expect(eintraege).not.toContain('Meine Anlage');
     expect(eintraege).not.toContain('Meine Anlagen');
-    fireEvent.click(screen.getByTitle('Portfolio'));
+    fireEvent.click(within(nav).getByRole('button', { name: 'Portfolio' }));
     expect(onNavigate).toHaveBeenCalledWith('portfolio');
   });
 
@@ -587,8 +602,8 @@ describe('AppShell: die Flotten-Ebene navigiert ohne Leiste', () => {
       showPortfolio: true,
       fleetLabel: 'Meine Anlagen',
     });
-    expect(screen.getByTitle('Meine Anlagen')).toBeInTheDocument();
-    expect(screen.queryByTitle('Portfolio')).toBeNull();
+    expect(within(screen.getByLabelText('Hauptnavigation')).getByRole('button', { name: 'Meine Anlagen' })).toBeInTheDocument();
+    expect(navEintrag('Portfolio')).toBeNull();
   });
 
   it('trägt Hilfe und Abmelden auch hier im Avatar-Menü', () => {
@@ -679,17 +694,17 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
     oeffnePlattform();
     for (const label of ['Geräte', 'Steuerungs-Freigabe',
       'Optimizer', 'Flows', 'Gerätevorlagen', 'Komponenten', 'Mandanten']) {
-      expect(screen.getByTitle(label)).toBeInTheDocument();
+      expect(navEintrag(label)).not.toBeNull();
     }
     // Die drei gefalteten Punkte sind aus der LEISTE verschwunden - ihre
     // Flächen leben als Tab (Updates), als Sektion (Gerätetypen) bzw. im
     // Mandanten-Drawer (Benutzer) weiter.
-    expect(screen.queryByTitle('Edge-Updates')).toBeNull();
-    expect(screen.queryByTitle('Gerätetypen')).toBeNull();
-    expect(screen.queryByTitle('Benutzer')).toBeNull();
-    fireEvent.click(screen.getByTitle('Geräte'));
+    expect(navEintrag('Edge-Updates')).toBeNull();
+    expect(navEintrag('Gerätetypen')).toBeNull();
+    expect(navEintrag('Benutzer')).toBeNull();
+    fireEvent.click(navEintrag('Geräte')!);
     expect(onNavigate).toHaveBeenCalledWith('edge-updates');
-    expect(screen.getByTitle('Mandanten').textContent).toContain('1');
+    expect(navEintrag('Mandanten')!.textContent).toContain('1');
   });
 
   it('lässt „Geräte" auch auf dem Tab Updates leuchten', () => {
@@ -701,7 +716,7 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
     oeffnePlattform();
     // Ein Tab darf die Leiste nie ins Nichts zeigen lassen: der Bereich ist
     // aktiv, sonst wüsste der Betreiber nicht, wo er steht.
-    expect(screen.getByTitle('Geräte').className).toContain('active');
+    expect(navEintrag('Geräte')!.className).toContain('active');
   });
 
   it('S8: die Gruppe startet EINGEKLAPPT, solange ein Mandant gewählt ist', () => {
@@ -713,10 +728,10 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
     const knopf = screen.getByRole('button', { name: 'Plattform' });
     expect(knopf.getAttribute('aria-expanded')).toBe('false');
     // Eingeklappt heißt EINGEKLAPPT: die Punkte stehen nicht im DOM.
-    expect(screen.queryByTitle('Mandanten')).toBeNull();
+    expect(navEintrag('Mandanten')).toBeNull();
     // Ein Klick öffnet sie - der Weg ist da, er drängt sich nur nicht auf.
     fireEvent.click(knopf);
-    expect(screen.getByTitle('Mandanten')).toBeInTheDocument();
+    expect(navEintrag('Mandanten')).not.toBeNull();
 
     // Und ohne gewählten Mandanten steht sie von sich aus offen.
     cleanup();
@@ -736,19 +751,19 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(screen.getByTitle('Mandanten')).toBeInTheDocument();
+    expect(navEintrag('Mandanten')).not.toBeNull();
     rerender(
       <AppShell {...adminProps} tenantOverride="t-1">
         <div>content</div>
       </AppShell>,
     );
-    expect(screen.queryByTitle('Mandanten')).toBeNull();
+    expect(navEintrag('Mandanten')).toBeNull();
     rerender(
       <AppShell {...adminProps} tenantOverride={null}>
         <div>content</div>
       </AppShell>,
     );
-    expect(screen.getByTitle('Mandanten')).toBeInTheDocument();
+    expect(navEintrag('Mandanten')).not.toBeNull();
   });
 
   it('zeigt einem Kunden keine einzige Plattform-Gruppe', () => {
@@ -759,7 +774,7 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
     );
     expect(sidebarLabels()).not.toContain('Plattform');
     expect(screen.queryByRole('button', { name: 'Plattform' })).toBeNull();
-    expect(screen.queryByTitle('Geräte')).toBeNull();
+    expect(navEintrag('Geräte')).toBeNull();
   });
 });
 
@@ -901,7 +916,7 @@ describe('AppShell: die Seitenleiste je Ebene (Konzept „Navigation aus einem G
       'Verbessern',
       'Nachweisen',
     ]);
-    expect(screen.queryByTitle('Ahrenberg')).toBeNull();
+    expect(navEintrag('Ahrenberg')).toBeNull();
     const bar = screen.getByLabelText('Bereiche');
     expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Verbessern', 'Nachweisen']);
   });
@@ -947,16 +962,16 @@ describe('AppShell: die Seitenleiste je Ebene (Konzept „Navigation aus einem G
     };
     const { unmount } = zeige(null, { ...anlage, hoch: { wert: '__standort__', label: 'Werk Ahrenberg', onOpen: vi.fn() } });
     expect(eintraege()[0]).toBe('Werk Ahrenberg');
-    expect(screen.queryByTitle('Ahrenberg')).toBeNull();
+    expect(navEintrag('Ahrenberg')).toBeNull();
     unmount();
     zeige(null, { ...anlage, hoch: null });
     expect(screen.queryByTestId('seitenleiste-hoch')).toBeNull();
-    expect(screen.queryByTitle('Ahrenberg')).toBeNull();
+    expect(navEintrag('Ahrenberg')).toBeNull();
   });
 
   it('ohne Einträge der Ebene und ohne Weg nach oben bleibt der Eintrag der Flotte wie bisher', () => {
     zeige(null);
-    expect(screen.getByTitle('Ahrenberg')).toBeInTheDocument();
+    expect(navEintrag('Ahrenberg')).not.toBeNull();
   });
 });
 
@@ -1026,5 +1041,111 @@ describe('AppShell · Kontexthilfe am Telefon in der Kopfleiste (UX-Review V-03)
       </AppShell>,
     );
     expect(container.querySelector('.vp-topbar-help')).toBeNull();
+  });
+});
+
+describe('Seitenleiste: ein Titel nur, wo er mehr sagt als der sichtbare Text (Befund 02.11.2026)', () => {
+  // Der `title` ist ein nativer Tooltip des Browsers: er steht am Zeiger, nicht
+  // am Eintrag, und bleibt stehen, bis die Maus sich bewegt. Rücken die Einträge
+  // unter dem ruhenden Zeiger nach (die Bereiche einer Anlage kommen erst mit
+  // ihrer Oberfläche), hängt ein „Fahrplan" irgendwo über der Seite. Darum trägt
+  // ein Eintrag seinen Namen nur dort als Titel, wo der Text NICHT zu sehen ist:
+  // in der Symbolleiste am Tablet (721–1023 px). Was mehr sagt, bleibt überall.
+  function fenster(rechner: boolean) {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: (q: string) => ({
+        matches: q === DESKTOP_QUERY ? rechner : false,
+        media: q,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+  }
+  afterEach(() => {
+    cleanup();
+    // @ts-expect-error - der Stub gehört dem einzelnen Test
+    delete window.matchMedia;
+  });
+
+  const SPEICHER = anlageSurface({
+    entities: [{ id: 'b', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } }],
+    config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch' },
+  });
+  const anlage = {
+    siteId: 's-1',
+    siteName: 'Pilsting / Herzogau',
+    sites: [{ id: 's-1', name: 'Pilsting / Herzogau' }],
+    onSelectSite: vi.fn(),
+    sidebar: anlageSidebar(SPEICHER, 2, '2 Dinge brauchen Aufmerksamkeit'),
+    activeKey: 'fahrplan',
+    onOpenSub: vi.fn(),
+    onOpenPage: vi.fn(),
+    onOpenFleet: vi.fn(),
+    hoch: { wert: 'flotte', label: 'Meine Anlagen', onOpen: vi.fn() },
+    health: null,
+  };
+  /** Je Eintrag (nach seinem sichtbaren Namen) der Titel - null, wo keiner steht. */
+  const titel = () =>
+    Object.fromEntries(
+      [...screen.getByLabelText('Hauptnavigation').querySelectorAll('.vp-navitem')].map((b) => [
+        b.querySelector('.vp-nav-lbl')?.textContent?.trim(),
+        b.getAttribute('title'),
+      ]),
+    );
+  const renderAnlage = () =>
+    render(
+      <AppShell {...baseProps} showAddAnlage={false} onAddAnlage={vi.fn()} anlage={anlage}>
+        <div>content</div>
+      </AppShell>,
+    );
+
+  it('wiederholt auf dem Rechner nicht den sichtbaren Namen als Tooltip', () => {
+    fenster(true);
+    renderAnlage();
+    const t = titel();
+    expect(Object.keys(t)).toEqual(['Meine Anlagen', 'Cockpit', 'Fahrplan', 'Verlauf', 'Steuerung', 'Anlage']);
+    expect(t.Cockpit).toBeNull();
+    expect(t.Fahrplan).toBeNull();
+    expect(t.Verlauf).toBeNull();
+    expect(t.Anlage).toBeNull();
+    // Was MEHR sagt als der Name, bleibt: der Satz zum Abzeichen, das „Zurück zu".
+    expect(t.Steuerung).toBe('Steuerung — 2 Dinge brauchen Aufmerksamkeit');
+    expect(t['Meine Anlagen']).toBe('Zurück zu Meine Anlagen');
+    expect(screen.getByRole('button', { name: 'Hilfe & Kontakt' }).getAttribute('title')).toBeNull();
+  });
+
+  it('nennt in der Symbolleiste am Tablet den Namen - dort ist der Text versteckt', () => {
+    fenster(false);
+    renderAnlage();
+    const t = titel();
+    expect(t.Cockpit).toBe('Cockpit');
+    expect(t.Fahrplan).toBe('Fahrplan');
+    expect(t.Steuerung).toBe('Steuerung — 2 Dinge brauchen Aufmerksamkeit');
+    expect(t['Meine Anlagen']).toBe('Zurück zu Meine Anlagen');
+    expect(screen.getByRole('button', { name: 'Hilfe & Kontakt' }).getAttribute('title')).toBe('Hilfe & Kontakt');
+  });
+
+  it('gilt auch für die Flotten-Ebene und ihre Seiten', () => {
+    fenster(true);
+    render(
+      <AppShell {...baseProps} page="portfolio" showPortfolio showAddAnlage={false} onAddAnlage={vi.fn()}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(titel().Portfolio).toBeNull();
+    cleanup();
+    fenster(false);
+    render(
+      <AppShell {...baseProps} page="portfolio" showPortfolio showAddAnlage={false} onAddAnlage={vi.fn()}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(titel().Portfolio).toBe('Portfolio');
   });
 });

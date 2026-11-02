@@ -119,3 +119,35 @@ test('cockpit actions stay together below the reserved freshness row', async ({ 
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
 });
+
+test('sidebar entries carry their name as a title only in the icon rail - nothing floats on the desktop', async ({ page }) => {
+  // Befund vom 02.11.2026: ein natives „Fahrplan"-Tooltip hing über der Brotkrume.
+  // Der `title` steht am Zeiger, nicht am Eintrag; auf dem Rechner ist der Name
+  // sichtbar und der Titel entfällt, in der Symbolleiste (721–1023 px) trägt er ihn.
+  await page.goto('/e2e/shell-layout.html?ok');
+  await page.evaluate(() => document.fonts.ready);
+  const lesen = () =>
+    page.evaluate(() =>
+      Object.fromEntries(
+        [...document.querySelectorAll('.vp-sidebar .vp-navitem')].map((b) => {
+          const lbl = b.querySelector('.vp-nav-lbl')!;
+          return [lbl.textContent!.trim(), { title: b.getAttribute('title'), labelWidth: Math.round(lbl.getBoundingClientRect().width) }];
+        }),
+      ),
+    );
+  await page.setViewportSize({ width: 1200, height: 844 });
+  await expect.poll(async () => (await lesen()).Fahrplan?.title ?? null).toBeNull();
+  const rechner = await lesen();
+  expect(rechner.Fahrplan.labelWidth).toBeGreaterThan(20);
+  expect(rechner.Cockpit.title).toBeNull();
+  expect(rechner.Portfolio.title).toBeNull();
+  expect(rechner['Hilfe & Kontakt'].title).toBeNull();
+
+  await page.setViewportSize({ width: 834, height: 1194 });
+  await expect.poll(async () => (await lesen()).Fahrplan?.title ?? null).toBe('Fahrplan');
+  const tablet = await lesen();
+  expect(tablet.Fahrplan.labelWidth).toBeLessThanOrEqual(1);
+  expect(tablet.Cockpit.title).toBe('Cockpit');
+  expect(tablet.Portfolio.title).toBe('Portfolio');
+  expect(tablet['Hilfe & Kontakt'].title).toBe('Hilfe & Kontakt');
+});
