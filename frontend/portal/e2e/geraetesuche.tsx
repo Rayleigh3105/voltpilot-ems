@@ -123,7 +123,22 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   geraetesuche: lesen as never,
   geraetesucheAbbrechen: ok(F.abgebrochen),
   geraetesucheVerlauf: ok({ suchen: verlauf }),
-  testComponentConnection: ok({ results: [{ ok: true, reading: { value: 3.2, unit: 'kW' } }] }),
+  // Heizstab V1: eine Ausgangsmenge antwortet wie der Pro 3 - je Ausgang relay_on_<kanal> und `ausgaenge`.
+  testComponentConnection: ((_site: string, body: { connection: Record<string, unknown> }) =>
+    Promise.resolve(Array.isArray(body.connection.channels)
+      ? {
+        results: [{
+          ok: true,
+          samples: [0, 1, 2].map((k) => ({ channel: `relay_on_${k}`, raw: 0, value: 0, count: 1 })),
+          ausgaenge: [
+            { kanal: 0, ein: false, nach_stromausfall: 'match_input' },
+            { kanal: 1, ein: false, nach_stromausfall: 'restore_last' },
+            { kanal: 2, ein: false, nach_stromausfall: 'off' },
+          ],
+        }],
+      }
+      : { results: [{ ok: true, reading: { value: 3.2, unit: 'kW' } }] })) as never,
+  nachStromausfallAus: ok({ results: [{ ok: true, ausgaenge: [0, 1, 2].map((k) => ({ kanal: k, nach_stromausfall: 'off' })) }] }),
   matchComponent: ok(undefined),
   createComponent: merke('createComponent', { componentAuthority: 'portal', components: [gsWallboxZeile] }),
   updateComponent: merke('updateComponent', { componentAuthority: 'portal', components: [gsWallboxZeile] }),

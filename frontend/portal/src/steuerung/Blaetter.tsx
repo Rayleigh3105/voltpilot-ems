@@ -578,7 +578,23 @@ export function ArtenWahl({ g, bild, entwurf, setEntwurf }: {
   const set = (p: Partial<SteuerartEntwurf>) => setEntwurf({ ...entwurf, ...p });
   let panel: ReactNode = null;
   const r = bild.raster;
-  if (aktiv === 'ueberschuss' || aktiv === 'freigabe_ueberschuss') {
+  if (aktiv === 'ueberschuss' && g.typ === 'heating-rod' && g.form === 'stufig' && g.stufenKw?.length) {
+    // Heizstab V1: die Box regelt die Stufe selbst (Parameterblock heizstab) - eine Schwelle gilt hier nicht.
+    panel = (
+      <div className="param">
+        <div className="prow">
+          <span>
+            Heizt in Stufen mit dem Überschuss
+            <small>
+              {`Die Box wählt selbst ${g.stufenKw.map((x) => zahl0(x)).join(', ')} kW, je nachdem, was die Sonne übrig lässt, `
+                + 'und lässt 0,2 kW als Einspeisung stehen - auch ohne Internet. Den Vorrang zum Speicher legt die '
+                + '„Reihenfolge bei knapper Leistung“ fest.'}
+            </small>
+          </span>
+        </div>
+      </div>
+    );
+  } else if (aktiv === 'ueberschuss' || aktiv === 'freigabe_ueberschuss') {
     const ab = entwurf.schwelleKw;
     const sub = g.form === 'stufig' && g.stufenKw?.length
       ? `Nutzt ${g.stufenKw.map((x) => zahl0(x)).join(', ')} kW, je nach Überschuss.`

@@ -154,11 +154,33 @@ for (const breite of BREITEN) {
       await oeffne(page, breite, 'fall=fertig');
       await modal(page).getByRole('button', { name: 'Shelly Pro 3 übernehmen' }).click();
       const wahl = modal(page, 'Schalter hinzufügen');
-      await expect(wahl.getByRole('heading', { name: 'Welcher Ausgang steuert ein Gerät?' })).toBeVisible();
+      await expect(wahl.getByRole('heading', { name: 'Was schaltet der Schalter?' })).toBeVisible();
       await expect(wahl.getByRole('button', { name: /Ausgang \d/ })).toHaveCount(3);
       await pruefeUndFotografiere(page, info, breite, 'm6-ausgang');
       await wahl.getByRole('button', { name: 'Zurück zur Liste' }).click();
       await expect(modal(page).getByRole('heading', { name: '2 Geräte gefunden' })).toBeVisible();
+      expect(fehler).toEqual([]);
+    });
+
+    test('Shelly: alle Ausgänge als ein Heizstab (Heizstab V1)', async ({ page }, info) => {
+      const fehler = konsole(page);
+      await oeffne(page, breite, 'fall=fertig');
+      await modal(page).getByRole('button', { name: 'Shelly Pro 3 übernehmen' }).click();
+      await modal(page, 'Schalter hinzufügen').getByRole('button', { name: /Alle Ausgänge zusammen/ }).click();
+      const dialog = modal(page, 'Heizstab über alle Ausgänge');
+      await dialog.getByRole('button', { name: /Jede Phase mit Neutralleiter/ }).click();
+      await dialog.getByLabel('Leistung je Heizelement (kW)').fill('2,0');
+      await pruefeUndFotografiere(page, info, breite, 'hz-einrichten', true);
+      await dialog.getByRole('button', { name: 'Verbindung testen' }).click();
+      await expect(dialog.getByText('Ausgang 2 (L2)')).toBeVisible();
+      await expect(dialog.getByText(/Stellen Sie die Ausgänge auf „aus“/)).toBeVisible();
+      await pruefeUndFotografiere(page, info, breite, 'hz-test', true);
+      await dialog.getByRole('button', { name: 'Auf „aus“ stellen' }).click();
+      await expect(dialog.getByText(/Stellen Sie die Ausgänge auf „aus“/)).toHaveCount(0);
+      await dialog.getByRole('button', { name: 'Heizstab speichern' }).click();
+      const body = await gesendet(page, 'createComponent');
+      expect(body?.consumerType).toBe('heating-rod');
+      expect(body?.connection).toMatchObject({ channels: [0, 1, 2], output_kw: [2, 2, 2], stages: [1, 2, 3], anschluss: 'stern_mit_n' });
       expect(fehler).toEqual([]);
     });
 

@@ -1,4 +1,5 @@
 import { Recht } from '../components/Recht';
+import { HeizstabKarte } from '../components/HeizstabKarte';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -1415,6 +1416,25 @@ function GeraetSeiteKern({
         // sein Ziel und die Messung gehören in denselben Baustein wie sein
         // Schalter, nicht in einen zweiten daneben.
         const netzRegelung = eigenEinspeisung?.netz ? eigenEinspeisung : null;
+        // Heizstab V1: ein Heizstab über die Ausgänge eines Shelly zeigt seine BESTÄTIGTE Stufe, die Phasen,
+        // den Grund des Reglers und „Jetzt heizen“ mit Stufe - im Baustein seines Schalters.
+        const heizstabZeile = eigenerVerbraucher?.type === 'heating-rod'
+          ? (components?.components ?? []).find((r) => r.id === eigenerVerbraucher.id) ?? null
+          : null;
+        const heizstabKanaele = Array.isArray(heizstabZeile?.connection?.channels)
+          ? (heizstabZeile!.connection!.channels as unknown[]).length
+          : 0;
+        const heizstabKarte = eigenerVerbraucher && heizstabKanaele > 0 ? (
+          <HeizstabKarte
+            siteId={site.id}
+            consumer={eigenerVerbraucher}
+            status={consumerStatus.find((s) => s.entityId === eigenerVerbraucher.id) ?? null}
+            override={overrides.find((o) => o.entityId === eigenerVerbraucher.id) ?? null}
+            kanaele={heizstabKanaele}
+            jetzt={new Date(now)}
+            onGeaendert={() => setReloadKey((k) => k + 1)}
+          />
+        ) : null;
         const steuerungBaustein: BausteinInhalt | null = steuerung
           ? {
             inhalt: (
@@ -1422,8 +1442,9 @@ function GeraetSeiteKern({
                 view={steuerung}
                 busy={aktionBusy}
                 onAktion={segmentAusloesen}
-                zusatz={notAus || netzRegelung ? (
+                zusatz={notAus || netzRegelung || heizstabKarte ? (
                   <>
+                    {heizstabKarte}
                     {netzRegelung && (
                       <ZeilenListe
                         zeilen={[{

@@ -1865,6 +1865,11 @@ export interface SaveComponentBody {
    * Anlegen hält er die `herkunft` der Komponente fest. Ohne ihn: der Weg wie bisher.
    */
   geraetesuche?: GeraetesucheBezug;
+  /**
+   * Heizstab V1: `heating-rod` legt EIN Gerät über die Ausgangsmenge eines Shelly an (`connection.channels`,
+   * `output_kw`, `stages`, `rotation`, `anschluss`; docs/contracts/v2/heizstab-shelly.md). Fehlt = wie bisher.
+   */
+  consumerType?: 'heating-rod';
 }
 
 /** Welcher Fund welcher Gerätesuche eine Komponente vorbelegt hat (`schluessel` des Fundes). */
@@ -1948,6 +1953,11 @@ export interface ProbeAntwort {
      * „gemessen 0".
      */
     samples?: ProbeVorschauZeile[] | null;
+    /**
+     * Heizstab V1: bei einem Shelly mit Ausgangsmenge je Ausgang Schaltzustand und „nach Stromausfall“ -
+     * beim Verbindungstest neben den samples `relay_on_<kanal>`, bei „Auf ‚aus‘ stellen“ allein.
+     */
+    ausgaenge?: import('./heizstab').TestAusgang[] | null;
   }[];
 }
 
@@ -11062,6 +11072,18 @@ export const api = {
     body: { templateRef: string; role: string; connection: Record<string, unknown> },
   ) =>
     request<ComponentMatch | undefined>(`/api/v1/sites/${siteId}/component-match`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /**
+   * „Auf ‚aus‘ stellen“ (Heizstab V1, HZ-5): die Box stellt an jedem Ausgang des Shelly „nach Stromausfall: aus“
+   * ein - nur auf diesen Klick. Die Antwort trägt je Ausgang die danach gelesene Einstellung (`ausgaenge`).
+   */
+  nachStromausfallAus: (
+    siteId: string,
+    body: { templateRef: string; templateVersion?: number; connection: Record<string, unknown>; deviceId?: string; entityId?: string },
+  ) =>
+    request<ProbeAntwort>(`/api/v1/sites/${siteId}/component-nach-stromausfall-aus`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

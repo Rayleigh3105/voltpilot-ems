@@ -20,6 +20,12 @@ export interface ConsumerRuntimeStatus {
   runtimeSecondsToday?: number | null;
   startsToday?: number | null;
   reportedAt: string;
+  /** Heizstab V1: die gemeldete Stufe (befohlen und BESTÄTIGT, mit kW); null ohne Stufen. */
+  stufe?: import('../heizstab').StufeMeldung | null;
+  /** Heizstab V1: der Befund des Reglers der Box; null ohne Regler. */
+  heizstab?: import('../heizstab').ReglerMeldung | null;
+  /** Die angenommene Energie des Tages aus den bestätigten Stufen. */
+  stufeEnergieKwhHeute?: number | null;
 }
 
 /** §14.13 state → customer sentence (verbatim from the concept table). */

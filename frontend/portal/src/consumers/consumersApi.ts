@@ -139,7 +139,7 @@ export const consumersApi = {
   startOverride: (
     siteId: string,
     id: string,
-    body: { action: 'start' | 'stop'; durationMinutes?: number; setpointKw?: number },
+    body: { action: 'start' | 'stop'; durationMinutes?: number; setpointKw?: number; stufe?: number },
   ) =>
     request<ConsumerOverrideOutcome>(`${base(siteId)}/${id}/override`, {
       method: 'POST',

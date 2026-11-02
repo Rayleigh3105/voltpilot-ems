@@ -210,7 +210,7 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
     starten(F.fertig);
     const { props } = rendere({ uebernommen: new Map([[`${gsShelly.schluessel}#0`, 'Heizstab']]) });
     fireEvent.click(await screen.findByRole('button', { name: 'Shelly Pro 3 übernehmen' }));
-    expect(await screen.findByRole('heading', { name: 'Welcher Ausgang steuert ein Gerät?' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Was schaltet der Schalter?' })).toBeInTheDocument();
     expect(screen.getByText('Heizstab')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Ausgang 1/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Ausgang 2/ }));
@@ -218,6 +218,35 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
       template: GS_SHELLY, kanal: 1, schluessel: `${gsShelly.schluessel}#1`,
       verbindung: { ip: '192.168.178.43', port: 80, channel: 1 },
     }));
+  });
+
+  it('Heizstab V1: „Alle Ausgänge zusammen“ übernimmt EIN Gerät über alle Ausgänge, ohne Kanal', async () => {
+    starten(F.fertig);
+    const { props } = rendere();
+    fireEvent.click(await screen.findByRole('button', { name: 'Shelly Pro 3 übernehmen' }));
+    const alle = await screen.findByRole('button', { name: /Alle Ausgänge zusammen – z\. B\. Heizstab mit drei Phasen/ });
+    expect(alle).toHaveTextContent('Ein Gerät über alle 3 Ausgänge, geschaltet in Stufen');
+    fireEvent.click(alle);
+    expect(props.onUebernehmen).toHaveBeenCalledWith(expect.objectContaining({
+      template: GS_SHELLY, kanal: null, schluessel: gsShelly.schluessel, alleAusgaenge: true,
+      verbindung: { ip: '192.168.178.43', port: 80 },
+    }));
+  });
+
+  it('Heizstab V1: ein übernommener Heizstab gilt als übernommenes Gerät, nichts lässt sich mehr einzeln übernehmen', async () => {
+    starten(F.fertig);
+    rendere({ uebernommen: new Map([[gsShelly.schluessel, 'Heizstab Keller']]) });
+    const uebernommen = await screen.findByRole('region', { name: 'Übernommen' });
+    expect(within(uebernommen).getByText('Heizstab Keller')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Shelly Pro 3 übernehmen' })).toBeNull();
+  });
+
+  it('Heizstab V1: ist ein Ausgang schon einzeln übernommen, gibt es „Alle Ausgänge zusammen“ nicht mehr', async () => {
+    starten(F.fertig);
+    rendere({ uebernommen: new Map([[`${gsShelly.schluessel}#1`, 'Pumpe']]) });
+    fireEvent.click(await screen.findByRole('button', { name: 'Shelly Pro 3 übernehmen' }));
+    expect(await screen.findByRole('heading', { name: 'Was schaltet der Schalter?' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Alle Ausgänge zusammen/ })).toBeNull();
   });
 
   it('nach dem Speichern: Bestätigung oben, das Übernommene wandert nach unten (m5c)', async () => {

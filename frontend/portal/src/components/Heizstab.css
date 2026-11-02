@@ -1,0 +1,142 @@
+/* Heizstab V1, Paket 4: Einrichten über alle Ausgänge eines Shelly und der Zustand auf der Geräteseite. */
+
+.vp-hz {
+  display: grid;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+.vp-hz-abschnitt {
+  display: grid;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-hz-abschnitt > h4 {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-hz-unter {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+/* Eine Wahl aus wenigen: ganze Zeile tippbar, die gewählte trägt den Rand der Handlung. */
+.vp-hz-wahl {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--vp-space-2);
+}
+.vp-hz-wahl button {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-hz-wahl button[aria-pressed='true'] {
+  border-color: var(--vp-action);
+  box-shadow: inset 0 0 0 1px var(--vp-action);
+}
+.vp-hz-wahl button:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-hz-wahl small {
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-hz-stufen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--vp-space-1);
+}
+.vp-hz-stufen label {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-height: 40px;
+}
+
+.vp-hz-zeilen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--vp-space-1);
+}
+.vp-hz-zeilen li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-hz-zeilen b {
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-hz-hinweis {
+  display: flex;
+  gap: var(--vp-space-2);
+  align-items: flex-start;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-c-warn-bg);
+  color: var(--vp-c-warn-fg);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-hz-hinweis svg {
+  flex: none;
+  margin-top: 2px;
+}
+.vp-hz-fehler {
+  margin: 0;
+  color: var(--vp-c-warn-fg);
+}
+
+/* Die Phasen als ruhige Marken: an = gefüllt, aus = Umriss, unbekannt = gestrichelt. */
+.vp-hz-phasen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
+}
+.vp-hz-phase {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+  font-size: var(--vp-c-fs-14);
+}
+.vp-hz-phase.is-an {
+  background: var(--vp-success-soft);
+  border-color: var(--vp-success-dark);
+  color: var(--vp-ok-ink);
+}
+.vp-hz-phase.is-unbekannt {
+  border-style: dashed;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-hz-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
+}

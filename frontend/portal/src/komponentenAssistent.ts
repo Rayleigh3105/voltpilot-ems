@@ -350,6 +350,8 @@ export type ProbeAntwort = {
     reading?: Record<string, unknown> | null;
     finding?: ProbeBefund | null;
     samples?: TestKanal[] | null;
+    /** Heizstab V1: je Ausgang Schaltzustand und „nach Stromausfall“ (nur bei einer Ausgangsmenge). */
+    ausgaenge?: import('./heizstab').TestAusgang[] | null;
   }[];
 };
 

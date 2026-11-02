@@ -89,6 +89,11 @@ export interface GeraetesucheUebernahme {
   /** Der Schlüssel in `uebernommen`, sobald gespeichert ist. */
   schluessel: string;
   /**
+   * Heizstab V1: „Alle Ausgänge zusammen“ - EIN Gerät über alle Ausgänge des Schalters (ein Heizstab mit einer
+   * Phase je Ausgang). Der Wirt öffnet dann die Heizstab-Einrichtung statt des Anlege-Flusses.
+   */
+  alleAusgaenge?: boolean;
+  /**
    * Die Suche, aus der übernommen wird - mit `fund.schluessel` der Bezug, den das Anlegen mitschickt (Protokoll
    * „übernommen", Herkunft „aus der Gerätesuche vom …"). null = keine Suche zur Hand: dann ohne Bezug.
    */
@@ -420,6 +425,16 @@ export function GeraetesucheDialog({
         titelRef={titelRef}
         fund={ansicht.fund}
         uebernommen={uebernommen}
+        onAlle={() =>
+          uebernimm({
+            fund: ansicht.fund,
+            template: ansicht.template,
+            verbindung: vorbelegung(ansicht.fund, ansicht.template),
+            kanal: null,
+            schluessel: ansicht.fund.schluessel,
+            alleAusgaenge: true,
+          })
+        }
         onWahl={(kanal) =>
           uebernimm({
             fund: ansicht.fund,
@@ -1136,30 +1151,56 @@ function AusgangWahl({
   fund,
   uebernommen,
   onWahl,
+  onAlle,
 }: {
   titelRef: RefObject<HTMLHeadingElement>;
   fund: GeraetesucheFund;
   uebernommen: ReadonlyMap<string, string>;
   onWahl: (kanal: number) => void;
+  onAlle: () => void;
 }) {
   const n = fund.kanaele ?? 1;
+  // Heizstab V1: alle Ausgänge als EIN Gerät - nur solange keiner einzeln übernommen ist (ein Ausgang
+  // gehört genau einem Gerät; die API lehnt sonst mit 409 ab).
+  const alleFrei = Array.from({ length: n }, (_, k) => k).every((k) => !uebernommen.get(uebernahmeSchluessel(fund, k)))
+    && !uebernommen.get(fund.schluessel);
+  const alleName = uebernommen.get(fund.schluessel);
   return (
     <div className="vp-gs-wahl" data-testid="gs-ausgang">
       <AusDerSuche titel={fundTitel(fund)} zeile={[fundAdresse(fund), artText(fund)].filter(Boolean).join(' · ')} fund={fund} />
       <header className="vp-gs-kopf">
-        <h3 ref={titelRef} tabIndex={-1}>Welcher Ausgang steuert ein Gerät?</h3>
+        <h3 ref={titelRef} tabIndex={-1}>Was schaltet der Schalter?</h3>
         <p className="vp-gs-unter">
-          Das lässt sich vom Netz aus nicht erkennen. Je Ausgang entsteht ein eigenes Gerät; was daran hängt, fragt der nächste Schritt.
+          Das lässt sich vom Netz aus nicht erkennen. Ein Heizstab mit einer Phase je Ausgang ist EIN Gerät; sonst entsteht je Ausgang ein eigenes.
         </p>
       </header>
+      <ul className="vp-gs-liste">
+        <li>
+          {alleName ? (
+            <div className="vp-gs-wahl-zeile is-fertig">
+              <span className="vp-gs-text"><b>Alle Ausgänge zusammen</b><small>{alleName}</small></span>
+              <span className="vp-gs-wort is-ok"><Icon name="check" size={16} /> übernommen</span>
+            </div>
+          ) : alleFrei ? (
+            <button type="button" className="vp-gs-wahl-zeile" onClick={onAlle} data-testid="gs-alle-ausgaenge">
+              <span className="vp-gs-text">
+                <b>Alle Ausgänge zusammen – z. B. Heizstab mit drei Phasen</b>
+                <small>Ein Gerät über alle {n} Ausgänge, geschaltet in Stufen</small>
+              </span>
+              <Icon name="chevron-right" size={16} />
+            </button>
+          ) : null}
+        </li>
+      </ul>
+      <p className="vp-gs-unter">Oder je Ausgang ein eigenes Gerät:</p>
       <ul className="vp-gs-liste">
         {Array.from({ length: n }, (_, k) => {
           const name = uebernommen.get(uebernahmeSchluessel(fund, k));
           return (
             <li key={k}>
-              {name ? (
+              {name || alleName ? (
                 <div className="vp-gs-wahl-zeile is-fertig">
-                  <span className="vp-gs-text"><b>Ausgang {k + 1}</b><small>{name}</small></span>
+                  <span className="vp-gs-text"><b>Ausgang {k + 1}</b><small>{name ?? `gehört zu ${alleName}`}</small></span>
                   <span className="vp-gs-wort is-ok"><Icon name="check" size={16} /> übernommen</span>
                 </div>
               ) : (

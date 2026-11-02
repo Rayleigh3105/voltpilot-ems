@@ -97,6 +97,7 @@ import {
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { AnlegenFlow } from '../components/AnlegenFlow';
 import { GeraetesucheDialog, type GeraetesucheUebernahme } from '../components/GeraetesucheDialog';
+import { HeizstabAnlegen } from '../components/HeizstabAnlegen';
 import { geraetesucheBezug } from '../geraetesucheHerkunft';
 import type { GeraetesucheFund } from '../geraetesuche';
 import { felder } from '../komponentenAssistent';
@@ -209,6 +210,8 @@ export function AufbauSection({
   >(null);
   const [uebernommen, setUebernommen] = useState<ReadonlyMap<string, string>>(new Map());
   const [sucheZuletzt, setSucheZuletzt] = useState<{ titel: string; n: number } | null>(null);
+  // Heizstab V1: „Alle Ausgänge zusammen“ aus der Gerätesuche - die Heizstab-Einrichtung über der Suche.
+  const [heizstabAus, setHeizstabAus] = useState<{ u: GeraetesucheUebernahme; boxId: string } | null>(null);
   const [boxVerwalten, setBoxVerwalten] = useState<string | null>(null);
   const [anlageAnlegen, setAnlageAnlegen] = useState(false);
   const [adresseNachtragen, setAdresseNachtragen] = useState(false);
@@ -1012,7 +1015,9 @@ export function AufbauSection({
           uebernommen={uebernommen}
           zuletzt={sucheZuletzt}
           onClose={() => setSuche(null)}
-          onUebernehmen={(u) => ausSucheAnlegen({ art: 'vorlage', u })}
+          onUebernehmen={(u) => (u.alleAusgaenge
+            ? setHeizstabAus({ u, boxId: suche.box.id })
+            : ausSucheAnlegen({ art: 'vorlage', u }))}
           onSelbst={(fund, suchId) => ausSucheAnlegen({ art: 'selbst', fund, suchId })}
           onVonHand={() => {
             const b = suche.box;
@@ -1022,6 +1027,28 @@ export function AufbauSection({
           onAdresseGespeichert={(result) => {
             setComponents(result);
             reload();
+          }}
+        />
+      )}
+
+      {heizstabAus && (
+        <HeizstabAnlegen
+          siteId={site.id}
+          boxId={heizstabAus.boxId}
+          fund={heizstabAus.u.fund}
+          template={heizstabAus.u.template}
+          verbindung={heizstabAus.u.verbindung}
+          suchId={heizstabAus.u.suchId}
+          onClose={() => setHeizstabAus(null)}
+          onFertig={(result, titel) => {
+            const schluessel = heizstabAus.u.schluessel;
+            setHeizstabAus(null);
+            setComponents(result);
+            reload();
+            setErfolg(`${titel} ist angelegt. Automatisch heizt er, sobald Sie die Steuerart „Solar-Überschuss“ wählen.`);
+            // Zurück zur Liste der Suche: der Schalter ist übernommen, seine Ausgänge gehören dem Heizstab.
+            setUebernommen((m) => new Map(m).set(schluessel, titel));
+            setSucheZuletzt((z) => ({ titel, n: (z?.n ?? 0) + 1 }));
           }}
         />
       )}
