@@ -144,6 +144,7 @@ class AnlageUmzugApiTest {
     @MockBean ConsumerOverridePublisher consumerOverridePublisher;
     @MockBean VerbundAnteilePublisher verbundAnteilePublisher;
     @MockBean SprungprobePublisher sprungprobePublisher;
+    @MockBean com.voltpilot.api.geraetesuche.GeraetesuchePublisher geraetesuchePublisher;
 
     @LocalServerPort
     int port;
@@ -211,7 +212,7 @@ class AnlageUmzugApiTest {
         // Gezählt, nicht vermutet: kein Sender hat irgendetwas bekommen.
         Map<String, Integer> aufrufe = new LinkedHashMap<>();
         sender().forEach((name, mock) -> aufrufe.put(name, Mockito.mockingDetails(mock).getInvocations().size()));
-        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach der Zuordnung").hasSize(13)
+        assertThat(aufrufe).as("Aufrufe je MQTT-Sender nach der Zuordnung").hasSize(14)
                 .allSatisfy((name, n) -> assertThat(n).as(name).isZero());
         assertThat(r.getBody().get("befehle").asInt()).isZero();
         // Und in der Datenbank ändern sich nur Zuordnung und Protokoll.
@@ -552,6 +553,7 @@ class AnlageUmzugApiTest {
         m.put("ConsumerOverridePublisher", consumerOverridePublisher);
         m.put("VerbundAnteilePublisher", verbundAnteilePublisher);
         m.put("SprungprobePublisher", sprungprobePublisher);
+        m.put("GeraetesuchePublisher", geraetesuchePublisher);
         return m;
     }
 

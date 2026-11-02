@@ -703,19 +703,24 @@ class CommandHistoryApiTest {
     @Test
     void derZeitraumReichtBisZumMonatUndNieUeberDieAufbewahrungHinaus() {
         String tok = token("demo", "demo");
+        // ⚠ Relativ zu HEUTE, nie ein festes Datum: der Monat eines festen Tages fällt mit der Zeit
+        // aus der 90-Tage-Aufbewahrung, und der Test meldete dann 400 statt 200 (rot seit dem
+        // 30.10.2026 mit dem 16.08.2026). Der Tag liegt im laufenden Monat, also ist sein Monat
+        // ganz innerhalb der Aufbewahrung.
+        java.time.LocalDate tag = java.time.LocalDate.now(java.time.ZoneId.of("Europe/Berlin")).withDayOfMonth(1);
         asTenantA(() -> {
-            seedPeriod("2026-08-16T09:00:00Z", "2026-08-16T09:30:00Z", -3.0);
+            seedPeriod(tag + "T09:00:00Z", tag + "T09:30:00Z", -3.0);
             jdbc.update("INSERT INTO device_command_recording (site_id, tenant_id, started_at) "
                     + "VALUES (?::uuid, NULLIF(current_setting('app.tenant_id', true), '')::uuid, "
                     + "?::timestamptz) ON CONFLICT (site_id) DO NOTHING",
                     BERLIN_SITE, "2026-08-01T00:00:00Z");
         });
         String base = "/api/v1/sites/" + BERLIN_SITE + "/command-history";
-        assertThat(exchange(HttpMethod.GET, base + "?range=month&at=2026-08-16", tok, null)
+        assertThat(exchange(HttpMethod.GET, base + "?range=month&at=" + tag, tok, null)
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
         // Ein eigener Zeitraum schliesst den BIS-Tag ein.
         Map<String, Object> eigen = exchange(HttpMethod.GET,
-                base + "?from=2026-08-16&to=2026-08-16", tok, null).getBody();
+                base + "?from=" + tag + "&to=" + tag, tok, null).getBody();
         assertThat(entries(eigen)).isNotEmpty();
         // Ein Jahr gibt es nicht - es überschritte die Aufbewahrung.
         assertThat(exchange(HttpMethod.GET, base + "?range=year", tok, null).getStatusCode())

@@ -454,6 +454,33 @@ public class SiteComponentController {
     }
 
     /**
+     * „Auf ‚aus‘ stellen“ (Heizstab V1, HZ-5 = A): die Box stellt an jedem Ausgang des Shelly
+     * „nach Stromausfall: aus“ ein - nur auf diesen ausdrücklichen Klick, nie beim Anlegen. Eine
+     * Geräte-EINSTELLUNG, kein Schaltbefehl. Dieselbe Form wie der Verbindungstest; die Antwort
+     * trägt je Ausgang die danach gelesene Einstellung ({@code ausgaenge}). Nur für Shelly.
+     */
+    @PostMapping("/component-nach-stromausfall-aus")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public ProbeResult nachStromausfallAus(@PathVariable UUID siteId,
+            @Valid @RequestBody ComponentTestRequest request, @AuthenticationPrincipal Jwt jwt) {
+        requireSite(siteId);
+        ComponentTemplateDto template = components.templateForTest(siteId, request.entityId(),
+                request.templateRef(), request.templateVersion());
+        if (!"shelly_http".equals(template.communication())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Diese Einstellung gibt es nur an einem Shelly.");
+        }
+        Map<String, Object> connection =
+                request.connection() == null ? Map.of() : new LinkedHashMap<>(request.connection());
+        if (request.entityId() != null) {
+            connection = components.connectionForTest(siteId, request.entityId(), template, connection);
+        }
+        return probes.nachStromausfallAus(siteId, request.deviceId(), request.entityId(), connection,
+                subject(jwt));
+    }
+
+    /**
      * Ob dieser Lauf das Speichern freigibt. Bewusst streng: die GANZE Anfrage
      * muss ohne Ablehnung durchgelaufen sein UND die eine Zeile {@code ok}
      * melden. Ein Timeout, eine Ratenbegrenzung oder eine leere Antwort sind

@@ -568,6 +568,41 @@ class ProbeResultListenerTest {
      * {@code TestShellyPortalTestAnswerNamesTheRelayStateNotAnEmptyReading} (Go) für den Pro 3
      * festhält. Sie besteht, also gibt der Test das Speichern frei.
      */
+    /**
+     * Heizstab V1: ein Shelly mit AUSGANGSMENGE meldet je Ausgang eine Zeile relay_on_&lt;kanal&gt; und
+     * den Block {@code ausgaenge} (Schaltzustand + „nach Stromausfall“). Beides reist ins Portal; ein
+     * unbekanntes Wort für „nach Stromausfall“ fällt weg (nie geraten).
+     */
+    @Test
+    void eineAusgangsmengeBringtIhreAusgaengeMit() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"verbindung\",\"ok\":true,\"samples\":["
+                        + "{\"channel\":\"relay_on_0\",\"raw\":0,\"value\":0,\"count\":1},"
+                        + "{\"channel\":\"relay_on_2\",\"raw\":1,\"value\":1,\"count\":1}],"
+                        + "\"ausgaenge\":[{\"kanal\":0,\"ein\":false,\"nach_stromausfall\":\"restore_last\"},"
+                        + "{\"kanal\":2,\"ein\":true,\"nach_stromausfall\":\"erfunden\"},{\"kanal\":9}]}")));
+
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isTrue();
+        assertThat(line.samples()).hasSize(2);
+        assertThat(line.ausgaenge()).containsExactly(new ProbeResult.Ausgang(0, false, "restore_last"),
+                new ProbeResult.Ausgang(2, true, null));
+    }
+
+    /** Die Antwort auf nach_stromausfall_aus: nur der Block, die danach gelesene Einstellung. */
+    @Test
+    void nachStromausfallAusMeldetDieEinstellungJeAusgang() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"nach-stromausfall\",\"ok\":true,\"ausgaenge\":["
+                        + "{\"kanal\":0,\"nach_stromausfall\":\"off\"},{\"kanal\":1,\"nach_stromausfall\":\"off\"}]}")));
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isTrue();
+        assertThat(line.samples()).isNull();
+        assertThat(line.ausgaenge()).extracting(ProbeResult.Ausgang::nachStromausfall).containsExactly("off", "off");
+    }
+
     @Test
     void derSchaltzustandIstDerGeleseneWertEinesSchaltaktors() {
         CompletableFuture<ProbeResult> f = arm();

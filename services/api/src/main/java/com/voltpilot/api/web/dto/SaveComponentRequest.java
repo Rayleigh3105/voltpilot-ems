@@ -50,7 +50,21 @@ public record SaveComponentRequest(
         @Size(max = 40) String acceptMissingChannel,
         Integer expectedRevision,
         Instant effectiveAt,
-        @Valid GeraetesucheBezug geraetesuche) {
+        @Valid GeraetesucheBezug geraetesuche,
+        /**
+         * Heizstab V1: {@code heating-rod} legt EIN Gerät über die Ausgangsmenge
+         * ({@code connection.channels}) eines Shelly an (HeizstabGeraet); fehlt = der bisherige Weg.
+         */
+        @Size(max = 40) String consumerType) {
+
+    /** Der Weg vor dem Heizstab (V1, Paket 3). */
+    public SaveComponentRequest(String templateRef, Integer templateVersion, String label, String role,
+            Map<String, Object> connection, BigDecimal capacityKwp, Integer intervalS, String note,
+            String acceptMissingChannel, Integer expectedRevision, Instant effectiveAt,
+            GeraetesucheBezug geraetesuche) {
+        this(templateRef, templateVersion, label, role, connection, capacityKwp, intervalS, note,
+                acceptMissingChannel, expectedRevision, effectiveAt, geraetesuche, null);
+    }
 
     /** Der Weg ohne Gerätesuche - jeder Aufrufer vor dem Folgepaket „Herkunft". */
     public SaveComponentRequest(String templateRef, Integer templateVersion, String label, String role,

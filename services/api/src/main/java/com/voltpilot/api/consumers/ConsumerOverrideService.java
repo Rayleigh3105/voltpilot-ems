@@ -32,8 +32,19 @@ public class ConsumerOverrideService {
     /** Above this the arbiter's OverrideTTLCap (4 h) trims it anyway; we say so. */
     static final Duration MAX_TTL = Duration.ofHours(4);
 
+    /**
+     * @param stufe Heizstab V1: die Stufe eines Stufen-Verbrauchers, 1-basiert in seine
+     *     {@code levels_kw} (ein Heizstab mit Stufen 1/2/3 Phasen: 1 = eine Phase). Fehlt sie,
+     *     gilt {@code setpointKw} (auf die Stufe darunter gerundet) oder die oberste Stufe.
+     */
     public record OverrideRequest(String action, Integer durationMinutes, Instant endsAt,
-            BigDecimal setpointKw) {}
+            BigDecimal setpointKw, Integer stufe) {
+
+        /** Der Weg vor dem Heizstab (V1, Paket 3). */
+        public OverrideRequest(String action, Integer durationMinutes, Instant endsAt, BigDecimal setpointKw) {
+            this(action, durationMinutes, endsAt, setpointKw, null);
+        }
+    }
 
     public record OverrideOutcome(boolean applied, boolean pushed, String kind, Instant endsAt,
             BigDecimal effectivePowerKw, boolean gridImportPossible, boolean ttlCapped,
@@ -88,6 +99,18 @@ public class ConsumerOverrideService {
             value = null;
             onOff = Boolean.TRUE;
             effectivePower = row.ratedPowerKw();
+        } else if ("stepped".equals(row.controlKind()) && !stufenKw(row).isEmpty()) {
+            // Heizstab V1: eine Stufe ist eine STUFE - nie ein Wert dazwischen, nie mehr als
+            // befohlen. Die Box wählt aus dem Sollwert dieselbe Stufe (restrict-only).
+            if (heizstab != null && heizstab.anschlussOffen(siteId, entityId)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Der Anschluss dieses Heizstabs ist nicht bestätigt. Erst wenn Ihr Elektriker ihn "
+                                + "bestätigt hat, schaltet VoltPilot den Stab.");
+            }
+            command = "setpoint_kw";
+            value = stufeKw(stufenKw(row), req.stufe(), req.setpointKw());
+            onOff = null;
+            effectivePower = value;
         } else {
             // continuous/stepped: the requested setpoint, clamped to Nennleistung
             // (the wirksame Leistung the portal previews); guards clamp further.
@@ -159,6 +182,62 @@ public class ConsumerOverrideService {
             return now.plus(Duration.ofMinutes(req.durationMinutes()));
         }
         throw badRequest("Bitte eine Endzeit oder Dauer angeben - ein Eingriff läuft nie unbegrenzt.");
+    }
+
+    /** Heizstab V1, Paket 3 (optional, damit von Hand gebaute Tests unverändert bleiben). */
+    private HeizstabGeraet heizstab;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void heizstab(HeizstabGeraet heizstab) {
+        this.heizstab = heizstab;
+    }
+
+    /** Die kW je Stufe eines Stufen-Verbrauchers (aufsteigend), leer ohne levels_kw. */
+    static java.util.List<BigDecimal> stufenKw(ConsumerRow row) {
+        if (row.levelsKwJson() == null || row.levelsKwJson().isBlank()) {
+            return java.util.List.of();
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode arr =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(row.levelsKwJson());
+            java.util.List<BigDecimal> out = new java.util.ArrayList<>();
+            arr.forEach(n -> {
+                if (n.isNumber() && n.decimalValue().signum() > 0) {
+                    out.add(n.decimalValue());
+                }
+            });
+            out.sort(BigDecimal::compareTo);
+            return out;
+        } catch (Exception e) {
+            return java.util.List.of();
+        }
+    }
+
+    /**
+     * Die kW der gewählten Stufe: {@code stufe} (1-basiert), sonst die höchste Stufe, die in
+     * {@code setpointKw} passt, sonst die oberste.
+     */
+    static BigDecimal stufeKw(java.util.List<BigDecimal> stufen, Integer stufe, BigDecimal setpointKw) {
+        if (stufe != null) {
+            if (stufe < 1 || stufe > stufen.size()) {
+                throw badRequest("Diese Stufe gibt es nicht (1 bis " + stufen.size() + ").");
+            }
+            return stufen.get(stufe - 1);
+        }
+        if (setpointKw == null || setpointKw.signum() <= 0) {
+            return stufen.get(stufen.size() - 1);
+        }
+        BigDecimal best = null;
+        for (BigDecimal k : stufen) {
+            if (k.compareTo(setpointKw) <= 0) {
+                best = k;
+            }
+        }
+        if (best == null) {
+            throw badRequest("Weniger als die kleinste Stufe (" + stufen.get(0).stripTrailingZeros().toPlainString()
+                    + " kW) lässt sich nicht einschalten.");
+        }
+        return best;
     }
 
     private static BigDecimal clampToRated(BigDecimal requested, BigDecimal rated) {

@@ -302,8 +302,10 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
             runtime = boundedInt(progress, "runtime_seconds_today", MAX_RUNTIME_SECONDS);
             starts = boundedInt(progress, "starts_today", MAX_STARTS);
         }
+        // Heizstab V1 (additive): the stage a heating rod over an output set reports and, where
+        // the box's controller drives it, the controller's verdict - both as checked excerpts.
         return new ConsumerRuntimeStatusRepository.Row(entityId, state, reason, actualKw,
-                confirmed, runtime, starts);
+                confirmed, runtime, starts, HeizstabStufe.stufe(node), null, HeizstabStufe.reglerJson(node));
     }
 
     private static Integer boundedInt(JsonNode node, String field, int max) {

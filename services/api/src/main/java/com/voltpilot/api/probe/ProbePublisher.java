@@ -134,6 +134,23 @@ public class ProbePublisher {
     }
 
     /**
+     * Publish the Shelly setting write {@code nach_stromausfall_aus} (Heizstab V1, HZ-5 = A): on
+     * the operator's explicit consent every output of the connection stays OFF after a power cut.
+     * A relay SETTING, not a switching command - same envelope and discipline as a test.
+     */
+    public synchronized void publishNachStromausfallAus(UUID tenantId, UUID siteId, UUID deviceId,
+            String requestId, Instant requestedAt, String requestedBy, String opId,
+            Map<String, Object> connection) throws Exception {
+        String topic = probeTopic(tenantId, siteId, deviceId);
+        MqttMessage message = new MqttMessage(deviceOpEnvelope("nach_stromausfall_aus", tenantId, siteId,
+                deviceId, requestId, requestedAt, requestedBy, opId, "shelly", null, null, null, connection));
+        message.setQos(1);
+        message.setRetained(false);
+        connected().publish(topic, message);
+        log.debug("published nach_stromausfall_aus {} (NON-retained)", requestId);
+    }
+
+    /**
      * Publish ONE WRITING op - the guided switch test or its cancel
      * (Einheitsmodell Stufe 4). Same envelope, same non-retained/QoS1
      * discipline; the box arms its auto-off BEFORE it writes, so a lost answer
@@ -281,8 +298,20 @@ public class ProbePublisher {
     static byte[] testEnvelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
             Instant requestedAt, String requestedBy, String opId, String brand, String model,
             String family, String role, Map<String, Object> connection) {
+        return deviceOpEnvelope("test_connection", tenantId, siteId, deviceId, requestId, requestedAt,
+                requestedBy, opId, brand, model, family, role, connection);
+    }
+
+    /**
+     * The envelope of a DEVICE op (named by brand/model/family + the template's connection
+     * fields): {@code test_connection}, and the Shelly setting write {@code nach_stromausfall_aus}
+     * (Heizstab V1, HZ-5) that has the very same shape.
+     */
+    static byte[] deviceOpEnvelope(String op, UUID tenantId, UUID siteId, UUID deviceId, String requestId,
+            Instant requestedAt, String requestedBy, String opId, String brand, String model,
+            String family, String role, Map<String, Object> connection) {
         StringBuilder sb = header(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy);
-        sb.append(",\"ops\":[{\"op\":\"test_connection\"")
+        sb.append(",\"ops\":[{\"op\":\"").append(esc(op)).append('"')
                 .append(",\"id\":\"").append(esc(opId)).append('"')
                 .append(",\"brand\":\"").append(esc(brand)).append('"');
         if (model != null && !model.isBlank()) {

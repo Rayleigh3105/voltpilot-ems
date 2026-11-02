@@ -1595,7 +1595,10 @@ class ZugriffZaunApiTest {
      * Übernahme als Kundenadministrator), damit Import, Zeile und Wert so zusammenhängen wie im Betrieb.
      */
     private void importAnlegen() throws Exception {
-        String monat = java.time.YearMonth.now().minusMonths(2).toString();
+        // ⚠ FEST vor dem Beginn der Kanalbindung (2026-08-31T22:00Z = 01.09. in Berlin, siehe
+        // Bühnenaufbau): „heute minus zwei Monate“ lag ab November 2026 IN der Bindung, und der
+        // Import scheiterte mit kanal_gebunden - alle elf Fälle rot, weil jeder ihn vorbereitet.
+        String monat = "2026-08";
         byte[] datei = ("Periode;Menge;Einheit\n" + monat + ";312,4;h\n").getBytes(StandardCharsets.UTF_8);
         byte[] zuordnung = ("{\"spalten\":{\"periode\":1,\"wert\":2,\"einheit\":3},\"deutung\":\"periode\","
                 + "\"zahlformat\":\"de\",\"bezugsgroesse\":\"" + BEZUGSGROESSE + "\"}").getBytes(StandardCharsets.UTF_8);

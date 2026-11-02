@@ -83,4 +83,14 @@ Was das Gerät tatsächlich bestätigt, steht daneben in `consumers.{id}.stage` 
 
 ## Freigabe
 
-Bis zum Katalog-Flip von `heating-rod` (HZ-9 = B: Prüfstand mit Lampen, dann echter Stab) sendet die Cloud den Block nur an die Prüfstand-Box. Dieser Vertrag hebt keine Freigabe auf.
+Bis zum Katalog-Flip von `heating-rod` (HZ-9 = B: Prüfstand mit Lampen, dann echter Stab) sendet die Cloud den Block nur an Prüfstand-Boxen. Das sind die Geräte-IDs in `voltpilot.heizstab.pruefstand-boxen` (Umgebung `VOLTPILOT_HEIZSTAB_PRUEFSTAND_BOXEN`, Vorgabe leer = keine Box). Nach dem Flip geht er an jede Box mit `heizstab_regler`. Dieser Vertrag hebt keine Freigabe auf.
+
+Die Cloud sendet den Block (`HeizstabPush`), wenn alles zutrifft:
+
+- Der Stab ist ein `heating-rod` mit gültiger Ausgangsmenge.
+- Der Anschluss ist `stern_mit_n`.
+- Profil und Steuerart sind aktiv, und die Steuerart enthält „Solar-Überschuss“.
+- Die Box meldet die Fähigkeit.
+- Die Freigabe nach dem Absatz oben liegt vor.
+
+Dann setzt sie zusätzlich `owner_claimed`, und der Regel-Compiler baut für diese Quelle keinen Flow. Meldet eine Box die Fähigkeit neu, stellt die Cloud ihr den Push sofort zu.

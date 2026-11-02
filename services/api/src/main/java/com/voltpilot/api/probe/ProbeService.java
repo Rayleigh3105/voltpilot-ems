@@ -193,6 +193,48 @@ public class ProbeService {
     }
 
     /**
+     * "Auf ‚aus' stellen" (Heizstab V1, HZ-5 = A): the box writes "nach Stromausfall: aus" to every
+     * output of a Shelly connection and reports the setting it reads back per output
+     * ({@code ausgaenge}). Same correlation and honest timeout as a connection test.
+     */
+    public ProbeResult nachStromausfallAus(UUID siteId, UUID deviceId, UUID entityId,
+            java.util.Map<String, Object> connection, String requestedBy) {
+        UUID tenantId = TenantContext.get();
+        if (tenantId == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
+        }
+        DeviceDto device = ziel.pruefung(siteId, deviceId, entityId);
+        ProbePublisher pub = publisher.getIfAvailable();
+        if (pub == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Die Einstellung lässt sich derzeit nicht ändern.");
+        }
+        String requestId = newRequestId();
+        CompletableFuture<ProbeResult> future = registry.register(requestId, device.id());
+        try {
+            pub.publishNachStromausfallAus(tenantId, siteId, device.id(), requestId, Instant.now(),
+                    requestedBy, "nach-stromausfall", connection);
+        } catch (Exception e) {
+            registry.forget(requestId);
+            log.warn("nach_stromausfall_aus {} could not be published: {}", requestId, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Die Anlage ist gerade nicht erreichbar. Bitte in einem Moment erneut versuchen.");
+        }
+        try {
+            ProbeResult result = registry.await(future, TEST_TIMEOUT);
+            if (result != null) {
+                return result;
+            }
+            return new ProbeResult(requestId, "timeout",
+                    "Die Anlage hat nicht rechtzeitig geantwortet. Ob die Einstellung angekommen ist, "
+                            + "zeigt der nächste Verbindungstest.",
+                    List.of());
+        } finally {
+            registry.forget(requestId);
+        }
+    }
+
+    /**
      * Run ONE writing op - the guided switch test or its cancel (Einheitsmodell
      * Stufe 4). Deliberately the SAME machinery as a read: same correlation,
      * same 5-second wait, same honest timeout. What makes it a write is only
