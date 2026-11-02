@@ -42,7 +42,9 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/mango"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/metriken"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/passwort"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/portal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/wartung"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/werkbank"
 )
 
@@ -68,16 +70,35 @@ func main() {
 		err = eingabe(os.Args[2:])
 	case "pruefe-konfig":
 		err = pruefeKonfig()
+	case "techniker-schluessel":
+		err = technikerSchluessel(os.Args[2:])
 	case "fassung", "version", "--version":
 		fmt.Println(fassung)
 	default:
-		fmt.Fprintf(os.Stderr, "unbekannter Befehl %q (dienst, werkbank, eingabe, pruefe-konfig, fassung)\n", befehl)
+		fmt.Fprintf(os.Stderr, "unbekannter Befehl %q (dienst, werkbank, eingabe, pruefe-konfig, techniker-schluessel, fassung)\n", befehl)
 		os.Exit(2)
 	}
 	if err != nil {
 		log.Error("beendet mit Fehler", "fehler", err)
 		os.Exit(1)
 	}
+}
+
+// technikerSchluessel erzeugt die Schlüssel des Techniker-Zugangs
+// „Werkstatt-Dienst“ einmal (in ein Verzeichnis, das dann ins SOPS-Secret
+// geht) und zeigt die öffentlichen Teile für das Portal.
+func technikerSchluessel(args []string) error {
+	if len(args) != 1 {
+		return errors.New("Aufruf: vp-werkstatt-dienst techniker-schluessel <verzeichnis>")
+	}
+	wg, sp, err := wartung.NeueSchluessel(args[0], konfig.DateiTechnikerWG, konfig.DateiTechnikerSSH)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Im Portal unter Fernwartung › Techniker einen Zugang „Werkstatt-Dienst“ anlegen mit\n  WireGuard (öffentlich): %s\n  SSH (öffentlich):       %s\n"+
+		"Seine Adresse im Techniker-Netz kommt als VP_WERKSTATT_TECHNIKER_ADRESSE in die ConfigMap, seine UUID als VP_WERKSTATT_TECHNIKER_ZUGANG an die API.\n"+
+		"Die Dateien %s und %s aus %s kommen ins SOPS-Secret und danach hier weg.\n", wg, sp, konfig.DateiTechnikerWG, konfig.DateiTechnikerSSH, args[0])
+	return nil
 }
 
 func eingabe(args []string) error {
@@ -148,13 +169,15 @@ func werkbankEinmal(log *slog.Logger) error {
 	return err
 }
 
-// freigabeQuelle: die API, wenn sie konfiguriert ist (V1), sonst die Datei (V1a).
-func freigabeQuelle(k konfig.Konfig) freigabe.Quelle {
+// apiZugang: mit der API (V1) liest der Dienst die Freigabe dort und holt
+// Codes, schließt Probe-Fenster und schreibt Abnahmen über DASSELBE
+// Dienstkonto; ohne sie gilt die Datei (V1a) und es gibt kein Portal.
+func apiZugang(k konfig.Konfig) (freigabe.Quelle, mango.Portal) {
 	if k.APIURL == "" {
-		return freigabe.Datei{Pfad: k.FreigabeDatei}
+		return freigabe.Datei{Pfad: k.FreigabeDatei}, nil
 	}
-	return freigabe.API{URL: k.APIURL, BoxArt: freigabe.Mango,
-		Token: &apikonto.Konto{TokenURL: k.TokenURL, ClientID: k.ClientID, Secret: k.ClientSecret}}
+	konto := &apikonto.Konto{TokenURL: k.TokenURL, ClientID: k.ClientID, Secret: k.ClientSecret}
+	return freigabe.API{URL: k.APIURL, BoxArt: freigabe.Mango, Token: konto}, portal.Client{URL: k.APIURL, Token: konto}
 }
 
 func dienstLaufen(log *slog.Logger) error {
@@ -185,7 +208,14 @@ func dienstLaufen(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	freigaben, ptl := apiZugang(k)
+	var probe mango.Probe
+	if ptl != nil && k.TechnikerSSH != nil {
+		probe = wartung.Probe{Zugang: wartung.Zugang{Privat: k.TechnikerWG, Adresse: k.TechnikerAdresse}, SSH: k.TechnikerSSH}
+	}
 	mk := &mango.Konfig{
+		Probe:      probe,
+		Portal:     ptl,
 		Werkbank:   wb,
 		Fassungen:  &fassungen.Ablage{Dir: filepath.Join(k.Daten, "fassungen"), Token: k.DownloadToken, TokenHost: "git.tecmaxx.de"},
 		Arbeit:     k.Arbeit,
@@ -205,7 +235,7 @@ func dienstLaufen(log *slog.Logger) error {
 		Log:       log.With("logger", "dienst"),
 		Werkbank:  wb,
 		Adresse:   k.Werkbank.Adresse,
-		Freigaben: freigabeQuelle(k),
+		Freigaben: freigaben,
 		Ablage:    ablage,
 		Laeufer:   lauf.NeuerLaeufer(ablage, log.With("logger", "lauf"), reg),
 		Takt:      k.Takt,

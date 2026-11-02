@@ -25,8 +25,10 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/passwort"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/portal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/referenz"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/wartung"
 )
 
 // zurSeite ist der Handgriff, wenn eine Box nicht in den Ablauf passt.
@@ -402,6 +404,7 @@ func (l *Lauf) passwortSetzen(ctx context.Context, _ *lauf.Kontext) (protokoll.B
 		return b, fmt.Errorf("Anmeldung mit dem neuen Passwort: %w", err)
 	}
 	b = b.Mit("mit_passwort", "angemeldet").Mit("passwort_age", text)
+	l.passwortAge = text
 	l.belege["root_passwort"] = "Schritt passwort: je Box zufällig (20 Zeichen), verschlüsselt für den age-Schlüssel Box-Passwörter im Beleg passwort_age"
 	return b, nil
 }
@@ -584,6 +587,115 @@ func PruefeTunnelAdresse(s string, boxNetz netip.Prefix) (netip.Addr, error) {
 		return netip.Addr{}, fmt.Errorf("%q ist keine Adresse im Box-Netz %s", s, boxNetz)
 	}
 	return a, nil
+}
+
+// adressSchritt: mit der API löst die Box selbst einen Einmal-Code ein und
+// bekommt dabei ihre Adresse (V1); ohne sie trägt der Betreiber die Adresse
+// aus dem Portal ein (V1a).
+func (l *Lauf) adressSchritt() lauf.Schritt {
+	if l.k.Portal != nil {
+		return lauf.Schritt{Kennung: "einloesen", Titel: "Einmal-Code einlösen", Frist: 5 * time.Minute, Tun: l.einloesen}
+	}
+	return lauf.Schritt{Kennung: "tunnel_adresse", Titel: "Tunnel-Adresse aus dem Portal", Frist: 12 * time.Hour, Tun: l.tunnelAdresseHolen}
+}
+
+// Rückgabewerte von werkstatt-anmelden (edge-app/core/internal/werkstatt).
+const (
+	anmeldenAbgewiesen   = 3
+	anmeldenUnerreichbar = 4
+)
+
+// anmeldenBefehl ruft werkstatt-anmelden mit Datenverzeichnis, Programm und
+// Portal aus der UCI-Konfiguration der Box auf (wie boot.sh). Der Code kommt
+// über die Standardeingabe und steht nie im Befehl.
+func anmeldenBefehl(wgPub, host string) string {
+	return `D="$(uci -q get vp-edge-light.main.data_dir || echo /etc/vp-edge-light)"
+R="$(uci -q get vp-edge-light.main.ram_dir || echo /tmp/vp-edge-light)"
+P="$(uci -q get vp-edge-light.main.portal_url || echo https://portal.voltpilot.de)"
+exec "$R/vp-edge-light" werkstatt-anmelden --daten "$D" --portal "$P" --wireguard '` + wgPub + `' --host-schluessel '` + host + `'`
+}
+
+// einloesung ist der Teil der Antwort, den der Lauf braucht
+// (docs/contracts/werkstatt-einloesen-v1.md, Antwort).
+type einloesung struct {
+	Schema         string `json:"schema"`
+	EdgeRef        string `json:"edgeRef"`
+	Freigabe       string `json:"freigabe"`
+	TunnelErgebnis string `json:"tunnelErgebnis"`
+	Tunnel         struct {
+		Adresse         string `json:"adresse"`
+		ServerPublicKey string `json:"serverPublicKey"`
+		ServerEndpunkt  string `json:"serverEndpunkt"`
+		ServerPort      int    `json:"serverPort"`
+	} `json:"tunnel"`
+	Probe struct {
+		FensterID     string    `json:"fensterId"`
+		TechnikerName string    `json:"technikerName"`
+		Ende          time.Time `json:"ende"`
+	} `json:"probe"`
+	GeraeteSchluessel struct {
+		Sha256 string `json:"sha256"`
+	} `json:"geraeteSchluessel"`
+}
+
+// einloesen: Code holen (nur in der laufenden Freigabe), die Box löst ihn mit
+// ihrem Geräteschlüssel selbst ein. Die API hält dabei den Geräteschlüssel
+// fest (D2), hinterlegt den Tunnel-Schlüssel und öffnet das Probe-Fenster.
+// Der Code steht in keinem Beleg und keinem Log.
+func (l *Lauf) einloesen(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
+	if !pubMuster.MatchString(l.tunnelPub) || l.host == "" {
+		return nil, errors.New("Tunnel-Schlüssel oder Host-Schlüssel fehlen (Schritte tunnel_schluessel, erkennen)")
+	}
+	c, err := l.k.Portal.CodeHolen(ctx, l.ref, false)
+	if err != nil {
+		return nil, fmt.Errorf("Einmal-Code: %w", err)
+	}
+	defer c.Code.Vergessen()
+	b := protokoll.Beleg{}.Mit("code", "für "+c.EdgeRef+" ausgegeben, gilt bis "+c.GueltigBis.UTC().Format(time.RFC3339)+" (steht in keinem Beleg)").
+		Mit("freigabe", c.Freigabe)
+	erg, err := l.v.Fuehre(ctx, anmeldenBefehl(l.tunnelPub, l.host), strings.NewReader(c.Code.Offenbaren()+"\n"))
+	if err != nil {
+		return b, err
+	}
+	switch erg.Code {
+	case 0:
+	case anmeldenAbgewiesen:
+		return b.Mit("abgewiesen", geheim.Schwaerze(letzte(erg.Fehl, 4))), fmt.Errorf("das Portal hat die Einlösung abgewiesen: %s", geheim.Schwaerze(letzte(erg.Fehl, 2)))
+	case anmeldenUnerreichbar:
+		return b, fmt.Errorf("die Box erreicht das Portal nicht: %s", geheim.Schwaerze(letzte(erg.Fehl, 2)))
+	default:
+		return b, fmt.Errorf("werkstatt-anmelden endete mit %d: %s", erg.Code, geheim.Schwaerze(letzte(erg.Text(), 4)))
+	}
+	var e einloesung
+	if err := json.Unmarshal([]byte(strings.TrimSpace(erg.Aus)), &e); err != nil {
+		return b, fmt.Errorf("Antwort von werkstatt-anmelden ist kein JSON: %v", err)
+	}
+	if e.Schema != "vp-werkstatt-einloesung.v1" || e.EdgeRef != l.ref {
+		return b, fmt.Errorf("Antwort passt nicht zur Box (Schema %q, Kennung %q)", e.Schema, e.EdgeRef)
+	}
+	a, err := PruefeTunnelAdresse(e.Tunnel.Adresse, l.k.BoxNetz)
+	if err != nil {
+		return b, fmt.Errorf("Adresse aus der Einlösung: %w", err)
+	}
+	if e.Tunnel.ServerPublicKey != "" && l.k.WartungPub != "" && e.Tunnel.ServerPublicKey != l.k.WartungPub {
+		return b, errors.New("das Portal nennt einen anderen Schlüssel des Wartungsservers als die Konfiguration des Dienstes")
+	}
+	if e.Probe.FensterID == "" {
+		return b, errors.New("die Einlösung nennt kein Probe-Fenster")
+	}
+	l.tunnelAdresse = a.String()
+	l.probeFenster = e.Probe.FensterID
+	l.serverPub, l.serverEP = l.k.WartungPub, l.k.WartungEP
+	if e.Tunnel.ServerPublicKey != "" {
+		l.serverPub = e.Tunnel.ServerPublicKey
+	}
+	if e.Tunnel.ServerEndpunkt != "" && e.Tunnel.ServerPort > 0 {
+		l.serverEP = net.JoinHostPort(e.Tunnel.ServerEndpunkt, strconv.Itoa(e.Tunnel.ServerPort))
+	}
+	return b.Mit("tunnel_ergebnis", e.TunnelErgebnis).
+		Mit("tunnel_adresse", a.String()).
+		Mit("probe_fenster", e.Probe.FensterID+" für "+e.Probe.TechnikerName+" bis "+e.Probe.Ende.UTC().Format(time.RFC3339)).
+		Mit("geraete_schluessel", "festgehalten, sha256 "+e.GeraeteSchluessel.Sha256), nil
 }
 
 func (l *Lauf) tunnelAdresseHolen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, error) {
@@ -781,6 +893,9 @@ func PruefeProbe(s string) error {
 }
 
 func (l *Lauf) probeImPortal(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, error) {
+	if l.k.Portal != nil && l.k.Probe != nil && l.probeFenster != "" {
+		return l.probeUeberTunnel(ctx)
+	}
 	for {
 		w, err := k.Warte(ctx, "probe", HinweisProbe(l.ref, l.host))
 		if err != nil {
@@ -792,9 +907,110 @@ func (l *Lauf) probeImPortal(ctx context.Context, k *lauf.Kontext) (protokoll.Be
 		}
 		l.belege["anmeldeprobe"] = "Handgriff im Portal (V1a): Anmeldung über Portal und Tunnel im Fenster, vom Betreiber im Schritt probe bestätigt"
 		l.belege["fenster_zu"] = "Handgriff im Portal (V1a): Fenster geschlossen, neuer Versuch abgewiesen, vom Betreiber im Schritt probe bestätigt"
-		return protokoll.Beleg{}.Mit("probe", "vom Betreiber im Portal erledigt: angemeldet, Host-Schlüssel gelesen, Fenster geschlossen, neuer Versuch abgewiesen").
-			Mit("host_schluessel_lan", l.host), nil
+		b := protokoll.Beleg{}.Mit("probe", "vom Betreiber im Portal erledigt: angemeldet, Host-Schlüssel gelesen, Fenster geschlossen, neuer Versuch abgewiesen").
+			Mit("host_schluessel_lan", l.host)
+		if l.k.Portal != nil && l.probeFenster != "" {
+			// Das Probe-Fenster der Einlösung gehört dem Dienst; zu muss es vor der Abnahme sein.
+			schonZu, err := l.k.Portal.FensterSchliessen(ctx, l.probeFenster)
+			if err != nil {
+				return b, fmt.Errorf("Probe-Fenster der Einlösung schließen: %w", err)
+			}
+			zustand := "geschlossen"
+			if schonZu {
+				zustand = "war schon zu"
+			}
+			b = b.Mit("probe_fenster", l.probeFenster+": "+zustand)
+		}
+		return b, nil
 	}
+}
+
+// boxLog liest die Zeilen von Dropbear und vp-wartung aus dem Log der Box (im LAN).
+func (l *Lauf) boxLog(ctx context.Context) string {
+	erg, err := l.v.Fuehre(ctx, "logread 2>/dev/null | grep -E 'dropbear|vp-wartung' | tail -n 80", nil)
+	if err != nil {
+		return ""
+	}
+	return erg.Aus
+}
+
+// probeUeberTunnel ist die Probe durch den Dienst selbst (Werkstatt-Regel 4
+// bis 6, WI-5 A): als Techniker-Zugang durch den Tunnel anmelden, den
+// Host-Schlüssel dort lesen und mit dem aus dem LAN vergleichen, das
+// Probe-Fenster der Einlösung schließen, der neue Versuch endet mit
+// „Connection timed out“, und das Log der Box nennt Anmeldung und Ende.
+func (l *Lauf) probeUeberTunnel(ctx context.Context) (protokoll.Beleg, error) {
+	a, err := netip.ParseAddr(l.tunnelAdresse)
+	if err != nil {
+		return nil, fmt.Errorf("Tunnel-Adresse %q: %v", l.tunnelAdresse, err)
+	}
+	if l.serverPub == "" || l.serverEP == "" {
+		return nil, errors.New("Schlüssel oder Endpunkt des Wartungsservers fehlen (Einlösung, Konfiguration)")
+	}
+	s := wartung.Server{PublicKey: l.serverPub, Endpunkt: l.serverEP, BoxNetz: l.k.BoxNetz}
+	ziel := netip.AddrPortFrom(a, 2222)
+	fp := l.k.Probe.Fingerabdruck()
+	b := protokoll.Beleg{}.Mit("techniker_schluessel", fp).Mit("ziel", ziel.String())
+
+	actx, cancel := context.WithTimeout(ctx, l.k.Zeiten.Tunnel)
+	an, err := l.k.Probe.Anmelden(actx, s, ziel)
+	cancel()
+	if err != nil {
+		return b, fmt.Errorf("Probe über den Tunnel: %w", err)
+	}
+	b = b.Mit("anmeldung", fmt.Sprintf("gelungen nach %d Versuchen in %s", an.Versuche, an.Dauer.Round(time.Second))).
+		Mit("host_schluessel_tunnel", an.HostSchluessel).Mit("host_schluessel_lan", l.host)
+	if an.HostSchluessel != l.host {
+		return b, fmt.Errorf("Host-Schlüssel durch den Tunnel %s, im LAN %s: zwei verschiedene Geräte?", an.HostSchluessel, l.host)
+	}
+	anmeldung := ""
+	for _, z := range strings.Split(l.boxLog(ctx), "\n") {
+		if strings.Contains(z, fp) {
+			anmeldung = strings.TrimSpace(z)
+		}
+	}
+	if anmeldung == "" {
+		return b, fmt.Errorf("das Log der Box nennt die Anmeldung mit %s nicht", fp)
+	}
+	b = b.Mit("box_log_anmeldung", anmeldung)
+
+	schonZu, err := l.k.Portal.FensterSchliessen(ctx, l.probeFenster)
+	if err != nil {
+		return b, fmt.Errorf("Probe-Fenster schließen: %w", err)
+	}
+	zu := "geschlossen"
+	if schonZu {
+		zu = "war schon zu"
+	}
+	b = b.Mit("probe_fenster", l.probeFenster+": "+zu)
+	nctx, cancel := context.WithTimeout(ctx, l.k.Zeiten.Tunnel)
+	nach, err := l.k.Probe.NachEnde(nctx, s, ziel)
+	cancel()
+	if err != nil {
+		return b, fmt.Errorf("neuer Versuch nach dem Ende: %w", err)
+	}
+	b = b.Mit("neuer_versuch", nach)
+	var ende string
+	_ = l.warteAuf(ctx, l.k.Zeiten.Tunnel, func() error {
+		for _, z := range strings.Split(l.boxLog(ctx), "\n") {
+			if strings.Contains(z, "Sitzung beendet") || strings.Contains(z, "Fenster-Schluessel jetzt: keine") {
+				ende = strings.TrimSpace(z)
+			}
+		}
+		if ende == "" {
+			return errors.New("das Log der Box nennt das Ende noch nicht")
+		}
+		return nil
+	})
+	if ende == "" {
+		return b, errors.New("das Log der Box nennt weder „Sitzung beendet“ noch „Fenster-Schluessel jetzt: keine“")
+	}
+	b = b.Mit("box_log_ende", ende)
+	l.belege["anmeldeprobe"] = "Schritt probe: Anmeldung über Portal und Tunnel als Techniker-Zugang " + fp + " im Probe-Fenster der Einlösung; Box-Log: " + anmeldung
+	l.belege["fenster_zu"] = "Schritt probe: Fenster " + l.probeFenster + " geschlossen, neuer Versuch: " + nach + "; Box-Log: " + ende
+	l.belege["host_schluessel"] += "; Tunnel-Weg: " + an.HostSchluessel + " (gleich)"
+	l.probeAutomatisch = true
+	return b, nil
 }
 
 func (l *Lauf) internetWeg(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
@@ -828,9 +1044,22 @@ func (l *Lauf) uebergabe(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg,
 		Mit("host_schluessel", l.host).
 		Mit("tunnel_adresse", l.tunnelAdresse).
 		Mit("lan_netz", l.k.LanNetz.String())
-	l.belege["host_schluessel"] += "; Tunnel-Weg: bei der Probe im Portal gelesen und verglichen (Schritt probe)"
+	if !l.probeAutomatisch {
+		l.belege["host_schluessel"] += "; Tunnel-Weg: bei der Probe im Portal gelesen und verglichen (Schritt probe)"
+	}
+	belege := map[string]string{}
 	for _, p := range Pruefungen {
 		b = b.Mit("pruefung_"+p, l.belege[p])
+		belege[p] = l.belege[p]
+	}
+	if l.k.Portal != nil {
+		// Die Abnahme mit den Belegen (WI-7 A); das Passwort nur verschlüsselt (WI-6 A).
+		an, err := l.k.Portal.AbnahmeSchreiben(ctx, l.ref, portal.Abnahme{Fassung: l.version, HostSchluessel: l.host,
+			LanNetz: l.k.LanNetz.String(), Belege: belege, PasswortAge: l.passwortAge})
+		if err != nil {
+			return b, fmt.Errorf("Abnahme im Portal: %w", err)
+		}
+		b = b.Mit("abnahme", an.ID+" (Freigabe "+an.FreigabeID+", Einlösung "+an.EinloesungID+")")
 	}
 	return b.Mit("versand", "Nicht versenden: Stufe 1 (Entscheid 5c)"), nil
 }

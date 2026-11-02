@@ -33,6 +33,8 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/portal"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/wartung"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/werkbank"
 )
 
@@ -81,8 +83,30 @@ type Konfig struct {
 	WartungEP  string       // Endpunkt; leer: Vorgabe des Skripts (wartung.voltpilot.de)
 	BoxNetz    netip.Prefix // Tunnel-Adressen der Boxen
 	Bauart     string       // Edge Light: mipsle (Mango)
-	Zeiten     Zeiten
-	Log        *slog.Logger
+	// Portal ist der Dienst-Baum der API (V1): Einmal-Code, Probe-Fenster der
+	// Einlösung, Abnahme mit Belegen. nil heißt V1a: Tunnel-Adresse als
+	// Eingabe, Abnahme im Portal von Hand.
+	Portal Portal
+	// Probe ist die Anmeldung des Dienstes über den Wartungstunnel als
+	// Techniker-Zugang „Werkstatt-Dienst“ (WI-5 A, internal/wartung). nil:
+	// die Probe bleibt ein Handgriff im Portal.
+	Probe  Probe
+	Zeiten Zeiten
+	Log    *slog.Logger
+}
+
+// Probe ist, was ein Lauf von der Probe über den Tunnel braucht (wartung.Probe).
+type Probe interface {
+	Anmelden(ctx context.Context, s wartung.Server, box netip.AddrPort) (wartung.Anmeldung, error)
+	NachEnde(ctx context.Context, s wartung.Server, box netip.AddrPort) (string, error)
+	Fingerabdruck() string
+}
+
+// Portal ist, was ein Lauf vom Dienst-Baum der API braucht (internal/portal).
+type Portal interface {
+	CodeHolen(ctx context.Context, edgeRef string, tausch bool) (portal.Code, error)
+	FensterSchliessen(ctx context.Context, fensterID string) (schonZu bool, err error)
+	AbnahmeSchreiben(ctx context.Context, edgeRef string, a portal.Abnahme) (portal.Angenommen, error)
 }
 
 // NotfallFingerabdruck gibt den Fingerabdruck des Notfall-Schlüssels.
@@ -119,6 +143,10 @@ type Lauf struct {
 	ref                                   string
 	version                               string
 	tunnelPub, tunnelAdresse              string
+	probeFenster                          string // Probe-Fenster der Einlösung (V1)
+	serverPub, serverEP                   string // Wartungsserver aus der Einlösung
+	probeAutomatisch                      bool   // die Probe lief über den Tunnel des Dienstes
+	passwortAge                           string // das Root-Passwort, nur verschlüsselt
 	notfallFP                             string
 	pfadAbbild, pfadProgramm, pfadSkripte string
 	dr                                    *durchreiche.Server
@@ -178,7 +206,7 @@ func (l *Lauf) Schritte(e Einstieg) []lauf.Schritt {
 		lauf.Schritt{Kennung: "notfall", Titel: "Notfall-Schlüssel", Frist: time.Minute, Tun: l.notfallSchluessel},
 		lauf.Schritt{Kennung: "programm", Titel: "Edge Light einspielen", Frist: 10 * time.Minute, Tun: l.programmEinspielen},
 		lauf.Schritt{Kennung: "tunnel_schluessel", Titel: "Tunnel-Schlüssel erzeugen", Frist: 5 * time.Minute, Tun: l.tunnelSchluessel},
-		lauf.Schritt{Kennung: "tunnel_adresse", Titel: "Tunnel-Adresse aus dem Portal", Frist: 12 * time.Hour, Tun: l.tunnelAdresseHolen},
+		l.adressSchritt(),
 		lauf.Schritt{Kennung: "tunnel", Titel: "Tunnel einrichten", Frist: 10 * time.Minute, Tun: l.tunnelEinrichten},
 		lauf.Schritt{Kennung: "lan", Titel: "LAN umstellen und neu starten", Frist: time.Minute, Tun: l.lanUmstellen},
 		lauf.Schritt{Kennung: "neustart", Titel: "Neustart-Probe", Frist: l.k.Zeiten.Neustart + 5*time.Minute, Tun: l.neustartProbe},

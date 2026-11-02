@@ -4,6 +4,7 @@
 package konfig
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -36,6 +37,8 @@ const (
 	DateiEinrichten    = "werkbank-einrichten"
 	DateiDownloadToken = "download-token"
 	DateiClientSecret  = "keycloak-client-secret"
+	DateiTechnikerWG   = "techniker-wireguard"
+	DateiTechnikerSSH  = "techniker-ssh"
 )
 
 var wgSchluessel = regexp.MustCompile(`^[A-Za-z0-9+/]{43}=$`)
@@ -67,6 +70,12 @@ type Konfig struct {
 	TokenURL     string
 	ClientID     string
 	ClientSecret geheim.Geheim
+
+	// Der Techniker-Zugang „Werkstatt-Dienst“ für die Probe über den Tunnel
+	// (V1, WI-5 A); ohne ihn bleibt die Probe ein Handgriff im Portal.
+	TechnikerAdresse netip.Addr
+	TechnikerWG      geheim.Geheim // WireGuard-Privatschlüssel, Base64
+	TechnikerSSH     ssh.Signer
 
 	Werkbank werkbank.Konfig
 }
@@ -212,6 +221,7 @@ func Lies(env Umgebung, mitSchluesseln bool) (Konfig, error) {
 				add(fmt.Errorf("%s fehlt im Geheimnis-Verzeichnis (Client-Secret von %s)", DateiClientSecret, k.ClientID))
 			}
 		}
+		k.techniker(env, dir, add)
 		if p := env("VP_WERKSTATT_NOTFALL_PUB"); p != "" {
 			b, err := os.ReadFile(p)
 			if err != nil {
@@ -343,6 +353,39 @@ func dauer(env Umgebung, name, vorgabe string, min, max time.Duration) (time.Dur
 
 // schluessel liest einen privaten Schlüssel. Sein Inhalt kommt in den
 // Schwärzer: Er steht in keiner Log-Zeile, selbst wenn ihn etwas zitiert.
+// techniker liest den Zugang für die Probe: alles oder nichts, nur mit der API.
+func (k *Konfig) techniker(env func(string) string, dir string, add func(error)) {
+	adr := strings.TrimSpace(env("VP_WERKSTATT_TECHNIKER_ADRESSE"))
+	wg, wgErr := os.ReadFile(filepath.Join(dir, DateiTechnikerWG))
+	_, sshErr := os.Stat(filepath.Join(dir, DateiTechnikerSSH))
+	if adr == "" && wgErr != nil && sshErr != nil {
+		return
+	}
+	if k.APIURL == "" {
+		add(errors.New("Techniker-Zugang ohne VP_WERKSTATT_API_URL: die Probe über den Tunnel braucht das Probe-Fenster der Einlösung"))
+		return
+	}
+	a, err := netip.ParseAddr(adr)
+	if err != nil || !a.Is4() {
+		add(fmt.Errorf("VP_WERKSTATT_TECHNIKER_ADRESSE %q: die Adresse des Techniker-Zugangs im Techniker-Netz (IPv4)", adr))
+	}
+	k.TechnikerAdresse = a
+	if wgErr != nil {
+		add(fmt.Errorf("%s fehlt im Geheimnis-Verzeichnis (WireGuard-Schlüssel des Techniker-Zugangs)", DateiTechnikerWG))
+	} else if raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(wg))); err != nil || len(raw) != 32 {
+		add(fmt.Errorf("%s ist kein WireGuard-Schlüssel (32 Byte, Base64)", DateiTechnikerWG))
+	} else {
+		k.TechnikerWG = geheim.Neu(strings.TrimSpace(string(wg)))
+	}
+	s, err := schluessel(filepath.Join(dir, DateiTechnikerSSH), true)
+	add(err)
+	if s != nil && s.PublicKey().Type() != ssh.KeyAlgoRSA {
+		add(fmt.Errorf("%s: die Schlüsselausgabe an die Box kennt nur ssh-rsa, nicht %s", DateiTechnikerSSH, s.PublicKey().Type()))
+		s = nil
+	}
+	k.TechnikerSSH = s
+}
+
 func schluessel(pfad string, pflicht bool) (ssh.Signer, error) {
 	b, err := os.ReadFile(pfad)
 	if err != nil {

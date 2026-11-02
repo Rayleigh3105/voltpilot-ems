@@ -60,4 +60,11 @@ spec:
     #           kubernetes.io/metadata.name: voltpilot-prod
     #   ports:
     #     - {protocol: TCP, port: 8080}
-    # Ab V1 (P8): der Wartungsserver (WireGuard).
+    # Der Wartungsserver (WireGuard, Probe über den Tunnel als Techniker-Zugang):
+    # UDP 51820 nach draußen, nie ins eigene Netz.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - {protocol: UDP, port: 51820}

@@ -1,6 +1,7 @@
 package attrappe
 
 import (
+	"bufio"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -38,6 +39,10 @@ type Mango struct {
 	WgPub                   string
 	Neustartdauer           time.Duration
 	Zweite                  bool // ein zweites Gerät mit eigener MAC unter derselben Adresse
+	// Anmelden antwortet auf werkstatt-anmelden (P7): Code von der
+	// Standardeingabe, Tunnel- und Host-Schlüssel aus den Argumenten; nil =
+	// Befehl unbekannt (wie eine Box ohne den Befehl).
+	Anmelden func(code, wireguard, host string) (aus string, rc int)
 
 	mu           sync.Mutex
 	phase        string // werk | openwrt
@@ -53,6 +58,7 @@ type Mango struct {
 	edge, laeuft bool
 	tunnel       string
 	befehle      []string
+	logbuch      []string
 	sshLn, glLn  net.Listener
 	conns        map[*ssh.ServerConn]bool
 }
@@ -257,6 +263,15 @@ var (
 	lanMuster = regexp.MustCompile(`uci add_list network\.lan\.ipaddr='([0-9./]+)'`)
 )
 
+// argument liest --name 'wert' aus einem Befehl.
+func argument(b, name string) string {
+	m := regexp.MustCompile(regexp.QuoteMeta(name) + ` '([^']*)'`).FindStringSubmatch(b)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
 // exec führt einen Befehl aus; abreissen heißt: die Verbindung endet ohne Ergebnis.
 func (m *Mango) exec(ch ssh.Channel, b string) (code int, abreissen bool) {
 	m.mu.Lock()
@@ -395,6 +410,22 @@ func (m *Mango) exec(ch ssh.Channel, b string) (code int, abreissen bool) {
 		}
 		n := strings.Count(strings.TrimSpace(string(m.dateien["/etc/dropbear/authorized_keys"])), "\n") + 1
 		aus("interface: wg_wartung\n  latest handshake: 7 seconds ago\n--- SSH 2222 ausserhalb der Tunnel: abgewiesen (nur aus wg_wartung, bisher 0 Pakete abgewiesen)\n--- Fenster-Schluessel: Abholer laeuft, Server 10.10.32.1:8022 ueber wg_wartung\n  letzte gueltige Antwort des Wartungsservers: vor 4 s\n  dauerhaft aus /etc/dropbear/authorized_keys: %d Schluessel (gelten im Tunnel weiter)\n", n)
+	case strings.Contains(b, " werkstatt-anmelden ") && m.Anmelden != nil:
+		zeile, _ := bufio.NewReader(io.LimitReader(ch, 256)).ReadString('\n')
+		wg, host := argument(b, "--wireguard"), argument(b, "--host-schluessel")
+		ausgabe, rc := m.Anmelden(strings.TrimSpace(zeile), wg, host)
+		if rc == 0 {
+			aus("%s\n", ausgabe)
+		} else {
+			fmt.Fprintln(ch.Stderr(), ausgabe)
+		}
+		return rc, false
+	case strings.HasPrefix(b, "logread"):
+		m.mu.Lock()
+		for _, z := range m.logbuch {
+			aus("%s\n", z)
+		}
+		m.mu.Unlock()
 	case strings.Contains(b, "/etc/vp-edge-light/ref"):
 		m.mu.Lock()
 		aus("ref=%s\nlan=%s\nstart=S60vp-wartung S95vp-edge-light \n", m.Ref, m.lan)
@@ -414,6 +445,9 @@ func (m *Mango) weg() string {
 }
 
 // Abziehen nimmt die Mango vom Werkstatt-Anschluss, Einstecken bringt sie zurück.
+// Protokolliere schreibt eine Zeile in das Log der Box (logread).
+func (m *Mango) Protokolliere(z string) { m.mu.Lock(); m.logbuch = append(m.logbuch, z); m.mu.Unlock() }
+
 func (m *Mango) Abziehen()   { m.mu.Lock(); m.offline = true; m.mu.Unlock() }
 func (m *Mango) Einstecken() { m.mu.Lock(); m.offline = false; m.mu.Unlock() }
 

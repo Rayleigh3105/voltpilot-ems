@@ -44,13 +44,14 @@ eine Freigabe, beginnt ihr Lauf von selbst. Jeder Schritt endet mit einem Beleg;
 | `notfall` | der Notfall-Schlüssel als einziger dauerhafter Schlüssel | eine Zeile, Fingerabdruck |
 | `programm` | `install.sh` aus dem Skriptstand, Neustart von `vp-edge-light` | „Pruefsumme auf dem Geraet bestaetigt“, `/health` mit Referenz (Prüfzeichen gültig) und der Fassung der Freigabe |
 | `tunnel_schluessel` | `service-tunnel.sh … key` | öffentlicher Schlüssel, Referenz |
-| `tunnel_adresse` | **wartet auf dich**: Schlüssel im Portal hinterlegen, Adresse eintragen | die Adresse |
+| `tunnel_adresse` (ohne API) | **wartet auf dich**: Schlüssel im Portal hinterlegen, Adresse eintragen | die Adresse |
+| `einloesen` (mit API, statt `tunnel_adresse`) | Einmal-Code holen, die Box löst ihn mit `werkstatt-anmelden` selbst ein (Code über die Standardeingabe): Geräteschlüssel festgehalten (D2), Tunnel-Schlüssel hinterlegt, Adresse zugeteilt, Probe-Fenster offen | Freigabe, Adresse, Probe-Fenster, sha256 des Geräteschlüssels; der Code nie |
 | `tunnel` | `service-tunnel.sh … <adresse>`, dann `status` | Handshake, „SSH 2222 ausserhalb der Tunnel: abgewiesen“, Abholer mit gültiger Antwort, ein dauerhafter Schlüssel |
 | `lan` | LAN auf das LAN-Netz (Entscheid 6a), Weg über die Brücke dort, Neustart | LAN-Netz |
 | `neustart` | Neustart-Probe unter der neuen Adresse | derselbe Host-Schlüssel, dieselbe Referenz, Startdienste, ein dauerhafter Schlüssel, frischer Handshake |
-| `probe` | **wartet auf dich**: Probe im Fenster im Portal (Werkstatt-Regel 4–6), solange der Tunnel noch über die Brücke steht; dann `eingabe probe erledigt` | deine Bestätigung, Host-Schlüssel aus dem LAN zum Vergleich |
+| `probe` | mit Techniker-Zugang: der Dienst meldet sich durch den Tunnel an (WireGuard im Prozess), liest den Host-Schlüssel, schließt das Probe-Fenster, der neue Versuch endet mit „Connection timed out“; sonst **wartet auf dich**: Probe im Fenster im Portal (Werkstatt-Regel 4–6), dann `eingabe probe erledigt` | Host-Schlüssel durch den Tunnel und im LAN, Box-Log zu Anmeldung und Ende, der abgewiesene Versuch (bzw. deine Bestätigung) |
 | `internet_weg` | Werkstatt-Internet wieder aus der Netz-Einstellung | kein Gateway, kein DNS über die Brücke |
-| `uebergabe` | Belege für die Abnahme im Portal, je Prüfung der Werkstatt-Regel | Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, die acht Prüfungen |
+| `uebergabe` | Belege für die Abnahme, je Prüfung der Werkstatt-Regel; mit API schließt der Dienst vorher das Probe-Fenster der Einlösung und schreibt die Abnahme selbst (`quelle: dienst`, Passwort nur verschlüsselt) | Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, die acht Prüfungen, mit API die Kennung der Abnahme |
 
 Bei dir bleiben in V1a: die Tunnel-Adresse aus dem Portal eintragen, die Probe im Fenster der Fernwartung (der
 Lauf wartet darauf, bevor er den Weg über die Brücke entfernt: ohne ihn steht der Tunnel in der Werkstatt nicht
@@ -104,6 +105,7 @@ Aus der Umgebung (ConfigMap `werkstatt-dienst-konfig`), Schlüssel aus Dateien (
 | `VP_WERKSTATT_FREIGABE` | `/etc/vp-werkstatt/freigabe/freigabe.json` | die Freigabe als Datei (V1a); fehlt die Datei, läuft keine |
 | `VP_WERKSTATT_API_URL` | leer | Portal-API (V1): gesetzt, liest der Dienst die laufende Freigabe dort (`GET /api/v1/werkstatt-dienst/freigabe`) statt aus der Datei |
 | `VP_WERKSTATT_TOKEN_URL` | – (Pflicht mit API) | Token-Endpunkt von Keycloak (`…/realms/voltpilot/protocol/openid-connect/token`) |
+| `VP_WERKSTATT_TECHNIKER_ADRESSE` | leer | Probe über den Tunnel (V1, nur mit API): Adresse des Techniker-Zugangs „Werkstatt-Dienst“ im Techniker-Netz; dazu `techniker-wireguard` und `techniker-ssh` im Geheimnis-Verzeichnis (`vp-werkstatt-dienst techniker-schluessel <dir>` erzeugt sie). Leer: die Probe bleibt ein Handgriff |
 | `VP_WERKSTATT_CLIENT_ID` | `voltpilot-werkstatt-dienst` | Dienstkonto (client_credentials, Rolle `werkstatt-dienst`); Secret als `keycloak-client-secret` im Geheimnis-Verzeichnis |
 | `VP_WERKSTATT_DATEN` | `/var/lib/vp-werkstatt-dienst` | Protokolle, Host-Schlüssel der Brücke (PVC) |
 | `VP_WERKSTATT_HTTP` | `:8100` | Betriebsseite |

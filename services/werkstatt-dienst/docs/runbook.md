@@ -69,10 +69,18 @@ Fenster öffnen, Kunden, Kopplung, Updates, `/api/v1/admin/**`.
 Die Einlösung einer Box öffnet 30 Minuten Probe-Fenster für **einen** Techniker-Zugang: den des Dienstes (WI-5).
 Ohne ihn gibt die API keine Einmal-Codes aus (409 „kein Techniker-Zugang eingerichtet“).
 
-1. Im Portal unter Fernwartung einen Techniker-Zugang „Werkstatt-Dienst“ anlegen, mit dem öffentlichen
-   WireGuard-Schlüssel und dem SSH-Schlüssel des Dienstes. Beide Schlüssel erzeugt der Dienst mit der Probe über den
-   Tunnel (P8); bis dahin bleibt dieser Schritt offen.
-2. Seine UUID bekommt die API als `VP_WERKSTATT_TECHNIKER_ZUGANG` (`voltpilot.werkstatt.techniker-zugang`).
+1. Die Schlüssel einmal erzeugen, auf deinem Rechner oder in einem Wegwerf-Container mit dem Image des Dienstes:
+   `vp-werkstatt-dienst techniker-schluessel /tmp/techniker`. Der Befehl schreibt `techniker-wireguard` und
+   `techniker-ssh` (RSA 3072, nie überschrieben) und zeigt die öffentlichen Teile.
+2. Im Portal unter Fernwartung einen Techniker-Zugang „Werkstatt-Dienst“ anlegen, mit diesen öffentlichen Schlüsseln.
+3. Seine UUID bekommt die API als `VP_WERKSTATT_TECHNIKER_ZUGANG` (`voltpilot.werkstatt.techniker-zugang`), seine
+   Adresse im Techniker-Netz der Dienst als `VP_WERKSTATT_TECHNIKER_ADRESSE`; die beiden Dateien kommen ins
+   SOPS-Secret und danach vom Rechner weg.
+
+Mit allen drei Teilen macht der Dienst die Probe selbst: Er meldet sich durch den Tunnel als dieser Zugang an,
+liest den Host-Schlüssel dort, schließt das Probe-Fenster und prüft, dass der neue Versuch mit „Connection timed
+out“ endet; das Log der Box nennt Anmeldung und Ende. WireGuard läuft dabei im Prozess (ohne `NET_ADMIN`), der Pod
+braucht nur UDP 51820 nach draußen (NetworkPolicy). Ohne sie bleibt die Probe ein Handgriff im Portal.
 
 ### gitops
 
@@ -110,7 +118,11 @@ Je Mango (die Werkstatt ist freigegeben, die Brücke bereit):
 1. Mango aus dem Karton: das orange Kabel WERKSTATT in ihre Buchse **LAN**, Strom. Die Buchse WAN bleibt frei.
 2. Die Anzeige (`kubectl -n werkstatt-prod port-forward deploy/werkstatt-dienst 8101:8101`, dann
    http://localhost:8101) zeigt den Lauf. OpenWrt aufspielen und Neustart dauern einige Minuten (PS-3).
-3. Steht dort **„Dein Schritt“** (Lauf wartet, Metrik `vp_werkstatt_lauf_wartet`): im Portal unter
+3. **Mit der API** (`VP_WERKSTATT_API_URL` gesetzt) entfällt dieser Schritt: Der Dienst holt einen Einmal-Code, die
+   Box löst ihn mit `werkstatt-anmelden` selbst ein (Schritt `einloesen`). Die API hält dabei ihren Geräteschlüssel
+   fest, hinterlegt ihren Tunnel-Schlüssel und teilt die Adresse zu. Weiter mit 4.
+
+   **Ohne API (V1a):** Steht dort **„Dein Schritt“** (Lauf wartet, Metrik `vp_werkstatt_lauf_wartet`): im Portal unter
    **Geräte › Fernwartung › Tunnel-Schlüssel hinterlegen** Referenz und Schlüssel aus der Anzeige eintragen; die
    zugeteilte Adresse dann dem Dienst geben:
 
@@ -128,9 +140,13 @@ Je Mango (die Werkstatt ist freigegeben, die Brücke bereit):
    ```
 
    Erst danach nimmt der Dienst den Weg über die Brücke wieder heraus; ohne ihn steht der Tunnel in der Werkstatt
-   nicht mehr (beim Kunden kommt er über WAN).
-5. Ist der Lauf **fertig**: die Abnahme im Portal mit den Belegen des Laufs ausfüllen (Schritt `uebergabe`: Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, je Prüfung der Beleg); das
-   LAN-Netz (Vorgabe `10.213.0.1/24`) dort festhalten.
+   nicht mehr (beim Kunden kommt er über WAN). Mit der API schließt der Dienst danach auch das Probe-Fenster, das
+   die Einlösung für seinen Techniker-Zugang geöffnet hat. **Ist der Techniker-Zugang eingerichtet** (siehe oben),
+   entfällt dieser Schritt ganz: Der Dienst macht die Probe selbst.
+5. Ist der Lauf **fertig**: **Mit der API** schreibt der Dienst die Abnahme selbst (Schritt `uebergabe`: je Prüfung
+   der Beleg, das Passwort verschlüsselt, LAN-Netz; im Portal unter Werkstatt mit `quelle: dienst`). **Ohne API:**
+   die Abnahme im Portal mit den Belegen des Laufs ausfüllen (Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, je
+   Prüfung der Beleg) und das LAN-Netz (Vorgabe `10.213.0.1/24`) dort festhalten.
 6. Passwort in die Passwortablage: Beleg `passwort_age` des Schritts `passwort` (Protokoll unter
    http://localhost:8101/laeufe/<lauf>.json) in eine Datei, dann `age -d -i <dein Schlüssel> passwort.age`.
 7. Abziehen. Gehäuse drucken und einsetzen wie bisher (`bauen.sh --referenz <referenz>`); die Box bleibt „nicht
@@ -147,6 +163,8 @@ Steckt eine Mango schon mit frischem OpenWrt am Kabel (192.168.1.1, root ohne Pa
 | kein GL-MT300N-V2, keine GL-Firmware | abziehen, zur Seite legen |
 | die Werksfirmware nimmt das Abbild nicht an (`sysupgrade -T`) | Startlader (M4): Reset halten und Strom stecken, bis die Leuchte fünfmal blinkt; am Rechner 192.168.1.2, http://192.168.1.1, Abbild der Freigabe hochladen; danach mit frischem OpenWrt an das orange Kabel |
 | kein Internet über die Brücke (PS-12) | WLAN und Router der Brücke prüfen, dann abziehen und neu einstecken |
+| `einloesen`: das Portal hat abgewiesen, `schluessel_festgehalten` | die Box wurde neu aufgespielt oder ist eine andere unter derselben Kennung: abziehen, zur Seite legen; einen Tausch gibt es nur ausdrücklich und solange sie ungekoppelt ist |
+| `einloesen`: nicht freigegeben, Obergrenze, gekoppelt | Freigabe prüfen bzw. neu erteilen; eine gekoppelte Box bekommt keinen Code |
 | der Dienst wurde mitten im Lauf neu gestartet | abziehen, zur Seite legen: der Stand der Box ist unbekannt; ein gesetztes Passwort steht in `passwort_age` |
 
 Nach jedem Ende (fertig oder angehalten) fasst der Dienst dieselbe Box erst wieder an, wenn sie abgezogen war. Eine

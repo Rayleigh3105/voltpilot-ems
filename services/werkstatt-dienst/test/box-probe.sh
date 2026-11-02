@@ -26,8 +26,13 @@
 #
 # Aufruf: services/werkstatt-dienst/test/box-probe.sh
 #   VP_PROBE_BEHALTEN=1  Container, Netze, Bilder und Dateien nicht wegräumen
+#   VP_PROBE_API=1       der Weg mit API (V1): Freigabe, Einmal-Code, Einlösen durch
+#                        die Box (werkstatt-anmelden), Probe des Dienstes über den
+#                        Tunnel als Techniker-Zugang und Abnahme, gegen eine
+#                        Portal-Attrappe (test/portal-attrappe) am Wartungsserver
 set -eu
 
+API=${VP_PROBE_API:-0}
 HIER=$(cd "$(dirname "$0")" && pwd)
 DIENST=$(cd "$HIER/.." && pwd)
 REPO=$(cd "$DIENST/../.." && pwd)
@@ -65,6 +70,7 @@ trap aufraeumen EXIT INT TERM
 echo "== Programme bauen"
 mkdir -p "$TMP/bin" "$TMP/geheim" "$TMP/oeffentlich" "$TMP/fassungen" "$TMP/freigabe"
 (cd "$DIENST" && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -ldflags "-X main.fassung=probe" -o "$TMP/bin/vp-werkstatt-dienst" ./cmd/vp-werkstatt-dienst)
+(cd "$DIENST" && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -o "$TMP/bin/portal-attrappe" ./test/portal-attrappe)
 (cd "$REPO/services/tunnel-dienst" && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath -o "$TMP/bin/vp-tunnel-dienst" ./cmd/vp-tunnel-dienst && CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -o "$TMP/bin/attrappe" ./test/attrappe)
 # Edge Light für die x86-64-Box, mit der Fassung der Freigabe (wie ein Release, P4)
 (cd "$REPO/edge-app/core" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
@@ -86,6 +92,14 @@ ssh-keygen -q -t rsa -b 3072 -N '' -C voltpilot-notfall -f "$TMP/notfall"
 cp "$TMP/notfall.pub" "$TMP/oeffentlich/voltpilot-notfall.pub"
 mv "$TMP/geheim/werkbank-einrichten.pub" "$TMP/einrichten.pub"
 rm -f "$TMP"/geheim/*.pub
+if [ "$API" = 1 ]; then
+  # Der Techniker-Zugang des Dienstes, wie im Runbook erzeugt
+  (cd "$DIENST" && go run ./cmd/vp-werkstatt-dienst techniker-schluessel "$TMP/techniker") >"$TMP/techniker.txt"
+  TECH_WG_PUB=$(sed -n 's/^  WireGuard (öffentlich): //p' "$TMP/techniker.txt")
+  TECH_SSH_PUB=$(sed -n 's/^  SSH (öffentlich): *//p' "$TMP/techniker.txt")
+  cp "$TMP/techniker/techniker-wireguard" "$TMP/techniker/techniker-ssh" "$TMP/geheim/"
+  echo probe-dienst-geheim >"$TMP/geheim/keycloak-client-secret"
+fi
 chmod 0644 "$TMP"/geheim/*
 # age-Schlüssel mit einem kleinen Programm aus den Abhängigkeiten des Dienstes
 # (ohne age-Werkzeug auf dem Rechner, ohne Netz)
@@ -181,7 +195,16 @@ soll() { # soll <box-schlüssel oder leer>
   printf '{"version":1,"erzeugtAm":"%s","boxNetz":"10.10.16.0/20","technikerNetz":"10.10.32.0/24","peers":[%s],"fenster":[]}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$peers" | docker exec -i "$P-server" sh -c 'cat > /srv/soll.neu && mv /srv/soll.neu /srv/soll.json'
 }
-soll ""
+if [ "$API" = 1 ]; then
+  # Mit API schreibt die Portal-Attrappe den Soll-Stand: Techniker-Zugang des
+  # Dienstes, nach der Einlösung die Box und das Probe-Fenster.
+  docker cp "$TMP/freigabe/freigabe.json" "$P-server:/srv/freigabe.json"
+  docker exec -d "$P-server" sh -c "exec /opt/vptd/portal-attrappe -server-pub '$SERVER_PUB' -techniker-pub '$TECH_WG_PUB' \
+    -techniker-ssh '$TECH_SSH_PUB' -box-adresse $TUNNEL >>/srv/portal-attrappe.log 2>&1"
+  sleep 1
+else
+  soll ""
+fi
 docker exec -d "$P-server" sh -c 'exec /opt/vptd/attrappe -soll /srv/soll.json -rueckmeldung /srv/rueckmeldung.json'
 sleep 1
 docker exec -d -e VP_TUNNEL_API_URL=http://127.0.0.1:8080 -e VP_TUNNEL_TOKEN_URL=http://127.0.0.1:8080/token \
@@ -231,12 +254,20 @@ x box sh -c "d=\$(grep -il '$MAC_BOX' /sys/class/net/eth*/address | cut -d/ -f5)
   true"
 box_mango() { x box sh -c 'mkdir -p /tmp/sysinfo && echo glinet,gl-mt300n-v2 > /tmp/sysinfo/board_name'; }
 box_mango
+if [ "$API" = 1 ]; then
+  # Die Box spricht mit der Portal-Attrappe statt mit dem Portal (install.sh legt die Datei nur an, wenn sie fehlt).
+  sed "s#option portal_url .*#option portal_url 'http://198.51.100.10:8090'#" "$REPO/edge-light/openwrt/files/etc/config/vp-edge-light" >"$TMP/vp-edge-light.uci"
+  docker cp "$TMP/vp-edge-light.uci" "$P-box:/etc/config/vp-edge-light"
+fi
 x box sh -c '. /etc/openwrt_release; [ "$DISTRIB_RELEASE" = 25.12.5 ] && [ -z "$(sed -n "s/^root:\([^:]*\):.*/\1/p" /etc/shadow)" ]' &&
   ok "Box: frisches OpenWrt 25.12.5, root ohne Passwort" || nein "Box nicht im Ausgangszustand"
 
 # Werkstatt-Dienst wie im Pod (Benutzer 10001, nur lesbar, ohne Capabilities)
+API_ENV=""
+[ "$API" = 0 ] || API_ENV="-e VP_WERKSTATT_API_URL=http://198.51.100.10:8090 -e VP_WERKSTATT_TOKEN_URL=http://198.51.100.10:8090/token -e VP_WERKSTATT_TECHNIKER_ADRESSE=10.10.32.50"
 docker volume create "$P-daten" >/dev/null
 docker run --rm -u 0 -v "$P-daten:/d" -v "$TMP/fassungen:/f:ro" --entrypoint sh "$BILD_DIENST" -c 'mkdir -p /d/fassungen && cp /f/* /d/fassungen/ && chown -R 10001:10001 /d'
+# shellcheck disable=SC2086 # API_ENV trägt bewusst mehrere Worte
 docker run -d --name "$P-dienst" --network "$P-a-inet" --ip 198.51.100.241 \
   --read-only --tmpfs /tmp:rw,exec,size=64m,uid=10001 --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges \
   -v "$P-daten:/var/lib/vp-werkstatt-dienst" -v "$TMP/geheim:/etc/vp-werkstatt/geheim:ro" \
@@ -245,7 +276,7 @@ docker run -d --name "$P-dienst" --network "$P-a-inet" --ip 198.51.100.241 \
   -e VP_WERKSTATT_NOTFALL_PUB=/etc/vp-werkstatt/oeffentlich/voltpilot-notfall.pub \
   -e VP_WERKSTATT_PASSWORT_EMPFAENGER="$AGE_PUB" -e VP_WARTUNG_PUBKEY="$SERVER_PUB" -e VP_WARTUNG_ENDPUNKT=198.51.100.10 \
   -e VP_WERKSTATT_EDGE_BAUART=amd64 -e VP_WERKSTATT_TAKT=3s -e VOLTPILOT_LOGGING_FORMAT=json \
-  "$BILD_DIENST" >/dev/null
+  $API_ENV "$BILD_DIENST" >/dev/null
 
 # ── Lauf ─────────────────────────────────────────────────────────────────────
 echo "== Lauf (ein Neustart der Box ist hier das Ende und der Neustart ihres Containers)"
@@ -269,6 +300,10 @@ while :; do
     fertig | angehalten) break ;;
   esac
   auf=$(printf '%s' "$z" | jq -r '.lauf.wartet_auf // ""')
+  if [ "$API" = 1 ] && [ "$st" = wartet ]; then
+    nein "mit API wartet der Lauf auf einen Handgriff ($auf)"
+    break
+  fi
   if [ "$st" = wartet ] && [ "$auf" = probe ] && [ "$geprobt" = nein ]; then
     # Die Probe im Fenster macht in V1a der Betreiber im Portal (hier nicht
     # nachgestellt, siehe wartung-anmeldung-probe.sh). Belegt wird: Der Tunnel
@@ -311,6 +346,24 @@ case "$REF" in edge-???????) ok "Referenz $REF mit gültigem Prüfzeichen" ;; *)
 case "$(beleg tunnel handshake)" in *"latest handshake"*) ok "Tunnel: $(beleg tunnel handshake)" ;; *) nein "Tunnel ohne Handshake" ;; esac
 case "$(beleg tunnel abholer)" in *"Abholer laeuft,"*"letzte gueltige Antwort"*) ok "Abholer läuft mit gültiger Antwort des Wartungsservers" ;; *) nein "Abholer: $(beleg tunnel abholer)" ;; esac
 case "$(beleg neustart host_schluessel)" in *"$(beleg erkennen host_schluessel | cut -d' ' -f2)"*) ok "Host-Schlüssel nach dem Neustart derselbe" ;; *) nein "Host-Schlüssel nach dem Neustart" ;; esac
+
+if [ "$API" = 1 ]; then
+  echo "== Weg mit API"
+  [ "$(beleg einloesen tunnel_adresse)" = "$TUNNEL" ] && ok "eingelöst durch die Box: Adresse $TUNNEL aus der Antwort" || nein "einloesen: $(beleg einloesen tunnel_adresse)"
+  x server grep -q "eingeloest $REF fassung=$FASSUNG" /srv/portal.log && ok "die Portal-Attrappe hat die Signatur der Box geprüft und eingelöst" || nein "keine Einlösung im Portal"
+  case "$(beleg probe neuer_versuch)" in "Connection timed out"*) ok "Probe über den Tunnel: nach dem Schließen $(beleg probe neuer_versuch | cut -c1-20)" ;; *) nein "neuer Versuch: $(beleg probe neuer_versuch)" ;; esac
+  [ -n "$(beleg probe host_schluessel_tunnel)" ] && [ "$(beleg probe host_schluessel_tunnel)" = "$(beleg probe host_schluessel_lan)" ] &&
+    ok "Host-Schlüssel durch den Tunnel = im LAN" || nein "Host-Schlüssel: $(beleg probe host_schluessel_tunnel) / $(beleg probe host_schluessel_lan)"
+  FP_T=$(printf '%s\n' "$TECH_SSH_PUB" | ssh-keygen -lf - | awk '{print $2}')
+  case "$(beleg probe box_log_anmeldung)" in *"$FP_T"*) ok "Box-Log nennt die Anmeldung des Techniker-Zugangs ($FP_T)" ;; *) nein "Box-Log: $(beleg probe box_log_anmeldung)" ;; esac
+  [ -n "$(beleg probe box_log_ende)" ] && ok "Box-Log nennt das Ende: $(beleg probe box_log_ende | cut -c1-60)" || nein "Box-Log ohne Ende"
+  x server grep -q "fenster geschlossen" /srv/portal.log && ok "Probe-Fenster der Einlösung vom Dienst geschlossen" || nein "Fenster nicht geschlossen"
+  docker cp "$P-server:/srv/abnahme.json" "$TMP/abnahme.json" 2>/dev/null || echo '{}' >"$TMP/abnahme.json"
+  [ "$(jq '.belege | length' "$TMP/abnahme.json")" = 8 ] && jq -e '.passwortAge | startswith("-----BEGIN AGE ENCRYPTED FILE-----")' "$TMP/abnahme.json" >/dev/null &&
+    jq -e --arg fp "$FP_T" '.belege.anmeldeprobe | contains($fp)' "$TMP/abnahme.json" >/dev/null &&
+    ok "Abnahme an die API: acht Belege, Passwort nur mit age, Anmeldeprobe des Dienstes" || nein "Abnahme: $(cat "$TMP/abnahme.json")"
+  if docker logs "$P-dienst" 2>&1 | grep -qE 'wk-[a-z2-7]{26}' || grep -qE 'wk-[a-z2-7]{26}' "$TMP/protokoll.json"; then nein "Einmal-Code im Log oder Protokoll des Dienstes"; else ok "Einmal-Code in keinem Log und keinem Beleg"; fi
+fi
 
 # Passwort: nur verschlüsselt im Beleg, entschlüsselt meldet es an, nirgends im Klartext
 beleg passwort passwort_age >"$TMP/pw.age"

@@ -113,6 +113,23 @@ class WerkstattDienstVertragTest {
         assertThat(new TreeSet<>((java.util.List<String>) antwort.get("required"))).isEqualTo(pflicht);
     }
 
+    @Test
+    void abnahmeDesDienstes_javaUndGoHabenDieselbenFelder() throws IOException {
+        String portal = Files.readString(Path.of("..", "werkstatt-dienst", "internal", "portal", "portal.go"));
+        Matcher block = Pattern.compile("type Abnahme struct \\{(.*?)\\n}", Pattern.DOTALL).matcher(portal);
+        assertThat(block.find()).isTrue();
+        Set<String> go = new TreeSet<>();
+        Matcher m = Pattern.compile("json:\"([A-Za-z0-9_]+)").matcher(block.group(1));
+        while (m.find()) {
+            go.add(m.group(1));
+        }
+        Set<String> java = new TreeSet<>();
+        for (var c : WerkstattDienstController.AbnahmeRequest.class.getRecordComponents()) {
+            java.add(c.getName());
+        }
+        assertThat(go).isEqualTo(java);
+    }
+
     private static String goSchema() {
         Matcher m = Pattern.compile("Schema\\s*=\\s*\"([^\"]+)\"").matcher(go);
         assertThat(m.find()).isTrue();

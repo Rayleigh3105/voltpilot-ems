@@ -32,4 +32,7 @@ data:
   # solange der Keycloak-Client voltpilot-werkstatt-dienst nicht angelegt ist.
   VP_WERKSTATT_API_URL: ""
   VP_WERKSTATT_TOKEN_URL: ""
+  # Probe über den Tunnel (V1): die Adresse des Techniker-Zugangs
+  # „Werkstatt-Dienst“ im Techniker-Netz; leer = Probe von Hand im Portal.
+  VP_WERKSTATT_TECHNIKER_ADRESSE: ""
   VOLTPILOT_LOGGING_FORMAT: "json"

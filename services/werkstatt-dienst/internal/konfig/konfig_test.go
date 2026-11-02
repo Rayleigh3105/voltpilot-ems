@@ -146,3 +146,48 @@ func TestAPIQuelle(t *testing.T) {
 		t.Fatalf("%+v", k)
 	}
 }
+
+func TestTechnikerZugang(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{DateiStatus, DateiWeiterleitung, DateiPflege} {
+		pem, _ := attrappe.SchluesselPEM(t)
+		_ = os.WriteFile(filepath.Join(dir, n), pem, 0o600)
+	}
+	pub := filepath.Join(dir, "notfall.pub")
+	_ = os.WriteFile(pub, ssh.MarshalAuthorizedKey(attrappe.Schluessel(t).PublicKey()), 0o644)
+	env := map[string]string{"VP_WERKBANK_ADRESSE": "192.0.2.50", "VP_WERKSTATT_GEHEIM": dir, "VP_WERKSTATT_NOTFALL_PUB": pub,
+		"VP_WERKSTATT_TECHNIKER_ADRESSE": "10.10.32.50"}
+	// Ohne API: abgelehnt (die Probe braucht das Fenster der Einlösung).
+	if _, err := Lies(umgebung(env), true); err == nil || !strings.Contains(err.Error(), "VP_WERKSTATT_API_URL") {
+		t.Fatalf("%v", err)
+	}
+	env["VP_WERKSTATT_API_URL"] = "https://portal.example"
+	env["VP_WERKSTATT_TOKEN_URL"] = "https://portal.example/token"
+	_ = os.WriteFile(filepath.Join(dir, DateiClientSecret), []byte("s3cret-dienst\n"), 0o600)
+	// Nur die Adresse: die Schlüssel fehlen.
+	if _, err := Lies(umgebung(env), true); err == nil || !strings.Contains(err.Error(), DateiTechnikerWG) || !strings.Contains(err.Error(), DateiTechnikerSSH) {
+		t.Fatalf("%v", err)
+	}
+	if _, _, err := wartungSchluessel(dir); err != nil {
+		t.Fatal(err)
+	}
+	k, err := Lies(umgebung(env), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k.TechnikerAdresse.String() != "10.10.32.50" || k.TechnikerSSH == nil || k.TechnikerWG.Leer() {
+		t.Fatalf("%+v", k)
+	}
+	// Ohne alles: keine Probe über den Tunnel, kein Fehler.
+	leer := t.TempDir()
+	for _, n := range []string{DateiStatus, DateiWeiterleitung, DateiPflege} {
+		pem, _ := attrappe.SchluesselPEM(t)
+		_ = os.WriteFile(filepath.Join(leer, n), pem, 0o600)
+	}
+	_ = os.WriteFile(filepath.Join(leer, DateiClientSecret), []byte("s3cret-dienst\n"), 0o600)
+	env["VP_WERKSTATT_GEHEIM"] = leer
+	delete(env, "VP_WERKSTATT_TECHNIKER_ADRESSE")
+	if k, err := Lies(umgebung(env), true); err != nil || k.TechnikerSSH != nil {
+		t.Fatalf("%v %+v", err, k.TechnikerSSH)
+	}
+}

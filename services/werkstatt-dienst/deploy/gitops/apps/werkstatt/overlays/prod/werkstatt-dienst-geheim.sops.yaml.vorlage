@@ -39,3 +39,9 @@ stringData:
   # Ab V1: Client-Secret des Keycloak-Clients voltpilot-werkstatt-dienst
   # (Pflicht, sobald VP_WERKSTATT_API_URL gesetzt ist).
   # keycloak-client-secret: "…"
+  # Probe über den Tunnel: die Schlüssel des Techniker-Zugangs „Werkstatt-Dienst“,
+  # erzeugt mit `vp-werkstatt-dienst techniker-schluessel <verzeichnis>`.
+  # techniker-wireguard: "…"
+  # techniker-ssh: |
+  #   -----BEGIN OPENSSH PRIVATE KEY-----
+  #   …
