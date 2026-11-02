@@ -78,15 +78,29 @@ class TelegramWebhookControllerTest {
     }
 
     @Test
-    void einLeeresGeheimnisLaesstJedenAufrufDurch() throws Exception {
-        MockMvc ohneGeheimnis = MockMvcBuilders
-                .standaloneSetup(new TelegramWebhookController(zustellwege, ""))
-                .build();
+    void ohneGeheimnisWirdJederAufrufVerboten() throws Exception {
+        for (String geheimnis : new String[] {"", "   ", null}) {
+            MockMvc ohneGeheimnis = MockMvcBuilders
+                    .standaloneSetup(new TelegramWebhookController(zustellwege, geheimnis))
+                    .build();
 
-        ohneGeheimnis.perform(post("/api/v1/zustellwege/telegram/webhook")
-                .contentType(MediaType.APPLICATION_JSON).content(START_UPDATE))
-                .andExpect(status().isOk());
+            ohneGeheimnis.perform(post("/api/v1/zustellwege/telegram/webhook")
+                    .contentType(MediaType.APPLICATION_JSON).content(START_UPDATE))
+                    .andExpect(status().isForbidden());
+            ohneGeheimnis.perform(post("/api/v1/zustellwege/telegram/webhook")
+                    .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isForbidden());
+            // Auch ein leerer oder beliebiger Header öffnet ihn nicht.
+            ohneGeheimnis.perform(post("/api/v1/zustellwege/telegram/webhook")
+                    .header(HEADER, "")
+                    .contentType(MediaType.APPLICATION_JSON).content(START_UPDATE))
+                    .andExpect(status().isForbidden());
+            ohneGeheimnis.perform(post("/api/v1/zustellwege/telegram/webhook")
+                    .header(HEADER, GEHEIMNIS)
+                    .contentType(MediaType.APPLICATION_JSON).content(START_UPDATE))
+                    .andExpect(status().isForbidden());
+        }
 
-        verify(zustellwege).telegramVerbindungBestaetigen(eq("abc123"), eq("42"));
+        verifyNoInteractions(zustellwege);
     }
 }

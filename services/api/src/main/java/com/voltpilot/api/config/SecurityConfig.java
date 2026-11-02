@@ -131,7 +131,8 @@ public class SecurityConfig {
                 // ohne jedes Benutzer-Token - die Absicherung ist Telegrams eigener
                 // secret_token-Header, den TelegramWebhookController zeitkonstant
                 // gegen das aus der Umgebung gelesene Geheimnis prüft (403 bei
-                // Fehlen/Abweichung). Ohne diese Freigabe bekäme Telegrams Server
+                // Fehlen/Abweichung, und immer 403, solange kein Geheimnis
+                // gesetzt ist). Ohne diese Freigabe bekäme Telegrams Server
                 // 401 und könnte die Box nie verbinden.
                 .requestMatchers(HttpMethod.POST, "/api/v1/zustellwege/telegram/webhook").permitAll()
                 // Gürtel UND Hosenträger für den Admin-Baum: die eigentliche

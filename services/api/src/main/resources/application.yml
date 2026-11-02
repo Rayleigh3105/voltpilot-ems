@@ -302,8 +302,8 @@ voltpilot:
   # das SMTP-Passwort aus der sops-Geheimnisdatei des GitOps-Repos, lokal/im Testlauf aus
   # Umgebungsvariablen. `bot-username` baut den Start-Link (`t.me/<bot-username>?start=<token>`).
   # `webhook-secret` ist Telegrams eigener `secret_token` für den Update-Webhook (ebenfalls ein
-  # Geheimnis, nie ins Repo); leer lässt lokal/im Testlauf jeden Aufruf durch (die eigentliche
-  # Sicherung bleibt der 256-Bit-Verbindungs-Token selbst).
+  # Geheimnis, nie ins Repo); leer schaltet den Webhook ab - jeder Aufruf bekommt 403 (Warnung beim
+  # Start). Beim Einschalten von Telegram setzen und beim `setWebhook` als `secret_token` mitgeben.
   telegram:
     bot-token: ${VOLTPILOT_TELEGRAM_BOT_TOKEN:}
     bot-username: ${VOLTPILOT_TELEGRAM_BOT_USERNAME:}

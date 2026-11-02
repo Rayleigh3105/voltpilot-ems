@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.versand.ZustellwegService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,16 +22,18 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>KEINE Anmeldung (Telegram selbst ruft ihn auf, ohne Benutzer-Token) - geschützt über Telegrams
  * eigenen {@code secret_token}-Mechanismus ({@code X-Telegram-Bot-Api-Secret-Token}, beim
- * {@code setWebhook}-Aufruf einmalig hinterlegt); ein leerer Geheimwert (lokal/Testlauf) lässt jeden
- * Aufruf durch - die eigentliche Sicherung bleibt der 256-Bit-Verbindungs-Token selbst, den nur die
- * anfordernde Person kennt. Antwortet IMMER mit 200, auch wenn der Token unbekannt/abgelaufen war
- * oder die Nachricht kein {@code /start} trug - Telegram wiederholt einen nicht-2xx-Update sonst
- * endlos.
+ * {@code setWebhook}-Aufruf einmalig hinterlegt). Ohne konfigurierten Geheimwert ist der Webhook
+ * AUS: jeder Aufruf bekommt 403, bevor irgendetwas gelesen oder verknüpft wird (die Route ist
+ * {@code permitAll}, ein leerer Wert darf sie nicht für jeden öffnen); beim Start steht dazu eine
+ * Warnung im Log. Mit Geheimwert antwortet er nach bestandener Prüfung IMMER mit 200, auch wenn der
+ * Token unbekannt/abgelaufen war oder die Nachricht kein {@code /start} trug - Telegram wiederholt
+ * einen nicht-2xx-Update sonst endlos.
  */
 @RestController
 @RequestMapping("/api/v1/zustellwege/telegram")
 public class TelegramWebhookController {
 
+    private static final Logger log = LoggerFactory.getLogger(TelegramWebhookController.class);
     private static final String START_PRAEFIX = "/start ";
 
     private final ZustellwegService zustellwege;
@@ -38,13 +42,17 @@ public class TelegramWebhookController {
     public TelegramWebhookController(ZustellwegService zustellwege,
             @Value("${voltpilot.telegram.webhook-secret:}") String webhookSecret) {
         this.zustellwege = zustellwege;
-        this.webhookSecret = webhookSecret;
+        this.webhookSecret = webhookSecret == null ? "" : webhookSecret;
+        if (this.webhookSecret.isBlank()) {
+            log.warn("Telegram webhook disabled: voltpilot.telegram.webhook-secret is not set; "
+                    + "every call to /api/v1/zustellwege/telegram/webhook is rejected with 403");
+        }
     }
 
     @PostMapping("/webhook")
     public ResponseEntity<Void> webhook(@RequestBody JsonNode update,
             @RequestHeader(value = "X-Telegram-Bot-Api-Secret-Token", required = false) String secretHeader) {
-        if (!webhookSecret.isBlank() && !zeitkonstantGleich(webhookSecret, secretHeader)) {
+        if (webhookSecret.isBlank() || !zeitkonstantGleich(webhookSecret, secretHeader)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         String text = update.path("message").path("text").asText("");
