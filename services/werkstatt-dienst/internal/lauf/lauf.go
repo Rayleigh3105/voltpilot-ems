@@ -54,9 +54,11 @@ func (h Handgriff) Error() string { return h.Grund + " – " + h.Was }
 
 // Stand ist eine Momentaufnahme des Laufs für Anzeige und Metriken.
 type Stand struct {
-	Kennung   string    `json:"kennung"`
-	Freigabe  string    `json:"freigabe"`
-	BoxArt    string    `json:"box_art"`
+	Kennung  string `json:"kennung"`
+	Freigabe string `json:"freigabe"`
+	BoxArt   string `json:"box_art"`
+	// Box ist die Kennung der Box, sobald sie feststeht (für die Bildschirme).
+	Box       string    `json:"box,omitempty"`
 	Beginn    time.Time `json:"beginn"`
 	Ende      time.Time `json:"ende,omitzero"`
 	Zustand   Zustand   `json:"zustand"`
@@ -137,6 +139,11 @@ type Kontext struct {
 	Log     *slog.Logger
 	ablage  *protokoll.Ablage
 	schritt string
+}
+
+// Box nennt die Kennung der Box im Stand, sobald sie feststeht.
+func (k *Kontext) Box(ref string) {
+	k.Lauf.aendere(func(s *Stand) { s.Box = ref })
 }
 
 // Merke hält einen Wert für spätere Schritte fest (MAC, Host-Schlüssel,

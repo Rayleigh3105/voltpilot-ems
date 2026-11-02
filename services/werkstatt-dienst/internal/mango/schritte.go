@@ -499,7 +499,7 @@ type health struct {
 	Version string `json:"version"`
 }
 
-func (l *Lauf) programmEinspielen(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
+func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, error) {
 	summe, err := fassungen.Summe(l.pfadProgramm)
 	if err != nil || summe != l.freigabe.EdgeLight.ProgrammSha256 {
 		return nil, errors.New("Programm im Zwischenspeicher hat nicht die Prüfsumme der Freigabe")
@@ -538,6 +538,9 @@ func (l *Lauf) programmEinspielen(ctx context.Context, _ *lauf.Kontext) (protoko
 		return b, fmt.Errorf("Edge Light meldet %q, die Freigabe nennt %s", h.Version, l.freigabe.EdgeLight.Fassung)
 	}
 	l.ref, l.version = h.Ref, h.Version
+	if k != nil && k.Lauf != nil {
+		k.Box(h.Ref)
+	}
 	return b.Mit("referenz", h.Ref+" (Prüfzeichen gültig)"), nil
 }
 

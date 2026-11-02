@@ -245,3 +245,11 @@ func TestProbeUeberDenTunnelOhneZeitueberschreitungHaeltAn(t *testing.T) {
 		t.Fatalf("%s %+v", z, l.Stand())
 	}
 }
+
+func TestStandNenntDieBox(t *testing.T) {
+	a := neu(t, true)
+	l, z := a.fahre(t, mango.AbOpenWrt)
+	if z != lauf.Fertig || l.Stand().Box != "edge-k7m2xq3" {
+		t.Fatalf("%s %+v", z, l.Stand())
+	}
+}

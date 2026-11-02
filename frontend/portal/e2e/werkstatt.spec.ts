@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// Die Seite ist lang und klickreich (dreizehn Schritte, Probe, Abnahme); WebKit braucht im Container mehr Zeit.
+// WebKit braucht im Container mehr Zeit.
 test.describe.configure({ timeout: 90_000 });
 
-const HOST = 'SHA256:' + 'Q'.repeat(42) + 'c';
+const SHA = 'a3f1c09b7e2d4f6a8b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f708';
 
 /**
  * Kein waagerechter Überlauf und nichts, was über den Rand der Seite ragt. Tabellen und die Reiterleiste
@@ -29,77 +29,131 @@ async function passt(page: Page) {
   expect(r.reiterSichtbar).toBe(true);
 }
 
+function wache(page: Page): string[] {
+  const fehler: string[] = [];
+  page.on('pageerror', (e) => fehler.push(e.message));
+  page.on('console', (m) => m.type() === 'error' && fehler.push(m.text()));
+  return fehler;
+}
+
 for (const breite of [1440, 375]) {
-  test(`Werkstatt bei ${breite} px: Liste, Ablauf einer Box, Probe und Abnahme`, async ({ page }) => {
-    const fehler: string[] = [];
-    page.on('pageerror', (e) => fehler.push(e.message));
-    page.on('console', (m) => m.type() === 'error' && fehler.push(m.text()));
+  test(`Werkstatt bei ${breite} px: Übersicht mit Freigabe, Brücke, Boxen und Belegen, dann an die Werkbank`, async ({ page }) => {
+    const fehler = wache(page);
     await page.setViewportSize({ width: breite, height: 900 });
     await page.goto('/e2e/werkstatt.html');
 
     await expect(page.getByRole('tab', { name: 'Werkstatt' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByTestId('ws-versand-oben')).toContainText('Nicht versenden');
+    await expect(page.getByTestId('ws-versand-oben')).toContainText('Nicht versenden: Stufe 1');
+    await expect(page.getByTestId('ws-freigabe')).toContainText('Werkstatt freigegeben · Mango');
+    await expect(page.getByTestId('ws-freigabe')).toContainText('Edge Light 2026.11.1 · OpenWrt 25.12.5 · bis 30.11.');
+    await expect(page.getByTestId('ws-bruecke')).toContainText('bereit · Kabel am Werkstatt-Anschluss');
     const liste = page.getByTestId('ws-boxen');
-    await expect(liste).toContainText('edge-wrk7abg');
-    await expect(liste).toContainText('8 von 13 Schritten');
+    await expect(liste.locator('tr[data-stand="abgenommen"]')).toContainText('edge-5t2dcy6');
+    await expect(liste.locator('tr[data-stand="laeuft"]')).toContainText('edge-k7m2xq3');
+    await expect(liste.locator('tr[data-stand="problem"]')).toContainText('edge-p3n8rv4');
     await expect(liste).toContainText('Docker-Box');
     await passt(page);
-    await page.screenshot({ path: test.info().outputPath(`werkstatt-liste-${breite}.png`), fullPage: true });
+    await page.screenshot({ path: test.info().outputPath(`werkstatt-uebersicht-${breite}.png`), fullPage: true });
 
-    await liste.locator('tr').filter({ hasText: 'edge-wrk7abg' }).getByRole('button', { name: 'Weiter' }).click();
-    await expect(page.getByTestId('ws-ablauf')).toContainText('edge-wrk7abg · Edge Light');
-    await expect(page.getByTestId('ws-schritt-tunnel')).toContainText('service-tunnel.sh mango 10.10.16.7 51820');
-    await expect(page.getByTestId('ws-qr')).toBeVisible();
-
-    // Werkstatt-Probe: Fenster öffnen, der Stand kommt vom (nachgebildeten) Tunnel-Dienst.
-    await page.getByRole('button', { name: /Fenster für die Probe öffnen \(30 Minuten\)/ }).click();
-    await expect(page.getByTestId('ws-probe-offen')).toBeVisible();
-    await expect(page.getByTestId('ws-probe-fall')).toHaveAttribute('data-fall', 'bereit');
-    await expect(page.getByTestId('ws-probe-fall')).toContainText('Alles bereit');
+    await liste.getByRole('button', { name: 'edge-5t2dcy6' }).click();
+    await expect(page).toHaveURL(/#\/werkstatt\?box=edge-5t2dcy6$/);
+    const detail = page.getByTestId('ws-detail');
+    await expect(detail.getByTestId('ws-belege')).toContainText('Schritt probe: Anmeldung über den Tunnel');
+    await expect(detail.getByTestId('ws-abnahme-protokoll')).toContainText('vom Werkstatt-Dienst');
+    await detail.getByText('Beschriftung des Gehäuses').click();
+    await expect(detail.getByTestId('ws-qr')).toBeVisible();
     await passt(page);
-    await page.screenshot({ path: test.info().outputPath(`werkstatt-probe-${breite}.png`), fullPage: true });
+    await page.screenshot({ path: test.info().outputPath(`werkstatt-box-${breite}.png`), fullPage: true });
 
-    await page.getByRole('button', { name: 'Fenster jetzt schließen' }).click();
-    await expect(page.getByTestId('ws-fenster-zu')).toContainText('Connection timed out');
+    await liste.getByRole('button', { name: 'edge-p3n8rv4' }).click();
+    await expect(page.getByTestId('ws-grund')).toContainText('kein Handshake an wg_wartung');
 
-    const abnahme = page.getByTestId('ws-karte-abnahme');
-    const knopf = abnahme.getByRole('button', { name: 'Abnahme festhalten' });
-    await expect(knopf).toBeDisabled();
-    for (const haken of await abnahme.getByRole('checkbox').all()) await haken.check();
-    await abnahme.getByLabel('Host-Schlüssel (aus Schritt 10)').fill(`3072 ${HOST} [10.10.16.7]:2222 (RSA)`);
-    await abnahme.getByLabel('Fassung des Programms (aus /health)').fill('edge-light-g9c3368e3a');
-    await knopf.click();
-    await expect(page.getByTestId('ws-abnahme-protokoll')).toContainText(HOST);
-    await expect(page.getByTestId('ws-versand')).toContainText('Keine Box mit Stufe 1 geht an einen Kunden');
+    await page.getByTestId('ws-zur-werkbank').click();
+    await expect(page.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'start');
+    await expect(page.getByTestId('wsb-heute')).toContainText('edge-5t2dcy6');
     await passt(page);
-    await page.screenshot({ path: test.info().outputPath(`werkstatt-abnahme-${breite}.png`), fullPage: true });
+    await page.screenshot({ path: test.info().outputPath(`werkstatt-m1-${breite}.png`), fullPage: true });
+    await page.getByTestId('wsb-mango').click();
+    await expect(page.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'laeuft');
+    await expect(page.getByTestId('wsb-phasen').getByRole('listitem')).toHaveCount(6);
+    await expect(page.getByTestId('wsb-restzeit')).toContainText(/Noch ca\. \d+ Minuten/);
+    await expect(page.getByRole('button', { name: /Weiter/ })).toHaveCount(0);
+    await passt(page);
+    await page.screenshot({ path: test.info().outputPath(`werkstatt-m3-${breite}.png`), fullPage: true });
+
+    await page.getByTestId('wsb-uebersicht').click();
+    await expect(page.getByTestId('ws-freigabe')).toBeVisible();
     expect(fehler).toEqual([]);
   });
+
+  const BILDSCHIRME: { lauf: string; art: string; name: string; pruefe: (page: Page) => Promise<void> }[] = [
+    { lauf: 'fertig', art: 'fertig', name: 'm5', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-ref')).toHaveText('EDGE-K7M2XQ3');
+      await expect(page.getByTestId('wsb-qr')).toBeVisible();
+      await expect(page.getByTestId('wsb')).toContainText('Nicht versenden.');
+    } },
+    { lauf: 'problem', art: 'problem', name: 'm6', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-problem')).toContainText('Hier hat etwas nicht geklappt.');
+      await expect(page.getByTestId('wsb-details')).not.toHaveAttribute('open', '');
+    } },
+    { lauf: 'startlader', art: 'startlader', name: 'm4', pruefe: async (page) => {
+      await expect(page.getByRole('heading', { name: 'Reset-Knopf drücken' })).toBeVisible();
+    } },
+    { lauf: 'wartet', art: 'du', name: 'wartet-auf-eingabe', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-du-hinweis')).toContainText('Tunnel-Adresse');
+    } },
+    { lauf: 'ohne', art: 'anschliessen', name: 'm2-ohne-freigabe', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-nicht-freigegeben')).toContainText('Noch nicht freigegeben.');
+    } },
+    { lauf: 'still', art: 'kein-dienst', name: 'kein-dienst', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-kein-dienst')).toContainText('Der Werkstatt-Dienst meldet sich nicht.');
+    } },
+  ];
+
+  for (const b of BILDSCHIRME) {
+    test(`Werkbank bei ${breite} px: ${b.name}`, async ({ page }) => {
+      const fehler = wache(page);
+      await page.setViewportSize({ width: breite, height: 900 });
+      await page.goto(`/e2e/werkstatt.html?lauf=${b.lauf}#/werkstatt?werkbank=1`);
+      if (b.art !== 'kein-dienst') await page.getByTestId('wsb-mango').click();
+      await expect(page.getByTestId('wsb')).toHaveAttribute('data-bildschirm', b.art);
+      await b.pruefe(page);
+      await passt(page);
+      await page.screenshot({ path: test.info().outputPath(`werkstatt-${b.name}-${breite}.png`), fullPage: true });
+      expect(fehler).toEqual([]);
+    });
+  }
 }
 
-test('Werkstatt: eine neue Box kommt mit ihrer Referenz in die Liste, ein übliches LAN lehnt das Portal ab', async ({ page }) => {
-  const fehler: string[] = [];
-  page.on('pageerror', (e) => fehler.push(e.message));
-  await page.goto('/e2e/werkstatt.html');
-  await page.getByRole('button', { name: /Neue Box einrichten/ }).click();
-  await page.getByTestId('ws-haken-openwrt').locator('input').check();
-  await page.getByTestId('ws-schritt-programm').getByLabel('Referenz der Box').fill('EDGE-HM4QZ29');
-  await page.getByRole('button', { name: 'In die Werkstatt-Liste aufnehmen' }).click();
-  await expect(page.getByTestId('ws-ablauf')).toContainText('edge-hm4qz29 · Edge Light');
-  await expect(page.getByTestId('ws-haken-openwrt').locator('input')).toBeChecked();
-  await expect(page.getByTestId('ws-haken-programm')).toHaveCount(0);
+test('Werkbank: nach „Fertig“ führt „Nächste Box“ zum Anschließen, das Kabel steckt noch', async ({ page }) => {
+  const fehler = wache(page);
+  await page.goto('/e2e/werkstatt.html?lauf=fertig#/werkstatt?werkbank=1');
+  await page.getByTestId('wsb-mango').click();
+  await page.getByTestId('wsb-naechste').click();
+  await expect(page.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'anschliessen');
+  await expect(page.getByTestId('wsb-warten').locator('li').first()).toHaveAttribute('data-zustand', 'ok');
+  expect(fehler).toEqual([]);
+});
 
-  const lan = page.getByTestId('ws-schritt-lan');
-  await lan.getByLabel(/LAN der Box/).fill('192.168.1.1/24');
-  await lan.getByRole('button', { name: 'Netz festhalten' }).click();
-  await expect(lan).toContainText('übliches Netz von Heimroutern');
-  await lan.getByLabel(/LAN der Box/).fill('10.213.0.1/24');
-  await lan.getByRole('button', { name: 'Netz festhalten' }).click();
-  await expect(lan).toContainText('Festgehalten: 10.213.0.1/24');
-  await expect(lan).toContainText("uci add_list network.lan.ipaddr='10.213.0.1/24'");
-  await passt(page);
+test('Werkstatt freigeben und Freigabe beenden', async ({ page }) => {
+  const fehler = wache(page);
+  await page.goto('/e2e/werkstatt.html?lauf=ohne');
+  await expect(page.getByTestId('ws-freigabe')).toContainText('Werkstatt nicht freigegeben');
+  await page.getByTestId('ws-freigeben').click();
+  const dialog = page.getByRole('dialog', { name: 'Werkstatt freigeben' });
+  await dialog.getByTestId('ws-freigabe-block').fill(JSON.stringify({ edge_light: {
+    fassung: 'edge-light-2026.11.2', quelle: 'https://git.example.test/releases/edge-light-2026.11.2/', programm_sha256: SHA, skripte_sha256: SHA } }));
+  await dialog.getByTestId('ws-freigabe-absenden').click();
+  await expect(dialog.getByTestId('ws-freigabe-fehler')).toContainText('openwrt.sha256');
+  await dialog.getByTestId('ws-freigabe-sha').fill(SHA);
+  await dialog.getByTestId('ws-freigabe-absenden').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId('ws-freigabe')).toContainText('Werkstatt freigegeben · Mango');
+  await expect(page.getByTestId('ws-freigabe')).toContainText('Edge Light 2026.11.2');
 
-  await page.getByRole('button', { name: 'Zur Liste' }).first().click();
-  await expect(page.getByTestId('ws-boxen')).toContainText('edge-hm4qz29');
+  await page.getByTestId('ws-freigabe-beenden').click();
+  await page.getByTestId('ws-beenden-bestaetigen').click();
+  await expect(page.getByTestId('ws-freigabe')).toContainText('Werkstatt nicht freigegeben');
+  await expect(page.getByTestId('ws-freigabe')).toContainText('Zuletzt 2026-11-mango-2');
   expect(fehler).toEqual([]);
 });

@@ -117,8 +117,9 @@ antwortet. Danach darf `werkbank-einrichten` aus dem Secret wieder heraus.
 Je Mango (die Werkstatt ist freigegeben, die Brücke bereit):
 
 1. Mango aus dem Karton: das orange Kabel WERKSTATT in ihre Buchse **LAN**, Strom. Die Buchse WAN bleibt frei.
-2. Die Anzeige (`kubectl -n werkstatt-prod port-forward deploy/werkstatt-dienst 8101:8101`, dann
-   http://localhost:8101) zeigt den Lauf. OpenWrt aufspielen und Neustart dauern einige Minuten (PS-3).
+2. Den Lauf zeigt das Portal unter **Geräte › Werkstatt › An der Werkbank** (mit der API, siehe 3), mit allen
+   Belegen die Anzeige des Dienstes (`kubectl -n werkstatt-prod port-forward deploy/werkstatt-dienst 8101:8101`,
+   dann http://localhost:8101). OpenWrt aufspielen und Neustart dauern einige Minuten (PS-3).
 3. **Mit der API** (`VP_WERKSTATT_API_URL` gesetzt) entfällt dieser Schritt: Der Dienst holt einen Einmal-Code, die
    Box löst ihn mit `werkstatt-anmelden` selbst ein (Schritt `einloesen`). Die API hält dabei ihren Geräteschlüssel
    fest, hinterlegt ihren Tunnel-Schlüssel und teilt die Adresse zu. Weiter mit 4.
@@ -132,8 +133,8 @@ Je Mango (die Werkstatt ist freigegeben, die Brücke bereit):
    ```
 
    Der Dienst prüft die Adresse (Box-Netz `10.10.16.0/20`) und macht weiter: Tunnel, LAN, Neustart-Probe.
-4. Steht wieder **„Dein Schritt“** (Probe im Fenster): im Portal unter **Geräte › Werkstatt** die Box aufnehmen,
-   das Fenster „Werkstatt-Probe“ öffnen, dich durch den Tunnel anmelden, den Host-Schlüssel lesen und mit dem der
+4. Steht wieder **„Dein Schritt“** (Probe im Fenster): im Portal unter **Geräte › Fernwartung** für die Box ein
+   Fenster mit dem Grund „Werkstatt-Probe“ für deinen Zugang öffnen, dich durch den Tunnel anmelden, den Host-Schlüssel lesen und mit dem der
    Anzeige vergleichen, das Fenster schließen und den abgewiesenen Versuch machen. Dann:
 
    ```sh
@@ -146,8 +147,8 @@ Je Mango (die Werkstatt ist freigegeben, die Brücke bereit):
    entfällt dieser Schritt ganz: Der Dienst macht die Probe selbst.
 5. Ist der Lauf **fertig**: **Mit der API** schreibt der Dienst die Abnahme selbst (Schritt `uebergabe`: je Prüfung
    der Beleg, das Passwort verschlüsselt, LAN-Netz; im Portal unter Werkstatt mit `quelle: dienst`). **Ohne API:**
-   die Abnahme im Portal mit den Belegen des Laufs ausfüllen (Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, je
-   Prüfung der Beleg) und das LAN-Netz (Vorgabe `10.213.0.1/24`) dort festhalten.
+   Ein Formular für die Abnahme von Hand hat das Portal nicht mehr; sie geht nur über die Routen der Werkstatt
+   ([Routen](../../../docs/werkstatt.md#routen): Box aufnehmen, LAN-Netz, Abnahme) mit den Belegen des Laufs.
 6. Passwort in die Passwortablage: Beleg `passwort_age` des Schritts `passwort` (Protokoll unter
    http://localhost:8101/laeufe/<lauf>.json) in eine Datei, dann `age -d -i <dein Schlüssel> passwort.age`.
 7. Abziehen. Gehäuse: Mit Gehäuse-Bau liegt die Druckdatei nach ein paar Minuten in der Anzeige
@@ -195,8 +196,9 @@ downloads.openwrt.org. Ohne Forgejo-Lauf geht dasselbe lokal: `edge-light/script
 
 **Mit der API (V1, `VP_WERKSTATT_API_URL` gesetzt):** Die Freigabe liegt im Portal. „Werkstatt freigeben“ ist
 `POST /api/v1/admin/werkstatt/freigaben` (nur `platform-admin`; Fassungen, Tage, Obergrenze, siehe OpenAPI), „Freigabe
-beenden“ `POST /api/v1/admin/werkstatt/freigaben/<kennung>/ende`. Die Knöpfe dafür kommen mit den
-Werkstatt-Bildschirmen (P9). Je Box-Art läuft höchstens eine Freigabe; eine neue verlangt, die laufende erst zu
+beenden“ `POST /api/v1/admin/werkstatt/freigaben/<kennung>/ende`; die Knöpfe stehen unter **Geräte › Werkstatt**.
+Ins Feld „Edge Light“ kommt der Block `edge_light` aus `freigabe-edge-light.json` der Fassung, die Prüfsumme des
+OpenWrt-Abbilds aus `sha256sums` der OpenWrt-Fassung. Je Box-Art läuft höchstens eine Freigabe; eine neue verlangt, die laufende erst zu
 beenden. Der Dienst fragt die laufende Freigabe je Takt ab.
 
 **Ohne API (V1a):** Die Freigabe ist eine Datei (`freigabe.json`) in der ConfigMap `werkstatt-freigabe`. Sie steht

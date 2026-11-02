@@ -19,7 +19,8 @@ import type {
   FernwartungTechnikerAntwort,
   FernwartungUebersicht,
 } from '../adminFernwartung';
-import type { BoxArt, WerkstattAbnahme, WerkstattBox, WerkstattGrundlagen } from '../werkstatt';
+import type { WerkstattBox } from '../werkstatt';
+import type { WerkstattDienst, WerkstattFreigabe } from '../werkstattBank';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -633,33 +634,23 @@ export const adminApi = {
   // und Fenster laufen über die Routen der Fernwartung. Kein Aufruf trägt ein
   // Passwort: das Root-Passwort einer Box bleibt im Browser.
 
-  werkstattGrundlagen: () => request<WerkstattGrundlagen>('/api/v1/admin/werkstatt/grundlagen'),
-
   werkstattBoxen: () => request<WerkstattBox[]>('/api/v1/admin/werkstatt/boxen'),
 
-  /** 201 neu, 200 schon im Register (unverändert). */
-  werkstattBoxAnlegen: (input: { edgeRef: string; boxArt?: BoxArt; schritte?: string[]; notiz?: string | null }) =>
-    request<WerkstattBox>('/api/v1/admin/werkstatt/boxen', { method: 'POST', body: JSON.stringify(input) }),
+  /** Was der Werkstatt-Dienst gerade tut (Ansicht mit Alter, Läufe), für die Werkstatt-Bildschirme. */
+  werkstattDienst: () => request<WerkstattDienst>('/api/v1/admin/werkstatt/dienst'),
 
-  werkstattSchritt: (ref: string, schritt: string, erledigt: boolean) =>
-    request<WerkstattBox>(
-      `/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/schritte/${encodeURIComponent(schritt)}`,
-      { method: 'PUT', body: JSON.stringify({ erledigt }) },
-    ),
+  werkstattFreigaben: () => request<WerkstattFreigabe[]>('/api/v1/admin/werkstatt/freigaben'),
 
-  /** 422 mit Begründung, wenn das Netz üblich ist oder sich mit dem Wartungsserver überschneidet. */
-  werkstattLanNetz: (ref: string, lanNetz: string) =>
-    request<WerkstattBox>(`/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/lan-netz`, {
-      method: 'PUT',
-      body: JSON.stringify({ lanNetz }),
-    }),
+  /** Werkstatt freigeben (WI-4 A): 201; 409, wenn für die Box-Art schon eine läuft; 422 mit Grund. */
+  werkstattFreigeben: (input: {
+    boxArt: 'mango';
+    tage: number;
+    obergrenze: number;
+    openwrt: WerkstattFreigabe['openwrt'];
+    edgeLight: WerkstattFreigabe['edgeLight'];
+    notiz?: string | null;
+  }) => request<WerkstattFreigabe>('/api/v1/admin/werkstatt/freigaben', { method: 'POST', body: JSON.stringify(input) }),
 
-  werkstattAbnahme: (
-    ref: string,
-    input: { hostSchluessel: string; fassung: string; pruefungen: string[]; probeFensterId: string; notiz?: string | null },
-  ) =>
-    request<WerkstattAbnahme>(`/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/abnahme`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
+  werkstattFreigabeBeenden: (kennung: string) =>
+    request<WerkstattFreigabe>(`/api/v1/admin/werkstatt/freigaben/${encodeURIComponent(kennung)}/ende`, { method: 'POST' }),
 };

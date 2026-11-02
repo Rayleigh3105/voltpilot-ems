@@ -1,23 +1,27 @@
 # Werkstatt: eine Box einrichten, bevor sie die Werkstatt verlässt
 
-Stand 26.10.2026. Erster Schnitt aus dem Bericht `voltpilot-box-einrichtung-portal` (Abschnitt 3.5), mit den
-Entscheiden des Kapitäns vom 26.10.2026. Die Seite liegt im Portal unter **Geräte › Werkstatt**
-(`#/werkstatt`, eine Box: `#/werkstatt?box=<referenz>`), nur für VoltPilot-Admins.
+Stand 02.11.2026. Erster Schnitt aus dem Bericht `voltpilot-box-einrichtung-portal` (Abschnitt 3.5) vom 26.10.2026,
+seit der Werkstatt-Automatik (WI-8 A) mit den Bildschirmen des Werkstatt-Dienstes. Die Seite liegt im Portal unter
+**Geräte › Werkstatt** (`#/werkstatt`, eine Box: `#/werkstatt?box=<referenz>`, die Werkbank:
+`#/werkstatt?werkbank=1`), nur für VoltPilot-Admins (WI-10 B).
 
 ## Was die Seite tut
 
+Die Box richtet der [Werkstatt-Dienst](#automatisch-der-werkstatt-dienst-v1a) ein, jeden Schritt mit Beleg. Die
+Seite zeigt, was er tut; Handschritte, Passwort-Generator und Probe-Knöpfe gibt es im Portal nicht mehr.
+
 | Teil | Was | Wo |
 |---|---|---|
-| Ablauf | Die 13 Schritte für ein Edge Light (GL.iNet Mango mit OpenWrt) als Liste mit fertigen Befehlen, je Schritt „was man sehen sollte“ und ein Haken. Die Befehle laufen weiter am eigenen Rechner, mit dem Repository. | `frontend/portal/src/werkstatt.ts` (`schritte`) |
-| Register | Jede Box kommt mit ihrer Referenz in die Liste (Schritt 5); die Haken davor nimmt sie mit. Die Liste zeigt je Box den Fortschritt, den Tunnel und die Abnahme. | Tabelle `werkstatt_box` |
-| Tunnel | Tunnel-Schlüssel hinterlegen und die Befehlszeile für `service-tunnel.sh` über die Routen der [Fernwartung](fernwartung.md); die Befehlszeile bleibt stehen und nennt die Box beim Namen am Tisch (`mango`). | `PUT /api/v1/admin/fernwartung/boxen/{ref}/schluessel` |
-| Werkstatt-Probe | Ein Knopf öffnet ein Fenster für 30 Minuten (wie die Werkstatt-Regel in `mango.md`) mit dem Grund „Werkstatt-Probe“ für einen Zugang mit SSH-Schlüssel, die Seite zeigt den Stand aus Portal und Tunnel-Dienst, ein zweiter Knopf schließt es wieder. Anmelden muss sich ein Mensch; „Alles bereit“ allein genügt nicht. | Fenster der Fernwartung |
-| Root-Passwort (Entscheid 3a) | Je Box ein eigenes, im Browser erzeugt (20 Zeichen ohne verwechselbare, rund 116 Bit), einmal angezeigt; abgelegt wird es in der Passwortablage. Es geht nie an die API und steht in keinem Speicher. Gespeichert wird nur der Haken. | `erzeugePasswort` |
-| LAN-Netz (Entscheid 6a) | Vorschlag `10.213.0.1/24` (wie an der Labor-Mango). Die API lehnt übliche Heimnetze (192.168.0/1/2/8/178.x, 10.0.0.x), die Netze des Wartungsservers und alles außerhalb von RFC 1918 ab. Die Seite schreibt den `uci`-Befehl samt Neustart. Kein Skript tut das; ein eigenes lohnt erst mit dem Einmal-Code. | `LanNetz.java`, `lanBefehl` |
+| Werkbank (M1–M6) | Die geführten Bildschirme für die Person an der Werkbank: Box-Art wählen (Raspberry Pi kommt mit V2), Mango anschließen, Fortschritt in sechs Phasen mit Restzeit, der eine Handgriff am Startlader, Fertig mit Referenz und QR-Code, Problem mit Grund. Kein „Weiter“-Knopf: Der Dienst merkt Handgriffe selbst. Fachwörter stehen nur unter „Details für Technik“. „Nochmal versuchen“ heißt: Kabel kurz abziehen; einen Befehlsweg vom Portal zum Dienst gibt es nicht. | `WerkstattBank.tsx`, `werkstattBank.ts` |
+| Übersicht (D1) | Freigabe („Werkstatt freigeben“, „Freigabe beenden“), Werkbank-Brücke, die Boxen mit ihrem Stand (läuft, Problem, abgenommen, nur im Register) und, für die gewählte Box, ihre Phasen, die Abnahme mit den Belegen und die Beschriftung. | `WerkstattPage.tsx` |
+| Stand des Dienstes | Die [Ansicht](contracts/werkstatt-ansicht-v1.md) über `GET /api/v1/admin/werkstatt/dienst`, die Seite fragt alle 5 s nach. Ist die letzte Meldung älter als 60 s, steht dort „Der Werkstatt-Dienst meldet sich nicht“ statt eines alten Stands. | – |
 | Beschriftung (Entscheid 8, geändert) | Kein Aufkleber: Referenz in Klarschrift und QR-Code mit dem Direktlink kommen aufs Gehäuse. Die Seite zeigt den Inhalt und den QR-Code, gibt eine SVG-Vorlage in echter Größe (Modul 0,84 mm) zum Probedruck auf Papier und nennt den Befehl für die Druckdatei des Gehäuses (`bauen.sh --referenz <referenz>` im Gehäuse-Programm, [Kennung](../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md)). Was gedruckt wird, ist Modul für Modul, was die Seite zeigt: beide prüfen gegen [werkstatt-beschriftung.json](contracts/werkstatt-beschriftung.json). | `BeschriftungKarte`, `qrCode.ts` |
-| Abnahme | Das Abnahmeprotokoll (das „Übergabeprotokoll“ der Werkstatt-Regel in `edge-light/docs/mango.md`): Host-Schlüssel, Fassung, die acht Prüfungen der Regel, Tunnel-Adresse, LAN-Netz, das Fenster der Probe mit dem, was der Tunnel-Dienst dazu gemeldet hatte, wer, wann. Append-only; eine neue Abnahme ist ein neuer Eintrag. | Tabelle `werkstatt_abnahme` |
+| Abnahme | Das Abnahmeprotokoll (das „Übergabeprotokoll“ der Werkstatt-Regel in `edge-light/docs/mango.md`): Host-Schlüssel, Fassung, die acht Prüfungen der Regel, beim Dienst je Prüfung sein Beleg, Tunnel-Adresse, LAN-Netz, das Fenster der Probe, wer, wann. Append-only; eine neue Abnahme ist ein neuer Eintrag. | Tabelle `werkstatt_abnahme` |
 | Versand (Entscheid 5c) | Der Ablauf endet mit der Abnahme. Oben auf der Seite und am Ende steht: keine Box mit Stufe 1 an einen Kunden, bevor Stufe 2 steht. Es gibt keinen Zustand „versandbereit“. | `VERSAND_SATZ` |
 | Docker-Box (Entscheid 9a) | Steht im Register (`boxArt: edge-app`), hat aber keinen Ablauf und keine Abnahme: Für sie gibt es keinen Wartungstunnel und damit keine Anmeldeprobe. | – |
+
+Die Routen für Schritte, LAN-Netz und die Abnahme von Hand (unten) bleiben in der API für den Weg ohne Dienst; die
+Seite ruft sie nicht mehr auf. Die Handschritte selbst stehen in der Werkstatt-Regel (`edge-light/docs/mango.md`).
 
 ## Automatisch: der Werkstatt-Dienst (V1a)
 
@@ -27,9 +31,7 @@ der Dienst spielt OpenWrt ohne Startlader auf (`sysupgrade -n` aus der Werksfirm
 Notfall-Schlüssel, spielt Edge Light und den Tunnel ein, stellt das LAN um und macht die Neustart-Probe, jeden
 Schritt mit Beleg. Das Root-Passwort erzeugt dann der Dienst (Entscheid WI-6 A statt 3a): Es steht nur
 verschlüsselt für den age-Schlüssel „Box-Passwörter“ im Protokoll des Dienstes und geht an keine Route. Diese
-Seite bleibt für die drei Griffe der Fernwartung (Tunnel-Schlüssel hinterlegen, Probe im Fenster, Fenster
-schließen) und die Abnahme mit den Belegen des Dienstes ([Runbook](../services/werkstatt-dienst/docs/runbook.md#eine-box-einrichten)).
-Die Handschritte oben bleiben der Weg ohne Dienst.
+Seite zeigt, was er tut, und die Abnahme mit seinen Belegen ([Runbook](../services/werkstatt-dienst/docs/runbook.md#eine-box-einrichten)).
 
 Ob der Dienst überhaupt Boxen einrichtet, sagt die **Freigabe** (WI-4 A): „Werkstatt freigeben“ legt fest, welche
 Fassungen (OpenWrt-Abbild, Edge Light, je mit Prüfsumme) und bis wann, „Freigabe beenden“ hält ihn an. Ab V1 liegt
@@ -115,6 +117,6 @@ Verbunden wird nie von selbst; der Kunde drückt selbst auf „Verbinden“.
 | Was | Warum noch nicht |
 |---|---|
 | Probedruck der Kennung | Die Druckdatei je Box gibt es (`bauen.sh --referenz <referenz>`, [Kennung](../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md)); geprüft ist sie bis zum G-Code, gedruckt nicht. Ob ein Telefon den gedruckten Code liest, zeigt erst der Probedruck des Betreibers. |
-| Einmal-Code und D2 im Ablauf des Dienstes | API und der Befehl `werkstatt-anmelden` auf der Box sind da ([Vertrag](contracts/werkstatt-einloesen-v1.md#der-befehl-auf-der-box)); dass der Dienst ihn im Lauf aufruft, die Probe über den Tunnel und die Abnahme mit Belegen schreibt, bringt P8. |
+| Werkbank-Bildschirme für den Raspberry Pi | Der Dienst richtet in V1 nur die Mango ein; die Kachel „Raspberry Pi“ ist gesperrt, bis V2 den Ablauf bringt. |
 | Zweiter Faktor am Portal | Entscheid 10b: später |
 | Die kleinen Korrekturen aus Abschnitt 3.5 | laufen in einem eigenen PR (`install.sh`, `schluessel-holen.sh`, `mango.md`) |

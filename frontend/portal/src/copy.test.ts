@@ -320,6 +320,8 @@ const EXCLUDED = [
   // Die reine Schicht der Admin-Seite „Geräte › Werkstatt" (`pages/admin/Werkstatt*`): Sie nennt die
   // Box-Arten beim technischen Namen („Edge Light", „Docker-Box") und spricht Werkstatt-Vokabular.
   '/werkstatt.ts',
+  // Die Werkstatt-Bildschirme (WI-8 A, `pages/admin/WerkstattBank`): dieselbe Admin-Seite, dasselbe Vokabular.
+  '/werkstattBank.ts',
   // Die reine Schicht der Admin-Seite „Geräte & Updates" (`pages/admin/BoxVersions`,
   // einziger Importeur) — sie spricht legitim Betreiber-Vokabular (Release, Version).
   '/boxVersions.ts',
@@ -859,6 +861,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'adminGemeinsameSteuerung',
       // Geräte › Werkstatt (26.10.2026).
       'werkstatt',
+      // Die Werkstatt-Bildschirme (WI-8 A).
+      'werkstattBank',
     ];
     // PR 1f (Anlagen-Zentrale Stufe 1): die Plattform-Sicht wohnt seither
     // ADDITIV auf der KUNDEN-Geräteseite - hinter dem EINEN Rollen-Tor

@@ -1464,6 +1464,17 @@ export function werkstattHash(ref?: string | null): string {
   return ref && ref.trim() ? `#/werkstatt?box=${encodeURIComponent(ref.trim())}` : '#/werkstatt';
 }
 
+/** Die Werkstatt-Bildschirme an der Werkbank (WI-8 A): `#/werkstatt?werkbank=1`. */
+export function werkstattWerkbankHash(): string {
+  return '#/werkstatt?werkbank=1';
+}
+
+/** Ob ein Werkstatt-Hash die Bildschirme an der Werkbank meint. */
+export function istWerkstattWerkbank(hash: string): boolean {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  return rest.length > 0 && new URLSearchParams(rest.join('?')).get('werkbank') === '1';
+}
+
 /** Die Box aus einem `?box=`-Hash, oder null. */
 export function parseFernwartungBox(hash: string): string | null {
   const [, ...rest] = hash.replace(/^#\/?/, '').split('?');

@@ -37,7 +37,7 @@ func TestAnsichtVektor(t *testing.T) {
 			HostSchluessel: "SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc", Status: &st, StatusZeit: zeit.Add(-2 * time.Second)},
 		Freigabe:  FreigabeAnsicht{Laufend: true, Freigabe: &f, Boxen: 3},
 		Anschluss: "eine Mango mit frischem OpenWrt",
-		Lauf: &lauf.Stand{Kennung: "2026-11-02T10-05-00-mango", Freigabe: "2026-11-mango-1", BoxArt: "mango",
+		Lauf: &lauf.Stand{Kennung: "2026-11-02T10-05-00-mango", Freigabe: "2026-11-mango-1", BoxArt: "mango", Box: "edge-k7m2xq3",
 			Beginn: zeit.Add(-7 * time.Minute), Zustand: lauf.Laeuft, Schritt: "programm", Titel: "Edge Light einspielen",
 			Erledigt: []string{"erkennen", "fassungen", "internet", "passwort", "notfall"}},
 	}

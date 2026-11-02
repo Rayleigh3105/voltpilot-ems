@@ -13,7 +13,7 @@ Vektor: [`werkstatt-ansicht-v1.example.json`](werkstatt-ansicht-v1.example.json)
 | `werkbank` | die Brücke: `adresse`, `bereit`, `grund` (wenn nicht bereit), `fassung_soll`, `host_schluessel`, `status` (wie `vp-werkbank-status.v1`: `werkstatt.kabel` = Kabel am Werkstatt-Anschluss, `antworten` = wer an den Box-Adressen antwortet), `status_zeit`, `einrichten` |
 | `freigabe` | `laufend`, `grund` (wenn keine läuft), `freigabe` (Schema `vp-werkstatt-freigabe.v1`), `boxen` (wie viele unter ihr eingerichtet) |
 | `anschluss` | in Alltagsworten, was am Werkstatt-Anschluss steckt |
-| `lauf` | der laufende oder zuletzt beendete Lauf: `kennung`, `freigabe`, `box_art`, `beginn`, `ende`, `zustand` (`laeuft`, `wartet`, `fertig`, `angehalten`), `schritt`, `titel`, `erledigt` (Kennungen der erledigten Schritte), `grund`, `handgriff`, `wartet_auf`, `hinweis` |
+| `lauf` | der laufende oder zuletzt beendete Lauf: `kennung`, `freigabe`, `box_art`, `box` (Kennung der Box, sobald sie feststeht), `beginn`, `ende`, `zustand` (`laeuft`, `wartet`, `fertig`, `angehalten`), `schritt`, `titel`, `erledigt` (Kennungen der erledigten Schritte), `grund`, `handgriff`, `wartet_auf`, `hinweis` |
 
 Fehlt `lauf`, gab es seit dem Start des Dienstes keinen.
 
