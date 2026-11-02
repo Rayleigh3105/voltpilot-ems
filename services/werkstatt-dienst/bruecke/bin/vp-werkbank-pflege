@@ -1,0 +1,19 @@
+#!/bin/sh
+# Erzwungener Befehl des Pflege-Schlüssels (authorized_keys des Benutzers
+# werkstatt). Der Pflege-Schlüssel kann genau eins: ein Paket mit genannter
+# Prüfsumme einspielen.
+#   ssh werkstatt@vp-werkbank 'einrichten <sha256>' < paket.tar
+set -eu
+befehl=${SSH_ORIGINAL_COMMAND:-}
+case "$befehl" in
+  "einrichten "*) summe=${befehl#einrichten } ;;
+  *)
+    echo "FEHLER: der Pflege-Schlüssel kennt nur: einrichten <sha256>" >&2
+    exit 2
+    ;;
+esac
+printf '%s' "$summe" | grep -Eq '^[0-9a-f]{64}$' || {
+  echo "FEHLER: Prüfsumme ungültig" >&2
+  exit 2
+}
+exec sudo -n /usr/local/sbin/vp-werkbank-einrichten "$summe"

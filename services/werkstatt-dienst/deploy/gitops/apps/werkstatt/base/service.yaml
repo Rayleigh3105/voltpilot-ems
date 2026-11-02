@@ -1,0 +1,16 @@
+# Nur die Betriebsseite (/health, /ready, /metrics). Die Werkstatt-Anzeige
+# lauscht im Pod auf 127.0.0.1:8101 und ist nur über kubectl port-forward da.
+apiVersion: v1
+kind: Service
+metadata:
+  name: werkstatt-dienst
+  namespace: werkstatt-prod
+  labels:
+    app.kubernetes.io/name: werkstatt-dienst
+spec:
+  selector:
+    app.kubernetes.io/name: werkstatt-dienst
+  ports:
+    - name: betrieb
+      port: 8100
+      targetPort: betrieb

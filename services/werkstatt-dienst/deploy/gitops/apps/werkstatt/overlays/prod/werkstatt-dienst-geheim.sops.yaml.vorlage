@@ -1,0 +1,37 @@
+# VORLAGE - so nicht einchecken. Werte einsetzen, dann verschlüsseln:
+#   cp werkstatt-dienst-geheim.sops.yaml.vorlage werkstatt-dienst-geheim.sops.yaml
+#   sops --encrypt --in-place werkstatt-dienst-geheim.sops.yaml
+# Die privaten Schlüssel entstehen mit ssh-keygen (docs/runbook.md, Abschnitt
+# "Schlüssel"). Jeder ist einzeln widerrufbar: neu erzeugen, hier ersetzen,
+# Dienst neu starten - er spielt die Brücke mit den neuen Schlüsseln neu auf.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: werkstatt-dienst-geheim
+  namespace: werkstatt-prod
+type: Opaque
+stringData:
+  # Status: darf auf der Brücke nur vp-werkbank-status aufrufen
+  werkbank-status: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    …
+    -----END OPENSSH PRIVATE KEY-----
+  # Weiterleitung: nur zu den Werkstatt-Adressen der Box
+  werkbank-weiterleitung: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    …
+    -----END OPENSSH PRIVATE KEY-----
+  # Pflege: nur ein Paket mit genannter Prüfsumme einspielen
+  werkbank-pflege: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    …
+    -----END OPENSSH PRIVATE KEY-----
+  # Werkstatt-Schlüssel: nur für das erste Einrichten der Brücke (der Imager
+  # trägt seinen öffentlichen Teil ein). Nach dem Einrichten darf er aus dem
+  # Secret wieder heraus; der Benutzer des Imagers kommt ohnehin nicht mehr herein.
+  werkbank-einrichten: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    …
+    -----END OPENSSH PRIVATE KEY-----
+  # Ab V1 (P6): Client-Secret des Keycloak-Clients voltpilot-werkstatt-dienst.
+  # keycloak-client-secret: "…"

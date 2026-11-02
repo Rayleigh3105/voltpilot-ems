@@ -1,0 +1,13 @@
+# Protokolle der Läufe (Belege), der festgehaltene Host-Schlüssel der Brücke
+# und später der Zwischenspeicher der Abbilder einer Freigabe.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: werkstatt-dienst-daten
+  namespace: werkstatt-prod
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi

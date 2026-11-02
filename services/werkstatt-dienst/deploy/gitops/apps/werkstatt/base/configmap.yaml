@@ -1,0 +1,22 @@
+# Konfiguration des Werkstatt-Dienstes (Tabelle in services/werkstatt-dienst/README.md).
+# Die Freigabe steht NICHT hier: sie legt der Betreiber mit kubectl an
+# ("Werkstatt freigeben", docs/runbook.md), damit Argo CD sie nicht verwaltet.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: werkstatt-dienst-konfig
+  namespace: werkstatt-prod
+data:
+  # Feste Adresse der Werkbank-Brücke im Netz (im Router festgelegt, PS-11).
+  VP_WERKBANK_ADRESSE: "192.168.0.250"
+  # Von wo die Brücke SSH annimmt: die drei k3s-Knoten (Pods gehen mit der
+  # Adresse ihres Knotens hinaus); dazu darf ein Admin-Rechner.
+  VP_WERKBANK_SSH_QUELLEN: "192.168.178.241,192.168.178.242,192.168.178.243"
+  VP_WERKBANK_NETZ: "wlan0"
+  VP_WERKBANK_ANSCHLUSS: "eth0"
+  # Leer: den Host-Schlüssel der Brücke beim ersten Kontakt festhalten.
+  VP_WERKBANK_HOSTSCHLUESSEL: ""
+  VP_WERKSTATT_LAN_NETZ: "10.213.0.1/24"
+  VP_WERKSTATT_TAKT: "10s"
+  VP_WERKSTATT_NOTFALL_PUB: "/etc/vp-werkstatt/oeffentlich/voltpilot-notfall.pub"
+  VOLTPILOT_LOGGING_FORMAT: "json"

@@ -1,0 +1,29 @@
+#!/bin/sh
+# Ein neues Paket der Werkbank-Brücke einspielen (Pflege durch den Dienst).
+#
+# Aufruf über den Pflege-Schlüssel (bin/vp-werkbank-pflege, über sudo):
+#   vp-werkbank-einrichten <sha256>   tar auf der Standardeingabe
+# Das Paket muss genau diese Prüfsumme haben (höchstens 4 MiB); dann wird es
+# ausgepackt und sein einrichten.sh läuft.
+set -eu
+umask 077
+summe=${1:-}
+printf '%s' "$summe" | grep -Eq '^[0-9a-f]{64}$' || {
+  echo "FEHLER: Aufruf: vp-werkbank-einrichten <sha256>" >&2
+  exit 2
+}
+dir=$(mktemp -d /var/tmp/vp-werkbank.XXXXXX)
+trap 'rm -rf "$dir"' EXIT
+head -c 4194305 >"$dir/paket.tar"
+ist=$(sha256sum "$dir/paket.tar" | awk '{print $1}')
+if [ "$ist" != "$summe" ]; then
+  echo "FEHLER: Paket hat die Prüfsumme $ist, erwartet $summe" >&2
+  exit 3
+fi
+mkdir "$dir/paket"
+tar -x -f "$dir/paket.tar" -C "$dir/paket" --no-same-owner
+[ -f "$dir/paket/einrichten.sh" ] || {
+  echo "FEHLER: im Paket fehlt einrichten.sh" >&2
+  exit 3
+}
+sh "$dir/paket/einrichten.sh"

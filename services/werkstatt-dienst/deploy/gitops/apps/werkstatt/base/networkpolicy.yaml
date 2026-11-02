@@ -1,0 +1,50 @@
+# Der Werkstatt-Dienst spricht nur mit der Werkbank-Brücke (SSH) und dem DNS
+# des Clusters. Herein kommen nur die Proben der Knoten und das Abholen der
+# Metriken. Was später dazukommt, steht auskommentiert dabei.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: werkstatt-dienst
+  namespace: werkstatt-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: werkstatt-dienst
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - ports:
+        - {protocol: TCP, port: 8100}
+      from:
+        # Kubelet-Proben kommen von den Knoten
+        - ipBlock: {cidr: 192.168.178.241/32}
+        - ipBlock: {cidr: 192.168.178.242/32}
+        - ipBlock: {cidr: 192.168.178.243/32}
+        # Metriken: Namespace des Monitorings (Namen wie im Cluster einsetzen)
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+  egress:
+    # DNS des Clusters
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    # Werkbank-Brücke (gleiche Adresse wie VP_WERKBANK_ADRESSE)
+    - to:
+        - ipBlock: {cidr: 192.168.0.250/32}
+      ports:
+        - {protocol: TCP, port: 22}
+    # Ab P3/P4 (Abbilder und Releases einer Freigabe holen): HTTPS nach draußen.
+    # - to:
+    #     - ipBlock:
+    #         cidr: 0.0.0.0/0
+    #         except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+    #   ports:
+    #     - {protocol: TCP, port: 443}
+    # Ab V1 (P6, P8): Portal-API über den Ingress und der Wartungsserver (WireGuard).

@@ -1,0 +1,64 @@
+#!/usr/sbin/nft -f
+# Werkbank-Brücke (services/werkstatt-dienst/bruecke): Firewall und Durchleitung.
+# Von einrichten.sh aus der Vorlage erzeugt (@NETZ@, @WERKSTATT@, @SSH_QUELLEN@,
+# @WERKSTATT_NETZE@); nicht von Hand ändern.
+#
+#   Netz (@NETZ@)           das WLAN ins Netz der Werkbank
+#   Werkstatt (@WERKSTATT@) die Netzwerkbuchse, das orange Kabel zur Box
+#
+# - auf die Brücke: nur SSH aus den SSH-Quellen (Cluster, Admin), Ping und was
+#   das WLAN selbst braucht (DHCP-Antworten, IPv6-Nachbarn); vom Werkstatt-
+#   Anschluss nichts
+# - durch die Brücke: nur vom Werkstatt-Anschluss ins Internet, mit NAT; nie in
+#   private Netze (das Netz der Werkbank, das Cluster, der Router), nie zurück
+# Die Tabelle wird bei jedem Laden ganz ersetzt, in einem Schritt.
+
+table inet werkbank
+delete table inet werkbank
+
+table inet werkbank {
+	set ssh_quellen {
+		type ipv4_addr
+		flags interval
+		elements = { @SSH_QUELLEN@ }
+	}
+
+	set werkstatt_netze {
+		type ipv4_addr
+		flags interval
+		elements = { @WERKSTATT_NETZE@ }
+	}
+
+	# Alles, was nicht Internet ist (RFC 1918, CGNAT, Schleife, link-lokal,
+	# Multicast und reservierte Netze): dorthin geht vom Werkstatt-Anschluss nichts.
+	set nicht_internet {
+		type ipv4_addr
+		flags interval
+		elements = { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8,
+			     169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.168.0.0/16,
+			     198.18.0.0/15, 224.0.0.0/3 }
+	}
+
+	chain eingang {
+		type filter hook input priority filter; policy drop;
+		ct state established,related accept
+		ct state invalid drop
+		iif "lo" accept
+		iifname "@NETZ@" ip saddr @ssh_quellen tcp dport 22 accept
+		iifname "@NETZ@" icmp type { echo-request, destination-unreachable, time-exceeded } accept
+		iifname "@NETZ@" udp sport 67 udp dport 68 accept
+		iifname "@NETZ@" icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept
+	}
+
+	chain weiter {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept
+		ct state invalid drop
+		iifname "@WERKSTATT@" oifname "@NETZ@" ip saddr @werkstatt_netze ip daddr != @nicht_internet accept
+	}
+
+	chain nat_ausgang {
+		type nat hook postrouting priority srcnat; policy accept;
+		oifname "@NETZ@" ip saddr @werkstatt_netze masquerade
+	}
+}

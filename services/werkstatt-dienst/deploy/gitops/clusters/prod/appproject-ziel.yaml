@@ -1,0 +1,6 @@
+# Ergänzung für clusters/prod/project.yaml (AppProject prod): ein Ziel mehr.
+# Nicht als eigene Datei anwenden, sondern unter spec.destinations eintragen.
+spec:
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: werkstatt-prod

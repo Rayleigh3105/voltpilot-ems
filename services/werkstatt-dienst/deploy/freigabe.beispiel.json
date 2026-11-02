@@ -1,0 +1,21 @@
+{
+  "schema": "vp-werkstatt-freigabe.v1",
+  "kennung": "2026-11-mango-1",
+  "box_art": "mango",
+  "erteilt_von": "Betreiber",
+  "erteilt_am": "2026-11-02T08:00:00+01:00",
+  "gueltig_bis": "2026-11-30T23:59:59+01:00",
+  "obergrenze": 20,
+  "openwrt": {
+    "fassung": "25.12.5",
+    "datei": "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "quelle": "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"
+  },
+  "edge_light": {
+    "fassung": "edge-light-2026.11.1",
+    "quelle": "https://git.tecmaxx.de/mamotec/voltpilot-ems/releases/download/edge-light-2026.11.1/",
+    "programm_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "skripte_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

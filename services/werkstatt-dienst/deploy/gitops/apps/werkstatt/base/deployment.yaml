@@ -1,0 +1,86 @@
+# Werkstatt-Dienst: genau ein Replikat (eine Brücke, ein Werkstatt-Anschluss,
+# Protokolle auf einem RWO-Volume). Ruht die Werkstatt: replicas 0.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: werkstatt-dienst
+  namespace: werkstatt-prod
+  labels:
+    app.kubernetes.io/name: werkstatt-dienst
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: werkstatt-dienst
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: werkstatt-dienst
+    spec:
+      serviceAccountName: werkstatt-dienst
+      automountServiceAccountToken: false
+      # Name wie das Pull-Secret der Forgejo-Registry in voltpilot-prod; das
+      # Secret muss auch in werkstatt-prod liegen (docs/runbook.md).
+      imagePullSecrets:
+        - name: forgejo-registry
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: werkstatt-dienst
+          image: git.tecmaxx.de/mamotec/voltpilot-ems/werkstatt-dienst:COMMIT
+          args: ["dienst"]
+          envFrom:
+            - configMapRef:
+                name: werkstatt-dienst-konfig
+          ports:
+            - name: betrieb
+              containerPort: 8100
+          livenessProbe:
+            httpGet: {path: /health, port: betrieb}
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /ready, port: betrieb}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - {name: daten, mountPath: /var/lib/vp-werkstatt-dienst}
+            - {name: tmp, mountPath: /tmp}
+            - {name: geheim, mountPath: /etc/vp-werkstatt/geheim, readOnly: true}
+            - {name: oeffentlich, mountPath: /etc/vp-werkstatt/oeffentlich, readOnly: true}
+            - {name: freigabe, mountPath: /etc/vp-werkstatt/freigabe, readOnly: true}
+      volumes:
+        - name: daten
+          persistentVolumeClaim:
+            claimName: werkstatt-dienst-daten
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: geheim
+          secret:
+            secretName: werkstatt-dienst-geheim
+            defaultMode: 0440
+        - name: oeffentlich
+          configMap:
+            name: werkstatt-dienst-oeffentlich
+        # Die Freigabe legt der Betreiber an und löscht sie wieder; fehlt sie,
+        # startet der Pod trotzdem und richtet keine Box ein.
+        - name: freigabe
+          configMap:
+            name: werkstatt-freigabe
+            optional: true
