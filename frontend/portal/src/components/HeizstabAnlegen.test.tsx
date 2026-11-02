@@ -68,6 +68,9 @@ describe('Heizstab über alle Ausgänge einrichten', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Jede Phase mit Neutralleiter/ }));
     fireEvent.change(screen.getByLabelText('Leistung je Heizelement (kW)'), { target: { value: '2,0' } });
+    // Die Phase für Stufe 1 wird nicht gefragt; die Stufen stehen vorbelegt in einer Zeile.
+    expect(screen.queryByText('Phase für 1 Phase')).toBeNull();
+    expect(screen.getByText(/Stufen: 1 Phase · 2 Phasen · 3 Phasen/)).toBeInTheDocument();
     expect(screen.getByText(/^1 Phase · 2,0\skW$/)).toBeInTheDocument();
     expect(screen.getByText(/^3 Phasen · 6,0\skW$/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }));

@@ -8,6 +8,18 @@ import { HeizstabKarte, heizStufen } from './HeizstabKarte';
 
 const startOverride = vi.fn();
 const clearOverride = vi.fn();
+const testComponentConnection = vi.fn();
+const updateComponent = vi.fn();
+vi.mock('../api', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../api');
+  return {
+    ...actual,
+    api: {
+      testComponentConnection: (...a: unknown[]) => testComponentConnection(...a),
+      updateComponent: (...a: unknown[]) => updateComponent(...a),
+    },
+  };
+});
 vi.mock('../consumers/consumersApi', () => ({
   consumersApi: {
     startOverride: (...a: unknown[]) => startOverride(...a),
@@ -29,7 +41,7 @@ describe('Heizstab auf der Geräteseite', () => {
   beforeEach(() => {
     startOverride.mockReset().mockResolvedValue({});
     clearOverride.mockReset().mockResolvedValue({});
-    setSelbstauskunft({ zustand: 'aktiv', unternehmen_rechte: ['handeingriff.setzen'], standorte: [] } as unknown as Selbstauskunft);
+    setSelbstauskunft({ zustand: 'aktiv', unternehmen_rechte: ['handeingriff.setzen', 'geraet.einrichten'], standorte: [] } as unknown as Selbstauskunft);
   });
   afterEach(() => setSelbstauskunft(null));
 
@@ -87,5 +99,29 @@ describe('Heizstab auf der Geräteseite', () => {
     expect(screen.getByText(/Heizt von Hand bis 13:00/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Automatik fortsetzen' }));
     await waitFor(() => expect(clearOverride).toHaveBeenCalledWith('site-1', 'rod-1'));
+  });
+
+  it('„Immer L1“ prüft die Verbindung und speichert sie mit rotation fixed', async () => {
+    testComponentConnection.mockReset().mockResolvedValue({
+      requestId: 'r1',
+      results: [{ id: 'verbindung', ok: true, samples: [{ channel: 'relay_on_0', raw: 0, value: 0, count: 1 }] }],
+    });
+    updateComponent.mockReset().mockResolvedValue({ components: [] });
+    const onGeaendert = vi.fn();
+    const komponente = {
+      id: 'rod-1', role: 'consumer', label: 'Heizstab', templateRef: 'shelly-pro-3', templateVersion: 2, definitionVersion: 4,
+      connection: { ip: '192.168.178.43', channels: [0, 1, 2], output_kw: [2, 2, 2], stages: [1, 2, 3], rotation: 'daily', anschluss: 'stern_mit_n' },
+    };
+    render(
+      <HeizstabKarte siteId="site-1" consumer={ROD} status={null} override={null} kanaele={3} komponente={komponente}
+        jetzt={new Date('2026-11-02T10:05:00Z')} onGeaendert={onGeaendert} />,
+    );
+    expect(screen.getByRole('button', { name: /Täglich wechselnd/ })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: /Immer L1/ }));
+    await waitFor(() => expect(onGeaendert).toHaveBeenCalled());
+    expect(testComponentConnection.mock.calls[0][1]).toMatchObject({ entityId: 'rod-1', connection: { rotation: 'fixed' } });
+    expect(updateComponent.mock.calls[0][2]).toMatchObject({
+      expectedRevision: 4, connection: { rotation: 'fixed', channels: [0, 1, 2], anschluss: 'stern_mit_n' },
+    });
   });
 });
