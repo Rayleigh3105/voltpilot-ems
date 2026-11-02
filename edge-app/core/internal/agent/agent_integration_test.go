@@ -42,6 +42,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -535,10 +536,12 @@ func TestFullLoopEnrollExecuteBufferReplay(t *testing.T) {
 		t.Fatalf("measurements: %v", meas)
 	}
 
-	// 3) No schedule yet -> self-consumption fallback: pv 12 - load 8 = +4.
+	// 3) No schedule yet -> self-consumption fallback: pv 12 - load 8 = +4,
+	// held the Netzladen-Sperre's 1-kW reserve short: without a plan the box
+	// is fail-safe "no grid charging" (EN-1 A, 2026-11-02) -> +3.
 	waitFor(t, 10*time.Second, "self-consumption setpoint", func() bool {
 		sp, ok := l1.lastSetpoint()
-		return ok && sp["source"] == "default" && sp["battery_setpoint_kw"].(float64) == 4
+		return ok && sp["source"] == "default" && sp["battery_setpoint_kw"].(float64) == 4-guards.NetzladenReserveKw
 	})
 	if a.State.Get().Mode != state.ModeSelfConsume {
 		t.Fatalf("mode: %v", a.State.Get().Mode)

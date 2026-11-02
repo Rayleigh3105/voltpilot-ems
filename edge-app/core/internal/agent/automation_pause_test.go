@@ -19,6 +19,7 @@ package agent
 // state every assertion starts from.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -76,7 +77,18 @@ func TestManualBatteryAndPlantRestOutrankIdleFollowerAndOptimizer(t *testing.T) 
 	a, addr := followAgentAddr(t)
 	sub := subscribeSetpoint(t, addr)
 	now := time.Now().UTC().Truncate(time.Second)
-	reg, skipped, err := entities.ParseRegistryPush(registryPush("rev-manual-idle", true),
+	// The battery may charge from the grid here: the subject is the authority
+	// of a manual command over the market corrections, on screenshot A without
+	// any surplus. With grid charging NOT allowed the Netzladen-Sperre (EN-1 A)
+	// would take that charge back as compliance, not as a market correction -
+	// the manual intervention never widens a guard
+	// (desired.TestStorageManualInterventionBeatsAHoldingRuleAndStillPassesTheGuardChain).
+	push := bytes.Replace(registryPush("rev-manual-idle", true),
+		[]byte(`"charge_from_grid_allowed":false`), []byte(`"charge_from_grid_allowed":true`), 1)
+	if bytes.Equal(push, registryPush("rev-manual-idle", true)) {
+		t.Fatal("registry fixture changed: no charge_from_grid_allowed to release")
+	}
+	reg, skipped, err := entities.ParseRegistryPush(push,
 		entities.Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice})
 	if err != nil || len(skipped) != 0 {
 		t.Fatalf("registry parse: skipped=%v err=%v", skipped, err)

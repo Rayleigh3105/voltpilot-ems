@@ -22,17 +22,35 @@ type Limits struct {
 	// SolarOnlyCharge enforces the EEG Ausschliesslichkeitsprinzip at
 	// EXECUTION time (P5, the on-device twin of the cloud MILP's
 	// solar-only-charge constraint): commanded CHARGE is clamped to the
-	// MEASURED PV production max(pv, 0) - PV-bus Bilanzierung (FK3, captain
-	// decision 2026-07-16: the battery may charge up to the full actual PV
-	// while the house imports its load in parallel; measured PV is the
-	// inverter's ACTUAL output, i.e. already post-curtailment, so this is the
-	// measured twin of the solver's charge <= pv - curtail). A PV forecast
-	// overshoot can still never turn a planned "solar" charge into real grid
-	// import on an EEG-funded plant. Set from the plan's
+	// MEASURED PV production max(pv, 0) (FK3, captain decision 2026-07-16;
+	// measured PV is the inverter's ACTUAL output, i.e. already
+	// post-curtailment, so this is the measured twin of the solver's charge <=
+	// pv - curtail). Unknown pv clamps charge to 0. Set from the plan's
 	// grid_charge_allowed=false (the schedule contract's optional field
 	// mirroring site.netzladen_erlaubt). Zero value (false) = no extra clamp.
-	// Discharge is never affected.
+	// Discharge is never affected. Since EN-1 A (2026-11-02) a plant with
+	// this posture is also under the Netzladen-Sperre (charge <= pv - load -
+	// NetzladenReserveKw): on the v1 write path as the stateful LAST stage
+	// before the write (NetzladenSperre), everywhere else through
+	// StrictExclusivity below.
 	SolarOnlyCharge bool
+
+	// StrictExclusivity is the Netzladen-Sperre as a stateless stage (captain
+	// decisions EN-1 A / EN-2 A, 2026-11-02, "der Speicher darf nie vom Netz
+	// beladen werden, wenn Netzladen aus ist"; ported from MiSpeL MP-45 with a
+	// reserve instead of a tolerance): commanded CHARGE <= max(measured pv -
+	// measured load - NetzladenReserveKw, 0), unknown pv or load = 0. FK3 alone
+	// let the house import its load in parallel, which at the connection point
+	// is grid power in the storage (BNetzA MiSpeL, Anlage 1 S. 11). Set where
+	// no stateful last stage follows: the v2 arbiter (entities: the plant's v1
+	// posture, or an entity whose charge_from_grid_allowed is explicitly
+	// false), a window bound that FORCES a flow in the device's own mode
+	// (ClipWindow) and the First-Light test write. NOT on the v1
+	// chain: the in-chain clamps run on the LIVE reading, whose load is derived
+	// from a battery half that can lag the grid half by a measurement - a bound
+	// on it cuts on the echo of every raise and swings; there the
+	// NetzladenSperre rests on the follower's settled control reading.
+	StrictExclusivity bool
 
 	// Bms is what the battery's own protection currently ALLOWS (P5c,
 	// Konzept vp-deye-diybms-luecke-l5 §3.2b/§3.3): a HARD upper bound on
@@ -150,7 +168,29 @@ const (
 	StagePeakShave       = "guard:peak_shave"
 	StageLimitReduceOnly = "guard:limit_reduce_only"
 	StageBmsLimit        = "guard:bms_limit"
+
+	// StageStrictExclusivity names the Netzladen-Sperre (charge only from the
+	// measured surplus minus the reserve, never while importing; the MiSpeL
+	// MP-45 stage name, open vocabulary in edge-desired.schema.json).
+	StageStrictExclusivity = "guard:strict_exclusivity"
 )
+
+// NetzladenReserveKw is R of the Netzladen-Sperre (captain decision EN-1 A,
+// 2026-11-02: "R = 1 kW zum Start", scout vp-herzogau-eeg-netzstrom-scout
+// §4.2): with grid charging not allowed the battery charges at most the
+// MEASURED surplus pv - load minus this reserve, so the connection point keeps
+// at least this much export while charging. Shared by the stateless clamp
+// (ClampTraced stage 4b) and the stateful last stage (NetzladenSperre).
+const NetzladenReserveKw = 1.0
+
+// netzladenCapKw is the Netzladen-Sperre's bound on a charge command:
+// max(pv - load - NetzladenReserveKw, 0), and 0 when pv or load is unknown.
+func netzladenCapKw(r Reading) float64 {
+	if !known(r.PvKw) || !known(r.LoadKw) || math.IsInf(r.PvKw, 0) || math.IsInf(r.LoadKw, 0) {
+		return 0
+	}
+	return math.Max(r.PvKw-r.LoadKw-NetzladenReserveKw, 0)
+}
 
 // ClampStage records one guard stage that actually CHANGED the value while
 // clamping a command (stages that pass a value through untouched are not
@@ -170,15 +210,22 @@ type ClampStage struct {
 //     protection is a HARD upper bound - a current staircase turned into
 //     kilowatts, and a hysteresis hard stop that means 0,
 //  4. EEG solar-only charge (when Limits.SolarOnlyCharge): charge <=
-//     max(measured pv, 0) - the FK3 PV-bus clamp; the house may import its
-//     load in parallel. Unknown pv clamps charge to 0 - a compliance guard
-//     must not charge blind (unlike the advisory guards, which skip on
-//     missing data). The later §14a export correction can only ever raise
-//     charge to pv - load - limit <= pv, so it never re-violates this clamp,
+//     max(measured pv, 0) - the FK3 clamp. Unknown pv clamps charge to 0 - a
+//     compliance guard must not charge blind (unlike the advisory guards,
+//     which skip on missing data). The later §14a export correction can only
+//     ever raise charge to pv - load - limit <= pv, so it never re-violates
+//     this clamp,
+//     4b. the Netzladen-Sperre (with StrictExclusivity, EN-1 A): charge <=
+//     max(measured pv - measured load - NetzladenReserveKw, 0) - no charging
+//     while the connection point imports. Unknown pv or load clamps charge
+//     to 0. Applied again after the §14a correction (6), which could
+//     otherwise raise charge to pv - load - limit with a limit below the
+//     reserve,
 //  5. observed §14a envelope: predicted grid power (load + battery - pv,
 //     + = import) must stay within [-gridLimit, +gridLimit],
 //  6. re-apply the rated band AND the BMS envelope LAST - the §14a correction
-//     can otherwise push the value outside either of them.
+//     can otherwise push the value outside either of them - and the
+//     Netzladen-Sperre (4b) with them.
 //
 // The result is always finite; a non-finite command clamps to 0.
 func Clamp(commandKw float64, l Limits, r Reading) float64 {
@@ -236,15 +283,21 @@ func ClampTraced(commandKw float64, l Limits, r Reading) (float64, []ClampStage)
 	}
 
 	// 4) EEG solar-only charge: never charge beyond the MEASURED PV
-	// production (FK3 PV-bus semantics - the house may import in parallel).
-	// Charging without a usable pv reading clamps to 0 - grid-charging blind
-	// is exactly the violation this guard exists to exclude.
+	// production (FK3). Charging without a usable pv reading clamps to 0 -
+	// grid-charging blind is exactly the violation this guard exists to
+	// exclude.
 	if l.SolarOnlyCharge && kw > 0 {
 		produced := 0.0
 		if known(r.PvKw) {
 			produced = math.Max(r.PvKw, 0)
 		}
 		kw = note(StageSolarOnlyCharge, kw, math.Min(kw, produced))
+	}
+	// 4b) the Netzladen-Sperre (EN-1 A): never charge beyond the MEASURED
+	// surplus pv - load minus the reserve, so the battery takes nothing while
+	// the site draws from the grid. Blind (pv or load unknown) clamps to 0.
+	if l.StrictExclusivity && kw > 0 {
+		kw = note(StageStrictExclusivity, kw, math.Min(kw, netzladenCapKw(r)))
 	}
 
 	// 5) observed §14a envelope, both directions. predictedGrid > 0 = import.
@@ -263,6 +316,9 @@ func ClampTraced(commandKw float64, l Limits, r Reading) (float64, []ClampStage)
 	kw = note(StageRatedBand, kw, band(kw))
 	if l.Bms.speaks() {
 		kw = note(StageBmsLimit, kw, bmsBand(kw))
+	}
+	if l.StrictExclusivity && kw > 0 {
+		kw = note(StageStrictExclusivity, kw, math.Min(kw, netzladenCapKw(r)))
 	}
 
 	// Round to W resolution like the Node-RED guard (stable register writes).

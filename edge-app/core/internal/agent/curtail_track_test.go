@@ -13,11 +13,19 @@ import (
 // herzogauCurtailPlan is the FRESH one-slot plan of the 10:30 run: charge the
 // battery at its 30 kW maximum and cap the plant at 36,869 kW = 6,5 kW house +
 // 30 kW battery, i.e. "let nothing out of the site".
+//
+// The tracker's law (cap = house + battery command) holds for every posture;
+// these cases pin it with the battery term as commanded, so the plan allows
+// grid charging. Herzogau itself is an EEG plant: there the Netzladen-Sperre
+// bounds the battery term first - the 10:44 picture below (PV 55,1, house 29,
+// battery 30) would import 3,9 kW while charging, which the lock cuts at once;
+// the lock under the box's own curtailment has its own case
+// (TestNetzladenSperreUnderTheBoxsOwnCurtailment).
 func herzogauCurtailPlan(now time.Time, capKw float64) *plan.Plan {
-	no, floor, cap := false, 5.0, capKw
+	yes, floor, cap := true, 5.0, capKw
 	return &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &no, EffectiveFloorSocPct: &floor,
+		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
 		Slots: []plan.Slot{{
 			Start: now, BatterySetpointKw: 30, PvLimitKw: &cap,
 		}},

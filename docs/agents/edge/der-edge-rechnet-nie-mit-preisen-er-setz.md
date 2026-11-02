@@ -15,8 +15,9 @@ Volles Bild inkl. Ökonomie in der Root-AGENTS.md „Price-aware in-slot trim". 
 - **Sicherheit per Algebra, nicht per Prüfung:** nach dem Trim ist die vorhergesagte Netzleistung
   `max(load − pv, 0) ≥ 0` — die Anlage wird nie in die Einspeisung gedrückt, also kann der §14a-EXPORT-Deckel
   (der `Clamp` sogar Ladeleistung ERHÖHEN darf) nicht verletzt werden, und der Import-Deckel galt für einen
-  Wert, den der Trim nur weiter senkt. FK3 (Laden ≤ gemessene PV-PRODUKTION) bleibt die regulatorische
-  Obergrenze und ist per Konstruktion lockerer als der Überschuss.
+  Wert, den der Trim nur weiter senkt. Die EEG-Klemme bleibt die regulatorische Obergrenze: FK3 (Laden ≤
+  gemessene PV-PRODUKTION) und seit EN-1 A (02.11.2026) die Netzladen-Sperre (Laden ≤ PV − Haus − 1 kW), die
+  enger ist als der Überschuss des Trims und vor dem Schreiben noch einmal das letzte Wort hat.
 - **Ehrlichkeit:** unbekanntes pv/load ⇒ INAKTIV (nie blind regeln — die PeakShave-Konvention); Entladen und
   Ruhe sind unberührt; der Eigenverbrauchs-Rückfall IST der Überschuss, dort ist der Trim ein No-op.
 - **Kein Zappeln, asymmetrisch:** Eingreifen sofort (eine durchziehende Wolke ist genau das, was nicht gekauft

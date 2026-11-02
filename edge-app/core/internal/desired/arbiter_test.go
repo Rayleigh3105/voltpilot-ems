@@ -210,8 +210,10 @@ func TestPlantRestSuspendsAnIncumbentManualOverrideButNeverCompliance(t *testing
 	// not merely filter desires submitted after the pause began.
 	h.suspended = true
 	h.arb.Tick()
-	if got := h.setpointOf("batt-main"); got != 5.2 { // PV 6.2 - load 1
-		t.Fatalf("paused battery = %v, want local self-consumption 5.2", got)
+	// PV 6.2 - load 1 = 5.2, held the 1-kW reserve short of the surplus by the
+	// registry's solar-only posture (Netzladen-Sperre, EN-1 A).
+	if got := h.setpointOf("batt-main"); got != 4.2 {
+		t.Fatalf("paused battery = %v, want local self-consumption 4.2", got)
 	}
 	if dec, ok := h.arb.DecisionFor("batt-main"); !ok || dec.HolderKind != "" || dec.Source != "failsafe" {
 		t.Fatalf("paused decision must be holderless failsafe: %+v ok=%v", dec, ok)
@@ -262,7 +264,8 @@ func TestFlowDesireAcceptedBecomesHolderAndCommands(t *testing.T) {
 func TestBeyondBoundsDesireIsClampedWithGuardStage(t *testing.T) {
 	h := newHarness(t)
 	// Registry band 15, solar-only active (D-8 charge_from_grid_allowed=false),
-	// measured PV 6.2 -> a +20 charge wish lands at 6.2.
+	// measured PV 6.2, load 1 -> a +20 charge wish lands at the surplus minus
+	// the reserve, 4.2 (FK3 + Netzladen-Sperre, EN-1 A).
 	h.arb.Submit("batt-main", flowDesire("batt-main", "n3", 20, 180, false, h.clock))
 
 	e := h.lastEvent()
@@ -273,18 +276,19 @@ func TestBeyondBoundsDesireIsClampedWithGuardStage(t *testing.T) {
 		Type  string  `json:"type"`
 		Value float64 `json:"value"`
 	}
-	if err := json.Unmarshal(e.Granted, &granted); err != nil || granted.Type != "setpoint_kw" || granted.Value != 6.2 {
-		t.Fatalf("granted %s, want setpoint 6.2", e.Granted)
+	if err := json.Unmarshal(e.Granted, &granted); err != nil || granted.Type != "setpoint_kw" || granted.Value != 4.2 {
+		t.Fatalf("granted %s, want setpoint 4.2", e.Granted)
 	}
 	stages := []string{}
 	for _, r := range e.Reasons {
 		stages = append(stages, r.Stage)
 	}
-	if !contains(stages, guards.StageRatedBand) || !contains(stages, guards.StageSolarOnlyCharge) {
-		t.Fatalf("reasons must name rated_band + solar_only_charge, got %v", stages)
+	if !contains(stages, guards.StageRatedBand) || !contains(stages, guards.StageSolarOnlyCharge) ||
+		!contains(stages, guards.StageStrictExclusivity) {
+		t.Fatalf("reasons must name rated_band + solar_only_charge + strict_exclusivity, got %v", stages)
 	}
-	if got := h.setpointOf("batt-main"); got != 6.2 {
-		t.Fatalf("command %v, want the CLAMPED 6.2 - never the raw wish", got)
+	if got := h.setpointOf("batt-main"); got != 4.2 {
+		t.Fatalf("command %v, want the CLAMPED 4.2 - never the raw wish", got)
 	}
 }
 
@@ -333,9 +337,10 @@ func TestSameClassChallengerRejectedUntilHolderTTLLapses(t *testing.T) {
 func TestOverrideSupersedesPlanAndPlanResumesOnExpiry(t *testing.T) {
 	h := newHarness(t)
 	h.arb.SubmitInternal(marketDesire("batt-main", 12, 30*time.Minute))
-	if got := h.setpointOf("batt-main"); got != 6.2 {
-		// plan +12 charge clamped to measured pv 6.2 (registry solar-only)
-		t.Fatalf("plan granted %v, want 6.2", got)
+	if got := h.setpointOf("batt-main"); got != 4.2 {
+		// plan +12 charge clamped to measured pv 6.2 - load 1 - reserve 1
+		// (registry solar-only, Netzladen-Sperre)
+		t.Fatalf("plan granted %v, want 4.2", got)
 	}
 	cmd, _ := h.lastCommand("batt-main")
 	if cmd["source"] != "plan" {
@@ -378,7 +383,7 @@ func TestOverrideSupersedesPlanAndPlanResumesOnExpiry(t *testing.T) {
 	if e.Outcome != "expired" || e.Holder == nil || e.Holder.Source.Kind != SourcePlanExecutor {
 		t.Fatalf("plan must resume on override expiry, got %+v", e)
 	}
-	if got := h.setpointOf("batt-main"); got != 6.2 {
+	if got := h.setpointOf("batt-main"); got != 4.2 {
 		t.Fatalf("plan value must be re-commanded, got %v", got)
 	}
 }
@@ -402,15 +407,16 @@ func TestQueuedLowerPriorityResumesAndFailsafeFallsLast(t *testing.T) {
 	}
 
 	// Its expiry with nothing left falls to the registry failsafe
-	// (self-consumption = pv 6.2 - load 1 = 5.2).
+	// (self-consumption = pv 6.2 - load 1 = 5.2, held the 1-kW reserve short
+	// by the solar-only posture = 4.2).
 	h.clock = h.clock.Add(31 * time.Minute)
 	h.arb.Tick()
 	e = h.lastEvent()
 	if e.Outcome != "expired" || e.Holder != nil {
 		t.Fatalf("want expired with null holder (failsafe), got %+v", e)
 	}
-	if got := h.setpointOf("batt-main"); got != 5.2 {
-		t.Fatalf("failsafe self-consumption %v, want 5.2", got)
+	if got := h.setpointOf("batt-main"); got != 4.2 {
+		t.Fatalf("failsafe self-consumption %v, want 4.2", got)
 	}
 	cmd, _ := h.lastCommand("batt-main")
 	if cmd["source"] != "failsafe" {
@@ -524,15 +530,15 @@ func TestSameSourceReemissionRefreshesWithoutOwnershipChange(t *testing.T) {
 func TestHolderReclampFollowsReadingChanges(t *testing.T) {
 	h := newHarness(t)
 	h.arb.Submit("batt-main", flowDesire("batt-main", "n3", 10, 600, false, h.clock))
-	if got := h.setpointOf("batt-main"); got != 6.2 {
-		t.Fatalf("initial clamp %v, want 6.2 (pv)", got)
+	if got := h.setpointOf("batt-main"); got != 4.2 {
+		t.Fatalf("initial clamp %v, want 4.2 (pv - load - reserve)", got)
 	}
 	// PV drops: the standing wish is re-clamped on the next tick.
 	h.reading.PvKw = 2.5
 	h.clock = h.clock.Add(5 * time.Second)
 	h.arb.Tick()
-	if got := h.setpointOf("batt-main"); got != 2.5 {
-		t.Fatalf("re-clamp %v, want 2.5", got)
+	if got := h.setpointOf("batt-main"); got != 0.5 {
+		t.Fatalf("re-clamp %v, want 0.5 (2.5 - 1 - 1)", got)
 	}
 	e := h.lastEvent()
 	if e.Outcome != "clamped" {

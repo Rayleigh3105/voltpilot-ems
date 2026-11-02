@@ -75,6 +75,12 @@ type Snapshot struct {
 	// leave no surplus for it - the consumer is the one that steps down.
 	ChargeHold *ChargeHoldInfo `json:"charge_hold,omitempty"`
 
+	// NetzladenSperre is the last stage before the device write on a plant
+	// whose grid charging is not allowed (EN-1 A, 2026-11-02), non-nil ONLY
+	// while it is actually lowering the commanded charge: it names why the
+	// battery charges less than the Fahrplan and the corrections asked for.
+	NetzladenSperre *NetzladenSperreInfo `json:"netzladen_sperre,omitempty"`
+
 	// Follow is the in-slot load following (2026-07-30), non-nil ONLY while it is
 	// actually deepening the commanded discharge. Same reason as Trim: without it
 	// the customer would see a confirmed setpoint far BELOW the Fahrplan value
@@ -288,6 +294,24 @@ type TrimInfo struct {
 	// SurplusKw is the measured surplus the charge is held at; nil when unknown
 	// (then the trim would be inactive anyway - never regulate blind).
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
+}
+
+// NetzladenSperreInfo is the UI-facing state of the Netzladen-Sperre
+// (guards.NetzladenSperre): with grid charging not allowed the battery charges
+// at most the measured surplus minus 1 kW, and nothing on an unknown or older
+// than 30 s reading. Read-only display of a decision already taken.
+type NetzladenSperreInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// PlannedKw is the charge the chain asked for before the lock.
+	PlannedKw float64 `json:"planned_kw"`
+	// CapKw is the bound in force (what the battery is held at).
+	CapKw float64 `json:"cap_kw"`
+	// SurplusKw is the measured surplus pv - load the bound rests on; nil when
+	// the reading is unknown or too old (Blind).
+	SurplusKw *float64 `json:"surplus_kw,omitempty"`
+	// Blind is true when the bound is 0 for want of a fresh reading.
+	Blind bool `json:"blind,omitempty"`
 }
 
 // ChargeHoldInfo is the UI-facing state of the NS-3 B hold: the cloud took a

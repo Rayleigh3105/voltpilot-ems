@@ -217,6 +217,7 @@ func ClipWindow(in Intent, l Limits, r Reading, floorPct *float64) Window {
 		deviceSide := func(kw float64) float64 {
 			ll := l
 			ll.SolarOnlyCharge = false
+			ll.StrictExclusivity = false
 			rr := r
 			rr.GridLimitKw = math.NaN()
 			return Clamp(kw, ll, rr)

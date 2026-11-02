@@ -467,6 +467,13 @@ func (e Entity) GuardChainLimits() guards.Limits {
 		SolarOnlyCharge: e.Guards.Limits.ChargeFromGridAllowed == nil ||
 			!*e.Guards.Limits.ChargeFromGridAllowed,
 	}
+	// EN-1 A (2026-11-02): an entity that EXPLICITLY may not charge from the
+	// grid is under the Netzladen-Sperre too - charge <= measured pv - load -
+	// reserve, never while the site imports. An absent flag keeps the D-8
+	// fail-safe FK3 clamp; the plant's own posture (the v1 plan, extraSolarOnly
+	// in ClampCommands) arms the lock for every storage of an EEG plant.
+	l.StrictExclusivity = e.Guards.Limits.ChargeFromGridAllowed != nil &&
+		!*e.Guards.Limits.ChargeFromGridAllowed
 	if v := e.Guards.Limits.MaxChargeKw; v != nil {
 		l.MaxChargeKw = *v
 	}
@@ -531,6 +538,7 @@ func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolar
 		limits = tightenLimits(limits, *extra)
 	}
 	limits.SolarOnlyCharge = limits.SolarOnlyCharge || extraSolarOnly
+	limits.StrictExclusivity = limits.StrictExclusivity || extraSolarOnly
 	noteLimit := func(stage string, before, after float64) {
 		if after != before {
 			stages = append(stages, guards.ClampStage{Stage: stage, Before: before, After: after})
@@ -712,11 +720,12 @@ func consumerCap(v float64, capMax, rated *float64) float64 {
 // config both stay binding on one write path.
 func tightenLimits(a, b guards.Limits) guards.Limits {
 	return guards.Limits{
-		MaxChargeKw:     math.Min(a.MaxChargeKw, b.MaxChargeKw),
-		MaxDischargeKw:  math.Min(a.MaxDischargeKw, b.MaxDischargeKw),
-		SocMinPct:       math.Max(a.SocMinPct, b.SocMinPct),
-		SocMaxPct:       math.Min(a.SocMaxPct, b.SocMaxPct),
-		SolarOnlyCharge: a.SolarOnlyCharge || b.SolarOnlyCharge,
+		MaxChargeKw:       math.Min(a.MaxChargeKw, b.MaxChargeKw),
+		MaxDischargeKw:    math.Min(a.MaxDischargeKw, b.MaxDischargeKw),
+		SocMinPct:         math.Max(a.SocMinPct, b.SocMinPct),
+		SocMaxPct:         math.Min(a.SocMaxPct, b.SocMaxPct),
+		SolarOnlyCharge:   a.SolarOnlyCharge || b.SolarOnlyCharge,
+		StrictExclusivity: a.StrictExclusivity || b.StrictExclusivity,
 		// The BMS envelope (P5c) rides through the tightening like every
 		// other bound. The registry side never carries one - it is a LIVE
 		// statement of the pack, not stored configuration - so in practice

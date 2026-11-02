@@ -304,7 +304,8 @@ func TestTheLocalDeficitRuleNeverReinterpretsAPlannedCharge(t *testing.T) {
 // the active slot still said "Verbrauch decken". That measured surplus must be
 // stored instead of exported. The plan's obsolete -4.3 kW forecast first follows
 // to 0, then the safe surplus controller raises the published command to
-// +8.5 kW.
+// the measured +8.5 kW - less the Netzladen-Sperre's 1-kW reserve on this EEG
+// plant (EN-1 A, 2026-11-02), so +7.5 kW are stored and 1 kW still exported.
 //
 // Since 2026-08-29 this runs through the GENERAL charge-side trust floor
 // (guards.StoreSurplus, execution name "surplus_store"), which dropped the
@@ -338,7 +339,7 @@ func TestCoverLoadSlotRefillsUpperBufferFromTheReportedSolarSurplus(t *testing.T
 	a.applySetpoint(now)
 	waitFor(t, 5*time.Second, "the 91%-battery PV refill", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 8.5
+		return ok && m["battery_setpoint_kw"] == 8.5-guards.NetzladenReserveKw
 	})
 	snap := a.State.Get()
 	if snap.Absorb == nil || !snap.Absorb.Active || snap.Absorb.Path != execModeSurplusStore {
@@ -350,8 +351,8 @@ func TestCoverLoadSlotRefillsUpperBufferFromTheReportedSolarSurplus(t *testing.T
 	if snap.Absorb.SurplusKw == nil || *snap.Absorb.SurplusKw != 8.5 {
 		t.Fatalf("measured surplus = %+v, want 8.5 kW", snap.Absorb.SurplusKw)
 	}
-	if grid := 2.9 + snap.SetpointKw - 11.4; math.Abs(grid) > .001 {
-		t.Fatalf("grid = %.3f kW, want zero", grid)
+	if grid := 2.9 + snap.SetpointKw - 11.4; math.Abs(grid+guards.NetzladenReserveKw) > .001 {
+		t.Fatalf("grid = %.3f kW, want the reserve exported (-1)", grid)
 	}
 	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModeSurplusStore ||
 		ex.PlannedKw == nil || *ex.PlannedKw != -4.3 ||

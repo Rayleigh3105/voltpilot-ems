@@ -141,7 +141,7 @@
         },
         "reasons": {
           "type": "array",
-          "description": "Why, machine-readable, most significant first. Known stages (open set): arbitration:conflict, arbitration:priority, arbitration:priority_not_allowed, arbitration:ttl, arbitration:override, validation:schema, validation:identity, capability:unsupported_command, guard:rated_band, guard:soc_window, guard:solar_only_charge, guard:grid_limit_14a, guard:peak_shave, guard:limit_reduce_only.",
+          "description": "Why, machine-readable, most significant first. Known stages (open set): arbitration:conflict, arbitration:priority, arbitration:priority_not_allowed, arbitration:ttl, arbitration:override, validation:schema, validation:identity, capability:unsupported_command, guard:rated_band, guard:soc_window, guard:solar_only_charge, guard:strict_exclusivity, guard:grid_limit_14a, guard:peak_shave, guard:limit_reduce_only.",
           "items": {
             "type": "object",
             "required": ["stage"],

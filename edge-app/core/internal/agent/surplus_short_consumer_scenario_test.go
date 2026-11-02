@@ -161,6 +161,9 @@ type benchScenario struct {
 	pvAt       func(t float64) float64
 	holdBaseKw *float64
 	durationS  int // the run's length when there are no segments
+	// gridChargeAllowed sets the plan's posture; false (the default) is an EEG
+	// plant like Herzogau - FK3 clamp and the Netzladen-Sperre (EN-1 A) in force.
+	gridChargeAllowed bool
 }
 
 // pv returns the PV production at t seconds.
@@ -375,10 +378,16 @@ func runBench(t *testing.T, dev benchDevice, sc benchScenario) benchResult {
 		slot := now.Truncate(15 * time.Minute)
 		floor := 5.0
 		a.mu.Lock()
-		// No grid_charge_allowed: an EEG site, the charge never exceeds the PV.
+		// No grid_charge_allowed: an EEG site - the charge never exceeds the
+		// PV and stays the Netzladen-Sperre's reserve below the surplus.
+		var gca *bool
+		if sc.gridChargeAllowed {
+			yes := true
+			gca = &yes
+		}
 		a.currentPlan = &plan.Plan{
 			SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-			EffectiveFloorSocPct: &floor,
+			EffectiveFloorSocPct: &floor, GridChargeAllowed: gca,
 			Slots: []plan.Slot{{
 				Start: slot, BatterySetpointKw: sc.planKw,
 				ChargeFromSurplusOnly: sc.surplus, ChargeSurplusToBattery: sc.surplus,
@@ -558,13 +567,15 @@ func TestSurplusWithShortConsumers(t *testing.T) {
 					res.dischargeWrites, res.minSetpointKw)
 			}
 			// Figure 2 - "Überschuss nicht aufgenommen": reported, and bounded by
-			// what the damped follower's fixed reserve and its retreat on every
-			// consumer explain (mean export no higher than the reserve plus one
-			// deadband). The gliding reserve (E3, UE-7) tightens this to "nahe
-			// null"; here it only may not grow unnoticed.
-			if mean := res.surplusLostKwh * 3600 / res.seconds; mean > dev.damp.ReserveKw+dev.damp.DeadbandKw {
+			// what the reserve and the retreat on every consumer explain (mean
+			// export no higher than the reserve plus one deadband). On this EEG
+			// plant the reserve is the Netzladen-Sperre's 1 kW (EN-1 A), above the
+			// damped follower's own; the gliding reserve (E3, UE-7) would tighten
+			// it to "nahe null" - here it only may not grow unnoticed.
+			reserve := math.Max(dev.damp.ReserveKw, guards.NetzladenReserveKw)
+			if mean := res.surplusLostKwh * 3600 / res.seconds; mean > reserve+dev.damp.DeadbandKw {
 				t.Errorf("Überschuss nicht aufgenommen: %.3f kWh = %.2f kW on average, above the reserve %.1f kW plus deadband",
-					res.surplusLostKwh, mean, dev.damp.ReserveKw)
+					res.surplusLostKwh, mean, reserve)
 			}
 			// The EEG side must not pay for it: a consumer that switches on meets
 			// a charge that is taken back at once - "Laden bei Bezug" never stands
@@ -1067,6 +1078,12 @@ func TestSurplusConsumerWithoutHoldTheChargeCollapses(t *testing.T) {
 	}
 }
 
+// NS-3 B holds the charge against a zero-export consumer only where grid
+// charging is allowed: since EN-4 A (2026-11-02) the Netzladen-Sperre wins on
+// an EEG plant - the consumer meets an import, and the lock takes the charge
+// back on that tick (TestNetzladenSperreTheChargeHoldYieldsAtOnce,
+// TestSurplusConsumerHoldYieldsAtOnceOnAnEegPlant). The hold's own mechanics
+// are pinned here with the posture that keeps them.
 func TestSurplusConsumerWithHoldTheChargeStands(t *testing.T) {
 	for _, dev := range benchDevices(t) {
 		t.Run(dev.name, func(t *testing.T) {
@@ -1079,6 +1096,7 @@ func TestSurplusConsumerWithHoldTheChargeStands(t *testing.T) {
 				{"12.10. 14-15 Uhr", herzogau1210Scenario(true), 300, 3600},
 				{"14.10. 15:00-16:30", herzogau1410Scenario(true), 300, 5400},
 			} {
+				c.sc.gridChargeAllowed = true
 				res := runBench(t, dev, c.sc)
 				got, want := res.meanCharge(c.from, c.to), meanHoldTarget(c.sc, c.from, c.to)
 				// The consumer regulates the meter to zero itself, so a few hundred
@@ -1111,6 +1129,7 @@ func TestSurplusConsumerWithHoldTheChargeStands(t *testing.T) {
 			}
 			// After the consumer is off on 14.10. the hold is the plain trim.
 			sc := herzogau1410Scenario(true)
+			sc.gridChargeAllowed = true
 			res := runBench(t, dev, sc)
 			if got, want := res.meanCharge(5520, 6000), 0.8*meanHoldTarget(sc, 5520, 6000); got < want {
 				t.Errorf("14.10. after the consumer is off: %.1f kW, want >= %.1f", got, want)
@@ -1151,6 +1170,37 @@ func TestSurplusConsumerHoldNeverChargesFromTheGridForLong(t *testing.T) {
 			// Afterwards the trim of before: the charge on the measured surplus of 15 kW.
 			if late > 15.2 || late < 12 {
 				t.Errorf("after the guard: %.1f kW of charge, want the measured surplus (15 kW less the reserve)", late)
+			}
+		})
+	}
+}
+
+// EN-4 A on the bench: the same zero-export consumer of 12./14.10. at the EEG
+// plant Herzogau. The hold no longer buys the charge for its dwell: no stretch
+// of charging at a real import lasts longer than one reaction of the device,
+// and the storage never feeds the grid.
+func TestSurplusConsumerHoldYieldsAtOnceOnAnEegPlant(t *testing.T) {
+	for _, dev := range benchDevices(t) {
+		t.Run(dev.name, func(t *testing.T) {
+			reaction := dev.damp.MaxCadence.Seconds() + benchPollEvery + benchTickEvery + dev.deadS + 3*dev.tauS
+			for _, c := range []struct {
+				name string
+				sc   benchScenario
+			}{
+				{"12.10. 14-15 Uhr", herzogau1210Scenario(true)},
+				{"14.10. 15:00-16:30", herzogau1410Scenario(true)},
+			} {
+				res := runBench(t, dev, c.sc)
+				_, longest := chargeAtImportS(res, 0, c.sc.seconds(), 2*guards.HoldImportMarginKw)
+				t.Logf("%s, %s (EEG): Laden %.1f kW im Mittel, Laden bei Bezug längstens %.0f s | %s",
+					c.name, dev.name, res.meanCharge(300, c.sc.seconds()), longest, res)
+				if longest > reaction {
+					t.Errorf("%s: charging at an import for %.0f s in one stretch, want one reaction (<= %.0f s), never the hold's dwell",
+						c.name, longest, reaction)
+				}
+				if res.storageExportedKwh > 1e-6 || res.minSetpointKw < 0 {
+					t.Errorf("%s: storage fed the grid (%.4f kWh) or a discharge was commanded (%.2f kW)", c.name, res.storageExportedKwh, res.minSetpointKw)
+				}
 			}
 		})
 	}

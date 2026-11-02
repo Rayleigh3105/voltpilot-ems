@@ -90,7 +90,7 @@
           },
           "charge_from_grid_allowed": {
             "type": "boolean",
-            "description": "Storage entities only. false OR ABSENT = the entity must never charge from the grid: the edge clamps commanded charge to the measured available PV (the v1 EEG solar-only guard, PV-bus semantics). Only an EXPLICIT true releases the clamp. NOTE this is the v1 EDGE behavior promoted into the contract: the 1.0 contract text said absent = allowed, but the shipped Go edge deliberately deviates fail-safe (plan.go SolarOnlyCharge) - 2.0 adopts the code's reading so contract and execution finally agree. Discharge is never affected."
+            "description": "Storage entities only. false OR ABSENT = the entity must never charge from the grid: the edge clamps commanded charge to the measured available PV and to max(measured pv - house load - 1 kW, 0) (the v1 EEG solar-only guard with the Netzladen-Sperre of 2026-11-02: no charging while the site imports). Only an EXPLICIT true releases the clamp. NOTE this is the v1 EDGE behavior promoted into the contract: the 1.0 contract text said absent = allowed, but the shipped Go edge deliberately deviates fail-safe (plan.go SolarOnlyCharge) - 2.0 adopts the code's reading so contract and execution finally agree. Discharge is never affected."
           },
           "reserve_soc_pct": {
             "type": "number",

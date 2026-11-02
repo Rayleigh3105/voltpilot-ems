@@ -71,7 +71,11 @@ const (
 	// before the hold concludes it does not: one switching step of a staged
 	// consumer (Einschalt-/Ausschaltverzug of seconds to tens of seconds), a
 	// Messtakt and a tick, with room to spare. Its cost is bounded: at most this
-	// long of import per slot for a load that never yields.
+	// long of import per slot for a load that never yields - and only where
+	// grid charging is allowed: on a plant where it is not, the Netzladen-
+	// Sperre at the end of the chain bounds the held charge by the REAL house
+	// load on the same tick, so the hold yields at once on import (captain
+	// decision EN-4 A, 2026-11-02).
 	HoldYieldDwell = 60 * time.Second
 )
 

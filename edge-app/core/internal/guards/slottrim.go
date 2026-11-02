@@ -24,10 +24,13 @@
 //     cap are untouchable by construction, and the import bound was applied to a
 //     value the trim only reduces further. It stays strictly inside [0, kw], so
 //     the rated band and the SoC window hold trivially.
-//   - FK3 stays the regulatory upper bound: the EEG solar-only clamp (charge <=
-//     measured PV production, house may import in parallel) already ran inside
-//     Clamp; the economic trim is TIGHTER (surplus <= production for a
-//     non-negative load) and therefore never widens it. Most restrictive wins.
+//   - The EEG clamp stays the regulatory upper bound: it already ran inside
+//     Clamp (charge <= measured PV production, FK3, and since EN-1 A of
+//     2026-11-02 charge <= pv - load - NetzladenReserveKw, the
+//     Netzladen-Sperre, which is TIGHTER than this trim's surplus); the trim
+//     only ever lowers and therefore never widens it. Most restrictive wins,
+//     and the Sperre has the last word again before the write
+//     (NetzladenSperre).
 //   - It never regulates blind: unknown pv or load leaves the command untouched
 //     (the economic-guard convention - a missed trim costs a little money, a
 //     blind one could stop a legitimate charge).

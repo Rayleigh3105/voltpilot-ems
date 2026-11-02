@@ -138,6 +138,17 @@ type Agent struct {
 	// export steps down instead of taking the planned charge
 	// (guards.ChargeHolder - its import guard catches a load that does not).
 	hold *guards.ChargeHolder
+	// sperre is the Netzladen-Sperre (EN-1 A, 2026-11-02): the last word on a
+	// charge command before the device write for every plant whose grid
+	// charging is not allowed - charge <= measured pv - load - 1 kW, a reading
+	// older than 30 s or unknown gives 0, the bound rises damped
+	// (guards.NetzladenSperre).
+	sperre *guards.NetzladenSperre
+	// sperrePvCap is the plant PV cap the last tick published (pv_limit_kw)
+	// and when: the Netzladen-Sperre must know when the measured PV is held
+	// back on purpose (guarded by a.mu).
+	sperrePvCap   *float64
+	sperrePvCapAt time.Time
 	// follow holds the hysteresis of the in-slot load following: in a slot the
 	// cloud marked cover_load_from_battery the commanded DISCHARGE is raised to
 	// the MEASURED house deficit, so an under-forecast quarter hour is no longer
@@ -791,6 +802,7 @@ func New(cfg config.Config) (*Agent, error) {
 		peak:         guards.NewPeakTracker(),
 		trim:         guards.NewPriceTrimmer(),
 		hold:         guards.NewChargeHolder(),
+		sperre:       guards.NewNetzladenSperre(),
 		follow:       guards.NewLoadFollower(),
 		deficitHold:  guards.NewDeficitHold(),
 		absorb:       guards.NewSurplusCharger(),
@@ -2799,13 +2811,13 @@ func (a *Agent) applySetpoint(now time.Time) {
 
 	// P5 EEG execution gap: a plan carrying grid_charge_allowed=false (the
 	// site is EEG-funded, site.netzladen_erlaubt) demands the solar-only
-	// clamp - charge <= MEASURED pv (PV-bus semantics since FK3: the house
-	// may import its load in parallel) - on every commanded setpoint.
-	// FAIL-SAFE: the field ABSENT (legacy/hand-crafted payload) or no plan at
-	// all also clamps - only an explicit true releases it (the optimizer
-	// always publishes the field, so a merchant site's plan is unaffected).
-	// The self-consumption fallback follows pv - load and never grid-charges,
-	// so the clamp composing into it is a no-op there.
+	// clamp on every commanded setpoint - charge <= MEASURED pv (FK3) in the
+	// chain and, since EN-1 A (2026-11-02), charge <= measured pv - load - 1 kW
+	// in the stateful last stage right before the device write (a.sperre, the
+	// Netzladen-Sperre: no charging while the site imports). FAIL-SAFE: the
+	// field ABSENT (legacy/hand-crafted payload) or no plan at all also clamps
+	// - only an explicit true releases it (the optimizer always publishes the
+	// field, so a merchant site's plan is unaffected).
 	solarOnly := p.SolarOnlyCharge()
 
 	// PS-3 peak shaving: the LAST plan-carried target/reserve, deliberately
@@ -2846,6 +2858,14 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// byte-for-byte what it was.
 		Bms: a.bmsEnvelope(a.batteryEntityID()),
 	}
+	// The Netzladen-Sperre as a STATELESS stage (EN-1 A, guards.Limits.
+	// StrictExclusivity) for the two writes the last stage below never sees:
+	// the First-Light test write and a window bound that forces a flow in the
+	// device's own mode. The chain itself keeps the FK3 clamp - its in-chain
+	// Clamp calls run on the live reading, whose echo a stateless surplus
+	// bound would chase (see a.sperre).
+	strictLimits := limits
+	strictLimits.StrictExclusivity = solarOnly
 
 	// First-Light calibration OVERRIDE (agent/calibration.go): while a bounded test
 	// is engaged (active OR its auto-revert window), publish the small clamped test
@@ -2854,7 +2874,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// capped, and the global kill-switch still gates the write - calibration only
 	// bypasses the certification allowlist so the first real write can prove
 	// sign/scale. Returns true when it handled the tick.
-	if a.calibrationOverride(now, r, limits) {
+	if a.calibrationOverride(now, r, strictLimits) {
 		// A bounded First-Light write owns the inverter for its TTL, so no
 		// economic execution mode may carry an armed state across it.
 		a.native.Release()
@@ -2976,6 +2996,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.Follow = nil
 			s.DeficitHold = nil
 			s.Absorb = nil
+			s.NetzladenSperre = nil
 			// Without a reading the native supervision cannot supervise at all,
 			// so a previous claim is cleared rather than left standing - the
 			// same rule the three corrections above follow.
@@ -3474,9 +3495,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// cloud authorized (it carries ev_release_floor_soc_pct, i.e. a
 	// self-consumption slot - never a trade) yields to the MEASURED
 	// self-consumption value pv - load, where load includes the cars. Without
-	// it the PV-bus semantics would keep charging the battery from the sun
-	// while the car's draw came from the grid - exactly what the source
-	// promises never happens.
+	// it a merchant plant would keep charging the battery from the sun while
+	// the car's draw came from the grid - exactly what the source promises
+	// never happens (on a plant with grid charging not allowed the
+	// Netzladen-Sperre at the end of the chain forbids it as well).
 	//
 	// ⚠ LOWER-ONLY and bounded by the cloud's floor: the target is re-run
 	// through the SAME guards.Clamp with the SoC floor raised to the release
@@ -3656,6 +3678,48 @@ func (a *Agent) applySetpoint(now time.Time) {
 		anteilCap = &c
 	}
 
+	// NETZLADEN-SPERRE (captain decisions EN-1 A / EN-4 A, 2026-11-02,
+	// guards/netzladensperre.go): THE LAST WORD on the charge command. With grid
+	// charging not allowed (or the plan field absent / no plan - fail-safe like
+	// the solar-only clamp) the command leaving here is at most
+	// max(measured pv - measured load - 1 kW, 0); a reading older than 30 s or
+	// unknown gives 0; lowering acts at once, the bound rises damped like K1.
+	// It sits after every stage that may raise or reshape a charge - the
+	// in-slot corrections, the surplus absorption, the NS-3 B hold (which thus
+	// yields at once on import: EN-4 A), the damper, the cars-first cap, the
+	// peak guard, the Bezugswaechter and the Sprungprobe - and before the
+	// Wegwahl, the curtailment tracker and the write, so all of them see the
+	// value the battery will really take. A v2 holder's value runs through it
+	// too: it entered kw above. Discharge is untouched; a plant with grid
+	// charging allowed never reaches it and keeps its setpoint byte for byte.
+	// The bound rests on the follower's CONTROL reading (rc: the last settled
+	// pair - no echo of the box's own writes), and on the live reading at once
+	// when the fresh live grid value shows import while the battery charges.
+	// Where the PV is held back on purpose - the cap this box published on its
+	// last tick, or the device's own feed-in limit - the meter judges instead
+	// of the reserve bound (a zero-export cap would otherwise ratchet the
+	// charge down to 0).
+	a.mu.Lock()
+	var sperrePvCap *float64
+	if a.sperrePvCap != nil && now.Sub(a.sperrePvCapAt) <= time.Minute {
+		v := *a.sperrePvCap
+		sperrePvCap = &v
+	}
+	a.mu.Unlock()
+	var deviceExportLimit *float64
+	if d := a.State.Get().DeviceExportLimit; d != nil && now.Sub(d.ReadAt) <= 10*time.Minute {
+		v := d.LimitKw
+		deviceExportLimit = &v
+	}
+	sperre := a.sperre.Apply(now, guards.NetzladenSperreInput{
+		Active: solarOnly, CommandKw: kw,
+		Live: r, LiveAt: readingAt, Control: rc,
+		GridKw: liveGridKw, GridFresh: measurementFresh,
+		Profile: dampProfile,
+		PvCapKw: sperrePvCap, DeviceExportLimitKw: deviceExportLimit,
+	})
+	kw = sperre.Kw
+
 	// Control gate (report §6.6/§6.7): the setpoint carries the core's kill-switch
 	// AND per-model certification verdict as control_enabled. Layer 1 writes only
 	// when this is true (defence in depth with its own family allowlist). OFF by
@@ -3708,7 +3772,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	} else {
 		nativeDec, nativeInfo, nativeWithheldInfo = a.nativeDecide(now, p, r, kw,
 			marketCorrectionsAllowed && !surplusStored && !held.Active, controlEnabled, measurementFresh, freshWindow,
-			effectiveFloor, peakTarget, solarOnly, limits, leader.Reason)
+			effectiveFloor, peakTarget, solarOnly, strictLimits, leader.Reason)
 	}
 	a.noteLeaderSymptom(now, nativeDec)
 
@@ -3743,6 +3807,13 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// Wegwahl above reads neither the PV cap nor the probe's ceiling.
 	sprung = a.sprungNachher(now, sprung, exportCap, entladungGesenkt, controlEnabled)
 	pvLimit = sprungprobe.Kappe(pvLimit, sprung)
+	a.mu.Lock()
+	a.sperrePvCap, a.sperrePvCapAt = nil, now
+	if pvLimit != nil {
+		v := *pvLimit
+		a.sperrePvCap = &v
+	}
+	a.mu.Unlock()
 
 	msg := map[string]any{
 		"battery_setpoint_kw": kw,
@@ -3893,6 +3964,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	followInfo := followSnapshot(followed)
 	deficitHoldInfo := a.deficitHoldSnapshot(followed)
 	absorbInfo := absorbSnapshot(absorbed)
+	sperreInfo := netzladenSperreSnapshot(sperre)
 	a.State.Update(func(s *state.Snapshot) {
 		s.Mode = mode
 		s.SetpointKw = kw
@@ -3910,6 +3982,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.Follow = followInfo
 		s.DeficitHold = deficitHoldInfo
 		s.Absorb = absorbInfo
+		s.NetzladenSperre = sperreInfo
 		s.CarsFirstCapKw = carsFirstCap
 		s.ReleaseCoverKw = releaseCoverKw
 		s.ExportGuard = exportGuard
@@ -4025,6 +4098,25 @@ func exportSafeStaticCap(limitKw *float64, setpointKw float64) float64 {
 // trimSnapshot turns one trim evaluation into the UI-facing block, or nil when
 // nothing was limited (an untrimmed device then carries no trim key at all - the
 // :8484 card renders exactly as before).
+// netzladenSperreSnapshot turns one evaluation of the Netzladen-Sperre into the
+// UI-facing block, or nil while it lowers nothing (the card renders as before).
+func netzladenSperreSnapshot(n guards.NetzladenSperreResult) *state.NetzladenSperreInfo {
+	if !n.Active || !n.Lowered {
+		return nil
+	}
+	info := &state.NetzladenSperreInfo{
+		Active:    true,
+		PlannedKw: math.Round(n.CommandedKw*1000) / 1000,
+		CapKw:     n.CapKw,
+		Blind:     n.Blind,
+	}
+	if !math.IsNaN(n.SurplusKw) {
+		v := math.Round(n.SurplusKw*1000) / 1000
+		info.SurplusKw = &v
+	}
+	return info
+}
+
 func trimSnapshot(t guards.TrimResult) *state.TrimInfo {
 	if !t.Active {
 		return nil

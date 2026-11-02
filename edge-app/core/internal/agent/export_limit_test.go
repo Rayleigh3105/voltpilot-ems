@@ -21,6 +21,12 @@ import (
 func exportPlan(now time.Time, kw float64, pvLimit *float64, exportLimit *float64) *plan.Plan {
 	p := freshPlan(now, kw, pvLimit)
 	p.GridExportLimitKw = exportLimit
+	// The feed-in side under test is independent of the grid-charge posture;
+	// the posture is set so the charge side stays out of the way - on a plant
+	// with grid charging NOT allowed the Netzladen-Sperre bounds every charge
+	// first (netzladen_sperre_test.go, also under the box's own curtailment).
+	yes := true
+	p.GridChargeAllowed = &yes
 	return p
 }
 

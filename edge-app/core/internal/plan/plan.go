@@ -133,8 +133,10 @@ type Plan struct {
 	ReceivedAt time.Time `json:"received_at"`
 	// GridChargeAllowed is the OPTIONAL contract field mirroring the site's
 	// netzladen_erlaubt (P5). false = the setpoint executor must clamp charge
-	// to the MEASURED PV production (guards.Limits.SolarOnlyCharge; PV-bus
-	// semantics since FK3, captain decision 2026-07-16). nil = field
+	// to the MEASURED PV production (guards.Limits.SolarOnlyCharge; FK3,
+	// captain decision 2026-07-16) and to the measured surplus minus 1 kW (the
+	// Netzladen-Sperre, EN-1 A, 2026-11-02: no charging while the site
+	// imports; guards.NetzladenSperre has the last word). nil = field
 	// absent (a pre-P5 cloud / hand-crafted payload): the edge treats that as
 	// MOST RESTRICTIVE and clamps too - a fail-SAFE deviation from the
 	// contract's absent=allowed reading, chosen deliberately: the updated

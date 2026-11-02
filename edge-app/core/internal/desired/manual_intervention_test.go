@@ -193,13 +193,14 @@ func TestStorageManualInterventionBeatsAHoldingRuleAndStillPassesTheGuardChain(t
 		t.Fatalf("holder must be the manual intervention: %+v", e.Holder)
 	}
 
-	// "Speicher jetzt laden" with 12 kW: the EEG solar-only clamp (pv 6.2 kW)
-	// still reduces it - rank 75 buys priority, never a wider guard band.
+	// "Speicher jetzt laden" with 12 kW: the EEG solar-only clamp (pv 6.2 kW,
+	// load 1, reserve 1 -> 4.2) still reduces it - rank 75 buys priority,
+	// never a wider guard band.
 	h.clock = h.clock.Add(time.Second)
 	h.arb.Submit("batt-main", manualDesire("batt-main", 12, 900, h.clock))
 	got := h.setpointOf("batt-main")
-	if got != 6.2 {
-		t.Fatalf("manual charge granted %v, want the solar-only 6.2", got)
+	if got != 4.2 {
+		t.Fatalf("manual charge granted %v, want the solar-only 4.2", got)
 	}
 	e := h.lastEvent()
 	if e.Outcome != "clamped" || !hasStage(e.Reasons, "guard:solar_only_charge") {

@@ -424,10 +424,14 @@ func TestARunningSurplusStoreChargeSurvivesOneFailedReadback(t *testing.T) {
 	a := followAgent(t)
 	slot := ue3At("15:30:00.000")
 	floor := 5.0
+	// The readback rule is the subject, on the full measured surplus of 5,0 kW;
+	// the plan allows grid charging so the Netzladen-Sperre's reserve (EN-1 A,
+	// 4,0 kW on an EEG plant) does not move the numbers of the recording.
+	yes := true
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: slot, GeneratedAt: slot,
-		EffectiveFloorSocPct: &floor,
+		EffectiveFloorSocPct: &floor, GridChargeAllowed: &yes,
 		Slots: []plan.Slot{{
 			Start: slot, BatterySetpointKw: -2.301, CoverLoadFromBattery: true,
 		}},
@@ -658,15 +662,17 @@ func TestANewScheduleNeverExecutesTheReplacedPlansSlotValue(t *testing.T) {
 	if got := a.State.Get().SetpointKw; got < 0 {
 		t.Fatalf("the plan change published %+.3f kW - a discharge against 5.0 kW of measured surplus", got)
 	}
-	if got := a.State.Get().SetpointKw; math.Abs(got-4.922) > 0.2 {
-		t.Fatalf("the plan change must land on the new plan's charge, got %+.3f kW", got)
+	// The new plan's charge, bounded on this EEG plant by the Netzladen-Sperre:
+	// measured surplus 7,806 - 2,766 less the 1-kW reserve (EN-1 A).
+	if got, want := a.State.Get().SetpointKw, math.Min(4.922, 7.806-2.766-guards.NetzladenReserveKw); math.Abs(got-want) > 0.2 {
+		t.Fatalf("the plan change must land on the new plan's charge (%.3f kW within the lock), got %+.3f kW", want, got)
 	}
 	// ...and the arbitration's own next second changes nothing any more.
 	a.runPlanExecutors(arrival.Add(time.Second))
 	a.arb.Tick()
 	a.applySetpoint(arrival.Add(time.Second))
-	if got := a.State.Get().SetpointKw; got < 4.9 {
-		t.Fatalf("one second later: %+.3f kW", got)
+	if got, want := a.State.Get().SetpointKw, math.Min(4.922, 7.806-2.766-guards.NetzladenReserveKw); got < want-0.2 {
+		t.Fatalf("one second later: %+.3f kW, want %.3f", got, want)
 	}
 }
 

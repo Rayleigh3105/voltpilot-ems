@@ -60,7 +60,7 @@ func TestUnderEstimatedChargeIsRaisedToTheMeasuredSurplus(t *testing.T) {
 	a.applySetpoint(now)
 	waitFor(t, 5*time.Second, "the raised charge", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 27.894
+		return ok && m["battery_setpoint_kw"] == 27.894-guards.NetzladenReserveKw
 	})
 
 	snap := a.State.Get()
@@ -73,9 +73,10 @@ func TestUnderEstimatedChargeIsRaisedToTheMeasuredSurplus(t *testing.T) {
 	if snap.Absorb.SurplusKw == nil || math.Abs(*snap.Absorb.SurplusKw-27.894) > 1e-9 {
 		t.Fatalf("measured surplus = %+v, want 27.894 kW", snap.Absorb.SurplusKw)
 	}
-	// The whole point: the export the incident measured is gone.
-	if grid := 29.013 + snap.SetpointKw - 56.907; math.Abs(grid) > .001 {
-		t.Fatalf("grid = %.3f kW, want zero (the incident exported ~18 kW)", grid)
+	// The whole point: the export the incident measured is gone - all but the
+	// Netzladen-Sperre's 1-kW reserve on this EEG plant (EN-1 A).
+	if grid := 29.013 + snap.SetpointKw - 56.907; math.Abs(grid+guards.NetzladenReserveKw) > .001 {
+		t.Fatalf("grid = %.3f kW, want the reserve -1 (the incident exported ~18 kW)", grid)
 	}
 	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModeSurplusStore ||
 		ex.PlannedKw == nil || *ex.PlannedKw != 9.82 ||
@@ -104,7 +105,7 @@ func TestSurplusStorageNeedsNoHeldReadbackForAMagnitudeCorrection(t *testing.T) 
 	a.applySetpoint(now)
 	waitFor(t, 5*time.Second, "the raised charge", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 27.894
+		return ok && m["battery_setpoint_kw"] == 27.894-guards.NetzladenReserveKw
 	})
 	if snap := a.State.Get(); snap.Absorb == nil || snap.Absorb.Path != execModeSurplusStore {
 		t.Fatalf("surplus-storage execution evidence = %+v", snap.Absorb)
@@ -155,8 +156,10 @@ func TestSurplusStorageLeavesEveryOtherIntentUntouched(t *testing.T) {
 		name: "idle command without the cover-load marker", planned: 0, want: 0,
 	}, {
 		// The house eats the production: there is no surplus to store, and the
-		// rule must never buy the difference.
-		name: "no measured surplus", planned: 9.82, want: 9.82,
+		// rule must never buy the difference - nor does the plan's own charge
+		// stand any more: the Netzladen-Sperre takes it back (EN-1 A), it
+		// would be bought from the grid on this EEG plant.
+		name: "no measured surplus", planned: 9.82, want: 0,
 		patch: func(_ *plan.Plan, r *guards.Reading) { r.PvKw = 20; r.LoadKw = 29.013 },
 	}, {
 		// Never regulate blind - an unknown measurement is a refusal, not a
@@ -237,7 +240,7 @@ func TestAnIdleCoverLoadSlotStoresTheMeasuredSurplusAtEveryStateOfCharge(t *test
 	a.applySetpoint(now)
 	waitFor(t, 5*time.Second, "the stored surplus", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 22.971
+		return ok && m["battery_setpoint_kw"] == 22.971-guards.NetzladenReserveKw
 	})
 
 	snap := a.State.Get()
@@ -250,8 +253,8 @@ func TestAnIdleCoverLoadSlotStoresTheMeasuredSurplusAtEveryStateOfCharge(t *test
 	if snap.Absorb.PlannedKw != -7.17 {
 		t.Fatalf("planned comparison = %.3f kW, want the original -7.17 kW", snap.Absorb.PlannedKw)
 	}
-	if grid := 16.383 + snap.SetpointKw - 39.354; math.Abs(grid) > .001 {
-		t.Fatalf("grid = %.3f kW, want zero (the incident exported 22,8 kW)", grid)
+	if grid := 16.383 + snap.SetpointKw - 39.354; math.Abs(grid+guards.NetzladenReserveKw) > .001 {
+		t.Fatalf("grid = %.3f kW, want the reserve -1 (the incident exported 22,8 kW)", grid)
 	}
 	if ex := controlSummary(snap).Execution; ex == nil || ex.Mode != execModeSurplusStore ||
 		ex.PlannedKw == nil || *ex.PlannedKw != -7.17 || !ex.MeasurementsFresh {
@@ -334,7 +337,7 @@ func TestTheCloudDutyKeepsItsOwnNameWhenBothWouldApply(t *testing.T) {
 	a.applySetpoint(now)
 	waitFor(t, 5*time.Second, "the cloud absorption", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 27.894
+		return ok && m["battery_setpoint_kw"] == 27.894-guards.NetzladenReserveKw
 	})
 	snap := a.State.Get()
 	if snap.Absorb == nil || !snap.Absorb.Active || snap.Absorb.Path != "" {
@@ -366,7 +369,7 @@ func TestSurplusStorageIsInactiveWhileTheAutomationIsPaused(t *testing.T) {
 	// the surplus by ITS OWN rule - and reports the pause, never a correction.
 	waitFor(t, 5*time.Second, "the paused fallback", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 27.894
+		return ok && m["battery_setpoint_kw"] == 27.894-guards.NetzladenReserveKw
 	})
 	if snap := a.State.Get(); snap.Absorb != nil && snap.Absorb.Active {
 		t.Fatalf("a paused plant reports no market correction: %+v", snap.Absorb)

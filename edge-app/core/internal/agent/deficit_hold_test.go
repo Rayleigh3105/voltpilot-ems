@@ -28,14 +28,21 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
-// herzogauChargeSlot is the slot 15:00Z of 2026-10-10: +1,303 kW, EEG site (no
-// grid charging: the field is absent, so the solar-only clamp binds), platform
+// herzogauChargeSlot is the slot 15:00Z of 2026-10-10: +1,303 kW, platform
 // floor 5 %. trim is the cloud flag charge_from_surplus_only.
+//
+// Herzogau is an EEG plant, but these cases pin the deficit hold - the wait
+// before a charging slot covers a deficit - on the measured 0,76 kW surplus of
+// 17:02:55, which is below the Netzladen-Sperre's 1-kW reserve (EN-1 A): on the
+// EEG posture the battery would rest there and the wait would be measured
+// against nothing. The plan therefore allows grid charging (the FK3 clamp never
+// bit here: the 1,3 kW stand below the PV); the lock has its own cases.
 func herzogauChargeSlot(start time.Time, kw float64, trim bool) *plan.Plan {
 	floor := 5.0
+	yes := true
 	return &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: start, GeneratedAt: start,
-		EffectiveFloorSocPct: &floor,
+		EffectiveFloorSocPct: &floor, GridChargeAllowed: &yes,
 		Slots: []plan.Slot{{
 			Start: start, BatterySetpointKw: kw, ChargeFromSurplusOnly: trim,
 		}},
@@ -299,6 +306,11 @@ func TestARealDeficitIsCoveredAfterTheHoldOnEveryDevice(t *testing.T) {
 						{seconds: int(cloudS), surplusKw: -1.5},
 						{seconds: 240, surplusKw: 0.8},
 					},
+					// The 0,8-kW surplus lies below the Netzladen-Sperre's 1-kW
+					// reserve: on the EEG posture a charging slot would rest
+					// before and after the cloud. The cover is the subject, so
+					// the plan allows grid charging (see herzogauChargeSlot).
+					gridChargeAllowed: true,
 				}
 				if kind.name != charging.name {
 					sc = kind.apply(sc)

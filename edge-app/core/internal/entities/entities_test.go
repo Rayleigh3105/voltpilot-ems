@@ -275,6 +275,13 @@ func TestClampCommandsBatteryUsesRegistryBandAndD8Posture(t *testing.T) {
 	if granted.SetpointKw == nil || *granted.SetpointKw != 3 {
 		t.Fatalf("D-8 solar-only clamp: want 3 (measured pv), got %+v", granted.SetpointKw)
 	}
+	// EXPLICITLY not allowed: the Netzladen-Sperre too (EN-1 A) - the measured
+	// surplus less the reserve, 3 - 1 - 1.
+	notAllowed := false
+	strict := batteryEntity(10, 8, &notAllowed).ClampCommands(Commands{SetpointKw: &wish}, r)
+	if strict.SetpointKw == nil || *strict.SetpointKw != 3-1-guards.NetzladenReserveKw {
+		t.Fatalf("explicit no grid charging: want 1 (pv - load - reserve), got %+v", strict.SetpointKw)
+	}
 	// Explicit true releases the clamp: only the rated band applies.
 	allowed := true
 	e2 := batteryEntity(10, 8, &allowed)

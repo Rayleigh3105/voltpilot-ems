@@ -72,6 +72,7 @@ func TestMarkedSlotChargesTheMeasuredSurplusAndSaysWhy(t *testing.T) {
 	a.mu.Lock()
 	a.currentPlan = pilstingMorningPlan(now, true)
 	a.lastReading = pilstingMorningReading()
+	a.lastReadingAt = now
 	a.mu.Unlock()
 
 	a.applySetpoint(now)
@@ -80,8 +81,9 @@ func TestMarkedSlotChargesTheMeasuredSurplusAndSaysWhy(t *testing.T) {
 	if snap.Mode != state.ModeSchedule {
 		t.Fatalf("mode = %v, want fahrplan (a correction is not a fallback)", snap.Mode)
 	}
-	if snap.SetpointKw != 19.6 { // pv - load
-		t.Fatalf("setpoint = %v, want the measured surplus 19.6", snap.SetpointKw)
+	// pv - load, less the Netzladen-Sperre's reserve on this EEG plant (EN-1 A)
+	if snap.SetpointKw != 19.6-guards.NetzladenReserveKw {
+		t.Fatalf("setpoint = %v, want the measured surplus 19.6 less the reserve", snap.SetpointKw)
 	}
 	if snap.Absorb == nil || !snap.Absorb.Active {
 		t.Fatal("the state must carry the correction - an unnamed correction reads as a defect")
@@ -92,9 +94,10 @@ func TestMarkedSlotChargesTheMeasuredSurplusAndSaysWhy(t *testing.T) {
 	if snap.Absorb.SurplusKw == nil || *snap.Absorb.SurplusKw != 19.6 {
 		t.Fatalf("absorb.surplus_kw = %v, want 19.6", snap.Absorb.SurplusKw)
 	}
-	// The money: nothing leaves the site at a negative price any more.
-	if got := 4.3 + snap.SetpointKw - 23.9; math.Abs(got) > 1e-3 {
-		t.Fatalf("predicted grid = %v kW, want 0 (the whole point)", got)
+	// The money: nothing but the reserve leaves the site at a negative price
+	// any more - the Netzladen-Sperre keeps 1 kW on the export side.
+	if got := 4.3 + snap.SetpointKw - 23.9; math.Abs(got+guards.NetzladenReserveKw) > 1e-3 {
+		t.Fatalf("predicted grid = %v kW, want -1 (the reserve)", got)
 	}
 	// ... and it is not mistaken for either sibling correction.
 	if snap.Trim != nil || snap.Follow != nil {
@@ -193,6 +196,7 @@ func TestTheCommittedContractFixtureAbsorbsTheMeasuredSurplus(t *testing.T) {
 	a.mu.Lock()
 	a.currentPlan = p
 	a.lastReading = pilstingMorningReading()
+	a.lastReadingAt = time.Date(2026, 8, 2, 8, 41, 0, 0, time.UTC)
 	a.mu.Unlock()
 
 	a.applySetpoint(time.Date(2026, 8, 2, 8, 41, 0, 0, time.UTC))
@@ -201,8 +205,10 @@ func TestTheCommittedContractFixtureAbsorbsTheMeasuredSurplus(t *testing.T) {
 	if snap.Mode != state.ModeSchedule {
 		t.Fatalf("mode = %v, want fahrplan", snap.Mode)
 	}
-	if snap.SetpointKw != 19.6 {
-		t.Fatalf("marked slot setpoint = %v, want the measured surplus 19.6", snap.SetpointKw)
+	// The fixture is an EEG plan (grid_charge_allowed false): the
+	// Netzladen-Sperre keeps its reserve below the surplus.
+	if snap.SetpointKw != 19.6-guards.NetzladenReserveKw {
+		t.Fatalf("marked slot setpoint = %v, want the measured surplus 19.6 less the reserve", snap.SetpointKw)
 	}
 	if snap.Absorb == nil || snap.Absorb.PlannedKw != 0.0 {
 		t.Fatalf("absorb = %+v, want the fixture's planned 0.0 named", snap.Absorb)
@@ -266,6 +272,7 @@ func TestAStalePlanFallsBackAndTheAbsorptionIsANoOp(t *testing.T) {
 	a.mu.Lock()
 	a.currentPlan = p
 	a.lastReading = pilstingMorningReading()
+	a.lastReadingAt = now
 	a.mu.Unlock()
 
 	a.applySetpoint(now)
@@ -274,8 +281,9 @@ func TestAStalePlanFallsBackAndTheAbsorptionIsANoOp(t *testing.T) {
 	if snap.Mode != state.ModeSelfConsume {
 		t.Fatalf("mode = %v, want eigenverbrauch", snap.Mode)
 	}
-	if snap.SetpointKw != 19.6 { // pv - load, the fallback's own rule
-		t.Fatalf("fallback setpoint = %v, want 19.6", snap.SetpointKw)
+	// pv - load, the fallback's own rule - less the reserve on this EEG plant
+	if snap.SetpointKw != 19.6-guards.NetzladenReserveKw {
+		t.Fatalf("fallback setpoint = %v, want 18.6", snap.SetpointKw)
 	}
 	if snap.Absorb != nil {
 		t.Fatalf("absorb = %+v, want none (the fallback already charges the surplus)", snap.Absorb)
@@ -293,12 +301,13 @@ func TestTheAbsorbedValueIsWhatGetsPublishedSoNoMismatchIsPossible(t *testing.T)
 	a.mu.Lock()
 	a.currentPlan = pilstingMorningPlan(now, true)
 	a.lastReading = pilstingMorningReading()
+	a.lastReadingAt = now
 	a.mu.Unlock()
 	a.applySetpoint(now)
 
 	waitFor(t, 5*time.Second, "the absorbed setpoint on the local bus", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 19.6
+		return ok && m["battery_setpoint_kw"] == 19.6-guards.NetzladenReserveKw
 	})
 	m, _ := sub.latest()
 	if m["source"] != "schedule" {
