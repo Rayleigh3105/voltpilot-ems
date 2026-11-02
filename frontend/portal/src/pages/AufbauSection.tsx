@@ -1008,7 +1008,7 @@ export function AufbauSection({
         <GeraetesucheDialog
           // Eigener Präfix: der Anlege-Fluss daneben zählt seine Läufe ebenfalls ab 1.
           key={`suche-${suche.lauf}`}
-          open={!addOpen && !katalogOffen && !vorlage}
+          open={!addOpen && !katalogOffen && !vorlage && !heizstabAus}
           siteId={site.id}
           boxId={suche.box.id}
           boxName={aktuelleAnlage.boxen.find((b) => b.id === suche.box.id)?.name ?? suche.box.name ?? 'VoltPilot-Box'}

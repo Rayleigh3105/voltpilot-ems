@@ -1431,6 +1431,7 @@ function GeraetSeiteKern({
             status={consumerStatus.find((s) => s.entityId === eigenerVerbraucher.id) ?? null}
             override={overrides.find((o) => o.entityId === eigenerVerbraucher.id) ?? null}
             kanaele={heizstabKanaele}
+            komponente={heizstabZeile}
             jetzt={new Date(now)}
             onGeaendert={() => setReloadKey((k) => k + 1)}
           />

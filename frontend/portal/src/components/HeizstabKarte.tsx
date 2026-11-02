@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { ApiError } from '../api';
+import { api, ApiError, type SiteComponentRow } from '../api';
 import { consumersApi } from '../consumers/consumersApi';
 import type { ManualOverride } from '../consumers/fulfillment';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
@@ -16,6 +16,7 @@ import {
   stufeText,
   zustandsSatz,
 } from '../heizstab';
+import { testErgebnis } from '../komponentenAssistent';
 import { Recht } from './Recht';
 import './Heizstab.css';
 
@@ -43,6 +44,7 @@ export function HeizstabKarte({
   override,
   kanaele,
   jetzt,
+  komponente = null,
   onGeaendert,
 }: {
   siteId: string;
@@ -51,6 +53,8 @@ export function HeizstabKarte({
   override: ManualOverride | null;
   kanaele: number;
   jetzt: Date;
+  /** Die Komponente des Heizstabs: ihre Verbindung trägt die Phase für Stufe 1 (`rotation`). */
+  komponente?: SiteComponentRow | null;
   onGeaendert: () => void;
 }) {
   const stufenListe = heizStufen(consumer, kanaele);
@@ -72,6 +76,42 @@ export function HeizstabKarte({
       onGeaendert();
     } catch (e) {
       setFehler(e instanceof ApiError ? e.message : 'Der Heizstab ließ sich nicht einschalten.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const rotation: 'daily' | 'fixed' = komponente?.connection?.rotation === 'fixed' ? 'fixed' : 'daily';
+  const phaseWaehlen = async (neu: 'daily' | 'fixed') => {
+    if (!komponente?.templateRef || neu === rotation) return;
+    setBusy(true);
+    setFehler(null);
+    try {
+      const connection = { ...komponente.connection, rotation: neu };
+      const test = testErgebnis(
+        await api.testComponentConnection(siteId, {
+          templateRef: komponente.templateRef,
+          templateVersion: komponente.templateVersion ?? undefined,
+          role: komponente.role ?? 'consumer',
+          connection,
+          entityId: komponente.id,
+        }),
+      );
+      if (test.zustand !== 'bestanden') {
+        setFehler(`Nicht geändert: ${test.text}`);
+        return;
+      }
+      await api.updateComponent(siteId, komponente.id, {
+        templateRef: komponente.templateRef,
+        templateVersion: komponente.templateVersion ?? undefined,
+        label: komponente.label ?? undefined,
+        role: komponente.role ?? 'consumer',
+        connection,
+        expectedRevision: komponente.definitionVersion,
+        effectiveAt: new Date().toISOString(),
+      });
+      onGeaendert();
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Die Einstellung ließ sich nicht ändern.');
     } finally {
       setBusy(false);
     }
@@ -170,6 +210,28 @@ export function HeizstabKarte({
           {fehler && <p className="vp-hz-fehler" role="alert">{fehler}</p>}
         </section>
       </Recht>
+
+      {komponente && kanaele > 1 && Array.isArray(komponente.connection?.stages) && (komponente.connection!.stages as number[]).includes(1) && (
+        <Recht aktion="geraet.einrichten">
+          <section className="vp-hz-abschnitt" aria-labelledby={`hz-phase-${consumer.id}`}>
+            <h4 id={`hz-phase-${consumer.id}`}>Phase für 1 Phase</h4>
+            <ul className="vp-hz-wahl">
+              <li>
+                <button type="button" aria-pressed={rotation === 'daily'} disabled={busy} onClick={() => void phaseWaehlen('daily')}>
+                  <b>Täglich wechselnd</b>
+                  <small>L1, am nächsten Tag L2, dann L3 - die Elemente nutzen sich gleich ab.</small>
+                </button>
+              </li>
+              <li>
+                <button type="button" aria-pressed={rotation === 'fixed'} disabled={busy} onClick={() => void phaseWaehlen('fixed')}>
+                  <b>Immer L1</b>
+                  <small>Zum Beispiel dieselbe Phase wie ein einphasiger Wechselrichter.</small>
+                </button>
+              </li>
+            </ul>
+          </section>
+        </Recht>
+      )}
     </div>
   );
 }

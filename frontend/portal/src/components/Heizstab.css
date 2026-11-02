@@ -140,3 +140,35 @@
   flex-wrap: wrap;
   gap: var(--vp-space-2);
 }
+
+/* Eine vorbelegte Einstellung: eine Zeile mit „Ändern“, erst auf Tipp klappt die Wahl auf. */
+.vp-hz-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+  border-radius: var(--vp-radius-sm);
+  cursor: pointer;
+  list-style: none;
+}
+.vp-hz-details > summary::-webkit-details-marker {
+  display: none;
+}
+.vp-hz-details > summary > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-hz-details > summary > small {
+  color: var(--vp-action);
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-hz-details > summary:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-hz-details[open] > summary {
+  margin-bottom: var(--vp-space-2);
+}

@@ -21,13 +21,14 @@ import {
 } from '../heizstab';
 import { testErgebnis } from '../komponentenAssistent';
 import { zahl } from '../zahl';
+import './Einrichten.css';
 import './Heizstab.css';
 
 /**
  * „Alle Ausgänge zusammen – z. B. Heizstab mit drei Phasen“ (Heizstab V1, Paket 4): EIN Gerät über
  * die Ausgänge eines Shelly aus der Gerätesuche. Gefragt wird, was die Box nicht sehen kann: der
  * Anschluss (nur Stern mit N darf einzelne Phasen schalten), die Leistung je Element, die Stufen und
- * die Phase für Stufe 1. Der Test liest jeden Ausgang und die Einstellung „nach Stromausfall“; „Auf
+ * die Stufen. Die Phase für Stufe 1 ist fest „täglich wechselnd“, „Immer L1“ stellt die Geräteseite. Der Test liest jeden Ausgang und die Einstellung „nach Stromausfall“; „Auf
  * ‚aus‘ stellen“ schreibt sie nur auf diesen Klick (HZ-5). Gespeichert wird mit `consumerType:
  * heating-rod` - die API prüft dieselben Regeln noch einmal.
  */
@@ -54,7 +55,6 @@ export function HeizstabAnlegen({
   const [anschluss, setAnschluss] = useState<Anschluss | null>(null);
   const [kwText_, setKwText] = useState('');
   const [mitTeilstufen, setMitTeilstufen] = useState<number[]>(() => Array.from({ length: kanaele - 1 }, (_, k) => k + 1));
-  const [rotation, setRotation] = useState<'daily' | 'fixed'>('daily');
   const [name, setName] = useState('Heizstab');
   const [schritt, setSchritt] = useState<'einrichten' | 'test'>('einrichten');
   const [test, setTest] = useState<ProbeAntwort | null>(null);
@@ -73,10 +73,11 @@ export function HeizstabAnlegen({
         kanaele,
         kwJeElement: kw ?? 0,
         stufen: teilstufenErlaubt ? mitTeilstufen : [],
-        rotation,
+        // Das Anlegen fragt nicht danach: täglich wechselnd; „Immer L1“ stellt man auf der Geräteseite.
+        rotation: 'daily',
         anschluss: anschluss ?? 'unbekannt',
       }),
-    [verbindung, kanaele, kw, mitTeilstufen, rotation, anschluss, teilstufenErlaubt],
+    [verbindung, kanaele, kw, mitTeilstufen, anschluss, teilstufenErlaubt],
   );
   const stufenListe = stufen({
     channels: verbindungJetzt.channels as number[],
@@ -165,7 +166,7 @@ export function HeizstabAnlegen({
   const fuss =
     schritt === 'einrichten' ? (
       <>
-        <Button variant="outline" onClick={onClose}>Abbrechen</Button>
+        <Button variant="outline" onClick={onClose}>Zurück</Button>
         <Button variant="primary" onClick={() => void testen()}>Verbindung testen</Button>
       </>
     ) : (
@@ -178,7 +179,18 @@ export function HeizstabAnlegen({
     );
 
   return (
-    <Modal open onClose={onClose} title="Heizstab über alle Ausgänge" footer={fuss} breit>
+    <Modal
+      open
+      onClose={onClose}
+      title="Heizstab einrichten"
+      icon={
+        <button type="button" className="vp-ein-zurueck" onClick={onClose} aria-label="Zurück zur Liste">
+          <Icon name="chevron-left" size={20} />
+        </button>
+      }
+      footer={fuss}
+      breit
+    >
       <div className="vp-hz" data-testid="heizstab-anlegen">
         <p className="vp-hz-unter">
           {titel} · {kanaele} Ausgänge als EIN Gerät. Ausgang 1 bis {kanaele} schalten die Phasen L1 bis L{kanaele}.
@@ -212,8 +224,11 @@ export function HeizstabAnlegen({
             </section>
 
             {kanaele > 1 && teilstufenErlaubt && (
-              <section className="vp-hz-abschnitt" aria-labelledby="hz-stufen">
-                <h4 id="hz-stufen">Stufen</h4>
+              <details className="vp-hz-abschnitt vp-hz-details">
+                <summary>
+                  <span>Stufen: {stufenListe.map((st) => stufeText(st.ausgaenge)).join(' · ')}</span>
+                  <small>Ändern</small>
+                </summary>
                 <p className="vp-hz-unter">Bei wenig Sonne heizt der Stab mit weniger Phasen. Alle Phasen sind immer dabei.</p>
                 <ul className="vp-hz-stufen">
                   {Array.from({ length: kanaele }, (_, k) => k + 1).map((n) => {
@@ -236,22 +251,7 @@ export function HeizstabAnlegen({
                     );
                   })}
                 </ul>
-                <h4>Phase für 1 Phase</h4>
-                <ul className="vp-hz-wahl">
-                  <li>
-                    <button type="button" aria-pressed={rotation === 'daily'} onClick={() => setRotation('daily')}>
-                      <b>Täglich wechselnd</b>
-                      <small>L1, am nächsten Tag L2, dann L3 - die Elemente nutzen sich gleich ab.</small>
-                    </button>
-                  </li>
-                  <li>
-                    <button type="button" aria-pressed={rotation === 'fixed'} onClick={() => setRotation('fixed')}>
-                      <b>Immer L1</b>
-                      <small>Zum Beispiel dieselbe Phase wie ein einphasiger Wechselrichter.</small>
-                    </button>
-                  </li>
-                </ul>
-              </section>
+              </details>
             )}
 
             <section className="vp-hz-abschnitt">
