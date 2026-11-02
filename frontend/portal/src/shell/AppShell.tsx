@@ -1,6 +1,7 @@
 import { KundenbereichEndeHinweis } from '../components/KundenbereichEndeHinweis';
 import { UnterstuetzungBanner } from '../components/UnterstuetzungBanner';
 import { useRollen } from '../rollen';
+import { useIsDesktop } from '../useIsPhone';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
@@ -241,6 +242,22 @@ export function AppShell({
   const { benutzerLesen, selbst } = useRollen();
   const [menuOpen, setMenuOpen] = useState(false);
   /**
+   * Der `title` eines Seitenleisten-Eintrags ist ein NATIVER Tooltip des
+   * Browsers: er steht am Mauszeiger, nicht am Eintrag, und bleibt stehen,
+   * bis die Maus sich bewegt - rücken die Einträge unter dem ruhenden Zeiger
+   * nach (die Bereiche einer Anlage kommen erst mit ihrer Oberfläche), hängt
+   * er irgendwo in der Seite (Befund vom 02.11.2026: ein dunkles „Fahrplan"
+   * über der Brotkrume). Darum trägt ein Eintrag den bloßen Namen nur dort
+   * als Titel, wo sein Text NICHT zu sehen ist: in der Symbolleiste am Tablet
+   * (721–1023 px, `Shell.css` versteckt `.vp-nav-lbl`). Auf dem Rechner ist
+   * der Name sichtbar, ein Tooltip mit demselben Wort sagt nichts. Bleiben
+   * darf, was MEHR sagt als der sichtbare Text: der Satz zum Abzeichen, die
+   * Frage einer Ebene, das „Zurück zu".
+   */
+  const labelSichtbar = useIsDesktop();
+  const navTitel = (label: string, zusatz?: string | null, trenner = ' – '): string | undefined =>
+    zusatz ? `${label}${trenner}${zusatz}` : labelSichtbar ? undefined : label;
+  /**
    * S8 · „Plattform ▸" ist EINGEKLAPPT, solange ein Mandant gewählt ist — der
    * Admin ist dann in der Rolle des Kunden unterwegs. Ohne Mandant bleibt sie
    * aufgeklappt wie bisher. Der Zustand ist bedienbar (der Betreiber darf sie
@@ -412,7 +429,7 @@ export function AppShell({
       // ⚠ Der Titel NENNT das Abzeichen, wo es eines gibt (Steuerung Stufe 8):
       // ein nacktes „2" an einer Seitenleiste ist ein Rätsel, und der Satz ist
       // die EINE Stelle, an der steht, was gezählt wurde.
-      title={item.badgeTitel ? `${item.label} — ${item.badgeTitel}` : item.label}
+      title={navTitel(item.label, item.badgeTitel, ' — ')}
       onClick={() => openTarget(item.target)}
     />
   );
@@ -472,7 +489,7 @@ export function AppShell({
             <span className="vp-nav-lbl">{kachel.label}</span>
           )
         }
-        title={kachel.frage ? `${kachel.label} – ${kachel.frage}` : kachel.label}
+        title={navTitel(kachel.label, kachel.frage)}
         active={an}
         data-testid={`seitenleiste-${kachel.key}`}
         onClick={() => ebenen?.onOpen(kachel.ziel)}
@@ -512,7 +529,7 @@ export function AppShell({
           <NavItem
             icon={<Icon name={PORTFOLIO_PAGE.icon} size={18} />}
             label={<span className="vp-nav-lbl">{fleetLabel}</span>}
-            title={fleetLabel}
+            title={navTitel(fleetLabel)}
             active={page === PORTFOLIO_PAGE.id || page === STANDORT_PAGE.id}
             onClick={() => onNavigate(PORTFOLIO_PAGE.id)}
           />
@@ -522,7 +539,7 @@ export function AppShell({
             key={p.id}
             icon={<Icon name={p.icon} size={18} />}
             label={<span className="vp-nav-lbl">{p.label}</span>}
-            title={p.label}
+            title={navTitel(p.label)}
             active={page === p.id}
             onClick={() => onNavigate(p.id)}
           />
@@ -559,7 +576,7 @@ export function AppShell({
                       key={p.id}
                       icon={<Icon name={p.icon} size={18} />}
                       label={<span className="vp-nav-lbl">{p.label}</span>}
-                      title={p.label}
+                      title={navTitel(p.label)}
                       // Seit Stufe 3 leuchtet der BEREICH, nicht die Seite: der
                       // Tab „Updates" gehört zu „Geräte", also darf die Leiste
                       // dort nicht ins Nichts zeigen.
