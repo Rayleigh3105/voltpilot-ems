@@ -7363,6 +7363,54 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Kein Probe-Fenster einer Einlösung. }
         "409": { description: Das Fenster ist nicht mehr offen. }
+  /api/v1/werkstatt-dienst/abnahmen/{edgeRef}:
+    post:
+      tags: [werkstatt-dienst]
+      summary: Die Abnahme mit den Belegen des Werkstatt-Dienstes (WI-7 A).
+      description: >
+        Je Prüfung der Werkstatt-Regel ein Beleg (alle acht, keine andere),
+        das Root-Passwort mit age verschlüsselt (ASCII-Hülle mit age-Kopf), das
+        LAN-Netz (geprüft wie im Register, dort festgehalten). Bezieht sich auf
+        die letzte Einlösung der Box: Host-Schlüssel und Fassung wie beim
+        Einlösen gemeldet, Tunnel-Schlüssel wie hinterlegt, das Probe-Fenster der
+        Einlösung war offen und ist zu. Append-only, quelle=dienst.
+      parameters:
+        - { name: edgeRef, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fassung, hostSchluessel, lanNetz, belege, passwortAge]
+              properties:
+                fassung: { type: string, example: edge-light-2026.11.0 }
+                hostSchluessel: { type: string, pattern: "^SHA256:[A-Za-z0-9+/]{43}$" }
+                lanNetz: { type: string, example: 10.213.0.1/24 }
+                belege: { type: object, additionalProperties: { type: string, maxLength: 2000 } }
+                passwortAge: { type: string, maxLength: 4000 }
+                notiz: { type: string, maxLength: 500, nullable: true }
+      responses:
+        "201":
+          description: Die Abnahme (ohne das verschlüsselte Passwort).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  edgeRef: { type: string }
+                  freigabeId: { type: string, format: uuid }
+                  einloesungId: { type: string, format: uuid }
+                  lanNetz: { type: string }
+                  tunnelAdresse: { type: string }
+                  erfasstAm: { type: string, format: date-time }
+        "400": { description: Unbekannte Prüfung oder kein Inhalt. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Nicht im Register. }
+        "409": { description: Ohne Einlösung, anderer Host-Schlüssel, andere Fassung, anderer Tunnel-Schlüssel oder Probe-Fenster noch offen. }
+        "422": { description: Beleg fehlt oder zu lang, Passwort nicht mit age verschlüsselt, LAN-Netz abgelehnt, keine Edge-Light-Box. }
   /api/v1/werkstatt/einloesen:
     post:
       tags: [werkstatt-dienst]
@@ -28070,6 +28118,18 @@ components:
         notiz: { type: string, nullable: true }
         erfasstAm: { type: string, format: date-time }
         erfasstVon: { type: string }
+        quelle: { type: string, enum: [hand, dienst], description: "hand = Haken im Portal; dienst = Abnahme des Werkstatt-Dienstes mit Belegen (WI-7 A)." }
+        belege:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+          description: Je Prüfung der Werkstatt-Regel der Beleg des Dienstes (Kennungen wie werkstatt-pruefungen.json); null bei quelle=hand.
+        freigabeId: { type: string, format: uuid, nullable: true }
+        einloesungId: { type: string, format: uuid, nullable: true }
+        passwortAge:
+          type: string
+          nullable: true
+          description: Das Root-Passwort, mit age verschlüsselt für den Schlüssel „Box-Passwörter“ (WI-6 A); nur der Betreiber kann es entschlüsseln. Das Passwort selbst geht an keine Route.
     WerkstattBox:
       type: object
       properties:

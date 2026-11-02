@@ -60,9 +60,16 @@ Die API nimmt eine Abnahme nur an, wenn
 - das Fenster der Probe zu dieser Box gehört, offen war und jetzt zu ist (Werkstatt-Regel 6: erst schließen, dann
   der abgewiesene Versuch). Ein abgesagtes Fenster war nie offen und zählt nicht.
 
-Die Abnahme beruht auf den Haken des Technikers. Ob ein Passwort gesetzt ist und welcher Schlüssel auf der Box
-liegt, kann das Portal nicht prüfen. Was der Tunnel-Dienst zum Fenster gemeldet hatte, steht im Protokoll als
-Anzeige (`schluesselAbgeholtUm` null = keine Meldung nannte es abgeholt) und entscheidet nichts.
+Die Abnahme von Hand (`quelle: hand`) beruht auf den Haken des Technikers. Ob ein Passwort gesetzt ist und welcher
+Schlüssel auf der Box liegt, kann das Portal nicht prüfen. Was der Tunnel-Dienst zum Fenster gemeldet hatte, steht im
+Protokoll als Anzeige (`schluesselAbgeholtUm` null = keine Meldung nannte es abgeholt) und entscheidet nichts.
+
+**Die Abnahme des Werkstatt-Dienstes** (`quelle: dienst`, WI-7 A, `POST /api/v1/werkstatt-dienst/abnahmen/{ref}`)
+liegt in derselben append-only Tabelle. Statt Haken trägt sie je Prüfung den Beleg des Dienstes, die Freigabe, die
+Einlösung und das Root-Passwort verschlüsselt für den age-Schlüssel „Box-Passwörter“ (WI-6 A; entschlüsseln kann nur
+der Betreiber, das Passwort selbst geht an keine Route). Sie bezieht sich auf die letzte Einlösung der Box:
+Host-Schlüssel und Fassung wie beim Einlösen gemeldet, der dort hinterlegte Tunnel-Schlüssel, und das Probe-Fenster
+der Einlösung war offen und ist zu.
 
 ## Routen
 

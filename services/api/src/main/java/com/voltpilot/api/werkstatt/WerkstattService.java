@@ -70,16 +70,28 @@ public class WerkstattService {
     private final FernwartungRueckmeldungService rueckmeldung;
     private final FernwartungProperties fernwartungProps;
     private final ObjectMapper json;
+    private final EinloesungRepository einloesungen;
 
     public WerkstattService(WerkstattRepository repo, FernwartungService fernwartung,
             FernwartungRueckmeldungService rueckmeldung, FernwartungProperties fernwartungProps,
-            ObjectMapper json) {
+            ObjectMapper json, EinloesungRepository einloesungen) {
         this.repo = repo;
         this.fernwartung = fernwartung;
         this.rueckmeldung = rueckmeldung;
         this.fernwartungProps = fernwartungProps;
         this.json = json;
+        this.einloesungen = einloesungen;
     }
+
+    /** Was der Werkstatt-Dienst zur Abnahme einer Box schickt. */
+    public record AbnahmeDesDienstes(String fassung, String hostSchluessel, String lanNetz, Map<String, String> belege,
+            String passwortAge, String notiz) {
+    }
+
+    /** Höchstens so lang ist ein Beleg einer Prüfung. */
+    static final int MAX_BELEG = 2000;
+    private static final String AGE_ANFANG = "-----BEGIN AGE ENCRYPTED FILE-----";
+    private static final String AGE_ENDE = "-----END AGE ENCRYPTED FILE-----";
 
     // ── Lesen ─────────────────────────────────────────────────────────────
 
@@ -222,6 +234,100 @@ public class WerkstattService {
         }
         Zugang tunnel = fernwartung.box(edgeRef).orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                 "Für " + edgeRef + " ist kein Tunnel-Schlüssel hinterlegt."));
+        Fenster probe = probeFensterZu(edgeRef, probeFensterId);
+        String probeJson = schreibe(probeBeleg(probe));
+        String pruefungenJson = schreibe(WerkstattPruefungen.ALLE);
+        return repo.schreibend(() -> {
+            UUID id = repo.abnahmeAnlegen(b.id(), edgeRef, host, stand, tunnel.adresse(), b.lanNetz(),
+                    pruefungenJson, probeJson, text, akteur.sub(), akteur.name());
+            return repo.abnahme(id).orElseThrow();
+        });
+    }
+
+    /**
+     * Die Abnahme des Werkstatt-Dienstes (WI-7 A): je Prüfung der Regel sein
+     * Beleg, dazu das Root-Passwort verschlüsselt für den age-Schlüssel
+     * „Box-Passwörter“ (WI-6 A). Sie bezieht sich auf die letzte Einlösung der
+     * Box: Host-Schlüssel und Fassung müssen die sein, die die Box beim
+     * Einlösen meldete, der Tunnel-Schlüssel der, den die Einlösung hinterlegt
+     * hat, und das Probe-Fenster der Einlösung muss offen gewesen und jetzt zu
+     * sein (Werkstatt-Regel 6). Das LAN-Netz wird wie im Register geprüft und
+     * dort festgehalten.
+     */
+    public Abnahme abnahmeDesDienstes(String edgeRef, AbnahmeDesDienstes a, Akteur dienst) {
+        Map<String, String> belege = a.belege() == null ? Map.of() : a.belege();
+        List<String> unbekannt = WerkstattPruefungen.unbekannt(List.copyOf(belege.keySet()));
+        if (!unbekannt.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekannte Prüfung: " + String.join(", ", unbekannt) + ".");
+        }
+        List<String> leer = WerkstattPruefungen.ALLE.stream()
+                .filter(p -> belege.get(p) == null || belege.get(p).isBlank()).toList();
+        if (!leer.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die Abnahme braucht für jede Prüfung der Werkstatt-Regel einen Beleg. Es fehlt: "
+                            + String.join(", ", leer) + ".");
+        }
+        Map<String, String> geordnet = new LinkedHashMap<>();
+        for (String p : WerkstattPruefungen.ALLE) {
+            String text = belege.get(p).trim();
+            if (text.length() > MAX_BELEG) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Der Beleg von " + p + " ist länger als " + MAX_BELEG + " Zeichen.");
+            }
+            geordnet.put(p, text);
+        }
+        String passwort = ageText(a.passwortAge());
+        LanNetz lan;
+        try {
+            lan = LanNetz.parse(a.lanNetz(), List.of(fernwartungProps.boxNetzwerk(), fernwartungProps.technikerNetzwerk()));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+        }
+        String text = notiz(a.notiz());
+        Box b = repo.box(edgeRef).orElseThrow(() -> nichtImRegister(edgeRef));
+        if (!EDGE_LIGHT.equals(b.boxArt())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Eine Abnahme gibt es bisher nur für das Edge Light.");
+        }
+        EinloesungRepository.Einloesung e = einloesungen.einloesungen(edgeRef).stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        edgeRef + " hat keinen Einmal-Code eingelöst; ohne Einlösung keine Abnahme des Dienstes."));
+        if (!e.hostSchluessel().equals(a.hostSchluessel())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Der Host-Schlüssel " + a.hostSchluessel()
+                    + " ist nicht der, den die Box beim Einlösen meldete (" + e.hostSchluessel() + ").");
+        }
+        if (!e.fassung().equals(a.fassung())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Die Fassung " + a.fassung()
+                    + " ist nicht die, die die Box beim Einlösen meldete (" + e.fassung() + ").");
+        }
+        Zugang tunnel = fernwartung.box(edgeRef).orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                "Für " + edgeRef + " ist kein Tunnel-Schlüssel hinterlegt."));
+        if (!tunnel.publicKey().equals(e.wireguardSchluessel())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Der Tunnel-Schlüssel von " + edgeRef + " ist nicht mehr der aus der Einlösung.");
+        }
+        Fenster probe = probeFensterZu(edgeRef, e.fensterId());
+        String probeJson = schreibe(probeBeleg(probe));
+        String pruefungenJson = schreibe(WerkstattPruefungen.ALLE);
+        String belegeJson = schreibe(geordnet);
+        return repo.schreibend(() -> {
+            if (!lan.text().equals(b.lanNetz())) {
+                repo.lanNetzSetzen(b.id(), lan.text(), dienst.sub());
+            }
+            UUID id = repo.abnahmeDesDienstesAnlegen(b.id(), edgeRef, a.hostSchluessel(), a.fassung(),
+                    tunnel.adresse(), lan.text(), pruefungenJson, probeJson, belegeJson, e.freigabeId(), e.id(),
+                    passwort, text, dienst.sub(), dienst.name());
+            return repo.abnahme(id).orElseThrow();
+        });
+    }
+
+    /**
+     * Das Fenster der Werkstatt-Probe an dieser Box: Es muss zu ihr gehören,
+     * offen gewesen sein und jetzt zu sein (Werkstatt-Regel 6: erst schließen,
+     * dann der abgewiesene Versuch).
+     */
+    private Fenster probeFensterZu(String edgeRef, UUID probeFensterId) {
         Fenster probe = fernwartung.fenster(edgeRef, null, FENSTER_SUCHE).stream()
                 .filter(f -> f.id().equals(probeFensterId))
                 .findFirst()
@@ -237,13 +343,36 @@ public class WerkstattService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Dieses Fenster wurde abgesagt, bevor es begann; es war nie offen.");
         }
-        String probeJson = schreibe(probeBeleg(probe));
-        String pruefungenJson = schreibe(WerkstattPruefungen.ALLE);
-        return repo.schreibend(() -> {
-            UUID id = repo.abnahmeAnlegen(b.id(), edgeRef, host, stand, tunnel.adresse(), b.lanNetz(),
-                    pruefungenJson, probeJson, text, akteur.sub(), akteur.name());
-            return repo.abnahme(id).orElseThrow();
-        });
+        return probe;
+    }
+
+    /**
+     * Ein mit age verschlüsselter Text (ASCII-Hülle), sonst 422. Die Hülle muss
+     * ein age-Kopf sein: So kann kein Klartext als „verschlüsselt“ durchgehen.
+     */
+    static String ageText(String text) {
+        String t = text == null ? "" : text.trim();
+        int anfang = t.indexOf(AGE_ANFANG);
+        int ende = t.indexOf(AGE_ENDE);
+        if (anfang != 0 || ende < 0 || t.length() > 4000 || !t.endsWith(AGE_ENDE)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Das Passwort muss mit age verschlüsselt sein (ASCII-Hülle, höchstens 4000 Zeichen).");
+        }
+        String rumpf = t.substring(AGE_ANFANG.length(), ende).replaceAll("\\s+", "");
+        byte[] roh;
+        try {
+            roh = java.util.Base64.getDecoder().decode(rumpf);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Das Passwort muss mit age verschlüsselt sein: der Rumpf ist kein Base64.");
+        }
+        String kopf = "age-encryption.org/v1\n";
+        if (roh.length <= kopf.length()
+                || !new String(roh, 0, kopf.length(), java.nio.charset.StandardCharsets.US_ASCII).equals(kopf)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Das Passwort muss mit age verschlüsselt sein: kein age-Kopf.");
+        }
+        return t;
     }
 
     /**

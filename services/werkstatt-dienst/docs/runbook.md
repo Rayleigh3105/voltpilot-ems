@@ -60,9 +60,9 @@ Adresse nicht in ein privates Netz auflöst; sonst die auskommentierte Regel fü
 
 Das Client-Secret kommt als `keycloak-client-secret` in das SOPS-Secret. Die Rolle erreicht nur den Baum
 `/api/v1/werkstatt-dienst/**`: die laufende Freigabe lesen, Einmal-Codes nur in einer laufenden Freigabe für
-ungekoppelte Boxen holen, lesen, was eine Box beim Einlösen gemeldet hat, und das Probe-Fenster einer Einlösung
-schließen (mit P6c kommt die Abnahme dazu). Nie: freigeben, Fenster öffnen, Kunden, Kopplung, Updates,
-`/api/v1/admin/**`.
+ungekoppelte Boxen holen, lesen, was eine Box beim Einlösen gemeldet hat, das Probe-Fenster einer Einlösung
+schließen und die Abnahme mit Belegen schreiben (`POST /api/v1/werkstatt-dienst/abnahmen/{ref}`). Nie: freigeben,
+Fenster öffnen, Kunden, Kopplung, Updates, `/api/v1/admin/**`.
 
 ### Techniker-Zugang „Werkstatt-Dienst“
 

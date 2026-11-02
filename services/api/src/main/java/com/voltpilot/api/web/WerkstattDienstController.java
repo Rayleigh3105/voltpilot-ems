@@ -7,6 +7,8 @@ import com.voltpilot.api.werkstatt.EinloesungRepository;
 import com.voltpilot.api.werkstatt.EinloesungService;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Freigabe;
 import com.voltpilot.api.werkstatt.FreigabeService;
+import com.voltpilot.api.werkstatt.WerkstattRepository;
+import com.voltpilot.api.werkstatt.WerkstattService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -113,12 +115,25 @@ public class WerkstattDienstController {
             Instant geschlossenAm) {
     }
 
+    /** Die Abnahme mit Belegen: je Prüfung der Werkstatt-Regel ein Beleg, das Passwort mit age verschlüsselt. */
+    public record AbnahmeRequest(String fassung, String hostSchluessel, String lanNetz, Map<String, String> belege,
+            String passwortAge, String notiz) {
+    }
+
+    /** Was der Dienst zurückbekommt; das verschlüsselte Passwort nicht noch einmal. */
+    public record AbnahmeDto(UUID id, String edgeRef, UUID freigabeId, UUID einloesungId, String lanNetz,
+            String tunnelAdresse, Instant erfasstAm) {
+    }
+
     private final FreigabeService freigaben;
     private final EinloesungService einloesung;
+    private final WerkstattService werkstatt;
 
-    public WerkstattDienstController(FreigabeService freigaben, EinloesungService einloesung) {
+    public WerkstattDienstController(FreigabeService freigaben, EinloesungService einloesung,
+            WerkstattService werkstatt) {
         this.freigaben = freigaben;
         this.einloesung = einloesung;
+        this.werkstatt = werkstatt;
     }
 
     /** Die laufende Freigabe einer Box-Art (Vorgabe mango); 404, wenn keine läuft. */
@@ -151,6 +166,25 @@ public class WerkstattDienstController {
     public FensterDto fensterSchliessen(@PathVariable UUID id, @AuthenticationPrincipal Jwt caller) {
         var f = einloesung.probeFensterSchliessen(id, Akteur.aus(caller));
         return new FensterDto(f.id(), f.edgeRef(), f.technikerId(), f.beginn(), f.ende(), f.geschlossenAm());
+    }
+
+    /**
+     * Die Abnahme mit den Belegen des Dienstes (WI-7 A): 201; 400 unbekannte
+     * Prüfung; 404 nicht im Register; 409 ohne Einlösung, anderer Host-Schlüssel,
+     * andere Fassung, anderer Tunnel-Schlüssel, Probe-Fenster noch offen; 422
+     * Beleg fehlt, Passwort nicht mit age verschlüsselt, LAN-Netz.
+     */
+    @PostMapping("/abnahmen/{edgeRef}")
+    public ResponseEntity<AbnahmeDto> abnahme(@PathVariable String edgeRef, @RequestBody AbnahmeRequest req,
+            @AuthenticationPrincipal Jwt caller) {
+        if (req == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Kein Inhalt.");
+        }
+        WerkstattRepository.Abnahme a = werkstatt.abnahmeDesDienstes(edgeRef, new WerkstattService.AbnahmeDesDienstes(
+                req.fassung(), req.hostSchluessel(), req.lanNetz(), req.belege(), req.passwortAge(), req.notiz()),
+                Akteur.aus(caller));
+        return ResponseEntity.status(HttpStatus.CREATED).body(new AbnahmeDto(a.id(), a.edgeRef(), a.freigabeId(),
+                a.einloesungId(), a.lanNetz(), a.tunnelAdresse(), a.erfasstAm()));
     }
 
     @ExceptionHandler(ResponseStatusException.class)

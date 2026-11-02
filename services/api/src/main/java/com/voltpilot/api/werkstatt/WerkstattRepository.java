@@ -36,17 +36,24 @@ public class WerkstattRepository {
 
     private static final String ABNAHME_SPALTEN = "a.id, a.box_id, a.edge_ref, a.host_schluessel, a.fassung, "
             + "host(a.tunnel_adresse) AS tunnel_adresse, a.lan_netz, a.pruefungen::text AS pruefungen, "
-            + "a.probe::text AS probe, a.notiz, a.erfasst_am, a.erfasst_von, a.erfasst_von_name ";
+            + "a.probe::text AS probe, a.notiz, a.erfasst_am, a.erfasst_von, a.erfasst_von_name, a.quelle, "
+            + "a.belege::text AS belege, a.freigabe_id, a.einloesung_id, a.passwort_age ";
 
     /** Eine Zeile des Registers; {@code schritteJson} ist das JSON-Objekt als Text. */
     public record Box(UUID id, String edgeRef, String boxArt, String lanNetz, String schritteJson, String notiz,
             Instant angelegtAm, String angelegtVon, String angelegtVonName, Instant geaendertAm) {
     }
 
-    /** Ein Abnahmeprotokoll; {@code pruefungenJson} und {@code probeJson} als Text. */
+    /**
+     * Ein Abnahmeprotokoll; {@code pruefungenJson}, {@code probeJson} und
+     * {@code belegeJson} als Text. {@code quelle}: {@code hand} (Haken im
+     * Portal) oder {@code dienst} (Belege, Freigabe, Einlösung und das
+     * verschlüsselte Passwort des Werkstatt-Dienstes, sonst null).
+     */
     public record Abnahme(UUID id, UUID boxId, String edgeRef, String hostSchluessel, String fassung,
             String tunnelAdresse, String lanNetz, String pruefungenJson, String probeJson, String notiz,
-            Instant erfasstAm, String erfasstVon, String erfasstVonName) {
+            Instant erfasstAm, String erfasstVon, String erfasstVonName, String quelle, String belegeJson,
+            UUID freigabeId, UUID einloesungId, String passwortAge) {
     }
 
     private final JdbcTemplate jdbc;
@@ -119,6 +126,21 @@ public class WerkstattRepository {
         return id;
     }
 
+    /** Die Abnahme des Werkstatt-Dienstes: dazu Belege, Freigabe, Einlösung und das verschlüsselte Passwort. */
+    public UUID abnahmeDesDienstesAnlegen(UUID boxId, String edgeRef, String hostSchluessel, String fassung,
+            String tunnelAdresse, String lanNetz, String pruefungenJson, String probeJson, String belegeJson,
+            UUID freigabeId, UUID einloesungId, String passwortAge, String notiz, String akteur, String akteurName) {
+        UUID id = jdbc.queryForObject("INSERT INTO werkstatt_abnahme (box_id, edge_ref, host_schluessel, fassung, "
+                        + "tunnel_adresse, lan_netz, pruefungen, probe, notiz, erfasst_von, erfasst_von_name, quelle, "
+                        + "belege, freigabe_id, einloesung_id, passwort_age) "
+                        + "VALUES (?, ?, ?, ?, ?::inet, ?, ?::jsonb, ?::jsonb, ?, ?, ?, 'dienst', ?::jsonb, ?, ?, ?) "
+                        + "RETURNING id",
+                UUID.class, boxId, edgeRef, hostSchluessel, fassung, tunnelAdresse + "/32", lanNetz, pruefungenJson,
+                probeJson, notiz, akteur, akteurName, belegeJson, freigabeId, einloesungId, passwortAge);
+        jdbc.update("UPDATE werkstatt_box SET geaendert_am = now(), geaendert_von = ? WHERE id = ?", akteur, boxId);
+        return id;
+    }
+
     /** Alle Abnahmen, neueste zuerst; {@code boxId} null = aller Boxen. */
     public List<Abnahme> abnahmen(UUID boxId) {
         return jdbc.query("SELECT " + ABNAHME_SPALTEN + "FROM werkstatt_abnahme a "
@@ -161,7 +183,12 @@ public class WerkstattRepository {
                 rs.getString("notiz"),
                 instant(rs, "erfasst_am"),
                 rs.getString("erfasst_von"),
-                rs.getString("erfasst_von_name"));
+                rs.getString("erfasst_von_name"),
+                rs.getString("quelle"),
+                rs.getString("belege"),
+                rs.getObject("freigabe_id", UUID.class),
+                rs.getObject("einloesung_id", UUID.class),
+                rs.getString("passwort_age"));
     }
 
     private static Instant instant(ResultSet rs, String spalte) throws SQLException {

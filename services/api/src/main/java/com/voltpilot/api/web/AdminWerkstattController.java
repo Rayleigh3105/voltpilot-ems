@@ -78,7 +78,8 @@ public class AdminWerkstattController {
      */
     public record AbnahmeDto(UUID id, String edgeRef, String hostSchluessel, String fassung, String tunnelAdresse,
             String lanNetz, List<String> pruefungen, JsonNode probe, String notiz, Instant erfasstAm,
-            String erfasstVon) {
+            String erfasstVon, String quelle, JsonNode belege, UUID freigabeId, UUID einloesungId,
+            String passwortAge) {
     }
 
     /** Eine Box des Registers; {@code abnahmen} neueste zuerst, leer = noch nicht abgenommen. */
@@ -228,7 +229,9 @@ public class AdminWerkstattController {
     private AbnahmeDto abnahmeDto(Abnahme a) {
         return new AbnahmeDto(a.id(), a.edgeRef(), a.hostSchluessel(), a.fassung(), a.tunnelAdresse(), a.lanNetz(),
                 liste(a.pruefungenJson()), lies(a.probeJson()), a.notiz(), a.erfasstAm(),
-                name(a.erfasstVonName(), a.erfasstVon()));
+                name(a.erfasstVonName(), a.erfasstVon()), a.quelle(),
+                a.belegeJson() == null ? null : lies(a.belegeJson()), a.freigabeId(), a.einloesungId(),
+                a.passwortAge());
     }
 
     private JsonNode lies(String text) {

@@ -153,6 +153,9 @@ class WerkstattEinloesenApiTest {
 
     private final ObjectMapper json = new ObjectMapper();
 
+    /** Die neu aufgespielte BOX2 aus {@link #tauschUndObergrenze}; ihre Einlösung ist die letzte. */
+    private static Box box2Neu;
+
     /** Eine Box: Geräteschlüssel, ihre Zertifikatsanfrage, Tunnel- und Host-Schlüssel. */
     private record Box(String ref, KeyPair key, String csr, String wg, String host) {
         static Box neu(String ref) throws Exception {
@@ -312,6 +315,7 @@ class WerkstattEinloesenApiTest {
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
         // Neu aufgespielt: anderer Geräteschlüssel. Ohne Tausch 409 schluessel_festgehalten.
         Box neu = Box.neu(BOX2);
+        box2Neu = neu;
         ResponseEntity<String> ohneTausch = einloesen(neu, code(dienst, BOX2, false).get("code").asText(), FASSUNG,
                 neu.key());
         assertThat(ohneTausch.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
@@ -391,6 +395,107 @@ class WerkstattEinloesenApiTest {
                 .hasMessageContaining("permission denied");
         assertThatThrownBy(() -> eigentuemer().update("UPDATE werkstatt_einloesung SET fassung = 'x'")).rootCause()
                 .hasMessageContaining("weder geändert noch gelöscht");
+    }
+
+    @Test
+    @Order(7)
+    void abnahmeMitBelegen() throws Exception {
+        String dienst = dienstToken();
+        String admin = token("admin", "admin");
+        Box box = box2Neu;
+        JsonNode stand = json.readTree(send(HttpMethod.GET, DIENST + "/einloesungen/" + BOX2, dienst, null).getBody());
+        String fensterId = stand.get("einloesungen").get(0).get("fensterId").asText();
+        String abnahme = DIENST + "/abnahmen/" + BOX2;
+
+        // Probe-Fenster noch offen: 409 (Werkstatt-Regel 6).
+        ResponseEntity<String> offen = send(HttpMethod.POST, abnahme, dienst, abnahmeAntrag(box, Map.of()));
+        assertThat(offen.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(offen)).contains("noch offen");
+        assertThat(send(HttpMethod.POST, DIENST + "/fenster/" + fensterId + "/schliessen", dienst, null)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        record Fall(String name, Map<String, Object> aenderung, HttpStatus status, String grund) {
+        }
+        Map<String, String> ohneNeustart = new HashMap<>(belege());
+        ohneNeustart.remove("neustart");
+        Map<String, String> mitFremder = new HashMap<>(belege());
+        mitFremder.put("kaffee", "gekocht");
+        for (Fall f : List.of(
+                new Fall("Beleg fehlt", Map.of("belege", ohneNeustart), HttpStatus.UNPROCESSABLE_ENTITY, "neustart"),
+                new Fall("unbekannte Prüfung", Map.of("belege", mitFremder), HttpStatus.BAD_REQUEST, "kaffee"),
+                new Fall("Passwort im Klartext", Map.of("passwortAge", "geheim123"), HttpStatus.UNPROCESSABLE_ENTITY, "age"),
+                new Fall("Hülle ohne age-Kopf", Map.of("passwortAge", "-----BEGIN AGE ENCRYPTED FILE-----\n"
+                        + Base64.getEncoder().encodeToString("geheim123".getBytes(StandardCharsets.UTF_8))
+                        + "\n-----END AGE ENCRYPTED FILE-----"), HttpStatus.UNPROCESSABLE_ENTITY, "age-Kopf"),
+                new Fall("anderer Host-Schlüssel", Map.of("hostSchluessel", Box.neu(BOX2).host()), HttpStatus.CONFLICT,
+                        "Einlösen"),
+                new Fall("andere Fassung", Map.of("fassung", "edge-light-2026.11.9"), HttpStatus.CONFLICT, "Einlösen"),
+                new Fall("Heimnetz", Map.of("lanNetz", "192.168.1.1/24"), HttpStatus.UNPROCESSABLE_ENTITY, "übliches"))) {
+            ResponseEntity<String> r = send(HttpMethod.POST, abnahme, dienst, abnahmeAntrag(box, f.aenderung()));
+            assertThat(r.getStatusCode()).as(f.name()).isEqualTo(f.status());
+            assertThat(message(r)).as(f.name()).contains(f.grund());
+        }
+        // Eine Box ohne Einlösung bekommt keine Abnahme des Dienstes.
+        ResponseEntity<String> ohne = send(HttpMethod.POST, DIENST + "/abnahmen/" + BOX3, dienst, abnahmeAntrag(box, Map.of()));
+        assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        // Nur der Dienst: Admin und Kunde 403.
+        for (String t : List.of(admin, token("demo", "demo"))) {
+            assertThat(send(HttpMethod.POST, abnahme, t, abnahmeAntrag(box, Map.of())).getStatusCode())
+                    .isEqualTo(HttpStatus.FORBIDDEN);
+        }
+
+        ResponseEntity<String> ok = send(HttpMethod.POST, abnahme, dienst, abnahmeAntrag(box, Map.of()));
+        assertThat(ok.getStatusCode()).as(ok.getBody()).isEqualTo(HttpStatus.CREATED);
+        JsonNode a = json.readTree(ok.getBody());
+        assertThat(a.get("lanNetz").asText()).isEqualTo("10.213.0.1/24");
+        assertThat(a.has("passwortAge")).isFalse();
+        assertThat(a.get("einloesungId").asText()).isEqualTo(stand.get("einloesungen").get(0).get("id").asText());
+
+        // Im Register: Quelle dienst, jede Prüfung mit ihrem Beleg, Freigabe, Einlösung, verschlüsseltes Passwort.
+        JsonNode reg = json.readTree(send(HttpMethod.GET, "/api/v1/admin/werkstatt/boxen/" + BOX2, admin, null).getBody());
+        assertThat(reg.get("lanNetz").asText()).isEqualTo("10.213.0.1/24");
+        JsonNode erste = reg.get("abnahmen").get(0);
+        assertThat(erste.get("quelle").asText()).isEqualTo("dienst");
+        assertThat(erste.get("belege").get("anmeldeprobe").asText()).isEqualTo(belege().get("anmeldeprobe"));
+        assertThat(erste.get("belege").size()).isEqualTo(8);
+        assertThat(erste.get("passwortAge").asText()).isEqualTo(ageText());
+        assertThat(erste.get("probe").get("fensterId").asText()).isEqualTo(fensterId);
+        assertThat(erste.get("hostSchluessel").asText()).isEqualTo(box.host());
+        // Die Tabelle bleibt append-only, und eine Abnahme von Hand trägt nichts davon.
+        assertThatThrownBy(() -> eigentuemer().update(
+                "INSERT INTO werkstatt_abnahme (box_id, edge_ref, host_schluessel, fassung, tunnel_adresse, lan_netz, "
+                        + "pruefungen, probe, erfasst_von, quelle) SELECT box_id, edge_ref, host_schluessel, fassung, "
+                        + "tunnel_adresse, lan_netz, pruefungen, probe, 'x', 'dienst' FROM werkstatt_abnahme LIMIT 1"))
+                .rootCause().hasMessageContaining("werkstatt_abnahme_dienst_chk");
+    }
+
+    private static Map<String, String> belege() {
+        Map<String, String> b = new java.util.LinkedHashMap<>();
+        for (String p : List.of("root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe",
+                "host_schluessel", "fenster_zu", "lan_netz", "neustart")) {
+            b.put(p, "Schritt " + p + ": belegt im Test");
+        }
+        return b;
+    }
+
+    /** Eine age-Hülle mit echtem Kopf (der Rumpf ist für den Test erfunden). */
+    private static String ageText() {
+        String roh = "age-encryption.org/v1\n-> X25519 testtesttesttesttesttesttesttesttesttesttes\n--- abc\n";
+        return "-----BEGIN AGE ENCRYPTED FILE-----\n"
+                + Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.US_ASCII))
+                        .encodeToString(roh.getBytes(StandardCharsets.US_ASCII))
+                + "\n-----END AGE ENCRYPTED FILE-----";
+    }
+
+    private static Map<String, Object> abnahmeAntrag(Box box, Map<String, Object> aenderung) {
+        Map<String, Object> a = new HashMap<>();
+        a.put("fassung", FASSUNG);
+        a.put("hostSchluessel", box.host());
+        a.put("lanNetz", "10.213.0.1/24");
+        a.put("belege", belege());
+        a.put("passwortAge", ageText());
+        a.putAll(aenderung);
+        return a;
     }
 
     // ── Hilfen ────────────────────────────────────────────────────────────
