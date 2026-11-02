@@ -59,9 +59,20 @@ Adresse nicht in ein privates Netz auflöst; sonst die auskommentierte Regel fü
 | Rolle des Dienstkontos | Realm-Rolle `werkstatt-dienst` (neu anlegen), **nicht** `platform-admin` |
 
 Das Client-Secret kommt als `keycloak-client-secret` in das SOPS-Secret. Die Rolle erreicht nur den Baum
-`/api/v1/werkstatt-dienst/**`: heute die laufende Freigabe lesen; mit den nächsten Paketen Einmal-Codes nur in einer
-laufenden Freigabe, das eigene Probe-Fenster schließen, die Abnahme schreiben. Nie: freigeben, Fenster öffnen,
-Kunden, Kopplung, Updates, `/api/v1/admin/**`.
+`/api/v1/werkstatt-dienst/**`: die laufende Freigabe lesen, Einmal-Codes nur in einer laufenden Freigabe für
+ungekoppelte Boxen holen, lesen, was eine Box beim Einlösen gemeldet hat, und das Probe-Fenster einer Einlösung
+schließen (mit P6c kommt die Abnahme dazu). Nie: freigeben, Fenster öffnen, Kunden, Kopplung, Updates,
+`/api/v1/admin/**`.
+
+### Techniker-Zugang „Werkstatt-Dienst“
+
+Die Einlösung einer Box öffnet 30 Minuten Probe-Fenster für **einen** Techniker-Zugang: den des Dienstes (WI-5).
+Ohne ihn gibt die API keine Einmal-Codes aus (409 „kein Techniker-Zugang eingerichtet“).
+
+1. Im Portal unter Fernwartung einen Techniker-Zugang „Werkstatt-Dienst“ anlegen, mit dem öffentlichen
+   WireGuard-Schlüssel und dem SSH-Schlüssel des Dienstes. Beide Schlüssel erzeugt der Dienst mit der Probe über den
+   Tunnel (P8); bis dahin bleibt dieser Schritt offen.
+2. Seine UUID bekommt die API als `VP_WERKSTATT_TECHNIKER_ZUGANG` (`voltpilot.werkstatt.techniker-zugang`).
 
 ### gitops
 

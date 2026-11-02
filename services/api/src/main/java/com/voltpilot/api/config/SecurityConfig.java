@@ -101,6 +101,12 @@ public class SecurityConfig {
                 // (absent unless voltpilot.enrollment.enabled).
                 .requestMatchers(HttpMethod.POST, "/api/v1/enrollment/*/csr").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/enrollment/*/certificate").permitAll()
+                // Werkstatt-Automatik (D2): Die frisch eingerichtete Box löst ihren
+                // Einmal-Code ein - dieselbe Lage wie beim Enrollment, kein Token.
+                // Der Code (30 min, einmal, an die Referenz gebunden) und die
+                // Signatur mit dem Geräteschlüssel sind der Nachweis; Rate-Limit
+                // und Prüfung in WerkstattEinloesenController. EXAKTER Pfad.
+                .requestMatchers(HttpMethod.POST, "/api/v1/werkstatt/einloesen").permitAll()
                 // Das root-signierte Trust-Set beim EINRICHTEN: eine Box, die
                 // gerade installiert wird, hat noch kein Token - dieselbe Lage
                 // wie beim Enrollment. Herausgegeben wird ausschliesslich

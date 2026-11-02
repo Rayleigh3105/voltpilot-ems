@@ -76,6 +76,11 @@ public class FreigabeRepository {
                 FreigabeRepository::freigabe, kennung).stream().findFirst();
     }
 
+    public Optional<Freigabe> mitId(UUID id) {
+        return jdbc.query("SELECT " + SPALTEN + "FROM werkstatt_freigabe WHERE id = ?",
+                FreigabeRepository::freigabe, id).stream().findFirst();
+    }
+
     /** Die Freigaben einer Box-Art, die zu {@code jetzt} laufen (höchstens eine, das hält der Dienst). */
     public List<Freigabe> laufend(String boxArt, Instant jetzt) {
         Timestamp t = Timestamp.from(jetzt);

@@ -51,6 +51,15 @@ class RechtRoutenArchitekturTest {
                         + "kein Kundenbereich; Kunden-, Publisher- und Admin-Token bekommen 403. Die Rückmeldung ist "
                         + "nur Anzeige und fließt nie in den Soll-Stand (Entscheid K3 a des Kapitäns, 08.10.2026; "
                         + "docs/contracts/fernwartung-rueckmeldung-v1.md).");
+        String werkstattDienst = "SecurityConfig bindet /api/v1/werkstatt-dienst/** an hasRole('werkstatt-dienst') - "
+                + "das Dienstkonto des Werkstatt-Dienstes, kein Kundenkonto, kein Kundenbereich (Boxen vor dem "
+                + "Versand, ungekoppelt); Kunden-, Admin- und andere Dienst-Token bekommen 403 (WerkstattEinloesenApiTest).";
+        m.put("WerkstattDienstController#code", werkstattDienst);
+        m.put("WerkstattDienstController#fensterSchliessen", werkstattDienst);
+        m.put("WerkstattEinloesenController#einloesen",
+                "öffentlich (SecurityConfig permitAll, exakter Pfad) wie die Zertifikatsanfrage: die frisch "
+                        + "eingerichtete Box hat kein Konto; Nachweis sind Einmal-Code und Signatur mit dem "
+                        + "Geräteschlüssel, Rate-Limit vor jeder Arbeit (docs/contracts/werkstatt-einloesen-v1.md).");
         m.put("MeldungenController#gesehen",
                 "Alerting Scheibe 1 (vp-alerting-konzept-m1 §6.6): \"Gesehen\" darf, wer die Meldung sieht - "
                         + "die Sicht kommt allein aus dem site_scope-Zaun auf alarm, kein zusätzliches "

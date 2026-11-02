@@ -70,7 +70,7 @@ Das Dienstkonto ist der Keycloak-Client `voltpilot-tunnel-dienst` (nur `client_c
 ## Regeln
 
 - **Schlüssel entstehen auf dem Gerät.** Hier kommen nur öffentliche Schlüssel an: WireGuard für Boxen und Techniker, dazu der SSH-Schlüssel des Technikers ([Anmeldung an der Box](#anmeldung-an-der-box-fenster-schlüssel)).
-- **Box-Schlüssel hinterlegen** (`PUT …/boxen/{ref}/schluessel`) ist der Übergang bis zur Werkstatt-Registrierung D2; D2 soll genau diese Regel aufrufen.
+- **Box-Schlüssel hinterlegen** (`PUT …/boxen/{ref}/schluessel`): dieselbe Regel ruft die Einlösung der Werkstatt (D2, [Vertrag](contracts/werkstatt-einloesen-v1.md)) mit dem Urheber „Werkstatt, Freigabe …“ auf; der Handweg bleibt.
   - Neu: Adresse aus dem Box-Netz zuteilen.
   - Derselbe Schlüssel noch einmal: unverändert.
   - Ein anderer Schlüssel: nur mit `schluesselTausch: true`. WireGuard verschiebt die Adresse dann zum neuen Peer.

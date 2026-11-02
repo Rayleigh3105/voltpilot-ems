@@ -37,6 +37,16 @@ sie in der API (`/api/v1/admin/werkstatt/freigaben`, nur `platform-admin`; Tabel
 Ende ändert sich, nichts wird gelöscht); der Dienst liest die laufende über sein Dienstkonto im eigenen Baum
 `/api/v1/werkstatt-dienst/**` und kann dort nicht freigeben ([Runbook](../services/werkstatt-dienst/docs/runbook.md#werkstatt-freigeben)).
 
+**Einmal-Code und D2** ([Vertrag](contracts/werkstatt-einloesen-v1.md)): In einer laufenden Freigabe holt der Dienst
+für genau eine ungekoppelte Box einen Code (30 Minuten, einmal, in der API nur gehasht). Die Box löst ihn ohne Konto
+selbst ein, signiert mit ihrem Geräteschlüssel und mit ihrer Zertifikatsanfrage. Die API hält dabei den
+Geräteschlüssel fest, hinterlegt den Tunnel-Schlüssel über dieselbe Regel wie „Tunnel-Schlüssel hinterlegen“ und
+öffnet 30 Minuten Probe-Fenster für den Techniker-Zugang des Dienstes (`VP_WERKSTATT_TECHNIKER_ZUGANG`). Danach
+nimmt die Zertifikatsanfrage nur noch diesen Schlüssel an (409 `schluessel_festgehalten`), und ausgestellt wird nur
+dafür. Ein anderer Schlüssel braucht einen Code für einen Tausch, solange die Box ungekoppelt ist. Für eine
+gekoppelte Box gibt es keinen Code. Boxen, die nie eingelöst haben, verhalten sich wie bisher. Auf dem Weg der
+Zertifikatsanfrage prüft die API jetzt auch das Prüfzeichen einer erzeugten Kennung.
+
 ## Die Abnahme
 
 Die API nimmt eine Abnahme nur an, wenn
@@ -94,7 +104,6 @@ Verbunden wird nie von selbst; der Kunde drückt selbst auf „Verbinden“.
 | Was | Warum noch nicht |
 |---|---|
 | Probedruck der Kennung | Die Druckdatei je Box gibt es (`bauen.sh --referenz <referenz>`, [Kennung](../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md)); geprüft ist sie bis zum G-Code, gedruckt nicht. Ob ein Telefon den gedruckten Code liest, zeigt erst der Probedruck des Betreibers. |
-| Einmal-Code (Weg 2) | nächster Schnitt nach dem Bericht; die Box löst ihn selbst ein |
-| Geräteschlüssel festhalten (D2, Entscheid 7a) | eigener Schnitt; heute kann jeder, der die Referenz kennt, eine Zertifikatsanfrage hinterlegen |
+| Einmal-Code und D2 an der Box | Die API kann es (siehe unten); den Befehl `werkstatt-anmelden` auf der Box und die Probe des Dienstes bringen die nächsten Pakete (P7, P8). |
 | Zweiter Faktor am Portal | Entscheid 10b: später |
 | Die kleinen Korrekturen aus Abschnitt 3.5 | laufen in einem eigenen PR (`install.sh`, `schluessel-holen.sh`, `mango.md`) |

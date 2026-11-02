@@ -385,6 +385,8 @@ tags:
       /api/v1/werkstatt-dienst: nur das Dienstkonto `voltpilot-werkstatt-dienst`
       mit der Rolle `werkstatt-dienst` (client_credentials). Kein Admin- und
       kein Kunden-Token, und die Rolle erreicht nichts außerhalb dieses Baums.
+      Dazu die offene Route der Box, POST /api/v1/werkstatt/einloesen
+      (Einmal-Code, D2; docs/contracts/werkstatt-einloesen-v1.md).
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -468,8 +470,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/EnrollmentPending" }
         "400": { description: Invalid reference, or the CSR is unparsable / badly signed / off key policy. }
-        "409": { description: A certificate was already issued for this reference (the enrolled key is fixed). }
-        "422": { description: Unknown sticker Geräte-ID (not in the provisioned-device registry). }
+        "409": { description: "A certificate was already issued for this reference (the enrolled key is fixed), or the workshop pinned another device key (body code=schluessel_festgehalten, D2, docs/contracts/werkstatt-einloesen-v1.md)." }
+        "422": { description: Unknown sticker Geräte-ID (not in the provisioned-device registry), or a generated edge- reference with a wrong check character. }
         "429": { description: Rate limit (per client address + global sliding window). Back off >= 5 min. }
   /api/v1/enrollment/{ref}/certificate:
     get:
@@ -7256,6 +7258,179 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Für die Box-Art läuft keine Freigabe. }
+  /api/v1/werkstatt-dienst/codes:
+    post:
+      tags: [werkstatt-dienst]
+      summary: Einmal-Code für eine Box holen (Konzept §7).
+      description: >
+        Nur in einer laufenden Freigabe, für eine erzeugte Kennung mit gültigem
+        Prüfzeichen, die nicht gekoppelt ist und noch kein Zertifikat hat. Der
+        Code gilt 30 Minuten und einmal; die API speichert nur seinen sha256, ein
+        neuer ersetzt den offenen. `tausch` nur für eine neu aufgespielte Box:
+        Dann darf die Einlösung den festgehaltenen Geräteschlüssel und den
+        Tunnel-Schlüssel ersetzen. Die Box kommt ins Werkstatt-Register. Braucht
+        einen eingerichteten Techniker-Zugang `voltpilot.werkstatt.techniker-zugang`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [edgeRef]
+              properties:
+                edgeRef: { type: string, example: edge-k7m2xq3 }
+                tausch: { type: boolean, default: false }
+      responses:
+        "201":
+          description: Der Code - nur in dieser Antwort (Cache-Control no-store).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, pattern: "^wk-[a-z2-7]{26}$" }
+                  edgeRef: { type: string }
+                  freigabe: { type: string }
+                  gueltigBis: { type: string, format: date-time }
+                  tausch: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Nicht freigegeben, gekoppelt, Zertifikat schon ausgestellt, Obergrenze erreicht oder kein Techniker-Zugang. }
+        "422": { description: Keine erzeugte Kennung mit gültigem Prüfzeichen. }
+  /api/v1/werkstatt-dienst/einloesungen/{edgeRef}:
+    get:
+      tags: [werkstatt-dienst]
+      summary: Was eine Box beim Einlösen gemeldet hat.
+      description: Der festgehaltene Geräteschlüssel (sha256) und die Einlösungen, neueste zuerst; leer, solange sie nicht eingelöst hat.
+      parameters:
+        - { name: edgeRef, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Der Stand.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  edgeRef: { type: string }
+                  festgehalten:
+                    type: object
+                    nullable: true
+                    properties:
+                      sha256: { type: string }
+                      festgehaltenAm: { type: string, format: date-time }
+                      einloesungId: { type: string, format: uuid }
+                  einloesungen:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        edgeRef: { type: string }
+                        freigabeId: { type: string, format: uuid }
+                        fassung: { type: string }
+                        geraeteSchluesselSha256: { type: string }
+                        wireguardSchluessel: { type: string }
+                        hostSchluessel: { type: string }
+                        tunnelAdresse: { type: string }
+                        fensterId: { type: string, format: uuid }
+                        tausch: { type: boolean }
+                        eingeloestAm: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/werkstatt-dienst/fenster/{id}/schliessen:
+    post:
+      tags: [werkstatt-dienst]
+      summary: Das Probe-Fenster einer Einlösung schließen.
+      description: Nur ein Fenster, das eine Einlösung geöffnet hat; jedes andere ist für den Dienst unbekannt (404).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Das geschlossene Fenster.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  edgeRef: { type: string }
+                  technikerId: { type: string, format: uuid }
+                  beginn: { type: string, format: date-time }
+                  ende: { type: string, format: date-time }
+                  geschlossenAm: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Kein Probe-Fenster einer Einlösung. }
+        "409": { description: Das Fenster ist nicht mehr offen. }
+  /api/v1/werkstatt/einloesen:
+    post:
+      tags: [werkstatt-dienst]
+      summary: Die Box löst ihren Einmal-Code ein (ohne Konto, D2).
+      description: >
+        Vertrag docs/contracts/werkstatt-einloesen-v1.md: signiert mit dem
+        Geräteschlüssel (EC P-256), mit der Zertifikatsanfrage desselben
+        Schlüssels. Hält den Geräteschlüssel fest, hinterlegt den
+        Tunnel-Schlüssel, öffnet 30 Minuten Probe-Fenster für den
+        Techniker-Zugang des Werkstatt-Dienstes und ersetzt eine fremde
+        Zertifikatsanfrage. Rate-Limit je Absender und gesamt.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [edgeRef, code, fassung, geraeteSchluessel, wireguardSchluessel, hostSchluessel, csrPem, signatur]
+              properties:
+                edgeRef: { type: string, example: edge-k7m2xq3 }
+                code: { type: string, pattern: "^wk-[a-z2-7]{26}$" }
+                fassung: { type: string, example: edge-light-2026.11.0 }
+                geraeteSchluessel: { type: string, description: SubjectPublicKeyInfo (DER) Base64, EC P-256 }
+                wireguardSchluessel: { type: string }
+                hostSchluessel: { type: string, pattern: "^SHA256:[A-Za-z0-9+/]{43}$" }
+                csrPem: { type: string, maxLength: 20480 }
+                signatur: { type: string, description: ECDSA P-256 SHA-256 über den kanonischen Text, DER Base64 }
+      responses:
+        "200":
+          description: Adresse, Serverdaten, Probe-Fenster und der festgehaltene Schlüssel; nichts davon geheim.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schema: { type: string, enum: [vp-werkstatt-einloesung.v1] }
+                  edgeRef: { type: string }
+                  freigabe: { type: string }
+                  tunnelErgebnis: { type: string, enum: [angelegt, unveraendert, getauscht] }
+                  tunnel:
+                    type: object
+                    properties:
+                      adresse: { type: string }
+                      boxNetz: { type: string }
+                      technikerNetz: { type: string }
+                      serverEndpunkt: { type: string }
+                      serverPort: { type: integer }
+                      serverPublicKey: { type: string, nullable: true }
+                      serverAdresse: { type: string }
+                  probe:
+                    type: object
+                    properties:
+                      fensterId: { type: string, format: uuid }
+                      technikerId: { type: string, format: uuid }
+                      technikerName: { type: string }
+                      beginn: { type: string, format: date-time }
+                      ende: { type: string, format: date-time }
+                  geraeteSchluessel:
+                    type: object
+                    properties:
+                      sha256: { type: string }
+                      festgehaltenAm: { type: string, format: date-time }
+        "400": { description: Eine Form stimmt nicht, oder die Zertifikatsanfrage ist ungültig. }
+        "403": { description: "Der Code gilt nicht - dieselbe Antwort für jeden unbekannten, abgelaufenen, ersetzten oder fremden Code, eine beendete Freigabe und eine falsche Signatur." }
+        "409": { description: "Schon eingelöst, Fassung passt nicht, gekoppelt, Zertifikat schon ausgestellt, Obergrenze, Tunnel-Schlüssel ohne Tausch, oder code=schluessel_festgehalten." }
+        "422": { description: Die Zertifikatsanfrage trägt einen anderen Schlüssel. }
+        "429": { description: Zu viele Anfragen. }
   /api/v1/fernwartung/soll:
     get:
       tags: [fernwartung]

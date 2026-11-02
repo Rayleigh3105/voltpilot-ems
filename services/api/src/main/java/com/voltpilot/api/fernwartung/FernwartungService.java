@@ -171,8 +171,9 @@ public class FernwartungService {
     // ── Boxen ─────────────────────────────────────────────────────────────
 
     /**
-     * Den öffentlichen Tunnel-Schlüssel einer Box hinterlegen (Übergang bis zur
-     * Werkstatt-Registrierung D2, die darauf aufbauen soll).
+     * Den öffentlichen Tunnel-Schlüssel einer Box hinterlegen - von Hand über
+     * die Admin-Route oder durch die Einlösung der Werkstatt (D2,
+     * {@code EinloesungService}), beide mit dieser Regel.
      *
      * <p>Neu: Adresse aus dem Box-Netz zuteilen. Derselbe Schlüssel noch einmal:
      * nichts ändert sich (ein wiederholter Werkstatt-Lauf ist kein Fehler). Ein

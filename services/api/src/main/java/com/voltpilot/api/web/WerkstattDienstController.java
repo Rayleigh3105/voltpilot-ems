@@ -2,10 +2,21 @@ package com.voltpilot.api.web;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.voltpilot.api.fernwartung.Akteur;
+import com.voltpilot.api.werkstatt.EinloesungRepository;
+import com.voltpilot.api.werkstatt.EinloesungService;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Freigabe;
 import com.voltpilot.api.werkstatt.FreigabeService;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import org.springframework.http.CacheControl;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,8 +36,11 @@ import org.springframework.web.server.ResponseStatusException;
  * nichts, und kein Admin- oder Kunden-Token erreicht diesen Baum
  * ({@code SecurityConfig}).
  *
- * <p>Der Dienst darf hier lesen, ob und welche Freigabe läuft. Freigeben,
- * Fenster öffnen, Kunden, Kopplung und Updates erreicht er nicht.
+ * <p>Der Dienst darf hier lesen, ob und welche Freigabe läuft; in einer
+ * laufenden Freigabe Einmal-Codes für ungekoppelte Boxen holen; lesen, was eine
+ * Box beim Einlösen gemeldet hat; und das Probe-Fenster schließen, das eine
+ * Einlösung geöffnet hat - kein anderes. Freigeben, Fenster öffnen, Kunden,
+ * Kopplung und Updates erreicht er nicht.
  */
 @RestController
 @RequestMapping("/api/v1/werkstatt-dienst")
@@ -66,10 +80,45 @@ public class WerkstattDienstController {
         }
     }
 
-    private final FreigabeService freigaben;
+    /** Code holen: für genau diese Box; {@code tausch} nur für eine neu aufgespielte, ungekoppelte Box. */
+    public record CodeRequest(String edgeRef, Boolean tausch) {
+    }
 
-    public WerkstattDienstController(FreigabeService freigaben) {
+    /** Der Code steht nur in dieser Antwort und nur einmal. */
+    public record CodeDto(String code, String edgeRef, String freigabe, Instant gueltigBis, boolean tausch) {
+    }
+
+    /** Was eine Box beim Einlösen gemeldet hat und was sie bekam. */
+    public record EinloesungDto(UUID id, String edgeRef, UUID freigabeId, String fassung, String geraeteSchluesselSha256,
+            String wireguardSchluessel, String hostSchluessel, String tunnelAdresse, UUID fensterId, boolean tausch,
+            Instant eingeloestAm) {
+        static EinloesungDto of(EinloesungRepository.Einloesung e) {
+            return new EinloesungDto(e.id(), e.edgeRef(), e.freigabeId(), e.fassung(), e.geraeteSchluesselSha256(),
+                    e.wireguardSchluessel(), e.hostSchluessel(), e.tunnelAdresse(), e.fensterId(), e.tausch(),
+                    e.eingeloestAm());
+        }
+    }
+
+    /** Der festgehaltene Geräteschlüssel einer Box (D2). */
+    public record FestgehaltenDto(String sha256, Instant festgehaltenAm, UUID einloesungId) {
+    }
+
+    /** Der Stand einer Box beim Einlösen: festgehalten oder nicht, und die Einlösungen, neueste zuerst. */
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record BoxStandDto(String edgeRef, FestgehaltenDto festgehalten, List<EinloesungDto> einloesungen) {
+    }
+
+    /** Ein geschlossenes Probe-Fenster. */
+    public record FensterDto(UUID id, String edgeRef, UUID technikerId, Instant beginn, Instant ende,
+            Instant geschlossenAm) {
+    }
+
+    private final FreigabeService freigaben;
+    private final EinloesungService einloesung;
+
+    public WerkstattDienstController(FreigabeService freigaben, EinloesungService einloesung) {
         this.freigaben = freigaben;
+        this.einloesung = einloesung;
     }
 
     /** Die laufende Freigabe einer Box-Art (Vorgabe mango); 404, wenn keine läuft. */
@@ -77,6 +126,31 @@ public class WerkstattDienstController {
     public FreigabeDto freigabe(@RequestParam(name = "boxArt", defaultValue = FreigabeService.MANGO) String boxArt) {
         return freigaben.laufend(boxArt).map(FreigabeDto::of).orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND, "Die Werkstatt ist für " + boxArt + " nicht freigegeben."));
+    }
+
+    /** Einmal-Code holen: 201; 409 ohne laufende Freigabe, gekoppelt, mit Zertifikat, Obergrenze; 422 Kennung. */
+    @PostMapping("/codes")
+    public ResponseEntity<CodeDto> code(@RequestBody CodeRequest req, @AuthenticationPrincipal Jwt caller) {
+        EinloesungService.Ausgabe a = einloesung.codeAusgeben(req == null ? null : req.edgeRef(),
+                req != null && Boolean.TRUE.equals(req.tausch()), Akteur.aus(caller));
+        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
+                .body(new CodeDto(a.code(), a.edgeRef(), a.freigabe(), a.gueltigBis(), a.tausch()));
+    }
+
+    /** Was die Box beim Einlösen gemeldet hat (leer, solange sie nicht eingelöst hat). */
+    @GetMapping("/einloesungen/{edgeRef}")
+    public BoxStandDto einloesungen(@PathVariable String edgeRef) {
+        FestgehaltenDto fest = einloesung.festgehalten(edgeRef)
+                .map(f -> new FestgehaltenDto(f.geraeteSchluesselSha256(), f.festgehaltenAm(), f.einloesungId()))
+                .orElse(null);
+        return new BoxStandDto(edgeRef, fest, einloesung.einloesungen(edgeRef).stream().map(EinloesungDto::of).toList());
+    }
+
+    /** Das Probe-Fenster einer Einlösung schließen: 200; 404 für jedes andere Fenster; 409 schon zu. */
+    @PostMapping("/fenster/{id}/schliessen")
+    public FensterDto fensterSchliessen(@PathVariable UUID id, @AuthenticationPrincipal Jwt caller) {
+        var f = einloesung.probeFensterSchliessen(id, Akteur.aus(caller));
+        return new FensterDto(f.id(), f.edgeRef(), f.technikerId(), f.beginn(), f.ende(), f.geschlossenAm());
     }
 
     @ExceptionHandler(ResponseStatusException.class)

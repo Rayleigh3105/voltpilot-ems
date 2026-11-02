@@ -20,7 +20,7 @@ package com.voltpilot.api.web;
  * {@link EdgeRefTest} and the portal twin ({@code frontend/portal/src/edgeRef.ts})
  * all read them.
  */
-final class EdgeRef {
+public final class EdgeRef {
 
     /** No 0/O/1/l/i lookalikes - mirrors the edge generator's {@code refAlphabet}. */
     static final String ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -42,7 +42,7 @@ final class EdgeRef {
      * {@code edge-inverter-42}) fall outside this and stay ungated - preserving
      * backward compatibility for anything that is not a generated ref.
      */
-    static boolean isGeneratedFormat(String ref) {
+    public static boolean isGeneratedFormat(String ref) {
         if (ref == null || !ref.startsWith(PREFIX)) {
             return false;
         }
@@ -65,7 +65,7 @@ final class EdgeRef {
      * lowercase first); anything else - another prefix, a free-form ref - is
      * {@code false}.
      */
-    static boolean isValid(String ref) {
+    public static boolean isValid(String ref) {
         if (ref == null || !ref.startsWith(PREFIX)) {
             return false;
         }

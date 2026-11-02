@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+import com.voltpilot.api.werkstatt.EinloesungRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -50,6 +51,8 @@ public class EnrollmentService {
     // Empty unless broker-authz-reload is enabled + configured; when present it
     // pushes the freshly written ACL to EMQX so grants apply within seconds.
     private final ObjectProvider<BrokerAuthzReloader> authzReloader;
+    /** D2: festgehaltene Geräteschlüssel der Werkstatt (null nur in Unit-Tests ohne Werkstatt). */
+    private final EinloesungRepository werkstatt;
 
     // Per-ref lock stripes serialize the claim->sign->store sequence: without
     // this, two concurrent certificate polls for a just-claimed ref both see
@@ -68,7 +71,8 @@ public class EnrollmentService {
     private static final Duration STARTUP_RELOAD_RETRY_DELAY = Duration.ofSeconds(2);
 
     public EnrollmentService(EnrollmentProperties properties, EnrollmentRepository enrollments,
-            EnrollmentDeviceLookup devices, ObjectProvider<BrokerAuthzReloader> authzReloader) {
+            EnrollmentDeviceLookup devices, ObjectProvider<BrokerAuthzReloader> authzReloader,
+            EinloesungRepository werkstatt) {
         if (properties.caDir() == null || properties.caDir().isBlank()) {
             throw new IllegalStateException("voltpilot.enrollment.enabled=true requires "
                     + "voltpilot.enrollment.ca-dir (the device-CA working directory)");
@@ -77,6 +81,7 @@ public class EnrollmentService {
         this.enrollments = enrollments;
         this.devices = devices;
         this.authzReloader = authzReloader;
+        this.werkstatt = werkstatt;
         for (int i = 0; i < LOCK_STRIPES; i++) {
             refLocks[i] = new Object();
         }
@@ -278,6 +283,13 @@ public class EnrollmentService {
             return Optional.empty();
         }
         DeviceIdentity device = claimed.get();
+        if (!festgehaltenPasst(enrollment)) {
+            // D2: the workshop pinned another device key - never sign (or serve)
+            // a certificate for this CSR; the box's own CSR replaces it.
+            log.warn("Enrollment for ref '{}' withheld: the stored CSR does not carry the pinned key",
+                    externalRef);
+            return Optional.empty();
+        }
         if (enrollment.issued() && device.deviceId().equals(enrollment.deviceId())) {
             return Optional.of(response(enrollment.certPem(), device));
         }
@@ -307,6 +319,10 @@ public class EnrollmentService {
      */
     private IssuedEnrollment issue(Enrollment enrollment, DeviceIdentity device) {
         PKCS10CertificationRequest csr = Csrs.parseAndValidate(enrollment.csrPem());
+        if (!festgehaltenPasst(enrollment)) {
+            throw new IllegalStateException("stored CSR for '" + enrollment.externalRef()
+                    + "' does not carry the pinned device key");
+        }
         // Grant before signing: a certificate without broker access is useless,
         // and the grant write is idempotent - a failed signing retries both.
         if (aclWriter != null) {
@@ -331,6 +347,20 @@ public class EnrollmentService {
                 issued.serialHex(), enrollment.externalRef(), device.deviceId(),
                 device.tenantId(), device.siteId());
         return response(issued.certPem(), device);
+    }
+
+    /**
+     * D2: true when no key is pinned for the ref (boxes outside the workshop
+     * behave as before), or when the stored CSR carries exactly the pinned key.
+     */
+    private boolean festgehaltenPasst(Enrollment enrollment) {
+        if (werkstatt == null) {
+            return true;
+        }
+        return werkstatt.festgehalten(enrollment.externalRef())
+                .map(f -> f.geraeteSchluessel().equals(
+                        Csrs.schluesselSpki(Csrs.parseAndValidate(enrollment.csrPem()))))
+                .orElse(true);
     }
 
     private IssuedEnrollment response(String certPem, DeviceIdentity device) {
