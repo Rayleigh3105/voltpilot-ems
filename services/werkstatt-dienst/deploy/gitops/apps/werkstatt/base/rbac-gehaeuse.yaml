@@ -1,0 +1,31 @@
+# Der Werkstatt-Dienst startet je Gehäuse-Druckdatei einen Job mit dem
+# Bau-Image (P10). Dafür und nur dafür: Jobs anlegen, lesen, löschen; Pods
+# auflisten (warum ein Job nicht anläuft). Nur in werkstatt-prod; PodSecurity
+# „restricted“ gilt für jeden Pod dort, die NetworkPolicy werkstatt-gehaeuse
+# nimmt den Bau-Pods jedes Netz.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: werkstatt-dienst-gehaeuse
+  namespace: werkstatt-prod
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: werkstatt-dienst-gehaeuse
+  namespace: werkstatt-prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: werkstatt-dienst-gehaeuse
+subjects:
+  - kind: ServiceAccount
+    name: werkstatt-dienst
+    namespace: werkstatt-prod

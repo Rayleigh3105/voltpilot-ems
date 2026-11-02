@@ -20,7 +20,9 @@ spec:
         app.kubernetes.io/name: werkstatt-dienst
     spec:
       serviceAccountName: werkstatt-dienst
-      automountServiceAccountToken: false
+      # Für die Gehäuse-Jobs (VP_GEHAEUSE_BAU=kubernetes, Role werkstatt-dienst-gehaeuse);
+      # ohne Gehäuse-Bau wieder auf false.
+      automountServiceAccountToken: true
       # Name wie das Pull-Secret der Forgejo-Registry in voltpilot-prod; das
       # Secret muss auch in werkstatt-prod liegen (docs/runbook.md).
       imagePullSecrets:
@@ -60,6 +62,7 @@ spec:
               drop: ["ALL"]
           volumeMounts:
             - {name: daten, mountPath: /var/lib/vp-werkstatt-dienst}
+            - {name: gehaeuse, mountPath: /var/lib/vp-werkstatt-gehaeuse}
             - {name: tmp, mountPath: /tmp}
             - {name: geheim, mountPath: /etc/vp-werkstatt/geheim, readOnly: true}
             - {name: oeffentlich, mountPath: /etc/vp-werkstatt/oeffentlich, readOnly: true}
@@ -68,6 +71,9 @@ spec:
         - name: daten
           persistentVolumeClaim:
             claimName: werkstatt-dienst-daten
+        - name: gehaeuse
+          persistentVolumeClaim:
+            claimName: werkstatt-gehaeuse
         - name: tmp
           emptyDir:
             sizeLimit: 256Mi

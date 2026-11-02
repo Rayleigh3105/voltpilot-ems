@@ -18,7 +18,9 @@ prüft. Sie ist eine Zeichnung des Modells, kein Foto; **gedruckt ist noch keine
 ```
 
 Die Referenz so, wie sie in der Werkstatt-Liste steht (die Werkstatt-Seite nennt den Befehl bei
-jeder Box). Eine Referenz mit falschem Prüfzeichen nimmt der Befehl nicht an. Nach rund anderthalb
+jeder Box). Richtet der [Werkstatt-Dienst](../../../../services/werkstatt-dienst/README.md) die Box ein, baut
+er dieselbe Datei nach der Übergabe selbst, mit diesem Befehl in seinem Bau-Image, und legt sie in seiner
+Anzeige ab ([Runbook](../../../../services/werkstatt-dienst/docs/runbook.md#gehäuse-druckdatei)). Eine Referenz mit falschem Prüfzeichen nimmt der Befehl nicht an. Nach rund anderthalb
 Minuten liegt unter `aus/kennung/<referenz>/`:
 
 | Datei | was |

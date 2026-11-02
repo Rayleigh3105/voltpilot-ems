@@ -191,3 +191,42 @@ func TestTechnikerZugang(t *testing.T) {
 		t.Fatalf("%v %+v", err, k.TechnikerSSH)
 	}
 }
+
+func TestGehaeuse(t *testing.T) {
+	basis := map[string]string{"VP_WERKBANK_ADRESSE": "192.0.2.50"}
+	mit := func(m map[string]string) map[string]string {
+		out := map[string]string{}
+		for k, v := range basis {
+			out[k] = v
+		}
+		for k, v := range m {
+			out[k] = v
+		}
+		return out
+	}
+	k, err := Lies(umgebung(basis), false)
+	if err != nil || k.Gehaeuse.Bau != "" || k.Gehaeuse.Frist != 20*time.Minute {
+		t.Fatalf("ohne Angabe kein Bau: %+v %v", k.Gehaeuse, err)
+	}
+	digest := "git.tecmaxx.de/mamotec/voltpilot-ems/werkstatt-gehaeuse@sha256:" + strings.Repeat("0a", 32)
+	k, err = Lies(umgebung(mit(map[string]string{"VP_GEHAEUSE_BAU": "kubernetes", "VP_GEHAEUSE_IMAGE": digest})), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := k.Gehaeuse; g.PVC != "werkstatt-gehaeuse" || g.PullSecret != "forgejo-registry" || g.Speicher != "4Gi" || g.Ablage != "/var/lib/vp-werkstatt-gehaeuse" {
+		t.Fatalf("%+v", g)
+	}
+	for name, m := range map[string]map[string]string{
+		"Tag statt Digest":     {"VP_GEHAEUSE_BAU": "kubernetes", "VP_GEHAEUSE_IMAGE": "git.tecmaxx.de/x/werkstatt-gehaeuse:latest"},
+		"Speicher":             {"VP_GEHAEUSE_BAU": "kubernetes", "VP_GEHAEUSE_IMAGE": digest, "VP_GEHAEUSE_SPEICHER": "viel"},
+		"PVC":                  {"VP_GEHAEUSE_BAU": "kubernetes", "VP_GEHAEUSE_IMAGE": digest, "VP_GEHAEUSE_PVC": "Gehäuse"},
+		"befehl ohne Programm": {"VP_GEHAEUSE_BAU": "befehl"},
+		"unbekannt":            {"VP_GEHAEUSE_BAU": "docker"},
+		"Frist":                {"VP_GEHAEUSE_BAU": "befehl", "VP_GEHAEUSE_PROGRAMM": "/opt/g", "VP_GEHAEUSE_FRIST": "10s"},
+		"Ablage relativ":       {"VP_GEHAEUSE_ABLAGE": "gehaeuse"},
+	} {
+		if _, err := Lies(umgebung(mit(m)), false); err == nil || !strings.Contains(err.Error(), "VP_GEHAEUSE_") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

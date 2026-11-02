@@ -3,9 +3,10 @@
 //   - Betrieb (VP_WERKSTATT_HTTP, im Cluster erreichbar): /health, /ready und
 //     /metrics. Nichts davon nennt eine Referenz, MAC oder ein Geheimnis.
 //   - Werkstatt-Anzeige (VP_WERKSTATT_ANZEIGE, nur Loopback, also nur über
-//     kubectl port-forward): Stand der Brücke, Freigabe, Läufe mit Belegen.
-//     Nur lesen; keine Anmeldung, darum nur auf Loopback und nur mit einem
-//     Host-Kopf von localhost (gegen DNS-Rebinding).
+//     kubectl port-forward): Stand der Brücke, Freigabe, Läufe mit Belegen,
+//     die Druckdateien der Gehäuse zum Herunterladen. Nur lesen; keine
+//     Anmeldung, darum nur auf Loopback und nur mit einem Host-Kopf von
+//     localhost (gegen DNS-Rebinding).
 package anzeige
 
 import (
@@ -14,10 +15,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/dienst"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/gehaeuse"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/metriken"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 )
@@ -46,9 +49,26 @@ func Betrieb(d *dienst.Dienst, reg *metriken.Register) http.Handler {
 }
 
 // Steuerung nimmt Eingaben des Betreibers an (nur über die Unix-Socket im
-// Pod, also nur mit kubectl exec): POST /eingabe mit name und wert.
-func Steuerung(d *dienst.Dienst) http.Handler {
+// Pod, also nur mit kubectl exec): POST /eingabe mit name und wert, POST
+// /gehaeuse mit referenz (und neu=ja für einen zweiten Bau).
+func Steuerung(d *dienst.Dienst, g *gehaeuse.Werkstatt) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /gehaeuse", func(w http.ResponseWriter, r *http.Request) {
+		if g == nil {
+			http.Error(w, "kein Gehäuse-Bau eingerichtet (VP_GEHAEUSE_BAU)", http.StatusConflict)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		a, err := g.Bestelle(r.PostForm.Get("referenz"), "", r.PostForm.Get("neu") == "ja")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte("Gehäuse " + a.Referenz + ": " + string(a.Zustand) + "\n"))
+	})
 	mux.HandleFunc("POST /eingabe", func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -63,19 +83,58 @@ func Steuerung(d *dienst.Dienst) http.Handler {
 	return mux
 }
 
-// Werkstatt ist die Anzeige für den Betreiber.
-func Werkstatt(d *dienst.Dienst, ablage *protokoll.Ablage, log *slog.Logger) http.Handler {
+// Werkstatt ist die Anzeige für den Betreiber. g darf nil sein (kein
+// Gehäuse-Bau eingerichtet).
+func Werkstatt(d *dienst.Dienst, ablage *protokoll.Ablage, g *gehaeuse.Werkstatt, log *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
 		a := d.Ansicht()
 		laeufe := laeufeListe(ablage, 20)
+		var gh []gehaeuse.Auftrag
+		if g != nil {
+			gh = g.Auftraege()
+			if len(gh) > 30 {
+				gh = gh[:30]
+			}
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := seite.Execute(w, struct {
-			A      dienst.Ansicht
-			Laeufe []laufZeile
-		}{a, laeufe}); err != nil {
+			A        dienst.Ansicht
+			Laeufe   []laufZeile
+			MitBau   bool
+			Gehaeuse []gehaeuse.Auftrag
+		}{a, laeufe, g != nil, gh}); err != nil {
 			log.Error("Anzeige", "fehler", err)
 		}
+	})
+	mux.HandleFunc("GET /gehaeuse.json", func(w http.ResponseWriter, _ *http.Request) {
+		gh := []gehaeuse.Auftrag{}
+		if g != nil {
+			gh = g.Auftraege()
+		}
+		schreibeJSON(w, gh)
+	})
+	mux.HandleFunc("GET /gehaeuse/{ref}/{datei}", func(w http.ResponseWriter, r *http.Request) {
+		if g == nil {
+			http.NotFound(w, r)
+			return
+		}
+		ref, name := r.PathValue("ref"), r.PathValue("datei")
+		pfad, ok := g.Datei(ref, name)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		switch filepath.Ext(name) {
+		case ".3mf":
+			w.Header().Set("Content-Type", "model/3mf")
+		case ".png":
+			w.Header().Set("Content-Type", "image/png")
+		default:
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		}
+		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+		http.ServeFile(w, r, pfad)
 	})
 	mux.HandleFunc("GET /zustand.json", func(w http.ResponseWriter, _ *http.Request) {
 		schreibeJSON(w, d.Ansicht())
@@ -221,6 +280,16 @@ code{word-break:break-all}
 <p>Erledigt: {{range $i, $s := .Erledigt}}{{if $i}}, {{end}}{{$s}}{{else}}noch nichts{{end}}</p>
 {{end}}
 </div>
+
+<h2>Gehäuse</h2>
+{{if not .MitBau}}<p>Kein Gehäuse-Bau eingerichtet (<code>VP_GEHAEUSE_BAU</code>): die Druckdatei mit <code>bauen.sh --referenz &lt;referenz&gt;</code> bauen.</p>
+{{else}}<p>Je Box ein Auftrag nach der Übergabe, einer zur Zeit. Druckdatei herunterladen, am P1S drucken (Filament 1 weiß, 2 schwarz, 3 hellblau), Mango einsetzen, QR-Code mit dem Telefon lesen. Noch einmal bauen: <code>vp-werkstatt-dienst gehaeuse &lt;referenz&gt; neu</code>.</p>
+<table><thead><tr><th>Box</th><th>Zustand</th><th>Bestellt</th><th>Dateien</th><th>Grund</th></tr></thead><tbody>
+{{range .Gehaeuse}}{{$ref := .Referenz}}<tr><td><code>{{.Referenz}}</code></td><td class="{{if eq (print .Zustand) "fertig"}}gut{{else if eq (print .Zustand) "fehler"}}schlecht{{end}}">{{.Zustand}}</td><td>{{zeit .Bestellt}}</td>
+<td>{{range $i, $d := .Dateien}}{{if $i}} · {{end}}<a href="gehaeuse/{{$ref}}/{{$d.Name}}">{{$d.Name}}</a>{{end}}</td><td>{{.Grund}}</td></tr>
+{{else}}<tr><td colspan="5">noch kein Auftrag</td></tr>{{end}}
+</tbody></table>
+{{end}}
 
 <h2>Läufe</h2>
 <table><thead><tr><th>Lauf</th><th>Zustand</th><th>Schritt</th><th>Grund</th></tr></thead><tbody>

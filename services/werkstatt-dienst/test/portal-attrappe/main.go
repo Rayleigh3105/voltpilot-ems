@@ -52,15 +52,15 @@ func kanonisch(a anfrage) string {
 }
 
 type attrappe struct {
-	mu                                 sync.Mutex
+	mu                                  sync.Mutex
 	soll, freigabe, abnahme, ereignisse string
-	serverPub, serverEP                string
-	techPub, techSSH, techAdresse      string
-	boxAdresse                         string
-	code, codeRef                      string
-	boxPub                             string
-	fensterOffen                       bool
-	eingeloest                         bool
+	serverPub, serverEP                 string
+	techPub, techSSH, techAdresse       string
+	boxAdresse                          string
+	code, codeRef                       string
+	boxPub                              string
+	fensterOffen                        bool
+	eingeloest                          bool
 }
 
 func (a *attrappe) ereignis(f string, v ...any) {

@@ -31,6 +31,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/durchreiche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/gehaeuse"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/portal"
@@ -90,9 +91,18 @@ type Konfig struct {
 	// Probe ist die Anmeldung des Dienstes über den Wartungstunnel als
 	// Techniker-Zugang „Werkstatt-Dienst“ (WI-5 A, internal/wartung). nil:
 	// die Probe bleibt ein Handgriff im Portal.
-	Probe  Probe
-	Zeiten Zeiten
-	Log    *slog.Logger
+	Probe Probe
+	// Gehaeuse nimmt nach der Übergabe den Auftrag für die Druckdatei des
+	// Gehäuses an (internal/gehaeuse, P10). nil: das Gehäuse baut der
+	// Betreiber selbst (bauen.sh --referenz).
+	Gehaeuse Gehaeuse
+	Zeiten   Zeiten
+	Log      *slog.Logger
+}
+
+// Gehaeuse ist die Schlange der Druckdateien (gehaeuse.Werkstatt).
+type Gehaeuse interface {
+	Bestelle(ref, lauf string, neu bool) (gehaeuse.Auftrag, error)
 }
 
 // Probe ist, was ein Lauf von der Probe über den Tunnel braucht (wartung.Probe).

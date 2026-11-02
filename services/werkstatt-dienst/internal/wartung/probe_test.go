@@ -22,6 +22,9 @@ import (
 
 // sshAufBox: ein SSH-Server auf der Box-Adresse im netstack der Gegenstelle.
 // Den Schlüssel des Zugangs nimmt er erst an, wenn offen gesetzt ist.
+// abgewiesen: die Box hat eine Anmeldung abgewiesen.
+var abgewiesen atomic.Bool
+
 func sshAufBox(t *testing.T, ln net.Listener, erlaubt ssh.PublicKey, offen *atomic.Bool) ssh.PublicKey {
 	t.Helper()
 	_, hk, _ := ed25519.GenerateKey(rand.Reader)
@@ -30,6 +33,7 @@ func sshAufBox(t *testing.T, ln net.Listener, erlaubt ssh.PublicKey, offen *atom
 		if offen.Load() && string(k.Marshal()) == string(erlaubt.Marshal()) {
 			return nil, nil
 		}
+		abgewiesen.Store(true)
 		return nil, errors.New("abgewiesen")
 	}}
 	cfg.AddHostKey(host)
@@ -78,15 +82,26 @@ func TestProbeImFensterUndDanach(t *testing.T) {
 	rk, _ := rsa.GenerateKey(rand.Reader, 2048)
 	signer, _ := ssh.NewSignerFromKey(rk)
 	var offen atomic.Bool
+	abgewiesen.Store(false)
 	hostPub := sshAufBox(t, ln, signer.PublicKey(), &offen)
-	go func() { time.Sleep(700 * time.Millisecond); offen.Store(true) }() // die Box holt den Schlüssel erst etwas später
+	// Die Box holt den Schlüssel erst etwas später: Der erste Versuch wird
+	// abgewiesen, danach ist er da (nach Ereignis statt nach Uhr, damit ein
+	// langsamer Handschlag unter -race nicht beide Seiten überholt).
+	go func() {
+		for !abgewiesen.Load() {
+			time.Sleep(10 * time.Millisecond)
+		}
+		offen.Store(true)
+	}()
 
+	// Je Versuch reichlich Zeit: Unter -race braucht der SSH-Handschlag durch
+	// WireGuard im Prozess deutlich über eine Sekunde.
 	p := Probe{Zugang: Zugang{Privat: geheim.Neu(base64.StdEncoding.EncodeToString(tPriv)), Adresse: adresse}, SSH: signer,
-		Takt: 200 * time.Millisecond, Versuch: 1500 * time.Millisecond}
+		Takt: 200 * time.Millisecond, Versuch: 10 * time.Second}
 	defer p.Zugang.Privat.Vergessen()
 	s := Server{PublicKey: base64.StdEncoding.EncodeToString(sPub), Endpunkt: "127.0.0.1:" + port, BoxNetz: netip.MustParsePrefix("10.10.16.0/20")}
 	ziel := netip.MustParseAddrPort("10.10.16.5:2222")
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	an, err := p.Anmelden(ctx, s, ziel)
 	if err != nil {
@@ -102,6 +117,8 @@ func TestProbeImFensterUndDanach(t *testing.T) {
 	if err := dev.IpcSet("public_key=" + hex.EncodeToString(tPub) + "\nremove=true\n"); err != nil {
 		t.Fatal(err)
 	}
+	// Nach dem Ende wartet jeder Versuch auf die Zeitüberschreitung: hier kurz.
+	p.Versuch = 1500 * time.Millisecond
 	nach, err := p.NachEnde(ctx, s, ziel)
 	if err != nil || !strings.HasPrefix(nach, "Connection timed out") {
 		t.Fatalf("%q %v", nach, err)

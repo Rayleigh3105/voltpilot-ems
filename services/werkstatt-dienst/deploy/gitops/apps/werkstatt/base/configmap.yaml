@@ -35,4 +35,11 @@ data:
   # Probe über den Tunnel (V1): die Adresse des Techniker-Zugangs
   # „Werkstatt-Dienst“ im Techniker-Netz; leer = Probe von Hand im Portal.
   VP_WERKSTATT_TECHNIKER_ADRESSE: ""
+  # Gehäuse-Druckdatei je Box (P10): leer = kein Bau. Mit "kubernetes" startet
+  # der Dienst je Box einen Job mit dem Bau-Image, fest nach Digest (Lauf
+  # werkstatt-gehaeuse-bild.yaml schreibt ihn ins Protokoll; docs/runbook.md).
+  VP_GEHAEUSE_BAU: ""
+  VP_GEHAEUSE_IMAGE: ""
+  VP_GEHAEUSE_SPEICHER: "4Gi"
+  VP_GEHAEUSE_FRIST: "20m"
   VOLTPILOT_LOGGING_FORMAT: "json"

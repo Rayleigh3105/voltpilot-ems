@@ -1037,7 +1037,7 @@ echo "weg=$(ip -4 route show default | head -n1)"`)
 // Portal, bestätigt im Schritt probe.
 var Pruefungen = []string{"root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu", "lan_netz", "neustart"}
 
-func (l *Lauf) uebergabe(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg, error) {
+func (l *Lauf) uebergabe(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, error) {
 	b := protokoll.Beleg{}.
 		Mit("referenz", l.ref).
 		Mit("fassung", l.version).
@@ -1060,6 +1060,21 @@ func (l *Lauf) uebergabe(ctx context.Context, _ *lauf.Kontext) (protokoll.Beleg,
 			return b, fmt.Errorf("Abnahme im Portal: %w", err)
 		}
 		b = b.Mit("abnahme", an.ID+" (Freigabe "+an.FreigabeID+", Einlösung "+an.EinloesungID+")")
+	}
+	if l.k.Gehaeuse != nil {
+		// Schritt 19: die Druckdatei des Gehäuses. Der Lauf wartet nicht darauf;
+		// scheitert schon die Bestellung, bleibt die Abnahme gültig und das
+		// Gehäuse ein Auftrag von Hand (vp-werkstatt-dienst gehaeuse <referenz>).
+		kennung := ""
+		if k != nil && k.Lauf != nil {
+			kennung = k.Lauf.Kennung()
+		}
+		if a, err := l.k.Gehaeuse.Bestelle(l.ref, kennung, false); err != nil {
+			l.log.Warn("Gehäuse nicht bestellt", "referenz", l.ref, "fehler", err)
+			b = b.Mit("gehaeuse", "nicht bestellt: "+err.Error())
+		} else {
+			b = b.Mit("gehaeuse", "Druckdatei bestellt ("+string(a.Zustand)+"), Abruf in der Werkstatt-Anzeige")
+		}
 	}
 	return b.Mit("versand", "Nicht versenden: Stufe 1 (Entscheid 5c)"), nil
 }

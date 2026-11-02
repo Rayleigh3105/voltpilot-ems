@@ -150,8 +150,9 @@ Je Mango (die Werkstatt ist freigegeben, die Brücke bereit):
    Prüfung der Beleg) und das LAN-Netz (Vorgabe `10.213.0.1/24`) dort festhalten.
 6. Passwort in die Passwortablage: Beleg `passwort_age` des Schritts `passwort` (Protokoll unter
    http://localhost:8101/laeufe/<lauf>.json) in eine Datei, dann `age -d -i <dein Schlüssel> passwort.age`.
-7. Abziehen. Gehäuse drucken und einsetzen wie bisher (`bauen.sh --referenz <referenz>`); die Box bleibt „nicht
-   versenden“ bis Stufe 2 (Entscheid 5c).
+7. Abziehen. Gehäuse: Mit Gehäuse-Bau liegt die Druckdatei nach ein paar Minuten in der Anzeige
+   ([Gehäuse-Druckdatei](#gehäuse-druckdatei)), sonst wie bisher `bauen.sh --referenz <referenz>`. Drucken,
+   einsetzen; die Box bleibt „nicht versenden“ bis Stufe 2 (Entscheid 5c).
 
 Steckt eine Mango schon mit frischem OpenWrt am Kabel (192.168.1.1, root ohne Passwort), beginnt der Lauf dort.
 
@@ -219,6 +220,59 @@ kubectl -n werkstatt-prod delete configmap werkstatt-freigabe
 - Unbekannte Felder oder falsche Prüfsummen-Formen lehnt der Dienst ab („Freigabe nicht lesbar“ im Log und in der
   Anzeige); dann läuft keine Freigabe.
 
+## Gehäuse-Druckdatei
+
+Nach der Übergabe bestellt der Lauf die Druckdatei des Gehäuses (Schritt 19, P10): Unterteil mit Referenz und
+QR-Code, dazu der Deckel, gebaut und geprüft vom Gehäuse-Programm (`bauen.sh --referenz`). Ein Auftrag je Box,
+einer zur Zeit; der Lauf wartet nicht darauf, die nächste Mango darf schon stecken. Im Cluster startet der Dienst
+je Auftrag einen Job mit dem Bau-Image. Den Druck startest du (WI-11 A).
+
+**Einmal einrichten:**
+
+1. Lauf „Werkstatt-Gehäuse-Bild“ (`.forgejo/workflows/werkstatt-gehaeuse-bild.yaml`) von Hand starten. Er baut
+   das Bau-Image (Debian 13, Gehäuse-Programm, Bambu Studio, nur amd64), fährt einen Auftrag für die
+   Probe-Referenz wie der Job (`test/gehaeuse-bild-probe.sh`), schiebt es und nennt am Ende
+   `VP_GEHAEUSE_IMAGE=…/werkstatt-gehaeuse@sha256:…`.
+2. gitops ([Entwurf](../deploy/gitops/README.md)): `base/pvc-gehaeuse.yaml` und `base/rbac-gehaeuse.yaml`
+   übernehmen; im Deployment `automountServiceAccountToken: true` und das Volume `gehaeuse`; in der
+   NetworkPolicy den Weg zur Kubernetes-API (die Adressen aus `kubectl get endpoints kubernetes`, Port 6443) und
+   die Policy `werkstatt-gehaeuse` (Bau-Pods ohne Netz); in der ConfigMap `VP_GEHAEUSE_BAU: "kubernetes"` und
+   `VP_GEHAEUSE_IMAGE` mit dem Digest aus 1.
+3. Sync, dann prüfen:
+
+   ```sh
+   kubectl -n werkstatt-prod logs deploy/werkstatt-dienst | grep 'Gehäuse-Bau bereit'
+   kubectl -n werkstatt-prod auth can-i create jobs --as=system:serviceaccount:werkstatt-prod:werkstatt-dienst   # yes
+   kubectl -n werkstatt-prod auth can-i create pods --as=system:serviceaccount:werkstatt-prod:werkstatt-dienst   # no
+   ```
+
+4. Erster Auftrag mit der Probe-Referenz, zugleich der Probedruck PS-9:
+   `kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst gehaeuse edge-wrk7abg`.
+
+**Je Box:** In der Anzeige unter „Gehäuse“ geht der Auftrag auf `wartet`, `baut`, `fertig`. Dann
+`gehaeuse-<referenz>.3mf` herunterladen (Unterteil mit Kennung und Deckel auf einer Platte; nur das Unterteil:
+`unterteil-<referenz>.3mf`), in Bambu Studio öffnen und am P1S drucken: Filament 1 weiß, 2 schwarz, 3 hellblau
+([Druckanleitung](../../../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/drucken.md)). Mango einsetzen, den
+QR-Code mit dem Telefon lesen. Der Bericht `pruefung.md` liegt daneben. Eine gescheiterte Datei bietet die Anzeige
+nicht an, nur Bericht und `ausgabe.log`.
+
+Noch einmal bauen (Nachdruck, nach einem behobenen Fehler):
+`kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst gehaeuse <referenz> neu`; für eine
+Box ohne Lauf dasselbe ohne `neu`.
+
+| Grund in der Anzeige | Was | Tun |
+|---|---|---|
+| „Bau-Image: ErrImagePull …“ | Digest falsch oder Pull-Secret `forgejo-registry` fehlt | `VP_GEHAEUSE_IMAGE` und Pull-Secret prüfen, `… gehaeuse <referenz> neu` |
+| „HTTP 403, dem Dienstkonto fehlt das Recht …“ | Role oder RoleBinding `werkstatt-dienst-gehaeuse` fehlt | aus dem gitops-Entwurf übernehmen, Sync |
+| „Token des Dienstkontos …“, „Dienstkonto nicht eingehängt“ | `automountServiceAccountToken` steht auf `false` | im Deployment auf `true` |
+| „nicht in 20m fertig (zuletzt: Pod nicht eingeplant …)“ | Der Knoten der PVC ist nicht amd64 oder hat keinen Platz | local-path bindet die Ablage an den Knoten des Dienstes; Dienst auf einen amd64-Knoten |
+| „Job gescheitert (BackoffLimitExceeded)“ und Fehler aus dem Bericht | Eine Prüfung des Programms scheiterte (etwa Klarschrift zu breit bei fünf W) | `pruefung.md` und `ausgabe.log` lesen; eine solche Box braucht eine andere Lage ([Kennung](../../../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md)) |
+| `ausgabe.log` endet mitten im Bau | vermutlich zu wenig Speicher (OOMKilled) | `kubectl -n werkstatt-prod describe job <job>`; `VP_GEHAEUSE_SPEICHER` erhöhen |
+
+Ein Job räumt sich eine Stunde nach dem Ende selbst weg (`ttlSecondsAfterFinished`); bricht ein Auftrag ab oder
+endet der Dienst, löscht der Dienst den Job, damit nie zwei zugleich bauen. Nach dem Neustart kommt ein
+unterbrochener Auftrag wieder in die Schlange.
+
 ## Werkstatt ruht
 
 ```sh
@@ -267,3 +321,5 @@ Die Proben (`test/bruecke-probe.sh`) ersetzen keinen echten Pi und keine echte M
 | PS-2 | `sysupgrade -T` und `-n` mit dem 25.12.5-Abbild aus beiden GL-Linien, ohne `-F` | Schritte `openwrt` und `wiedererkennen` an je einer Mango mit 3.216 und 4.3.x |
 | PS-3 | Dauer je Schritt | Metrik `vp_werkstatt_schritt_letzte_dauer_seconds`, Beleg `dauer_bis_openwrt`, `dauer_bis_antwort`; Fristen in `mango.VorgabeZeiten` danach stellen |
 | PS-4 | Startlader-Hochladen | nur Rückfall (Handgriff M4); ein Hochladen durch den Dienst gibt es noch nicht |
+| PS-8 | Gehäuse-Bau im Cluster: Laufzeit und Speicher | Vorgemessen mit `test/gehaeuse-bild-probe.sh` (amd64 emuliert auf einem arm64-Mac, 02.11.2026): 60 s je Auftrag, höchstens 853 MiB, Bericht ohne Fehler. Im Cluster: erster Auftrag (oben, Schritt 4): Dauer in der Anzeige (bestellt bis Ende), Speicher mit `kubectl top pod -l app.kubernetes.io/name=werkstatt-gehaeuse`; `VP_GEHAEUSE_FRIST` und `VP_GEHAEUSE_SPEICHER` danach stellen |
+| PS-9 | Liest ein Telefon den gedruckten QR-Code? | Probedruck der Datei aus dem ersten Auftrag; [Kennung, Was nur ein Druck zeigt](../../../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md#was-nur-ein-druck-zeigt) |

@@ -5,6 +5,8 @@ resources:
   - serviceaccount.yaml
   - configmap.yaml
   - pvc.yaml
+  - pvc-gehaeuse.yaml
+  - rbac-gehaeuse.yaml
   - deployment.yaml
   - service.yaml
   - networkpolicy.yaml

@@ -6,6 +6,7 @@
 //	vp-werkstatt-dienst [dienst]   die Schleife mit Betriebs- und Werkstatt-Seite
 //	vp-werkstatt-dienst werkbank   Brücke einmal einrichten bzw. prüfen, Status als JSON
 //	vp-werkstatt-dienst eingabe tunnel_adresse <adresse>   Eingabe an den laufenden Lauf
+//	vp-werkstatt-dienst gehaeuse <referenz> [neu]   Druckdatei des Gehäuses bestellen
 //	vp-werkstatt-dienst pruefe-konfig
 //	vp-werkstatt-dienst fassung
 //
@@ -36,6 +37,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/durchreiche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/gehaeuse"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/konfig"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/logs"
@@ -68,6 +70,8 @@ func main() {
 		err = werkbankEinmal(log)
 	case "eingabe":
 		err = eingabe(os.Args[2:])
+	case "gehaeuse":
+		err = gehaeuseBestellen(os.Args[2:])
 	case "pruefe-konfig":
 		err = pruefeKonfig()
 	case "techniker-schluessel":
@@ -75,7 +79,7 @@ func main() {
 	case "fassung", "version", "--version":
 		fmt.Println(fassung)
 	default:
-		fmt.Fprintf(os.Stderr, "unbekannter Befehl %q (dienst, werkbank, eingabe, pruefe-konfig, techniker-schluessel, fassung)\n", befehl)
+		fmt.Fprintf(os.Stderr, "unbekannter Befehl %q (dienst, werkbank, eingabe, gehaeuse, pruefe-konfig, techniker-schluessel, fassung)\n", befehl)
 		os.Exit(2)
 	}
 	if err != nil {
@@ -105,6 +109,23 @@ func eingabe(args []string) error {
 	if len(args) != 2 {
 		return errors.New("Aufruf: vp-werkstatt-dienst eingabe <name> <wert>, etwa eingabe tunnel_adresse 10.10.16.5")
 	}
+	return steuern("eingabe", url.Values{"name": {args[0]}, "wert": {args[1]}})
+}
+
+// gehaeuseBestellen reiht die Druckdatei einer Box ein, etwa für einen
+// Nachdruck (neu) oder eine Box, deren Bestellung beim Lauf scheiterte.
+func gehaeuseBestellen(args []string) error {
+	if len(args) < 1 || len(args) > 2 || (len(args) == 2 && args[1] != "neu") {
+		return errors.New("Aufruf: vp-werkstatt-dienst gehaeuse <referenz> [neu]")
+	}
+	neu := "nein"
+	if len(args) == 2 {
+		neu = "ja"
+	}
+	return steuern("gehaeuse", url.Values{"referenz": {args[0]}, "neu": {neu}})
+}
+
+func steuern(pfad string, werte url.Values) error {
 	k, err := konfig.Lies(os.Getenv, false)
 	if err != nil && k.Steuerung == "" {
 		return err
@@ -113,7 +134,7 @@ func eingabe(args []string) error {
 		var d net.Dialer
 		return d.DialContext(ctx, "unix", k.Steuerung)
 	}}}
-	resp, err := cl.PostForm("http://steuerung/eingabe", url.Values{"name": {args[0]}, "wert": {args[1]}})
+	resp, err := cl.PostForm("http://steuerung/"+pfad, werte)
 	if err != nil {
 		return fmt.Errorf("Dienst nicht erreichbar (%s): %w", k.Steuerung, err)
 	}
@@ -137,6 +158,11 @@ func pruefeKonfig() error {
 		fmt.Printf("für Läufe an der Box fehlt: %v\n", err)
 	} else {
 		fmt.Printf("ok: Läufe an der Box (Bauart %s, Box-Netz %s, LAN %s über %s)\n", k.Bauart, k.BoxNetz, k.LanNetz, k.LanBruecke)
+	}
+	if k.Gehaeuse.Bau == "" {
+		fmt.Println("Gehäuse: kein Bau eingerichtet (VP_GEHAEUSE_BAU)")
+	} else {
+		fmt.Printf("ok: Gehäuse über %s, Ablage %s, Frist %s\n", k.Gehaeuse.Bau, k.Gehaeuse.Ablage, k.Gehaeuse.Frist)
 	}
 	if _, err := (freigabe.Datei{Pfad: k.FreigabeDatei}).Aktuell(); err != nil {
 		fmt.Printf("Freigabe: %v\n", err)
@@ -217,6 +243,10 @@ func dienstLaufen(log *slog.Logger) error {
 	if ptl != nil && k.TechnikerSSH != nil {
 		probe = wartung.Probe{Zugang: wartung.Zugang{Privat: k.TechnikerWG, Adresse: k.TechnikerAdresse}, SSH: k.TechnikerSSH}
 	}
+	gh, err := gehaeuseWerkstatt(k, log.With("logger", "gehaeuse"))
+	if err != nil {
+		return err
+	}
 	mk := &mango.Konfig{
 		Probe:      probe,
 		Portal:     ptl,
@@ -235,6 +265,9 @@ func dienstLaufen(log *slog.Logger) error {
 		Zeiten:     mango.VorgabeZeiten,
 		Log:        log.With("logger", "mango"),
 	}
+	if gh != nil {
+		mk.Gehaeuse = gh
+	}
 	d := dienst.Neu(&dienst.Dienst{
 		Log:       log.With("logger", "dienst"),
 		Werkbank:  wb,
@@ -252,14 +285,14 @@ func dienstLaufen(log *slog.Logger) error {
 	defer cancel()
 
 	betrieb := &http.Server{Addr: k.HTTP, Handler: anzeige.Betrieb(d, reg), ReadHeaderTimeout: 5 * time.Second}
-	werkstatt := &http.Server{Addr: k.Anzeige, Handler: anzeige.Werkstatt(d, ablage, log.With("logger", "anzeige")), ReadHeaderTimeout: 5 * time.Second}
+	werkstatt := &http.Server{Addr: k.Anzeige, Handler: anzeige.Werkstatt(d, ablage, gh, log.With("logger", "anzeige")), ReadHeaderTimeout: 5 * time.Second}
 	_ = os.Remove(k.Steuerung)
 	sl, err := net.Listen("unix", k.Steuerung)
 	if err != nil {
 		return fmt.Errorf("Steuerung %s: %w", k.Steuerung, err)
 	}
 	_ = os.Chmod(k.Steuerung, 0o600)
-	steuerung := &http.Server{Handler: anzeige.Steuerung(d), ReadHeaderTimeout: 5 * time.Second}
+	steuerung := &http.Server{Handler: anzeige.Steuerung(d, gh), ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = steuerung.Serve(sl) }()
 	defer steuerung.Close()
 
@@ -281,16 +314,53 @@ func dienstLaufen(log *slog.Logger) error {
 		d.Laufe(ctx)
 		close(schleife)
 	}()
+	bau := make(chan struct{})
+	go func() {
+		if gh != nil {
+			gh.Laufe(ctx)
+		}
+		close(bau)
+	}()
 	select {
 	case <-ctx.Done():
 	case err = <-fehler:
 		cancel()
 	}
 	<-schleife
+	<-bau
 	sctx, scancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer scancel()
 	_ = betrieb.Shutdown(sctx)
 	_ = werkstatt.Shutdown(sctx)
 	log.Info("Werkstatt-Dienst beendet")
 	return err
+}
+
+// gehaeuseWerkstatt richtet die Schlange der Druckdateien ein (P10); nil ohne
+// VP_GEHAEUSE_BAU.
+func gehaeuseWerkstatt(k konfig.Konfig, log *slog.Logger) (*gehaeuse.Werkstatt, error) {
+	g := k.Gehaeuse
+	var b gehaeuse.Bauer
+	switch g.Bau {
+	case "":
+		return nil, nil
+	case "befehl":
+		if _, err := os.Stat(filepath.Join(g.Programm, "bauen.sh")); err != nil {
+			return nil, fmt.Errorf("VP_GEHAEUSE_PROGRAMM: %w", err)
+		}
+		b = gehaeuse.Befehl{Programm: g.Programm}
+	case "kubernetes":
+		kb, err := gehaeuse.AusCluster(gehaeuse.Kube{Image: g.Image, PVC: g.PVC, Ablage: g.Ablage, PullSecret: g.PullSecret,
+			Speicher: g.Speicher, Frist: g.Frist, Log: log})
+		if err != nil {
+			return nil, fmt.Errorf("Gehäuse-Bau im Cluster: %w", err)
+		}
+		b = kb
+	}
+	w, err := gehaeuse.Neu(g.Ablage, b, g.Frist, log)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("Gehäuse-Bau bereit", "bau", g.Bau, "ablage", g.Ablage, "offen", w.Wartend())
+	return w, nil
 }

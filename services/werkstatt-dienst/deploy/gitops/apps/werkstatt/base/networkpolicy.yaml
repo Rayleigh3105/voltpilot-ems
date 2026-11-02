@@ -60,6 +60,14 @@ spec:
     #           kubernetes.io/metadata.name: voltpilot-prod
     #   ports:
     #     - {protocol: TCP, port: 8080}
+    # Kubernetes-API für die Gehäuse-Jobs (P10): k3s leitet die Dienstadresse
+    # auf die Server-Knoten, Port 6443 (Adressen wie im Cluster einsetzen).
+    - to:
+        - ipBlock: {cidr: 192.168.178.241/32}
+        - ipBlock: {cidr: 192.168.178.242/32}
+        - ipBlock: {cidr: 192.168.178.243/32}
+      ports:
+        - {protocol: TCP, port: 6443}
     # Der Wartungsserver (WireGuard, Probe über den Tunnel als Techniker-Zugang):
     # UDP 51820 nach draußen, nie ins eigene Netz.
     - to:
@@ -68,3 +76,17 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
       ports:
         - {protocol: UDP, port: 51820}
+---
+# Die Bau-Pods der Gehäuse-Druckdatei (P10) brauchen kein Netz: Programm,
+# Python-Umgebung und Bambu Studio liegen im Bau-Image, die Ausgabe geht auf
+# die PVC. Nichts herein, nichts hinaus.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: werkstatt-gehaeuse
+  namespace: werkstatt-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: werkstatt-gehaeuse
+  policyTypes: ["Ingress", "Egress"]

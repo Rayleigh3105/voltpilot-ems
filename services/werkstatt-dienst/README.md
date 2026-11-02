@@ -22,11 +22,13 @@ Abnahme machst du in V1a wie bisher im Portal, dann mit den Belegen dieses Diens
 | Box-Verbindung | SSH als root durch die Brücke; nach OpenWrt gilt für den ganzen Lauf genau ein Host-Schlüssel. | `internal/box` |
 | Durchreiche | Die Skripte des Release-Stands (`install.sh`, `service-tunnel.sh`) rufen `ssh <ziel> <befehl>` auf; ein `ssh`-Verweis auf dieses Programm reicht jeden Aufruf über eine Unix-Socket an die Verbindung des Laufs. | `internal/durchreiche` |
 | Fassungen | OpenWrt-Abbild, Programm und Skriptstand der Freigabe, geprüft nach sha256, im Zwischenspeicher nach Prüfsumme. | `internal/fassungen` |
+| Gehäuse | Nach der Übergabe die Druckdatei des Gehäuses mit Referenz und QR-Code (Schritt 19, P10): ein Auftrag je Box, einer zur Zeit, im Cluster als Job mit dem [Bau-Image](gehaeuse/Dockerfile) (Debian 13, Gehäuse-Programm, Bambu Studio, nur amd64). Fertig nur mit dem Prüfbericht ohne Fehler; die Dateien liegen in der Ablage, Abruf in der Werkstatt-Anzeige, drucken tust du (WI-11 A). | `internal/gehaeuse`, [Runbook](docs/runbook.md#gehäuse-druckdatei) |
 
 Stand der Pakete aus dem Konzept (Abschnitt 8): P1 Grundgerüst, P2 Werkbank-Brücke, P11 Betrieb, P3
 (Werksfirmware → OpenWrt), P5 (Box einrichten) und P4 (Edge-Light-Fassung je Release) sind gebaut: Der Lauf
 [`edge-light-release.yaml`](../../.forgejo/workflows/edge-light-release.yaml) baut zu einem Tag `edge-light-JJJJ.MM.N`
-die Anhänge unten ([Runbook](docs/runbook.md#fassungen-der-freigabe)). Damit ist V1a vollständig.
+die Anhänge unten ([Runbook](docs/runbook.md#fassungen-der-freigabe)). Damit ist V1a vollständig. Aus V1 dazu: Freigabe und Abnahme über
+die Portal-API, Einmal-Code (D2), Probe über den Tunnel und die Gehäuse-Druckdatei (P10).
 
 ## Ein Lauf an der Mango
 
@@ -51,7 +53,7 @@ eine Freigabe, beginnt ihr Lauf von selbst. Jeder Schritt endet mit einem Beleg;
 | `neustart` | Neustart-Probe unter der neuen Adresse | derselbe Host-Schlüssel, dieselbe Referenz, Startdienste, ein dauerhafter Schlüssel, frischer Handshake |
 | `probe` | mit Techniker-Zugang: der Dienst meldet sich durch den Tunnel an (WireGuard im Prozess), liest den Host-Schlüssel, schließt das Probe-Fenster, der neue Versuch endet mit „Connection timed out“; sonst **wartet auf dich**: Probe im Fenster im Portal (Werkstatt-Regel 4–6), dann `eingabe probe erledigt` | Host-Schlüssel durch den Tunnel und im LAN, Box-Log zu Anmeldung und Ende, der abgewiesene Versuch (bzw. deine Bestätigung) |
 | `internet_weg` | Werkstatt-Internet wieder aus der Netz-Einstellung | kein Gateway, kein DNS über die Brücke |
-| `uebergabe` | Belege für die Abnahme, je Prüfung der Werkstatt-Regel; mit API schließt der Dienst vorher das Probe-Fenster der Einlösung und schreibt die Abnahme selbst (`quelle: dienst`, Passwort nur verschlüsselt) | Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, die acht Prüfungen, mit API die Kennung der Abnahme |
+| `uebergabe` | Belege für die Abnahme, je Prüfung der Werkstatt-Regel; mit API schließt der Dienst vorher das Probe-Fenster der Einlösung und schreibt die Abnahme selbst (`quelle: dienst`, Passwort nur verschlüsselt); mit Gehäuse-Bau bestellt er danach die Druckdatei, ohne auf sie zu warten | Host-Schlüssel, Fassung, Tunnel-Adresse, LAN-Netz, die acht Prüfungen, mit API die Kennung der Abnahme, die Bestellung des Gehäuses |
 
 Bei dir bleiben in V1a: die Tunnel-Adresse aus dem Portal eintragen, die Probe im Fenster der Fernwartung (der
 Lauf wartet darauf, bevor er den Weg über die Brücke entfernt: ohne ihn steht der Tunnel in der Werkstatt nicht
@@ -112,11 +114,18 @@ Aus der Umgebung (ConfigMap `werkstatt-dienst-konfig`), Schlüssel aus Dateien (
 | `VP_WERKSTATT_HTTP` | `:8100` | Betriebsseite |
 | `VP_WERKSTATT_ANZEIGE` | `127.0.0.1:8101` | Werkstatt-Anzeige, nur eine Loopback-Adresse |
 | `VP_WERKSTATT_TAKT` | `10s` | Takt der Schleife (2 s bis 5 min) |
+| `VP_GEHAEUSE_BAU` | leer | Gehäuse-Druckdatei je Box: `kubernetes` (Job mit dem Bau-Image), `befehl` (Gehäuse-Programm auf diesem Rechner) oder leer (kein Bau, wie bisher `bauen.sh --referenz` von Hand) |
+| `VP_GEHAEUSE_IMAGE` | – (Pflicht mit `kubernetes`) | Bau-Image fest nach Digest (`…/werkstatt-gehaeuse@sha256:…`, Lauf `werkstatt-gehaeuse-bild.yaml`) |
+| `VP_GEHAEUSE_ABLAGE` | `/var/lib/vp-werkstatt-gehaeuse` | Ablage der Aufträge und Dateien; im Cluster die PVC `werkstatt-gehaeuse` |
+| `VP_GEHAEUSE_PVC`, `VP_GEHAEUSE_PULL_SECRET` | `werkstatt-gehaeuse`, `forgejo-registry` | PVC der Ablage und Pull-Secret für den Job |
+| `VP_GEHAEUSE_SPEICHER` | `4Gi` | Grenze des Arbeitsspeichers je Job (PS-8) |
+| `VP_GEHAEUSE_FRIST` | `20m` | je Auftrag (1 min bis 2 h); danach wird der Job gelöscht und der Auftrag scheitert |
+| `VP_GEHAEUSE_PROGRAMM` | – (Pflicht mit `befehl`) | Ordner des Gehäuse-Programms mit `bauen.sh` (eingerichtet mit `./einrichten.sh --bambu`) |
 | `VOLTPILOT_LOGGING_FORMAT` | `text` | `json`: eine JSON-Zeile je Ereignis |
 
 Befehle: `vp-werkstatt-dienst dienst` (Vorgabe), `werkbank` (Brücke einmal einrichten bzw. prüfen, Status als
-JSON), `eingabe <name> <wert>` (an den laufenden Lauf, etwa `eingabe tunnel_adresse 10.10.16.5`), `pruefe-konfig`,
-`fassung`.
+JSON), `eingabe <name> <wert>` (an den laufenden Lauf, etwa `eingabe tunnel_adresse 10.10.16.5`), `gehaeuse
+<referenz> [neu]` (Druckdatei bestellen; `neu` baut eine fertige noch einmal), `pruefe-konfig`, `fassung`.
 
 ## Betriebsvertrag
 
@@ -150,6 +159,7 @@ go vet ./... && go test -race ./...     # Go 1.24; ohne Docker, ohne Netz
 test/bruecke-probe.sh                   # Brücke im Container: einrichten.sh, nftables, OpenSSH, echtes Programm
 test/dienst-container-probe.sh          # Dienst-Bild unter PodSecurity restricted
 test/box-probe.sh                       # ganzer Lauf ab frischem OpenWrt: echtes OpenWrt, Brücke, Wartungsserver, Skripte
+test/gehaeuse-bild-probe.sh             # Bau-Image (amd64): ein Auftrag wie der Job, Druckdateien, Bericht ohne Fehler
 ```
 
 Die Go-Tests sprechen nur mit Attrappen im Prozess (`internal/attrappe`: SSH-Server, die sich wie die Brücke und

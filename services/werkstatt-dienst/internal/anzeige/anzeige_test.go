@@ -68,7 +68,7 @@ func TestWerkstattNurLokal(t *testing.T) {
 	d, ablage, _ := aufbau(t)
 	_ = ablage.Schreibe(protokoll.Eintrag{Lauf: "2026-11-02-090000-ab12", Art: protokoll.LaufBegonnen, Angaben: map[string]string{"freigabe": "f"}})
 	_ = ablage.Schreibe(protokoll.Eintrag{Lauf: "2026-11-02-090000-ab12", Art: protokoll.LaufBeendet, Zustand: "angehalten", Schritt: "openwrt", Grund: "<script>x</script>"})
-	h := anzeige.Werkstatt(d, ablage, logs.Neu(io.Discard, "text", nil))
+	h := anzeige.Werkstatt(d, ablage, nil, logs.Neu(io.Discard, "text", nil))
 	if c, _, _ := hole(t, h, "boese.example:8101", "/"); c != 403 {
 		t.Fatalf("fremder Host: %d", c)
 	}
@@ -92,7 +92,7 @@ func TestWerkstattNurLokal(t *testing.T) {
 
 func TestSteuerungOhneLauf(t *testing.T) {
 	d, _, _ := aufbau(t)
-	h := anzeige.Steuerung(d)
+	h := anzeige.Steuerung(d, nil)
 	r := httptest.NewRequest("POST", "/eingabe", strings.NewReader("name=tunnel_adresse&wert=10.10.16.5"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()

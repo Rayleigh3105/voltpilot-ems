@@ -1,0 +1,16 @@
+# Ablage der Gehäuse-Druckdateien (P10): je Box ein Ordner mit Auftrag,
+# Druckdateien und Prüfbericht. Der Werkstatt-Dienst hängt sie ganz ein, ein
+# Bau-Job nur den Unterordner seines Auftrags. local-path bindet sie mit dem
+# ersten Pod an seinen Knoten; die Jobs laufen deshalb auf demselben Knoten
+# wie der Dienst (der Knoten muss amd64 sein, Bambu Studio gibt es nur dafür).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: werkstatt-gehaeuse
+  namespace: werkstatt-prod
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi

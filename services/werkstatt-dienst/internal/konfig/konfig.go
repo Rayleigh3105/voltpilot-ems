@@ -78,6 +78,65 @@ type Konfig struct {
 	TechnikerSSH     ssh.Signer
 
 	Werkbank werkbank.Konfig
+
+	// Die Druckdatei des Gehäuses je Box (P10); Bau leer heißt: aus.
+	Gehaeuse Gehaeuse
+}
+
+// Gehaeuse sagt, wie der Dienst die Druckdatei des Gehäuses baut.
+type Gehaeuse struct {
+	Bau        string        // "kubernetes" (Job mit dem Bau-Image), "befehl" (Programm auf diesem Rechner) oder leer
+	Ablage     string        // Ablage der Aufträge und Dateien (im Cluster die PVC werkstatt-gehaeuse)
+	Image      string        // Bau-Image nach Digest
+	PVC        string        // Name der PVC der Ablage
+	PullSecret string        // Pull-Secret der Registry
+	Speicher   string        // Grenze des Arbeitsspeichers je Job
+	Frist      time.Duration // je Auftrag
+	Programm   string        // Ordner des Gehäuse-Programms (befehl)
+}
+
+var (
+	imageNachDigest = regexp.MustCompile(`^[a-z0-9][a-z0-9./_:-]*@sha256:[0-9a-f]{64}$`)
+	k8sName         = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	k8sSpeicher     = regexp.MustCompile(`^[1-9][0-9]{0,4}(Mi|Gi)$`)
+)
+
+func (k *Konfig) gehaeuse(env Umgebung, add func(error)) {
+	g := Gehaeuse{
+		Bau:        strings.TrimSpace(env("VP_GEHAEUSE_BAU")),
+		Ablage:     wert(env, "VP_GEHAEUSE_ABLAGE", "/var/lib/vp-werkstatt-gehaeuse"),
+		Image:      strings.TrimSpace(env("VP_GEHAEUSE_IMAGE")),
+		PVC:        wert(env, "VP_GEHAEUSE_PVC", "werkstatt-gehaeuse"),
+		PullSecret: wert(env, "VP_GEHAEUSE_PULL_SECRET", "forgejo-registry"),
+		Speicher:   wert(env, "VP_GEHAEUSE_SPEICHER", "4Gi"),
+		Programm:   strings.TrimSpace(env("VP_GEHAEUSE_PROGRAMM")),
+	}
+	var err error
+	g.Frist, err = dauer(env, "VP_GEHAEUSE_FRIST", "20m", time.Minute, 2*time.Hour)
+	add(err)
+	switch g.Bau {
+	case "":
+	case "kubernetes":
+		if !imageNachDigest.MatchString(g.Image) {
+			add(fmt.Errorf("VP_GEHAEUSE_IMAGE %q: das Bau-Image fest nach Digest (…/werkstatt-gehaeuse@sha256:<64 Zeichen>)", g.Image))
+		}
+		if !k8sName.MatchString(g.PVC) || (g.PullSecret != "" && !k8sName.MatchString(g.PullSecret)) {
+			add(fmt.Errorf("VP_GEHAEUSE_PVC %q / VP_GEHAEUSE_PULL_SECRET %q: Namen wie in Kubernetes", g.PVC, g.PullSecret))
+		}
+		if !k8sSpeicher.MatchString(g.Speicher) {
+			add(fmt.Errorf("VP_GEHAEUSE_SPEICHER %q: etwa 4Gi oder 3072Mi", g.Speicher))
+		}
+	case "befehl":
+		if g.Programm == "" {
+			add(errors.New("VP_GEHAEUSE_PROGRAMM fehlt (Ordner des Gehäuse-Programms mit bauen.sh)"))
+		}
+	default:
+		add(fmt.Errorf("VP_GEHAEUSE_BAU %q: kubernetes, befehl oder leer (kein Bau)", g.Bau))
+	}
+	if !filepath.IsAbs(g.Ablage) {
+		add(fmt.Errorf("VP_GEHAEUSE_ABLAGE %q: ein absoluter Pfad", g.Ablage))
+	}
+	k.Gehaeuse = g
 }
 
 // Netze des Wartungsservers (wie VP_TUNNEL_TECHNIKER_NETZ im Tunnel-Dienst).
@@ -181,6 +240,8 @@ func Lies(env Umgebung, mitSchluesseln bool) (Konfig, error) {
 	if strings.ContainsAny(k.WartungEndpunkt, " '\"$`;") {
 		add(fmt.Errorf("VP_WARTUNG_ENDPUNKT: nur ein Name oder eine Adresse"))
 	}
+
+	k.gehaeuse(env, add)
 
 	w := werkbank.Konfig{
 		Adresse:            env("VP_WERKBANK_ADRESSE"),
