@@ -18,7 +18,7 @@ import {
   gsWallboxZeile,
 } from '../test/geraetesucheFixtures';
 import { hashForRoute, pageRoute } from '../nav';
-import { GeraetesucheDialog } from './GeraetesucheDialog';
+import { GeraetesucheDialog, modellVorbelegung } from './GeraetesucheDialog';
 
 const JETZT = Date.now();
 const F = geraetesucheFaelle(JETZT);
@@ -204,6 +204,44 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
     }));
     fireEvent.click(screen.getByRole('button', { name: 'Zurück zur Liste' }));
     expect(await screen.findByRole('heading', { name: '2 Geräte gefunden' })).toBeInTheDocument();
+  });
+
+  it('Deye: Modellwahl als ein senkrechter Fluss - Fund, Frage, Liste - mit Name und Leistung je Zeile', async () => {
+    starten(F.fertig);
+    rendere();
+    fireEvent.click(await screen.findByRole('button', { name: 'Deye Hybrid-Wechselrichter übernehmen' }));
+    const wahl = await screen.findByTestId('gs-modell');
+    // Regressionsschutz: kein Zweispalten-Layout mehr - die Reihenfolge ist Fund, Frage, Liste.
+    const kinder = [...wahl.children].map((el) => el.tagName.toLowerCase() + (el.className ? `.${el.className.split(' ')[0]}` : ''));
+    expect(kinder).toEqual(['div.vp-gs-aus', 'header.vp-gs-kopf', 'ul.vp-gs-liste']);
+    expect(wahl.className).toContain('vp-gs-wahlseite');
+    expect(within(wahl.querySelector('.vp-gs-aus') as HTMLElement).getByText('Woran erkannt?')).toBeInTheDocument();
+    const zeilen = within(wahl).getAllByRole('button');
+    expect(zeilen).toHaveLength(8);
+    const erste = zeilen[0];
+    expect(erste.querySelector('.vp-gs-modell-name')?.textContent).toBe('SUN-25K-SG02HP3-EU-AM3');
+    expect(erste.querySelector('.vp-gs-modell-kw')?.textContent).toBe('25 kW');
+    expect(zeilen[1].querySelector('.vp-gs-modell-kw')?.textContent).toBe('29,9 kW');
+  });
+
+  it('Deye: aus der Modellwahl gewählt - der Wirt weiß es (für „Modell ändern")', async () => {
+    starten(F.fertig);
+    const { props } = rendere();
+    fireEvent.click(await screen.findByRole('button', { name: 'Deye Hybrid-Wechselrichter übernehmen' }));
+    fireEvent.click(await screen.findByRole('button', { name: /SUN-35K-SG01HP3-EU/ }));
+    expect(props.onUebernehmen).toHaveBeenCalledWith(expect.objectContaining({ ausModellwahl: true }));
+  });
+
+  it('Deye: nach „Modell ändern" bleiben die getippten Verbindungswerte, auch beim anderen Modell', async () => {
+    starten(F.fertig);
+    const { props } = rendere({
+      behalten: { schluessel: 'solarman:3115580613', verbindung: { ip: '192.168.178.99', port: 502, gibtEsNicht: 'x' } },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Deye Hybrid-Wechselrichter übernehmen' }));
+    fireEvent.click(await screen.findByRole('button', { name: /SUN-35K-SG01HP3-EU/ }));
+    const u = props.onUebernehmen.mock.calls[0][0];
+    expect(u.verbindung).toMatchObject({ ip: '192.168.178.99', port: 502, serial: '3115580613' });
+    expect(u.verbindung).not.toHaveProperty('gibtEsNicht');
   });
 
   it('Shelly: je Ausgang eine Komponente; ein übernommener Ausgang steht als übernommen', async () => {
@@ -413,5 +451,26 @@ describe('GeraetesucheDialog · Verlauf (m10)', () => {
     expect(start).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Geräte suchen' }));
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('modellVorbelegung', () => {
+  const fund = gsDeye;
+  const t = GS_DEYE_HV[3];
+
+  it('ohne Behaltenes: was der Fund hergibt', () => {
+    expect(modellVorbelegung(fund, t, null)).toEqual(modellVorbelegung(fund, t, undefined));
+    expect(modellVorbelegung(fund, t, null).serial).toBe('3115580613');
+  });
+
+  it('Behaltenes eines anderen Funds gilt nicht', () => {
+    const v = modellVorbelegung(fund, t, { schluessel: 'ein-anderer', verbindung: { ip: '10.0.0.1' } });
+    expect(v.ip).toBe('192.168.178.34');
+  });
+
+  it('leere Werte überschreiben die Vorbelegung nicht', () => {
+    const v = modellVorbelegung(fund, t, { schluessel: fund.schluessel, verbindung: { ip: '', port: null } });
+    expect(v.ip).toBe('192.168.178.34');
+    expect(v.port).toBe(8899);
   });
 });

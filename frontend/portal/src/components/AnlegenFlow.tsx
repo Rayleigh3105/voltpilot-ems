@@ -111,6 +111,11 @@ const UDB_TYP = 'user-defined-battery';
  * Diese Datei RENDERT nur; jede Regel kommt aus den reinen `anlegenFlow.ts`,
  * `komponentenAssistent.ts` und `testHebel.ts`.
  */
+/** Was der Fluss beim Zurückgehen hergibt: die Verbindungswerte, die je Datenlogger gelten und nicht je Modell. */
+export interface AnlegenStand {
+  verbindung: Record<string, unknown>;
+}
+
 export function AnlegenFlow({
   siteId,
   box,
@@ -126,6 +131,7 @@ export function AnlegenFlow({
   startVerbindung = null,
   onZurueck = null,
   zurueckLabel,
+  modellAendern = false,
   startHerkunft = null,
   startFund = null,
   onFertig,
@@ -176,8 +182,13 @@ export function AnlegenFlow({
    * freie Geräte-ID je Feld der Vorlage vorbelegt — der Kunde ändert sie, der Verbindungstest prüft sie wie immer.
    */
   startVerbindung?: Readonly<Record<string, unknown>> | null;
-  /** Zurück in den Katalog (Pfeil im Kopf, Hebel „Anderes Modell"). */
-  onZurueck?: (() => void) | null;
+  /**
+   * Zurück in den Katalog (Pfeil im Kopf, Hebel „Anderes Modell"). Die Verbindungswerte reisen mit: wer zur Modellwahl
+   * der Gerätesuche zurückgeht, behält IP, Seriennummer und was er sonst am Datenlogger getippt hat.
+   */
+  onZurueck?: ((stand?: AnlegenStand) => void) | null;
+  /** Aus der Modellwahl der Gerätesuche geöffnet: der Kopf nennt das Modell und bietet „Modell ändern" an. */
+  modellAendern?: boolean;
   /** Wohin der Pfeil zurückführt, wenn nicht in den Katalog (Gerätesuche: „Zurück zur Gerätesuche"). */
   zurueckLabel?: string;
   /**
@@ -518,7 +529,7 @@ export function AnlegenFlow({
         return;
       }
       // Zurück in den Katalog: dort steht die Modellwahl.
-      onZurueck?.();
+      onZurueck?.({ verbindung });
       return;
     }
     if (!h.feld) return;
@@ -1113,10 +1124,11 @@ export function AnlegenFlow({
       <EinrichtenSeite
         titel="Gerät einrichten"
         onClose={onClose}
-        onZurueck={onZurueck}
+        onZurueck={onZurueck ? () => onZurueck({ verbindung }) : null}
         zurueckLabel={zurueckLabel}
         kopf={
           <EinrichtenKopf
+            aendern={modellAendern && onZurueck ? { label: 'Modell ändern', onClick: () => onZurueck({ verbindung }) } : undefined}
             titel={modellTitel(template)}
             unterzeile={einrichtenUnterzeile(template)}
             kategorie={symbol.kategorie}

@@ -152,7 +152,7 @@ export function GemeinsameSteuerungKarte({
       {l === 'nicht_eingerichtet' ? (
         <p className="vp-gs-text">{flaechenSatz('nicht_eingerichtet', { boxen: String(siteDevices.length) })}</p>
       ) : (
-        <p className="vp-gs-zeile" data-testid="gs-zustand" role="status">{daten.zeile}</p>
+        <p className="vp-gsk-zeile" data-testid="gs-zustand" role="status">{daten.zeile}</p>
       )}
 
       {zeilen.length > 0 && (
@@ -199,8 +199,8 @@ export function GemeinsameSteuerungKarte({
           </Recht>
         )}
       </div>
-      {l === 'aktiv' && <p className="vp-gs-hinweis" data-testid="gs-erst-anhalten">{FLAECHE.erst_anhalten}</p>}
-      {beiBetreiber && <p className="vp-gs-hinweis" role="note" data-testid="gs-betreiber">{FLAECHE.vom_betreiber_angehalten}</p>}
+      {l === 'aktiv' && <p className="vp-gsk-hinweis" data-testid="gs-erst-anhalten">{FLAECHE.erst_anhalten}</p>}
+      {beiBetreiber && <p className="vp-gsk-hinweis" role="note" data-testid="gs-betreiber">{FLAECHE.vom_betreiber_angehalten}</p>}
 
       <ConfirmDialog
         open={anhalten}

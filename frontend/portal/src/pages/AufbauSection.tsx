@@ -96,10 +96,11 @@ import {
 } from '../components/TechnischeKarten';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { AnlegenFlow } from '../components/AnlegenFlow';
-import { GeraetesucheDialog, type GeraetesucheUebernahme } from '../components/GeraetesucheDialog';
+import { GeraetesucheDialog, type GeraetesucheBehalten, type GeraetesucheUebernahme } from '../components/GeraetesucheDialog';
 import { HeizstabAnlegen } from '../components/HeizstabAnlegen';
 import { geraetesucheBezug } from '../geraetesucheHerkunft';
 import type { GeraetesucheFund } from '../geraetesuche';
+import { vorbelegung } from '../geraetesucheAnsicht';
 import { felder } from '../komponentenAssistent';
 import { AddDeviceDrawer, DeviceDetailDrawer } from '../components/DeviceDrawers';
 import { AnlageAnlegenDrawerLazy } from '../components/AnlageAnlegenDrawerLazy';
@@ -575,7 +576,8 @@ export function AufbauSection({
   // Woher die Vorbelegung des Anlege-Flusses stammt: „Aus der Gerätesuche: IP-Adresse, Port, …“.
   const sucheHerkunft = sucheFund?.art === 'vorlage'
     ? `Aus der Gerätesuche: ${felder(sucheFund.u.template)
-      .filter((x) => sucheFund.u.verbindung[x.key] !== undefined && x.key !== 'channel')
+      // Nur was die Suche selbst hergibt: vor dem Modellwechsel Getipptes steht nicht als „aus der Gerätesuche“ da.
+      .filter((x) => vorbelegung(sucheFund.u.fund, sucheFund.u.template)[x.key] !== undefined && x.key !== 'channel')
       .map((x) => x.label)
       .join(', ')}${sucheFund.u.kanal !== null ? ` · Ausgang ${sucheFund.u.kanal + 1}` : ''}.`
     : null;
@@ -611,6 +613,9 @@ export function AufbauSection({
         () => setErfolg(`${satz} ${gatewayAnhaengenSatz(q.kennzeichen, false)}`),
       );
   };
+
+  // Was jemand im Einrichten-Schritt getippt hat, bevor er zur Modellwahl zurückging: gilt für diesen Fund.
+  const [sucheBehalten, setSucheBehalten] = useState<GeraetesucheBehalten | null>(null);
 
   const schliesseAnlegen = () => {
     setAddOpen(false);
@@ -1014,7 +1019,11 @@ export function AufbauSection({
           start={suche.start}
           uebernommen={uebernommen}
           zuletzt={sucheZuletzt}
-          onClose={() => setSuche(null)}
+          behalten={sucheBehalten}
+          onClose={() => {
+            setSuche(null);
+            setSucheBehalten(null);
+          }}
           onUebernehmen={(u) => (u.alleAusgaenge
             ? setHeizstabAus({ u, boxId: suche.box.id })
             : ausSucheAnlegen({ art: 'vorlage', u }))}
@@ -1073,9 +1082,20 @@ export function AufbauSection({
                 ? geraetesucheBezug(sucheFund.suchId, sucheFund.fund.schluessel)
                 : null
           }
-          zurueckLabel={sucheFund ? 'Zurück zur Gerätesuche' : undefined}
-          onZurueck={() => {
+          zurueckLabel={
+            sucheFund?.art === 'vorlage' && sucheFund.u.ausModellwahl
+              ? 'Zurück zur Modellwahl'
+              : sucheFund
+                ? 'Zurück zur Gerätesuche'
+                : undefined
+          }
+          modellAendern={sucheFund?.art === 'vorlage' && sucheFund.u.ausModellwahl === true}
+          onZurueck={(stand) => {
             const ausSuche = sucheFund !== null;
+            // Zurück zur Modellwahl: die Verbindungswerte gelten je Datenlogger und reisen zum nächsten Modell mit.
+            if (sucheFund?.art === 'vorlage' && sucheFund.u.ausModellwahl && stand) {
+              setSucheBehalten({ schluessel: sucheFund.u.fund.schluessel, verbindung: stand.verbindung });
+            }
             schliesseAnlegen();
             // Aus der Suche zurück in die Suche (Modellwahl bzw. Liste), sonst in den Katalog.
             if (!ausSuche) setKatalogOffen(true);
@@ -1088,6 +1108,7 @@ export function AufbauSection({
               const schluessel = sucheFund.art === 'vorlage' ? sucheFund.u.schluessel : sucheFund.fund.schluessel;
               setUebernommen((m) => new Map(m).set(schluessel, info.titel));
               setSucheZuletzt((z) => ({ titel: info.titel, n: (z?.n ?? 0) + 1 }));
+              setSucheBehalten(null);
               return;
             }
             if (addWeg && info.id) anGatewayHaengen(addWeg, info.id, satz);

@@ -48,7 +48,7 @@ import {
 } from '../geraetesucheAnsicht';
 import { geraetesucheBezug } from '../geraetesucheHerkunft';
 import { UEMS_GERAETE_SUCHEN } from '../glossar';
-import { testErgebnis, type ComponentTemplate } from '../komponentenAssistent';
+import { felder, testErgebnis, type ComponentTemplate } from '../komponentenAssistent';
 import { hashForRoute, pageRoute } from '../nav';
 import { useRollen } from '../rollen';
 import { useIsPhone } from '../useIsPhone';
@@ -98,6 +98,32 @@ export interface GeraetesucheUebernahme {
    * „übernommen", Herkunft „aus der Gerätesuche vom …"). null = keine Suche zur Hand: dann ohne Bezug.
    */
   suchId: string | null;
+  /** Aus der Modellwahl gewählt: der Einrichten-Schritt bietet dann den Weg zurück zur Modellwahl an. */
+  ausModellwahl?: boolean;
+}
+
+/** Was der Einrichten-Schritt beim Zurückgehen mitgab: Verbindungswerte dieses Funds, die beim Modellwechsel bleiben. */
+export interface GeraetesucheBehalten {
+  schluessel: string;
+  verbindung: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Die Vorbelegung für ein Modell: was der Fund hergibt, darüber die Werte, die jemand vorher am Datenlogger getippt
+ * hat - aber nur Felder, die die neue Vorlage auch kennt (Verbindungsdaten gelten je Logger, nicht je Modell).
+ */
+export function modellVorbelegung(
+  fund: GeraetesucheFund,
+  t: ComponentTemplate,
+  behalten: GeraetesucheBehalten | null | undefined,
+): Record<string, unknown> {
+  const basis = vorbelegung(fund, t);
+  if (!behalten || behalten.schluessel !== fund.schluessel) return basis;
+  const kennt = new Set(felder(t).map((f) => f.key));
+  const getippt = Object.entries(behalten.verbindung).filter(
+    ([k, v]) => kennt.has(k) && v !== undefined && v !== null && v !== '',
+  );
+  return { ...basis, ...Object.fromEntries(getippt) };
 }
 
 type Ansicht =
@@ -120,6 +146,7 @@ export function GeraetesucheDialog({
   start = 'suche',
   uebernommen,
   zuletzt = null,
+  behalten = null,
   onClose,
   onUebernehmen,
   onSelbst,
@@ -146,6 +173,8 @@ export function GeraetesucheDialog({
   uebernommen: ReadonlyMap<string, string>;
   /** Die zuletzt übernommene Komponente („„Wechselrichter" ist angelegt."); `n` zählt jede neue. */
   zuletzt?: { titel: string; n: number } | null;
+  /** Verbindungswerte aus dem Einrichten-Schritt, wenn jemand dort zur Modellwahl zurückgegangen ist. */
+  behalten?: GeraetesucheBehalten | null;
   onClose: () => void;
   onUebernehmen: (u: GeraetesucheUebernahme) => void;
   /** „Selbst beschreiben": ein Modbus-Gerät ohne Kennung mit vorbelegter Adresse; `suchId` wie beim Übernehmen. */
@@ -414,7 +443,16 @@ export function GeraetesucheDialog({
         titelRef={titelRef}
         fund={ansicht.fund}
         templates={ansicht.templates}
-        onWahl={(t) => uebernimm({ fund: ansicht.fund, template: t, verbindung: vorbelegung(ansicht.fund, t), kanal: null, schluessel: ansicht.fund.schluessel })}
+        onWahl={(t) =>
+          uebernimm({
+            fund: ansicht.fund,
+            template: t,
+            verbindung: modellVorbelegung(ansicht.fund, t, behalten),
+            kanal: null,
+            schluessel: ansicht.fund.schluessel,
+            ausModellwahl: true,
+          })
+        }
       />
     );
   } else if (ansicht.art === 'ausgang') {
@@ -1123,7 +1161,7 @@ function ModellWahl({
 }) {
   const aus = ausDerSuche(fund);
   return (
-    <div className="vp-gs-wahl" data-testid="gs-modell">
+    <div className="vp-gs-wahlseite" data-testid="gs-modell">
       <AusDerSuche titel={aus.titel} zeile={aus.zeile} fund={fund} />
       <header className="vp-gs-kopf">
         <h3 ref={titelRef} tabIndex={-1}>Welches Modell steht auf dem Typenschild?</h3>
@@ -1132,11 +1170,9 @@ function ModellWahl({
       <ul className="vp-gs-liste">
         {templates.map((t) => (
           <li key={t.templateRef}>
-            <button type="button" className="vp-gs-wahl-zeile" onClick={() => onWahl(t)}>
-              <span className="vp-gs-text">
-                <b>{t.modelLabel}</b>
-                <small>{t.ratedKw != null ? `${String(t.ratedKw).replace('.', ',')} kW` : t.familyLabel ?? ''}</small>
-              </span>
+            <button type="button" className="vp-gs-wahl-zeile vp-gs-modell-zeile" onClick={() => onWahl(t)}>
+              <b className="vp-gs-modell-name">{t.modelLabel}</b>
+              <small className="vp-gs-modell-kw">{t.ratedKw != null ? `${String(t.ratedKw).replace('.', ',')} kW` : t.familyLabel ?? ''}</small>
               <Icon name="chevron-right" size={16} />
             </button>
           </li>
@@ -1166,7 +1202,7 @@ function AusgangWahl({
     && !uebernommen.get(fund.schluessel);
   const alleName = uebernommen.get(fund.schluessel);
   return (
-    <div className="vp-gs-wahl" data-testid="gs-ausgang">
+    <div className="vp-gs-wahlseite" data-testid="gs-ausgang">
       <AusDerSuche titel={fundTitel(fund)} zeile={[fundAdresse(fund), artText(fund)].filter(Boolean).join(' · ')} fund={fund} />
       <header className="vp-gs-kopf">
         <h3 ref={titelRef} tabIndex={-1}>Was schaltet der Schalter?</h3>

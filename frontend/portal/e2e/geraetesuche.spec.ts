@@ -86,7 +86,7 @@ const modal = (page: Page, name = 'Geräte suchen') => page.getByRole('dialog', 
 /** Die Suche der Bühne (`GS_SUCH_ID` der Fixture - die Spec importiert keine Fixtures). */
 const SUCH_ID = '5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d';
 /** Was die Bühne zuletzt an `createComponent` bzw. `updateComponent` geschickt hat. */
-const gesendet = (page: Page, route: 'createComponent' | 'updateComponent') =>
+const gesendet = (page: Page, route: 'createComponent' | 'updateComponent' | 'testComponentConnection') =>
   page.evaluate((r) => (window as unknown as { __gesendet: Record<string, Record<string, unknown>> }).__gesendet[r], route);
 
 for (const breite of BREITEN) {
@@ -146,6 +146,45 @@ for (const breite of BREITEN) {
       expect((await gesendet(page, 'createComponent'))?.geraetesuche).toEqual({ suchId: SUCH_ID, fund: 'solarman:3115580613' });
       await expect(modal(page).getByRole('heading', { name: 'Noch 1 Gerät' })).toBeVisible();
       await pruefeUndFotografiere(page, info, breite, 'm5c-zurueck-zur-liste');
+      expect(fehler).toEqual([]);
+    });
+
+    test('Deye: vom Einrichten zurück zur Modellwahl, anderes Modell, Verbindungswerte bleiben, Test läuft neu (m4b)', async ({ page }, info) => {
+      const fehler = konsole(page);
+      await oeffne(page, breite, 'fall=fertig');
+      await modal(page).getByRole('button', { name: 'Deye Hybrid-Wechselrichter übernehmen' }).click();
+      await modal(page, 'Wechselrichter hinzufügen').getByRole('button', { name: /SUN-30K-SG01HP3-EU/ }).click();
+      const seite = modal(page, 'Gerät einrichten');
+      await expect(seite.getByTestId('richtung-pruefen')).toBeVisible({ timeout: 10_000 });
+      // Der Weg zurück ist benannt: Pfeil und Link im Kopf sagen, wohin er führt.
+      await expect(seite.getByRole('button', { name: 'Zurück zur Modellwahl' })).toBeVisible();
+      await expect(seite.getByTestId('einrichten-aendern')).toHaveText('Modell ändern');
+      expect((await gesendet(page, 'testComponentConnection'))?.templateRef).toContain('sun-30k-sg01hp3');
+      // Am Datenlogger Getipptes gilt je Logger, nicht je Modell.
+      const ip = seite.getByLabel('IP-Adresse des Datenloggers');
+      await ip.fill('192.168.178.99');
+      await ip.blur();
+      await pruefeUndFotografiere(page, info, breite, 'm4b-einrichten-modell-aendern', true);
+
+      await seite.getByTestId('einrichten-aendern').click();
+      const wahl = modal(page, 'Wechselrichter hinzufügen');
+      await expect(wahl.getByRole('heading', { name: 'Welches Modell steht auf dem Typenschild?' })).toBeVisible();
+      await expect(wahl.locator('.vp-gs-wahl-zeile')).toHaveCount(8);
+      await wahl.getByRole('button', { name: /SUN-35K-SG01HP3-EU/ }).click();
+
+      const neu = modal(page, 'Gerät einrichten');
+      await expect(neu.getByText('SUN-35K-SG01HP3-EU').first()).toBeVisible();
+      await expect(neu.getByLabel('IP-Adresse des Datenloggers')).toHaveValue('192.168.178.99');
+      // Ein bestandener Test des alten Modells zählt nicht: der Fluss testet das neue von vorn.
+      await expect(neu.getByTestId('richtung-pruefen')).toBeVisible({ timeout: 10_000 });
+      const test = await gesendet(page, 'testComponentConnection');
+      expect(test?.templateRef).toContain('sun-35k-sg01hp3');
+      expect((test?.connection as Record<string, unknown>).ip).toBe('192.168.178.99');
+
+      await neu.getByTestId('einrichten-speichern').click();
+      const angelegt = await gesendet(page, 'createComponent');
+      expect(angelegt?.templateRef).toContain('sun-35k-sg01hp3');
+      expect((angelegt?.connection as Record<string, unknown>).ip).toBe('192.168.178.99');
       expect(fehler).toEqual([]);
     });
 

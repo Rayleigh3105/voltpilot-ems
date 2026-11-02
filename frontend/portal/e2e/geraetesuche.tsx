@@ -29,6 +29,8 @@ import '../designsystem/tokens/effects.css';
 import '../designsystem/components/core/core.css';
 import '../designsystem/components/shell/shell.css';
 import '../src/index.css';
+// Im echten Bundle steht dieses Blatt mit im Dokument: die Bühne muss es auch laden, sonst fängt sie Klassen-Kollisionen nicht.
+import '../src/components/GemeinsameSteuerungKarte.css';
 
 (keycloak as unknown as { token: string; updateToken: () => Promise<boolean> }).token = 'e2e-token';
 (keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
@@ -124,8 +126,9 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   geraetesucheAbbrechen: ok(F.abgebrochen),
   geraetesucheVerlauf: ok({ suchen: verlauf }),
   // Heizstab V1: eine Ausgangsmenge antwortet wie der Pro 3 - je Ausgang relay_on_<kanal> und `ausgaenge`.
-  testComponentConnection: ((_site: string, body: { connection: Record<string, unknown> }) =>
-    Promise.resolve(Array.isArray(body.connection.channels)
+  testComponentConnection: ((_site: string, body: { connection: Record<string, unknown> }) => {
+    gesendet.testComponentConnection = structuredClone(body);
+    return Promise.resolve(Array.isArray(body.connection.channels)
       ? {
         results: [{
           ok: true,
@@ -137,7 +140,8 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
           ],
         }],
       }
-      : { results: [{ ok: true, reading: { value: 3.2, unit: 'kW' } }] })) as never,
+      : { results: [{ ok: true, reading: { value: 3.2, unit: 'kW' } }] });
+  }) as never,
   nachStromausfallAus: ok({ results: [{ ok: true, ausgaenge: [0, 1, 2].map((k) => ({ kanal: k, nach_stromausfall: 'off' })) }] }),
   matchComponent: ok(undefined),
   createComponent: merke('createComponent', { componentAuthority: 'portal', components: [gsWallboxZeile] }),
