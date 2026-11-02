@@ -147,11 +147,12 @@ Secret (nur an git.tecmaxx.de geschickt). Ohne Internet für den Pod: die Dateie
 kubectl -n werkstatt-prod cp ./vp-edge-light-linux-mipsle werkstatt-dienst-<pod>:/var/lib/vp-werkstatt-dienst/fassungen/<sha256>
 ```
 
-Bis der CI-Lauf für `edge-light-JJJJ.MM.N` steht (P4): Programm mit `VP_LIGHT_VERSION=<fassung>
-edge-light/scripts/build.sh mipsle` bauen, Skriptstand mit
-`COPYFILE_DISABLE=1 tar --no-xattrs -C edge-light -czf edge-light-openwrt.tar.gz openwrt` (auf dem Mac legt `tar`
-sonst `._`-Dateien dazu, die der Dienst ablehnt),
-beide Prüfsummen in die Freigabe.
+Eine neue Edge-Light-Fassung: in Forgejo den Lauf **„Edge-Light-Fassung“** von Hand starten (legt den Tag
+`edge-light-JJJJ.MM.N` an, nächste freie Nummer des Monats) oder den Tag selbst anlegen und pushen. Der Tag-Lauf prüft
+Edge Light, baut und hängt `vp-edge-light-linux-mipsle`, `vp-edge-light-linux-arm64`, `edge-light-openwrt.tar.gz`,
+`sha256sums` und `freigabe-edge-light.json` an das Release. Den Inhalt von `freigabe-edge-light.json` als Block
+`edge_light` in die Freigabe übernehmen; dazu das OpenWrt-Abbild mit seiner Prüfsumme aus `sha256sums` von
+downloads.openwrt.org. Ohne Forgejo-Lauf geht dasselbe lokal: `edge-light/scripts/release.sh <fassung> <ausgabe>`.
 
 ## Werkstatt freigeben
 

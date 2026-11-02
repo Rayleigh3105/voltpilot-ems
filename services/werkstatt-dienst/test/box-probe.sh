@@ -39,7 +39,7 @@ FASSUNG=edge-light-2026.11.1
 TUNNEL=10.10.16.5
 BOX_ID=c0ffee00-0000-4000-8000-000000000001
 
-for c in docker go ssh-keygen jq; do command -v "$c" >/dev/null 2>&1 || { echo "FEHLER: $c fehlt" >&2; exit 2; }; done
+for c in docker go ssh-keygen jq python3; do command -v "$c" >/dev/null 2>&1 || { echo "FEHLER: $c fehlt" >&2; exit 2; }; done
 docker info >/dev/null 2>&1 || { echo "FEHLER: Docker antwortet nicht" >&2; exit 2; }
 ARCH=$(docker version --format '{{.Server.Arch}}')
 TMP=$(mktemp -d)
@@ -70,9 +70,8 @@ mkdir -p "$TMP/bin" "$TMP/geheim" "$TMP/oeffentlich" "$TMP/fassungen" "$TMP/frei
 (cd "$REPO/edge-app/core" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
   -ldflags "-s -w -X git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/agent.Version=$FASSUNG" \
   -o "$TMP/vp-edge-light-linux-amd64" ./cmd/vp-edge-light)
-# Skriptstand wie der Release-Anhang edge-light-openwrt.tar.gz
-# (COPYFILE_DISABLE, --no-xattrs: macOS legte sonst ._-Dateien dazu, die der Dienst ablehnt)
-COPYFILE_DISABLE=1 tar --no-xattrs -C "$REPO/edge-light" -czf "$TMP/edge-light-openwrt.tar.gz" openwrt
+# Skriptstand genau wie der Release-Anhang edge-light-openwrt.tar.gz (P4)
+python3 "$REPO/edge-light/scripts/skripte-paket.py" "$TMP/edge-light-openwrt.tar.gz" >/dev/null
 PROG_SHA=$(shasum -a 256 "$TMP/vp-edge-light-linux-amd64" | cut -d' ' -f1)
 SKR_SHA=$(shasum -a 256 "$TMP/edge-light-openwrt.tar.gz" | cut -d' ' -f1)
 # In die Ablage nach Prüfsumme: der Dienst lädt dann nichts aus dem Netz.

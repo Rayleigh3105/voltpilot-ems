@@ -167,6 +167,19 @@ eq "ein Edge-Light-Tag zaehlt in der Docker-Nummerierung nicht mit" \
 	"edge-2026.10.4" \
 	"$(printf 'edge-2026.10.3\nedge-light-2026.10.9\nedge-light-2026.10.12\n' | ota_next_release 2026.10)"
 
+# Die Edge-Light-Linie hat dasselbe Schema mit eigenem Praefix und eigener
+# Nummerierung (.forgejo/workflows/edge-light-release.yaml).
+ota_check_light_release edge-light-2026.11.0 && ok "ein Edge-Light-Name geht durch den Edge-Light-Weg"
+fails "Edge-Light: einstelliger Monat abgelehnt" ota_check_light_release edge-light-2026.8.1
+fails "Edge-Light: fuehrende Null abgelehnt" ota_check_light_release edge-light-2026.11.01
+fails "Edge-Light: ein Docker-Name ist keiner" ota_check_light_release edge-2026.11.0
+fails "Edge-Light: alter Versionsstempel ist kein Release" ota_check_light_release edge-light-g70cc2059e
+eq "nur Edge-Light-Tags zaehlen in der Edge-Light-Nummerierung" \
+	"edge-light-2026.11.3" \
+	"$(printf 'edge-2026.11.7\nedge-light-2026.11.2\nedge-light-2026.11.02\nedge-light-2026.10.9\n' | ota_next_light_release 2026.11)"
+eq "ein Monat ohne Edge-Light-Tag beginnt bei 0" "edge-light-2026.12.0" \
+	"$(printf 'edge-2026.12.0\n' | ota_next_light_release 2026.12)"
+
 # Der Push-Header MUSS `Basic` sein: Forgejos Basic-Methode feuert auf
 # Git-Pfaden und nimmt den Token als PASSWORT (services/auth/basic.go);
 # `token <t>` ist dort keine gueltige Form - das ist der API-Weg daneben.
@@ -250,6 +263,13 @@ fails_saying "…und ein nur ENTFERNT vorhandener ebenso" \
 eq "…und es wurde dabei NICHTS ueberschrieben (der Tag zeigt noch auf denselben Commit)" \
 	"1" "$(git -C "$TAGWS" ls-remote --tags "file://$TMP/remote.git" 'refs/tags/edge-2026.08.25' | grep -c .)"
 fails "ein Name ausserhalb des Schemas legt gar nichts erst an" tagrun edge-2026.8.1 x
+# Die Edge-Light-Linie nimmt denselben Weg (edge-light-release.yaml), mit ihrem Schema.
+if out="$(tagrun edge-light-2026.11.0 "Werkstatt-Fassung" 2>&1)"; then
+	ok "ein Edge-Light-Tag wird angelegt und gepusht"
+else
+	bad "ein Edge-Light-Tag wird angelegt und gepusht" "Erfolg" "$out"
+fi
+fails "ein krummer Edge-Light-Name legt nichts an" tagrun edge-light-2026.11.01 x
 
 # Ohne Zugangsdaten darf NICHTS entstehen - und der automatische Actions-Token
 # ist hier bewusst kein Rueckfall (er loest keinen Lauf aus).

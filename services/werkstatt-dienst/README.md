@@ -24,9 +24,9 @@ Abnahme machst du in V1a wie bisher im Portal, dann mit den Belegen dieses Diens
 | Fassungen | OpenWrt-Abbild, Programm und Skriptstand der Freigabe, geprüft nach sha256, im Zwischenspeicher nach Prüfsumme. | `internal/fassungen` |
 
 Stand der Pakete aus dem Konzept (Abschnitt 8): P1 Grundgerüst, P2 Werkbank-Brücke, P11 Betrieb, P3
-(Werksfirmware → OpenWrt) und P5 (Box einrichten) sind gebaut. Es fehlt P4: der CI-Lauf, der eine
-Edge-Light-Fassung `edge-light-JJJJ.MM.N` mit den Anhängen unten baut; bis dahin legt der Betreiber Programm und
-Skriptstand selbst in den Zwischenspeicher ([Runbook](docs/runbook.md#fassungen-der-freigabe)).
+(Werksfirmware → OpenWrt), P5 (Box einrichten) und P4 (Edge-Light-Fassung je Release) sind gebaut: Der Lauf
+[`edge-light-release.yaml`](../../.forgejo/workflows/edge-light-release.yaml) baut zu einem Tag `edge-light-JJJJ.MM.N`
+die Anhänge unten ([Runbook](docs/runbook.md#fassungen-der-freigabe)). Damit ist V1a vollständig.
 
 ## Ein Lauf an der Mango
 
@@ -59,7 +59,8 @@ Hält ein Lauf an, nennt die Werkstatt-Anzeige den Grund und – wo nötig – d
 Startlader). Eine Box, deren Lauf zu Ende ist, fasst der Dienst erst wieder an, wenn sie abgezogen war; eine Box
 unter dem LAN-Netz nie.
 
-Release-Anhänge einer Edge-Light-Fassung (unter `edge_light.quelle` der Freigabe, P4 baut sie):
+Release-Anhänge einer Edge-Light-Fassung (unter `edge_light.quelle` der Freigabe; `edge-light/scripts/release.sh`
+baut sie, dazu `sha256sums` und `freigabe-edge-light.json`, den fertigen Block `edge_light` für die Mango):
 
 | Anhang | Inhalt | Prüfsumme in der Freigabe |
 |---|---|---|

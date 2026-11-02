@@ -5,9 +5,10 @@
 #   linux/arm64                      Raspberry Pi 3/4/5, NanoPi, ...
 #   linux/amd64                      x86-Thin-Clients, Entwicklung
 #
-# Ergebnis in edge-light/dist/: je Architektur das Programm (statisch, ohne
-# Symbole) plus eine .sha256-Datei im Format von sha256sum. Der Loader auf dem
-# Geraet prueft genau diese Pruefsumme, bevor er startet.
+# Ergebnis in edge-light/dist/ (oder VP_LIGHT_DIST): je Architektur das
+# Programm (statisch, ohne Symbole) plus eine .sha256-Datei im Format von
+# sha256sum. Der Loader auf dem Geraet prueft genau diese Pruefsumme, bevor er
+# startet.
 #
 #   edge-light/scripts/build.sh                 # alle Architekturen
 #   edge-light/scripts/build.sh mipsle          # nur eine
@@ -16,7 +17,7 @@
 source "$(dirname "$0")/lib.sh"
 
 VERSION="${VP_LIGHT_VERSION:-$(light_version)}"
-DIST="$LIGHT_DIR/dist"
+DIST="${VP_LIGHT_DIST:-$LIGHT_DIR/dist}"
 mkdir -p "$DIST"
 
 ARCHS=("$@")

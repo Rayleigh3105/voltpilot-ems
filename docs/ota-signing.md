@@ -63,6 +63,7 @@ Es gibt ein Manifest je Box-Art. Ein Docker-Release (`edge-JJJJ.MM.N`) trägt `o
 - Vorlauf: Diese Toleranz muss als Docker-Release auf den Boxen sein, bevor das erste Edge-Light-Release ins Register kommt. Eine ältere Docker-Box lehnt ein Edge-Light-Manifest als „Form kaputt“ ab und meldet `failed`.
 - `vp-ota manifest`, `sign` und `register` prüfen streng (`ParseManifestStrict`): nur bekannte Typen und Backends, ein Manifest je Box-Art.
 - Der Docker-Workflow startet nie für einen `edge-light-*`-Tag, und sein manueller Weg legt keinen solchen Namen an (`ota_check_docker_release`).
+- Den `edge-light-*`-Tag legt der eigene Lauf `edge-light-release.yaml` an (`ota_check_light_release`, `ota_next_light_release`). Er baut die Programme und hängt sie an das Forgejo-Release, für die Werkstatt (Freigabe mit Prüfsummen), **ohne** Manifest, Signatur und Register: Das kommt erst nach dem Vorlauf oben. Selbsttest: `tools/ota/test-light-release-workflow.sh`.
 
 ## Manueller Signierpfad
 

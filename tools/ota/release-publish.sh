@@ -326,6 +326,7 @@ OTA_RELEASE_RE='^edge-[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$'
 OTA_RELEASE_MONTH_RE='^[0-9]{4}\.(0[1-9]|1[0-2])$'
 # Die eigene Release-Linie von Edge Light (Entscheid E7).
 OTA_LIGHT_RELEASE_PREFIX='edge-light-'
+OTA_LIGHT_RELEASE_RE='^edge-light-[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$'
 
 # ota_check_release <name> - bricht LAUT ab, wenn der Name nicht dem Schema
 # folgt. Ein erfundenes Schema waere schlimmer als eine Ablehnung: der Name
@@ -348,6 +349,36 @@ ota_check_docker_release() {
 		;;
 	esac
 	ota_check_release "${1-}"
+}
+
+# ota_check_light_release <name> - das Schema der Edge-Light-Linie
+# edge-light-<JJJJ>.<MM>.<N>, N ein laufender Zaehler je Monat wie bei Docker.
+# Nur der eigene Lauf (.forgejo/workflows/edge-light-release.yaml) legt solche
+# Tags an; er baut, prueft und haengt an - ohne Manifest und Register.
+ota_check_light_release() {
+	[[ "${1-}" =~ $OTA_LIGHT_RELEASE_RE ]] ||
+		ota_die "Release-Name '${1-}' folgt nicht dem Schema edge-light-<JJJJ>.<MM>.<N> (N ist ein laufender Zaehler je Monat, KEIN Kalendertag). Es wurde nichts angelegt."
+}
+
+# ota_next_light_release <JJJJ.MM> - wie ota_next_release, aber fuer die
+# Edge-Light-Linie: es zaehlen nur edge-light-Tags, Docker-Tags nicht.
+ota_next_light_release() {
+	local ym="${1-}" line n max=-1
+	[[ "$ym" =~ $OTA_RELEASE_MONTH_RE ]] ||
+		ota_die "Monat '${ym}' ist nicht JJJJ.MM"
+	while IFS= read -r line; do
+		case "$line" in
+		"edge-light-$ym."*) n="${line#"edge-light-$ym."}" ;;
+		*) continue ;;
+		esac
+		case "$n" in
+		'' | *[!0-9]*) continue ;;
+		0) ;;
+		0*) continue ;;
+		esac
+		if [ "$n" -gt "$max" ]; then max="$n"; fi
+	done
+	printf 'edge-light-%s.%d' "$ym" "$((max + 1))"
 }
 
 # ota_next_release <JJJJ.MM> - liest die vorhandenen Tag-Namen von STDIN und
@@ -446,7 +477,12 @@ ota_git_authed() {
 #     (dieselbe Regel wie bei ota_token).
 ota_tag_release() {
 	local release="${1-}" commit="${2-}" ann="${3-}" remote auth
-	ota_check_release "$release"
+	# Beide Linien: der Docker-Weg hat vorher ota_check_docker_release geprueft,
+	# der Edge-Light-Weg ota_check_light_release.
+	case "$release" in
+	"$OTA_LIGHT_RELEASE_PREFIX"*) ota_check_light_release "$release" ;;
+	*) ota_check_release "$release" ;;
+	esac
 	[ -n "$commit" ] || ota_die "Kein Commit angegeben, auf den der Tag zeigen soll"
 
 	# Erst pruefen, dann anlegen: alles, was scheitern darf, scheitert VOR dem

@@ -230,6 +230,7 @@ jobs:
           pip install pyyaml jsonschema
           bash tools/ota/test-release-publish.sh
           bash tools/ota/test-release-workflow.sh
+          bash tools/ota/test-light-release-workflow.sh
           python3 tools/ota/test-manifest-schema.py
 
       # Die drei AGENTS.md sind Wegweiser, das Detail wohnt in `docs/agents/`.

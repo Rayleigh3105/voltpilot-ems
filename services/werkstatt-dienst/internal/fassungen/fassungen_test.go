@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -109,6 +110,41 @@ func TestAuspacken(t *testing.T) {
 	} {
 		if err := Auspacken(p, t.TempDir()); err == nil {
 			t.Errorf("%s: angenommen", name)
+		}
+	}
+}
+
+// Der echte Skriptstand, wie der Lauf edge-light-release.yaml ihn anhängt
+// (edge-light/scripts/skripte-paket.py): auspackbar, mit beiden Skripten
+// ausführbar, und gleicher Stand ergibt dieselbe Prüfsumme.
+func TestEchterSkriptstand(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 fehlt")
+	}
+	dir := t.TempDir()
+	var summen []string
+	for _, n := range []string{"a.tar.gz", "b.tar.gz"} {
+		p := filepath.Join(dir, n)
+		if out, err := exec.Command("python3", "../../../../edge-light/scripts/skripte-paket.py", p).CombinedOutput(); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		s, err := Summe(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		summen = append(summen, s)
+	}
+	if summen[0] != summen[1] {
+		t.Fatal("gleicher Stand, andere Prüfsumme")
+	}
+	ziel := t.TempDir()
+	if err := Auspacken(filepath.Join(dir, "a.tar.gz"), ziel); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []string{"openwrt/install.sh", "openwrt/service-tunnel.sh", "openwrt/files/usr/libexec/vp-wartung/schluessel-holen.sh"} {
+		st, err := os.Stat(filepath.Join(ziel, s))
+		if err != nil || st.Mode().Perm()&0o100 == 0 {
+			t.Errorf("%s fehlt oder ist nicht ausführbar", s)
 		}
 	}
 }

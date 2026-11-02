@@ -22,6 +22,7 @@ Benötigt Go ≥ 1.24 **oder** Docker (die Skripte wählen selbst).
 ```bash
 edge-light/scripts/test.sh          # Vektoren, Go-Tests (mit Race-Detector), MIPS-Build
 edge-light/scripts/build.sh         # dist/vp-edge-light-linux-{mipsle,arm64,amd64} + .sha256
+edge-light/scripts/release.sh edge-light-JJJJ.MM.N <ausgabe>  # eine Fassung: mipsle, arm64, Skriptstand, sha256sums (nur lokales Go)
 edge-light/test/qemu-smoke.sh       # MIPS-Programm unter Emulation gegen simulierten Deye
 edge-light/test/install-probe.sh    # install.sh gegen OpenWrt im Container (nach build.sh amd64)
 edge-light/test/boot-speicher-probe.sh  # Speicherpruefung des Loaders gegen OpenWrt im Container
@@ -69,7 +70,7 @@ edge-light/
 │   ├── install.sh             Einrichtung über SSH (auch durch den WireGuard-Tunnel)
 │   ├── service-tunnel.sh      Wartungstunnel zum Wartungsserver aus dem Portal (WireGuard, SSH mit Fenster-Schlüsseln, Web-App im Fenster)
 │   └── files/                 Loader, procd-Dienst, UCI-Konfiguration; `vp-wartung`: Abholer und Startskript der Fenster-Schlüssel, Ereignisliste der Fernwartung
-├── scripts/                   build.sh, test.sh (lokales Go oder Docker)
+├── scripts/                   build.sh, test.sh (lokales Go oder Docker); release.sh und skripte-paket.py für eine Fassung edge-light-JJJJ.MM.N (Lauf `.forgejo/workflows/edge-light-release.yaml`: Tag → Prüfen → Anhänge am Forgejo-Release, ohne Manifest und Register)
 └── test/
     ├── qemu-smoke.sh          MIPS-Programm unter qemu gegen simulierten Logger
     ├── mango-labtest.sh       Start + Messung auf einem echten Mango per SSH (ohne Portal)

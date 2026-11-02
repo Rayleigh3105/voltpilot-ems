@@ -1,0 +1,155 @@
+name: Edge-Light-Fassung
+
+# Eine Fassung von Edge Light entsteht durch einen git-Tag edge-light-JJJJ.MM.N
+# (eigene Release-Linie, Entscheid E7; N ist ein laufender Zaehler je Monat wie
+# bei edge-JJJJ.MM.N). Der Tag-Lauf prueft Edge Light (edge-light/scripts/test.sh),
+# baut die Programme fuer die Mango (mipsle) und den Raspberry Pi (arm64) mit
+# genau dieser Fassung, packt den Skriptstand (edge-light/openwrt) und haengt
+# alles samt Pruefsummen an das Forgejo-Release:
+#
+#   vp-edge-light-linux-mipsle, vp-edge-light-linux-arm64, edge-light-openwrt.tar.gz,
+#   sha256sums, freigabe-edge-light.json (Block edge_light der Werkstatt-Freigabe)
+#
+# Davon lebt die Werkstatt (Paket P4 der Werkstatt-Automatik): Der
+# Werkstatt-Dienst spielt eine Fassung auf, die eine Freigabe mit diesen
+# Pruefsummen nennt (services/werkstatt-dienst, Release-Anhaenge).
+#
+# ⚠ KEIN MANIFEST, KEINE SIGNATUR, KEIN EINTRAG INS OTA-REGISTER. Das bleibt
+# Stufe 2 (docs/ota-signing.md, Box-Arten): Vorher muss die Toleranz fuer
+# Edge-Light-Manifeste als Docker-Release auf den Boxen sein. Dieser Lauf hat
+# darum weder den Release-Schluessel noch das Konto des Registers.
+#
+# DER MANUELLE WEG ("Run workflow") legt wie in edge-images.yaml nur den TAG an
+# (Eingabe `release`, sonst die naechste freie Nummer des Monats); der Tag
+# startet dann den Tag-Lauf. Der Tag-Push braucht ein echtes Konto
+# (VP_OTA_FORGEJO_TOKEN, sonst FORGEJO_USERNAME/PASSWORD), nie den
+# automatischen Actions-Token: mit ihm entstuende kein Folge-Lauf
+# (Kopfkommentar von edge-images.yaml, ota_tag_release).
+#
+# edge-images.yaml startet fuer edge-light-* nie (`!edge-light-*` im Trigger,
+# Bedingung im Gate); dieser Lauf startet nur fuer edge-light-*.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Fassung (leer = naechste freie Nummer des Monats, z. B. edge-light-2026.11.0)'
+        required: false
+        type: string
+      notes:
+        description: 'Notiz (wird die Tag-Annotation; leer ist erlaubt)'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'edge-light-*'
+
+jobs:
+  tag:
+    name: Fassung taggen (manueller Lauf)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # LOAD-BEARING wie in edge-images.yaml: sonst ginge der automatische
+          # Token beim Push mit hinaus, und es entstuende kein Tag-Lauf.
+          persist-credentials: false
+
+      - name: Namen bestimmen
+        id: name
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          if [ -n "${RELEASE_INPUT:-}" ]; then
+            release="$(printf '%s' "${RELEASE_INPUT:-}" | tr -d '[:space:]')"
+          else
+            ym="$(TZ=Europe/Berlin date +%Y.%m)"
+            release="$(git tag -l 'edge-light-*' | ota_next_light_release "$ym")"
+          fi
+          ota_check_light_release "$release"
+          echo "Fassung: $release"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
+
+      - name: Tag anlegen und pushen
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          ota_tag_release "$RELEASE" "$TARGET_COMMIT" "${NOTES:-}"
+        env:
+          RELEASE: ${{ steps.name.outputs.release }}
+          TARGET_COMMIT: ${{ github.sha }}
+          NOTES: ${{ inputs.notes }}
+          VP_OTA_FORGEJO_TOKEN: ${{ secrets.VP_OTA_FORGEJO_TOKEN }}
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
+
+  test:
+    name: Edge Light pruefen
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'edge-light-')
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Name pruefen
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          ota_check_light_release "$GITHUB_REF_NAME"
+      - name: edge-light/scripts/test.sh
+        run: bash edge-light/scripts/test.sh
+
+  release:
+    name: Bauen und anhaengen
+    needs: test
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'edge-light-')
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+      - name: Bauen
+        run: bash edge-light/scripts/release.sh "$GITHUB_REF_NAME" "$RUNNER_TEMP/fassung"
+      - name: Anhaengen
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          auth="$(ota_forgejo_auth_header "${VP_OTA_FORGEJO_TOKEN:-}" "${FORGEJO_USERNAME:-}" "${FORGEJO_PASSWORD:-}")" ||
+            ota_die "Keine Forgejo-Zugangsdaten zum Anhaengen (VP_OTA_FORGEJO_TOKEN oder FORGEJO_USERNAME/FORGEJO_PASSWORD)."
+          base="${GITHUB_SERVER_URL:-https://git.tecmaxx.de}"
+          rel="$(ota_forgejo_release_id "$base" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$auth")"
+          for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 edge-light-openwrt.tar.gz sha256sums freigabe-edge-light.json; do
+            ota_forgejo_upload "$base" "$GITHUB_REPOSITORY" "$rel" "$RUNNER_TEMP/fassung/$f" "$auth"
+          done
+        env:
+          VP_OTA_FORGEJO_TOKEN: ${{ secrets.VP_OTA_FORGEJO_TOKEN }}
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
+      - name: Ergebnis
+        run: |
+          set -euo pipefail
+          cat <<EOF
+          Fassung $GITHUB_REF_NAME angehaengt (ohne Manifest, ohne Register).
+          Fuer die Werkstatt: diesen Block als edge_light in die Freigabe:
+          EOF
+          cat "$RUNNER_TEMP/fassung/freigabe-edge-light.json"
