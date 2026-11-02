@@ -40,11 +40,23 @@ public class MeasurementPointRepository {
     /** Insert an additional measurement point and return its generated id. */
     public UUID create(UUID tenantId, UUID siteId, String role, String label, String brand,
             String model, BigDecimal capacityKwp, String registryUnitId) {
+        return create(tenantId, siteId, role, label, brand, model, capacityKwp, registryUnitId, false);
+    }
+
+    /**
+     * Wie {@link #create(UUID, UUID, String, String, String, String, BigDecimal, String)}, mit der
+     * Steuerbar-Marke: {@code true} nur für ein Gerät, das durch seine Anlage ein geschaltetes ist
+     * (der Heizstab über eine Ausgangsmenge, Heizstab V1) - jede andere Komponente des Anlege-Wegs
+     * startet nur lesend.
+     */
+    public UUID create(UUID tenantId, UUID siteId, String role, String label, String brand,
+            String model, BigDecimal capacityKwp, String registryUnitId, boolean control) {
         return jdbc.queryForObject(
                 "INSERT INTO measurement_point (tenant_id, site_id, role, label, brand, model, "
                         + "capacity_kwp, registry_unit_id, control) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE) RETURNING id",
-                UUID.class, tenantId, siteId, role, label, brand, model, capacityKwp, registryUnitId);
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                UUID.class, tenantId, siteId, role, label, brand, model, capacityKwp, registryUnitId,
+                control);
     }
 
     /**

@@ -462,13 +462,20 @@ public class ComponentService {
                 SOURCE_KIND_CERTIFIED.equals(template.kind()) ? SOURCE_KIND_CERTIFIED
                         : SOURCE_KIND_BUILTIN,
                 template.templateRef(), template.version(),
-                capabilitiesForEdit(role, template, existing),
-                ComponentDefaults.guards(mapper, role, req.capacityKwp()));
+                // Heizstab V1: Fähigkeiten und Schutzgrenzen folgen der Ausgangsmenge (oberste Stufe
+                // als Obergrenze von Sollwert, Grenze und Klemme). Der allgemeine Bearbeitungs-Default
+                // („nur messen", Failsafe measure-only) würde dem Stab Schreibweg und Klemme nehmen.
+                heizstabGeraet ? heizstab.capabilities(desired) : capabilitiesForEdit(role, template, existing),
+                heizstabGeraet ? heizstab.guards(desired) : ComponentDefaults.guards(mapper, role, req.capacityKwp()));
         if (applied == null) {
             EntityRow current = entityRepo.entityForSite(siteId, entityId);
             if (current == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Komponente nicht gefunden.");
             throw stale(current.definitionVersion());
+        }
+        if (heizstabGeraet) {
+            // Der Bearbeitungsweg setzt `control` für jeden Nicht-Speicher zurück; der Stab bleibt steuerbar.
+            entityRepo.setControl(entityId, true);
         }
         adjustPvCapacity(TenantContext.get(), siteId, existing, role, capacity);
         String note = req.note() == null || req.note().isBlank()
@@ -757,13 +764,13 @@ public class ComponentService {
             // Heizstab V1: ein NEUES Gerät vom Typ heating-rod über die Ausgangsmenge - nie die
             // Übernahme einer verwaisten Zeile (die gehörte zu einem einzelnen Ausgang).
             Map<String, Object> conn = req.connection() == null ? Map.of() : req.connection();
+            // Steuerbar von Anfang an (control + actuate): ein Heizstab über eine Ausgangsmenge ist ein
+            // geschaltetes Gerät, keine Messung mit späterer Freigabe (HeizstabGeraet#capabilities).
             UUID id = points.create(tenantId, siteId, role,
                     ComponentLabels.toWrite(null, req.label(), "Heizstab"),
-                    template.brand(), template.model(), null, null);
+                    template.brand(), template.model(), null, null, true);
             entityRepo.setEntityConfig(id, com.voltpilot.api.consumers.HeizstabGeraet.TYP,
-                    ComponentDefaults.capabilities(mapper, entityTypes,
-                            com.voltpilot.api.consumers.HeizstabGeraet.TYP, role),
-                    heizstab.guards(conn));
+                    heizstab.capabilities(conn), heizstab.guards(conn));
             return id;
         }
         String entityType = entityTypeFor(role, template);

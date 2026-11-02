@@ -245,6 +245,15 @@ public class EntityRegistryRepository {
                 entityType, capabilitiesJson, guardConfigJson, pointId);
     }
 
+    /**
+     * Die Steuerbar-Marke einer Zeile. Seit E1b folgt sie dem Typkatalog ({@code controllable}); der
+     * revisionierte Bearbeitungsweg ({@code applyEditDefinition}) setzt sie für jeden Nicht-Speicher
+     * zurück - ein Gerät, das durch seine Anlage ein geschaltetes ist (Heizstab V1), hält sie hiermit.
+     */
+    public void setControl(UUID pointId, boolean control) {
+        jdbc.update("UPDATE measurement_point SET control = ? WHERE id = ?", control, pointId);
+    }
+
     /** The site's battery-hybrid registry row id, or null when none exists yet. */
     public UUID batteryHybridPointId(UUID siteId) {
         List<UUID> ids = jdbc.query(

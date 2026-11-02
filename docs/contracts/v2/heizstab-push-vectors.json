@@ -1,0 +1,40 @@
+{
+  "$comment": [
+    "Heizstab über eine Shelly-Ausgangsmenge im Registry-Push (Vertrag: heizstab-shelly.md, Abschnitt „Entitätsbeschreibung“).",
+    "Gelesen von: services/api HeizstabPushApiTest (die Cloud komponiert genau diese Beschreibung) und",
+    "edge-app/core/internal/componentapply/heizstab_push_vectors_test.go (die Box leitet daraus eine Verbraucher-Quelle ab).",
+    "Herkunft: Live-Fall „Zuhause“ 02.11.2026 - die Box lehnte den ganzen Push ab: „für … (heating-rod) ist nicht bestimmbar, welche Rolle das Gerät hat“."
+  ],
+  "$regel": "descriptor = die Entitätsbeschreibung, wie die Cloud sie für einen Heizstab mit Ausgangsmenge komponiert (entity_id und label frei; min_on/min_off_seconds = Mindestlauf und -pause des Stufenprofils, 300 s). descriptor_vor_fix = die Form bis zum 02.11.2026 (nur Messkanäle, keine Schreibfähigkeit). box = was die Box aus BEIDEN Formen ableiten muss.",
+  "connection": {"ip": "192.168.178.43", "port": 80, "channels": [0, 1, 2], "output_kw": [2.0, 2.0, 2.0], "stages": [1, 2, 3], "anschluss": "stern_mit_n"},
+  "descriptor": {
+    "entity_id": "768a7939-567c-47fd-99ce-8e6df74ab857",
+    "entity_type": "heating-rod",
+    "label": "Heizstab",
+    "capabilities": {
+      "measure": [{"channel": "power_kw", "unit": "kW"}],
+      "actuate": [{"command": "on_off"}, {"command": "setpoint_kw", "min": 0, "max": 6.0}, {"command": "limit_kw", "max": 6.0}]
+    },
+    "guards": {"limits": {"max_consumption_kw": 6.0, "min_on_seconds": 300, "min_off_seconds": 300}, "failsafe": {"behavior": "off"}},
+    "driver": {
+      "communication": "shelly_http", "brand": "shelly", "model": "shelly_http", "family": "shelly_http",
+      "connection": {"ip": "192.168.178.43", "port": 80, "channels": [0, 1, 2], "output_kw": [2.0, 2.0, 2.0], "stages": [1, 2, 3], "anschluss": "stern_mit_n"}
+    }
+  },
+  "descriptor_vor_fix": {
+    "entity_id": "768a7939-567c-47fd-99ce-8e6df74ab857",
+    "entity_type": "heating-rod",
+    "label": "Heizstab",
+    "capabilities": {"measure": [{"channel": "power_kw", "unit": "kW"}]},
+    "guards": {"limits": {"max_consumption_kw": 6.0, "min_on_seconds": 300, "min_off_seconds": 300}, "failsafe": {"behavior": "off"}},
+    "driver": {
+      "communication": "shelly_http", "brand": "shelly", "model": "shelly_http", "family": "shelly_http",
+      "connection": {"ip": "192.168.178.43", "port": 80, "channels": [0, 1, 2], "output_kw": [2.0, 2.0, 2.0], "stages": [1, 2, 3], "anschluss": "stern_mit_n"}
+    }
+  },
+  "box": {
+    "role": "consumer",
+    "channels": [0, 1, 2],
+    "fehler_bis_02_11_2026": "für \"768a7939-567c-47fd-99ce-8e6df74ab857\" (heating-rod) ist nicht bestimmbar, welche Rolle das Gerät hat"
+  }
+}

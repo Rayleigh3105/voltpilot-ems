@@ -307,6 +307,44 @@ describe('plantModel - a wallbox (adopted consumer source)', () => {
   });
 });
 
+describe('plantModel - ein im Portal angelegter Heizstab am Shelly neben einem gemeldeten Wechselrichter', () => {
+  // Live-Fall „Zuhause" (02.11.2026): angelegt über die Vorlage builtin:shelly:shelly_http (sourceKind builtin),
+  // von der Box noch nicht als Quelle gemeldet (kein Pin), die Box meldet den Deye. Vorher nahm der erste
+  // gemeldete Wechselrichter ihn (Regel 2) - der Stab las sich „gemessen über Deye SUN-29.9K".
+  const netz = entity('e-netz', 'grid-meter', { sourceKind: 'composed', deviceId: 'box' });
+  const haus = entity('e-haus', 'house-load', { sourceKind: 'composed', deviceId: 'box' });
+  const stab = entity('e-hz', 'heating-rod', {
+    label: 'Heizstab', control: true, deviceId: null, sourceKind: 'builtin', syncStatus: 'pending',
+  });
+
+  it('ist ein Gerät mit eigenem Weg: eigene Karte, kein „gemessen über" den Wechselrichter', () => {
+    const m = plantModel([netz, haus, stab], null, [inverter('inv', 'Deye', 'SUN-29.9K')]);
+    expect(m.devices.map((d) => [d.id, d.componentIds])).toEqual([
+      ['inv', ['e-netz', 'e-haus']],
+      ['komp-e-hz', ['e-hz']],
+    ]);
+    const c = m.components.find((x) => x.id === 'e-hz')!;
+    expect(c.deviceIds).toEqual(['komp-e-hz']);
+    expect(c.provenance).toBeNull();
+  });
+
+  it('hängt an seiner gemeldeten Quelle, sobald die Box sie meldet (Erstbindung) - keine zweite Karte', () => {
+    const gebunden = { ...stab, edgeSourceId: 'src-shelly-set' };
+    const m = plantModel([netz, haus, gebunden], null, [
+      inverter('inv', 'Deye', 'SUN-29.9K'),
+      source('src-shelly-set', 'consumer', { brand: 'shelly', adoptedEntityId: 'e-hz' }),
+    ]);
+    expect(m.devices.map((d) => d.id)).toEqual(['src-shelly-set', 'inv']);
+    expect(m.devices.some((d) => d.id.startsWith('komp-'))).toBe(false);
+  });
+
+  it('der Wechselrichter aus derselben Vorlagen-Herkunft bleibt das Hauptgerät', () => {
+    const wr = entity('e-wr', 'battery-hybrid', { sourceKind: 'builtin', deviceId: 'box', control: true });
+    const m = plantModel([wr, netz, haus], null, [inverter('inv', 'Deye', 'SUN-29.9K')]);
+    expect(m.devices.map((d) => [d.id, d.componentIds])).toEqual([['inv', ['e-wr', 'e-netz', 'e-haus']]]);
+  });
+});
+
 describe('plantModel - a grid meter is maßgeblich when the topology says so', () => {
   const entities = [entity('grid', 'grid-meter', { label: 'Netz-Zähler', deviceId: 'gw' })];
   const localSetup = [inverter('inv', 'deye')];
