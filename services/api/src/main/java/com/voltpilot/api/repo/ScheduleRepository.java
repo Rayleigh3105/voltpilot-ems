@@ -61,6 +61,26 @@ public class ScheduleRepository {
      */
     private static final String RUN_STAMP_TOLERANCE = "1 second";
 
+    /**
+     * Time window around a run's {@code generated_at} that holds every slot of
+     * that run, so {@link #latestForSite} can name the {@code time} partition
+     * column and let TimescaleDB drop chunks (otherwise the generic prepared
+     * plan walks all of them: 2,19 Mio buffers for 192 rows after 4 months).
+     *
+     * <p>INVARIANT: a run plans {@code DEFAULT_HORIZON_SLOTS = 192} quarter
+     * hours = 48 h ahead (services/optimization/.../config.py:222), starting at
+     * or just after {@code generated_at}. Upper bound = horizon + 1 h of
+     * slack, lower bound = 1 h of slack for a start slot floored below the
+     * stamp. A longer horizon MUST raise {@link #PLAN_HORIZON_HOURS}, otherwise
+     * the far end of the plan would be cut off silently;
+     * {@code ScheduleLatestWindowEqualityTest} pins the constant to config.py.
+     * Compile-time constants, never client input.
+     */
+    static final int PLAN_HORIZON_HOURS = 48;
+    private static final String RUN_WINDOW =
+            "AND time >= ?::timestamptz - interval '1 hour' "
+                    + "AND time < ?::timestamptz + interval '" + (PLAN_HORIZON_HOURS + 1) + " hours' ";
+
     private final JdbcTemplate jdbc;
 
     public ScheduleRepository(JdbcTemplate jdbc) {
@@ -93,15 +113,16 @@ public class ScheduleRepository {
         }
         List<ScheduleSlotDto> slots = jdbc.query(
                 "SELECT " + SLOT_COLUMNS + " FROM schedule "
-                        + "WHERE site_id = ? AND generated_at = ? ORDER BY time ASC",
+                        + "WHERE site_id = ? AND generated_at = ? " + RUN_WINDOW + "ORDER BY time ASC",
                 (rs, i) -> mapSlot(rs),
-                siteId, Timestamp.from(generatedAt));
+                siteId, Timestamp.from(generatedAt), Timestamp.from(generatedAt),
+                Timestamp.from(generatedAt));
         slots = MeasuredSlots.assign(slots, measuredPerSlot(siteId, slots, 15));
         List<Object[]> meta = jdbc.query(
                 "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw, effective_floor_soc_pct, "
                         + "fallback_14a, why_terminal_anchor, why_refill_free_pct, "
                         + "why_night_reserve_kwh, why_night_reserve_q, soc_source FROM schedule "
-                        + "WHERE site_id = ? AND generated_at = ? LIMIT 1",
+                        + "WHERE site_id = ? AND generated_at = ? " + RUN_WINDOW + "LIMIT 1",
                 (rs, i) -> new Object[] {
                         rs.getObject("plan_id", UUID.class),
                         rs.getObject("device_id", UUID.class),
@@ -115,7 +136,8 @@ public class ScheduleRepository {
                         rs.getBigDecimal("why_night_reserve_q"),
                         rs.getString("soc_source")
                 },
-                siteId, Timestamp.from(generatedAt));
+                siteId, Timestamp.from(generatedAt), Timestamp.from(generatedAt),
+                Timestamp.from(generatedAt));
         UUID planId = meta.isEmpty() ? null : (UUID) meta.get(0)[0];
         UUID deviceId = meta.isEmpty() ? null : (UUID) meta.get(0)[1];
         BigDecimal terminalValue = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[2];

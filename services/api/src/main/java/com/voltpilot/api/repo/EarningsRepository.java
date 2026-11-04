@@ -1825,17 +1825,22 @@ public class EarningsRepository {
      * Slot-Menge wie {@code batterySavingsPlannedEur}), nur Slots mit Plan-
      * und Baseline-Kosten. RLS zäunt den Mandanten.
      */
-    private Map<UUID, List<PlanMesslatte.Slot>> planSlots(Instant from, Instant to, UUID site) {
+    Map<UUID, List<PlanMesslatte.Slot>> planSlots(Instant from, Instant to, UUID site) {
         Map<UUID, List<PlanMesslatte.Slot>> result = new HashMap<>();
         jdbc.query(
                 "SELECT site_id, time, pv_kw, load_kw, baseline_cost_eur, cost_eur,"
                         + " stur_cost_eur IS NOT NULL AS messlatte"
                         + " FROM ("
-                        + "  SELECT DISTINCT ON (site_id, time) site_id, time, pv_kw, load_kw,"
+                        // One site: site_id is constant under the WHERE, so a single
+                        // DISTINCT ON column lets TimescaleDB's SkipScan serve it (the
+                        // two-column form never can: whole table, 2,3 Mio buffers).
+                        + "  SELECT DISTINCT ON (" + (site == null ? "site_id, " : "")
+                        + "time) site_id, time, pv_kw, load_kw,"
                         + "    baseline_cost_eur, cost_eur, stur_cost_eur"
                         + "  FROM schedule WHERE time >= ? AND time < ?"
                         + (site == null ? "" : " AND site_id = ?")
-                        + "  ORDER BY site_id, time, generated_at DESC) s "
+                        + "  ORDER BY " + (site == null ? "site_id, " : "")
+                        + "time, generated_at DESC) s "
                         + "WHERE baseline_cost_eur IS NOT NULL AND cost_eur IS NOT NULL "
                         + "ORDER BY site_id, time",
                 rs -> {

@@ -1,0 +1,24 @@
+-- Pläne der Portal-Rolle nie generisch cachen (plan_cache_mode = force_custom_plan).
+--
+-- pgjdbc bereitet ein Statement nach 5 Ausführungen serverseitig vor
+-- (prepareThreshold), danach darf Postgres einen GENERISCHEN Plan wählen, der
+-- die gebundenen Werte nicht kennt. Auf der Hypertable `schedule` (192 Versionen
+-- je Slot, nach 4 Monaten 2,3 Mio Zeilen je Anlage) kippt das die Abfragen mit
+-- DISTINCT ON (time) vom TimescaleDB-SkipScan auf einen Vollscan: History-Jahr
+-- 3,6-18 s, `/schedule` bimodal 75 ms oder 3-10 s (Scout vp-anlagen-cockpit-perf,
+-- Prototyp P-B: schedule konstant 31-35 ms, History-Jahr 2,5-3,2 s).
+--
+-- Abwägung gegen `prepareThreshold=0` in der JDBC-URL (gleiche Wirkung):
+--   * Rollen-Setting gilt für jede Verbindung der App-Rolle, auch Skripte und
+--     psql, und überlebt jede Pool-/URL-Änderung; die URL-Variante wirkt nur im
+--     api-Prozess, ist dafür ohne Migration rücknehmbar.
+--   * Der Preis ist bei beiden gleich: Planungszeit je Statement (gemessen
+--     1-35 ms, wächst mit der Chunk-Zahl: 20 Chunks heute, ~52 je Jahr und
+--     Anlage) statt Plan-Cache. Bei vielen Anlagen / Chunks neu bewerten;
+--     Rücknahme: ALTER ROLE ${appDbUser} RESET plan_cache_mode;
+--
+-- Gilt nur für NEUE Sitzungen der Rolle; bestehende Pool-Verbindungen behalten
+-- ihren Wert bis zum Recycling (der api-Neustart beim Deployment genügt).
+-- Reine Rollen-Einstellung, keine Daten- oder Schemaänderung.
+
+ALTER ROLE ${appDbUser} SET plan_cache_mode = force_custom_plan;
