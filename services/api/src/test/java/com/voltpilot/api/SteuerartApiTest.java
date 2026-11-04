@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.flows.FlowDeploymentPublisher;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.verbraucher.SteuerartSatz;
 import com.voltpilot.api.verbraucher.SteuerartService;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.sql.Connection;
@@ -580,6 +581,43 @@ class SteuerartApiTest {
                 assertThat(ct).isGreaterThanOrEqualTo(0);
                 assertThat(Math.round(ct * 2) / 2.0).as("auf 0,5 ct gerundet").isEqualTo(ct);
             }
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * Ein Heizstab an einer Edge Light (sie meldet {@code update.backend = light}): Zeit, Preis und
+     * „Fertig bis" liefen ueber den Regel-Compiler, den diese Box nicht hat - die Karten sind gesperrt
+     * MIT Grund, und der Schreibpfad lehnt sie mit demselben Grund ab.
+     */
+    @Test
+    void amHeizstabEinerEdgeLightSindZeitUndPreisGesperrt() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Steuerart Edge Light");
+        try {
+            UUID device = claim(customer, site, "edge-steuerart-light");
+            UUID heizstab = createConsumer(customer, site, "heating-rod", "Heizstab Light", 3.0);
+            exec("UPDATE measurement_point SET device_id = '" + device + "' WHERE id = '" + heizstab + "'");
+            exec("INSERT INTO device_update_status (device_id, tenant_id, site_id, version, backend, reported_at) "
+                    + "SELECT d.id, s.tenant_id, s.id, 'light-2026.11.1', 'light', now() FROM device d "
+                    + "JOIN site s ON s.id = d.site_id WHERE d.id = '" + device + "'");
+
+            JsonNode optionen = eintrag(getJson(zone(site), customer), "Heizstab Light").path("optionen");
+            for (String id : java.util.List.of("feste_zeiten", "guenstig")) {
+                assertThat(wahl(optionen.path("quellen"), id).path("gesperrt").asBoolean()).as(id).isTrue();
+                assertThat(wahl(optionen.path("quellen"), id).path("grund").asText())
+                        .isEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+            }
+            assertThat(wahl(optionen.path("ziele"), "laufzeit_bis").path("grund").asText())
+                    .isEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+            assertThat(wahl(optionen.path("quellen"), "feste_zeiten").path("gesperrt").asBoolean()).isTrue();
+
+            ResponseEntity<String> res = putRaw(pfad(site, heizstab), customer, Map.of("quelle", "feste_zeiten",
+                    "fenster", Map.of("tage", "daily", "von", "06:00", "bis", "08:00")));
+            assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(nachricht(res)).contains(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+            assertThat(policyFassungen(site, heizstab)).isZero();
         } finally {
             deleteSite(site);
         }

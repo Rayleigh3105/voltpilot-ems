@@ -63,7 +63,7 @@ const verbrauch = {
   hausKw: m.load,
   gruppen: [
     { id: 'laden', label: 'Laden', kw: 3.1 * skala, headline: '', teile: [teil('cp:1', 'Wallbox Garage', 3.1 * skala, 'lädt', 3.9 * skala)], collapsed: false, collapsedText: null },
-    { id: 'waerme', label: 'Wärme', kw: 1.3 * skala, headline: '', teile: [teil('e:wp', 'Wärmepumpe', 0.9 * skala, 'läuft', 8.6 * skala), teil('e:hs', 'Heizstab Warmwasser', 0, 'aus', 0.4, false)], collapsed: false, collapsedText: null },
+    { id: 'waerme', label: 'Wärme', kw: 1.3 * skala, headline: '', teile: [teil('e:wp', 'Wärmepumpe', 0.9 * skala, 'läuft', 8.6 * skala), { ...teil('e:hs', 'Heizstab Warmwasser', 0, 'aus', 0.4, false), heizstab: true as const }], collapsed: false, collapsedText: null },
     { id: 'sonstiges', label: 'Sonstiges', kw: 0, headline: '', teile: [teil('e:wm', 'Waschmaschine', 0, 'aus', 1.4, false), teil('e:tr', 'Trockner', 0.2 * skala, 'läuft', 0.6)], collapsed: false, collapsedText: null },
   ],
   rest: { kw: Math.max(0, m.load - 4.2 * skala), note: null, konflikt: false, todayKwh: 8.2 * skala },

@@ -1716,6 +1716,12 @@ export interface SiteEntity {
    */
   capacityKwp?: number | null;
   /**
+   * Der Freigabe-Stand des Gerätetyps aus dem Katalog (`certified` | `in_certification` | `simulator_only` |
+   * `not_certified` | `per_device`); null/absent = der Typ hat keinen (Wechselrichter, Zähler) oder ein älteres
+   * Backend lässt das Feld weg. Das Abzeichen „Von VoltPilot freigegeben" steht nur ohne Einschränkung.
+   */
+  certificationStatus?: string | null;
+  /**
    * true = the pinned edge source is no longer among the device's reported
    * sources (identity churn - offer "Wieder verbinden"); false = pinned +
    * reported; null/absent = no pin, or no local view reported yet (an older

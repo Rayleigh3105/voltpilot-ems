@@ -216,7 +216,7 @@ export interface PlantComponent {
    * am Prüfstand erteilt hat; ein selbst gebautes Gerät kann sie ausschließlich
    * über den Schalt-Test des Kunden bekommen.
    */
-  freigabeQuelle: 'pruefstand' | 'vorlage' | 'selbst' | null;
+  freigabeQuelle: 'pruefstand' | 'erprobung' | 'vorlage' | 'selbst' | null;
   /**
    * Darf der KUNDE das Schalten dieser Komponente selbst freigeben? Nur ein
    * selbst gebautes Modbus-Gerät - für alles andere erteilt VoltPilot die
@@ -388,8 +388,13 @@ const SELF_BUILT_TYPES = new Set(['modbus-generic', SELF_BUILT_SWITCH_TYPE]);
  *   geprüfte Vorlage; die Vorlagen-Stufe unterscheidet erst Stufe 6, solange
  *   nennen wir die belastbarere der beiden).
  */
-function freigabeQuelleFor(entityType: string): 'pruefstand' | 'selbst' {
-  return entityType === SELF_BUILT_SWITCH_TYPE ? 'selbst' : 'pruefstand';
+function freigabeQuelleFor(entityType: string, certificationStatus?: string | null): 'pruefstand' | 'erprobung' | 'selbst' {
+  if (entityType === SELF_BUILT_SWITCH_TYPE) return 'selbst';
+  // Der Katalog-Stand des Typs (EntityDto.certificationStatus): nur `certified` - oder ein Typ ohne Stand
+  // (Wechselrichter, deren Freigabe am Modell hängt) - trägt das Prüfstand-Wort.
+  return certificationStatus && certificationStatus !== 'certified' && certificationStatus !== 'per_device'
+    ? 'erprobung'
+    : 'pruefstand';
 }
 
 /**
@@ -1280,7 +1285,7 @@ export function plantModel(
       channels: componentChannels(e),
       control,
       schaltbar,
-      freigabeQuelle: schaltbar ? freigabeQuelleFor(e.entityType) : null,
+      freigabeQuelle: schaltbar ? freigabeQuelleFor(e.entityType, e.certificationStatus) : null,
       freigabeFaehig: SELF_BUILT_TYPES.has(e.entityType),
       primary,
       health,

@@ -100,3 +100,16 @@ describe('Rollen-Aufschlüsselung im Blatt (dieselbe Listenform)', () => {
     expect(rollenListe(null)).toBeNull();
   });
 });
+
+describe('Heizstab in „Verbrauch im Detail“', () => {
+  it('trägt die Flamme, die Wärmepumpe ihr eigenes Symbol', () => {
+    const k = {
+      ...komp(3, 0),
+      gruppen: [{ id: 'waerme', label: 'Wärme', kw: 1, headline: '', collapsed: false, collapsedText: null,
+        teile: [teil('e:wp', 'Wärmepumpe', 1), { ...teil('e:hs', 'Heizstab', 0, false), heizstab: true }] }],
+    } as unknown as VerbrauchKomposition;
+    const l = verbrauchListe(k, { heute: false, max: 6 })!;
+    expect(l.zeilen.find((z) => z.key === 'e:wp')?.icon).toBe('heatpump');
+    expect(l.zeilen.find((z) => z.key === 'e:hs')?.icon).toBe('flame');
+  });
+});

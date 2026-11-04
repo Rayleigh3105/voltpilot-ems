@@ -816,12 +816,16 @@ function GeraetSeiteKern({
       gemessen: eigenerVerbraucher ? consumerHasMeasurement(eigenerVerbraucher) : null,
       nachweis: eigenerVerbraucher ? consumerNachweis(eigenerVerbraucher) : null,
       ioAusgangAn,
+      // Heizstab V1: die BESTÄTIGTE Stufe führt den Kopf (er misst keine Leistung).
+      heizstab: eigenerVerbraucher?.type === 'heating-rod'
+        ? { stufe: consumerStatus.find((st) => st.entityId === eigenerVerbraucher.id)?.stufe ?? null }
+        : null,
       anlagensteuerungWerte,
       now,
     });
   }, [view, data, sources, charging, control, curtailment, strategies, topology, fulfilment,
     eigenerVerbraucher, geraetId, geraeteRef, box?.id, now, setupHier, kommunikation,
-    eigeneKomponenten, ioAusgangAn, anlagensteuerungWerte]);
+    eigeneKomponenten, ioAusgangAn, anlagensteuerungWerte, consumerStatus]);
 
   /**
    * Die Katalog-Familien DIESES Geräts - der Filter der Messbibliothek.
@@ -1526,13 +1530,19 @@ function GeraetSeiteKern({
         );
         // Ein I/O-Modul misst keine Größe - seine Zustände stehen im
         // Klemmenplan, und „Misst: I/O-Modul Keller" nennte nur sich selbst.
-        const misst = gesichtView.ioModul ? [] : eigeneKomponenten
+        // Ein Heizstab misst nichts: er SCHALTET seine Phasen über die Ausgänge des Shelly.
+        const misst = gesichtView.ioModul || heizstabZeile ? [] : eigeneKomponenten
           .filter((c) => (c.aspect === 'main' || c.role === 'pv') && !c.io)
           .map((c) => (c.primary ? `${c.label} (maßgeblich)` : c.label));
         // K4: was an den Ausgängen dieses Moduls hängt - geschaltet, nicht gemessen.
-        const schaltet = view.komponenten
-          .filter((c) => c.io && !ioVerbraucherSeite)
-          .map((c) => `${c.label} (DO${c.io?.kanal})`);
+        const schaltet = [
+          ...view.komponenten
+            .filter((c) => c.io && !ioVerbraucherSeite)
+            .map((c) => `${c.label} (DO${c.io?.kanal})`),
+          ...(heizstabZeile && eigenerVerbraucher && heizstabKanaele > 0
+            ? [`${eigenerVerbraucher.name} (${heizstabKanaele === 1 ? '1 Phase' : `${heizstabKanaele} Phasen`})`]
+            : []),
+        ];
         // GE-2: mit einem gespeicherten Weg trägt der Abschnitt „Anbindung" Weg, Box und Takt - die Zeilen aus
         // dem gemeldeten Bestand stünden sonst ein zweites Mal (und mit dem Wort „Datenquelle") daneben.
         const mitAnbindung = anbindung.length > 0;

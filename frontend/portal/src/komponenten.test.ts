@@ -339,6 +339,20 @@ describe('plantModel - ein im Portal angelegter Heizstab am Shelly neben einem g
     expect(m.devices.some((d) => d.id.startsWith('komp-'))).toBe(false);
   });
 
+  it('trägt nicht „Von VoltPilot freigegeben“, solange sein Typ nur im Simulator geprüft ist', () => {
+    const schaltbar = {
+      capabilities: { measure: [{ channel: 'relay_on_0' }], actuate: [{ command: 'on_off' }] },
+    } as Partial<SiteEntity>;
+    const nurSimulator = { ...stab, ...schaltbar, certificationStatus: 'simulator_only' };
+    const c = plantModel([netz, haus, nurSimulator], null, [inverter('inv', 'Deye', 'SUN-29.9K')])
+      .components.find((x) => x.id === 'e-hz')!;
+    expect(c.schaltbar).toBe(true);
+    expect(c.freigabeQuelle).toBe('erprobung');
+    const freigegeben = { ...stab, ...schaltbar, certificationStatus: 'certified' };
+    expect(plantModel([netz, haus, freigegeben], null, []).components.find((x) => x.id === 'e-hz')!.freigabeQuelle)
+      .toBe('pruefstand');
+  });
+
   it('der Wechselrichter aus derselben Vorlagen-Herkunft bleibt das Hauptgerät', () => {
     const wr = entity('e-wr', 'battery-hybrid', { sourceKind: 'builtin', deviceId: 'box', control: true });
     const m = plantModel([wr, netz, haus], null, [inverter('inv', 'Deye', 'SUN-29.9K')]);

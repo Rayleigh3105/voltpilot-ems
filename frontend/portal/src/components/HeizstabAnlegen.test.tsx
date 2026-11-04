@@ -57,6 +57,18 @@ describe('Heizstab über alle Ausgänge einrichten', () => {
     createComponent.mockReset();
   });
 
+  it('ein ungültiges „Verbindung testen“ nennt den Fehler am Feld und setzt den Fokus dorthin', () => {
+    oeffne();
+    fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }));
+    expect(testComponentConnection).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/wie die Heizelemente angeschlossen sind/);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Jede Phase mit Neutralleiter/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Jede Phase mit Neutralleiter/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Leistung je Heizelement (kW)'));
+    expect(screen.getByLabelText('Leistung je Heizelement (kW)')).toHaveAttribute('aria-invalid', 'true');
+  });
+
   it('testet, stellt „nach Stromausfall“ auf aus und legt EIN Gerät über die drei Ausgänge an', async () => {
     testComponentConnection.mockResolvedValue(PRO3_TEST);
     nachStromausfallAus.mockResolvedValue({
@@ -69,7 +81,7 @@ describe('Heizstab über alle Ausgänge einrichten', () => {
     fireEvent.click(screen.getByRole('button', { name: /Jede Phase mit Neutralleiter/ }));
     fireEvent.change(screen.getByLabelText('Leistung je Heizelement (kW)'), { target: { value: '2,0' } });
     // Die Phase für Stufe 1 wird nicht gefragt; die Stufen stehen vorbelegt in einer Zeile.
-    expect(screen.queryByText('Phase für 1 Phase')).toBeNull();
+    expect(screen.queryByText('Heizt nur eine Phase: welche?')).toBeNull();
     expect(screen.getByText(/Stufen: 1 Phase · 2 Phasen · 3 Phasen/)).toBeInTheDocument();
     expect(screen.getByText(/^1 Phase · 2,0\skW$/)).toBeInTheDocument();
     expect(screen.getByText(/^3 Phasen · 6,0\skW$/)).toBeInTheDocument();

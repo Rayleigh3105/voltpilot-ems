@@ -150,6 +150,38 @@ class SteuerartSatzTest {
         }
     }
 
+    /** Ein Kontext an einer Edge Light (sie fuehrt keine Compiler-Regeln aus). */
+    private static SteuerartSatz.Kontext light(String typ) {
+        return new SteuerartSatz.Kontext(typ, new BigDecimal("6"), null, "relay_state", "dynamisch", true,
+                new BigDecimal("12"), false, null, true);
+    }
+
+    @Test
+    void amHeizstabEinerEdgeLightSindZeitPreisUndFertigBisGesperrtMitGrund() {
+        var q = SteuerartSatz.quellen(light("heating-rod"));
+        // Der Regler der Box (Ueberschuss) und die Ruecknahme bleiben frei.
+        assertThat(finde(q, SteuerartProjektion.QUELLE_UEBERSCHUSS).gesperrt()).isFalse();
+        assertThat(finde(q, SteuerartProjektion.QUELLE_SOFORT).gesperrt()).isFalse();
+        for (String id : List.of(SteuerartProjektion.QUELLE_FESTE_ZEITEN, SteuerartProjektion.QUELLE_GUENSTIG)) {
+            assertThat(finde(q, id).gesperrt()).as(id).isTrue();
+            assertThat(finde(q, id).grund()).isEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+        }
+        for (String quelle : List.of(SteuerartProjektion.QUELLE_UEBERSCHUSS, SteuerartProjektion.QUELLE_SOFORT)) {
+            var z = SteuerartSatz.ziele(light("heating-rod"), quelle);
+            assertThat(finde(z, SteuerartProjektion.ZIEL_LAUFZEIT_BIS).grund()).as(quelle)
+                    .isEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+        }
+        // Der Schreibpfad lehnt dieselbe Wahl mit demselben Grund ab.
+        assertThat(SteuerartSatz.pruefe(light("heating-rod"),
+                SteuerartWunsch.von(SteuerartProjektion.QUELLE_GUENSTIG)))
+                .containsExactly(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+        // Nur der Heizstab: andere Typen und eine Docker-/unbekannte Box bleiben wie bisher.
+        assertThat(finde(SteuerartSatz.quellen(light("pump")), SteuerartProjektion.QUELLE_FESTE_ZEITEN).gesperrt())
+                .isFalse();
+        assertThat(finde(SteuerartSatz.quellen(k("heating-rod", "6", "dynamisch", true, "relay_state")),
+                SteuerartProjektion.QUELLE_GUENSTIG).gesperrt()).isFalse();
+    }
+
     @Test
     void derSchreibpfadLehntEineWahlAbDieDerDialogNichtAnbietet() {
         var pumpe = k("pump", "0.8", "dynamisch", true, "relay_state");

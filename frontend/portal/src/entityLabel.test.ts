@@ -219,3 +219,10 @@ describe('shortLabelsForRole', () => {
     ).toEqual(['Erzeuger', 'Fronius']);
   });
 });
+
+describe('technicalDeviceName: eine Transport-Kennung ist kein Modell', () => {
+  it('„shelly_http“ nennt nur die Marke', () => {
+    expect(technicalDeviceName({ edgeLabel: null, brand: 'shelly', model: 'shelly_http' })).toBe('Shelly');
+    expect(technicalDeviceName({ edgeLabel: null, brand: 'shelly', model: 'SPSW-003XE16EU' })).toBe('Shelly SPSW-003XE16EU');
+  });
+});

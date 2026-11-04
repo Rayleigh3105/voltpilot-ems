@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Selbstauskunft } from '../api';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
@@ -68,11 +68,28 @@ describe('Heizstab auf der Geräteseite', () => {
       />,
     );
     expect(screen.getByText(/^Heizt mit 2 Phasen · 4,0\skW$/)).toBeInTheDocument();
-    expect(screen.getByText('L1 an')).toBeInTheDocument();
-    expect(screen.getByText('L3 aus')).toBeInTheDocument();
     expect(screen.getByText(/Netzbezug - hält er 30 Sekunden an/)).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent(/Seit 11:00 meldet ein Ausgang nicht, was VoltPilot befiehlt/);
-    expect(screen.getByText(/Wärme heute ≈ 3,4/)).toHaveTextContent(/angenommen aus den bestätigten Stufen/);
+    // Befohlen 1, bestätigt 2: der Stab heizt mit MEHR - der Hinweis nennt das, statt „nie mehr als befohlen“.
+    expect(screen.getByRole('status')).toHaveTextContent(/Seit 11:00 heizt der Stab mit mehr als befohlen/);
+    // Die Einzelheiten stehen unter „Mehr zum Heizstab“ - zu, bis man sie öffnet.
+    const mehr = screen.getByTestId('heizstab-mehr');
+    expect(mehr).not.toHaveAttribute('open');
+    expect(within(mehr).getByText('L1 an')).toBeInTheDocument();
+    expect(within(mehr).getByText('L3 aus')).toBeInTheDocument();
+    expect(within(mehr).getByText(/Wärme heute ≈\s3,4/)).toHaveTextContent(/geschätzt aus den bestätigten Stufen, nicht gemessen/);
+  });
+
+  it('ein offener Anschluss steht sichtbar da und sperrt „Jetzt heizen“ mit Grund (der Server lehnt sonst ab)', () => {
+    const komponente = {
+      id: 'rod-1', role: 'consumer', label: 'Heizstab', templateRef: 'shelly-pro-3', templateVersion: 2, definitionVersion: 4,
+      connection: { ip: '192.168.178.43', channels: [0, 1, 2], output_kw: [2, 2, 2], stages: [1, 2, 3], anschluss: 'unbekannt' },
+    };
+    render(
+      <HeizstabKarte siteId="site-1" consumer={ROD} status={null} override={null} kanaele={3} komponente={komponente}
+        jetzt={new Date('2026-11-02T10:05:00Z')} onGeaendert={() => {}} />,
+    );
+    expect(screen.getByTestId('heizstab-anschluss-offen')).toHaveTextContent(/schaltet VoltPilot den Heizstab nicht/);
+    expect(screen.getByRole('button', { name: /einschalten/ })).toBeDisabled();
   });
 
   it('„Jetzt heizen“ schickt die gewählte Stufe und die Dauer', async () => {
@@ -84,8 +101,11 @@ describe('Heizstab auf der Geräteseite', () => {
     expect(screen.getByText('Noch keine Rückmeldung der Box')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^1 Phase\s*2,0/ }));
     fireEvent.click(screen.getByRole('button', { name: '1 Stunde' }));
-    expect(screen.getByText(/Höchstens ≈ 2,0/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '1 Phase einschalten' }));
+    expect(screen.getByText(/Höchstens ≈\s2,0/)).toBeInTheDocument();
+    // Stufe und Dauer tragen ein sichtbares Wort, damit die zwei Wahlen nicht gleich aussehen.
+    expect(screen.getByRole('group', { name: 'Stufe' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Dauer' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '1 Phase für 1 Stunde einschalten' }));
     await waitFor(() => expect(onGeaendert).toHaveBeenCalled());
     expect(startOverride).toHaveBeenCalledWith('site-1', 'rod-1', { action: 'start', durationMinutes: 60, stufe: 1 });
   });
@@ -96,7 +116,8 @@ describe('Heizstab auf der Geräteseite', () => {
         override={{ entityId: 'rod-1', kind: 'start', targetCommand: 'setpoint_kw', targetValue: 2, endsAt: '2026-11-02T12:00:00Z' }}
         kanaele={3} jetzt={new Date('2026-11-02T10:05:00Z')} onGeaendert={() => {}} />,
     );
-    expect(screen.getByText(/Heizt von Hand bis 13:00/)).toBeInTheDocument();
+    // Befohlen, nicht bestätigt: der Satz sagt „eingeschaltet“, nie „heizt“.
+    expect(screen.getByText(/^Von Hand eingeschaltet bis 13:00 \(1 Phase · 2,0\skW\)\.$/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Automatik fortsetzen' }));
     await waitFor(() => expect(clearOverride).toHaveBeenCalledWith('site-1', 'rod-1'));
   });

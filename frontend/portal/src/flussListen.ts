@@ -113,7 +113,7 @@ export function verbrauchListe(
         zahl,
         anteil: null,
         art: t.health === 'stale' ? 'still' : aus ? 'aus' : 'normal',
-        icon: GRUPPEN_ICON[g.id],
+        icon: t.heizstab ? 'flame' : GRUPPEN_ICON[g.id],
         title: t.title,
         href: t.href,
       });

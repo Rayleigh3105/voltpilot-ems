@@ -104,6 +104,8 @@ describe('verbrauchKomposition · das Haus bleibt die Summe', () => {
     expect(c.gruppen.map((g) => g.id)).toEqual(['laden', 'waerme']);
     expect(c.gruppen[0].headline).toBe('1 von 1 lädt · 11,0 kW');
     expect(c.gruppen[1].kw).toBe(1.9);
+    // Der Heizstab der Gruppe „Wärme“ ist als solcher markiert: Flamme statt Wärmepumpe, nie die Kachel „Wärmepumpe“.
+    expect(c.gruppen[1].teile.map((t) => t.heizstab ?? false)).toEqual([true]);
     expect(c.rest.kw).toBeCloseTo(1.2, 9);
     expect(c.rest.note).toBeNull();
   });

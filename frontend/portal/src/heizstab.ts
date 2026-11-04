@@ -16,22 +16,22 @@ export const ANSCHLUSS_WAHL: { wert: Anschluss; titel: string; text: string }[] 
   {
     wert: 'stern_mit_n',
     titel: 'Jede Phase mit Neutralleiter',
-    text: 'Stern mit N - jedes Element zwischen einer Phase und dem Neutralleiter. Dann darf der Shelly jede Phase einzeln schalten.',
+    text: 'Stern mit N. Der Shelly darf jede Phase einzeln schalten.',
   },
   {
     wert: 'ohne_n',
     titel: 'Ohne Neutralleiter',
-    text: 'Stern ohne N - dafür ist der Shelly nicht ausgelegt; davor gehört ein dreipoliges Schütz.',
+    text: 'Stern ohne N. Davor gehört ein dreipoliges Schütz.',
   },
   {
     wert: 'dreieck',
     titel: 'Im Dreieck',
-    text: 'Dafür ist der Shelly nicht ausgelegt; davor gehört ein dreipoliges Schütz.',
+    text: 'Davor gehört ein dreipoliges Schütz.',
   },
   {
     wert: 'unbekannt',
     titel: 'Weiß ich nicht',
-    text: 'Ihr Elektriker klärt das am Anschlusskasten. Bis dahin schaltet VoltPilot den Heizstab nicht.',
+    text: 'Ihr Elektriker klärt das. Bis dahin schaltet VoltPilot den Heizstab nicht.',
   },
 ];
 
@@ -162,6 +162,14 @@ export function testZeilen(ausgaenge: TestAusgang[] | null | undefined): { label
   });
 }
 
+/** Die eine Zeile über dem Test: antworten alle Ausgänge? Einzelheiten stehen unter „Mehr“. */
+export function testKurz(ausgaenge: TestAusgang[] | null | undefined, kanaele: number): string {
+  const gelesen = (ausgaenge ?? []).filter((a) => a.ein === true || a.ein === false).length;
+  if (gelesen === 0) return 'Die Box hat den Shelly erreicht, die Ausgänge aber nicht gelesen.';
+  if (gelesen < kanaele) return `Die Box hat ${gelesen} von ${kanaele} Ausgängen gelesen.`;
+  return kanaele === 1 ? 'Die Box erreicht den Shelly und liest den Ausgang.' : `Die Box erreicht den Shelly und liest alle ${kanaele} Ausgänge.`;
+}
+
 /** Die Warnung, wenn ein Ausgang nach einem Stromausfall nicht aus bleibt (HZ-5); null = alles gut. */
 export function nachStromausfallWarnung(ausgaenge: TestAusgang[] | null | undefined): string | null {
   const nichtAus = (ausgaenge ?? []).filter((a) => a.nach_stromausfall && a.nach_stromausfall !== 'off');
@@ -216,16 +224,48 @@ function uhr(iso: string): string {
 
 /**
  * Der Hinweis zu einer Abweichung (HZ-4 B): erst wenn ein Ausgang länger als 3 min gegen den Befehl
- * steht. Kürzer ist ein Schaltvorgang, kein Befund.
+ * steht. Kürzer ist ein Schaltvorgang, kein Befund. Die Richtung entscheidet den Satz: heizt der Stab mit
+ * MEHR als befohlen, lässt sich ein Ausgang nicht ausschalten - dann darf der Satz nie „nie mehr als
+ * befohlen“ versprechen (die Box schaltet die übrigen Ausgänge ab, einen klemmenden nicht).
  */
 export function abweichungHinweis(s: StufeMeldung | null | undefined, jetzt: Date): string | null {
   if (!s?.mismatch_since) return null;
   const seit = new Date(s.mismatch_since);
   if (Number.isNaN(seit.getTime()) || jetzt.getTime() - seit.getTime() < 3 * 60_000) return null;
-  return `Seit ${uhr(s.mismatch_since)} meldet ein Ausgang nicht, was VoltPilot befiehlt. Der Heizstab heizt mit der `
-    + 'bestätigten Stufe weiter und nie mit mehr als befohlen. Klemmt ein Relais oder hat jemand in der Shelly-App '
-    + 'geschaltet?';
+  const frage = 'Klemmt ein Relais, oder hat jemand in der Shelly-App geschaltet?';
+  const bestaetigt = s.confirmed ?? null;
+  if (bestaetigt !== null && bestaetigt > s.commanded) {
+    return `Seit ${uhr(s.mismatch_since)} heizt der Stab mit mehr als befohlen (${stufeText(bestaetigt)} statt `
+      + `${stufeText(s.commanded)}): ein Ausgang lässt sich nicht ausschalten. ${frage}`;
+  }
+  if (bestaetigt !== null && bestaetigt < s.commanded) {
+    return `Seit ${uhr(s.mismatch_since)} schaltet ein Ausgang nicht ein. Der Stab heizt mit ${stufeText(bestaetigt)} `
+      + `statt ${stufeText(s.commanded)} weiter. ${frage}`;
+  }
+  return `Seit ${uhr(s.mismatch_since)} meldet ein Ausgang nicht, was VoltPilot befiehlt. ${frage}`;
 }
+
+/**
+ * Der Satz zu einem laufenden „Jetzt heizen“ - er sagt, was BEFOHLEN ist, nie „heizt“: ob der Stab heizt,
+ * sagt erst die bestätigte Stufe im Kopf der Karte.
+ */
+export function handSatz(endsAt: string, kw: number | null | undefined, stufen: { ausgaenge: number; kw: number }[]): string {
+  const stufe = kw == null ? null : stufen.find((s) => Math.abs(s.kw - kw) < 1e-6) ?? null;
+  const was = stufe ? `${stufeText(stufe.ausgaenge)} · ${kwText(stufe.kw)}` : kw != null ? kwText(kw) : null;
+  return `Von Hand eingeschaltet bis ${uhr(endsAt)}${was ? ` (${was})` : ''}.`;
+}
+
+/**
+ * Ist der Anschluss offen? Dann schaltet VoltPilot den Stab nicht - weder der Regler noch „Jetzt heizen“
+ * (Zwilling von `HeizstabGeraet.anschlussOffen`/`HeizstabAusgaenge.anschlussBestaetigt`).
+ */
+export function anschlussOffen(connection: Record<string, unknown> | null | undefined): boolean {
+  return Array.isArray(connection?.channels) && connection?.anschluss !== 'stern_mit_n';
+}
+
+export const ANSCHLUSS_OFFEN_SATZ =
+  'Der Anschluss der Heizelemente ist nicht bestätigt. Bis Ihr Elektriker ihn klärt, schaltet VoltPilot den '
+  + 'Heizstab nicht - auch nicht von Hand.';
 
 /** Der Grund des Reglers, mit dem frühesten Wechsel nach oben. */
 export function reglerSatz(r: ReglerMeldung | null | undefined): string | null {

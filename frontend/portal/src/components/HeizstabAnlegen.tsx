@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -15,6 +15,7 @@ import {
   nachStromausfallWarnung,
   stufen,
   stufeText,
+  testKurz,
   testZeilen,
   type Anschluss,
   type TestAusgang,
@@ -65,6 +66,8 @@ export function HeizstabAnlegen({
   const [fehler, setFehler] = useState<string | null>(null);
   const [gezeigt, setGezeigt] = useState(false);
 
+  const anschlussRef = useRef<HTMLButtonElement>(null);
+  const kwRef = useRef<HTMLInputElement>(null);
   const kw = zahl(kwText_);
   const teilstufenErlaubt = anschluss === 'stern_mit_n' || anschluss === 'unbekannt';
   const verbindungJetzt = useMemo(
@@ -84,16 +87,21 @@ export function HeizstabAnlegen({
     output_kw: verbindungJetzt.output_kw as number[],
     stages: verbindungJetzt.stages as number[],
   });
-  const eingabeFehler =
-    anschlussFehler(anschluss, kanaele)
-    ?? (kw === null ? 'Bitte geben Sie die Leistung eines Heizelements in kW an (Typenschild).' : null)
-    ?? ausgangsFehler(verbindungJetzt);
+  // Jeder Fehler steht an SEINEM Feld: der Anschluss unter der Anschluss-Wahl, die Leistung am Feld.
+  const anschlussProblem = anschlussFehler(anschluss, kanaele);
+  const kwProblem = kw === null ? 'Bitte geben Sie die Leistung eines Heizelements in kW an (Typenschild).' : null;
+  const mengenProblem = anschlussProblem || kwProblem ? null : ausgangsFehler(verbindungJetzt);
+  const eingabeFehler = anschlussProblem ?? kwProblem ?? mengenProblem;
   const testOk = testErgebnis(test).zustand === 'bestanden';
   const warnung = nachStromausfallWarnung(ausgaenge);
 
   const testen = async () => {
     setGezeigt(true);
-    if (eingabeFehler) return;
+    if (eingabeFehler) {
+      // Ungültig: Fokus auf das erste Feld mit Fehler, statt nur unten einen Satz zu zeigen.
+      (anschlussProblem ? anschlussRef.current : kwRef.current)?.focus();
+      return;
+    }
     setSchritt('test');
     setTestLaeuft(true);
     setFehler(null);
@@ -193,7 +201,9 @@ export function HeizstabAnlegen({
     >
       <div className="vp-hz" data-testid="heizstab-anlegen">
         <p className="vp-hz-unter">
-          {titel} · {kanaele} Ausgänge als EIN Gerät. Ausgang 1 bis {kanaele} schalten die Phasen L1 bis L{kanaele}.
+          {kanaele > 1
+            ? `${titel} schaltet den Heizstab: Ausgang 1 bis ${kanaele} sind die Phasen L1 bis L${kanaele}.`
+            : `${titel} schaltet den Heizstab.`}
         </p>
 
         {schritt === 'einrichten' && (
@@ -201,21 +211,35 @@ export function HeizstabAnlegen({
             <section className="vp-hz-abschnitt" aria-labelledby="hz-anschluss">
               <h4 id="hz-anschluss">Wie sind die Heizelemente angeschlossen?</h4>
               <ul className="vp-hz-wahl">
-                {ANSCHLUSS_WAHL.map((a) => (
+                {ANSCHLUSS_WAHL.map((a, i) => (
                   <li key={a.wert}>
-                    <button type="button" aria-pressed={anschluss === a.wert} onClick={() => setAnschluss(a.wert)}>
+                    <button
+                      ref={i === 0 ? anschlussRef : undefined}
+                      type="button"
+                      aria-pressed={anschluss === a.wert}
+                      aria-describedby={gezeigt && anschlussProblem ? 'hz-anschluss-fehler' : undefined}
+                      onClick={() => setAnschluss(a.wert)}
+                    >
                       <b>{a.titel}</b>
                       <small>{a.text}</small>
                     </button>
                   </li>
                 ))}
               </ul>
+              {gezeigt && anschlussProblem && (
+                <p className="vp-hz-hinweis" id="hz-anschluss-fehler" role="alert">
+                  <Icon name="alert-triangle" size={15} />
+                  <span>{anschlussProblem}</span>
+                </p>
+              )}
             </section>
 
             <section className="vp-hz-abschnitt">
               <Input
+                ref={kwRef}
                 label="Leistung je Heizelement (kW)"
-                hint={`Vom Typenschild. Zusammen: ${kw ? kwText(kw * kanaele) : '–'}`}
+                hint={kw ? `Vom Typenschild. Zusammen: ${kwText(kw * kanaele)}` : 'Vom Typenschild.'}
+                error={gezeigt && !anschlussProblem && kwProblem ? kwProblem : null}
                 inputMode="decimal"
                 value={kwText_}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => setKwText(e.target.value)}
@@ -262,10 +286,10 @@ export function HeizstabAnlegen({
               />
             </section>
 
-            {gezeigt && eingabeFehler && (
+            {gezeigt && mengenProblem && (
               <p className="vp-hz-hinweis" role="alert">
                 <Icon name="alert-triangle" size={15} />
-                <span>{eingabeFehler}</span>
+                <span>{mengenProblem}</span>
               </p>
             )}
           </>
@@ -278,14 +302,7 @@ export function HeizstabAnlegen({
             {!testLaeuft && test && !testOk && <p className="vp-hz-fehler" role="alert">{testErgebnis(test).text}</p>}
             {!testLaeuft && testOk && (
               <>
-                <ul className="vp-hz-zeilen">
-                  {testZeilen(ausgaenge).map((z) => (
-                    <li key={z.label}>
-                      <b>{z.label}</b>
-                      <span>{z.wert}</span>
-                    </li>
-                  ))}
-                </ul>
+                <p className="vp-hz-ok"><Icon name="check" size={16} /> <span>{testKurz(ausgaenge, kanaele)}</span></p>
                 {warnung && (
                   <div className="vp-hz-abschnitt">
                     <p className="vp-hz-hinweis" role="status">
@@ -300,9 +317,20 @@ export function HeizstabAnlegen({
                   </div>
                 )}
                 <p className="vp-hz-unter">
-                  Jeder Ausgang schaltet sich nach 3 Minuten ohne Befehl der Box selbst ab. Automatisch heizt der Stab erst,
-                  wenn Sie die Steuerart „Solar-Überschuss“ wählen.
+                  Schutz: Ohne Befehl der Box schaltet jeder Ausgang nach 3 Minuten selbst ab. Automatisch heizt der Stab
+                  erst, wenn Sie in der Steuerung „Mit Sonnenstrom“ wählen.
                 </p>
+                <details className="vp-hz-mehr">
+                  <summary>Einzelheiten zu den Ausgängen</summary>
+                  <ul className="vp-hz-zeilen vp-hz-mehr-inhalt">
+                    {testZeilen(ausgaenge).map((z) => (
+                      <li key={z.label}>
+                        <b>{z.label}</b>
+                        <span>{z.wert}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               </>
             )}
           </section>

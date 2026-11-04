@@ -88,15 +88,26 @@ function bahn(st: Record<string, unknown>): { source: string; minKw: number | nu
   return { source: st.quelle === 'guenstig' ? 'nur_sonne' : 'schnell', minKw: null, storageRelease: false };
 }
 
+/**
+ * `?box=light`: die Box ist eine Edge Light - am Heizstab sperrt der Server Zeit, Preis und „Fertig bis“ mit
+ * Grund (`SteuerartSatz.GRUND_BOX_OHNE_REGELN`, wörtlich).
+ */
+const EDGE_LIGHT = new URLSearchParams(location.search).get('box') === 'light';
+const GRUND_BOX_OHNE_REGELN = 'Ihre VoltPilot-Box führt Zeit- und Preisregeln noch nicht aus.';
+
 function optionen(d: Def) {
   // Die Vorgabe der Preisgrenze ist das billigste Viertel des BEZUGSPREISES (`SteuerartPreisVorgabe`).
   const v: Record<string, unknown> = { schwelleKw: d.nenn, preisgrenzeCtKwh: 30, mindestlaufzeitMinuten: 10 };
   if (d.typ === 'heat-pump-sgready') Object.assign(v, { mindestlaufzeitMinuten: 30, sperrzeitMinuten: 20 });
+  const light = EDGE_LIGHT && d.typ === 'heating-rod';
+  const sperre = (id: string) => (light && id !== 'ueberschuss' && id !== 'sofort'
+    ? { id, gesperrt: true, grund: GRUND_BOX_OHNE_REGELN }
+    : { id, gesperrt: false });
   return {
     schreibbar: d.schreibbar !== false,
     nichtSchreibbarGrund: d.grund ?? null,
-    quellen: d.quellen.map((id) => ({ id, gesperrt: false })),
-    ziele: d.ziele.map((id) => ({ id, gesperrt: false })),
+    quellen: d.quellen.map(sperre),
+    ziele: d.ziele.map(sperre),
     vorgaben: v,
   };
 }

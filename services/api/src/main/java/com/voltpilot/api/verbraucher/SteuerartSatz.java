@@ -41,6 +41,14 @@ public final class SteuerartSatz {
 
     // --- Die Sperr-Gruende, woertlich (§3.1) --------------------------------
 
+    /**
+     * Die Box ist eine Edge Light: sie fuehrt die Regeln aus dem Regel-Compiler
+     * nicht aus (edge-light/docs/paritaet.md, Abschnitt E). Am Heizstab wirkt
+     * dort nur der Regler der Box („Mit Sonnenstrom") und „Jetzt heizen" - eine
+     * Zeit-, Preis- oder Fertig-bis-Wahl stuende sonst gespeichert und still.
+     */
+    public static final String GRUND_BOX_OHNE_REGELN =
+            "Ihre VoltPilot-Box führt Zeit- und Preisregeln noch nicht aus.";
     /** Der Tarif ist FLACH - es gibt gar keine guenstigen Stunden. */
     public static final String GRUND_TARIF_FEST =
             "Ihr Stromtarif hat keine stündlichen Preise.";
@@ -154,14 +162,28 @@ public final class SteuerartSatz {
              * „Sonne + Speicher": hat die Anlage einen Speicher, und welche
              * Kapazitaet ist gepflegt? null = keine gepflegt (nie 0).
              */
-            boolean hatSpeicher, BigDecimal speicherKapazitaetKwh) {
+            boolean hatSpeicher, BigDecimal speicherKapazitaetKwh,
+            /*
+             * Die Box dieser Komponente fuehrt keine Regeln aus dem Regel-Compiler
+             * aus (Edge Light). false = Docker-Box ODER unbekannt - unbekannt
+             * sperrt nie still.
+             */
+            boolean boxOhneRegeln) {
+
+        /** Der Kontext ohne die Box-Art (jeder Aufrufer vor 04.11.2026). */
+        public Kontext(String entityType, BigDecimal ratedPowerKw, BigDecimal minPowerKw,
+                String confirmationChannel, String tarifArt, boolean hatPv,
+                BigDecimal preisgrenzeVorgabeCtKwh, boolean hatSpeicher, BigDecimal speicherKapazitaetKwh) {
+            this(entityType, ratedPowerKw, minPowerKw, confirmationChannel, tarifArt, hatPv,
+                    preisgrenzeVorgabeCtKwh, hatSpeicher, speicherKapazitaetKwh, false);
+        }
 
         /** Der Kontext ohne Speicher-Fakten (jeder Aufrufer vor 06.10.2026). */
         public Kontext(String entityType, BigDecimal ratedPowerKw, BigDecimal minPowerKw,
                 String confirmationChannel, String tarifArt, boolean hatPv,
                 BigDecimal preisgrenzeVorgabeCtKwh) {
             this(entityType, ratedPowerKw, minPowerKw, confirmationChannel, tarifArt, hatPv,
-                    preisgrenzeVorgabeCtKwh, false, null);
+                    preisgrenzeVorgabeCtKwh, false, null, false);
         }
     }
 
@@ -317,6 +339,12 @@ public final class SteuerartSatz {
                 || SgReady.QUELLE_UEBERSCHUSS.equals(quelle);
         boolean guenstig = SteuerartProjektion.QUELLE_GUENSTIG.equals(quelle)
                 || SgReady.QUELLE_GUENSTIG.equals(quelle);
+        // Edge Light: am Heizstab wirkt nur sein Regler (Ueberschuss); Zeit und
+        // Preis liefen ueber den Regel-Compiler, den diese Box nicht hat.
+        if (heizstabOhneRegeln(k) && (guenstig
+                || SteuerartProjektion.QUELLE_FESTE_ZEITEN.equals(quelle))) {
+            return GRUND_BOX_OHNE_REGELN;
+        }
         if (ueberschuss) {
             if (!k.hatPv()) {
                 return GRUND_OHNE_PV;
@@ -348,10 +376,19 @@ public final class SteuerartSatz {
         return null;
     }
 
+    /** Ein Heizstab an einer Box ohne Regel-Compiler (Edge Light). */
+    private static boolean heizstabOhneRegeln(Kontext k) {
+        return k.boxOhneRegeln() && "heating-rod".equals(k.entityType());
+    }
+
     /** Der Sperrgrund eines Ziels, oder {@code null}. */
     static String zielGesperrt(Kontext k, String quelle, String ziel) {
         if (SgReady.is(k.entityType())) {
             return GRUND_KEIN_ZIEL_SGREADY;
+        }
+        // Die Box-Grenze ist strukturell - sie steht vor der Wahl der Quelle.
+        if (heizstabOhneRegeln(k)) {
+            return GRUND_BOX_OHNE_REGELN;
         }
         if (SteuerartProjektion.QUELLE_SOFORT.equals(quelle)) {
             return GRUND_ZIEL_BEI_SOFORT;

@@ -63,11 +63,14 @@ public class EntityController {
      *  row (grid-meter / house-load derived from the gateway). The customer
      *  delete gate mirrors the server (vp-komp-loeschen E2): a null-pin row is
      *  deletable UNLESS it carries this marker, so a never-connected producer
-     *  can be removed while the plant's derived base stays protected. */
+     *  can be removed while the plant's derived base stays protected.
+     *  {@code certificationStatus}: the TYPE's catalog release state
+     *  ({@code simulator_only} etc., null = the type has none) - the portal
+     *  only says "Von VoltPilot freigegeben" without a restriction. */
     public record EntityDto(UUID id, String entityType, String typeLabel, String role,
             String label, boolean control, UUID deviceId, JsonNode capabilities, JsonNode guards,
             String syncStatus, ObservedDto observed, String edgeSourceId, Boolean orphanedPin,
-            java.math.BigDecimal capacityKwp, String sourceKind) {}
+            java.math.BigDecimal capacityKwp, String sourceKind, String certificationStatus) {}
 
     /** One edge-local commissioning item. {@code adoptedEntityId} != null when a
      *  v2 entity was already adopted from this source (U2 "Vom Gerät gemeldet").
@@ -193,7 +196,8 @@ public class EntityController {
                             : new ObservedDto(obs.health(), obs.lastTelemetryAt(),
                                     parse(obs.channelsJson()), obs.entityType(),
                                     obs.reportedAt()),
-                    row.edgeSourceId(), orphanedPin, row.capacityKwp(), row.sourceKind()));
+                    row.edgeSourceId(), orphanedPin, row.capacityKwp(), row.sourceKind(),
+                    certificationStatus(row.entityType())));
         }
         // Whatever the edge still reports that the registry no longer knows.
         List<String> staleOnDevice = new ArrayList<>(byEntity.keySet());
@@ -306,5 +310,11 @@ public class EntityController {
 
     private void requireSite(UUID siteId) {
         geltungsbereich.requireSite(siteId);
+    }
+
+    /** Der Katalog-Freigabestand des Typs (null = keiner oder unbekannter Typ). */
+    private String certificationStatus(String entityType) {
+        EntityTypeCatalog.EntityType t = catalog.find(entityType);
+        return t == null ? null : t.certificationStatus();
     }
 }

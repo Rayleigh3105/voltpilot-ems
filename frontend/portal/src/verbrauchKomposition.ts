@@ -124,6 +124,11 @@ export interface VerbrauchTeil {
   entityId: string | null;
   /** Der technische Name als `title` (die R2-Regel der PV-Zeilen). */
   title: string | null;
+  /**
+   * Ein Heizstab in der Gruppe „Wärme“ (nur dann gesetzt): er trägt die Flamme statt der Wärmepumpe und
+   * füllt nie die Kachel „Wärmepumpe“.
+   */
+  heizstab?: true;
 }
 
 /** Eine Gruppe der Aufschlüsselung. */
@@ -569,13 +574,14 @@ function gruppieren(
 ): VerbrauchGruppe[] {
   const buckets = new Map<VerbrauchGruppeId, VerbrauchTeil[]>();
   for (const t of teile) {
+    const typ = byId.get(t.entityId ?? '')?.entityType;
     const id: VerbrauchGruppeId = eigeneKeys.has(t.key)
       ? 'laden_eigen'
       : t.key.startsWith('cp:')
         ? 'laden'
-        : gruppeFuerTyp(byId.get(t.entityId ?? '')?.entityType);
+        : gruppeFuerTyp(typ);
     const list = buckets.get(id) ?? [];
-    list.push(t);
+    list.push(id === 'waerme' && typ === 'heating-rod' ? { ...t, heizstab: true } : t);
     buckets.set(id, list);
   }
   const order: VerbrauchGruppeId[] = ['laden', 'waerme', 'sonstiges', 'laden_eigen'];

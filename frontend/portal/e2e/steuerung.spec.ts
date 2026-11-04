@@ -97,6 +97,22 @@ test('Geräte: das Blatt eines Geräts öffnet, hält den Fokus und gibt ihn zur
   await expect(knopf).toBeFocused();
 });
 
+test('Heizstab an einer Edge Light: Zeit, Preis und „Fertig bis“ gesperrt mit Grund, „Mit Sonnenstrom“ frei', async ({ page }) => {
+  const fehler = await oeffnen(page, '/e2e/steuerung.html?box=light#/anlage/help-site/steuerung');
+  await page.locator('#dev-e-hs').click();
+  const blatt = page.getByRole('dialog', { name: /Heizstab Warmwasser/ });
+  const arten = blatt.getByRole('group', { name: 'Womit läuft das Gerät?' });
+  await arten.scrollIntoViewIfNeeded();
+  await expect(arten.getByRole('button', { name: /Mit Sonnenstrom/ })).toBeEnabled();
+  for (const karte of [/Günstige Stunden/, /Feste Zeiten/, /Fertig bis/]) {
+    const k = arten.getByRole('button', { name: karte });
+    await expect(k).toBeDisabled();
+    await expect(k).toContainText('Ihre VoltPilot-Box führt Zeit- und Preisregeln noch nicht aus.');
+  }
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(fehler).toEqual([]);
+});
+
 test('Geräte: die Reihenfolge lässt sich mit Pfeilen ändern und speichern', async ({ page }) => {
   await oeffnen(page, GERAETE);
   await page.getByRole('button', { name: /Ändern/ }).click();

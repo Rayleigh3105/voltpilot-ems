@@ -725,3 +725,30 @@ describe('das I/O-Modul (Ebyte M31)', () => {
     expect(g.sektionen).not.toContain('register');
   });
 });
+
+describe('Heizstab: der Kopf zeigt die BESTÄTIGTE Stufe (Entschlacken 04.11.2026)', () => {
+  const stab = (stufe: Parameters<typeof gesicht>[0]['heizstab']) => gesicht(input({
+    art: 'quelle',
+    geraetId: 'src-shelly',
+    rolle: 'consumer',
+    communication: 'shelly_http',
+    komponenten: [komponente({ role: 'consumer', entityId: 'e-hz', label: 'Heizstab' })],
+    gemessen: false,
+    heizstab: stufe,
+  })).held;
+
+  it('nennt Stufe und angenommene Leistung statt „meldet gerade keinen Wert“', () => {
+    const h = stab({ stufe: { commanded: 2, confirmed: 2, confirmed_kw: 4, outputs_on: [0, 1] } });
+    expect(h.satz).toBe('Heizt gerade.');
+    expect(h.kacheln).toEqual([expect.objectContaining({ label: 'Stufe', wert: '2 Phasen', wort: `≈${NBSP}4,0${NBSP}kW · angenommen` })]);
+    expect(h.zeilen).toEqual(['Energie: angenommen aus den bestätigten Stufen']);
+    expect(h.hinweis).toBeNull();
+  });
+
+  it('unbekannt bleibt unbekannt - nie „aus“', () => {
+    expect(stab({ stufe: null }).satz).toBe('Die Box hat noch keine Stufe gemeldet.');
+    expect(stab({ stufe: { commanded: 1, confirmed: null } }).satz).toBe('Die Box hat die Stufe noch nicht bestätigt.');
+    expect(stab({ stufe: { commanded: 0, confirmed: 0, confirmed_kw: 0 } }).satz).toBe('Heizt gerade nicht.');
+    expect(stab({ stufe: { commanded: 0, confirmed: 0, confirmed_kw: 0 } }).kacheln[0].wert).toBe('Aus');
+  });
+});

@@ -8,6 +8,9 @@ import type { ConsumerRuntimeStatus } from '../consumers/status';
 import type { Consumer } from '../consumers/types';
 import {
   abweichungHinweis,
+  ANSCHLUSS_OFFEN_SATZ,
+  anschlussOffen,
+  handSatz,
   HEIZ_DAUERN,
   hoechstensKwh,
   kwText,
@@ -32,10 +35,11 @@ export function heizStufen(consumer: Consumer, kanaele: number): { stufe: number
 }
 
 /**
- * Der Heizstab auf seiner Geräteseite (Heizstab V1, Paket 4): was BESTÄTIGT läuft (Stufe, Phasen), warum
- * (der Regler der Box), eine Abweichung, die länger als 3 min anhält (HZ-4 B: der Stab heizt mit der
- * bestätigten Stufe weiter, nichts wird gesperrt), die angenommene Wärme des Tages aus den bestätigten
- * Stufen - und „Jetzt heizen“ mit Stufe und Dauer (Handeingriff, höchstens 4 h).
+ * Der Heizstab auf seiner Geräteseite (Heizstab V1, Paket 4). Oben, immer sichtbar: was BESTÄTIGT läuft,
+ * warum (der Regler der Box), eine Abweichung, die länger als 3 min anhält (HZ-4 B), und ein offener
+ * Anschluss (dann schaltet VoltPilot nicht). Darunter „Jetzt heizen“ mit Stufe und Dauer (Handeingriff,
+ * höchstens 4 h). Die Einzelheiten - Phasen, die angenommene Wärme des Tages, die Phase für Stufe 1 -
+ * stehen unter „Mehr zum Heizstab“ (Entschlacken 04.11.2026).
  */
 export function HeizstabKarte({
   siteId,
@@ -129,31 +133,27 @@ export function HeizstabKarte({
     }
   };
 
+  const offen = anschlussOffen(komponente?.connection ?? null);
+  const dauerText = HEIZ_DAUERN.find((d) => d.minuten === dauer)?.text ?? `${dauer} Minuten`;
+  const phasenListe = phasen(kanaele, stufe);
+  const zeigtPhasenwahl = komponente != null && kanaele > 1 && Array.isArray(komponente.connection?.stages)
+    && (komponente.connection!.stages as number[]).includes(1);
+
   return (
     <div className="vp-hz" data-testid="heizstab-karte">
       <div className="vp-hz-abschnitt">
-        <b>{zustandsSatz(stufe)}</b>
-        <div className="vp-hz-phasen" aria-label="Phasen">
-          {phasen(kanaele, stufe).map((p) => (
-            <span
-              key={p.label}
-              className={`vp-hz-phase ${p.an === true ? 'is-an' : p.an === null ? 'is-unbekannt' : ''}`}
-            >
-              {p.label} {p.an === true ? 'an' : p.an === false ? 'aus' : '?'}
-            </span>
-          ))}
-        </div>
+        <b className="vp-hz-kopf">{zustandsSatz(stufe)}</b>
         {grund && <p className="vp-hz-unter">{grund}</p>}
-        {status?.stufeEnergieKwhHeute != null && (
-          <p className="vp-hz-unter">
-            Wärme heute ≈ {status.stufeEnergieKwhHeute.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-            {' '}kWh (angenommen aus den bestätigten Stufen, ohne Messung)
-          </p>
-        )}
         {hinweis && (
           <p className="vp-hz-hinweis" role="status">
             <Icon name="alert-triangle" size={15} />
             <span>{hinweis}</span>
+          </p>
+        )}
+        {offen && (
+          <p className="vp-hz-hinweis" role="status" data-testid="heizstab-anschluss-offen">
+            <Icon name="alert-triangle" size={15} />
+            <span>{ANSCHLUSS_OFFEN_SATZ}</span>
           </p>
         )}
       </div>
@@ -163,11 +163,7 @@ export function HeizstabKarte({
           <h4 id={`hz-jetzt-${consumer.id}`}>Jetzt heizen</h4>
           {handAn ? (
             <>
-              <p className="vp-hz-unter">
-                Heizt von Hand bis{' '}
-                {new Date(override!.endsAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })}
-                {override!.targetValue != null ? ` · ${kwText(override!.targetValue)}` : ''}.
-              </p>
+              <p className="vp-hz-unter">{handSatz(override!.endsAt, override!.targetValue, stufenListe)}</p>
               <div className="vp-hz-knoepfe">
                 <Button variant="outline" size="sm" onClick={() => void automatik()} disabled={busy}>Automatik fortsetzen</Button>
               </div>
@@ -175,34 +171,40 @@ export function HeizstabKarte({
           ) : (
             <>
               {stufenListe.length > 1 && (
-                <ul className="vp-hz-wahl" aria-label="Stufe">
-                  {stufenListe.map((s) => (
-                    <li key={s.stufe}>
-                      <button type="button" aria-pressed={wahl === s.stufe} onClick={() => setWahl(s.stufe)}>
-                        <b>{stufeText(s.ausgaenge)}</b>
-                        <small>{kwText(s.kw)}</small>
+                <div className="vp-hz-gruppe" role="group" aria-labelledby={`hz-stufe-${consumer.id}`}>
+                  <span className="vp-hz-gruppe-wort" id={`hz-stufe-${consumer.id}`}>Stufe</span>
+                  <ul className="vp-hz-chips">
+                    {stufenListe.map((s) => (
+                      <li key={s.stufe}>
+                        <button type="button" aria-pressed={wahl === s.stufe} onClick={() => setWahl(s.stufe)} disabled={offen}>
+                          <b>{stufeText(s.ausgaenge)}</b>
+                          <small>{kwText(s.kw)}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="vp-hz-gruppe" role="group" aria-labelledby={`hz-dauer-${consumer.id}`}>
+                <span className="vp-hz-gruppe-wort" id={`hz-dauer-${consumer.id}`}>Dauer</span>
+                <ul className="vp-hz-chips is-dauer">
+                  {HEIZ_DAUERN.map((d) => (
+                    <li key={d.minuten}>
+                      <button type="button" aria-pressed={dauer === d.minuten} onClick={() => setDauer(d.minuten)} disabled={offen}>
+                        <b>{d.text}</b>
                       </button>
                     </li>
                   ))}
                 </ul>
-              )}
-              <ul className="vp-hz-wahl" aria-label="Dauer">
-                {HEIZ_DAUERN.map((d) => (
-                  <li key={d.minuten}>
-                    <button type="button" aria-pressed={dauer === d.minuten} onClick={() => setDauer(d.minuten)}>
-                      <b>{d.text}</b>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {gewaehlt && (
+              </div>
+              {gewaehlt && !offen && (
                 <p className="vp-hz-unter">
-                  {hoechstensKwh(gewaehlt.kw, dauer)} - ist das Wasser warm, schaltet das Thermostat des Stabs früher ab.
+                  {hoechstensKwh(gewaehlt.kw, dauer)}. Ist das Wasser warm, schaltet das Thermostat früher ab.
                 </p>
               )}
               <div className="vp-hz-knoepfe">
-                <Button variant="primary" size="sm" onClick={() => void heizen()} disabled={busy || !gewaehlt}>
-                  {gewaehlt ? `${stufeText(gewaehlt.ausgaenge)} einschalten` : 'Jetzt heizen'}
+                <Button variant="primary" size="sm" onClick={() => void heizen()} disabled={busy || !gewaehlt || offen}>
+                  {gewaehlt ? `${stufeText(gewaehlt.ausgaenge)} für ${dauerText} einschalten` : 'Jetzt heizen'}
                 </Button>
               </div>
             </>
@@ -211,27 +213,51 @@ export function HeizstabKarte({
         </section>
       </Recht>
 
-      {komponente && kanaele > 1 && Array.isArray(komponente.connection?.stages) && (komponente.connection!.stages as number[]).includes(1) && (
-        <Recht aktion="geraet.einrichten">
-          <section className="vp-hz-abschnitt" aria-labelledby={`hz-phase-${consumer.id}`}>
-            <h4 id={`hz-phase-${consumer.id}`}>Phase für 1 Phase</h4>
-            <ul className="vp-hz-wahl">
-              <li>
-                <button type="button" aria-pressed={rotation === 'daily'} disabled={busy} onClick={() => void phaseWaehlen('daily')}>
-                  <b>Täglich wechselnd</b>
-                  <small>L1, am nächsten Tag L2, dann L3 - die Elemente nutzen sich gleich ab.</small>
-                </button>
-              </li>
-              <li>
-                <button type="button" aria-pressed={rotation === 'fixed'} disabled={busy} onClick={() => void phaseWaehlen('fixed')}>
-                  <b>Immer L1</b>
-                  <small>Zum Beispiel dieselbe Phase wie ein einphasiger Wechselrichter.</small>
-                </button>
-              </li>
-            </ul>
-          </section>
-        </Recht>
-      )}
+      <details className="vp-hz-mehr" data-testid="heizstab-mehr">
+        <summary>Mehr zum Heizstab</summary>
+        <div className="vp-hz-mehr-inhalt">
+          <div className="vp-hz-zeile">
+            <span className="vp-hz-gruppe-wort">Phasen jetzt</span>
+            <div className="vp-hz-phasen" aria-label="Phasen">
+              {phasenListe.map((p) => (
+                <span
+                  key={p.label}
+                  className={`vp-hz-phase ${p.an === true ? 'is-an' : p.an === null ? 'is-unbekannt' : ''}`}
+                >
+                  {p.label} {p.an === true ? 'an' : p.an === false ? 'aus' : '?'}
+                </span>
+              ))}
+            </div>
+          </div>
+          {status?.stufeEnergieKwhHeute != null && (
+            <p className="vp-hz-unter">
+              Wärme heute ≈{' '}{status.stufeEnergieKwhHeute.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+              {' '}kWh - geschätzt aus den bestätigten Stufen, nicht gemessen.
+            </p>
+          )}
+          {zeigtPhasenwahl && (
+            <Recht aktion="geraet.einrichten">
+              <section className="vp-hz-abschnitt" aria-labelledby={`hz-phase-${consumer.id}`}>
+                <h4 id={`hz-phase-${consumer.id}`}>Heizt nur eine Phase: welche?</h4>
+                <ul className="vp-hz-wahl">
+                  <li>
+                    <button type="button" aria-pressed={rotation === 'daily'} disabled={busy} onClick={() => void phaseWaehlen('daily')}>
+                      <b>Täglich wechselnd</b>
+                      <small>L1, L2, L3 im Wechsel - die Elemente nutzen sich gleich ab.</small>
+                    </button>
+                  </li>
+                  <li>
+                    <button type="button" aria-pressed={rotation === 'fixed'} disabled={busy} onClick={() => void phaseWaehlen('fixed')}>
+                      <b>Immer L1</b>
+                      <small>Zum Beispiel dieselbe Phase wie ein einphasiger Wechselrichter.</small>
+                    </button>
+                  </li>
+                </ul>
+              </section>
+            </Recht>
+          )}
+        </div>
+      </details>
     </div>
   );
 }

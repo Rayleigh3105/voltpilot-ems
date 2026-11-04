@@ -1,5 +1,7 @@
 package com.voltpilot.api.verbraucher;
 
+import com.voltpilot.api.ota.BoxArt;
+import com.voltpilot.api.repo.UpdateStatusRepository;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.web.dto.SiteAssetDto;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -109,12 +111,14 @@ public class SteuerartService {
     private final ChargingConfigService charging;
     private final AssetRepository assets;
     private final ObjectMapper mapper;
+    private final UpdateStatusRepository updateStatus;
 
     public SteuerartService(SiteRepository sites, EntityRegistryRepository entities,
             EntityTypeCatalog catalog, ConsumerRepository consumers,
             ConsumerService consumerService, ConsumerPolicyActivationService activation,
             UsageProfileService profiles, SteuerartPreisVorgabe preise,
-            ChargingConfigService charging, AssetRepository assets, ObjectMapper mapper) {
+            ChargingConfigService charging, AssetRepository assets, ObjectMapper mapper,
+            UpdateStatusRepository updateStatus) {
         this.sites = sites;
         this.entities = entities;
         this.catalog = catalog;
@@ -126,6 +130,7 @@ public class SteuerartService {
         this.charging = charging;
         this.assets = assets;
         this.mapper = mapper;
+        this.updateStatus = updateStatus;
     }
 
     // -----------------------------------------------------------------------
@@ -149,7 +154,11 @@ public class SteuerartService {
                 profil == null ? null : profil.minPowerKw(),
                 profil == null ? null : profil.confirmationChannel(),
                 site == null ? null : site.tarifArt(), hatPv, preisVorgabe,
-                speicher.vorhanden(), speicher.kapazitaetKwh());
+                speicher.vorhanden(), speicher.kapazitaetKwh(),
+                // Edge Light fuehrt keine Compiler-Regeln aus; nur fuer den Heizstab
+                // gefragt (die einzige Sperre, die daran haengt).
+                "heating-rod".equals(row.entityType())
+                        && BoxArt.LIGHT.equals(updateStatus.boxArt(row.deviceId())));
     }
 
     /**

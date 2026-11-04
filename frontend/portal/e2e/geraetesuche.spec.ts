@@ -213,7 +213,7 @@ for (const breite of BREITEN) {
       const dialog = modal(page, 'Heizstab einrichten');
       // EIN Dialog: der Heizstab ist ein Schritt im Dialog der Suche, kein zweites Fenster darüber.
       await expect(page.getByRole('dialog')).toHaveCount(1);
-      await expect(dialog.getByText('Phase für 1 Phase')).toHaveCount(0);
+      await expect(dialog.getByText('Heizt nur eine Phase: welche?')).toHaveCount(0);
       await dialog.getByRole('button', { name: 'Zurück zur Liste' }).click();
       await expect(modal(page, 'Schalter hinzufügen')).toBeVisible();
       await expect(page.getByRole('dialog')).toHaveCount(1);
@@ -222,6 +222,10 @@ for (const breite of BREITEN) {
       await dialog.getByLabel('Leistung je Heizelement (kW)').fill('2,0');
       await pruefeUndFotografiere(page, info, breite, 'hz-einrichten', true);
       await dialog.getByRole('button', { name: 'Verbindung testen' }).click();
+      await expect(dialog.getByText('Die Box erreicht den Shelly und liest alle 3 Ausgänge.')).toBeVisible();
+      // Die Zeile je Ausgang steht unter „Einzelheiten“ - die Warnung „nach Stromausfall“ bleibt sichtbar.
+      await expect(dialog.getByText('Ausgang 2 (L2)')).toBeHidden();
+      await dialog.getByText('Einzelheiten zu den Ausgängen').click();
       await expect(dialog.getByText('Ausgang 2 (L2)')).toBeVisible();
       await expect(dialog.getByText(/Stellen Sie die Ausgänge auf „aus“/)).toBeVisible();
       await pruefeUndFotografiere(page, info, breite, 'hz-test', true);

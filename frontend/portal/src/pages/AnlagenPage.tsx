@@ -2073,7 +2073,9 @@ export function AnlageSeite({
       />
     );
   };
-  const waerme = buehneVerbrauch?.gruppen.find((g) => g.id === 'waerme' && !g.collapsed)?.teile[0] ?? null;
+  // Die Kachel heißt „Wärmepumpe“: ein Heizstab der Gruppe „Wärme“ füllt sie nie (er steht in der Liste).
+  const waerme = buehneVerbrauch?.gruppen.find((g) => g.id === 'waerme' && !g.collapsed)?.teile
+    .find((t) => !t.heizstab) ?? null;
   // Die Reihenfolge der Kacheln je Betriebsmodell - wie im Prototyp
   // (`DEFAULTS`). „@geld“ ist der Platz von „Unterm Strich“, wenn der Baustein
   // `geld` direkt hinter den Kennzahlen steht (so die Voreinstellung).

@@ -381,7 +381,7 @@ export function leistungsBeleg(vorher: number | null, nachher: number | null): s
  * Anzeige. „Gesperrt" ist dabei ein ZUSTAND, kein Fehler: ein Gerät, das nur
  * misst, ist vollständig in Ordnung.
  */
-export type FreigabeStufe = 'pruefstand' | 'vorlage' | 'selbst' | 'gesperrt';
+export type FreigabeStufe = 'pruefstand' | 'erprobung' | 'vorlage' | 'selbst' | 'gesperrt';
 
 export type FreigabeZustand = {
   stufe: FreigabeStufe;
@@ -394,7 +394,7 @@ export type FreigabeEingang = {
   /** Trägt die Komponente eine Schreib-Fähigkeit? */
   schaltbar: boolean;
   /** Woher die Freigabe kommt - der Selbstbau ist `selbst`. */
-  quelle?: 'pruefstand' | 'vorlage' | 'selbst' | null;
+  quelle?: 'pruefstand' | 'erprobung' | 'vorlage' | 'selbst' | null;
   releasedAt?: string | null;
 };
 
@@ -414,6 +414,15 @@ export function freigabeZustand(e: FreigabeEingang): FreigabeZustand {
         wort: 'Von VoltPilot freigegeben',
         satz: 'VoltPilot hat dieses Modell am Prüfstand freigegeben.',
         ton: 'ok',
+      };
+    case 'erprobung':
+      // Der Gerätetyp ist im Katalog nur am Simulator geprüft (`simulator_only` u. a.): „Von VoltPilot
+      // freigegeben … am Prüfstand“ wäre eine Zusage, die es nicht gibt.
+      return {
+        stufe: 'erprobung',
+        wort: 'Noch nicht am Prüfstand',
+        satz: 'VoltPilot hat diesen Gerätetyp bisher nur im Simulator geprüft, noch nicht am Prüfstand.',
+        ton: 'unbekannt',
       };
     case 'vorlage':
       return {

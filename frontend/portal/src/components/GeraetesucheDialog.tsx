@@ -1275,8 +1275,8 @@ function AusgangWahl({
         </>
       )}
       <p className="vp-gs-fussnote">
-        Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht: die Box kann ihm keine Rolle in der Anlage
-        zuordnen. Der Test liest nur den Schaltzustand; geschaltet wird erst, wenn Sie eine Regel einrichten.
+        Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht. Der Test schaltet nichts; der Heizstab
+        heizt erst, wenn Sie in der Steuerung „Mit Sonnenstrom“ wählen oder „Jetzt heizen“ nutzen.
       </p>
     </div>
   );

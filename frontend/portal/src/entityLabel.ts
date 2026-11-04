@@ -111,13 +111,19 @@ export function technicalDeviceName(input: DeviceNameInput): string | null {
   const edge = (input.edgeLabel ?? '').trim();
   if (edge) return edge;
   const brand = brandCase((input.brand ?? '').trim());
-  const model = shortModel((input.model ?? '').trim());
+  const model = TRANSPORT_MODELLE.has((input.model ?? '').trim()) ? '' : shortModel((input.model ?? '').trim());
   const brandModel = [brand, model].filter(Boolean).join(' ');
   if (brandModel) return brandModel;
   const typeLabel = stripParenthetical((input.typeLabel ?? '').trim());
   if (typeLabel) return typeLabel;
   return null;
 }
+
+/**
+ * Modell-Kennungen, die nur den Transport einer Vorlage nennen („shelly_http“ = ein Shelly über seine
+ * Web-Schnittstelle) - kein Kundenwort. Der Name endet dann bei der Marke („Shelly“).
+ */
+const TRANSPORT_MODELLE = new Set(['shelly_http']);
 
 /** Per-type short names for the types a role alone cannot tell apart. */
 const TYPE_SHORT: Record<string, string> = {

@@ -26076,6 +26076,15 @@ components:
                       The adopted producer's nameplate, which sums into the
                       plant total - the delete dialog names exactly what gets
                       subtracted instead of warning vaguely.
+                  certificationStatus:
+                    type: string
+                    nullable: true
+                    description: >
+                      The entity TYPE's catalog release state (certified,
+                      in_certification, simulator_only, not_certified,
+                      per_device); null = the type carries none. The portal
+                      says "Von VoltPilot freigegeben" only for certified
+                      types (or types without a state).
                   observed:
                     type: object
                     nullable: true

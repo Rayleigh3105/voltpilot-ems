@@ -78,4 +78,18 @@ public class UpdateStatusRepository {
     // Bewusst NUR ein Schreibpfad: gelesen wird der Stand cross-tenant im
     // Flotten-Aggregat (AdminFleetRepository.updateStatusPerSite) - eine zweite
     // Lese-Methode ohne Aufrufer wäre toter Code, der aussieht wie ein Vertrag.
+
+    /**
+     * Die Box-Art aus der letzten Meldung dieses Geraets ({@link com.voltpilot.api.ota.BoxArt}):
+     * {@code light}, {@code docker} oder {@code null} = unbekannt (nie gemeldet). Liest unter RLS.
+     */
+    public String boxArt(UUID deviceId) {
+        if (deviceId == null) return null;
+        return jdbc.query("SELECT backend, version, current_version FROM device_update_status WHERE device_id = ?",
+                rs -> rs.next()
+                        ? com.voltpilot.api.ota.BoxArt.ofDevice(rs.getString("backend"), rs.getString("version"),
+                                rs.getString("current_version"))
+                        : null,
+                deviceId);
+    }
 }

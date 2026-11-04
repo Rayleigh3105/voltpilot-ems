@@ -55,6 +55,7 @@ import { anlagensteuerungIdOf } from './geraetAdresse';
 import { anlageZustand, bitVon, kwText, PUNKT, wertVon, werteJe } from './anlagensteuerung';
 import type { ChargeConnector, ChargePoint } from './ladepunkte';
 import { NO_DATA } from './nodata';
+import { stufeText, type StufeMeldung } from './heizstab';
 import type { FlowNode } from './topology';
 
 /**
@@ -277,6 +278,13 @@ export interface GesichtInput {
    * erst, wenn der Verbraucher selbst weder Leistung noch Relais meldet.
    */
   ioAusgangAn?: boolean | null;
+  /**
+   * Heizstab V1: die gemeldete Stufe eines Heizstabs (`consumer-status.stufe`). Anwesend (auch `stufe: null`)
+   * heißt „dieses Gerät IST ein Heizstab“ - er meldet keine Leistung und kein `relay_on`, sondern die
+   * BESTÄTIGTE Stufe; ohne dieses Feld läse er sich als „meldet gerade keinen Wert“, während die Karte
+   * daneben „Heizt mit 2 Phasen“ sagt.
+   */
+  heizstab?: { stufe: StufeMeldung | null } | null;
   /** UEMS EZ-10: die jüngsten Werte der Anlagensteuerung an ihrer Seite `as-…`. */
   anlagensteuerungWerte?: AnlagensteuerungWerte | null;
   now?: number;
@@ -893,6 +901,9 @@ function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
     ? leistung > LAEUFT_AB_KW
     : relais != null ? relais.wert > 0 : input.ioAusgangAn ?? null;
   const regeln = input.regeln ?? [];
+  if (input.heizstab && !freigabe && leistung == null) {
+    return heldHeizstab(input.heizstab.stufe, regeln, (input.erfuellung ?? '').trim());
+  }
   const satz = laeuft == null
     ? (freigabe
       ? 'Dieses Gerät meldet gerade keine Freigabe.'
@@ -967,6 +978,49 @@ function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
     zeilen,
     balken: null,
     werte: { ...KEINE_WERTE, verbraucherKw: leistung, laeuft },
+  };
+}
+
+/**
+ * Der Held eines Heizstabs (Heizstab V1): er misst keine Leistung, er meldet seine BESTÄTIGTE Stufe. Die
+ * Zahl ist die Leistung dieser Stufe (Typenschild), darum steht „angenommen“ daran - nie „gemessen“.
+ * Unbekannt bleibt unbekannt (keine Stufe gemeldet), nie „aus“.
+ */
+function heldHeizstab(stufe: StufeMeldung | null, regeln: string[], erfuellung: string): Held {
+  const bestaetigt = stufe?.confirmed ?? null;
+  const laeuft = bestaetigt == null ? null : bestaetigt > 0;
+  const kwStufe = bestaetigt != null && bestaetigt > 0 ? num(stufe?.confirmed_kw ?? null) : null;
+  const satz = !stufe
+    ? 'Die Box hat noch keine Stufe gemeldet.'
+    : bestaetigt == null
+      ? 'Die Box hat die Stufe noch nicht bestätigt.'
+      : bestaetigt === 0
+        ? 'Heizt gerade nicht.'
+        // Stufe und Leistung stehen groß in der Kachel daneben - der Satz wiederholt sie nicht.
+        : 'Heizt gerade.';
+  const hinweis = regeln.length === 0
+    ? null
+    : regeln.length === 1
+      ? `Geschaltet von der Regel „${regeln[0]}".`
+      : `Geschaltet von den Regeln „${regeln.join('", „')}".`;
+  const zeilen = ['Energie: angenommen aus den bestätigten Stufen'];
+  if (erfuellung) zeilen.push(erfuellung);
+  return {
+    titel: 'Zustand',
+    kacheln: [{
+      key: 'stufe',
+      label: 'Stufe',
+      wert: bestaetigt == null ? NO_DATA : bestaetigt === 0 ? 'Aus' : stufeText(bestaetigt),
+      wort: kwStufe != null ? `≈\u00a0${fmtNum(kwStufe, 'kW')} · angenommen` : bestaetigt == null ? 'nicht bestätigt' : null,
+      ton: laeuft == null ? 'off' : laeuft ? 'ok' : null,
+      gross: true,
+    }],
+    satz,
+    satzTon: laeuft == null ? 'off' : 'ok',
+    hinweis,
+    zeilen,
+    balken: null,
+    werte: { ...KEINE_WERTE, verbraucherKw: null, laeuft },
   };
 }
 

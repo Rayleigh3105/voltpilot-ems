@@ -221,3 +221,11 @@ describe('die Brücke zur Regel-Welt', () => {
     expect(regelAktion({ schaltbar: true }, 'setpoint')).toBe('setpoint');
   });
 });
+
+describe('Freigabe-Zustand eines nur im Simulator geprüften Typs', () => {
+  it('sagt „Noch nicht am Prüfstand“ statt „Von VoltPilot freigegeben“', () => {
+    const z = freigabeZustand({ schaltbar: true, quelle: 'erprobung' });
+    expect(z).toMatchObject({ stufe: 'erprobung', wort: 'Noch nicht am Prüfstand', ton: 'unbekannt' });
+    expect(z.satz).not.toMatch(/freigegeben/);
+  });
+});
