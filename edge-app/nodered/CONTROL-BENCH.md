@@ -630,6 +630,10 @@ ggf. `generic-load`) in
 `services/api/src/main/resources/entitytypes/catalog.json` von
 `simulator_only` auf den zertifizierten Stand, plattformweit. Bis dahin bleiben
 die Typen unzertifiziert — der Treiber-Code ändert sich dafür nicht.
+**Stand 04.11.2026:** `heating-rod` ist ohne diese Session freigegeben
+(Entscheid des Captains; erster realer Einsatz an `edge-h5atkys`). Die Punkte
+oben bleiben dort als Kontrolle am echten Stab offen; `generic-load` bleibt
+`simulator_only`.
 
 ## Ebyte M31 (I/O-Modul, Relais je Verbraucher) — Treibernachweis und Geräteprüfung
 

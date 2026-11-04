@@ -406,9 +406,11 @@ voltpilot:
   # the portal endpoint uses. Reuses the provisioning broker settings above.
   # Off by default so unit tests and broker-less setups are unaffected; compose
   # turns it on.
-  # Heizstab V1 (HZ-9 = B): bis zum Katalog-Flip von heating-rod bekommt NUR eine
-  # Prüfstand-Box den Parameterblock heizstab (Automatik des Heizstab-Reglers). Komma-
-  # getrennte Geräte-IDs; leer (Vorgabe) = keine Box automatisch bis zum Flip.
+  # Heizstab V1 (HZ-9 = B): solange heating-rod im Katalog simulator_only ist, bekommt
+  # NUR eine Prüfstand-Box den Parameterblock heizstab (Automatik des Heizstab-Reglers).
+  # Seit dem Katalog-Flip (04.11.2026, certified) bekommt ihn jede Box mit Heizstab-
+  # Regler; die Liste wirkt erst wieder, wenn der Typ zurückgestuft wird. Komma-
+  # getrennte Geräte-IDs; leer (Vorgabe) = keine zusätzliche Box.
   heizstab:
     pruefstand-boxen: ${VOLTPILOT_HEIZSTAB_PRUEFSTAND_BOXEN:}
   # Verbrauchssteuerung Inkrement 4 (§16/§19): the consumer-policy activation

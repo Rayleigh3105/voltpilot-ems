@@ -16,9 +16,10 @@ package shelly
 // So the DRIVER executes behind the kill-switches (VP_CONTROL_ENABLED AND
 // VP_CONSUMER_CONTROL_ENABLED, both off by default) with VERIFY-on-device
 // honesty for everything hardware-behavioral (timer fidelity, metering
-// plausibility - CONTROL-BENCH.md -> Shelly); the consumer TYPES
-// (heating-rod / generic-load) stay `simulator_only` in the cloud catalog
-// until the captain's bench session flips them (D11, its own mini-PR).
+// plausibility - CONTROL-BENCH.md -> Shelly). In the cloud catalog
+// generic-load stays `simulator_only`; heating-rod is `certified` since
+// 2026-11-04 on the captain's decision without a bench session (first real
+// use at edge-h5atkys), so the VERIFY-on-device points still apply there.
 
 import (
 	"context"

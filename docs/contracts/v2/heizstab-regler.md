@@ -83,7 +83,7 @@ Was das Gerät tatsächlich bestätigt, steht daneben in `consumers.{id}.stage` 
 
 ## Freigabe
 
-Bis zum Katalog-Flip von `heating-rod` (HZ-9 = B: Prüfstand mit Lampen, dann echter Stab) sendet die Cloud den Block nur an Prüfstand-Boxen. Das sind die Geräte-IDs in `voltpilot.heizstab.pruefstand-boxen` (Umgebung `VOLTPILOT_HEIZSTAB_PRUEFSTAND_BOXEN`, Vorgabe leer = keine Box). Nach dem Flip geht er an jede Box mit `heizstab_regler`. Dieser Vertrag hebt keine Freigabe auf.
+Seit dem Katalog-Flip vom 04.11.2026 (`heating-rod` = `certified`, Freigabe des Captains ohne Prüfstandslauf) geht der Block an jede Box mit `heizstab_regler`. Er kommt mit dem nächsten Registry-Push der Anlage an. Ist der Typ `simulator_only`, sendet die Cloud den Block nur an Prüfstand-Boxen: die Geräte-IDs in `voltpilot.heizstab.pruefstand-boxen` (Umgebung `VOLTPILOT_HEIZSTAB_PRUEFSTAND_BOXEN`, Vorgabe leer = keine Box). Dieser Vertrag hebt keine Freigabe auf.
 
 Die Cloud sendet den Block (`HeizstabPush`), wenn alles zutrifft:
 

@@ -391,7 +391,7 @@ const SELF_BUILT_TYPES = new Set(['modbus-generic', SELF_BUILT_SWITCH_TYPE]);
 function freigabeQuelleFor(entityType: string, certificationStatus?: string | null): 'pruefstand' | 'erprobung' | 'selbst' {
   if (entityType === SELF_BUILT_SWITCH_TYPE) return 'selbst';
   // Der Katalog-Stand des Typs (EntityDto.certificationStatus): nur `certified` - oder ein Typ ohne Stand
-  // (Wechselrichter, deren Freigabe am Modell hängt) - trägt das Prüfstand-Wort.
+  // (Wechselrichter, deren Freigabe am Modell hängt) - trägt „Von VoltPilot freigegeben“.
   return certificationStatus && certificationStatus !== 'certified' && certificationStatus !== 'per_device'
     ? 'erprobung'
     : 'pruefstand';

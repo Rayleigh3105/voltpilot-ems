@@ -412,7 +412,9 @@ export function freigabeZustand(e: FreigabeEingang): FreigabeZustand {
       return {
         stufe: 'pruefstand',
         wort: 'Von VoltPilot freigegeben',
-        satz: 'VoltPilot hat dieses Modell am Prüfstand freigegeben.',
+        // Kein „am Prüfstand“: ein Katalog-Typ kann auch ohne Prüfstandslauf freigegeben sein (der
+        // Heizstab seit dem 04.11.2026 auf Entscheid des Captains) - der Satz behauptet nur die Freigabe.
+        satz: 'VoltPilot hat diesen Gerätetyp für die Steuerung freigegeben.',
         ton: 'ok',
       };
     case 'erprobung':

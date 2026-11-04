@@ -97,4 +97,4 @@ Beanspruchen zwei Geräte denselben Ausgang (eine Ausgangsmenge über einem Ausg
 
 ## Freigabe
 
-Der Typ `heating-rod` bleibt `simulator_only` (HZ-9 = B): erst der Prüfstand mit drei Lampen, dann der echte Stab, dann der Katalog-Flip. Dieser Vertrag ändert an der Freigabe nichts. Geschaltet wird nur hinter den beiden Box-Schaltern `VP_CONTROL_ENABLED` und `VP_CONSUMER_CONTROL_ENABLED`.
+Der Typ `heating-rod` ist seit dem 04.11.2026 im Katalog `certified`. Die Freigabe hat der Captain entschieden; belegt sind Software und Simulator, einen Prüfstandslauf am realen Heizstab gab es nicht. Der erste reale Einsatz ist die VoltPilotGATE `edge-h5atkys`. Dieser Vertrag ändert an der Freigabe nichts. Geschaltet wird nur hinter den beiden Box-Schaltern `VP_CONTROL_ENABLED` und `VP_CONSUMER_CONTROL_ENABLED`.

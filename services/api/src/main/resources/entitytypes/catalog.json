@@ -169,9 +169,9 @@
     },
     {
       "type": "heating-rod",
-      "certification_status": "simulator_only",
-      "certified_at": null,
-      "certification_notes": "Simulator + Shelly-Treiber in Software nachgewiesen (edge-app internal/shelly, beide Generationen gegen Stubs); der Flip folgt der Captain-Bench-Session am realen Heizstab (D11, CONTROL-BENCH.md → Shelly).",
+      "certification_status": "certified",
+      "certified_at": "2026-11-04",
+      "certification_notes": "Freigabe durch den Captain am 04.11.2026 („Bitte im katalog auch den heating rod freigeben“; „einfach Heizstab hinhängen und wir schauen ist meine Verantwortung“). Belegt sind Software und Simulator: Shelly-Treiber beider Generationen gegen Stubs (edge-app internal/shelly) und der Heizstab-Regler im Go-Core; einen Prüfstandslauf am realen Heizstab gab es nicht. Erster realer Einsatz an der VoltPilotGATE edge-h5atkys.",
       "label": "Heizstab",
       "category": "consumer",
       "controllable": true,

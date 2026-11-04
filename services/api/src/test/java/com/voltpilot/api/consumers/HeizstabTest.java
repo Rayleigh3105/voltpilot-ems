@@ -261,23 +261,45 @@ class HeizstabTest {
     }
 
     @Test
-    void bisZumKatalogFlipNurDiePruefstandBox() {
+    void solangeDerTypNurSimulatorIstNurDiePruefstandBox() {
         UUID pruefstand = UUID.randomUUID();
         UUID andere = UUID.randomUUID();
-        EntityTypeCatalog katalog = new EntityTypeCatalog(JSON);
-        assertThat(katalog.find(HeizstabGeraet.TYP).certificationStatus()).isEqualTo("simulator_only");
-        HeizstabPush push = new HeizstabPush(mock(JdbcTemplate.class), mock(BoxFaehigkeiten.class), katalog,
+        EntityTypeCatalog nurSimulator = mock(EntityTypeCatalog.class);
+        when(nurSimulator.find(HeizstabGeraet.TYP)).thenReturn(new EntityTypeCatalog.EntityType(
+                HeizstabGeraet.TYP, "Heizstab", "consumer", true, false, "off", null, null, "simulator_only",
+                null, null));
+        HeizstabPush push = new HeizstabPush(mock(JdbcTemplate.class), mock(BoxFaehigkeiten.class), nurSimulator,
                 pruefstand + ", kein-uuid");
         assertThat(push.freigegeben(pruefstand)).isTrue();
         assertThat(push.freigegeben(andere)).isFalse();
-        assertThat(new HeizstabPush(mock(JdbcTemplate.class), mock(BoxFaehigkeiten.class), katalog, "")
+        assertThat(new HeizstabPush(mock(JdbcTemplate.class), mock(BoxFaehigkeiten.class), nurSimulator, "")
                 .freigegeben(pruefstand)).as("ohne Einstellung: keine Box").isFalse();
+    }
 
-        EntityTypeCatalog geflippt = mock(EntityTypeCatalog.class);
-        when(geflippt.find(HeizstabGeraet.TYP)).thenReturn(new EntityTypeCatalog.EntityType(HeizstabGeraet.TYP,
-                "Heizstab", "consumer", true, false, "off", null, null, "certified", null, null));
-        assertThat(new HeizstabPush(mock(JdbcTemplate.class), mock(BoxFaehigkeiten.class), geflippt, "")
-                .freigegeben(andere)).as("nach dem Flip: jede Box").isTrue();
+    /** Der Flip vom 04.11.2026: der echte Katalog gibt den Heizstab frei, ohne Prüfstand-Liste. */
+    @Test
+    void derKatalogGibtDenHeizstabFuerJedeBoxFrei() {
+        EntityTypeCatalog katalog = new EntityTypeCatalog(JSON);
+        EntityTypeCatalog.EntityType typ = katalog.find(HeizstabGeraet.TYP);
+        assertThat(typ.certificationStatus()).isEqualTo("certified");
+        assertThat(typ.certifiedAt()).isEqualTo("2026-11-04");
+        assertThat(typ.certificationNotes()).as("die Notiz behauptet keinen Prüfstandslauf")
+                .contains("einen Prüfstandslauf am realen Heizstab gab es nicht").contains("edge-h5atkys");
+        HeizstabPush push = new HeizstabPush(mock(JdbcTemplate.class), mock(BoxFaehigkeiten.class), katalog, "");
+        assertThat(push.freigegeben(UUID.randomUUID())).as("jede Box").isTrue();
+        assertThat(push.freigegeben(null)).as("auch ohne Box-Kennung entscheidet der Katalog").isTrue();
+    }
+
+    /** Freigegeben heißt nicht „jede Box“: ohne Heizstab-Regler bleibt der Block draußen. */
+    @Test
+    void nachDemFlipBekommtEineBoxOhneReglerWeiterKeinenBlock() {
+        UUID box = UUID.randomUUID();
+        BoxFaehigkeiten f = mock(BoxFaehigkeiten.class);
+        when(f.kann(eq(box), any())).thenReturn(false);
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        HeizstabPush push = new HeizstabPush(jdbc, f, new EntityTypeCatalog(JSON), "");
+        assertThat(push.fuerBox(UUID.randomUUID(), box)).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(jdbc);
     }
 
     @Test

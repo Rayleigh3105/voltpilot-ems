@@ -30,10 +30,11 @@ import org.springframework.stereotype.Component;
  *       aktive Steuerart enthält „Solar-Überschuss“ (V1 kennt nur diesen Modus),</li>
  *   <li>der Anschluss ist bestätigt (Stern mit N) - „Weiß ich nicht“ schaltet nichts,</li>
  *   <li>die Box meldet {@code heizstab_regler},</li>
- *   <li><b>die Freigabe (HZ-9 = B):</b> der Typ {@code heating-rod} ist im Katalog nicht mehr
- *       {@code simulator_only} (plattformweiter Flip nach Prüfstand und echtem Stab) - oder die
- *       Box ist eine Prüfstand-Box ({@code voltpilot.heizstab.pruefstand-boxen}, vom Betreiber
- *       gesetzt). Bis zum Flip schaltet also nur die Prüfstand-Box automatisch.</li>
+ *   <li><b>die Freigabe (HZ-9 = B):</b> der Typ {@code heating-rod} ist im Katalog nicht
+ *       {@code simulator_only} - oder die Box ist eine Prüfstand-Box
+ *       ({@code voltpilot.heizstab.pruefstand-boxen}, vom Betreiber gesetzt). Seit dem 04.11.2026
+ *       ist der Typ {@code certified} (Freigabe des Captains ohne Prüfstandslauf, siehe
+ *       {@code certification_notes} im Katalog): der Block geht an jede Box mit Heizstab-Regler.</li>
  * </ol>
  *
  * <p>Der Vorrang folgt der „Reihenfolge bei knapper Leistung“ (HZ-6): unter dem Speicher
