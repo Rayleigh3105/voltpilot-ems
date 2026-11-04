@@ -129,10 +129,14 @@ func TestNachEndeOhneZeitueberschreitungIstKeinBeleg(t *testing.T) {
 	tPriv, tPub := schluesselpaar(t)
 	adresse := netip.MustParseAddr("10.10.32.50")
 	sPub, port, _ := gegenstelle(t, tPub, adresse) // niemand lauscht: die Box antwortet mit RST
+	// Frist je Versuch wie im Betrieb (10 s): Der erste TCP-Aufbau trägt den
+	// WireGuard-Handschlag im Prozess. Unter -race und knapper CPU dauert der
+	// länger als 2 s; das RST käme dann zu spät und läse sich als
+	// Zeitüberschreitung, also genau als der Beleg, den dieser Test ausschließt.
 	p := Probe{Zugang: Zugang{Privat: geheim.Neu(base64.StdEncoding.EncodeToString(tPriv)), Adresse: adresse},
-		Takt: 100 * time.Millisecond, Versuch: 2 * time.Second}
+		Takt: 100 * time.Millisecond, Versuch: 10 * time.Second}
 	defer p.Zugang.Privat.Vergessen()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_, err := p.NachEnde(ctx, Server{PublicKey: base64.StdEncoding.EncodeToString(sPub), Endpunkt: "127.0.0.1:" + port,
 		BoxNetz: netip.MustParsePrefix("10.10.16.0/20")}, netip.MustParseAddrPort("10.10.16.5:2222"))

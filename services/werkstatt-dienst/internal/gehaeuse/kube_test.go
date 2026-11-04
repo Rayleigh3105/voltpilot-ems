@@ -195,10 +195,19 @@ func TestBildNichtLadbarEndetSofortUndLoeschtDenJob(t *testing.T) {
 
 func TestAbbruchLoeschtDenJobDamitNieZweiBauen(t *testing.T) {
 	ablage := t.TempDir()
-	a := &apiAttrappe{stand: func(int) string { return "" }, podGrund: "ContainerCreating"}
-	k := kubeMit(t, a, ablage)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	// Abbruch nach Ereignis statt nach Uhr: Der erste Umlauf (Job lesen, Pod
+	// lesen) ist durch, beim zweiten Lesen des Jobs bricht der Aufrufer ab.
+	// Eine feste Frist von wenigen ms lief unter -race schon im TLS-Handschlag
+	// des Anlegens ab.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	a := &apiAttrappe{stand: func(abruf int) string {
+		if abruf >= 2 {
+			cancel()
+		}
+		return ""
+	}, podGrund: "ContainerCreating"}
+	k := kubeMit(t, a, ablage)
 	err := k.Baue(ctx, refA, filepath.Join(ablage, refA, "bau"), func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "zuletzt: Pod wartet: ContainerCreating") {
 		t.Fatalf("err = %v", err)

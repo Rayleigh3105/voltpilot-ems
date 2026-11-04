@@ -144,7 +144,8 @@ func TestAPIQuelle(t *testing.T) {
 	}
 	if k.ClientID != "voltpilot-werkstatt-dienst" || k.ClientSecret.Offenbaren() != "dienst-secret-123" || geheim.Schwaerze("dienst-secret-123") != geheim.Ersatz {
 		t.Fatalf("%+v", k)
-	}	// Das Vertrauens-Set kommt vom Portal der API, ausser ein eigenes ist genannt.
+	}
+	// Das Vertrauens-Set kommt vom Portal der API, ausser ein eigenes ist genannt.
 	if k.PortalURL != "https://portal.example" {
 		t.Fatalf("PortalURL %q", k.PortalURL)
 	}

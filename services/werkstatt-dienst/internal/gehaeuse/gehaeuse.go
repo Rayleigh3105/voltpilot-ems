@@ -218,8 +218,10 @@ func (w *Werkstatt) baue(ctx context.Context, ref string) {
 		err = fmt.Errorf("nicht in %s fertig: %w", w.frist, err)
 	}
 	zustand, grund, beleg, dateien := w.sammle(ref, bau, err)
-	w.ende(ref, zustand, grund, beleg, dateien)
+	// Erst aufräumen, dann das Ende melden: Wer „fertig“ liest, findet den
+	// Bauordner nicht mehr vor.
 	_ = os.RemoveAll(bau)
+	w.ende(ref, zustand, grund, beleg, dateien)
 }
 
 // sammle legt ab, was der Bau ergeben hat. Druckdateien nur bei einem Bau
