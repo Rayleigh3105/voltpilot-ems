@@ -89,18 +89,21 @@ function bahn(st: Record<string, unknown>): { source: string; minKw: number | nu
 }
 
 /**
- * `?box=light`: die Box ist eine Edge Light - am Heizstab sperrt der Server Zeit, Preis und „Fertig bis“ mit
- * Grund (`SteuerartSatz.GRUND_BOX_OHNE_REGELN`, wörtlich).
+ * `?box=light`: eine Edge Light, die `verbraucherregeln` noch nicht meldet - der Server sperrt dort nur
+ * „Solar-Überschuss“, wo er eine reaktive Regel wäre (`SteuerartSatz.GRUND_BOX_OHNE_REGELN`, wörtlich):
+ * Schaltlast, Pumpe, SG-Ready. Ladepunkt (Bahn der Box) und Heizstab mit Stufen (Regler der Box) fahren
+ * ihn im Core; Zeit, Preis und „Fertig bis“ laufen über den Fahrplan und bleiben frei.
  */
 const EDGE_LIGHT = new URLSearchParams(location.search).get('box') === 'light';
-const GRUND_BOX_OHNE_REGELN = 'Ihre VoltPilot-Box führt Zeit- und Preisregeln noch nicht aus.';
+const GRUND_BOX_OHNE_REGELN = 'Ihre VoltPilot-Box führt Regeln nach dem Solar-Überschuss erst nach einem Update aus.';
 
 function optionen(d: Def) {
   // Die Vorgabe der Preisgrenze ist das billigste Viertel des BEZUGSPREISES (`SteuerartPreisVorgabe`).
   const v: Record<string, unknown> = { schwelleKw: d.nenn, preisgrenzeCtKwh: 30, mindestlaufzeitMinuten: 10 };
   if (d.typ === 'heat-pump-sgready') Object.assign(v, { mindestlaufzeitMinuten: 30, sperrzeitMinuten: 20 });
-  const light = EDGE_LIGHT && d.typ === 'heating-rod';
-  const sperre = (id: string) => (light && id !== 'ueberschuss' && id !== 'sofort'
+  const ueberschussImCore = d.typ === 'ev-charger' || (d.typ === 'heating-rod' && d.levels !== undefined);
+  const light = EDGE_LIGHT && !ueberschussImCore;
+  const sperre = (id: string) => (light && (id === 'ueberschuss' || id === 'freigabe_ueberschuss')
     ? { id, gesperrt: true, grund: GRUND_BOX_OHNE_REGELN }
     : { id, gesperrt: false });
   return {

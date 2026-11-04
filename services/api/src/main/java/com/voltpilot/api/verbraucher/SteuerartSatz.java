@@ -42,13 +42,16 @@ public final class SteuerartSatz {
     // --- Die Sperr-Gruende, woertlich (§3.1) --------------------------------
 
     /**
-     * Die Box ist eine Edge Light: sie fuehrt die Regeln aus dem Regel-Compiler
-     * nicht aus (edge-light/docs/paritaet.md, Abschnitt E). Am Heizstab wirkt
-     * dort nur der Regler der Box („Mit Sonnenstrom") und „Jetzt heizen" - eine
-     * Zeit-, Preis- oder Fertig-bis-Wahl stuende sonst gespeichert und still.
+     * Die Box fuehrt die reaktive Verbraucherregel nicht aus: eine Edge Light ohne die Faehigkeit
+     * {@code verbraucherregeln} (edge-supports.md). „Solar-Ueberschuss" an einer Schaltlast, an
+     * SG-Ready oder an einem Heizstab, den nicht der Regler der Box fuehrt, wird zum Regel-Artefakt
+     * mit lokalem Signal ({@code vp-consumer-policy}); das fuehrt Edge Light erst ab dem Release
+     * mit dem Go-Zwilling aus (edge-light/docs/paritaet.md, Abschnitt E). Ohne die Sperre stuende
+     * die Wahl gespeichert und still. Zeit, Preis und „Fertig bis" sind davon NICHT betroffen: sie
+     * laufen ueber Fahrplan und Registry-Push im Core jeder Box.
      */
     public static final String GRUND_BOX_OHNE_REGELN =
-            "Ihre VoltPilot-Box führt Zeit- und Preisregeln noch nicht aus.";
+            "Ihre VoltPilot-Box führt Regeln nach dem Solar-Überschuss erst nach einem Update aus.";
     /** Der Tarif ist FLACH - es gibt gar keine guenstigen Stunden. */
     public static final String GRUND_TARIF_FEST =
             "Ihr Stromtarif hat keine stündlichen Preise.";
@@ -164,11 +167,13 @@ public final class SteuerartSatz {
              */
             boolean hatSpeicher, BigDecimal speicherKapazitaetKwh,
             /*
-             * Die Box dieser Komponente fuehrt keine Regeln aus dem Regel-Compiler
-             * aus (Edge Light). false = Docker-Box ODER unbekannt - unbekannt
-             * sperrt nie still.
+             * „Solar-Ueberschuss" braeuchte an dieser Komponente eine reaktive
+             * Verbraucherregel, die ihre Box nicht ausfuehrt: Edge Light ohne
+             * Faehigkeit verbraucherregeln, und der Ueberschuss laeuft nicht schon
+             * im Core (Heizstab-Regler, Ladepunkt-Bahn). false = Docker-Box,
+             * meldende Edge Light ODER unbekannt - unbekannt sperrt nie still.
              */
-            boolean boxOhneRegeln) {
+            boolean boxOhneVerbraucherregeln) {
 
         /** Der Kontext ohne die Box-Art (jeder Aufrufer vor 04.11.2026). */
         public Kontext(String entityType, BigDecimal ratedPowerKw, BigDecimal minPowerKw,
@@ -339,15 +344,14 @@ public final class SteuerartSatz {
                 || SgReady.QUELLE_UEBERSCHUSS.equals(quelle);
         boolean guenstig = SteuerartProjektion.QUELLE_GUENSTIG.equals(quelle)
                 || SgReady.QUELLE_GUENSTIG.equals(quelle);
-        // Edge Light: am Heizstab wirkt nur sein Regler (Ueberschuss); Zeit und
-        // Preis liefen ueber den Regel-Compiler, den diese Box nicht hat.
-        if (heizstabOhneRegeln(k) && (guenstig
-                || SteuerartProjektion.QUELLE_FESTE_ZEITEN.equals(quelle))) {
-            return GRUND_BOX_OHNE_REGELN;
-        }
         if (ueberschuss) {
             if (!k.hatPv()) {
                 return GRUND_OHNE_PV;
+            }
+            // Nach der PV (ein Update schafft keine Erzeugung): der Ueberschuss
+            // waere hier eine Regel, die diese Box noch nicht ausfuehrt.
+            if (k.boxOhneVerbraucherregeln() && !VerbraucherService.istLadepunkt(k.entityType())) {
+                return GRUND_BOX_OHNE_REGELN;
             }
             // ⚠ Die SG-Ready-Freigabe braucht KEINE Nennleistung: sie schaltet
             // einen Kontakt, keine Leistung (P8). Ihre Schwelle hat eine eigene
@@ -376,19 +380,10 @@ public final class SteuerartSatz {
         return null;
     }
 
-    /** Ein Heizstab an einer Box ohne Regel-Compiler (Edge Light). */
-    private static boolean heizstabOhneRegeln(Kontext k) {
-        return k.boxOhneRegeln() && "heating-rod".equals(k.entityType());
-    }
-
     /** Der Sperrgrund eines Ziels, oder {@code null}. */
     static String zielGesperrt(Kontext k, String quelle, String ziel) {
         if (SgReady.is(k.entityType())) {
             return GRUND_KEIN_ZIEL_SGREADY;
-        }
-        // Die Box-Grenze ist strukturell - sie steht vor der Wahl der Quelle.
-        if (heizstabOhneRegeln(k)) {
-            return GRUND_BOX_OHNE_REGELN;
         }
         if (SteuerartProjektion.QUELLE_SOFORT.equals(quelle)) {
             return GRUND_ZIEL_BEI_SOFORT;

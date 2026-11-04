@@ -97,17 +97,28 @@ test('Geräte: das Blatt eines Geräts öffnet, hält den Fokus und gibt ihn zur
   await expect(knopf).toBeFocused();
 });
 
-test('Heizstab an einer Edge Light: Zeit, Preis und „Fertig bis“ gesperrt mit Grund, „Mit Sonnenstrom“ frei', async ({ page }) => {
+test('Edge Light ohne Verbraucherregeln: am Heizstab alles frei, an der Schaltlast nur „Mit Sonnenstrom“ gesperrt mit Grund', async ({ page }) => {
   const fehler = await oeffnen(page, '/e2e/steuerung.html?box=light#/anlage/help-site/steuerung');
   await page.locator('#dev-e-hs').click();
   const blatt = page.getByRole('dialog', { name: /Heizstab Warmwasser/ });
   const arten = blatt.getByRole('group', { name: 'Womit läuft das Gerät?' });
   await arten.scrollIntoViewIfNeeded();
-  await expect(arten.getByRole('button', { name: /Mit Sonnenstrom/ })).toBeEnabled();
-  for (const karte of [/Günstige Stunden/, /Feste Zeiten/, /Fertig bis/]) {
-    const k = arten.getByRole('button', { name: karte });
-    await expect(k).toBeDisabled();
-    await expect(k).toContainText('Ihre VoltPilot-Box führt Zeit- und Preisregeln noch nicht aus.');
+  // Regler der Box und Fahrplan: nichts davon braucht den Regel-Knoten.
+  for (const karte of [/Mit Sonnenstrom/, /Günstige Stunden/, /Feste Zeiten/, /Fertig bis/]) {
+    await expect(arten.getByRole('button', { name: karte })).toBeEnabled();
+  }
+  await page.keyboard.press('Escape');
+  await expect(blatt).toBeHidden();
+
+  await page.locator('#dev-e-poolwp').click();
+  const last = page.getByRole('dialog', { name: /Pool-Wärmepumpe/ });
+  const lastArten = last.getByRole('group', { name: 'Womit läuft das Gerät?' });
+  await lastArten.scrollIntoViewIfNeeded();
+  const sonne = lastArten.getByRole('button', { name: /Mit Sonnenstrom/ });
+  await expect(sonne).toBeDisabled();
+  await expect(sonne).toContainText('Ihre VoltPilot-Box führt Regeln nach dem Solar-Überschuss erst nach einem Update aus.');
+  for (const karte of [/Günstige Stunden/, /Feste Zeiten/]) {
+    await expect(lastArten.getByRole('button', { name: karte })).toBeEnabled();
   }
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
   expect(fehler).toEqual([]);

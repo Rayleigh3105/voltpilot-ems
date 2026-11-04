@@ -14,6 +14,9 @@ import com.voltpilot.api.consumers.ConsumerPolicyActivationService.ActivationOut
 import com.voltpilot.api.consumers.ConsumerRepository;
 import com.voltpilot.api.consumers.ConsumerRepository.ConsumerRow;
 import com.voltpilot.api.consumers.ConsumerService;
+import com.voltpilot.api.consumers.HeizstabAusgaenge;
+import com.voltpilot.api.consumers.HeizstabGeraet;
+import com.voltpilot.api.uems.BoxFaehigkeiten;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityTypeCatalog;
@@ -26,6 +29,7 @@ import com.voltpilot.api.web.dto.SiteDto;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -112,13 +116,14 @@ public class SteuerartService {
     private final AssetRepository assets;
     private final ObjectMapper mapper;
     private final UpdateStatusRepository updateStatus;
+    private final BoxFaehigkeiten faehigkeiten;
 
     public SteuerartService(SiteRepository sites, EntityRegistryRepository entities,
             EntityTypeCatalog catalog, ConsumerRepository consumers,
             ConsumerService consumerService, ConsumerPolicyActivationService activation,
             UsageProfileService profiles, SteuerartPreisVorgabe preise,
             ChargingConfigService charging, AssetRepository assets, ObjectMapper mapper,
-            UpdateStatusRepository updateStatus) {
+            UpdateStatusRepository updateStatus, BoxFaehigkeiten faehigkeiten) {
         this.sites = sites;
         this.entities = entities;
         this.catalog = catalog;
@@ -131,6 +136,7 @@ public class SteuerartService {
         this.assets = assets;
         this.mapper = mapper;
         this.updateStatus = updateStatus;
+        this.faehigkeiten = faehigkeiten;
     }
 
     // -----------------------------------------------------------------------
@@ -155,10 +161,42 @@ public class SteuerartService {
                 profil == null ? null : profil.confirmationChannel(),
                 site == null ? null : site.tarifArt(), hatPv, preisVorgabe,
                 speicher.vorhanden(), speicher.kapazitaetKwh(),
-                // Edge Light fuehrt keine Compiler-Regeln aus; nur fuer den Heizstab
-                // gefragt (die einzige Sperre, die daran haengt).
-                "heating-rod".equals(row.entityType())
-                        && BoxArt.LIGHT.equals(updateStatus.boxArt(row.deviceId())));
+                boxOhneVerbraucherregeln(row));
+    }
+
+    /** Die Faehigkeit der Box, die reaktive Verbraucherregel auszufuehren (edge-supports.md). */
+    public static final String FAEHIGKEIT_VERBRAUCHERREGELN = "verbraucherregeln";
+
+    /**
+     * Braeuchte „Solar-Ueberschuss" an dieser Komponente eine reaktive Verbraucherregel, die ihre
+     * Box nicht ausfuehrt? Nur eine Edge Light, die {@code verbraucherregeln} nicht meldet; eine
+     * Docker-Box hat die Palette immer, eine unbekannte Box sperrt nie still. Wo der Ueberschuss
+     * ohnehin im Core laeuft - Ladepunkt (Bahn der Box), Heizstab ueber eine Ausgangsmenge (Regler
+     * der Box, {@code HeizstabGeraet#regeltDieBox}) -, gibt es nichts zu sperren. Die billigen
+     * Fragen zuerst: die Faehigkeit liest die Versionstabelle.
+     */
+    boolean boxOhneVerbraucherregeln(EntityRow row) {
+        if (row.deviceId() == null || VerbraucherService.istLadepunkt(row.entityType())
+                || heizstabMitAusgangsmenge(row)) {
+            return false;
+        }
+        return BoxArt.LIGHT.equals(updateStatus.boxArt(row.deviceId()))
+                && !faehigkeiten.kann(row.deviceId(), FAEHIGKEIT_VERBRAUCHERREGELN);
+    }
+
+    /** Ein Heizstab ueber eine Shelly-Ausgangsmenge: seinen Ueberschuss fuehrt der Regler der Box. */
+    private boolean heizstabMitAusgangsmenge(EntityRow row) {
+        if (!HeizstabGeraet.TYP.equals(row.entityType()) || !"shelly_http".equals(row.communication())
+                || row.connectionJson() == null) {
+            return false;
+        }
+        try {
+            Map<String, Object> conn = mapper.readValue(row.connectionJson(),
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            return HeizstabAusgaenge.istMenge(conn);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

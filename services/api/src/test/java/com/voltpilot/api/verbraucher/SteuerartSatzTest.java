@@ -150,36 +150,59 @@ class SteuerartSatzTest {
         }
     }
 
-    /** Ein Kontext an einer Edge Light (sie fuehrt keine Compiler-Regeln aus). */
-    private static SteuerartSatz.Kontext light(String typ) {
+    /**
+     * Ein Kontext, an dem „Solar-Ueberschuss" eine reaktive Verbraucherregel braeuchte, die die Box
+     * nicht ausfuehrt (Edge Light ohne {@code verbraucherregeln}; der Service setzt das Flag nie
+     * fuer Ladepunkt und Heizstab ueber eine Ausgangsmenge).
+     */
+    private static SteuerartSatz.Kontext ohneRegeln(String typ) {
         return new SteuerartSatz.Kontext(typ, new BigDecimal("6"), null, "relay_state", "dynamisch", true,
                 new BigDecimal("12"), false, null, true);
     }
 
     @Test
-    void amHeizstabEinerEdgeLightSindZeitPreisUndFertigBisGesperrtMitGrund() {
-        var q = SteuerartSatz.quellen(light("heating-rod"));
-        // Der Regler der Box (Ueberschuss) und die Ruecknahme bleiben frei.
-        assertThat(finde(q, SteuerartProjektion.QUELLE_UEBERSCHUSS).gesperrt()).isFalse();
-        assertThat(finde(q, SteuerartProjektion.QUELLE_SOFORT).gesperrt()).isFalse();
-        for (String id : List.of(SteuerartProjektion.QUELLE_FESTE_ZEITEN, SteuerartProjektion.QUELLE_GUENSTIG)) {
-            assertThat(finde(q, id).gesperrt()).as(id).isTrue();
-            assertThat(finde(q, id).grund()).isEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
-        }
-        for (String quelle : List.of(SteuerartProjektion.QUELLE_UEBERSCHUSS, SteuerartProjektion.QUELLE_SOFORT)) {
-            var z = SteuerartSatz.ziele(light("heating-rod"), quelle);
-            assertThat(finde(z, SteuerartProjektion.ZIEL_LAUFZEIT_BIS).grund()).as(quelle)
+    void ohneVerbraucherregelnIstNurDerUeberschussGesperrtZeitPreisUndFertigBisBleibenFrei() {
+        for (String typ : List.of("generic-load", "heating-rod")) {
+            var q = SteuerartSatz.quellen(ohneRegeln(typ));
+            assertThat(finde(q, SteuerartProjektion.QUELLE_UEBERSCHUSS).gesperrt()).as(typ).isTrue();
+            assertThat(finde(q, SteuerartProjektion.QUELLE_UEBERSCHUSS).grund()).as(typ)
                     .isEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+            // Zeit und Preis laufen ueber den Fahrplan im Core jeder Box.
+            for (String id : List.of(SteuerartProjektion.QUELLE_FESTE_ZEITEN, SteuerartProjektion.QUELLE_GUENSTIG,
+                    SteuerartProjektion.QUELLE_SOFORT)) {
+                assertThat(finde(q, id).gesperrt()).as(typ + " " + id).isFalse();
+            }
+            // Der Schreibpfad lehnt den Ueberschuss mit demselben Grund ab.
+            assertThat(SteuerartSatz.pruefe(ohneRegeln(typ),
+                    SteuerartWunsch.von(SteuerartProjektion.QUELLE_UEBERSCHUSS)))
+                    .as(typ).containsExactly(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+            assertThat(SteuerartSatz.pruefe(ohneRegeln(typ),
+                    SteuerartWunsch.von(SteuerartProjektion.QUELLE_GUENSTIG))).as(typ).isEmpty();
         }
-        // Der Schreibpfad lehnt dieselbe Wahl mit demselben Grund ab.
-        assertThat(SteuerartSatz.pruefe(light("heating-rod"),
-                SteuerartWunsch.von(SteuerartProjektion.QUELLE_GUENSTIG)))
-                .containsExactly(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
-        // Nur der Heizstab: andere Typen und eine Docker-/unbekannte Box bleiben wie bisher.
-        assertThat(finde(SteuerartSatz.quellen(light("pump")), SteuerartProjektion.QUELLE_FESTE_ZEITEN).gesperrt())
-                .isFalse();
-        assertThat(finde(SteuerartSatz.quellen(k("heating-rod", "6", "dynamisch", true, "relay_state")),
-                SteuerartProjektion.QUELLE_GUENSTIG).gesperrt()).isFalse();
+        // „Fertig bis" (Deadline-Fallback + Fahrplan im Core) bleibt frei.
+        for (String quelle : List.of(SteuerartProjektion.QUELLE_GUENSTIG, SteuerartProjektion.QUELLE_SOFORT)) {
+            var z = SteuerartSatz.ziele(ohneRegeln("heating-rod"), quelle);
+            if (SteuerartProjektion.QUELLE_GUENSTIG.equals(quelle)) {
+                assertThat(finde(z, SteuerartProjektion.ZIEL_LAUFZEIT_BIS).gesperrt()).isFalse();
+            }
+            assertThat(finde(z, SteuerartProjektion.ZIEL_LAUFZEIT_BIS).grund())
+                    .isNotEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+        }
+        // SG-Ready: die Freigabe bei Ueberschuss ist eine lokale Regel, die bei guenstigem Strom nicht.
+        var sg = SteuerartSatz.quellen(ohneRegeln("heat-pump-sgready"));
+        assertThat(finde(sg, SgReady.QUELLE_UEBERSCHUSS).grund()).isEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+        assertThat(finde(sg, SgReady.QUELLE_GUENSTIG).gesperrt()).isFalse();
+        // Ein Ladepunkt faehrt den Ueberschuss in der Bahn der Box - nie gesperrt.
+        assertThat(finde(SteuerartSatz.quellen(ohneRegeln("ev-charger")), SteuerartProjektion.QUELLE_UEBERSCHUSS)
+                .grund()).isNotEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+        // Ohne PV sagt der Satz „keine PV" - ein Update schafft keine Erzeugung.
+        var ohnePv = new SteuerartSatz.Kontext("generic-load", new BigDecimal("6"), null, "relay_state",
+                "dynamisch", false, new BigDecimal("12"), false, null, true);
+        assertThat(finde(SteuerartSatz.quellen(ohnePv), SteuerartProjektion.QUELLE_UEBERSCHUSS).grund())
+                .isEqualTo(SteuerartSatz.GRUND_OHNE_PV);
+        // Docker-Box, meldende Edge Light oder unbekannt: wie bisher frei.
+        assertThat(finde(SteuerartSatz.quellen(k("generic-load", "6", "dynamisch", true, "relay_state")),
+                SteuerartProjektion.QUELLE_UEBERSCHUSS).gesperrt()).isFalse();
     }
 
     @Test

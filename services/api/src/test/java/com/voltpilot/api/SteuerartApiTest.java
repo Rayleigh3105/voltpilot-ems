@@ -150,6 +150,9 @@ class SteuerartApiTest {
     @Autowired
     ChargerComponentComposer composer;
 
+    @Autowired
+    com.voltpilot.api.uems.BoxFaehigkeiten faehigkeiten;
+
     private final ObjectMapper json = new ObjectMapper();
 
     @Test
@@ -587,42 +590,68 @@ class SteuerartApiTest {
     }
 
     /**
-     * Ein Heizstab an einer Edge Light (sie meldet {@code update.backend = light}): Zeit, Preis und
-     * „Fertig bis" liefen ueber den Regel-Compiler, den diese Box nicht hat - die Karten sind gesperrt
-     * MIT Grund, und der Schreibpfad lehnt sie mit demselben Grund ab.
+     * Eine Edge Light, die {@code verbraucherregeln} nicht meldet (update.backend = light): nur
+     * „Solar-Ueberschuss" ist gesperrt - er waere eine reaktive Regel mit lokalem Signal, die diese
+     * Box noch nicht ausfuehrt. Zeit, Preis und „Fertig bis" laufen ueber den Fahrplan im Core und
+     * bleiben frei. Meldet die Box das Wort, ist auch der Ueberschuss frei - je Box, nie nach der
+     * Box-Art allein.
      */
     @Test
-    void amHeizstabEinerEdgeLightSindZeitUndPreisGesperrt() throws Exception {
+    void anEinerEdgeLightOhneVerbraucherregelnIstNurDerUeberschussGesperrt() throws Exception {
         String customer = token("demo", "demo");
         UUID site = createSite(customer, "Steuerart Edge Light");
         try {
+            erzeugerAnlegen(site); // ohne PV waere „Ueberschuss" aus einem anderen Grund gesperrt
             UUID device = claim(customer, site, "edge-steuerart-light");
             UUID heizstab = createConsumer(customer, site, "heating-rod", "Heizstab Light", 3.0);
-            exec("UPDATE measurement_point SET device_id = '" + device + "' WHERE id = '" + heizstab + "'");
+            UUID last = createConsumer(customer, site, "generic-load", "Schaltlast Light", 1.5);
+            exec("UPDATE measurement_point SET device_id = '" + device + "' WHERE id IN ('" + heizstab
+                    + "', '" + last + "')");
             exec("INSERT INTO device_update_status (device_id, tenant_id, site_id, version, backend, reported_at) "
                     + "SELECT d.id, s.tenant_id, s.id, 'light-2026.11.1', 'light', now() FROM device d "
                     + "JOIN site s ON s.id = d.site_id WHERE d.id = '" + device + "'");
 
-            JsonNode optionen = eintrag(getJson(zone(site), customer), "Heizstab Light").path("optionen");
-            for (String id : java.util.List.of("feste_zeiten", "guenstig")) {
-                assertThat(wahl(optionen.path("quellen"), id).path("gesperrt").asBoolean()).as(id).isTrue();
-                assertThat(wahl(optionen.path("quellen"), id).path("grund").asText())
+            JsonNode zone = getJson(zone(site), customer);
+            for (String name : java.util.List.of("Heizstab Light", "Schaltlast Light")) {
+                JsonNode optionen = eintrag(zone, name).path("optionen");
+                assertThat(wahl(optionen.path("quellen"), "ueberschuss").path("gesperrt").asBoolean())
+                        .as(name).isTrue();
+                assertThat(wahl(optionen.path("quellen"), "ueberschuss").path("grund").asText()).as(name)
                         .isEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+                for (String id : java.util.List.of("feste_zeiten", "guenstig")) {
+                    assertThat(wahl(optionen.path("quellen"), id).path("grund").asText()).as(name + " " + id)
+                            .isNotEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+                }
             }
-            assertThat(wahl(optionen.path("ziele"), "laufzeit_bis").path("grund").asText())
-                    .isEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
-            assertThat(wahl(optionen.path("quellen"), "feste_zeiten").path("gesperrt").asBoolean()).isTrue();
+            JsonNode zieleHeizstab = eintrag(zone, "Heizstab Light").path("optionen").path("ziele");
+            assertThat(wahl(zieleHeizstab, "laufzeit_bis").path("grund").asText())
+                    .isNotEqualTo(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
+            assertThat(wahl(eintrag(zone, "Heizstab Light").path("optionen").path("quellen"), "feste_zeiten")
+                    .path("gesperrt").asBoolean()).isFalse();
 
-            ResponseEntity<String> res = putRaw(pfad(site, heizstab), customer, Map.of("quelle", "feste_zeiten",
-                    "fenster", Map.of("tage", "daily", "von", "06:00", "bis", "08:00")));
+            ResponseEntity<String> res = putRaw(pfad(site, last), customer,
+                    Map.of("quelle", "ueberschuss", "schwelleKw", 1.5));
             assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
             assertThat(nachricht(res)).contains(SteuerartSatz.GRUND_BOX_OHNE_REGELN);
-            assertThat(policyFassungen(site, heizstab)).isZero();
+            assertThat(policyFassungen(site, last)).isZero();
+
+            // Nach dem Update meldet die Box die Faehigkeit: der Ueberschuss ist frei.
+            TenantContext.set(UUID.fromString(TENANT_A));
+            try {
+                faehigkeiten.record(device, java.time.Instant.now(),
+                        java.util.List.of("data_sources", SteuerartService.FAEHIGKEIT_VERBRAUCHERREGELN));
+            } finally {
+                TenantContext.clear();
+            }
+            JsonNode danach = getJson(zone(site), customer);
+            for (String name : java.util.List.of("Heizstab Light", "Schaltlast Light")) {
+                assertThat(wahl(eintrag(danach, name).path("optionen").path("quellen"), "ueberschuss")
+                        .path("gesperrt").asBoolean()).as(name).isFalse();
+            }
         } finally {
             deleteSite(site);
         }
     }
-
     @Test
     void derMandantenZaunGiltAufDerSchreibRoute() throws Exception {
         String customer = token("demo", "demo");
