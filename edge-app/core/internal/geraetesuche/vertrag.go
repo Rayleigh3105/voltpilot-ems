@@ -118,7 +118,7 @@ var Katalog = []KatalogZeile{
 	{"fronius_solar_api", "wechselrichter", 2, "fronius_solar_api", AnbindungUebernehmen, AnbindungNichtMitDieserBox},
 	{"kaco_aiswei", "wechselrichter", 2, "kaco_http", AnbindungUebernehmen, AnbindungNichtMitDieserBox},
 	{"kostal", "wechselrichter", 2, "kostal_modbus", AnbindungUebernehmen, AnbindungNichtMitDieserBox},
-	{"huawei", "wechselrichter", 2, "huawei_modbus", AnbindungUebernehmen, AnbindungNichtMitDieserBox},
+	{"huawei", "wechselrichter", 2, "huawei_modbus", AnbindungUebernehmen, AnbindungUebernehmen},
 	{"sma", "wechselrichter", 2, "", AnbindungKeinLeseweg, AnbindungKeinLeseweg},
 	{"sma", "zaehler", 2, "", "", AnbindungKeinLeseweg},
 	{"victron", "wechselrichter", 2, "", AnbindungKeinLeseweg, AnbindungKeinLeseweg},

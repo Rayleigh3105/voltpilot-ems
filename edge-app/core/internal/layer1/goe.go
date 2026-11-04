@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goeapi"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/huaweidecode"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kacoserial"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
@@ -143,12 +145,26 @@ func (r *Runtime) sourcesOnce(ctx context.Context) {
 	}
 }
 
+// readSource reads one planned source by its transport and publishes the
+// channel its ROLE asks for - or names why nothing was published.
 func (r *Runtime) readSource(ctx context.Context, p sourcePlan) {
 	rctx, cancel := context.WithTimeout(ctx, sourceOverallTimeout)
 	defer cancel()
 	release, ok := r.lanes.acquire(rctx, p.Addr, sourceOverallTimeout)
 	if !ok {
 		r.sourceFailed(p, "Gesamt-Timeout nach 30 s - Lesung abgebrochen (Verbindung haengt?)")
+		return
+	}
+	switch p.Comm {
+	case CommHuaweiModbus:
+		rd, err := r.readHuawei(rctx, p.Huawei)
+		release()
+		r.publishInverterSource(p, huaweiSourceReading(rd, err, p.Huawei))
+		return
+	case CommKacoSerial:
+		raw, err := kacoserial.Read(rctx, r.dialTCP, p.Kaco.Addr, p.Kaco.Address, r.kacoOpts())
+		release()
+		r.publishInverterSource(p, kacoSourceReading(raw, err))
 		return
 	}
 	res, err := r.goeGet(rctx, p.URL)
@@ -208,7 +224,69 @@ func (r *Runtime) publishSource(p sourcePlan, values map[string]any) {
 }
 
 func (r *Runtime) sourceFailed(p sourcePlan, why string) {
-	r.sourceTrace(p.ID, "fail:"+why, true, "Quelle "+p.ID+" (goe_http_api "+p.IP+":"+strconv.Itoa(p.Port)+"): "+why)
+	r.sourceTrace(p.ID, "fail:"+why, true, "Quelle "+p.ID+" ("+p.Comm+" "+p.IP+":"+strconv.Itoa(p.Port)+"): "+why)
+}
+
+// inverterSourceReading is what an inverter-class source (Huawei, Powador)
+// delivered in one cycle: the decoded channels, or the reason there are none.
+type inverterSourceReading struct {
+	reading map[string]float64
+	why     string
+}
+
+func huaweiSourceReading(rd *huaweiRead, err error, p *huaweiPlan) inverterSourceReading {
+	switch {
+	case err != nil:
+		return inverterSourceReading{why: "Huawei: keine Antwort (Timeout oder Verbindung abgewiesen): " + err.Error()}
+	case len(rd.Blocks) == 0:
+		return inverterSourceReading{why: "Huawei: jeder Block abgelehnt (Unit-ID " + strconv.Itoa(int(p.UnitID)) + " falsch oder Modbus TCP am Geraet nicht freigeschaltet?)"}
+	}
+	res := huaweidecode.Decode(rd.Blocks, p.Opts)
+	if res == nil {
+		return inverterSourceReading{why: "Huawei: keine Messwerte decodiert"}
+	}
+	return inverterSourceReading{reading: res.Reading}
+}
+
+func kacoSourceReading(raw []byte, err error) inverterSourceReading {
+	if err != nil {
+		return inverterSourceReading{why: "KACO seriell: " + kacoNoAnswer + ": " + err.Error()}
+	}
+	res := kacoserial.Decode(raw, false)
+	if res == nil {
+		if c, ok := kacoserial.ReplyCommandByte(raw); ok && kacoserial.ProtocolMismatch(raw) {
+			return inverterSourceReading{why: "KACO seriell: Kommando-Byte " + strconv.Quote(string(c)) + " - ein anderes KACO-Protokoll, nicht die Powador-Serie 00"}
+		}
+		return inverterSourceReading{why: "KACO seriell: " + kacoNoAnswer}
+	}
+	return inverterSourceReading{reading: res.Reading}
+}
+
+// publishInverterSource publishes the ONE channel the source's role stands
+// for (the flow's sources-read node): an Erzeuger its pv_power_kw, a Netz
+// meter its signed power_kw, a Verbraucher its load_kw - an inverter has none.
+// A channel the device did not deliver is a failure of this tick, never a 0.
+func (r *Runtime) publishInverterSource(p sourcePlan, in inverterSourceReading) {
+	if in.reading == nil {
+		r.sourceFailed(p, in.why)
+		return
+	}
+	key, missing := "", ""
+	switch p.Role {
+	case sources.RoleErzeuger:
+		key, missing = "pv_power_kw", "kein PV-Wert in der Antwort"
+	case sources.RoleNetz:
+		key, missing = "power_kw", "kein Netzwert in der Antwort (Smart Power Sensor am Netzpunkt?)"
+	default:
+		r.sourceFailed(p, "ein Wechselrichter liefert keinen Verbrauchswert (load_kw)")
+		return
+	}
+	v, ok := in.reading[key]
+	if !ok {
+		r.sourceFailed(p, missing)
+		return
+	}
+	r.publishSource(p, map[string]any{key: v})
 }
 
 // sourceTrace is the flow's trace(): a class (ok / fail:<why>) is logged when

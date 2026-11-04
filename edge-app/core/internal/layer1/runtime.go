@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -37,9 +38,14 @@ type Options struct {
 	SourcesPoll      time.Duration
 	// HTTPTimeout bounds one HTTP read of a LAN device (go-e): 8 s like the flow.
 	HTTPTimeout time.Duration
-	Dialer      solarmanv5.Dialer
-	Now         func() time.Time
-	Logger      *slog.Logger
+	// KacoTimeout / KacoReplyGap pace one cycle against the RS485-to-Ethernet
+	// converter of a Powador (kaco-serial-decode.js: 5 s socket timeout, 300 ms
+	// reply gap).
+	KacoTimeout  time.Duration
+	KacoReplyGap time.Duration
+	Dialer       solarmanv5.Dialer
+	Now          func() time.Time
+	Logger       *slog.Logger
 }
 
 // Runtime is the Go Layer 1.
@@ -101,6 +107,12 @@ func New(bus Bus, opts Options) *Runtime {
 	}
 	if opts.HTTPTimeout <= 0 {
 		opts.HTTPTimeout = defaultIOTimeout
+	}
+	if opts.KacoTimeout <= 0 {
+		opts.KacoTimeout = DefaultKacoTimeout
+	}
+	if opts.KacoReplyGap <= 0 {
+		opts.KacoReplyGap = DefaultKacoReplyGap
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
@@ -196,6 +208,20 @@ func (r *Runtime) pollOnce(ctx context.Context) {
 			return
 		}
 		r.pollSolarman(ctx, p)
+	case CommHuaweiModbus:
+		p, why := planHuawei(s)
+		if p == nil {
+			r.idle(why)
+			return
+		}
+		r.pollHuawei(ctx, p)
+	case CommKacoSerial:
+		p, why := planKacoSerial(s)
+		if p == nil {
+			r.idle(why)
+			return
+		}
+		r.pollKacoSerial(ctx, p)
 	default:
 		// Honest, not silent: the parity matrix names what is ported. The core
 		// then shows "keine aktuellen Daten" exactly as for a dead device.
@@ -238,17 +264,23 @@ func (r *Runtime) pollSolarman(ctx context.Context, p *solarmanPlan) {
 	if res == nil {
 		// The SoC gate dropped the read (no answer / out of range / missing
 		// without opt-in): NOTHING is published - never a fabricated value.
-		r.noteError(p, "SoC unplausibel -> verworfen")
+		r.noteError(p.Addr, "SoC unplausibel -> verworfen")
 		return
 	}
 	reading := telemetryPayload(res, r.opts.Now())
 	if len(reading) <= 1 { // only ts
-		r.noteError(p, "keine Messwerte decodiert")
+		r.noteError(p.Addr, "keine Messwerte decodiert")
 		return
 	}
+	r.publishTelemetry(p.Addr, reading)
+}
+
+// publishTelemetry sends one edge/telemetry message and books the success:
+// the link is up, the failure note cleared, the down-trigger armed.
+func (r *Runtime) publishTelemetry(target string, reading map[string]any) {
 	raw, _ := json.Marshal(reading)
 	if err := r.bus.Publish(localbus.TopicTelemetry, raw, false); err != nil {
-		r.log.Warn("Messwert konnte nicht auf den lokalen Bus", "err", err)
+		r.log.Warn("Messwert konnte nicht auf den lokalen Bus", "ziel", target, "err", err)
 		return
 	}
 	r.mu.Lock()
@@ -260,17 +292,17 @@ func (r *Runtime) pollSolarman(ctx context.Context, p *solarmanPlan) {
 }
 
 func (r *Runtime) readFailed(p *solarmanPlan, err error) {
-	r.noteError(p, "V5: "+err.Error())
+	r.noteError(p.Addr, "V5: "+err.Error())
 }
 
 // noteError logs a changed failure once (the flow node's red status).
-func (r *Runtime) noteError(p *solarmanPlan, msg string) {
+func (r *Runtime) noteError(target, msg string) {
 	r.mu.Lock()
 	changed := r.lastErr != msg
 	r.lastErr = msg
 	r.mu.Unlock()
 	if changed {
-		r.log.Warn("Wechselrichter-Lesung fehlgeschlagen", "ziel", p.Addr, "grund", msg)
+		r.log.Warn("Wechselrichter-Lesung fehlgeschlagen", "ziel", target, "grund", msg)
 	}
 }
 
@@ -278,22 +310,30 @@ func (r *Runtime) noteError(p *solarmanPlan, msg string) {
 // soc_source (local-bus provenance) and battery_power_kw (the MEASURED battery
 // term of the house balance) - the fields the Node-RED decode node emits.
 func telemetryPayload(res *deyedecode.Result, now time.Time) map[string]any {
-	out := make(map[string]any, len(res.Reading)+3)
-	for k, v := range res.Reading {
-		out[k] = v
-	}
-	if len(out) == 0 {
+	if len(res.Reading) == 0 {
 		return map[string]any{"ts": isoMillis(now)}
 	}
-	if res.SocSource != "" {
-		out["soc_source"] = res.SocSource
+	return telemetryFrom(res.Reading, res.BattKw, res.SocSource, now)
+}
+
+// telemetryFrom is the flow's `Object.assign({ ts }, out.reading)` plus the
+// battery_power_kw / soc_source fields a decode node adds when it has them.
+func telemetryFrom(reading map[string]float64, battKw *float64, socSource string, now time.Time) map[string]any {
+	out := make(map[string]any, len(reading)+3)
+	for k, v := range reading {
+		out[k] = v
 	}
-	if res.BattKw != nil {
-		out["battery_power_kw"] = *res.BattKw
+	if socSource != "" {
+		out["soc_source"] = socSource
+	}
+	if battKw != nil {
+		out["battery_power_kw"] = *battKw
 	}
 	out["ts"] = isoMillis(now)
 	return out
 }
+
+func itoa(i int) string { return strconv.Itoa(i) }
 
 // isoMillis is JavaScript's Date.toISOString().
 func isoMillis(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000Z") }

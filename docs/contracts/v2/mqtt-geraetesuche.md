@@ -137,8 +137,9 @@ vollständig) und die **neuen** `funde[]` seit dem vorigen Stand. Der Stand ist 
 | `merkmale` | 1 bis 8 Wörter, woran erkannt („Woran erkannt?“) |
 
 **„Erkannt, mit dieser Box noch nicht anbindbar“** ist `anbindung` `nicht_mit_dieser_box` oder `kein_leseweg`. Der
-Katalog legt je Paar und Box-Art fest, welches Wort die Box meldet: SunSpec, Fronius, KACO/AISWEI, KOSTAL, Huawei und
-das WAGO-Registerbild liest heute nur die Docker-Box; SMA, Victron, OpenDTU/Ahoy und die Shelly-Zähler liest keine.
+Katalog legt je Paar und Box-Art fest, welches Wort die Box meldet: SunSpec, Fronius, KACO/AISWEI, KOSTAL und
+das WAGO-Registerbild liest heute nur die Docker-Box (Huawei lesen seit 04.11.2026 beide Box-Arten); SMA, Victron,
+OpenDTU/Ahoy und die Shelly-Zähler liest keine.
 
 ### Datenschutz (DP-3 A)
 

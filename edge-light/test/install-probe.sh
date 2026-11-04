@@ -11,6 +11,9 @@
 #      der Loader startet die lokale Kopie dieser Bauart,
 #   4. ein zweiter Aufruf ohne VP_SSH_KEY ruft ssh ohne -i auf,
 #   5. die Schlusszeile nennt die Web-App unter der Adresse des Ziels,
+#   7. die Firewall-Regel fuer OCPP (TCP 8887 aus der Zone wan) steht benannt
+#      in /etc/config/firewall und bleibt bei einem zweiten Aufruf EINE Regel;
+#      die Schlusszeilen nennen die DHCP-Reservierung,
 #   6. update-bereit (Konzept vp-edge-light-update, K5): base_url wird
 #      verweigert bzw. von der Box entfernt, ein fremdes Manifest und ein
 #      fehlendes Vertrauens-Set verweigert, bevor etwas auf die Box geht; das
@@ -141,6 +144,12 @@ else
 fi
 grep -q 'Pruefsumme auf dem Geraet bestaetigt' "$ARBEIT/install.1" && ok "lokale Kopie auf der Box nachgeprueft" || falsch "lokale Kopie auf der Box nachgeprueft"
 grep -qF 'Lokale Web-App:    http://box:8484' "$ARBEIT/install.1" && ok "Schlusszeile nennt die Adresse des Ziels" || falsch "Schlusszeile nennt die Adresse des Ziels"
+grep -q 'DHCP-RESERVIERUNG' "$ARBEIT/install.1" && ok "Schlusszeilen nennen die DHCP-Reservierung fuer OCPP" || falsch "Schlusszeilen nennen die DHCP-Reservierung fuer OCPP"
+
+schritt "2b. Firewall: OCPP aus dem Kundennetz"
+pruefe "Regel firewall.vp_ocpp: wan -> tcp 8887 ACCEPT" '[ "$(uci get firewall.vp_ocpp)" = rule ] && [ "$(uci get firewall.vp_ocpp.src)" = wan ] && [ "$(uci get firewall.vp_ocpp.proto)" = tcp ] && [ "$(uci get firewall.vp_ocpp.dest_port)" = 8887 ] && [ "$(uci get firewall.vp_ocpp.target)" = ACCEPT ]'
+pruefe "genau eine Regel fuer 8887" '[ "$(uci show firewall | grep -c "dest_port=.8887.")" = 1 ]'
+pruefe "8484 und 1883 nicht geoeffnet" '! uci show firewall | grep -q "dest_port=.8484." && ! uci show firewall | grep -q "dest_port=.1883."'
 
 schritt "3. Die Bauart steht auf der Box, der Loader startet ihre Kopie"
 pruefe "uci vp-edge-light.main.arch = amd64" '[ "$(uci get vp-edge-light.main.arch)" = amd64 ]'
@@ -176,6 +185,7 @@ VOR="$(zeilen "$ARBEIT/ssh-i.log")"
 if VP_LIGHT_ARCH=amd64 VP_LIGHT_MANIFEST="$MANIFEST" "$SKRIPT" root@box >"$ARBEIT/install.2" 2>&1; then ok "install.sh laeuft durch"; else falsch "install.sh laeuft durch"; sed 's/^/    | /' "$ARBEIT/install.2"; fi
 [ "$(zeilen "$ARBEIT/ssh-i.log")" = "$VOR" ] && ok "ohne VP_SSH_KEY kein -i" || falsch "ohne VP_SSH_KEY kein -i"
 pruefe "Bauart bleibt amd64" '[ "$(uci get vp-edge-light.main.arch)" = amd64 ]'
+pruefe "Firewall-Regel bleibt EINE (kein Doppel beim zweiten Aufruf)" '[ "$(uci show firewall | grep -c "dest_port=.8887.")" = 1 ]'
 
 schritt "Ergebnis"
 echo "  $OK ok, $FEHLER Fehler ($(x 'grep DISTRIB_DESCRIPTION /etc/openwrt_release' | cut -d"'" -f2))"

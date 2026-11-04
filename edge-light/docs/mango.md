@@ -465,7 +465,7 @@ Der Pilot (`edge-zay5sdd`, heute `10.10.1.25` im alten VPN) wechselt erst, wenn 
 
 Zwei Lücken für den Pilot, beide am Gerät gefunden:
 
-1. **Firewall:** Die go-e steht im Kundennetz, also auf der WAN-Seite des Mango. Die WAN-Zone weist eingehend alles ab, `install.sh` öffnet 8887 nicht. Nötig ist eine Regel nur für das Kundennetz bzw. die Ladesäule, z. B. `uci add firewall rule` mit `src=wan`, `proto=tcp`, `dest_port=8887`, `src_ip=<kundennetz>/24`, `target=ACCEPT`.
+1. **Firewall:** Die go-e steht im Kundennetz, also auf der WAN-Seite des Mango. Die WAN-Zone weist eingehend alles ab; bis zum 04.11.2026 öffnete `install.sh` 8887 nicht. Seitdem legt es die benannte Regel `firewall.vp_ocpp` an (`src=wan`, `proto=tcp`, `dest_port=8887`, `target=ACCEPT`) und lädt die Firewall neu; ein erneuter Aufruf aktualisiert dieselbe Regel. Wer die Regel auf die Ladesäule einschränken will, ergänzt `src_ip=<kundennetz>/24` von Hand; der OCPP-Server nimmt ohnehin nur eingetragene Kennungen an.
 2. **Feste WAN-Adresse:** Der Mango bekam während des Tests per DHCP eine neue WAN-Adresse (.111 → .108); die go-e lief danach ins Leere (Zeitüberschreitung, kein einziges Paket am Mango). Vor dem Eintragen der OCPP-URL eine **DHCP-Reservierung** für den Mango im Kundenrouter anlegen.
 
 ## Gemessen ohne Gerät
@@ -535,4 +535,4 @@ WireGuard bleibt der Servicezugang, künftig zum Wartungsserver (UDP 51820, [obe
 3. `edge-light/openwrt/install.sh root@<mango-ip>`, Dienst starten, `logread -f -e vp-edge-light`.
 4. Die Box im Portal koppeln (die Referenz steht auf `:8484` sofort), dann den Deye einrichten und „Verbindung testen".
 5. 48 h laufen lassen und festhalten: Speicher (`free -m`, `/proc/<pid>/status` VmRSS), CPU (`top`), Ladezeit nach Neustart, Lücken im Verlauf, Vergleich mit den bisherigen Home-Assistant-Werten.
-6. Danach: go-e per OCPP an `ws://<mango>:8887/ocpp/<kennung>` anbinden, Kennung im Portal eintragen, Überschussladen beobachten. Vorher DHCP-Reservierung für den Mango und Firewall-Regel für 8887 aus dem Kundennetz (siehe [OCPP-Test](#ocpp-mit-einer-echten-go-e-03102026-box-ungekoppelt-keine-anschlussgrenze)).
+6. Danach: go-e per OCPP an `ws://<mango>:8887/ocpp/<kennung>` anbinden, Kennung im Portal eintragen, Überschussladen beobachten. Vorher die DHCP-Reservierung für den Mango im Kundenrouter anlegen (`install.sh` erinnert daran); die Firewall-Regel für 8887 aus dem Kundennetz legt `install.sh` an (siehe [OCPP-Test](#ocpp-mit-einer-echten-go-e-03102026-box-ungekoppelt-keine-anschlussgrenze)).

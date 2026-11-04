@@ -68,6 +68,18 @@ func (r *Runtime) testRead(ctx context.Context, req *testReadRequest) testReadRe
 		return r.testSolarman(ctx, p, req.Role)
 	case goeapi.Family:
 		return r.testGoe(ctx, &req.selection, req.Role)
+	case CommHuaweiModbus:
+		p, why := planHuawei(&req.selection)
+		if p == nil {
+			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
+		}
+		return r.testHuawei(ctx, p, req.Role)
+	case CommKacoSerial:
+		p, why := planKacoSerial(&req.selection)
+		if p == nil {
+			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
+		}
+		return r.testKacoSerial(ctx, p, req.Role)
 	}
 	return testReadResult{ErrorCode: testconn.ErrInvalidRequest,
 		Message: "Diese Anbindung („" + req.Communication + "“) wird von Edge Light noch nicht unterstützt."}

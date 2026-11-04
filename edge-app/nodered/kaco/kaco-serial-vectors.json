@@ -1,0 +1,2658 @@
+{
+  "_comment": [
+    "GENERIERT von kaco-serial-vectors.gen.js aus kaco-serial-decode.js - nicht von Hand bearbeiten.",
+    "Gepruefte Seiten: kaco-serial-vectors.test.js (JS) und edge-app/core/internal/kacoserial (Go, Edge Light).",
+    "hex sind die rohen Bytes vom Wandler; trim/complete/verify_checksum/parse/decode sind die Modulfunktionen darauf; parse.error = ParseError."
+  ],
+  "constants": {
+    "min_address": 1,
+    "max_address": 32,
+    "default_port": 8899,
+    "default_address": 1,
+    "cmd_measure": "0",
+    "cmd0_min_len": 58,
+    "families": [
+      "kaco_serial"
+    ],
+    "serial_params": {
+      "baud": 9600,
+      "dataBits": 8,
+      "parity": "none",
+      "stopBits": 1
+    },
+    "offsets": {
+      "header": [
+        0,
+        5
+      ],
+      "status": [
+        6,
+        9
+      ],
+      "dcVoltage": [
+        10,
+        15
+      ],
+      "dcCurrent": [
+        16,
+        21
+      ],
+      "dcPower": [
+        22,
+        27
+      ],
+      "acVoltage": [
+        28,
+        33
+      ],
+      "acCurrent": [
+        34,
+        39
+      ],
+      "acPower": [
+        40,
+        45
+      ],
+      "temperature": [
+        46,
+        49
+      ],
+      "dailyYieldWh": [
+        50,
+        56
+      ],
+      "checksumSpace": 56,
+      "checksum": 57
+    }
+  },
+  "build_request": [
+    {
+      "address": 1,
+      "command": "0",
+      "hex": "233031300d"
+    },
+    {
+      "address": 32,
+      "command": "3",
+      "hex": "233332330d"
+    },
+    {
+      "address": 7,
+      "command": "0",
+      "hex": "233037300d"
+    },
+    {
+      "address": 10,
+      "command": "0",
+      "hex": "233130300d"
+    },
+    {
+      "address": 0,
+      "command": "0",
+      "error": true
+    },
+    {
+      "address": 33,
+      "command": "0",
+      "error": true
+    },
+    {
+      "address": -1,
+      "command": "0",
+      "error": true
+    },
+    {
+      "address": 1,
+      "command": "",
+      "error": true
+    },
+    {
+      "address": 1,
+      "command": "00",
+      "error": true
+    }
+  ],
+  "checksum": [
+    {
+      "hex": "",
+      "sum": 0
+    },
+    {
+      "hex": "010203",
+      "sum": 6
+    },
+    {
+      "hex": "ffff02",
+      "sum": 0
+    },
+    {
+      "hex": "2a30313020",
+      "sum": 219
+    },
+    {
+      "hex": "2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420",
+      "sum": 1
+    }
+  ],
+  "cases": [
+    {
+      "name": "dokumentiertes Beispiel (kacors485 README, Typ 9600I)",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 1,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 1,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Kundenanlage: Stand-in des Powador 3200 (Typ 3200I)",
+      "hex": "0a2a30313020202034203431372e352020332e3038202031323834203233302e342020352e3337202031323336202033392020203635363720ba2033323030490d",
+      "trim": "0a2a30313020202034203431372e352020332e3038202031323834203233302e342020352e3337202031323336202033392020203635363720ba2033323030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 186,
+        "actual": 186
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 417.5,
+        "dcCurrentA": 3.08,
+        "dcPowerW": 1284,
+        "acVoltageV": 230.4,
+        "acCurrentA": 5.37,
+        "acPowerW": 1236,
+        "temperatureC": 39,
+        "dailyYieldWh": 6567,
+        "inverterType": "3200I",
+        "checksumOk": true,
+        "checksumExpected": 186,
+        "checksumActual": 186
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 1.236
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 417.5,
+          "dc_current_a": 3.08,
+          "ac_voltage_v": 230.4,
+          "ac_current_a": 5.37,
+          "temp_c": 39,
+          "energy_today_kwh": 6.567,
+          "checksum_ok": true,
+          "inverter_type": "3200I",
+          "ac_kw": 1.236,
+          "dc_kw": 1.284
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 1.236
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 417.5,
+          "dc_current_a": 3.08,
+          "ac_voltage_v": 230.4,
+          "ac_current_a": 5.37,
+          "temp_c": 39,
+          "energy_today_kwh": 6.567,
+          "checksum_ok": true,
+          "inverter_type": "3200I",
+          "ac_kw": 1.236,
+          "dc_kw": 1.284
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "hoechste Busadresse 32, kein Typ-String",
+      "hex": "0a2a33323020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420050d",
+      "trim": "0a2a33323020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420050d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 5,
+        "actual": 5
+      },
+      "parse": {
+        "address": 32,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "",
+        "checksumOk": true,
+        "checksumExpected": 5,
+        "checksumActual": 5
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 32,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 32,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Adresse 7 (Kommando-Echo 0)",
+      "hex": "0a2a30373020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420072039363030490d",
+      "trim": "0a2a30373020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420072039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 7,
+        "actual": 7
+      },
+      "parse": {
+        "address": 7,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 7,
+        "checksumActual": 7
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 7,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 7,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Nachts: AC-Leistung -12 W (Eigenverbrauch der Elektronik)",
+      "hex": "0a2a30313020202031203538352e392031302e3137202035393538203232392e352032342e39302020202d3132202033362020313736313420e02039363030490d",
+      "trim": "0a2a30313020202031203538352e392031302e3137202035393538203232392e352032342e39302020202d3132202033362020313736313420e02039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 224,
+        "actual": 224
+      },
+      "parse": {
+        "address": 1,
+        "status": 1,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": -12,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 224,
+        "checksumActual": 224
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "status": 1,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": -0.012,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "status": 1,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": -0.012,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "AC-Leistung 0, Ertrag 0",
+      "hex": "0a2a30313020202034203538352e392031302e3137202020202030203232392e352032342e3930202020202030202033362020202020203020252039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202020202030203232392e352032342e3930202020202030202033362020202020203020252039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 37,
+        "actual": 37
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 0,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 0,
+        "temperatureC": 36,
+        "dailyYieldWh": 0,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 37,
+        "checksumActual": 37
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 0,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 0,
+          "dc_kw": 0
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 0,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 0,
+          "dc_kw": 0
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Tagesertrag 999999 Wh (volle Feldbreite)",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362039393939393920342039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362039393939393920342039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 52,
+        "actual": 52
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 999999,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 52,
+        "checksumActual": 52
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 999.999,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 999.999,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Leistung 99999 W (volle Feldbreite), Temperatur 100",
+      "hex": "0a2a30313020202034203538352e392031302e3137203939393939203232392e352032342e39302039393939392031303020203137363134205a2039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137203939393939203232392e352032342e39302039393939392031303020203137363134205a2039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 90,
+        "actual": 90
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 99999,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 99999,
+        "temperatureC": 100,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 90,
+        "checksumActual": 90
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 99.999
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 100,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 99.999,
+          "dc_kw": 99.999
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 99.999
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 100,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 99.999,
+          "dc_kw": 99.999
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Rundung: 234,5 W wird 0,235 kW, Ertrag 1761,5 Wh wird 1,762 kWh (halb nach +unendlich)",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930203233342e352020333620313736312e35201e2039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930203233342e352020333620313736312e35201e2039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 30,
+        "actual": 30
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 234.5,
+        "temperatureC": 36,
+        "dailyYieldWh": 1761.5,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 30,
+        "checksumActual": 30
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0.235
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 1.762,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 0.235,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 0.235
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 1.762,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 0.235,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Rundung: -0,5 W (Math.round halb nach +unendlich)",
+      "hex": "0a2a30313020202034203538352e392031302e313720202d302e35203232392e352032342e393020202d302e35202033362020313736313420d82039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e313720202d302e35203232392e352032342e393020202d302e35202033362020313736313420d82039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 216,
+        "actual": 216
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": -0.5,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": -0.5,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 216,
+        "checksumActual": 216
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 0,
+          "dc_kw": 0
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 0,
+          "dc_kw": 0
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Rundung: -1,5 W",
+      "hex": "0a2a30313020202034203538352e392031302e313720202d312e35203232392e352032342e393020202d312e35202033362020313736313420da2039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e313720202d312e35203232392e352032342e393020202d312e35202033362020313736313420da2039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 218,
+        "actual": 218
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": -1.5,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": -1.5,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 218,
+        "checksumActual": 218
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": -0.001,
+          "dc_kw": -0.001
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": -0.001,
+          "dc_kw": -0.001
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "falsche Pruefsumme 0x00: Werte da, checksumOk false",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420002039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420002039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 1,
+        "actual": 0
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 1,
+        "checksumActual": 0
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Pruefsumme ist 0x0A (LF): Framing bleibt stabil",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e39302020353732302020333620203137363134200a2039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e39302020353732302020333620203137363134200a2039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 1,
+        "actual": 10
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 1,
+        "checksumActual": 10
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Pruefsumme ist 0x0D (CR) und kein Typ-String: CR genau an der Pruefsumme",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e39302020353732302020333620203137363134200d0d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e39302020353732302020333620203137363134200d0d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 1,
+        "actual": 13
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "",
+        "checksumOk": false,
+        "checksumExpected": 1,
+        "checksumActual": 13
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Pruefsumme ist 0x0D mit Typ-String",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e39302020353732302020333620203137363134200d2039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e39302020353732302020333620203137363134200d2039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 1,
+        "actual": 13
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 1,
+        "checksumActual": 13
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Pruefsumme 0xFF",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420ff2039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420ff2039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 1,
+        "actual": 255
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 1,
+        "checksumActual": 255
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "vor der Pruefsumme abgeschnitten (53 Bytes)",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e39302020353732302020333620203137",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e39302020353732302020333620203137",
+      "complete": false,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 0,
+        "actual": 0
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "ein Byte vor der Pruefsumme (57 Bytes)",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420",
+      "complete": false,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 0,
+        "actual": 0
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "genau 58 Bytes: Pruefsumme da, kein CR - laengen-vollstaendig, aber nicht abgeschlossen",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e393020203537323020203336202031373631342001",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e393020203537323020203336202031373631342001",
+      "complete": false,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 1,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "",
+        "checksumOk": true,
+        "checksumExpected": 1,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "58 Bytes + CR",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420010d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420010d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 1,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "",
+        "checksumOk": true,
+        "checksumExpected": 1,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Typ-String ohne CR (Teilantwort vor dem Leerlauf-Zeitabstand)",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e393020203537323020203336202031373631342001203936303049",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e393020203537323020203336202031373631342001203936303049",
+      "complete": false,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 1,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 1,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "zwei Frames hintereinander: das erste gilt",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202020202031202033362020313736313420c42039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202020202031202033362020313736313420c42039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 1,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 1,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Stoerbytes 00 00 vor dem Frame (roh, nicht bereinigt)",
+      "hex": "00000a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": null,
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 183,
+        "actual": 52
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Stoerbytes mit CR vor dem LF",
+      "hex": "0d200a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": null,
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 215,
+        "actual": 52
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "nur Stoerbytes ohne LF",
+      "hex": "0001ff",
+      "trim": "",
+      "complete": false,
+      "reply_command_byte": null,
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 0,
+        "actual": 0
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "nur ein LF",
+      "hex": "0a",
+      "trim": "0a",
+      "complete": false,
+      "reply_command_byte": null,
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 0,
+        "actual": 0
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Rauschen \"ratlos\"",
+      "hex": "7261746c6f73",
+      "trim": "",
+      "complete": false,
+      "reply_command_byte": null,
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 0,
+        "actual": 0
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "leer",
+      "hex": "",
+      "trim": "",
+      "complete": false,
+      "reply_command_byte": null,
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 0,
+        "actual": 0
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "LF* und dann Muell in voller Laenge",
+      "hex": "0a2a414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141",
+      "trim": "0a2a414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141",
+      "complete": false,
+      "reply_command_byte": "A",
+      "protocol_mismatch": true,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 33,
+        "actual": 65
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "fehlender LF-Kopf (\"A\" statt LF)",
+      "hex": "412a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "",
+      "complete": true,
+      "reply_command_byte": null,
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 1,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "fehlender Stern",
+      "hex": "0a2330313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2330313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": null,
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 250,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Kommando-Byte \"n\" (CRC16-Variante der TL/TR-Linie): anderes Protokoll",
+      "hex": "0a2a30316e20202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30316e20202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "n",
+      "protocol_mismatch": true,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 63,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Kommando-Byte \"4\" (Park-Wechselrichter 000xi): anderes Protokoll",
+      "hex": "0a2a30313420202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313420202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "4",
+      "protocol_mismatch": true,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 5,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Kommando-Byte \"3\" (bekannt, aber nicht die Momentanwerte): kein Mismatch, kein Parse",
+      "hex": "0a2a30313320202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313320202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "3",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 4,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Kommando-Byte \"s\" (bekannt): kein Mismatch, kein Parse",
+      "hex": "0a2a30317320202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30317320202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "s",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 68,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Adressfeld \"  \" (leer): Number(\"\") ist 0",
+      "hex": "0a2a20203020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a20203020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 224,
+        "actual": 1
+      },
+      "parse": {
+        "address": 0,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 224,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 0,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Adressfeld \" 1\"",
+      "hex": "0a2a20313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a20313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 241,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 241,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Adressfeld \"1x\": nicht numerisch",
+      "hex": "0a2a31783020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a31783020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 73,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Adressfeld \"1.\": ganzzahlig",
+      "hex": "0a2a312e3020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a312e3020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 255,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 255,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Adressfeld \".5\": keine ganze Zahl",
+      "hex": "0a2a2e353020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a2e353020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 3,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "nicht-numerisches Feld (dcVoltage \"xxxxx\")",
+      "hex": "0a2a303130202020342078787878782031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a303130202020342078787878782031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 80,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "leeres Feld (status \"   \") liest als 0",
+      "hex": "0a2a30313020202020203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202020203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 237,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 0,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 237,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 0,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld mit Exponent (\"  1e3\" = 1000 W)",
+      "hex": "0a2a30313020202034203538352e392031302e3137202020316533203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202020316533203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 15,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 1000,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 15,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 1
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld hexadezimal (\" 0x1F\" = 31)",
+      "hex": "0a2a30313020202034203538352e392031302e3137202030783146203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202030783146203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 69,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 31,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 69,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 0.031
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld mit Pluszeichen (\"+5958\")",
+      "hex": "0a2a30313020202034203538352e392031302e3137202b35393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202b35393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 12,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 12,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld ohne fuehrende Null (\"  .50\" = 0,5 A)",
+      "hex": "0a2a30313020202034203538352e392020202e3530202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392020202e3530202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 221,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 0.5,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 221,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 0.5,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld \"5.\" = 5",
+      "hex": "0a2a30313020202034203538352e3920202020352e202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e3920202020352e202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 205,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 5,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 205,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 5,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld \"  Inf\": nicht endlich",
+      "hex": "0a2a30313020202034203538352e392031302e3137202020496e66203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202020496e66203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 99,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld \"1_000\": nicht numerisch",
+      "hex": "0a2a30313020202034203538352e392031302e313720315f303030203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e313720315f303030203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 38,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld \"  NaN\"",
+      "hex": "0a2a30313020202034203538352e392031302e31372020204e614e203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e31372020204e614e203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 67,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld mit Tabulator (\"\\t4\\t\" im Status)",
+      "hex": "0a2a30313020093409203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020093409203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 211,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 211,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld \"1,5\" (Komma): nicht numerisch",
+      "hex": "0a2a30313020202034203538352e392031302e3137202020312c35203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202020312c35203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 216,
+        "actual": 1
+      },
+      "parse": {
+        "error": true
+      },
+      "decode": null,
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld \"0b101\" = 5",
+      "hex": "0a2a30313020202034203538352e392031302e3137203062313031203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137203062313031203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 42,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 42,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 0.005
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld \"0o17\" = 15",
+      "hex": "0a2a30313020202034203538352e392031302e31372020306f3137203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e31372020306f3137203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 45,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 15,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 45,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 0.015
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "Feld \"-0\" = 0",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202020202d30202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202020202d30202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 208,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 0,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 208,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 0,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "hohes Bit in einem Feld (0xB5 liest als \"5\")",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035b53538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035b53538203232392e352032342e3930202035373230202033362020313736313420012039363030490d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": false,
+        "expected": 125,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5558,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": false,
+        "checksumExpected": 125,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": false,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.558
+        },
+        "address": 1,
+        "checksumOk": false
+      },
+      "decode_require_checksum": null
+    },
+    {
+      "name": "hohes Bit im Typ-String (0xC9 liest als \"I\")",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030c90d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e3930202035373230202033362020313736313420012039363030c90d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 1,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "9600I",
+        "checksumOk": true,
+        "checksumExpected": 1,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "9600I",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    },
+    {
+      "name": "Typ-String mit Leerzeichen und Tab wird getrimmt",
+      "hex": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e393020203537323020203336202031373631342001200920506f7761646f72203332303020090d",
+      "trim": "0a2a30313020202034203538352e392031302e3137202035393538203232392e352032342e393020203537323020203336202031373631342001200920506f7761646f72203332303020090d",
+      "complete": true,
+      "reply_command_byte": "0",
+      "protocol_mismatch": false,
+      "verify_checksum": {
+        "ok": true,
+        "expected": 1,
+        "actual": 1
+      },
+      "parse": {
+        "address": 1,
+        "status": 4,
+        "dcVoltageV": 585.9,
+        "dcCurrentA": 10.17,
+        "dcPowerW": 5958,
+        "acVoltageV": 229.5,
+        "acCurrentA": 24.9,
+        "acPowerW": 5720,
+        "temperatureC": 36,
+        "dailyYieldWh": 17614,
+        "inverterType": "Powador 3200",
+        "checksumOk": true,
+        "checksumExpected": 1,
+        "checksumActual": 1
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "Powador 3200",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      },
+      "decode_require_checksum": {
+        "reading": {
+          "pv_power_kw": 5.72
+        },
+        "meta": {
+          "status": 4,
+          "dc_voltage_v": 585.9,
+          "dc_current_a": 10.17,
+          "ac_voltage_v": 229.5,
+          "ac_current_a": 24.9,
+          "temp_c": 36,
+          "energy_today_kwh": 17.614,
+          "checksum_ok": true,
+          "inverter_type": "Powador 3200",
+          "ac_kw": 5.72,
+          "dc_kw": 5.958
+        },
+        "address": 1,
+        "checksumOk": true
+      }
+    }
+  ]
+}

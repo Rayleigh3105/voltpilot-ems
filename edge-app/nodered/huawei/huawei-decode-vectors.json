@@ -1,0 +1,1741 @@
+{
+  "_comment": [
+    "GENERIERT von huawei-decode-vectors.gen.js aus huawei-decode.js - nicht von Hand bearbeiten.",
+    "Gepruefte Seiten: huawei-decode-vectors.test.js (JS) und edge-app/core/internal/huaweidecode (Go, Edge Light).",
+    "blocks sind die beantworteten FC3-Bloecke ({start, regs} mit u16); decode ist das Ergebnis von decode(blocks, opts) oder null."
+  ],
+  "constants": {
+    "reg": {
+      "INPUT_POWER_W": 32064,
+      "ACTIVE_POWER_W": 32080,
+      "METER_ACTIVE_POWER_W": 37113,
+      "BATTERY_RUNNING_STATUS": 37762,
+      "BATTERY_SOC_PCT_X10": 37760,
+      "BATTERY_CHARGE_DISCHARGE_POWER_W": 37765
+    },
+    "default_port": 502,
+    "default_unit_id": 0,
+    "families": [
+      "huawei_sun2000_luna"
+    ]
+  },
+  "plan_reads": {
+    "huawei_sun2000_luna": [
+      [
+        32064,
+        2
+      ],
+      [
+        32080,
+        2
+      ],
+      [
+        37113,
+        2
+      ],
+      [
+        37760,
+        7
+      ]
+    ],
+    "kostal_plenticore": [],
+    "ohne_familie": []
+  },
+  "soc_plausible": [
+    {
+      "soc": 0,
+      "ok": false
+    },
+    {
+      "soc": 0.05,
+      "ok": true
+    },
+    {
+      "soc": 0.1,
+      "ok": true
+    },
+    {
+      "soc": 50,
+      "ok": true
+    },
+    {
+      "soc": 99.9,
+      "ok": true
+    },
+    {
+      "soc": 100,
+      "ok": true
+    },
+    {
+      "soc": 100.1,
+      "ok": false
+    },
+    {
+      "soc": 101,
+      "ok": false
+    },
+    {
+      "soc": 1270,
+      "ok": false
+    },
+    {
+      "soc": 6553.5,
+      "ok": false
+    },
+    {
+      "soc": -1,
+      "ok": false
+    },
+    {
+      "soc": "NaN",
+      "ok": false
+    },
+    {
+      "soc": "Infinity",
+      "ok": false
+    }
+  ],
+  "cases": [
+    {
+      "name": "gesundes Bild (PV 2,5 kW DC, Zaehler-Register +300 W = Einspeisung -> power_kw -0,3, SoC 62,5 %, Batterie laedt 0,7)",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3,
+          "soc_pct": 62.5
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "gesundes Bild, Netz-Vorzeichen-Klappe (Sensor verkehrt): Rohvorzeichen durchgereicht",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {
+        "invertGridSign": true
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": 0.3,
+          "soc_pct": 62.5
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "gesundes Bild, Batterie-Vorzeichen invertiert",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {
+        "invertBattSign": true
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3,
+          "soc_pct": 62.5
+        },
+        "battKw": -0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "gesundes Bild, beide Klappen",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {
+        "invertGridSign": true,
+        "invertBattSign": true
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": 0.3,
+          "soc_pct": 62.5
+        },
+        "battKw": -0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "Entladung 0,7 kW liest negativ; Zaehler-Register -300 W = Bezug -> power_kw +0,3",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            65535,
+            65236
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            65535,
+            64836
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": 0.3,
+          "soc_pct": 62.5
+        },
+        "battKw": -0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "Entladung/Bezug mit beiden Klappen",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            65535,
+            65236
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            65535,
+            64836
+          ]
+        }
+      ],
+      "opts": {
+        "invertGridSign": true,
+        "invertBattSign": true
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3,
+          "soc_pct": 62.5
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "Kundenanlage: 11 kW Wallbox am Netzpunkt (Huawei-Register -9908 W = Bezug -> power_kw +9,908)",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2692
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1792
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            65535,
+            55628
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            686,
+            0,
+            2,
+            0,
+            0,
+            0,
+            900
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.692,
+          "power_kw": 9.908,
+          "soc_pct": 68.6
+        },
+        "battKw": 0.9,
+        "meta": {
+          "active_power_w": 1792,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "Kundenanlage mit Haken \"Netz-Vorzeichen invertieren\" (nur bei verkehrt angeschlossenem Sensor)",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2692
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1792
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            65535,
+            55628
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            686,
+            0,
+            2,
+            0,
+            0,
+            0,
+            900
+          ]
+        }
+      ],
+      "opts": {
+        "invertGridSign": true
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.692,
+          "power_kw": -9.908,
+          "soc_pct": 68.6
+        },
+        "battKw": 0.9,
+        "meta": {
+          "active_power_w": 1792,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "SoC 0,0 % wird verworfen (Komm-Artefakt), Rest bleibt",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "SoC 0,1 % ist plausibel",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            1,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3,
+          "soc_pct": 0.1
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "SoC 100,0 % ist plausibel",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            1000,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3,
+          "soc_pct": 100
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "SoC 101,0 % wird verworfen",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            1010,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "SoC 1270,0 % wird verworfen",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            12700,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "SoC 0xFFFF wird verworfen",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            65535,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "SoC 55,5 % (eine Nachkommastelle bleibt)",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            555,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3,
+          "soc_pct": 55.5
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "ohne Zaehler-Block (kein Smart Power Sensor): power_kw fehlt",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "soc_pct": 62.5
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "ohne Batterie-Block: SoC und battKw fehlen, PV bleibt",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3
+        },
+        "battKw": null,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": null
+        }
+      }
+    },
+    {
+      "name": "ohne PV-Block: pv_power_kw fehlt",
+      "blocks": [
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "power_kw": -0.3,
+          "soc_pct": 62.5
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "ohne AC-Block: nur meta.active_power_w fehlt",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3,
+          "soc_pct": 62.5
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": null,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "nur der AC-Block: nichts decodiert -> null (Meta allein ist kein Messwert)",
+      "blocks": [
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": null
+    },
+    {
+      "name": "nur der Batterie-Block mit unplausiblem SoC: battKw allein traegt",
+      "blocks": [
+        {
+          "start": 37760,
+          "regs": [
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {},
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": null,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "keine Bloecke -> null",
+      "blocks": [],
+      "opts": {},
+      "decode": null
+    },
+    {
+      "name": "Batterie-Block zu kurz (5 Register): SoC da, battKw fehlt",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "soc_pct": 62.5
+        },
+        "battKw": null,
+        "meta": {
+          "active_power_w": null,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "Batterie-Block um ein Register zu kurz (6): das High-Word allein reicht nicht",
+      "blocks": [
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "soc_pct": 62.5
+        },
+        "battKw": null,
+        "meta": {
+          "active_power_w": null,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "ein Block, der vor dem Register beginnt, deckt es trotzdem",
+      "blocks": [
+        {
+          "start": 32060,
+          "regs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            3210,
+            0
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 3.21
+        },
+        "battKw": null,
+        "meta": {
+          "active_power_w": null,
+          "battery_running_status": null
+        }
+      }
+    },
+    {
+      "name": "Bloecke in anderer Reihenfolge",
+      "blocks": [
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            2,
+            0,
+            0,
+            0,
+            700
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            1800
+          ]
+        },
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3,
+          "soc_pct": 62.5
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": 1800,
+          "battery_running_status": 2
+        }
+      }
+    },
+    {
+      "name": "doppelt gelieferter Block: der erste gewinnt",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            1000
+          ]
+        },
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2000
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 1
+        },
+        "battKw": null,
+        "meta": {
+          "active_power_w": null,
+          "battery_running_status": null
+        }
+      }
+    },
+    {
+      "name": "leerer Block zaehlt nicht",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": []
+        },
+        {
+          "start": 37113,
+          "regs": [
+            65535,
+            65486
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "power_kw": 0.05
+        },
+        "battKw": null,
+        "meta": {
+          "active_power_w": null,
+          "battery_running_status": null
+        }
+      }
+    },
+    {
+      "name": "PV 1 W = 0,001 kW; Zaehler -1 W; Batterie 1 W",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            1
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            65535,
+            65535
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0.001,
+          "power_kw": 0.001
+        },
+        "battKw": 0.001,
+        "meta": {
+          "active_power_w": 0,
+          "battery_running_status": 0
+        }
+      }
+    },
+    {
+      "name": "alle Werte 0 (Nacht, Batterie ruht): echte Nullen, SoC 0 verworfen",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0,
+          "power_kw": 0
+        },
+        "battKw": 0,
+        "meta": {
+          "active_power_w": 0,
+          "battery_running_status": 0
+        }
+      }
+    },
+    {
+      "name": "alle Werte 0 mit Klappen: -0 wird als 0 geschrieben",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "opts": {
+        "invertGridSign": true,
+        "invertBattSign": true
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0,
+          "power_kw": 0
+        },
+        "battKw": 0,
+        "meta": {
+          "active_power_w": 0,
+          "battery_running_status": 0
+        }
+      }
+    },
+    {
+      "name": "groesste positive I32 (2147483647 W)",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            32767,
+            65535
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            32767,
+            65535
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            32767,
+            65535
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2147483.647,
+          "power_kw": -2147483.647
+        },
+        "battKw": 2147483.647,
+        "meta": {
+          "active_power_w": 0,
+          "battery_running_status": 0
+        }
+      }
+    },
+    {
+      "name": "kleinste negative I32 (-2147483648 W)",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            32768,
+            0
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            32768,
+            0
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            32768,
+            0
+          ]
+        }
+      ],
+      "opts": {
+        "invertGridSign": true,
+        "invertBattSign": true
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": -2147483.648,
+          "power_kw": -2147483.648
+        },
+        "battKw": 2147483.648,
+        "meta": {
+          "active_power_w": 0,
+          "battery_running_status": 0
+        }
+      }
+    },
+    {
+      "name": "nur das High-Word gesetzt (65536 W)",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            1,
+            0
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 65.536,
+          "power_kw": 0
+        },
+        "battKw": 0,
+        "meta": {
+          "active_power_w": 0,
+          "battery_running_status": 0
+        }
+      }
+    },
+    {
+      "name": "High-Word 0xFFFF, Low-Word 0xFFFF = -1 W (kein 4294967295)",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            65535,
+            65535
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            65535,
+            65535
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": -0.001,
+          "power_kw": 0
+        },
+        "battKw": -0.001,
+        "meta": {
+          "active_power_w": 0,
+          "battery_running_status": 0
+        }
+      }
+    },
+    {
+      "name": "Wortreihenfolge-Falle: ein Little-Endian-Geraet laese 300 W als 19660800 W",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            300,
+            0
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            0
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 19660.8,
+          "power_kw": 0
+        },
+        "battKw": 0,
+        "meta": {
+          "active_power_w": 0,
+          "battery_running_status": 0
+        }
+      }
+    },
+    {
+      "name": "AC-Leistung negativ (Bezug der Elektronik) und Status 4 (sleep)",
+      "blocks": [
+        {
+          "start": 32064,
+          "regs": [
+            0,
+            2500
+          ]
+        },
+        {
+          "start": 32080,
+          "regs": [
+            65535,
+            65501
+          ]
+        },
+        {
+          "start": 37113,
+          "regs": [
+            0,
+            300
+          ]
+        },
+        {
+          "start": 37760,
+          "regs": [
+            625,
+            0,
+            4,
+            0,
+            0,
+            0,
+            700
+          ]
+        }
+      ],
+      "opts": {},
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.5,
+          "power_kw": -0.3,
+          "soc_pct": 62.5
+        },
+        "battKw": 0.7,
+        "meta": {
+          "active_power_w": -35,
+          "battery_running_status": 4
+        }
+      }
+    }
+  ]
+}

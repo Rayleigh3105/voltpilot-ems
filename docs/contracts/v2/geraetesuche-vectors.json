@@ -182,8 +182,8 @@
       "schnitt": 2,
       "communication": "huawei_modbus",
       "docker": "uebernehmen",
-      "edge_light": "nicht_mit_dieser_box",
-      "wie": "Huawei SUN2000: TCP 502, Unit 0 bzw. 1 hinter dem Smart Dongle; Modell ab 30000, Seriennummer ab 30015."
+      "edge_light": "uebernehmen",
+      "wie": "Huawei SUN2000: TCP 502, Unit 0 bzw. 1 hinter dem Smart Dongle; Modell ab 30000, Seriennummer ab 30015. Edge Light liest ihn seit 04.11.2026 (Go-Schicht 1, internal/huaweidecode)."
     },
     {
       "erkenner": "sma",

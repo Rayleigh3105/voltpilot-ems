@@ -95,8 +95,12 @@ type Result struct {
 // away from zero, which differs for negative ties).
 func jsRound(x float64) float64 { return math.Floor(x + 0.5) }
 
-func round3(x float64) float64 { return jsRound(x*1000) / 1000 }
-func round1(x float64) float64 { return jsRound(x*10) / 10 }
+// The explicit float64() conversions are load-bearing: without them Go may
+// fuse x*1000 + 0.5 into one FMA instruction (allowed by the spec, done on
+// arm64), which rounds -0.5 W to -0.001 kW where JavaScript - and the MIPS
+// Mango without FMA - give 0. The kacoserial vectors caught it.
+func round3(x float64) float64 { return jsRound(float64(x*1000)) / 1000 }
+func round1(x float64) float64 { return jsRound(float64(x*10)) / 10 }
 
 func finite(x float64) bool { return !math.IsNaN(x) && !math.IsInf(x, 0) }
 
