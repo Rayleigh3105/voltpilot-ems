@@ -191,6 +191,21 @@ export function installHelpFixtures() {
   const error = params.get('state') === 'error';
   const single = params.get('state') === 'single';
   const admin = params.get('state') === 'admin';
+  // Plattform-Sicht MIT Anlagen (technische Ebene des Aufbaus: Rollen & Zuordnung, „Komponente anlegen“).
+  const technik = params.get('technik') === '1';
+  // Ein Privatkunde, dessen Standort so heißt wie seine Adresse, mit langen Gerätenamen (Layout-Wächter).
+  if (technik) sessionStorage.setItem('vp-tenant-override', 'help-tenant');
+  // Die Geld-Kachel des Fahrplans („Heute geplant") mit Vorzeichen: `geld=minus` plant −3,25 €, `geld=plus` +3,25 €.
+  const geldFall = params.get('geld');
+  const geld = geldFall === 'minus' || geldFall === 'plus'
+    ? { savedEur: geldFall === 'minus' ? -0.4 : 0.4, savedSteuerungEur: geldFall === 'minus' ? -0.4 : 0.4, savedSpeicherEur: 0, steuerungSplitReason: null, steuerungPlannedEur: geldFall === 'minus' ? -3.25 : 3.25 }
+    : {};
+  const lang = params.get('lang') === '1';
+  if (lang) {
+    Object.assign(sites[0], { name: 'Sandgrabener Straße 10a' });
+    // Das lange Kundenwort aus dem Betrieb: ein einziges Wort breiter als eine Rollen-Karte.
+    for (const e of [definitions[1], entities[1], topology.entities[1]]) e.label = 'Netzanschlusszähler';
+  }
   // Die Eigenverbrauchs-Fassung des Cockpits (ohne Marktoptimierung) für Browserprüfungen.
   const eigen = params.get('betrieb') === 'eigen';
   // Die Steuerzeile mit Abweichung (Konzept b1, `cockpit-steuerzeile.spec.ts`): der Speicher gibt laut
@@ -211,7 +226,7 @@ export function installHelpFixtures() {
   const ohneBilanz = <T extends object>(b: T) => ({ ...b, pvKwh: null, loadKwh: null, gridImportKwh: null, gridExportKwh: null,
     batteryChargeKwh: null, batteryDischargeKwh: null, socMinPct: null, socMaxPct: null, socLastPct: null });
   Object.assign(keycloak, { token: 'help-fixture-token', authenticated: true, updateToken: async () => false,
-    tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', tenant_id: 'help-tenant', realm_access: { roles: [admin ? 'platform-admin' : 'operator'] } } });
+    tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', tenant_id: 'help-tenant', realm_access: { roles: [admin || technik ? 'platform-admin' : 'operator'] } } });
   // All API methods are isolated, including mutation buttons in captured screens.
   for (const key of Object.keys(api)) (api as Record<string, unknown>)[key] = async () => { throw new Error('Missing help fixture: ' + key); };
   const result = (value: unknown) => async () => structuredClone(value);
@@ -240,7 +255,7 @@ export function installHelpFixtures() {
     overview: result(erzFall ? { ...overview, sites: overview.sites.map((o, i) => (i === 0 ? { ...o, ...site, batteryWithoutDevice: false, anwendungen: ['monitoring'],
       live: { ts: NOW, pvKw: null, loadKw: null, gridKw: null, socPct: null } } : o)) } : overview), earnings: result({ range: 'month', from: DAY, to: NOW, sites: sites.map((s) => ({ ...money, id: s.id, siteId: s.id, name: s.name })), totals: { ...money, coveredSlots: 98 } }),
     // Erzeugeranlagen haben in der ersten Fassung keine Erlöse (EW-7 A); Biogas zeigt „—“ bis EZ-12.
-    siteEarnings: erzFall ? async () => { throw new Error('Noch keine Erlöse für diese Anlage'); } : result(money),
+    siteEarnings: erzFall ? async () => { throw new Error('Noch keine Erlöse für diese Anlage'); } : result({ ...money, ...geld }),
     // Die Werte der Erzeugeranlage gehen nicht in die Hausbilanz (Konzept §4.2): der Tag trägt nur Preise -
     // dafür die Vorgaben als Ereignisse und ihre Zählung (EZ-9).
     history: erzFall
@@ -335,8 +350,8 @@ export function installHelpFixtures() {
     // UEMS-Ortsstruktur: beide fiktiven Anlagen liegen am selben Standort (main 41ed67c26, Wurzel des Aufbau-Baums;
     // die leere uems-Fassung derselben Route stand doppelt im Objekt und galt nie — die spätere gewinnt).
     standorte: result({ stichtag: '2026-09-10', nichtGezeigt: [], nochNichtZugeordnet: null, standorte: [{
-      id: 'help-standort', kurzzeichen: 'ST-1', name: 'Sonnenhof', zeitzone: 'Europe/Berlin', zustand: 'aktiv', esFehlt: [],
-      adresse: { strasse: 'Sonnenweg 1', plz: '80331', ort: 'München', land: 'DE' }, bestand: 'vorhanden', bestandText: null,
+      id: 'help-standort', kurzzeichen: 'ST-1', name: lang ? 'Sandgrabener Str. 10A' : 'Sonnenhof', zeitzone: 'Europe/Berlin', zustand: 'aktiv', esFehlt: [],
+      adresse: lang ? { strasse: 'Sandgrabener Str. 10A', plz: '86989', ort: 'Steingaden', land: 'DE' } : { strasse: 'Sonnenweg 1', plz: '80331', ort: 'München', land: 'DE' }, bestand: 'vorhanden', bestandText: null,
       anlagen: sites.map((s) => ({ id: s.id, name: s.name, gueltigAb: '2026-08-01', gueltigBis: null })),
       anlagenZahl: 2, gebaeudeZahl: 0, bereichZahl: 0, flaecheM2: null, flaecheQuelle: null }] }),
     createSite: async (input: object) => ({ ...site, ...input }), claimDevice: result(devices[0]),

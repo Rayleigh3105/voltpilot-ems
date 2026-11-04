@@ -67,7 +67,16 @@ export interface Antwort {
    * Frage, ein Wert, höchstens eine leise Zeile - dieselbe Aussage wie
    * `antwort`/`zusatz`, nur in Stichworten („Als Nächstes · 18:15 Einspeisen").
    */
-  kurz: { label: string; wert: string; meta: string | null };
+  kurz: {
+    label: string;
+    wert: string;
+    meta: string | null;
+    /**
+     * Das Vorzeichen einer Geldzahl (`plus`/`minus`/`null` = Totband): es färbt die Kachel - Gewinn grün, Verlust
+     * in der Warnfarbe, null neutral (Konzept k1 §7: das Zeichen führt, die Farbe ist die Zugabe).
+     */
+    ton?: 'plus' | 'minus' | 'null' | null;
+  };
   /** Das Ehrlichkeits-Abzeichen. */
   art: 'geplant' | 'gemessen';
   ziel: AntwortZiel | null;
@@ -323,8 +332,8 @@ export function antwortBringt(
     zusatz: aussage.steuerung ? aussage.satz : aussage.ohneVergleich,
     notiz: aussage.bestand,
     kurz: laufend
-      ? { label: 'Heute geplant', wert: aussage.geplantWert ?? '', meta: `bisher ${gemessen}` }
-      : { label: art === 'gestern' ? 'Gestern' : 'Heute', wert: gemessen, meta: aussage.chip },
+      ? { label: 'Heute geplant', wert: aussage.geplantWert ?? '', meta: `bisher ${gemessen}`, ton: aussage.geplantTon }
+      : { label: art === 'gestern' ? 'Gestern' : 'Heute', wert: gemessen, meta: aussage.chip, ton: aussage.steuerung?.ton ?? null },
     art: laufend ? 'geplant' : 'gemessen',
     ziel: null,
     details: 'erloese',

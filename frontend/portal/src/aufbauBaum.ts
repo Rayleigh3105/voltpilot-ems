@@ -369,10 +369,24 @@ export function anlagenWerte(
   return { werte, stand: 'aktuell' };
 }
 
-function adresseText(a: StandortAdresse | null): string | null {
+/** „Sandgrabener Straße 10a" und „Sandgrabener Str. 10A" sind dieselbe Straße. */
+const strassenForm = (t: string) =>
+  t
+    .trim()
+    .toLowerCase()
+    .replace(/stra(ß|ss)e\b/g, 'str')
+    .replace(/str\./g, 'str')
+    .replace(/\s+/g, ' ');
+
+/**
+ * Die Adresse als Zeile. Heißt der Standort wie seine Straße (der Name IST die Adresse, der Normalfall bei
+ * Privatkunden), steht die Straße nicht noch einmal daneben - es bleibt der Ort mit Postleitzahl.
+ */
+function adresseText(a: StandortAdresse | null, standortName?: string | null): string | null {
   if (!a) return null;
   const ort = [a.plz, a.ort].filter((t) => t && t.trim()).join(' ');
-  const teile = [a.strasse, ort].filter((t): t is string => Boolean(t && t.trim()));
+  const strasseDoppelt = Boolean(ort && a.strasse && standortName && strassenForm(a.strasse) === strassenForm(standortName));
+  const teile = [strasseDoppelt ? null : a.strasse, ort].filter((t): t is string => Boolean(t && t.trim()));
   return teile.length > 0 ? teile.join(' · ') : null;
 }
 
@@ -390,7 +404,7 @@ export function aufbauWurzel(
         id: st.id,
         name: st.name,
         kurzzeichen: st.kurzzeichen || null,
-        adresse: adresseText(st.adresse),
+        adresse: adresseText(st.adresse, st.name),
         entwurf: st.zustand === 'entwurf',
       },
       nachbarn: st.anlagen.filter((a) => a.id !== siteId).map((a) => ({ id: a.id, name: a.name })),

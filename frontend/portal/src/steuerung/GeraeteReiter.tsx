@@ -965,8 +965,8 @@ const ReoListe = forwardRef<HTMLElement, ListeProps & { reo: string[] }>(functio
         </span>
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" className="btn sek" style={{ flex: 1 }} onClick={() => p.setReo(null)}>Abbrechen</button>
-        <Recht aktion="betriebsweise.aendern"><button type="button" className="btn" style={{ flex: 1 }} disabled={p.busy || !folgen.length} onClick={() => void speichern()}>
+        <button type="button" className="btn sek" style={{ flex: '0 1 auto' }} onClick={() => p.setReo(null)}>Abbrechen</button>
+        <Recht aktion="betriebsweise.aendern"><button type="button" className="btn" style={{ flex: 1, whiteSpace: 'nowrap' }} disabled={p.busy || !folgen.length} onClick={() => void speichern()}>
           {p.busy ? 'Speichere …' : 'Reihenfolge speichern'}
         </button></Recht>
       </div>

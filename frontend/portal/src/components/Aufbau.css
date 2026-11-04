@@ -141,6 +141,21 @@
 .vp-auf-leiste > .vp-auf-neu {
   flex: 0 0 auto;
   margin-left: auto;
+  order: 2;
+}
+/* Der technische Einstieg (Plattform-Sicht) steht als eigener Knopf zwischen Zähler und „Gerät hinzufügen“ -
+   er schwebt nie über der Zählzeile. */
+.vp-auf-leiste > .vp-auf-technik-add {
+  flex: 0 0 auto;
+  order: 1;
+  white-space: nowrap;
+}
+/* Schmal rückt er unter die Zeile mit Zähler und „Gerät“ (links), statt über den Hauptknopf zu springen. */
+@container vp-auf (max-width: 719px) {
+  .vp-auf-leiste > .vp-auf-technik-add {
+    order: 3;
+    margin-right: auto;
+  }
 }
 .vp-auf-suche {
   grid-area: suche;
@@ -512,8 +527,8 @@
 .vp-auf-t-zeile {
   display: grid;
   grid-template-columns:
-    minmax(0, 2.6fr) minmax(0, 1.35fr) minmax(0, 1.45fr) minmax(0, 1.05fr)
-    2.25rem;
+    minmax(0, 2.5fr) minmax(0, 1.5fr) minmax(0, 1.45fr) minmax(0, 1.05fr)
+    3.5rem;
   column-gap: var(--vp-space-3);
   align-items: center;
   padding: 0 var(--vp-space-2) 0 var(--vp-space-3);
@@ -738,10 +753,12 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
 }
 .vp-auf-t-art {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--vp-text-gray);
+  /* Die Art bricht um statt „Hybrid-Wechselrichter · Ha…“ abzuschneiden; die Zeile wächst mit (der Tooltip trägt den vollen Text). */
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+  padding-block: 6px;
 }
 .vp-auf-t-zustand {
   display: grid;

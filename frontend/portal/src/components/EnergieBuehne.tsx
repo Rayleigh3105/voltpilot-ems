@@ -456,7 +456,8 @@ function ListeBlock({ liste, onOpen, className }: { liste: Liste; onOpen?: (el: 
       </span>
       <span className="vp-eb-zn">
         {z.name}
-        {z.sub && <small> {z.sub}</small>}
+        {/* Der Satz der Box endet auf „.“ ("Ladevorgang läuft."): vor dem „· seit …“ steht kein Punkt. */}
+        {z.sub && <small> {z.sub.replace(/\.(\s*·)/g, '$1')}</small>}
       </span>
       <span className="vp-eb-zw">{z.wert}</span>
       {z.art !== 'weitere' && (

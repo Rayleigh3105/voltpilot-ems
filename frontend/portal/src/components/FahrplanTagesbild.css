@@ -448,7 +448,15 @@ button.vp-tb-status:hover .vp-tb-status-warum {
   font-family: var(--vp-font-heading, inherit);
   font-size: 1.15rem;
   letter-spacing: -0.01em;
+  color: var(--vp-text);
+}
+/* Das Vorzeichen färbt die Geld-Kachel (Konzept k1 §7): Gewinn grün, Verlust in der Warnfarbe, Totband neutral.
+   Ohne bekanntes Vorzeichen bleibt der Wert neutral - nie ein Gewinn-Grün auf einem Minus. */
+.vp-antw-wert.is-geld.is-plus {
   color: var(--vp-flow-batt-ink, #166534);
+}
+.vp-antw-wert.is-geld.is-minus {
+  color: var(--vp-c-warn-fg, #9a3412);
 }
 
 .vp-antw-meta {

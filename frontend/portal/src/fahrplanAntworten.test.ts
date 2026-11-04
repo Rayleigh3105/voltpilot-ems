@@ -150,12 +150,31 @@ describe('antwortBringt · „Was bringt es heute?" (Messlatte E6)', () => {
     );
     const a = antwortBringt(aussage)!;
     expect(aussage!.geplantWert).toBe(`+${NBSP}6,39${NBSP}€`);
-    expect(a.kurz).toEqual({ label: 'Heute geplant', wert: aussage!.geplantWert, meta: `bisher ${aussage!.wert}` });
+    expect(a.kurz).toEqual({ label: 'Heute geplant', wert: aussage!.geplantWert, meta: `bisher ${aussage!.wert}`, ton: 'plus' });
     expect(aussage!.wert).toContain('0,03');
     expect(a.art).toBe('geplant');
     expect(a.antwort).toBe(`Geplant für heute: +${NBSP}6,39${NBSP}€ gegenüber demselben Speicher ohne smarte Steuerung.`);
     // Der Satz der Messung bleibt der Zusatz, unverändert.
     expect(a.zusatz).toBe(aussage!.satz);
+  });
+
+  it('trägt das Vorzeichen der Geldzahl mit - ein Minus bekommt nie die Farbe des Gewinns (Konzept k1 §7)', () => {
+    const tonVon = (geplant: number, gemessen: number) => {
+      const aussage = speicherAussage(
+        { ...tagesGeld, savedEur: gemessen, savedSpeicherEur: 0, savedSteuerungEur: gemessen, steuerungSplitReason: null },
+        { now: JETZT, steuerungGeplantEur: geplant },
+      );
+      return antwortBringt(aussage)!.kurz.ton;
+    };
+    expect(tonVon(-3.25, 1)).toBe('minus');
+    expect(tonVon(6.39, -0.03)).toBe('plus');
+    expect(tonVon(0, 1)).toBe('null');
+    // Ein ganzer, abgeschlossener Tag trägt das Vorzeichen der gemessenen Zahl.
+    const gestern = speicherAussage(
+      { ...tagesGeld, savedEur: -1.5, savedSpeicherEur: 0, savedSteuerungEur: -1.5, steuerungSplitReason: null },
+      { now: JETZT },
+    );
+    expect(antwortBringt(gestern, 'gestern')!.kurz.ton).toBe('minus');
   });
 
   it('nennt ohne Planwert und für einen ganzen Tag die gemessene Zahl', () => {
