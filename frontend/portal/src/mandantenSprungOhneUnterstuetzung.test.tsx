@@ -112,6 +112,25 @@ describe('Plattform springt ohne Unterstützung in die Mandanten-Ansicht', () =>
     expect(sessionStorage.getItem('vp-tenant-override')).toBe(MIT_STANDORT.id);
   }, 40000);
 
+  it('die Mandantensicht trägt die Bereiche der Anlage am Rand: Cockpit · Fahrplan · Verlauf · Steuerung · Anlage', async () => {
+    await springe(MIT_STANDORT);
+    // Der Mandant hat genau eine Anlage: die Landung ist sie selbst (wie beim Kunden), nicht die nackte Übersicht.
+    expect(await screen.findByRole('heading', { name: 'Nordwind Hamburg' }, { timeout: 15000 })).toBeTruthy();
+    expect(window.location.hash).toBe('#/anlage/20000000-0000-0000-0000-000000000001');
+    const leiste = within(screen.getByRole('navigation', { name: 'Hauptnavigation' }));
+    const eintraege = Array.from(document.querySelectorAll('.vp-anlagenav .vp-navitem')).map((e) => e.textContent);
+    // Fahrplan fehlt der Attrappe nicht aus Absicht, sondern weil sie weder Speicher noch Entitäten liefert; die vier
+    // anderen stehen wie beim Kunden. (Mit Speicher: `e2e/mandantensicht-navigation.spec.ts`.)
+    expect(eintraege).toEqual(expect.arrayContaining(['Cockpit', 'Verlauf', 'Steuerung', 'Anlage']));
+    expect(eintraege.indexOf('Cockpit')).toBeLessThan(eintraege.indexOf('Steuerung'));
+    // Kein Rückweg, der sofort wieder in dieselbe Anlage führt, und die Plattform bleibt der Weg zurück.
+    expect(leiste.queryByRole('button', { name: 'Meine Anlagen' })).toBeNull();
+    expect(leiste.getByRole('button', { name: /Plattform/ })).toBeTruthy();
+    fireEvent.click(leiste.getByRole('button', { name: 'Steuerung' }));
+    expect(window.location.hash).toBe('#/anlage/20000000-0000-0000-0000-000000000001/steuerung');
+    expect(sessionStorage.getItem('vp-tenant-override')).toBe(MIT_STANDORT.id);
+  }, 40000);
+
   it('auch ein Mandant ohne Standort öffnet sich: zwei Anlagen, also sein Portfolio wie beim Kunden selbst', async () => {
     await springe(OHNE_STANDORT);
     await vi.waitFor(() => expect(rufe.some((r) => r.pfad === '/api/v1/sites' && r.kundenbereich === OHNE_STANDORT.id)).toBe(true));

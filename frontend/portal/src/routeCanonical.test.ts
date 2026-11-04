@@ -76,14 +76,27 @@ describe('post-hydration route canonicalization', () => {
     expect(canonical(pageRoute('uebersicht'), {}, [])).toBeNull();
   });
 
+  it('the operator outside a tenant view keeps today\'s routes: no tenant ready means no canonicalization', () => {
+    for (const route of [pageRoute('uebersicht'), pageRoute('plattform-uebersicht'), pageRoute('mandanten')]) {
+      expect(canonical(route, { isAdmin: true, tenantReady: false }), route.page).toBeNull();
+      expect(canonical(route, { isAdmin: true, loaded: false }), route.page).toBeNull();
+    }
+    // Plattform-Seiten bleiben auch IN einer Mandantensicht, wo sie sind.
+    expect(canonical(pageRoute('plattform-uebersicht'), { isAdmin: true })).toBeNull();
+    expect(canonical(pageRoute('mandanten'), { isAdmin: true })).toBeNull();
+  });
+
   it('canonicalizes the complete admin portfolio matrix for 0, 1 and 2 sites', () => {
     for (const betriebsart of ['endkunde', 'betreiber', null] as const) {
       for (const count of [0, 1, 2]) {
         const siteIds = Array.from({ length: count }, (_, index) => `site-${index + 1}`);
         const over = { isAdmin: true, betriebsart };
         const fleet = betriebsart === 'betreiber' || count >= 2;
-        const expectedLanding = fleet ? pageRoute('portfolio') : null;
-        const expectedPortfolio = fleet ? null : pageRoute('uebersicht');
+        // Mandantensicht: wie beim Kunden selbst - ohne Flotte ist die einzige Anlage die Landung (ihre fünf Bereiche
+        // stehen dann in der Seitenleiste), ohne Anlage bleibt die Kunden-Übersicht.
+        const sole = !fleet && count === 1 ? anlageRoute(siteIds[0]) : null;
+        const expectedLanding = fleet ? pageRoute('portfolio') : sole;
+        const expectedPortfolio = fleet ? null : sole ?? pageRoute('uebersicht');
 
         expect(canonical(pageRoute('uebersicht'), over, siteIds), `${betriebsart}/${count} overview`)
           .toEqual(expectedLanding);
@@ -97,9 +110,21 @@ describe('post-hydration route canonicalization', () => {
           expect(canonical(anlageRoute(siteIds[0]), over, siteIds), `${betriebsart}/${count} valid site`)
             .toBeNull();
           expect(canonical(anlageRoute('missing'), over, siteIds), `${betriebsart}/${count} invalid site`)
-            .toEqual(fleet ? pageRoute('portfolio') : pageRoute('uebersicht'));
+            .toEqual(fleet ? pageRoute('portfolio') : anlageRoute(siteIds[0]));
         }
       }
     }
+  });
+
+  it('an admin in a one-site tenant lands exactly where that tenant\'s customer lands, and stays there', () => {
+    const kunde = canonical(pageRoute('uebersicht'));
+    const admin = canonical(pageRoute('uebersicht'), { isAdmin: true });
+    expect(admin).toEqual(kunde);
+    expect(admin).toEqual(anlageRoute('sole'));
+    expect(canonical(admin as Route, { isAdmin: true })).toBeNull();
+    // Der Tiefenlink im Mandanten bleibt, auch ein ungültiger Standort behält seinen Reiter.
+    expect(canonical({ page: 'anlagen', siteId: 'missing', sub: 'fahrplan' }, { isAdmin: true }))
+      .toEqual({ page: 'anlagen', siteId: 'sole', sub: 'fahrplan' });
+    expect(canonical(anlageRoute('sole', 'steuerung'), { isAdmin: true })).toBeNull();
   });
 });
