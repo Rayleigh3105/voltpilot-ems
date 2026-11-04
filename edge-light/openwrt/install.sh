@@ -30,6 +30,14 @@
 # local_dir, arch und enabled werden gesetzt; ein altes base_url wird entfernt
 # (abgeschafft: es lud ungeprueft). Danach auf dem Geraet:
 #   /etc/init.d/vp-edge-light restart ; logread -f -e vp-edge-light
+#
+# Firewall: Ladesaeulen stehen im Kundennetz, also auf der WAN-Seite der Box,
+# und waehlen die Box unter ws://<box>:8887/ocpp/<kennung> an. Die WAN-Zone von
+# OpenWrt weist eingehend alles ab; das Skript legt deshalb EINE benannte Regel
+# an (firewall.vp_ocpp: TCP 8887 aus der Zone wan, ACCEPT) und laedt die
+# Firewall neu. Der OCPP-Server der Box nimmt nur eingetragene Kennungen an.
+# Nichts sonst wird geoeffnet: 8484 (Web-App) und 1883 (lokaler Bus) bleiben,
+# wie sie sind. Am Gerät gefunden am 03.10.2026 (edge-light/docs/mango.md).
 set -eu
 
 TARGET="${1:?Ziel fehlt, z. B. root@192.168.1.1}"
@@ -198,6 +206,29 @@ echo "--- setze Bauart ($ARCH), entferne base_url und aktiviere den Dienst"
 # shellcheck disable=SC2029
 box_ssh "$TARGET" "uci -q delete vp-edge-light.main.base_url; uci -q delete vp-edge-light.main.channel; uci set vp-edge-light.main.local_dir='$LOCAL_DIR' && uci set vp-edge-light.main.arch='$ARCH' && uci set vp-edge-light.main.enabled='1' && uci commit vp-edge-light && /etc/init.d/vp-edge-light enable"
 
+echo "--- Firewall: OCPP (TCP 8887) aus dem Kundennetz (Zone wan) zulassen"
+# Eine BENANNTE Regel (firewall.vp_ocpp), damit ein erneuter Aufruf sie
+# aktualisiert statt eine zweite anzulegen. Ohne /etc/config/firewall (kein
+# fw4 auf dem Geraet) wird nur gewarnt - dann steht die Box nicht hinter einer
+# eigenen Firewall.
+# shellcheck disable=SC2029
+box_ssh "$TARGET" "if [ -f /etc/config/firewall ]; then
+  uci -q get firewall.vp_ocpp >/dev/null || uci set firewall.vp_ocpp=rule
+  uci set firewall.vp_ocpp.name='VoltPilot OCPP (Ladesaeule im Kundennetz)'
+  uci set firewall.vp_ocpp.src='wan'
+  uci set firewall.vp_ocpp.proto='tcp'
+  uci set firewall.vp_ocpp.dest_port='8887'
+  uci set firewall.vp_ocpp.target='ACCEPT'
+  uci set firewall.vp_ocpp.enabled='1'
+  uci commit firewall
+  if /etc/init.d/firewall reload >/dev/null 2>&1; then echo '    Regel firewall.vp_ocpp gesetzt und Firewall neu geladen'; else echo '    Regel firewall.vp_ocpp gesetzt; Firewall-Neuladen meldete einen Fehler - gilt spaetestens nach dem naechsten Start'; fi
+else
+  echo '    WARNUNG: /etc/config/firewall fehlt - keine fw4-Firewall auf diesem Geraet, keine Regel gesetzt'
+fi"
+
 echo "--- fertig. Starten:  ssh $TARGET /etc/init.d/vp-edge-light restart"
 echo "    Protokoll:         ssh $TARGET logread -f -e vp-edge-light"
 echo "    Lokale Web-App:    http://${TARGET#*@}:8484"
+echo "    Vor dem Eintragen einer OCPP-Adresse (ws://<box>:8887/ocpp/<kennung>) in der Ladesaeule:"
+echo "    im Kundenrouter eine DHCP-RESERVIERUNG fuer die WAN-Adresse der Box anlegen - wechselt"
+echo "    die Adresse, laeuft die Ladesaeule ins Leere (edge-light/docs/mango.md)."
