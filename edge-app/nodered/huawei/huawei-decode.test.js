@@ -44,6 +44,8 @@ function blocksFrom(regs, opts) {
 // A healthy SUN2000-3KTL-M1 + LUNA2000 image: PV input 2,5 kW, AC active power
 // 1,8 kW (lower than PV because the LUNA2000 is charging), grid meter
 // importing 0,3 kW, SoC 62,5 %, battery CHARGING 0,7 kW, running status 2.
+// Register 37113 follows Huawei's convention (> 0 = feeding INTO the grid,
+// < 0 = obtaining from it), so importing 0,3 kW is the raw value -300.
 function healthyRegs() {
   const regs = {
     [huawei.REG.BATTERY_SOC_PCT_X10]: 625,
@@ -56,7 +58,7 @@ function healthyRegs() {
   };
   put2(huawei.REG.INPUT_POWER_W, 2500);
   put2(huawei.REG.ACTIVE_POWER_W, 1800);
-  put2(huawei.REG.METER_ACTIVE_POWER_W, 300);
+  put2(huawei.REG.METER_ACTIVE_POWER_W, -300);
   put2(huawei.REG.BATTERY_CHARGE_DISCHARGE_POWER_W, 700);
   return regs;
 }
@@ -98,7 +100,7 @@ test('decode negative registers (discharge, export) read negative, and the inver
   const [hi, lo] = i32words(-700); // discharging 0,7 kW
   regs[huawei.REG.BATTERY_CHARGE_DISCHARGE_POWER_W] = hi;
   regs[huawei.REG.BATTERY_CHARGE_DISCHARGE_POWER_W + 1] = lo;
-  const [ghi, glo] = i32words(-300); // exporting 0,3 kW
+  const [ghi, glo] = i32words(300); // raw +300 = feeding 0,3 kW INTO the grid
   regs[huawei.REG.METER_ACTIVE_POWER_W] = ghi;
   regs[huawei.REG.METER_ACTIVE_POWER_W + 1] = glo;
 
@@ -110,6 +112,24 @@ test('decode negative registers (discharge, export) read negative, and the inver
   assert.strictEqual(out.battKw, 0.7);
   out = huawei.decode(blocksFrom(regs), { invertGridSign: true });
   assert.strictEqual(out.reading.power_kw, 0.3);
+});
+
+// Pins the DOCUMENTED convention of register 37113 (Huawei "Solar Inverter
+// Modbus Interface Definitions" Issue 04 p. 19/68 and Issue 08: "> 0: feeding
+// power to the power grid, < 0: obtaining power from the power grid"). The
+// default decoder output is VoltPilot's + = import, so the raw sign is flipped;
+// the 04.11.2026 customer scout found the earlier pass-through reversed.
+test('decode 37113 follows the Huawei doc: raw + = feed-in -> power_kw negative, raw - = import -> positive', () => {
+  const grid = (raw) => {
+    const regs = healthyRegs();
+    const [hi, lo] = i32words(raw);
+    regs[huawei.REG.METER_ACTIVE_POWER_W] = hi;
+    regs[huawei.REG.METER_ACTIVE_POWER_W + 1] = lo;
+    return huawei.decode(blocksFrom(regs), {}).reading.power_kw;
+  };
+  assert.strictEqual(grid(1500), -1.5, 'Einspeisung (Register > 0) muss als Netz -1,5 kW erscheinen');
+  assert.strictEqual(grid(-2200), 2.2, 'Bezug (Register < 0) muss als Netz +2,2 kW erscheinen');
+  assert.strictEqual(grid(0), 0);
 });
 
 // --- decode: honesty rules ---------------------------------------------------

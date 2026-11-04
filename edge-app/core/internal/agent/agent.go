@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -5019,6 +5020,41 @@ func (a *Agent) SourceLastReadings() map[string]sources.LastReading {
 // A var (not const) so tests can shorten it.
 var testReadTimeout = 10 * time.Second
 
+// connectionFromForm maps the form's connection object onto the box's own
+// Connection struct, exactly like the saved-config path does
+// (componentapply.Driver.connection). A field of the wrong JSON type - the
+// portal once sent "unit_id": "01" as text - is REFUSED with a message naming
+// the field. Swallowing it would test with the zero value (unit 0, port from
+// the default) and pass, while the same connection is later rejected as a whole
+// when it is pushed ("cannot unmarshal string into ... unit_id").
+func connectionFromForm(form testconn.Connection) (inverter.Connection, *testconn.Result) {
+	var conn inverter.Connection
+	raw, err := json.Marshal(form)
+	if err == nil {
+		err = json.Unmarshal(raw, &conn)
+	}
+	if err == nil {
+		return conn, nil
+	}
+	msg := "Die Verbindungsdaten sind nicht lesbar."
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) && typeErr.Field != "" {
+		want := "den passenden Typ"
+		switch typeErr.Type.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.Float32, reflect.Float64:
+			want = "eine Zahl"
+		case reflect.Bool:
+			want = "ein Haken (an oder aus)"
+		case reflect.String:
+			want = "ein Text"
+		}
+		msg = fmt.Sprintf("Das Feld „%s“ muss %s sein.", typeErr.Field, want)
+	}
+	return conn, &testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidRequest, Message: msg}
+}
+
 // TestConnection reads the given UNSAVED connection form ONCE and returns the
 // decoded values or a classified error. It never persists or publishes any
 // config and never blocks Speichern - it is a confidence check. The actual read
@@ -5027,9 +5063,10 @@ var testReadTimeout = 10 * time.Second
 func (a *Agent) TestConnection(req testconn.Request) testconn.Result {
 	// Normalize the form against the catalog to derive communication/family and
 	// validate the connection, exactly like a save would - but persist nothing.
-	connRaw, _ := json.Marshal(req.Connection)
-	var conn inverter.Connection
-	_ = json.Unmarshal(connRaw, &conn)
+	conn, refused := connectionFromForm(req.Connection)
+	if refused != nil {
+		return *refused
+	}
 	sel, err := a.invCat.Normalize(inverter.SelectionRequest{
 		Brand:      req.Brand,
 		Model:      req.Model,
@@ -5106,9 +5143,10 @@ var probeUnitsTimeout = 15 * time.Second
 // in Node-RED (edge/test-read/request with probe_units=true), reusing the
 // one-shot test-read machinery and correlation.
 func (a *Agent) ProbeUnits(req testconn.Request) testconn.Result {
-	connRaw, _ := json.Marshal(req.Connection)
-	var conn inverter.Connection
-	_ = json.Unmarshal(connRaw, &conn)
+	conn, refused := connectionFromForm(req.Connection)
+	if refused != nil {
+		return *refused
+	}
 	sel, err := a.invCat.Normalize(inverter.SelectionRequest{
 		Brand:      req.Brand,
 		Model:      req.Model,

@@ -693,6 +693,9 @@ public class ComponentService {
         // Grund nennen („Die Spannungen müssen zwischen …"), nicht das
         // Folgeproblem („Bitte prüfen Sie zuerst die Verbindung").
         requireUsableVoltageBounds(connection);
+        // Ebenfalls VOR dem Beleg: ein Zahlenfeld als Text würde die Box später als GANZE
+        // Geräte-Konfiguration ablehnen ("cannot unmarshal string ... unit_id").
+        ComponentConnectionSchema.require(template, connection);
         if (!receipts.has(siteId, template.templateRef(), template.version(), connection)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Bitte prüfen Sie zuerst die Verbindung zu diesem Gerät - erst danach lässt "

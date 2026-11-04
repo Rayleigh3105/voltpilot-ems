@@ -63,6 +63,7 @@ import {
   delta,
   istSecret,
   kundenRolle,
+  normalisiereFeldEingabe,
   normalisiereSecretEingabe,
   verbindungFuerSpeichern,
 } from '../geraeteEdit';
@@ -502,9 +503,10 @@ export function AnlegenFlow({
   }
 
   function setzeFeld(field: TemplateField, value: unknown) {
+    // Erst auf den Typ des Schemas ("01" → 1), dann die Geheimnis-Regel.
     const normalized = normalisiereSecretEingabe(
       field,
-      value,
+      normalisiereFeldEingabe(field, value),
       edit?.connection?.[field.key],
     );
     setVerbindung((v) => ({ ...v, [field.key]: normalized }));

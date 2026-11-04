@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.components.ComponentConnectionReceipts;
+import com.voltpilot.api.components.ComponentConnectionSchema;
 import com.voltpilot.api.components.ComponentService;
 import com.voltpilot.api.components.SelfBuildComponentService;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition;
@@ -377,6 +378,9 @@ public class SiteComponentController {
         // Stelle, an der der Kunde die Eckpunkte AUSPROBIERT, und er soll dort
         // dieselbe Auskunft bekommen wie beim Klick auf Speichern.
         components.requireUsableVoltageBounds(connection);
+        // Und dieselbe Typgrenze wie beim Speichern: ein Test mit einem Zahlenfeld als Text
+        // wäre sonst grün, obwohl die Box das gespeicherte Gerät später ablehnt.
+        ComponentConnectionSchema.require(template, connection);
 
         ProbeResult result = probes.testConnection(siteId, request.deviceId(), request.entityId(), "verbindung",
                 template.brand(), template.model(), template.family(), request.role(), connection,

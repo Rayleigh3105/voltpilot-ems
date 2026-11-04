@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -341,5 +342,47 @@ func TestTestConnectionGoeControlCheck(t *testing.T) {
 	}
 	if res3.ControlCheck.ErrorCode == "" || res3.ControlCheck.Message == "" {
 		t.Fatalf("a failed check must name its error, got %+v", res3.ControlCheck)
+	}
+}
+
+// Scout vp-kundenanlage-drei-geraete (04.11.2026): the portal sent "unit_id": "01"
+// as text, TestConnection swallowed the unmarshal error and tested with unit 0 -
+// green - while the SAME connection was rejected as a whole at push time. The test
+// now refuses it, names the field and never touches the bus.
+func TestTestConnectionRefusesAFieldOfTheWrongTypeAndNamesIt(t *testing.T) {
+	a, _ := startTestConnAgent(t, config.Config{DataDir: t.TempDir()})
+	for _, tc := range []struct {
+		name string
+		conn testconn.Connection
+		want string
+	}{
+		{"unit_id as text", testconn.Connection{"ip": "192.168.178.60", "unit_id": "01"}, "unit_id"},
+		{"port as text", testconn.Connection{"ip": "192.168.178.60", "port": "4196", "unit_id": 1}, "port"},
+		{"sign hatch as text", testconn.Connection{"ip": "192.168.178.60", "invert_grid_sign": "true"}, "invert_grid_sign"},
+	} {
+		res := a.TestConnection(testconn.Request{Brand: "huawei", Model: "sun2000-m1", Connection: tc.conn})
+		if res.OK || res.ErrorCode != testconn.ErrInvalidRequest || !strings.Contains(res.Message, tc.want) {
+			t.Fatalf("%s: want invalid_request naming %q, got %+v", tc.name, tc.want, res)
+		}
+	}
+	// ProbeUnits shares the form mapping and must not swallow it either.
+	res := a.ProbeUnits(testconn.Request{Brand: "fronius_sunspec", Model: "fronius-eco-27-3-s",
+		Connection: testconn.Connection{"ip": "192.168.210.40", "unit_id": "1"}})
+	if res.OK || res.ErrorCode != testconn.ErrInvalidRequest || !strings.Contains(res.Message, "unit_id") {
+		t.Fatalf("ProbeUnits: want invalid_request naming unit_id, got %+v", res)
+	}
+}
+
+// A Huawei form now reaches the Node-RED reader (it used to die in Normalize
+// with "Unbekannte Kommunikationsmethode." after 0 ms).
+func TestTestConnectionPassesAHuaweiFormToTheReader(t *testing.T) {
+	a, addr := startTestConnAgent(t, config.Config{DataDir: t.TempDir()})
+	nodeRedStub(t, addr, func(string, bool) testconn.Result {
+		return testconn.Result{OK: true, Reading: &testconn.Reading{PvKw: fptr(2.14)}}
+	})
+	res := a.TestConnection(testconn.Request{Brand: "huawei", Model: "sun2000-m1",
+		Connection: testconn.Connection{"ip": "192.168.178.60", "unit_id": 1}})
+	if !res.OK || res.Reading == nil || res.Reading.PvKw == nil || *res.Reading.PvKw != 2.14 {
+		t.Fatalf("Huawei form must reach the reader: %+v", res)
 	}
 }

@@ -12105,7 +12105,7 @@
           "key": "invert_grid_sign",
           "label": "Netz-Vorzeichen invertieren",
           "type": "checkbox",
-          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."
+          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H). Die Box dreht das Huawei-Vorzeichen (Register 37113: positiv = Einspeisung) bereits auf Bezug positiv; nur setzen, wenn das Cockpit Bezug und Einspeisung vertauscht zeigt (z. B. Sensor verkehrt herum angeschlossen)."
         }
       ],
       "channels": null,
@@ -12160,7 +12160,7 @@
           "key": "invert_grid_sign",
           "label": "Netz-Vorzeichen invertieren",
           "type": "checkbox",
-          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."
+          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H). Die Box dreht das Huawei-Vorzeichen (Register 37113: positiv = Einspeisung) bereits auf Bezug positiv; nur setzen, wenn das Cockpit Bezug und Einspeisung vertauscht zeigt (z. B. Sensor verkehrt herum angeschlossen)."
         }
       ],
       "channels": null,
@@ -12215,7 +12215,7 @@
           "key": "invert_grid_sign",
           "label": "Netz-Vorzeichen invertieren",
           "type": "checkbox",
-          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."
+          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H). Die Box dreht das Huawei-Vorzeichen (Register 37113: positiv = Einspeisung) bereits auf Bezug positiv; nur setzen, wenn das Cockpit Bezug und Einspeisung vertauscht zeigt (z. B. Sensor verkehrt herum angeschlossen)."
         }
       ],
       "channels": null,
@@ -12270,7 +12270,7 @@
           "key": "invert_grid_sign",
           "label": "Netz-Vorzeichen invertieren",
           "type": "checkbox",
-          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."
+          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H). Die Box dreht das Huawei-Vorzeichen (Register 37113: positiv = Einspeisung) bereits auf Bezug positiv; nur setzen, wenn das Cockpit Bezug und Einspeisung vertauscht zeigt (z. B. Sensor verkehrt herum angeschlossen)."
         }
       ],
       "channels": null,
@@ -12325,7 +12325,7 @@
           "key": "invert_grid_sign",
           "label": "Netz-Vorzeichen invertieren",
           "type": "checkbox",
-          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."
+          "help": "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H). Die Box dreht das Huawei-Vorzeichen (Register 37113: positiv = Einspeisung) bereits auf Bezug positiv; nur setzen, wenn das Cockpit Bezug und Einspeisung vertauscht zeigt (z. B. Sensor verkehrt herum angeschlossen)."
         }
       ],
       "channels": null,

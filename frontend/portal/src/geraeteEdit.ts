@@ -29,6 +29,36 @@ export function istSecret(field: { key: string; type?: string; secret?: boolean 
 }
 
 /**
+ * Bringt eine Formular-Eingabe auf den JSON-Typ, den das `transport_schema`
+ * dem Feld gibt. Ein Eingabefeld liefert IMMER Text (`e.target.value`), die Box
+ * liest die Verbindung aber in typisierte Felder: `"unit_id": "01"` hat den
+ * ganzen Push der Anlage abgelehnt (Scout vp-kundenanlage-drei-geraete,
+ * 04.11.2026).
+ *
+ * - `number`: Text wird zur Zahl (Komma wie Punkt); leer bleibt leer ("nicht
+ *   gesetzt" - `verbindungFuerSpeichern` lässt es weg), Unlesbares bleibt Text
+ *   und wird von der API mit dem Feldnamen abgelehnt, statt zu verschwinden.
+ * - Auswahl mit Optionen: der Picker liefert den Optionswert als Text; zurück
+ *   kommt der Wert in seinem Schema-Typ (`16`, nicht `"16"`).
+ */
+export function normalisiereFeldEingabe(
+  field: { type?: string; options?: { value: string | number }[] },
+  value: unknown,
+): unknown {
+  if (field.options?.length && (typeof value === 'string' || typeof value === 'number')) {
+    const option = field.options.find((o) => String(o.value) === String(value));
+    if (option) return option.value;
+  }
+  if (field.type === 'number' && typeof value === 'string') {
+    const text = value.trim().replace(',', '.');
+    if (text === '') return '';
+    const zahl = Number(text);
+    return Number.isFinite(zahl) ? zahl : value;
+  }
+  return value;
+}
+
+/**
  * Geheimnisse, die der Mensch nicht angefasst hat, verlassen das Formular
  * nicht. Der Server setzt fehlende Werte aus der gespeicherten Fassung wieder
  * ein; nur ein wirklich neuer Wert wird damit je als Secret übertragen.
@@ -40,7 +70,13 @@ export function verbindungFuerSpeichern(
   const fields = new Map((template.transportSchema ?? []).map((field) => [field.key, field]));
   return Object.fromEntries(Object.entries(connection).filter(([key, value]) => {
     const field = fields.get(key);
+    // Ein leeres Zahlenfeld heißt "nicht gesetzt" (die Box setzt ihre Vorgabe), nie "".
+    if (field?.type === 'number' && (value === '' || value == null)) return false;
     return !(field && secret(field) && (value === '' || value === SECRET_MASK || value == null));
+  }).map(([key, value]) => {
+    // Auch Altbestand (gespeichertes "01") und Vorbelegungen gehen typrichtig hinaus.
+    const field = fields.get(key);
+    return [key, field ? normalisiereFeldEingabe(field, value) : value];
   }));
 }
 

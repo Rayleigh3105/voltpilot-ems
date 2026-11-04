@@ -996,7 +996,8 @@ test('a Huawei Netz source (smart power sensor) publishes signed power_kw on out
     const [erzeuger, netz] = sends[0];
     assert.equal(erzeuger, null);
     assert.equal(netz.source_id, 'src-hw-netz');
-    assert.equal(netz.payload.power_kw, -0.8, 'Vorzeichen unveraendert aus dem Decoder');
+    // Register 37113 = -800 W heisst laut Huawei-Doku Bezug aus dem Netz; VoltPilot: + = Bezug.
+    assert.equal(netz.payload.power_kw, 0.8, 'Vorzeichen aus dem Decoder (Huawei-Doku: < 0 = Bezug)');
   } finally {
     server.close();
   }

@@ -513,7 +513,7 @@ function huaweiImage() {
   };
   putI32(huawei.REG.INPUT_POWER_W, 3000);
   putI32(huawei.REG.ACTIVE_POWER_W, 2500);
-  putI32(huawei.REG.METER_ACTIVE_POWER_W, 500);
+  putI32(huawei.REG.METER_ACTIVE_POWER_W, -500); // Huawei: < 0 = obtaining from the grid (Bezug 0,5 kW)
   regs[huawei.REG.BATTERY_SOC_PCT_X10] = 653;
   regs[huawei.REG.BATTERY_RUNNING_STATUS] = 2;
   putI32(huawei.REG.BATTERY_CHARGE_DISCHARGE_POWER_W, 500);
