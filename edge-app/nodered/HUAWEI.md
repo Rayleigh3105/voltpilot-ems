@@ -57,8 +57,14 @@ Veröffentlicht werden auf `edge/telemetry`:
   Vorzeichen ist Sicherheit D - an keinem Gerät gemessen).
 - `soc_pct` - nach der socPlausible-Regel: außerhalb (0, 100] wird der Kanal
   VERWORFEN, nie fabriziert.
-- `power_kw` - die Netzleistung des Smart Power Sensors, ebenfalls Sicherheit D
-  im Vorzeichen; `invert_grid_sign` ist die Notluke. Ohne Sensor bleibt der
+- `power_kw` - die Netzleistung des Smart Power Sensors (Register 37113). Huawei
+  definiert **> 0 = Einspeisung, < 0 = Bezug** (Modbus Interface Definitions
+  Issue 04 S. 19/68 und Issue 08; das evcc-Template liest 37113 mit `scale: -1`).
+  VoltPilot rechnet **+ = Bezug**, deshalb negiert der Decoder den Rohwert
+  standardmäßig (Testvektor in `huawei-decode.test.js`). `invert_grid_sign`
+  stellt die Rohrichtung wieder her - die Notluke für einen Sensor mit
+  verkehrt herum angeschlossenen Wandlern; an keinem Gerät gemessen
+  (Sicherheit D). Ohne Sensor bleibt der
   Block leer (abgelehnter Read) und der Kanal fehlt ehrlich, statt eine 0 zu
   erfinden.
 - **KEIN `load_kw`** - der Core rechnet die Hauslast aus der Bilanz

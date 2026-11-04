@@ -621,6 +621,37 @@ class ComponentApiTest {
         }
     }
 
+    /**
+     * Scout vp-kundenanlage-drei-geraete (04.11.2026): ein Zahlenfeld als Text
+     * ({@code "mb_slave_id": "01"}) wurde gespeichert, und die Box lehnte danach den ganzen Push
+     * ab. Test UND Speichern lehnen es jetzt mit dem Feldnamen ab - auch mit gültigem Beleg.
+     */
+    @Test
+    void aNumberFieldSentAsTextIsRefusedByTestAndSaveWithTheFieldName() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Typ-Anlage");
+        try {
+            Map<String, Object> conn = deyeConnection();
+            conn.put("mb_slave_id", "01");
+            String base = "/api/v1/sites/" + site;
+
+            ResponseEntity<String> test = post(base + "/component-test", customer,
+                    Map.of("templateRef", DEYE, "connection", conn));
+            assertThat(test.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(test.getBody()).contains("muss eine Zahl sein");
+
+            receipts.record(site, DEYE, 1, conn);
+            ResponseEntity<String> save = post(base + "/components", customer,
+                    saveBody(DEYE, "inverter", conn));
+            assertThat(save.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(save.getBody()).contains("muss eine Zahl sein");
+            assertThat(getJson(base + "/components", customer).get("components"))
+                    .as("die Ablehnung schreibt NICHTS").isEmpty();
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
     /** RLS ist der Zaun: eine fremde Anlage ist 404, bevor etwas geschrieben wird. */
     @Test
     void aForeignPlantIs404OnEveryRoute() throws Exception {

@@ -522,8 +522,10 @@ function route(sel) {
         ip,
         port,
         unit_id: num(conn.unit_id, DEFAULT_HUAWEI_UNIT_ID),
-        // Both signs are Sicherheit D (unconfirmed on a real device) -
-        // VERIFY-on-device escape hatches, like every other brand's.
+        // Defaults follow Huawei's register doc (grid 37113: + = feed-in, so
+        // the decoder negates it; battery 37765: + = charging); neither is
+        // measured on a real device (Sicherheit D) - VERIFY-on-device escape
+        // hatches, like every other brand's.
         invert_grid_sign: !!conn.invert_grid_sign,
         invert_batt_sign: !!conn.invert_batt_sign,
       },

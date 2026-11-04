@@ -5,7 +5,9 @@ import {
   brauchtVerbindungstest,
   delta,
   kundenRolle,
+  normalisiereFeldEingabe,
   normalisiereSecretEingabe,
+  verbindungFuerSpeichern,
 } from './geraeteEdit';
 
 const row: SiteComponentRow = {
@@ -60,3 +62,60 @@ describe('revisionierter Geräte-Edit-Vertrag', () => {
     )).toBe('');
   });
 });
+
+describe('Zahlenfelder gehen als Zahl hinaus (Scout vp-kundenanlage-drei-geraete)', () => {
+  const huawei: ComponentTemplate = {
+    ...template,
+    transportSchema: [
+      { key: 'ip', label: 'IP-Adresse', type: 'text', required: true },
+      { key: 'port', label: 'Port', type: 'number', default: 502 },
+      { key: 'unit_id', label: 'Modbus-Unit-ID', type: 'number', default: 0 },
+      { key: 'invert_grid_sign', label: 'Netz-Vorzeichen invertieren', type: 'checkbox' },
+      {
+        key: 'control_write_fc', label: 'Schreib-Funktionscode', type: 'select',
+        options: [{ value: 0, label: 'Automatisch' }, { value: 16, label: 'FC16' }],
+      },
+      {
+        key: 'byte_order', label: 'Byte-Reihenfolge', type: 'select',
+        options: [{ value: 'auto', label: 'Automatisch' }, { value: 'little', label: 'Little' }],
+      },
+    ],
+  };
+
+  it('wandelt die Eingabe nach dem Schema-Typ: "01" wird 1, Komma wie Punkt', () => {
+    // Das echte Fehlerbild: "1" an die Vorgabe "0" angehängt ergibt "01".
+    expect(normalisiereFeldEingabe(huawei.transportSchema![2], '01')).toBe(1);
+    expect(normalisiereFeldEingabe(huawei.transportSchema![1], '4196')).toBe(4196);
+    expect(normalisiereFeldEingabe(huawei.transportSchema![2], '1,5')).toBe(1.5);
+    expect(normalisiereFeldEingabe(huawei.transportSchema![2], ' 7 ')).toBe(7);
+  });
+
+  it('lässt ein leeres Zahlenfeld leer und Unlesbares als Text (die API nennt dann das Feld)', () => {
+    expect(normalisiereFeldEingabe(huawei.transportSchema![2], '')).toBe('');
+    expect(normalisiereFeldEingabe(huawei.transportSchema![2], 'abc')).toBe('abc');
+  });
+
+  it('gibt eine Auswahl im Typ ihres Optionswerts zurück', () => {
+    expect(normalisiereFeldEingabe(huawei.transportSchema![4], '16')).toBe(16);
+    expect(normalisiereFeldEingabe(huawei.transportSchema![5], 'little')).toBe('little');
+  });
+
+  it('fasst Text, Haken und Felder ohne Typ nicht an', () => {
+    expect(normalisiereFeldEingabe(huawei.transportSchema![0], '010')).toBe('010');
+    expect(normalisiereFeldEingabe(huawei.transportSchema![3], true)).toBe(true);
+    expect(normalisiereFeldEingabe({}, '01')).toBe('01');
+  });
+
+  it('verbindungFuerSpeichern schickt Zahlen als Zahl, lässt leere Zahlenfelder weg und repariert Altbestand', () => {
+    expect(verbindungFuerSpeichern(huawei, {
+      ip: '192.168.178.60', port: '502', unit_id: '01', invert_grid_sign: true,
+      control_write_fc: '16', byte_order: 'auto',
+    })).toEqual({
+      ip: '192.168.178.60', port: 502, unit_id: 1, invert_grid_sign: true,
+      control_write_fc: 16, byte_order: 'auto',
+    });
+    expect(verbindungFuerSpeichern(huawei, { ip: '192.168.178.60', port: '', unit_id: '' }))
+      .toEqual({ ip: '192.168.178.60' });
+  });
+});
+

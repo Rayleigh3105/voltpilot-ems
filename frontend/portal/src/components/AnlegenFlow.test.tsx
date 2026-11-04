@@ -233,6 +233,21 @@ describe('die Einrichten-Seite eines Katalog-Geräts', () => {
     expect(screen.getByText('vollständig')).toBeInTheDocument();
   });
 
+  it('schickt ein getipptes Zahlenfeld als ZAHL zu Test und Speichern - nie als Text', async () => {
+    // Scout vp-kundenanlage-drei-geraete (04.11.2026): "01"/"4196" kamen als Text an,
+    // die API speicherte sie und die Box lehnte den ganzen Push ab.
+    await bisZurVerbindung();
+    fireEvent.change(screen.getByLabelText('Port'), { target: { value: '4196' } });
+    fuelleFormular();
+    await waitFor(() => expect(testComponentConnection).toHaveBeenCalled());
+    const test = testComponentConnection.mock.calls.at(-1)![1].connection;
+    expect(test.port).toBe(4196);
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1].connection.port).toBe(4196);
+  });
+
   it('testet von selbst, sobald alles Nötige dasteht', async () => {
     await bisZumTest();
     await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(1));

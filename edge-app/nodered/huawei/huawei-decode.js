@@ -34,11 +34,17 @@
  *     community sources (an iobroker forum Modbus script + an openHAB
  *     community thread; huawei.json `quellen` cites the same class of field
  *     source as `huawei_lib`/evcc) - Sicherheit C, not a manufacturer PDF
- *     page. The battery sign convention ("positive = charging", matching
- *     VoltPilot's own + charge / - discharge) and the grid meter's sign are
- *     UNCONFIRMED on a real device (Sicherheit D) - `invert_batt_sign` /
- *     `invert_grid_sign` are the same First-Light escape hatches every other
- *     brand carries for an unverified sign, never silently assumed correct.
+ *     page. Signs: the battery power (37765) is "positive = charging" in
+ *     Huawei's own register map, matching VoltPilot's + charge / - discharge -
+ *     no negation by default. The grid meter (37113) is the opposite of
+ *     VoltPilot's + = import: Huawei's "Solar Inverter Modbus Interface
+ *     Definitions" (Issue 04 p. 19/68, Issue 08) define "> 0: feeding power to
+ *     the power grid, < 0: obtaining power from the power grid", so the
+ *     decoder NEGATES it by default (the evcc template reads 37113 with
+ *     `scale: -1` for the same reason). Both are documented, but neither is
+ *     measured on a real device here (Sicherheit D) - `invert_batt_sign` /
+ *     `invert_grid_sign` stay the First-Light escape hatches every other
+ *     brand carries (e.g. for a Smart Power Sensor with reversed CTs).
  *
  * Read/monitoring only: NOTHING here controls the inverter. The control path
  * (Tier-2 vendor external-EMS, registers 47075..47249) is a separate, hard-
@@ -146,7 +152,9 @@ function i32At(blocks, addr) {
  * decoded. `reading` carries ONLY the channels that are genuinely present
  * (absent-not-zero discipline):
  *   - pv_power_kw from 32064 (DC-side input power - see header for why NOT 32080)
- *   - power_kw    from 37113, no plausibility gate possible without a
+ *   - power_kw    from 37113 in VoltPilot convention (+ import / - export:
+ *                 the register is + = export, so it is negated unless
+ *                 `invertGridSign`), no plausibility gate possible without a
  *                 "sensor installed" register (none documented) - an absent
  *                 read (refused block) still drops the channel, never a
  *                 fabricated 0
@@ -169,8 +177,10 @@ function decode(blocks, opts) {
 
   const gridW = i32At(blocks, REG.METER_ACTIVE_POWER_W);
   if (gridW !== null) {
-    const sign = opts.invertGridSign ? -1 : 1;
-    reading.power_kw = round3((sign * gridW) / 1000);
+    // 37113 is + = feeding INTO the grid (Huawei Modbus Interface Definitions);
+    // VoltPilot's power_kw is + = import, hence -1 by default.
+    const sign = opts.invertGridSign ? 1 : -1;
+    reading.power_kw = round3((sign * gridW) / 1000) + 0; // + 0: a raw 0 must not become -0
   }
 
   const socRaw = regAt(blocks, REG.BATTERY_SOC_PCT_X10);

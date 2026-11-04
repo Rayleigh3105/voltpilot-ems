@@ -981,7 +981,7 @@ func huaweiFields() []Field {
 		{Key: "invert_batt_sign", Label: "Batterie-Vorzeichen invertieren (Messung)", Type: "checkbox",
 			Help: "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."},
 		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
-			Help: "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H); auf echtem Gerät prüfen - die Vorzeichenkonvention ist für dieses Projekt nicht belegt (Sicherheit D)."},
+			Help: "Nur relevant mit installiertem Smart Power Sensor (DTSU666-H/DDSU666-H). Die Box dreht das Huawei-Vorzeichen (Register 37113: positiv = Einspeisung) bereits auf Bezug positiv; nur setzen, wenn das Cockpit Bezug und Einspeisung vertauscht zeigt (z. B. Sensor verkehrt herum angeschlossen)."},
 	}
 }
 
@@ -2293,6 +2293,25 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.ControlWriteFc, conn.CurtailWriteFc = 0, 0
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
+	case CommHuaweiModbus:
+		// Huawei SUN2000 (+ LUNA2000) ueber den eigenen Modbus-TCP-Server
+		// (TCP 502). Unit-ID 0 ist bei Huawei eine GUELTIGE Adresse (direkte
+		// WLAN-/LAN-Verbindung, Werkswert) - hinter einem Smart Dongle meist 1;
+		// deshalb kein "0 = Vorgabe"-Rueckfall wie bei KACO NH3. Beide
+		// Vorzeichen-Klappen bleiben (Netz: Huawei meldet + = Einspeisung,
+		// Batterie: + = Laden), alles andere gehoert nicht zu diesem Weg.
+		if conn.Port == 0 {
+			conn.Port = defaultHuaweiPort
+		}
+		if conn.UnitID < 0 || conn.UnitID > 247 {
+			return Selection{}, invalid("Die Modbus-Unit-ID muss zwischen 0 und 247 liegen.")
+		}
+		conn.Profile = registerFamily // huawei_sun2000_luna
+		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, 0, false, ""
+		conn.InvertControlSign = false
+		conn.ControlWriteFc, conn.CurtailWriteFc = 0, 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
 	case CommKacoSerial:
 		// Powador-Altgeraete ueber den RS485-zu-Ethernet-Wandler: host + port
 		// DES WANDLERS + die RS485-Busadresse des Wechselrichters (1-32,
@@ -2549,6 +2568,14 @@ func (s Selection) BusPayload() []byte {
 		// invert_control_sign: the WRITE-path sign the future Tier-2 control
 		// adapter reads (published now so the control increment is JS-side only).
 		conn["invert_control_sign"] = s.Connection.InvertControlSign
+	case CommHuaweiModbus:
+		// Unit-ID (0 = Werkswert direkt, 1 = hinter dem Smart Dongle) und die
+		// beiden Lese-Vorzeichen-Klappen - ohne sie erreicht die Auswahl den
+		// Huawei-Leser (nodered/huawei/huawei-decode.js) nicht.
+		conn["unit_id"] = s.Connection.UnitID
+		conn["profile"] = s.Connection.Profile
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		conn["invert_batt_sign"] = s.Connection.InvertBattSign
 	case CommKacoSerial:
 		// The RS485 bus address (1-32) - the reader's one addressing field on
 		// this platform (no Modbus unit id, no serial, no sign hatch: the
