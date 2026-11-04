@@ -567,7 +567,13 @@ ota_sign() {
 		--key "$keyfile" --domain release --in "$manifest") ||
 		ota_die "Signieren fehlgeschlagen"
 
-	(cd "$core" && go run ./cmd/vp-ota verify --root baked \
+	# Gegen die Box-Art des Releases: ein Edge-Light-Manifest gilt nur fuer
+	# das Backend light (gegen compose geprueft hiesse es "deferred").
+	local backend=compose
+	case "$(ota_json_field release <"$manifest")" in
+	"$OTA_LIGHT_RELEASE_PREFIX"*) backend=light ;;
+	esac
+	(cd "$core" && go run ./cmd/vp-ota verify --root baked --backend "$backend" \
 		--trust-set "$trust" --manifest "$manifest") ||
 		ota_die "Gegenpruefung gegen die EINGEBACKENE Wurzel fehlgeschlagen - dieses Release wuerde auf jedem Geraet abgelehnt. Es geht nichts hinaus."
 }

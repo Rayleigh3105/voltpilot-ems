@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Selbsttest des Edge-Light-Laufs (.forgejo/workflows/edge-light-release.yaml):
-# Trigger und Bedingungen, kein Manifest/Signatur/Register, die Anhaenge sind
-# genau die von edge-light/scripts/release.sh, und der ECHTE run:-Text des
+# Trigger und Bedingungen, die Anhaenge sind genau die von
+# edge-light/scripts/release.sh, Signieren und Register nur mit der Freigabe
+# EDGE_LIGHT_SIGNIEREN=true UND den Geheimnissen (der ECHTE run:-Text des
+# Eingabe-Schritts wird ohne beides gefahren), und der ECHTE run:-Text des
 # Namensschritts bestimmt den naechsten freien Namen nur aus Edge-Light-Tags.
 # Ohne Forgejo, ohne Go-Bau. Sekunden.
 set -euo pipefail
@@ -34,16 +36,32 @@ assert jobs["release"]["needs"] == "test"
 runs = "\n".join(s.get("run", "") for j in jobs.values() for s in j["steps"])
 assert "ota_check_light_release" in runs and "ota_next_light_release" in runs and "ota_tag_release" in runs
 assert "bash edge-light/scripts/test.sh" in runs and "bash edge-light/scripts/release.sh" in runs
-# Kein Signieren, kein Register, kein Release-Schluessel (Stufe 2)
+# Signieren und Register: derselbe Weg wie die Docker-Box, nur hinter der
+# Freigabe. Jeder Schritt, der etwas Geheimes anfasst oder hinausschickt,
+# haengt an steps.inputs.outputs.ready.
+steps = {s.get("name"): s for s in jobs["release"]["steps"]}
+inp = steps["Release-Eingaben bestimmen"]
+assert inp["env"]["EDGE_LIGHT_SIGNIEREN"] == "${{ vars.EDGE_LIGHT_SIGNIEREN }}", inp["env"]
+assert '[ "${EDGE_LIGHT_SIGNIEREN:-}" = "true" ]' in inp["run"]
+for name in ("Manifest erzeugen", "Signieren + gegen die eingebackene Wurzel pruefen", "Manifest anhaengen + ins Register eintragen"):
+    assert steps[name]["if"] == "steps.inputs.outputs.ready == 'true'", (name, steps[name].get("if"))
+man = steps["Manifest erzeugen"]["run"]
+for arch in ("mipsle", "arm64"):
+    assert f'--binary "vp-edge-light:linux/{arch}=${{RUNNER_TEMP}}/fassung/vp-edge-light-linux-{arch}"' in man, arch
+assert "--artifact" not in man
+assert "ota_sign " in steps["Signieren + gegen die eingebackene Wurzel pruefen"]["run"]
+assert "ota_publish " in steps["Manifest anhaengen + ins Register eintragen"]["run"]
+assert steps["Schluessel + Token vom Runner entfernen"]["if"] == "always()"
+# Der Lauf weist nie etwas zu und startet keinen Rollout.
 code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
-for verboten in ("vp-ota", "ota_sign", "ota_register", "ota_publish", "edge-releases", "VP_OTA_RELEASE_KEY", "VP_OTA_PORTAL", "VP_OTA_CLIENT"):
+for verboten in ("update-target", "/rollouts", "edge-updates/"):
     assert verboten not in code, verboten
 # Die Anhaenge sind genau die Dateien von release.sh
 m = re.search(r"for f in ([^;]+); do", runs)
 anh = m.group(1).split()
 for f in anh:
     assert f in rel, f
-assert set(anh) == {"vp-edge-light-linux-mipsle", "vp-edge-light-linux-arm64", "edge-light-openwrt.tar.gz", "sha256sums", "freigabe-edge-light.json"}, anh
+assert set(anh) == {"vp-edge-light-linux-mipsle", "vp-edge-light-linux-arm64", "vp-edge-light-linux-mipsle.gz", "vp-edge-light-linux-arm64.gz", "edge-light-openwrt.tar.gz", "sha256sums", "freigabe-edge-light.json"}, anh
 print("ok")
 PY
 
@@ -83,6 +101,40 @@ if (cd "$TMP/ws" && GITHUB_OUTPUT="$TMP/ausgabe3" RELEASE_INPUT=" edge-light-$ym
   ok "eine vorgegebene Fassung (mit Leerzeichen) geht durch"
 else
   bad "vorgegebene Fassung"
+fi
+
+echo "== Der echte Eingabe-Schritt: ohne Freigabe kein Schluessel =="
+python3 - "$WF" >"$TMP/inputs.sh" <<'PY'
+import sys, yaml
+wf = yaml.safe_load(open(sys.argv[1]))
+for s in wf["jobs"]["release"]["steps"]:
+    if s.get("id") == "inputs":
+        print(s["run"])
+PY
+mkdir -p "$TMP/ws/edge-app/core" "$TMP/runner"
+printf '3\n' >"$TMP/ws/edge-app/core/otastate.schema"
+(cd "$TMP/ws" && git tag -a -m "min-from-seq=7" "edge-light-$ym.7" 2>/dev/null) || true
+eingabe() { # <ausgabe> <env...>
+  local aus="$1"
+  shift
+  (cd "$TMP/ws" && env -i PATH="$PATH" HOME="$TMP" GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+    GITHUB_OUTPUT="$aus" GITHUB_REF_NAME="edge-light-$ym.7" RUNNER_TEMP="$TMP/runner" "$@" bash "$TMP/inputs.sh") >/dev/null 2>&1
+}
+geheim=(VP_OTA_RELEASE_KEY='{"key_id":"rel-test"}' VP_OTA_PUBLISHER_CLIENT_SECRET=geheim VP_OTA_PORTAL=http://127.0.0.1:9)
+if eingabe "$TMP/e1" "${geheim[@]}" && grep -qx "ready=false" "$TMP/e1" && [ ! -e "$TMP/runner/vp-ota-release.key" ]; then
+  ok "Geheimnisse ohne EDGE_LIGHT_SIGNIEREN: ready=false, kein Schluessel auf dem Runner"
+else
+  bad "Geheimnisse ohne Freigabe"
+fi
+if eingabe "$TMP/e2" EDGE_LIGHT_SIGNIEREN=true && grep -qx "ready=false" "$TMP/e2" && grep -qx "min_from=7" "$TMP/e2" && grep -qx "state_schema=3" "$TMP/e2"; then
+  ok "Freigabe ohne Geheimnisse: ready=false, Eingaben trotzdem gelesen (min-from-seq aus der Annotation)"
+else
+  bad "Freigabe ohne Geheimnisse: $(cat "$TMP/e2" 2>/dev/null)"
+fi
+if eingabe "$TMP/e3" EDGE_LIGHT_SIGNIEREN=true "${geheim[@]}"; then
+  bad "mit Freigabe und Geheimnissen lief der Schritt ohne Portal durch"
+else
+  [ -e "$TMP/runner/vp-ota-release.key" ] && ok "mit Freigabe und Geheimnissen geht es zum Register (hier: kein Portal -> Abbruch)" || bad "Schluesseldatei nicht angelegt"
 fi
 
 echo

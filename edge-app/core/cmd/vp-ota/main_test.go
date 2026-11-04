@@ -8,6 +8,10 @@ package main
 // echte Zeremonie laeuft offline beim Owner (docs/ota-signing.md).
 
 import (
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -156,21 +160,121 @@ func TestVerifyRefusesAReleaseForAnotherBackend(t *testing.T) {
 	}
 }
 
-// Ein Manifest je Box-Art, schon beim Erzeugen: bis die Option fuer Programme
-// kommt (Plan Edge Light Stufe 2, B3), kann das Werkzeug kein Edge-Light-
-// Release bauen - und erst recht keines, das oci-images fuer light ausgibt.
+// Ein Manifest je Box-Art, schon beim Erzeugen: das Werkzeug baut kein
+// Release, das oci-images fuer light ausgibt oder Programme und Images mischt.
 func TestManifestRefusesToMixBoxTypes(t *testing.T) {
 	dir := t.TempDir()
+	prog := writeProgram(t, dir, "prog", []byte("programm"))
 	for name, args := range map[string][]string{
-		"light-backend mit oci-image": {"--release", "edge-light-2026.10.1", "--backend", "light"},
-		"light und compose":           {"--release", "edge-light-2026.10.1", "--backend", "light", "--backend", "compose"},
-		"light-backend, Docker-Name":  {"--release", "edge-2026.10.1", "--backend", "light"},
-		"unbekanntes Backend":         {"--release", "edge-2026.10.1", "--backend", "balena"},
+		"light-backend mit oci-image": {"--release", "edge-light-2026.10.1", "--backend", "light", "--artifact", "core=" + coreRef},
+		"light und compose":           {"--release", "edge-light-2026.10.1", "--backend", "light", "--backend", "compose", "--artifact", "core=" + coreRef},
+		"light-backend, Docker-Name":  {"--release", "edge-2026.10.1", "--backend", "light", "--artifact", "core=" + coreRef},
+		"unbekanntes Backend":         {"--release", "edge-2026.10.1", "--backend", "balena", "--artifact", "core=" + coreRef},
+		"Programm unter Docker-Name":  {"--release", "edge-2026.10.1", "--binary", "vp-edge-light:linux/mipsle=" + prog},
+		"Programm fuer compose":       {"--release", "edge-light-2026.10.1", "--backend", "compose", "--binary", "vp-edge-light:linux/mipsle=" + prog},
+		"Programm und Image":          {"--release", "edge-light-2026.10.1", "--binary", "vp-edge-light:linux/mipsle=" + prog, "--artifact", "core=" + coreRef},
 	} {
 		err := cmdManifest(append(args,
-			"--seq", "12", "--commit", "3bf8c038a1b2", "--artifact", "core="+coreRef,
+			"--seq", "12", "--commit", "3bf8c038a1b2",
 			"--state-schema", "3", "--key-id", "rel-2026-a", "--out", filepath.Join(dir, "release.json")))
 		if err == nil {
+			t.Errorf("%s: wurde erzeugt", name)
+		}
+	}
+}
+
+// writeProgram legt ein "Programm" und seine gepackte Lieferung (<name>.gz)
+// an und gibt den Pfad des Programms zurueck.
+func writeProgram(t *testing.T, dir, name string, body []byte) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, body, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var gz bytes.Buffer
+	zw, _ := gzip.NewWriterLevel(&gz, gzip.BestCompression)
+	_, _ = zw.Write(body)
+	_ = zw.Close()
+	if err := os.WriteFile(path+".gz", gz.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func sumOf(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+
+// Ein Edge-Light-Release (Plan-Punkt B3): je Architektur ein binary mit den
+// Pruefsummen des Programms UND der gepackten Lieferung, Backend light von
+// selbst - und die ganze Kette verifiziert auf dem Backend light, waehrend die
+// Docker-Box es zurueckstellt.
+func TestManifestBuildsASignedEdgeLightRelease(t *testing.T) {
+	dir := ceremony(t)
+	p := func(n string) string { return filepath.Join(dir, n) }
+	mips := writeProgram(t, dir, "vp-edge-light-linux-mipsle", []byte("mipsle-programm"))
+	arm := writeProgram(t, dir, "vp-edge-light-linux-arm64", []byte("arm64-programm"))
+	must(t, cmdManifest([]string{
+		"--release", "edge-light-2026.11.1", "--seq", "14", "--commit", "3bf8c038a1b2",
+		"--binary", "vp-edge-light:linux/mipsle=" + mips,
+		"--binary", "vp-edge-light:linux/arm64=" + arm + "," + arm + ".gz",
+		"--state-schema", "3", "--key-id", "rel-2026-a", "--out", p("light.json"),
+	}))
+	raw, _ := os.ReadFile(p("light.json"))
+	m, err := otaverify.ParseManifestStrict(raw)
+	if err != nil {
+		t.Fatalf("erzeugtes Edge-Light-Manifest ist nicht streng gueltig: %v", err)
+	}
+	if len(m.Compat.Backends) != 1 || m.Compat.Backends[0] != otaverify.BackendLight {
+		t.Fatalf("Backend = %v, erwartet [light]", m.Compat.Backends)
+	}
+	if len(m.Artifacts) != 2 {
+		t.Fatalf("%d Artefakte, erwartet 2", len(m.Artifacts))
+	}
+	gz, _ := os.ReadFile(mips + ".gz")
+	a := m.Artifacts[0]
+	if a.Type != otaverify.ArtifactBinary || a.Name != "vp-edge-light" || a.Arch != "linux/mipsle" ||
+		a.SHA256 != sumOf([]byte("mipsle-programm")) || a.Size != int64(len("mipsle-programm")) ||
+		a.GzSHA256 != sumOf(gz) || a.GzSize != int64(len(gz)) {
+		t.Fatalf("mipsle-Eintrag falsch: %+v", a)
+	}
+
+	must(t, cmdSign([]string{"--key", p("rel-2026-a.key"), "--domain", "release", "--in", p("light.json")}))
+	must(t, cmdVerify([]string{
+		"--root", p("root-2026-a.pub"), "--trust-set", p("trust-set.json"), "--manifest", p("light.json"),
+		"--backend", "light",
+	}))
+	if err := cmdVerify([]string{
+		"--root", p("root-2026-a.pub"), "--trust-set", p("trust-set.json"), "--manifest", p("light.json"),
+		"--backend", "compose",
+	}); err == nil {
+		t.Fatal("die Docker-Box haette das Edge-Light-Release angewandt")
+	}
+}
+
+// Die Lieferung muss genau das Programm entpacken - sonst scheiterte jedes
+// Update erst auf der Box (Download gegen gz_sha256 gut, Programm gegen sha256
+// schlecht).
+func TestManifestRefusesADeliveryThatIsNotTheProgram(t *testing.T) {
+	dir := t.TempDir()
+	prog := writeProgram(t, dir, "prog", []byte("programm-a"))
+	other := writeProgram(t, dir, "other", []byte("programm-b"))
+	notGz := filepath.Join(dir, "kaputt.gz")
+	_ = os.WriteFile(notGz, []byte("kein gzip"), 0o644)
+	for name, spec := range map[string]string{
+		"fremde Lieferung": "vp-edge-light:linux/mipsle=" + prog + "," + other + ".gz",
+		"kein gzip":        "vp-edge-light:linux/mipsle=" + prog + "," + notGz,
+		"Lieferung fehlt":  "vp-edge-light:linux/mipsle=" + prog + "," + filepath.Join(dir, "fehlt.gz"),
+		"ohne Plattform":   "vp-edge-light=" + prog,
+		"Plattform kaputt": "vp-edge-light:mipsle=" + prog,
+		"doppelt je Arch":  "",
+	} {
+		args := []string{"--release", "edge-light-2026.11.1", "--seq", "14", "--commit", "3bf8c038a1b2",
+			"--state-schema", "3", "--key-id", "rel-2026-a", "--out", filepath.Join(dir, "release.json")}
+		if spec == "" {
+			args = append(args, "--binary", "vp-edge-light:linux/mipsle="+prog, "--binary", "vp-edge-light:linux/mipsle="+prog)
+		} else {
+			args = append(args, "--binary", spec)
+		}
+		if err := cmdManifest(args); err == nil {
 			t.Errorf("%s: wurde erzeugt", name)
 		}
 	}

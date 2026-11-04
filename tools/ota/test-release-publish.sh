@@ -425,6 +425,31 @@ if command -v go >/dev/null 2>&1; then
 	eq "…und ein Wiederholungslauf ist still in Ordnung" \
 		"Register: bereits BYTEGLEICH eingetragen - Wiederholung, nichts geaendert." "$out"
 
+	# --- Edge Light: dieselbe Kette mit Programmen statt Images -------------
+	# Das Manifest traegt je Architektur Programm und Lieferung; es verifiziert
+	# auf dem Backend light und NUR dort (die Gegenpruefung in ota_sign waehlt
+	# das Backend nach dem Namen).
+	printf 'mipsle-programm' >"$CER/vp-edge-light-linux-mipsle"
+	gzip -9 -n -c "$CER/vp-edge-light-linux-mipsle" >"$CER/vp-edge-light-linux-mipsle.gz"
+	mkdir -p "$CER/light"
+	(cd "$CORE" && go run ./cmd/vp-ota manifest \
+		--release edge-light-2026.08.0 --seq 15 --commit deadbeef0123 \
+		--binary "vp-edge-light:linux/mipsle=$CER/vp-edge-light-linux-mipsle" \
+		--state-schema "$(ota_state_schema "$ROOT/edge-app/core/otastate.schema")" \
+		--key-id rel-test --out "$CER/light/release.json") >/dev/null
+	(cd "$CORE" && go run ./cmd/vp-ota sign --key "$CER/rel-test.key" --domain release --in "$CER/light/release.json") >/dev/null
+	if (cd "$CORE" && go run ./cmd/vp-ota verify --root "$CER/root-test.pub" --backend light \
+		--trust-set "$CER/trust-set.json" --manifest "$CER/light/release.json") >/dev/null 2>&1; then
+		ok "das signierte Edge-Light-Release verifiziert auf dem Backend light"
+	else
+		bad "das signierte Edge-Light-Release verifiziert auf dem Backend light" "Urteil ok" "Pruefung fehlgeschlagen"
+	fi
+	fails "…und nicht auf der Docker-Box (compose)" \
+		env -C "$CORE" go run ./cmd/vp-ota verify --root "$CER/root-test.pub" \
+		--trust-set "$CER/trust-set.json" --manifest "$CER/light/release.json"
+	[ -f "$CER/light/register.json" ] && ok "auch fuer Edge Light liegt der Register-Rumpf daneben" ||
+		bad "Register-Rumpf Edge Light" "register.json" "fehlt"
+
 	# --- der ganze Veroeffentlichungs-Weg, einmal komplett ------------------
 	# ota_publish gegen den Stub: Release anlegen, VIER Assets anhaengen,
 	# registrieren. Danach dasselbe noch einmal - ein Wiederholungslauf darf
@@ -552,6 +577,14 @@ if grep -q -- '--root baked' "$HERE/release-publish.sh"; then
 	ok "die Gegenpruefung laeuft gegen die EINGEBACKENE Wurzel"
 else
 	bad "die Gegenpruefung laeuft gegen die EINGEBACKENE Wurzel" "--root baked" "fehlt"
+fi
+# Ein Edge-Light-Manifest wird gegen das Backend light gegengeprueft - gegen
+# compose hiesse es "deferred", und der Lauf braeche ab.
+if grep -q -- '--root baked --backend "\$backend"' "$HERE/release-publish.sh" &&
+	grep -q '"\$OTA_LIGHT_RELEASE_PREFIX"\*) backend=light' "$HERE/release-publish.sh"; then
+	ok "die Gegenpruefung waehlt das Backend nach der Release-Linie"
+else
+	bad "die Gegenpruefung waehlt das Backend nach der Release-Linie" "--backend light fuer edge-light-" "fehlt"
 fi
 if grep -qE 'ota_die .*Gegenpruefung' "$HERE/release-publish.sh"; then
 	ok "eine fehlgeschlagene Gegenpruefung bricht ab"

@@ -10,13 +10,18 @@
 #
 # In <ausgabe>:
 #   vp-edge-light-linux-mipsle, vp-edge-light-linux-arm64   die Programme
+#   vp-edge-light-linux-<arch>.gz                           je Programm die gepackte Lieferung (gzip -9 -n)
 #   edge-light-openwrt.tar.gz                               edge-light/openwrt/ als openwrt/…
-#   sha256sums                                              alle drei, Format sha256sum
+#   sha256sums                                              alle fuenf, Format sha256sum
 #   freigabe-edge-light.json                                der Block edge_light der Freigabe (Mango)
 #
-# Kein Manifest, keine Signatur, kein Eintrag ins OTA-Register: das ist Stufe 2
-# (docs/ota-signing.md, Box-Arten). Die Fassung steht als Version im Programm
-# (/health "version") - genau sie prueft der Werkstatt-Dienst gegen die Freigabe.
+# Die gepackte Lieferung ist das, was eine Box beim Update laedt (Konzept
+# vp-edge-light-update, Schritt 3): ~5 MB statt 16 MB in den Arbeitsspeicher.
+# `gzip -n` laesst Name und Zeit weg - dieselben Programme ergeben byteweise
+# dieselbe Lieferung. Das Manifest (`vp-ota manifest --binary`) und die
+# Signatur entstehen im Release-Lauf, nicht hier. Die Fassung steht als Version
+# im Programm (/health "version") - genau sie prueft der Werkstatt-Dienst gegen
+# die Freigabe.
 # shellcheck source=edge-light/scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -44,10 +49,14 @@ for arch in mipsle arm64; do
   }
 done
 rm -rf "$BAU"
+for arch in mipsle arm64; do
+  gzip -9 -n -c "$AUS/vp-edge-light-linux-$arch" >"$AUS/vp-edge-light-linux-$arch.gz"
+done
 python3 "$LIGHT_DIR/scripts/skripte-paket.py" "$AUS/edge-light-openwrt.tar.gz"
 
 summe() { sha256sum "$1" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$1" | awk '{print $1}'; }
-(cd "$AUS" && for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 edge-light-openwrt.tar.gz; do
+(cd "$AUS" && for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 \
+  vp-edge-light-linux-mipsle.gz vp-edge-light-linux-arm64.gz edge-light-openwrt.tar.gz; do
   printf '%s  %s\n' "$(summe "$f")" "$f"
 done) >"$AUS/sha256sums"
 

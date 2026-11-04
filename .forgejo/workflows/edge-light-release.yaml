@@ -4,20 +4,30 @@ name: Edge-Light-Fassung
 # (eigene Release-Linie, Entscheid E7; N ist ein laufender Zaehler je Monat wie
 # bei edge-JJJJ.MM.N). Der Tag-Lauf prueft Edge Light (edge-light/scripts/test.sh),
 # baut die Programme fuer die Mango (mipsle) und den Raspberry Pi (arm64) mit
-# genau dieser Fassung, packt den Skriptstand (edge-light/openwrt) und haengt
-# alles samt Pruefsummen an das Forgejo-Release:
+# genau dieser Fassung, packt sie (gzip -9 -n) und den Skriptstand
+# (edge-light/openwrt) und haengt alles samt Pruefsummen an das Forgejo-Release:
 #
-#   vp-edge-light-linux-mipsle, vp-edge-light-linux-arm64, edge-light-openwrt.tar.gz,
-#   sha256sums, freigabe-edge-light.json (Block edge_light der Werkstatt-Freigabe)
+#   vp-edge-light-linux-mipsle, vp-edge-light-linux-arm64, die beiden .gz,
+#   edge-light-openwrt.tar.gz, sha256sums, freigabe-edge-light.json
 #
 # Davon lebt die Werkstatt (Paket P4 der Werkstatt-Automatik): Der
 # Werkstatt-Dienst spielt eine Fassung auf, die eine Freigabe mit diesen
 # Pruefsummen nennt (services/werkstatt-dienst, Release-Anhaenge).
 #
-# ⚠ KEIN MANIFEST, KEINE SIGNATUR, KEIN EINTRAG INS OTA-REGISTER. Das bleibt
-# Stufe 2 (docs/ota-signing.md, Box-Arten): Vorher muss die Toleranz fuer
-# Edge-Light-Manifeste als Docker-Release auf den Boxen sein. Dieser Lauf hat
-# darum weder den Release-Schluessel noch das Konto des Registers.
+# SIGNIERT UND REGISTRIERT (Konzept vp-edge-light-update, K1): Danach erzeugt
+# der Lauf das Manifest (`vp-ota manifest --binary`, Box-Art light, je
+# Architektur Pruefsumme und Groesse von Programm und Lieferung), signiert es
+# mit dem Release-Schluessel der Docker-Box, prueft es gegen die eingebackene
+# Wurzel (Backend light) und traegt es ins Register ein - genau der Weg von
+# edge-images.yaml (tools/ota/release-publish.sh). Erst damit kann das Portal
+# ein Edge-Light-Release zuweisen.
+#
+# ⚠ DAS SIGNIEREN IST AUSDRUECKLICH EINGESCHALTET, NICHT VON SELBST: Es braucht
+# die Repo-Variable EDGE_LIGHT_SIGNIEREN=true UND die Geheimnisse der
+# Docker-Linie (VP_OTA_RELEASE_KEY, VP_OTA_PUBLISHER_CLIENT_SECRET). Fehlt
+# eines davon, laeuft der Lauf GRUEN wie bisher durch (Anhaenge fuer die
+# Werkstatt) und signiert NICHTS. Die Variable setzt der Captain, wenn die
+# Boxen Updates anwenden koennen (docs/ota-signing.md, Edge Light).
 #
 # DER MANUELLE WEG ("Run workflow") legt wie in edge-images.yaml nur den TAG an
 # (Eingabe `release`, sonst die naechste freie Nummer des Monats); der Tag
@@ -115,7 +125,7 @@ jobs:
         run: bash edge-light/scripts/test.sh
 
   release:
-    name: Bauen und anhaengen
+    name: Bauen, anhaengen, signieren
     needs: test
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'edge-light-')
     runs-on: ubuntu-latest-mo
@@ -123,6 +133,10 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          # Die Tag-ANNOTATION ist eine Eingabe (min-from-seq, Notiz) und haengt
+          # am Tag-OBJEKT - wie im manifest-Job von edge-images.yaml.
+          fetch-depth: 0
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -138,18 +152,144 @@ jobs:
             ota_die "Keine Forgejo-Zugangsdaten zum Anhaengen (VP_OTA_FORGEJO_TOKEN oder FORGEJO_USERNAME/FORGEJO_PASSWORD)."
           base="${GITHUB_SERVER_URL:-https://git.tecmaxx.de}"
           rel="$(ota_forgejo_release_id "$base" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$auth")"
-          for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 edge-light-openwrt.tar.gz sha256sums freigabe-edge-light.json; do
+          for f in vp-edge-light-linux-mipsle vp-edge-light-linux-arm64 vp-edge-light-linux-mipsle.gz vp-edge-light-linux-arm64.gz edge-light-openwrt.tar.gz sha256sums freigabe-edge-light.json; do
             ota_forgejo_upload "$base" "$GITHUB_REPOSITORY" "$rel" "$RUNNER_TEMP/fassung/$f" "$auth"
           done
         env:
           VP_OTA_FORGEJO_TOKEN: ${{ secrets.VP_OTA_FORGEJO_TOKEN }}
           FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
           FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
+
+      # Wie im manifest-Job von edge-images.yaml: release_seq kommt aus dem
+      # REGISTER (eine Ordnung ueber beide Linien), die Zustandsversion aus dem
+      # Repo, min-from-seq und Notiz aus der Tag-Annotation. Ohne Freigabe oder
+      # Geheimnisse: kein Manifest, keine Signatur, gruen.
+      - name: Release-Eingaben bestimmen
+        id: inputs
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+
+          ready=true
+          [ "${EDGE_LIGHT_SIGNIEREN:-}" = "true" ] || { echo "::notice::EDGE_LIGHT_SIGNIEREN ist nicht true - es wird NICHT signiert und NICHT registriert."; ready=false; }
+          [ -n "${VP_OTA_RELEASE_KEY:-}" ] || { echo "::notice::VP_OTA_RELEASE_KEY fehlt - es wird NICHT signiert."; ready=false; }
+          [ -n "${VP_OTA_PUBLISHER_CLIENT_SECRET:-}" ] || { echo "::notice::VP_OTA_PUBLISHER_CLIENT_SECRET fehlt - es wird NICHT registriert."; ready=false; }
+
+          portal="${VP_OTA_PORTAL:-https://portal.voltpilot.de}"
+          keyfile="${RUNNER_TEMP}/vp-ota-release.key"
+          seq=""
+          key_id=""
+          if [ "$ready" = true ]; then
+            umask 077
+            printf '%s' "$VP_OTA_RELEASE_KEY" > "$keyfile"
+            chmod 600 "$keyfile"
+            key_id="$(ota_key_id "$keyfile")"
+            echo "::add-mask::$VP_OTA_PUBLISHER_CLIENT_SECRET"
+            trust="${VP_OTA_TRUST_SET:-edge-app/ota/trust-set.json}"
+            for f in "$trust" "$trust.sig"; do
+              [ -f "$f" ] || { echo "::error::$f fehlt - ohne root-signiertes Trust-Set kann die Kette nicht gegengeprueft werden (edge-app/ota/README.md)."; exit 1; }
+            done
+            token="$(ota_token "$(ota_token_url "$portal")" \
+              "${VP_OTA_PUBLISHER_CLIENT_ID:-voltpilot-release-publisher}" \
+              "$VP_OTA_PUBLISHER_CLIENT_SECRET")"
+            echo "::add-mask::$token"
+            printf '%s' "$token" > "${RUNNER_TEMP}/vp-ota-token"
+            chmod 600 "${RUNNER_TEMP}/vp-ota-token"
+            read -r seq prev <<<"$(ota_next_seq "$portal" "$token")"
+            echo "Register: naechste Sequenz $seq (bisher hoechste: $prev)"
+          fi
+
+          state_schema="${EDGE_STATE_SCHEMA:-$(ota_state_schema edge-app/core/otastate.schema)}"
+          ann="$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)' || true)"
+          min_from="$(ota_tag_directive min-from-seq "$ann")"
+          [ -n "$min_from" ] || min_from="${EDGE_MIN_FROM_SEQ:-0}"
+          notes="$(ota_tag_notes "$ann")"
+          {
+            echo "ready=$ready"
+            echo "seq=$seq"
+            echo "key_id=$key_id"
+            echo "state_schema=$state_schema"
+            echo "min_from=$min_from"
+            echo "notes=$notes"
+            echo "portal=$portal"
+            echo "keyfile=$keyfile"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          EDGE_LIGHT_SIGNIEREN: ${{ vars.EDGE_LIGHT_SIGNIEREN }}
+          VP_OTA_RELEASE_KEY: ${{ secrets.VP_OTA_RELEASE_KEY }}
+          VP_OTA_PUBLISHER_CLIENT_SECRET: ${{ secrets.VP_OTA_PUBLISHER_CLIENT_SECRET }}
+          VP_OTA_PORTAL: ${{ vars.VP_OTA_PORTAL }}
+          VP_OTA_PUBLISHER_CLIENT_ID: ${{ vars.VP_OTA_PUBLISHER_CLIENT_ID }}
+          EDGE_MIN_FROM_SEQ: ${{ vars.EDGE_MIN_FROM_SEQ }}
+          EDGE_STATE_SCHEMA: ${{ vars.EDGE_STATE_SCHEMA }}
+
+      # Dasselbe Werkzeug wie fuer die Docker-Box; es misst Programm und
+      # Lieferung selbst und prueft, dass die Lieferung genau das Programm
+      # entpackt. Die Ausgabe ist deterministisch.
+      - name: Manifest erzeugen
+        if: steps.inputs.outputs.ready == 'true'
+        working-directory: edge-app/core
+        run: |
+          set -euo pipefail
+          args=()
+          [ "${NOTES}" = "" ] || args+=(--notes "${NOTES}")
+          go run ./cmd/vp-ota manifest \
+            --release "${GITHUB_REF_NAME}" \
+            --seq "${SEQ}" \
+            --commit "${GITHUB_SHA::12}" \
+            --binary "vp-edge-light:linux/mipsle=${RUNNER_TEMP}/fassung/vp-edge-light-linux-mipsle" \
+            --binary "vp-edge-light:linux/arm64=${RUNNER_TEMP}/fassung/vp-edge-light-linux-arm64" \
+            --min-from-seq "${MIN_FROM}" \
+            --state-schema "${STATE_SCHEMA}" \
+            --key-id "${SIGNING_KEY_ID}" \
+            "${args[@]}" \
+            --out "${RUNNER_TEMP}/fassung/release.json"
+          echo "sha256(release.json) = $(sha256sum "${RUNNER_TEMP}/fassung/release.json" | cut -d' ' -f1)"
+        env:
+          SEQ: ${{ steps.inputs.outputs.seq }}
+          MIN_FROM: ${{ steps.inputs.outputs.min_from }}
+          STATE_SCHEMA: ${{ steps.inputs.outputs.state_schema }}
+          SIGNING_KEY_ID: ${{ steps.inputs.outputs.key_id }}
+          NOTES: ${{ steps.inputs.outputs.notes }}
+
+      # Signieren und gegen die eingebackene Wurzel pruefen (Backend light):
+      # faellt das durch, geht nichts hinaus.
+      - name: Signieren + gegen die eingebackene Wurzel pruefen
+        if: steps.inputs.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          ota_sign "${RUNNER_TEMP}/fassung/release.json" "${{ steps.inputs.outputs.keyfile }}"
+
+      # Manifest, Signatur und Trust-Set ans Forgejo-Release, dann ins Register.
+      # Beides idempotent wie bei der Docker-Box.
+      - name: Manifest anhaengen + ins Register eintragen
+        if: steps.inputs.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          VP_OTA_PORTAL_TOKEN="$(cat "${RUNNER_TEMP}/vp-ota-token")"
+          export VP_OTA_PORTAL_TOKEN
+          ota_publish "${RUNNER_TEMP}/fassung/release.json" "${GITHUB_REF_NAME}"
+        env:
+          VP_OTA_PORTAL: ${{ steps.inputs.outputs.portal }}
+          VP_OTA_FORGEJO_TOKEN: ${{ secrets.VP_OTA_FORGEJO_TOKEN }}
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
+
+      - name: Schluessel + Token vom Runner entfernen
+        if: always()
+        run: |
+          rm -f "${RUNNER_TEMP}/vp-ota-release.key" "${RUNNER_TEMP}/vp-ota-token" || true
+
       - name: Ergebnis
         run: |
           set -euo pipefail
-          cat <<EOF
-          Fassung $GITHUB_REF_NAME angehaengt (ohne Manifest, ohne Register).
-          Fuer die Werkstatt: diesen Block als edge_light in die Freigabe:
-          EOF
+          if [ "${{ steps.inputs.outputs.ready }}" = "true" ]; then
+            echo "Fassung $GITHUB_REF_NAME angehaengt, signiert, gegen die eingebackene Wurzel geprueft und im Register eingetragen (Stand ${{ steps.inputs.outputs.seq }})."
+            echo "Kein Geraet bekam ein Ziel - zuweisen ist Portal -> Plattform -> Edge-Updates."
+          else
+            echo "Fassung $GITHUB_REF_NAME angehaengt (NICHT signiert, NICHT im Register; siehe Hinweise oben)."
+          fi
+          echo "Fuer die Werkstatt: diesen Block als edge_light in die Freigabe:"
           cat "$RUNNER_TEMP/fassung/freigabe-edge-light.json"

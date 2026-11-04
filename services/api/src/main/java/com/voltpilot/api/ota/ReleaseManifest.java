@@ -60,6 +60,12 @@ public final class ReleaseManifest {
 
     private static final Set<String> KNOWN_TYPES = Set.of(TYPE_OCI_IMAGE, TYPE_BINARY);
 
+    /** Die Backends, die dieser Stand kennt (Go: {@code KnownBackend}). */
+    private static final Set<String> KNOWN_BACKENDS = Set.of(BACKEND_COMPOSE, "quadlet", "mender", BACKEND_LIGHT);
+
+    /** Präfix der Edge-Light-Linie (Entscheid E7, Go: {@code LightReleasePrefix}). */
+    public static final String LIGHT_RELEASE_PREFIX = "edge-light-";
+
     private static final Pattern RELEASE = Pattern.compile("^edge(-light)?-\\d{4}\\.\\d{2}\\.\\d+$");
     private static final Pattern COMMIT = Pattern.compile("^[0-9a-f]{7,64}$");
     private static final Pattern KEY_ID = Pattern.compile("^[a-z0-9][a-z0-9._-]{0,63}$");
@@ -224,6 +230,88 @@ public final class ReleaseManifest {
         List<Artifact> artifacts = readArtifacts(m.get("artifacts"));
         List<String> backends = readBackends(m.get("compat"));
         return new ReleaseManifest(release, seq, backends, artifacts);
+    }
+
+    /**
+     * Liest ein Manifest so streng, wie die Werkzeuge es ERZEUGEN dürfen - der
+     * Zwilling von {@code otaverify.ParseManifestStrict} (Vektor-Feld
+     * {@code erzeugbar}). Zusätzlich zu {@link #read}: jeder Typ und jedes
+     * Backend ist bekannt, jeder Bestandteil trägt nur die Felder seines Typs,
+     * und es gilt EIN MANIFEST JE BOX-ART (edge-light-… nur mit Backend light
+     * und nur binary; jedes andere Release mit keinem von beiden).
+     *
+     * <p>Das Register liest Edge-Light-Releases so: ein Eintrag, den die Boxen
+     * zwar tolerant lesen, den aber kein Werkzeug erzeugen darf, gehört nicht in
+     * die Liste, aus der ein Mensch Releases zuweist.
+     *
+     * @throws InvalidManifestException mit deutschem Grund
+     */
+    public static ReleaseManifest readStrict(String raw) {
+        ReleaseManifest m = read(raw);
+        JsonNode root;
+        try {
+            root = JSON.readTree(raw);
+        } catch (Exception e) {
+            throw new InvalidManifestException("Manifest ist kein gueltiges JSON.");
+        }
+        boolean light = m.release.startsWith(LIGHT_RELEASE_PREFIX);
+        for (String b : m.backends) {
+            if (!KNOWN_BACKENDS.contains(b)) {
+                throw new InvalidManifestException("compat.backends: unbekanntes Backend '" + b + "'");
+            }
+            if (BACKEND_LIGHT.equals(b) != light) {
+                throw new InvalidManifestException(light
+                        ? "Edge-Light-Release " + m.release + " gilt nur fuer das Backend 'light', nicht fuer '"
+                                + b + "'"
+                        : "das Backend 'light' gehoert zu Edge Light - das Release muss edge-light-JJJJ.MM.N "
+                                + "heissen, nicht '" + m.release + "'");
+            }
+        }
+        int i = 0;
+        for (JsonNode a : root.get("artifacts")) {
+            String type = a.get("type").asText();
+            String name = a.get("name").asText();
+            if (!KNOWN_TYPES.contains(type)) {
+                throw new InvalidManifestException("artifacts[" + i + "]: unbekannter Typ '" + type + "'");
+            }
+            if (TYPE_BINARY.equals(type) != light) {
+                throw new InvalidManifestException(light
+                        ? "artifacts[" + i + "] (" + name + "): ein Edge-Light-Release traegt nur Artefakte "
+                                + "vom Typ 'binary'"
+                        : "artifacts[" + i + "] (" + name + "): Artefakte vom Typ 'binary' gehoeren in ein "
+                                + "Edge-Light-Release (edge-light-JJJJ.MM.N)");
+            }
+            if (TYPE_OCI_IMAGE.equals(type)) {
+                for (String f : List.of("arch", "sha256", "size", "gz_sha256", "gz_size")) {
+                    if (present(a, f)) {
+                        throw new InvalidManifestException("artifacts[" + i + "] (" + name
+                                + "): ein oci-image traegt nur type, name und ref");
+                    }
+                }
+            } else if (present(a, "ref")) {
+                throw new InvalidManifestException("artifacts[" + i + "] (" + name + "): ein binary traegt kein ref");
+            }
+            i++;
+        }
+        return m;
+    }
+
+    /**
+     * Ist das Feld GESETZT, so wie Go es sieht ({@code omitempty}-Nullwerte
+     * gelten als fehlend: leerer Text, 0)?
+     */
+    private static boolean present(JsonNode n, String field) {
+        JsonNode v = n.get(field);
+        if (v == null || v.isNull()) {
+            return false;
+        }
+        if (v.isTextual()) {
+            return !v.asText().isEmpty();
+        }
+        if (v.isNumber()) {
+            return v.asLong() != 0L;
+        }
+        return true;
     }
 
     private static List<Artifact> readArtifacts(JsonNode node) {

@@ -154,6 +154,33 @@ class OtaRolloutApiTest {
               "signing_key_id": "rel-2026-a"
             }
             """;
+    /** Ein Edge-Light-Manifest in der Form, die {@code vp-ota manifest --binary} erzeugt. */
+    private static final String LIGHT_MANIFEST = """
+            {
+              "schema_version": "1.0",
+              "release": "edge-light-2026.10.1",
+              "release_seq": 41,
+              "target_commit": "3bf8c038a1b2",
+              "artifacts": [
+                {
+                  "type": "binary",
+                  "name": "vp-edge-light",
+                  "arch": "linux/mipsle",
+                  "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+                  "size": 14614743,
+                  "gz_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+                  "gz_size": 4679121
+                }
+              ],
+              "min_from_seq": 0,
+              "allow_downgrade": false,
+              "state_schema": 1,
+              "compat": {
+                "backends": ["light"]
+              },
+              "signing_key_id": "rel-2026-a"
+            }
+            """;
     private static final String SIGNATURE =
             "{\"schema_version\":\"1.0\",\"alg\":\"ed25519\",\"key_id\":\"rel-2026-a\","
                     + "\"domain\":\"release\",\"signature\":\"AAAA\"}\n";
@@ -413,11 +440,9 @@ class OtaRolloutApiTest {
         registerRelease(admin, "edge-2026.10.0", 40,
                 MANIFEST.replace("edge-2026.08.0", "edge-2026.10.0").replace(":12", ":40"),
                 SIGNATURE);
-        String lightManifest = MANIFEST.replace("edge-2026.08.0", "edge-2026.10.1")
-                .replace(":12", ":41")
-                .replace("\"signing_key_id\"",
-                        "\"compat\": {\"backends\": [\"light\"]},\n  \"signing_key_id\"");
-        registerRelease(admin, "edge-2026.10.1", 41, lightManifest, SIGNATURE);
+        // Ein Edge-Light-Release unter seinem Namen edge-light-JJJJ.MM.N und in
+        // der Form des Vertrags (das Register liest Edge Light streng).
+        registerRelease(admin, "edge-light-2026.10.1", 41, LIGHT_MANIFEST, SIGNATURE);
 
         // ── Die Leserouten tragen die Box-Art ─────────────────────────────
         JsonNode page = readModel(admin);
@@ -477,7 +502,7 @@ class OtaRolloutApiTest {
         page = readModel(admin);
         assertThat(sollOf(page, docker)).isEqualTo("edge-2026.10.0");
         assertThat(sollOf(page, silent)).isEqualTo("edge-2026.10.0");
-        assertThat(sollOf(page, light)).isEqualTo("edge-2026.10.1");
+        assertThat(sollOf(page, light)).isEqualTo("edge-light-2026.10.1");
     }
 
     /** Backend und Stempel einer Box direkt setzen (Ingest: UpdateStatusListenerTest). */

@@ -3511,6 +3511,71 @@ class AdminApiTest {
     }
 
     /**
+     * Edge Light (Konzept vp-edge-light-update, K1): das Register nimmt den
+     * Namen edge-light-JJJJ.MM.N an, den der Vertrag verlangt - und liest ein
+     * solches Manifest STRENG wie das Werkzeug: Name, Backend light und nur
+     * Programme mit Pruefsummen gehoeren zusammen. Einen unsignierten
+     * Edge-Light-Eintrag gibt es nicht.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void anEdgeLightReleaseIsRegisteredUnderItsOwnNameAndOnlyInContractForm() {
+        String admin = token("admin", "admin");
+        long seq = ((Number) rest.exchange(url("/api/v1/admin/edge-releases/next-seq"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<Map<String, Object>>() {})
+                .getBody().get("nextSeq")).longValue();
+        String version = "edge-light-2027.03.0";
+        String binary = "{\"type\": \"binary\", \"name\": \"vp-edge-light\", \"arch\": \"linux/mipsle\", "
+                + "\"sha256\": \"" + "3".repeat(64) + "\", \"size\": 16318657, "
+                + "\"gz_sha256\": \"" + "4".repeat(64) + "\", \"gz_size\": 5243517}";
+        java.util.function.BiFunction<String, String, String> manifest = (artifact, backend) -> "{\n"
+                + "  \"schema_version\": \"1.0\",\n"
+                + "  \"release\": \"" + version + "\",\n"
+                + "  \"release_seq\": " + seq + ",\n"
+                + "  \"target_commit\": \"3bf8c038a1b2\",\n"
+                + "  \"artifacts\": [" + artifact + "],\n"
+                + "  \"min_from_seq\": 0,\n"
+                + "  \"allow_downgrade\": false,\n"
+                + "  \"state_schema\": 1,\n"
+                + "  \"compat\": {\"backends\": [\"" + backend + "\"]},\n"
+                + "  \"signing_key_id\": \"rel-2026-a\"\n"
+                + "}\n";
+        String signature = "{\"schema_version\":\"1.0\",\"alg\":\"ed25519\","
+                + "\"key_id\":\"rel-2026-a\",\"domain\":\"release\","
+                + "\"signature\":\"" + "C".repeat(86) + "==\"}\n";
+
+        // Nicht in der Form des Vertrags: 400 mit Grund, nichts eingetragen.
+        ResponseEntity<Map<String, Object>> compose = postRelease(admin, Map.of("version", version,
+                "manifest", manifest.apply(binary, "compose"), "signature", signature));
+        assertThat(compose.getStatusCode()).as("edge-light-… fuer compose").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) compose.getBody().get("message")).contains("Form des Vertrags");
+        String image = "{\"type\": \"oci-image\", \"name\": \"core\", \"ref\": \"x/core@sha256:"
+                + "1".repeat(64) + "\"}";
+        assertThat(postRelease(admin, Map.of("version", version,
+                "manifest", manifest.apply(image, "light"), "signature", signature)).getStatusCode())
+                .as("ein Image in einem Edge-Light-Release").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(postRelease(admin, Map.of("version", version,
+                "manifest", manifest.apply(binary.replace(", \"gz_size\": 5243517", ""), "light"),
+                "signature", signature)).getStatusCode())
+                .as("ein Programm ohne Groesse der Lieferung").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(postRelease(admin, Map.of("version", "edge-2027.03.9",
+                "manifest", manifest.apply(binary, "light").replace(version, "edge-2027.03.9"),
+                "signature", signature)).getStatusCode())
+                .as("das Backend light unter einem Docker-Namen").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(postRelease(admin, Map.of("version", version, "targetCommit", "aabbccdd"))
+                .getStatusCode()).as("ein Edge-Light-Release ohne Signatur").isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // In der Form des Vertrags: eingetragen, unter seinem eigenen Namen.
+        String good = manifest.apply(binary, "light");
+        Map<String, Object> created = createRelease(admin, Map.of("version", version,
+                "manifest", good, "signature", signature));
+        assertThat(created).containsEntry("version", version);
+        assertThat(((Number) created.get("releaseSeq")).longValue()).isEqualTo(seq);
+        assertThat((String) listReleases(admin).stream().filter(r -> version.equals(r.get("version")))
+                .findFirst().orElseThrow().get("manifest")).isEqualTo(good);
+    }
+
+    /**
      * Die AUTORITAETS-GRENZE der Release-Automatisierung: das
      * Veroeffentlichungs-Konto darf REGISTRIEREN - und sonst nichts.
      *

@@ -2,6 +2,8 @@ package com.voltpilot.api.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.ota.BoxArt;
+import com.voltpilot.api.ota.ReleaseManifest;
 import com.voltpilot.api.repo.EdgeReleaseRepository;
 import com.voltpilot.api.web.dto.CreateEdgeReleaseRequest;
 import com.voltpilot.api.web.dto.EdgeReleaseDto;
@@ -84,13 +86,16 @@ public class AdminEdgeReleaseController {
     private static final String PUBLISH = "hasAnyRole('platform-admin','edge-release-publisher')";
 
     /**
-     * Das Versionsschema aus D5: {@code edge-JJJJ.MM.N}. Bewusst eng - der
-     * Sinn des Registers ist eine wohldefinierte Ordnung, und ein hier
-     * eingetragener nackter Commit-SHA wäre genau der unvergleichbare Wert,
-     * den es ablöst. (Ein GERÄT darf durchaus eine SHA melden; die Oberfläche
-     * zeigt sie dann ehrlich als „nicht registriert".)
+     * Das Versionsschema aus D5: {@code edge-JJJJ.MM.N}, dazu die Edge-Light-
+     * Linie {@code edge-light-JJJJ.MM.N} (Entscheid E7) - genau das Muster des
+     * Vertrags ({@code ota-release-manifest.schema.json}, {@code release}).
+     * Bewusst eng - der Sinn des Registers ist eine wohldefinierte Ordnung,
+     * und ein hier eingetragener nackter Commit-SHA wäre genau der
+     * unvergleichbare Wert, den es ablöst. (Ein GERÄT darf durchaus eine SHA
+     * melden; die Oberfläche zeigt sie dann ehrlich als „nicht registriert".)
+     * Beide Linien teilen EINE {@code release_seq}-Ordnung.
      */
-    private static final Pattern VERSION = Pattern.compile("^edge-\\d{4}\\.\\d{2}\\.\\d+$");
+    private static final Pattern VERSION = Pattern.compile("^edge(-light)?-\\d{4}\\.\\d{2}\\.\\d+$");
 
     private final EdgeReleaseRepository releases;
     private final ObjectMapper json;
@@ -146,7 +151,15 @@ public class AdminEdgeReleaseController {
         String version = signed == null ? req.version().trim() : signed.release();
         if (!VERSION.matcher(version).matches()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Die Version muss dem Schema edge-JJJJ.MM.N folgen (z. B. edge-2026.08.0).");
+                    "Die Version muss dem Schema edge-JJJJ.MM.N oder edge-light-JJJJ.MM.N folgen "
+                            + "(z. B. edge-2026.08.0).");
+        }
+        if (signed == null && BoxArt.LIGHT.equals(BoxArt.ofRelease(version, null))) {
+            // Edge Light hat keinen Stufe-0-Handpfad: eine Box wendet nur an,
+            // was ein geprüftes Manifest beschreibt (Prüfsummen je Architektur).
+            // Ein unsignierter Eintrag wäre ein Release, das keine Box je annimmt.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Ein Edge-Light-Release braucht ein signiertes Manifest (Manifest und Signatur).");
         }
         java.util.Optional<EdgeReleaseDto> existing = releases.findByVersion(version);
         if (existing.isPresent()) {
@@ -244,6 +257,21 @@ public class AdminEdgeReleaseController {
 
         JsonNode m = parse(manifest, "Manifest");
         JsonNode s = parse(signature, "Signaturdatei");
+
+        // Edge Light streng wie das Werkzeug (otaverify.ParseManifestStrict):
+        // Name, Backend light und nur binary-Artefakte gehören zusammen, und
+        // jedes Programm trägt seine Prüfsummen. Daraus liest später die
+        // Abruf-Route, was sie ausliefern darf. Die Docker-Linie bleibt beim
+        // bisherigen Widerspruchsfreiheits-Check (ihre Handpfade tragen
+        // Manifeste, die älter sind als der strenge Leser).
+        if (BoxArt.LIGHT.equals(BoxArt.ofRelease(text(m, "release"), manifest))) {
+            try {
+                ReleaseManifest.readStrict(manifest);
+            } catch (ReleaseManifest.InvalidManifestException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Das Edge-Light-Manifest hat nicht die Form des Vertrags: " + e.getMessage());
+            }
+        }
 
         String release = text(m, "release");
         String keyId = text(m, "signing_key_id");
