@@ -105,7 +105,7 @@ public final class GeraetesucheVertrag {
                     NICHT_MIT_DIESER_BOX),
             new KatalogZeile("kaco_aiswei", "wechselrichter", 2, "kaco_http", UEBERNEHMEN, NICHT_MIT_DIESER_BOX),
             new KatalogZeile("kostal", "wechselrichter", 2, "kostal_modbus", UEBERNEHMEN, NICHT_MIT_DIESER_BOX),
-            new KatalogZeile("huawei", "wechselrichter", 2, "huawei_modbus", UEBERNEHMEN, NICHT_MIT_DIESER_BOX),
+            new KatalogZeile("huawei", "wechselrichter", 2, "huawei_modbus", UEBERNEHMEN, UEBERNEHMEN),
             new KatalogZeile("sma", "wechselrichter", 2, null, KEIN_LESEWEG, KEIN_LESEWEG),
             new KatalogZeile("sma", "zaehler", 2, null, null, KEIN_LESEWEG),
             new KatalogZeile("victron", "wechselrichter", 2, null, KEIN_LESEWEG, KEIN_LESEWEG),
