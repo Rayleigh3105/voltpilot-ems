@@ -60,16 +60,10 @@ Heartbeat-`entities` meldet `revision`, `applied_at`, `count`, `ids` sowie `obse
 
 v1- und v2-Lokaltopics können koexistieren. Quellen: `internal/entities`, `internal/componentapply`, Statuslistener der API und [Fixtures](examples/README.md).
 
-## Selbst angebundene Batterien und Schutzgrenzen
+## Selbstlesende Treiber
 
 | `communication` | Lesepfad |
 |---|---|
 | `modbus_baukasten` | generierte `vp.modbus.read`-Knoten |
-| `mqtt_local` | ein `vp.mqtt.read` je Batterie mit gemeinsamer Feldzuordnung |
-| `http_local` | ein `vp.http.read` je Endpunkt; Geheimnis nur in Registry/Probe, nie im lesbaren Flow-Dokument |
 
-Der Component-Applier überspringt diese selbstlesenden Treiber. Neue Werte zuerst auf der Box ausrollen; eine ältere Box kann sonst den gesamten Push ablehnen. `driver.connection` hält die Definition, der Flow den Lesepfad. Die explizite Speicherbindung wird in `role_assignment` materialisiert, siehe [Topologie](topology-read-model.md).
-
-`vp.soc.derive` ergänzt `soc_pct` und `soc_source_code`: 1 = gemessen, 2 = Spannungskennlinie, 3 = Ladungszählung. Unbekannt bleibt abwesend. Direkte Werte werden unverändert übernommen; nach `hold_s` (Vorgabe 900 s) läuft ein gehaltener Wert aus und die Ladungszählung braucht einen neuen Anker.
-
-`vp.bms.limit` kann `charge_limit_a`, `discharge_limit_a`, `charge_allowed`, `discharge_allowed` liefern. Jeder Kanal hat genau einen Autor. Die Werte begrenzen VoltPilot-Sollwerte in `guard:bms_limit`; Ampere werden nur mit gemessener Packspannung zu kW. 0 A sperren unabhängig von der Spannung. Fehlende/veraltete Grenzen entfallen als Kappe und bedeuten keine gemeldete Freigabe. Eine verriegelte Richtung meldet sowohl `allowed=0` als auch `limit_a=0`. Das schreibt keine Stromgrenzen ins Gerät; dafür bleibt der zertifizierte Steuerpfad zuständig.
+Der Component-Applier überspringt diese selbstlesenden Treiber. Neue Werte zuerst auf der Box ausrollen; eine ältere Box kann sonst den gesamten Push ablehnen. `driver.connection` hält die Definition, der Flow den Lesepfad.
