@@ -133,7 +133,10 @@ export function showPortfolioNav(i: ShellInput): boolean {
  */
 export function showOverviewNav(i: ShellInput): boolean {
   if (showPortfolioNav(i)) return false;
-  if (i.isAdmin) return true;
+  // Ein Admin in einer Mandantensicht mit EINER Anlage landet in ihr wie der Kunde (`canonicalShellRoute`): die
+  // Übersicht wäre dort ein Rückweg, der sofort wieder in dieselbe Anlage führt. Sonst bleibt sie (kein Mandant,
+  // keine Anlage, Anlagen noch nicht geladen).
+  if (i.isAdmin) return !(i.loaded && i.tenantReady && i.siteCount === 1);
   if (!i.loaded || !i.tenantReady) return false;
   return isFleetShell(i.betriebsart, i.siteCount);
 }
@@ -415,12 +418,23 @@ export function canonicalShellRoute(input: {
     && !siteIds.includes(route.siteId);
   const standortSeite = route.page === 'standort';
 
-  // Admins keep their explicit customer overview. A fleet context has exactly
-  // one portfolio landing; without that shell level, old portfolio bookmarks
-  // return to the customer overview instead of rendering an orphaned surface.
+  // Admins in a tenant view land like that tenant's customer: a fleet context has exactly one portfolio landing;
+  // without that shell level and with ONE Anlage, the sole Anlage is the landing, so the shell carries its five areas
+  // (Cockpit · Fahrplan · Verlauf · Steuerung · Anlage). Before, the admin stayed on the bare customer overview
+  // (`#/uebersicht`) - the Anlage page without an open Anlage, so no areas in the sidebar. With no or several Anlagen
+  // outside a fleet context the customer overview stays (old portfolio bookmarks return there instead of rendering an
+  // orphaned surface).
   if (shell.isAdmin) {
+    const soleAdminSite = siteIds.length === 1 ? siteIds[0] : null;
     if (fleet) {
       if (route.page === 'uebersicht' || nakedAnlage || invalidSite || standortSeite) return pageRoute('portfolio');
+      return null;
+    }
+    if (soleAdminSite) {
+      if (route.page === 'uebersicht' || nakedAnlage || isPortfolioPage(route.page) || standortSeite) {
+        return anlageRoute(soleAdminSite);
+      }
+      if (invalidSite) return { ...route, siteId: soleAdminSite };
       return null;
     }
     if (isPortfolioPage(route.page) || invalidSite || standortSeite) return pageRoute('uebersicht');

@@ -80,6 +80,16 @@ describe('showOverviewNav', () => {
     expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: 'betreiber', siteCount: 2 })).toBe(false);
   });
 
+  it('an admin in a one-Anlage tenant view gets no Übersicht: the Anlage is the landing, as for the customer', () => {
+    // Sonst wäre „Meine Anlagen" in der Anlage ein Rückweg, der sofort wieder in dieselbe Anlage führt.
+    expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: 'endkunde', siteCount: 1 })).toBe(false);
+    expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: null, siteCount: 1 })).toBe(false);
+    // Ohne Anlage (leere Übersicht), ohne Mandant oder vor dem Laden bleibt der Punkt, wie er war.
+    expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: 'endkunde', siteCount: 0 })).toBe(true);
+    expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: false, betriebsart: null, siteCount: 1 })).toBe(true);
+    expect(showOverviewNav({ isAdmin: true, loaded: false, tenantReady: true, betriebsart: 'endkunde', siteCount: 1 })).toBe(true);
+  });
+
   it('a betreiber gets Portfolio INSTEAD of Übersicht', () => {
     expect(showOverviewNav({ ...base, betriebsart: 'betreiber', siteCount: 1 })).toBe(false);
     expect(showOverviewNav({ ...base, betriebsart: 'betreiber', siteCount: 3 })).toBe(false);
