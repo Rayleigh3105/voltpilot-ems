@@ -100,8 +100,8 @@ public record ProbeResult(String requestId, String errorCode, String message,
         }
 
         /**
-         * The SELF-CONNECTED battery's preview shape (P5/P5d): one row per
-         * field mapping instead of the closed four-channel {@code reading}.
+         * The named-samples shape: one row per field mapping instead of the
+         * closed four-channel {@code reading}.
          */
         public OpResult(String id, boolean ok, String errorCode, String message,
                 List<Sample> samples) {
@@ -152,9 +152,8 @@ public record ProbeResult(String requestId, String errorCode, String message,
     }
 
     /**
-     * What ONE field mapping of a self-connected device received during the
-     * listening window (contract {@code op_result.samples}, P5 {@code
-     * mqtt_local} + the P5d mapping surface).
+     * What ONE field mapping of a device received during the listening window
+     * (contract {@code op_result.samples}).
      *
      * <p>Its OWN block, never {@link Reading}: {@code reading} is the closed
      * four-channel snapshot of a CATALOG device, while these rows are named by
@@ -170,8 +169,7 @@ public record ProbeResult(String requestId, String errorCode, String message,
      */
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record Sample(String channel, String topic, Double raw, Double value, int count,
-            String at) {
+    public record Sample(String channel, Double raw, Double value, int count) {
     }
 
     /**

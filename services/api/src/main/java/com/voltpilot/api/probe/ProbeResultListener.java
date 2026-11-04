@@ -66,10 +66,9 @@ public class ProbeResultListener extends Rueckmeldeweg {
     private static final int MAX_RESULTS = 8;
 
     /**
-     * Wie viele Zuordnungs-Zeilen eine Vorschau höchstens trägt - genau die
-     * Obergrenze, die {@code UserDefinedBatteryDefinition.MAX_MAPPINGS} für
-     * eine Batterie erlaubt. Mehr Zeilen als es Zuordnungen geben KANN wären
-     * keine Antwort auf die gestellte Frage.
+     * Wie viele benannte Messwert-Zeilen ({@code samples}) eine Antwort höchstens
+     * trägt. Mehr Zeilen als es Zuordnungen geben KANN wären keine Antwort auf
+     * die gestellte Frage.
      */
     private static final int MAX_SAMPLES = 16;
     /** A bound on the German sentence a device may hand to a customer. */
@@ -228,11 +227,10 @@ public class ProbeResultListener extends Rueckmeldeweg {
                 boolean ok = line.path("ok").asBoolean(false);
                 JsonNode samplesNode = line.get("samples");
                 if (samplesNode != null && samplesNode.isArray()) {
-                    // Die VORSCHAU einer selbst angebundenen Batterie (P5d): je
-                    // Zuordnung eine Zeile. Sie steht VOR dem reading-Zweig, weil
-                    // sie den Vier-Kanal-Block gar nicht benutzt - und sie darf
-                    // auch bei ok=false stehen: „im Fenster kam nichts an" ist
-                    // genau die Auskunft, wegen der die Vorschau existiert.
+                    // Benannte Messwert-Zeilen: je Zuordnung eine Zeile. Sie
+                    // stehen VOR dem reading-Zweig, weil sie den Vier-Kanal-Block
+                    // gar nicht benutzen - und sie dürfen auch bei ok=false
+                    // stehen: „im Fenster kam nichts an" ist eine Auskunft.
                     List<ProbeResult.Sample> samples = samples(samplesNode);
                     List<ProbeResult.Ausgang> ausgaenge = ausgaenge(line.get("ausgaenge"));
                     results.add(ausgaenge == null
@@ -492,8 +490,7 @@ public class ProbeResultListener extends Rueckmeldeweg {
                 raw = null;
                 value = null;
             }
-            out.add(new ProbeResult.Sample(channel, count > 0 ? text(n, "topic") : null, raw,
-                    value, count, count > 0 ? text(n, "at") : null));
+            out.add(new ProbeResult.Sample(channel, raw, value, count));
         }
         return List.copyOf(out);
     }

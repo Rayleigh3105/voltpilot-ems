@@ -439,32 +439,29 @@ class ProbeResultListenerTest {
         assertThat(line.reading().socPct()).isEqualTo(87.0);
     }
 
-    // ---- Die Zuordnungs-Vorschau der selbst angebundenen Batterie (P5d) ----
+    // ---- Die Zuordnungs-Vorschau (benannte Messwert-Zeilen) ----
 
     /**
      * Die Vorschau-Zeile: je Zuordnung Roh- UND skalierter Wert nebeneinander -
      * genau das Paar, an dem ein Skalierungsfehler sichtbar wird.
      */
     @Test
-    void aBatteryPreviewCarriesOneRowPerMappingWithRawAndValue() {
+    void aPreviewCarriesOneRowPerMappingWithRawAndValue() {
         CompletableFuture<ProbeResult> f = arm();
         listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
-                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
-                        + "{\"channel\":\"cell_min_mv\",\"topic\":\"diybms/bank/3/cell/11\""
-                        + ",\"raw\":3.393,\"value\":3393.0,\"count\":176"
-                        + ",\"at\":\"2026-09-09T18:04:08Z\"}]}")));
+                "{\"id\":\"vorschau\",\"ok\":true,\"samples\":["
+                        + "{\"channel\":\"di_1\""
+                        + ",\"raw\":3.393,\"value\":3393.0,\"count\":176}]}")));
 
         ProbeResult.OpResult line = get(f).results().get(0);
         assertThat(line.ok()).isTrue();
         assertThat(line.reading()).isNull();
         assertThat(line.samples()).hasSize(1);
         ProbeResult.Sample s = line.samples().get(0);
-        assertThat(s.channel()).isEqualTo("cell_min_mv");
-        assertThat(s.topic()).isEqualTo("diybms/bank/3/cell/11");
+        assertThat(s.channel()).isEqualTo("di_1");
         assertThat(s.raw()).isEqualTo(3.393);
         assertThat(s.value()).isEqualTo(3393.0);
         assertThat(s.count()).isEqualTo(176);
-        assertThat(s.at()).isEqualTo("2026-09-09T18:04:08Z");
     }
 
     /**
@@ -476,16 +473,14 @@ class ProbeResultListenerTest {
     void aMappingThatReceivedNothingCarriesNoNumberAtAll() {
         CompletableFuture<ProbeResult> f = arm();
         listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
-                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
-                        + "{\"channel\":\"charge_allowed\",\"count\":0"
-                        + ",\"raw\":0,\"value\":0,\"topic\":\"diybms/status\"}]}")));
+                "{\"id\":\"vorschau\",\"ok\":true,\"samples\":["
+                        + "{\"channel\":\"do_1\",\"count\":0"
+                        + ",\"raw\":0,\"value\":0}]}")));
 
         ProbeResult.Sample s = get(f).results().get(0).samples().get(0);
         assertThat(s.count()).isZero();
         assertThat(s.raw()).isNull();
         assertThat(s.value()).isNull();
-        assertThat(s.topic()).isNull();
-        assertThat(s.at()).isNull();
     }
 
     /**
@@ -497,7 +492,7 @@ class ProbeResultListenerTest {
     void aSampleWithOnlyOneOfTheTwoNumbersKeepsNeither() {
         CompletableFuture<ProbeResult> f = arm();
         listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
-                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
+                "{\"id\":\"vorschau\",\"ok\":true,\"samples\":["
                         + "{\"channel\":\"soc_pct\",\"count\":3,\"value\":41.5}]}")));
 
         ProbeResult.Sample s = get(f).results().get(0).samples().get(0);
@@ -515,7 +510,7 @@ class ProbeResultListenerTest {
     void aRefusedPreviewStillCarriesItsRowsAndItsNamedClass() {
         CompletableFuture<ProbeResult> f = arm();
         listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
-                "{\"id\":\"batterie\",\"ok\":false,\"error_code\":\"no_answer\""
+                "{\"id\":\"vorschau\",\"ok\":false,\"error_code\":\"no_answer\""
                         + ",\"message\":\"Im Lauschfenster kam nichts an.\""
                         + ",\"samples\":[{\"channel\":\"soc_pct\",\"count\":0}]}")));
 
@@ -531,7 +526,7 @@ class ProbeResultListenerTest {
     void aSampleWithoutAChannelIsDropped() {
         CompletableFuture<ProbeResult> f = arm();
         listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
-                "{\"id\":\"batterie\",\"ok\":true,\"samples\":["
+                "{\"id\":\"vorschau\",\"ok\":true,\"samples\":["
                         + "{\"count\":5,\"raw\":1,\"value\":1},"
                         + "{\"channel\":\"voltage_v\",\"count\":5,\"raw\":574,"
                         + "\"value\":574}]}")));
