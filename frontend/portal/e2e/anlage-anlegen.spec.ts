@@ -321,7 +321,10 @@ for (const breite of BREITEN) {
     await dialog.getByLabel('Kennung').fill('k7m2xq3');
     await expect(dialog.getByText('Kennung stimmt: edge-k7m2xq3')).toBeVisible();
     await dialog.getByRole('button', { name: 'Box verbinden', exact: true }).click();
-    await expect(dialog.getByRole('heading', { name: /^Ihre Box meldet gerade ihre Geräte/ })).toBeVisible();
+    // Das ehrliche Ergebnis nach dem Verbinden (QE-4 A), dann weiter ohne Warten.
+    await expect(dialog.getByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }).click();
+    await expect(dialog.getByRole('heading', { name: 'Ihre Box hat sich noch nicht gemeldet' })).toBeVisible();
     await schweigt(page, 'Schritt 3 · Anlage');
     await messeUndFotografiere(page, breite, 'messen-3-anlage');
     expect(cloud.angelegt).toEqual([
@@ -358,7 +361,7 @@ for (const breite of BREITEN) {
     await messeUndFotografiere(page, breite, 'steuern-2-box');
 
     // Ohne Box: „Was haben Sie?“ - Solar und Speicher als Zahlen (Paket 2).
-    await dialog.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }).click();
+    await dialog.getByRole('button', { name: 'Box ist noch nicht da – später verbinden' }).click();
     await expect(dialog.getByRole('heading', { name: 'Was haben Sie?' })).toBeVisible();
     await dialog.getByRole('button', { name: 'Speicher' }).click();
     await messeUndFotografiere(page, breite, 'steuern-3-anlage');

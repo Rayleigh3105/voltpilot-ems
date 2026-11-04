@@ -53,7 +53,12 @@ export type BootOutcome =
   /** No session, first attempt: set the loop guard, redirect to Keycloak. */
   | { kind: 'autoLogin' }
   /** Manual login card (loop guard was set, or throttled - never redirect then). */
-  | { kind: 'login' };
+  | { kind: 'login' }
+  /**
+   * Direktlink vom Gehäuse ohne Sitzung (QE-1 A): die Empfangsseite statt der sofortigen
+   * Weiterleitung - auch bei einer vorgemerkten Referenz (Neuladen, Rückweg von der Anmeldeseite).
+   */
+  | { kind: 'koppel'; lesbar: boolean };
 
 /**
  * Decide what an unauthenticated/authenticated boot renders. Mirrors the
@@ -71,10 +76,14 @@ export function bootOutcome(input: {
   registerRoute: boolean;
   guardWasSet: boolean;
   rateLimited: boolean;
+  /** Was die Empfangsseite zeigen könnte (`koppelLink.koppelEmpfang`); fehlt = keine Box. */
+  koppel?: 'gueltig' | 'unlesbar' | null;
 }): BootOutcome {
   if (input.authenticated) return { kind: 'app' };
   if (input.registerRoute) return { kind: 'register' };
   if (input.rateLimited) return { kind: 'login' };
+  // Die Empfangsseite leitet nie selbst weiter - eine Schleife über Keycloak kann sie nicht bilden.
+  if (input.koppel) return { kind: 'koppel', lesbar: input.koppel === 'gueltig' };
   if (!input.guardWasSet) return { kind: 'autoLogin' };
   return { kind: 'login' };
 }

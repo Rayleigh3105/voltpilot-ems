@@ -47,6 +47,7 @@ function messkunde() {
   vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen({ standorte: [funktionWerkLindach()] }));
   vi.spyOn(api, 'createSite').mockResolvedValue(neueAnlage);
   vi.spyOn(api, 'claimDevice').mockResolvedValue(neueBox);
+  vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [], teilansicht: null } as never);
   vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
   vi.spyOn(api, 'siteEntities').mockResolvedValue(leereKomponenten);
 }
@@ -59,7 +60,9 @@ async function bisZurAnlage() {
   const box = flussHtml();
   fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-  expect(await screen.findByText('Ihre Box meldet gerade ihre Geräte …')).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }));
+  expect(await screen.findByText('Ihre Box hat sich noch nicht gemeldet')).toBeInTheDocument();
   await ruhe();
   return { box, anlage: flussHtml() };
 }

@@ -507,6 +507,10 @@ for (const breite of BREITEN) {
       expect(await woerter(), 'Box').toEqual([]);
       await fluss.getByLabel('Kennung').fill('vp-demo-0001');
       await fluss.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+      // Das ehrliche Ergebnis nach dem Verbinden (QE-4 A) spricht auch kein Steuerwort - dann weiter.
+      await expect(fluss.getByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeVisible();
+      expect(await woerter(), 'Box verbunden').toEqual([]);
+      await fluss.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }).click();
       // Schritt 3 · Anlage - danach ohne Fertig-Bildschirm zurück in den Assistenten (D7).
       const stimmtSo = fluss.getByRole('button', { name: 'Stimmt so', exact: true });
       await expect(stimmtSo).toBeVisible();

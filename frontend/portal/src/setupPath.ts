@@ -102,6 +102,11 @@ export interface SetupPathView {
 export interface SetupPathInput {
   /** Beanspruchte Geräte der Anlage (Overview `deviceCount`). */
   deviceCount?: number | null;
+  /**
+   * Davon gerade mit Lebenszeichen (Overview `onlineCount`). „… und meldet sich“ nur damit; fehlt die
+   * Zahl, sagt der Pfad nichts über das Lebenszeichen (Konzept vp-qr-einstieg §7).
+   */
+  onlineCount?: number | null;
   /** Vom Gerät gemeldete, noch nicht übernommene Quellen. */
   reported?: AdoptableSource[] | null;
   /** Bereits übernommene Entitäten dieser Anlage. */
@@ -140,9 +145,13 @@ export function setupPath(input: SetupPathInput | null | undefined): SetupPathVi
     id: 'geraet',
     num: 1,
     title: geraetDone ? 'VoltPilot-Box verbunden' : 'VoltPilot-Box verbinden',
-    line: geraetDone
-      ? 'Ihre VoltPilot-Box gehört zu dieser Anlage und meldet sich.'
-      : 'Verbinden Sie Ihre VoltPilot-Box mit dieser Anlage - Sie brauchen nur die Geräte-ID.',
+    line: !geraetDone
+      ? 'Verbinden Sie Ihre VoltPilot-Box mit dieser Anlage - Sie brauchen nur ihre Kennung. Sie steht unten auf der Box.'
+      : i.onlineCount == null
+        ? 'Ihre VoltPilot-Box gehört zu dieser Anlage.'
+        : i.onlineCount > 0
+          ? 'Ihre VoltPilot-Box gehört zu dieser Anlage und meldet sich.'
+          : 'Ihre VoltPilot-Box gehört zu dieser Anlage und wartet auf erste Daten. Sobald sie Strom und Internet hat, meldet sie sich.',
     state: geraetDone ? 'done' : 'current',
     // Dieselbe Handlung, derselbe Name wie im Aufbau — und dort findet sie statt (EIN Ort für Boxen).
     action: geraetDone ? null : { kind: 'claim', label: 'VoltPilot-Box hinzufügen' },

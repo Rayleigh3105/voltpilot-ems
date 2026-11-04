@@ -96,20 +96,20 @@ export const startArticles: HelpArticle[] = [
   },
   {
     id: 'box-verbinden', category: 'start', title: 'Die Box verbinden und erste Daten prüfen',
-    summary: 'Die Geräte-ID zuordnen und erkennen, ob Messwerte wirklich ankommen.',
-    keywords: ['Kennung', 'Geräte-ID', 'edge', 'VP', 'Aufkleber', 'Claim', 'Verbinden', 'Erste Daten', 'Unbekannt'],
+    summary: 'Die Box mit dem QR-Code oder ihrer Kennung verbinden und erkennen, ob sie sich wirklich meldet.',
+    keywords: ['Kennung', 'Geräte-ID', 'edge', 'VP', 'Aufkleber', 'QR-Code', 'Scannen', 'Gehäuse', 'Claim', 'Verbinden', 'Erste Daten', 'Lebenszeichen', 'Unbekannt', 'anderes Konto'],
     prerequisite: 'Eine angeschlossene VoltPilot Box und eine Anlage im Portal.',
     sections: [
       { id: 'vorbereiten', title: 'Die richtige Geräte-ID verwenden', paragraphs: [
-        "Die Kennung zeigt Ihre Box in ihrer App unter „Einrichten“ (Referenz-ID dieses Geräts) gleich nach dem ersten Start – ein Gerät muss dafür nicht verbunden sein. Verwenden Sie diese Kennung, nicht die Seriennummer des Wechselrichters. Die Box wird zuerst verbunden; Wechselrichter, Zähler und Ladepunkte legen Sie danach im Aufbau der Anlage an.",
+        "Die Kennung steht unten auf Ihrer Box, unter dem QR-Code: „EDGE-“ und sieben Zeichen. Scannen Sie den QR-Code mit dem Telefon, öffnet sich das Portal und trägt die Kennung selbst ein; verbunden wird erst, wenn Sie es bestätigen. Dieser Browser merkt sich die Kennung bis zum nächsten Tag, auch wenn Sie zwischendurch den Tab schließen. Verwenden Sie diese Kennung, nicht die Seriennummer des Wechselrichters. Die Box wird zuerst verbunden; Wechselrichter, Zähler und Ladepunkte legen Sie danach im Aufbau der Anlage an.",
       ], figure: 'box-verbinden' },
       { id: 'verbinden', title: 'Verbinden und den Eingang kontrollieren', paragraphs: [], steps: [
         'Im Aufbau der Anlage „VoltPilot-Box hinzufügen“ wählen (beim Anlegen einer Anlage fragt der Assistent danach) und die gewünschte Anlage prüfen.',
         'Die Kennung vollständig übertragen und verbinden. Das Feld ergänzt „edge-“ und prüft jedes Zeichen; beachten Sie die Hinweise direkt am Eingabefeld.',
-        'Auf die Rückmeldung warten. Anschließend Geräteverbindung, Zeitpunkt des letzten Kontakts und erste Messwerte prüfen.',
-      ], figure: 'box-verbinden-mobil', note: 'Eine bestätigte Zuordnung und eine aktive Datenverbindung sind zwei verschiedene Schritte. „Wartet auf Daten“ ist noch kein gemessener Betriebszustand.' },
+        'Die Box an Strom und Router anschließen: Netzteil in die Buchse „5V“, Netzwerkkabel von der Buchse „WAN“ zu Ihrem Router. Die Seite nach dem Verbinden aktualisiert sich von selbst und zeigt „Ihre Box ist online“, sobald das erste Lebenszeichen ankommt, meist nach wenigen Minuten.',
+      ], figure: 'box-verbinden-mobil', note: 'Eine bestätigte Zuordnung und eine aktive Datenverbindung sind zwei verschiedene Schritte. „Wartet auf erste Daten“ ist noch kein gemessener Betriebszustand. Meldet sich die Box 15 Minuten lang nicht, nennt die Seite den Weg zu Ihrem Ansprechpartner.' },
       { id: 'fehler', title: 'Wenn die ID nicht angenommen wird', paragraphs: [
-        "Bei unbekannter Kennung vergleichen Sie alle Zeichen mit der App Ihrer Box. Prüfen Sie bei einer bereits verbundenen Box den angezeigten Standort. Gehört sie zu einem anderen Konto, hilft VoltPilot. Verändern Sie die ID nicht, um die Meldung zu umgehen.",
+        "Bei unbekannter Kennung vergleichen Sie alle Zeichen mit dem Aufdruck unten auf Ihrer Box. Gehört die Box schon zu Ihrem Konto, zeigt das Portal ihre Anlage. Gehört sie zu einem anderen Konto, nennt das Portal dieses Konto aus Datenschutzgründen nicht: Häufig hat der Installateur sie in seinem Konto eingerichtet, oder sie war vorher anderswo in Betrieb. Dann klärt VoltPilot mit der Kennung, wem die Box gehört. Verändern Sie die ID nicht, um die Meldung zu umgehen.",
       ] },
     ],
     related: ['geraete', 'probleme', 'kontakt'],

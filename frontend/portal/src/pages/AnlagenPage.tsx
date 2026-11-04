@@ -2484,6 +2484,7 @@ export function AnlageSeite({
             <AnlageSetup
               site={site}
               deviceCount={ovSite?.deviceCount ?? 0}
+              onlineCount={ovSite ? ovSite.onlineCount : null}
               onOpenSteuerung={() => onOpenSub('steuerung')}
               onOpenGeraete={() => onOpenSub('modell')}
               onStay={setSetupPinned}

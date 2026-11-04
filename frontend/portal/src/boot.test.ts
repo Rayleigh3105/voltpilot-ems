@@ -38,6 +38,18 @@ describe('bootOutcome', () => {
     ).toEqual({ kind: 'app' });
   });
 
+  it('Direktlink vom Gehäuse ohne Sitzung: die Empfangsseite statt der Weiterleitung (QE-1 A)', () => {
+    expect(bootOutcome({ ...base, koppel: 'gueltig' })).toEqual({ kind: 'koppel', lesbar: true });
+    expect(bootOutcome({ ...base, koppel: 'unlesbar' })).toEqual({ kind: 'koppel', lesbar: false });
+    // Auch nach dem Rückweg von der Anmeldeseite (Schleifenschutz gesetzt): die Seite leitet nie selbst weiter.
+    expect(bootOutcome({ ...base, koppel: 'gueltig', guardWasSet: true })).toEqual({ kind: 'koppel', lesbar: true });
+    // Mit Sitzung, auf #register und bei Sperre gilt das Bisherige.
+    expect(bootOutcome({ ...base, koppel: 'gueltig', authenticated: true })).toEqual({ kind: 'app' });
+    expect(bootOutcome({ ...base, koppel: 'gueltig', registerRoute: true })).toEqual({ kind: 'register' });
+    expect(bootOutcome({ ...base, koppel: 'gueltig', rateLimited: true })).toEqual({ kind: 'login' });
+    expect(bootOutcome({ ...base, koppel: null })).toEqual({ kind: 'autoLogin' });
+  });
+
   it('the #register route renders the in-portal form without redirecting', () => {
     expect(bootOutcome({ ...base, registerRoute: true })).toEqual({ kind: 'register' });
   });

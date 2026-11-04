@@ -50,12 +50,15 @@ import './AnlageSetup.css';
 export function AnlageSetup({
   site,
   deviceCount,
+  onlineCount = null,
   onOpenSteuerung,
   onOpenGeraete,
   onStay,
 }: {
   site: Site;
   deviceCount: number;
+  /** Boxen dieser Anlage mit Lebenszeichen (Overview `onlineCount`); null = unbekannt. */
+  onlineCount?: number | null;
   onOpenSteuerung: () => void;
   onOpenGeraete: () => void;
   /** Den Pfad sichtbar halten, während der Kunde mitten in der Kette steht. */
@@ -108,7 +111,7 @@ export function AnlageSetup({
   const unguided = reported.length - plans.length;
   const adoptedCount = data?.entities.length ?? 0;
 
-  const view = setupPath({ deviceCount, reported, adoptedCount });
+  const view = setupPath({ deviceCount, onlineCount, reported, adoptedCount });
 
   function runAction(step: SetupStep) {
     switch (step.action?.kind) {

@@ -221,16 +221,14 @@ describe('device-ID field copy (one voice across flow and Geräte drawer)', () =
     expect(ref[11]).toBe(alphabet[sum % alphabet.length]);
   });
 
-  // The help names the box web app's REAL path to the reference, in the
-  // box's own words - no menu entry the box does not have.
-  it('points to the labels the box web app really shows', () => {
-    const box = readFileSync(
-      join(process.cwd(), '../../edge-app/core/internal/web/static/einrichten.html'),
-      'utf8',
-    );
-    for (const label of ['Einrichten', 'Kopplung mit dem VoltPilot-Portal', 'Referenz-ID dieses Geräts']) {
-      expect(DEVICE_ID_FIELD.help).toContain(`„${label}"`);
-      expect(box).toContain(label);
-    }
+  // FA-6 (Konzept vp-qr-einstieg): seit Entscheid 8 steht die Kennung gedruckt unten auf dem
+  // Gehäuse - die Hilfe zeigt dorthin, nicht mehr in die App der Box, und nennt die Form des Aufdrucks,
+  // wie das Gehäuse-Programm sie druckt (Großbuchstaben, `werkstatt.ts → beschriftung`).
+  it('points to the print on the case, in the form the case carries', () => {
+    expect(DEVICE_ID_FIELD.help).toContain('unten auf Ihrer Box');
+    expect(DEVICE_ID_FIELD.help).toContain('„EDGE-“ und sieben Zeichen');
+    expect(DEVICE_ID_FIELD.help).not.toMatch(/App/);
+    const kennung = readFileSync(join(process.cwd(), 'src/werkstatt.ts'), 'utf8');
+    expect(kennung).toContain('klartext: kennungWieGedruckt(ref)');
   });
 });

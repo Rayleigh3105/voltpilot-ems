@@ -1411,6 +1411,13 @@
       "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D5: „Box ist noch nicht da - später verbinden“ statt „Box habe ich noch nicht - später“; derselbe Weg weiter."
     },
     {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "2f469ef86a651834e3c2671fd60980d925e49aebbceb6c62e73f2d68b76d8d2c",
+      "nachher": "be1eb02afabc3975df47de566c8cbb93d5bf12605aa6e0c091717051469e772c",
+      "commit": "fm/vp-qr-einstieg-bau",
+      "grund": "Konzept vp-qr-einstieg (entschieden 04.11.2026, QE-2 A/QE-3 B, M6): der Wortlaut kommt aus koppelTexte.ts (SCHRITT_BOX.spaeter, „Box ist noch nicht da – später verbinden“ mit Gedankenstrich); derselbe Handler onSkip, derselbe Weg weiter."
+    },
+    {
       "datei": "components/StandortVorschau.tsx",
       "vorher": "60e1d0cdcb423982005d8418e981aac1af72dcb44c070b56c4c278ab30514820",
       "nachher": "18b82d5d7bf36b30a9a74f2379a4949dee238f2bbe182d61af3c95c8269e0629",

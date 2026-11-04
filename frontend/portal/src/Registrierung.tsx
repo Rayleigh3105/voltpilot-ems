@@ -5,6 +5,9 @@ import { Input } from '../designsystem/components/forms/Input';
 import { ApiError, register } from './api';
 import { login, loginWithCredentials } from './auth';
 import { PASSWORT_MIN_ZEICHEN, passwortFehler } from './passwortRegel';
+import { KoppelBand } from './components/KoppelBand';
+import { kennungWieGedruckt, offeneKoppelRef } from './koppelLink';
+import { bandText } from './koppelBandText';
 
 /**
  * „Konto erstellen“ - die Selbstregistrierung. Eigenes, nachgeladenes Stück (Bündel-Wächter
@@ -27,6 +30,8 @@ export function RegisterForm({ onBack }: { onBack: () => void }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Die Box aus dem QR-Code (Konzept vp-qr-einstieg, M3): nur die Kennung, kein Server.
+  const [koppelRef] = useState(() => offeneKoppelRef());
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -109,6 +114,7 @@ export function RegisterForm({ onBack }: { onBack: () => void }) {
       }}
       noValidate
     >
+      {koppelRef && <KoppelBand>{bandText('registrierung', kennungWieGedruckt(koppelRef))}</KoppelBand>}
       <h1>Konto erstellen</h1>
       <p className="vp-auth-hint">
         In einer Minute startklar: Konto anlegen, Adresse eintragen, Box verbinden.

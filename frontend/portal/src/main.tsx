@@ -19,7 +19,7 @@ import { BOOT_TIMEOUT_MS, BootTimeoutError, bootOutcome, withTimeout } from './b
 import { BootErrorBoundary, BootSplash } from './components/Boot';
 import { ZustellwegBestaetigenScreen } from './components/ZustellwegBestaetigenScreen';
 import { initInstallApp } from './installApp';
-import { koppelLinkAnnehmen } from './koppelLink';
+import { koppelEmpfang, koppelLinkAnnehmen } from './koppelLink';
 import { isRegisterRoute, zustellwegBestaetigenToken } from './nav';
 import { registerServiceWorker } from './serviceWorker';
 
@@ -73,9 +73,11 @@ const AUTO_LOGIN_GUARD = 'vp.auth.autoLoginRedirect';
 render(<BootSplash />);
 
 // Der Direktlink vom Gehäuse (`#/k/<referenz>`, nginx leitet `/k/<referenz>` hierher): die Referenz
-// in den sessionStorage dieses Tabs und aus der Adresse, BEVOR die Anmeldung die Adresse mitnimmt.
-// So übersteht sie Keycloak und das Neuladen nach der Selbstregistrierung; die App bietet sie an.
-koppelLinkAnnehmen(window.location, (url) => window.history.replaceState(window.history.state, '', url));
+// in den Speicher (Tab und 24 Stunden im Browser) und aus der Adresse, BEVOR die Anmeldung die Adresse
+// mitnimmt. Ohne Sitzung zeigt das Portal dann die Empfangsseite; angemeldet bietet die App sie an.
+const koppelAnnahme = koppelLinkAnnehmen(window.location, (url) =>
+  window.history.replaceState(window.history.state, '', url),
+);
 
 // The confirmation-mail link (`#/zustellweg/bestaetigen?token=...`, §6.6):
 // its API endpoint takes no login, so this short-circuits BEFORE initAuth()
@@ -98,6 +100,7 @@ if (zustellwegToken) {
         registerRoute: isRegisterRoute(),
         guardWasSet: sessionStorage.getItem(AUTO_LOGIN_GUARD) !== null,
         rateLimited: wasRateLimited(),
+        koppel: authenticated ? null : (koppelEmpfang(koppelAnnahme)?.art ?? null),
       });
       switch (outcome.kind) {
         case 'app':
@@ -108,6 +111,11 @@ if (zustellwegToken) {
           // Self-registration lives in the portal, not Keycloak - its route must
           // render without the redirect (the Keycloak login page links here).
           render(<App initialAuth={false} initialView="register" />);
+          return;
+        case 'koppel':
+          // Kein Ziel für den Schleifenschutz: die Empfangsseite leitet nicht selbst weiter.
+          sessionStorage.removeItem(AUTO_LOGIN_GUARD);
+          render(<App initialAuth={false} initialView={outcome.lesbar ? 'koppel' : 'koppel-unlesbar'} />);
           return;
         case 'autoLogin':
           // No session, no stored tokens: go STRAIGHT to the Keycloak login

@@ -3,8 +3,9 @@
  * `EdgeRef.java` (API) und `refCheckChar` (Box, `edge-app/core/internal/agent/agent.go`).
  * Vektoren: `docs/contracts/edge-ref-vectors.json`; alle drei lesen sie.
  *
- * Die Box zeigt ihre Kennung in ihrer App („edge-“ + sechs Zeichen + Prüfzeichen); einen
- * Aufkleber gibt es nicht (Captain, Runde 1). Das Feld nimmt, was der Kunde tippt oder
+ * Die Kennung („edge-“ + sechs Zeichen + Prüfzeichen) steht seit Entscheid 8 (26.10.2026) gedruckt
+ * unten auf dem Gehäuse, groß geschrieben, unter dem QR-Code (`werkstatt.ts → beschriftung`); die
+ * Einrichtungsseite der Box zeigt sie auch. Das Feld nimmt, was der Kunde tippt oder
  * einfügt: Groß-/Kleinschreibung, Leerzeichen, ein fehlender Präfix oder Bindestrich spielen
  * keine Rolle. Ein Tippfehler fällt beim Tippen auf, nicht erst als Gerät, das sich nie meldet.
  *
@@ -80,7 +81,7 @@ export function kennungFehler(p: KennungPruefung, abgeschickt: boolean): string 
     case 'zeichen':
       return 'Diese Kennung stimmt nicht. Eine Kennung enthält kein 0, 1, i, l oder o.';
     case 'pruefzeichen':
-      return 'Diese Kennung stimmt nicht. Bitte vergleichen Sie sie Zeichen für Zeichen mit der App Ihrer Box.';
+      return 'Diese Kennung stimmt nicht. Bitte vergleichen Sie sie Zeichen für Zeichen mit dem Aufdruck unten auf Ihrer Box.';
     case 'unvollstaendig':
       return abgeschickt ? 'Die Kennung hat nach „edge-“ sieben Zeichen.' : null;
     case 'leer':

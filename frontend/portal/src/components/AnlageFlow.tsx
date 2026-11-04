@@ -6,7 +6,11 @@ import { api, ApiError, neueAnfrageKennung, type Device, type Site, type Funktio
 import { anlegeWeg, type AnlegeWeg } from '../anlageOrt';
 import { kennungSendbar, pruefeKennung } from '../edgeRef';
 import { KennungFeld } from './KennungFeld';
-import { DEVICE_ID_FIELD, DEVICE_ID_TAKEN_MSG, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
+import { BoxErgebnis, BoxFremdKonto } from './BoxVerbunden';
+import { KoppelBand } from './KoppelBand';
+import { kennungWieGedruckt, vergissKoppelRef } from '../koppelLink';
+import { bandText, SCHRITT_BOX } from '../koppelTexte';
+import { DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
 import { VpPicker } from './VpPicker';
 import { StandortZuerst } from './StandortZuerst';
 import { AnlageStep, type OrtDerAnlage } from './AnlageSchritt';
@@ -264,6 +268,10 @@ export function AnlageFlow({
             </button>
           </p>
         )}
+        {/* M5 (Konzept vp-qr-einstieg): die Box aus dem QR-Code ist vorgemerkt, verbunden wird im nächsten Schritt. */}
+        {step === 1 && vorschlagKennung && (
+          <KoppelBand>{bandText('assistent', kennungWieGedruckt(vorschlagKennung))}</KoppelBand>
+        )}
         <div className="vp-context-help"><HelpLink article={helpForSetupStep(step)}>Hilfe zu diesem Schritt</HelpLink></div>
         {step === 1 && art === 'standort_zuerst' && (
           <StandortZuerst
@@ -318,6 +326,7 @@ export function AnlageFlow({
             }}
             kennungEntwurf={kennungEntwurf}
             onKennung={setKennungEntwurf}
+            ausQr={vorschlagKennung ?? null}
           />
         )}
         {wiedereinstiegBereit && step === 3 && site && (
@@ -354,9 +363,12 @@ export function AnlageFlow({
 /**
  * Schritt 2 · Box: die VoltPilot-Box über ihre Kennung verbinden (`KennungFeld`). „Box ist noch nicht da“
  * ist ein gültiges Ende - die Anlage gibt es so oder so, die Box holt die Einrichtungs-Karte im Cockpit
- * nach. Kein Warte-Bildschirm (D7): nach dem Verbinden geht es sofort weiter, die Box meldet sich im
- * Hintergrund. Das Verbinden trägt eine Anfrage-Kennung - eine verlorene Antwort wird wiederholt, nie
- * doppelt verbunden.
+ * nach. Das Verbinden trägt eine Anfrage-Kennung - eine verlorene Antwort wird wiederholt, nie doppelt
+ * verbunden. Danach steht das ehrliche Ergebnis (Konzept vp-qr-einstieg, QE-4 A, M8/M9): „wartet auf das
+ * erste Lebenszeichen“ mit Prüfliste oder „Ihre Box ist online“; weiter geht es von dort, ohne Warten.
+ * Kam die Kennung aus dem QR-Code (`ausQr`), sagt der Schritt das (M6), vergisst sie nach dem Verbinden
+ * und behält sie bei „später verbinden“ bis morgen (QE-3 B). Gehört die Box einem anderen Konto, steht
+ * eine eigene Seite statt einer roten Zeile (M11, QE-5 A).
  */
 function GeraetStep({
   sites,
@@ -366,6 +378,7 @@ function GeraetStep({
   onSkip,
   kennungEntwurf,
   onKennung,
+  ausQr = null,
 }: {
   sites: Site[];
   site: Site;
@@ -375,11 +388,15 @@ function GeraetStep({
   /** F9: die getippte Kennung aus dem Entwurf. */
   kennungEntwurf: string;
   onKennung: (kennung: string) => void;
+  /** Die Referenz aus dem Direktlink vom Gehäuse (`koppelLink.ts`), sonst null. */
+  ausQr?: string | null;
 }) {
   const [deviceId, setDeviceId] = useState(kennungEntwurf);
   const [abgeschickt, setAbgeschickt] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [verbunden, setVerbunden] = useState<Device | null>(null);
+  const [fremd, setFremd] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const kennung = useRef(neueAnfrageKennung());
   // Die Plattform verbindet auch freie Kennungen (der Server erlaubt sie nur ihr).
@@ -388,6 +405,7 @@ function GeraetStep({
   // A returning multi-Anlagen customer must be able to pick the target
   // Anlage instead of being pinned to sites[0].
   const multiSite = sites.length > 1;
+  const imFeldAusQr = ausQr != null && pruefeKennung(deviceId).kennung === ausQr;
 
   async function submit() {
     if (busy) return;
@@ -403,14 +421,18 @@ function GeraetStep({
     setErr(null);
     try {
       const device = await api.claimDevice(site.id, gesendet, `${kennung.current}:box:${gesendet}`);
-      onClaimed(device);
+      // Verbunden: die Box aus dem QR-Code ist erledigt, Tab und Browser vergessen sie.
+      if (ausQr && gesendet === ausQr) vergissKoppelRef();
+      setVerbunden(device);
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setFremd(gesendet);
+        return;
+      }
       setErr(
         e instanceof ApiError && e.status === 422
           ? DEVICE_ID_UNKNOWN_MSG
-          : e instanceof ApiError && e.status === 409
-            ? DEVICE_ID_TAKEN_MSG
-            : 'Das Verbinden hat gerade nicht geklappt. Bitte versuchen Sie es noch einmal.',
+          : 'Das Verbinden hat gerade nicht geklappt. Bitte versuchen Sie es noch einmal.',
       );
       inputRef.current?.focus();
     } finally {
@@ -418,12 +440,44 @@ function GeraetStep({
     }
   }
 
+  if (verbunden) {
+    return (
+      <div className="vp-onboarding-step">
+        <BoxErgebnis
+          box={verbunden}
+          anlageName={sites.find((s) => s.id === verbunden.siteId)?.name ?? site.name}
+          onWeiter={() => onClaimed(verbunden)}
+          onSpaeter={() => onClaimed(verbunden)}
+        />
+      </div>
+    );
+  }
+  if (fremd) {
+    return (
+      <div className="vp-onboarding-step">
+        <BoxFremdKonto
+          kennung={fremd}
+          onAndere={() => {
+            // Abbruch dieser Kennung: auch die vorgemerkte aus dem QR-Code ist damit erledigt.
+            if (ausQr && fremd === ausQr) vergissKoppelRef();
+            setFremd(null);
+            setDeviceId('');
+            onKennung('');
+            setAbgeschickt(false);
+            kennung.current = neueAnfrageKennung();
+            requestAnimationFrame(() => inputRef.current?.focus());
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="vp-onboarding-step">
       <h3>Ihre VoltPilot-Box</h3>
       <p className="vp-muted">
-        Tragen Sie die Kennung Ihrer Box ein.
-        {!multiSite && ` Die Box gehört dann zur Anlage „${site.name}“.`}
+        {imFeldAusQr ? SCHRITT_BOX.ausQr : SCHRITT_BOX.ohneQr}
+        {!multiSite && ` Die Box gehört danach zur Anlage „${site.name}“.`}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16 }}>
         {multiSite && (
@@ -451,9 +505,10 @@ function GeraetStep({
           abgeschickt={abgeschickt}
           serverFehler={err}
           frei={frei}
+          ausDemQrCode={ausQr}
           onEnter={() => void submit()}
         />
-        <p className="vp-note" style={{ margin: 0 }}>{DEVICE_ID_FIELD.help}</p>
+        {!imFeldAusQr && <p className="vp-note" style={{ margin: 0 }}>{DEVICE_ID_FIELD.help}</p>}
       </div>
       <Recht aktion="geraet.einrichten"><Button
         variant="primary"
@@ -467,8 +522,14 @@ function GeraetStep({
       </Button></Recht>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
         <button type="button" className="vp-linklike" onClick={onSkip}>
-          Box ist noch nicht da - später verbinden
+          {SCHRITT_BOX.spaeter}
         </button>
+        {imFeldAusQr && (
+          <>
+            <br />
+            {SCHRITT_BOX.vormerken}
+          </>
+        )}
       </p>
     </div>
   );

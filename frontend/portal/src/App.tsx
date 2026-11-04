@@ -1,4 +1,4 @@
-import { darf, ohneStandort, RechteStandort, setSelbstauskunft, teilansichtKopf, useRollen } from './rollen';
+import { darf, ohneStandort, RechteStandort, setSelbstauskunft, sichtbareStandorte, teilansichtKopf, useRollen } from './rollen';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
@@ -39,6 +39,7 @@ import { AppShell } from './shell/AppShell';
 import {
   anlageRoute,
   aufbauHash,
+  boxSeiteHash,
   canonicalAnlageHash,
   canonicalStandortHash,
   canonicalVerbrauchHash,
@@ -125,11 +126,16 @@ import { PortfolioTabs } from './components/PortfolioTabs';
 import { EbenenTabs } from './components/EbenenTabs';
 import { helpForRoute } from './help/context';
 import { useEntscheidFokus } from './useEntscheidFokus';
-import { koppelZiel, offeneKoppelRef, vergissKoppelRef } from './koppelLink';
+import { offeneKoppelRef, vergissKoppelRef } from './koppelLink';
+import type { KoppelSeiteArt } from './components/KoppelSeite';
 const HelpPage = lazy(PAGE_CHUNK.hilfe);
 // „Konto erstellen“: nur die Registrierung braucht es, nie das erste Bild (Bündel-Wächter, Anlage-Flow a1).
 // Keine Seite (kein Eintrag in PAGE_CHUNK, nichts vorzuladen): das Stück lädt, wenn das Formular rendert.
 const RegisterForm = lazy(() => import('./Registrierung').then((m) => ({ default: m.RegisterForm })));
+// Das Band der Anmeldekarte lädt nach (Bündel-Wächter): ohne Box aus dem QR-Code braucht es niemand.
+const AnmeldeBand = lazy(() => import('./components/KoppelBand').then((m) => ({ default: m.AnmeldeBand })));
+const KoppelSeite = lazy(() => import('./components/KoppelSeite').then((m) => ({ default: m.KoppelSeite })));
+const KoppelEmpfang = lazy(() => import('./components/KoppelEmpfang').then((m) => ({ default: m.KoppelEmpfang })));
 // Der Anlege-Assistent des ERSTEN Besuchs - nachgeladen statt mitgeliefert
 // (Perf-Review `vp-cockpit-perf-p7` §2 U2). Er hängt über
 // `Onboarding.tsx → AnlageFlow.tsx → LocationMap` an **Leaflet** (146 kB) und
@@ -279,6 +285,9 @@ const KomponentenFlottePage = lazy(() =>
   })),
 );
 
+/** Was die Karte ohne Sitzung zeigt. */
+type AnmeldeAnsicht = 'login' | 'register' | 'koppel' | 'koppel-unlesbar';
+
 export default function App({
   initialAuth,
   authError = false,
@@ -297,8 +306,11 @@ export default function App({
   sessionExpired?: boolean;
   /** True while main.tsx is navigating to the Keycloak login (no pre-step). */
   redirecting?: boolean;
-  /** 'register' when the visitor deep-linked the portal's #register route. */
-  initialView?: 'login' | 'register';
+  /**
+   * 'register' when the visitor deep-linked the portal's #register route; 'koppel' / 'koppel-unlesbar'
+   * nach dem Scan des Gehäuse-QR ohne Sitzung (Empfangsseite, `KoppelEmpfang`).
+   */
+  initialView?: AnmeldeAnsicht;
 }) {
   if (!initialAuth)
     return (
@@ -331,14 +343,30 @@ function LoginScreen({
   rateLimited?: boolean;
   sessionExpired?: boolean;
   redirecting?: boolean;
-  initialView?: 'login' | 'register';
+  initialView?: AnmeldeAnsicht;
 }) {
-  const [view, setViewState] = useState<'login' | 'register'>(initialView);
+  const [view, setViewState] = useState<AnmeldeAnsicht>(initialView);
   // Keep the URL in sync so a reload on the register form stays on the form
   // (main.tsx only auto-redirects to Keycloak OFF the #register route).
-  function setView(v: 'login' | 'register') {
+  function setView(v: AnmeldeAnsicht) {
     setViewState(v);
     window.location.hash = v === 'register' ? '#register' : '';
+  }
+  // Die Box aus dem QR-Code (Tab oder 24 Stunden im Browser): Band über der Anmeldekarte (M4).
+  const [koppelRef] = useState(() => offeneKoppelRef());
+  if (view === 'koppel' || view === 'koppel-unlesbar') {
+    return (
+      <AuthScreen>
+        <Suspense fallback={<p className="vp-auth-hint" aria-busy="true">Wird geladen …</p>}>
+          <KoppelEmpfang
+            kennung={view === 'koppel' ? koppelRef : null}
+            onKontoErstellen={() => setView('register')}
+            onAnmelden={() => login()}
+          />
+        </Suspense>
+        <TrustRow />
+      </AuthScreen>
+    );
   }
   if (redirecting) {
     // The Keycloak redirect is already underway (no pre-step). The panel is
@@ -378,6 +406,11 @@ function LoginScreen({
       )}
       {view === 'login' ? (
         <>
+          {koppelRef && (
+            <Suspense fallback={null}>
+              <AnmeldeBand kennung={koppelRef} />
+            </Suspense>
+          )}
           <h1>Willkommen zurück</h1>
           <p className="vp-auth-hint">{ANMELDE_TEXT.vpLoginHint}</p>
           {authError ? (
@@ -1264,30 +1297,63 @@ function UnifiedPortal() {
   }, [isAdmin, loaded, error, tenantReady, darf, setOnboardingDismissed]);
   const showOnboarding = !isAdmin && !onboardingDismissed && (onboardingGewollt || onboardingOffen);
 
-  // Der Direktlink vom Gehäuse (`koppelLink.ts`, Plan D3): die beim Start gemerkte Referenz dorthin, wo
-  // eine Box verbunden wird. Ohne Anlage bietet sie der Einrichtungs-Assistent an und vergisst sie an
-  // seinem Ende; mit Anlage öffnet der Aufbau „Box hinzufügen“ mit ihr im Feld; ein VoltPilot-Admin
-  // landet in der Werkstatt bei genau dieser Box. Verbunden wird nie von selbst.
+  // Der Direktlink vom Gehäuse (`koppelLink.ts`, Konzept vp-qr-einstieg QE-2 A): die gemerkte Referenz
+  // dorthin, wo eine Box verbunden wird. Ohne Anlage bietet sie der Einrichtungs-Assistent an, mit einer
+  // Anlage der Aufbau („Box hinzufügen“), mit mehreren erst die Wahl der Anlage. Gehört die Box schon zum
+  // Konto oder fehlt das Recht, steht eine eigene Seite. Ein VoltPilot-Admin landet in der Werkstatt.
+  // Entschieden wird EINMAL je Laden: Legt der Assistent in Schritt 1 die Anlage an, springt die Weiche
+  // nicht mehr um (Befund §7). Vergessen wird die Referenz erst nach dem Verbinden, beim Abbruch oder beim
+  // Abmelden (QE-3 B); verbunden wird nie von selbst.
   const [koppelRef, setKoppelRef] = useState<string | null>(() => offeneKoppelRef());
+  const [koppelSeite, setKoppelSeite] = useState<KoppelSeiteArt | null>(null);
+  const koppelEntschieden = useRef(false);
   useEffect(() => {
-    if (!koppelRef) return;
+    if (!koppelRef || koppelEntschieden.current) return;
     if (!isAdmin && (!loaded || error != null || !tenantReady)) return;
-    const ziel = koppelZiel(koppelRef, {
+    koppelEntschieden.current = true;
+    const ref = koppelRef;
+    const lage = {
       admin: isAdmin,
       siteIds: sites.map((s) => s.id),
+      boxen: devices,
       darfAnlegen: darf('anlage.verwalten'),
-      aufbau: (siteId, ref) => aufbauHash(siteId, 'box', { ref }),
-      werkstatt: (ref) => werkstattHash(ref),
+      darfVerbinden: darf('geraet.einrichten') || sichtbareStandorte().some((o) => o.rechte.includes('geraet.einrichten')),
+      aufbau: (siteId: string, r: string) => aufbauHash(siteId, 'box', { ref: r }),
+      werkstatt: (r: string) => werkstattHash(r),
+    };
+    // Die Weiche lädt nach (Bündel-Wächter): das erste Bild trägt sie nicht.
+    void import('./koppelZiel').then(({ koppelZiel }) => {
+      const ziel = koppelZiel(ref, lage);
+      switch (ziel.art) {
+        case 'assistent':
+          setOnboardingDismissed(false);
+          setOnboardingOffen(true);
+          return;
+        case 'adresse':
+          // Die Werkstatt ist das Ende für den Admin; der Aufbau vergisst die Referenz selbst (verbunden/Abbruch).
+          if (isAdmin) {
+            vergissKoppelRef();
+            setKoppelRef(null);
+          }
+          window.location.hash = ziel.hash;
+          return;
+        case 'schonDeins':
+          // Nichts mehr zu tun: die Referenz ist erledigt.
+          vergissKoppelRef();
+          setKoppelSeite(ziel);
+          return;
+        default:
+          setKoppelSeite(ziel);
+      }
     });
-    if (ziel.art === 'assistent') {
-      setOnboardingDismissed(false);
-      setOnboardingOffen(true);
-      return;
+  }, [koppelRef, isAdmin, loaded, error, tenantReady, sites, devices, darf, setOnboardingDismissed]);
+  function koppelSeiteSchliessen(vergessen: boolean) {
+    if (vergessen) {
+      vergissKoppelRef();
+      setKoppelRef(null);
     }
-    vergissKoppelRef();
-    setKoppelRef(null);
-    if (ziel.art === 'adresse') window.location.hash = ziel.hash;
-  }, [koppelRef, isAdmin, loaded, error, tenantReady, sites, darf, setOnboardingDismissed]);
+    setKoppelSeite(null);
+  }
 
   // The always-visible shell action for the one case with no obvious entry
   // point: a customer with exactly one Anlage (no Übersicht, no Anlagen-Liste).
@@ -1302,7 +1368,8 @@ function UnifiedPortal() {
   function finishOnboarding(ziel?: Route) {
     setOnboardingDismissed(true);
     setOnboardingOffen(false);
-    vergissKoppelRef();
+    // Die Referenz aus dem QR-Code vergisst der Schritt „Box“ beim Verbinden; „später verbinden“ behält
+    // sie bis morgen (QE-3 B) - beim nächsten Laden öffnet dann der Aufbau „Box hinzufügen“.
     setKoppelRef(null);
     void reload();
     // Modus „nur messen“ (`anlegeNurMessen.ts`): das Ende nennt „Standort › Messstellen“ als Ziel.
@@ -1485,6 +1552,30 @@ function UnifiedPortal() {
           mandant={tenants.find((t) => t.id === tenantId)?.name ?? null}
           onMandanten={() => { changeTenant(null); navigate('mandanten'); }}
         />
+      ) : koppelSeite && koppelRef ? (
+        <LazyBoundary fallback={null}>
+          <KoppelSeite
+            seite={koppelSeite}
+            kennung={koppelRef}
+            sites={sites}
+            devices={devices}
+            kundenadministratoren={selbst?.kundenadministratoren ?? []}
+            onAnlage={(siteId) => {
+              koppelSeiteSchliessen(false);
+              window.location.hash = aufbauHash(siteId, 'box', { ref: koppelRef });
+            }}
+            onBoxAnsehen={(siteId) => {
+              koppelSeiteSchliessen(true);
+              window.location.hash = boxSeiteHash(siteId, koppelRef);
+            }}
+            onCockpit={(siteId) => {
+              koppelSeiteSchliessen(true);
+              navigate(anlageRoute(siteId));
+            }}
+            // Wahl: „später verbinden“ behält die Referenz bis morgen; M12: „Zur Übersicht“ ist der Abbruch.
+            onSchliessen={() => koppelSeiteSchliessen(koppelSeite.art !== 'wahl')}
+          />
+        </LazyBoundary>
       ) : leer ? (
         <Card padding="lg" radius="lg"><h1>Kein Standort zugewiesen</h1><p>{selbst?.text}</p>
           {selbst?.kuenftig.map((z) => <p key={`${z.standort}-${z.ab}`}>{z.text}</p>)}
@@ -1493,7 +1584,7 @@ function UnifiedPortal() {
         <LazyBoundary fallback={null}>
           <OnboardingWizard
             sites={sites}
-            vorschlagKennung={koppelRef}
+            vorschlagKennung={koppelRef ? offeneKoppelRef() : null}
             // B1: die neue Anlage steht sofort in der Liste - nie „Noch keine Anlage" neben einer angelegten.
             onSiteCreated={(s) => void reload(s.id, { background: true })}
             onDone={(ziel) => finishOnboarding(ziel)}

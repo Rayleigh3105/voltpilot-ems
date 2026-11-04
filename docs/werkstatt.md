@@ -102,15 +102,27 @@ geschrieben nur über die BYPASSRLS-Rolle `voltpilot_admin` (`WerkstattRepositor
 
 Der QR-Code trägt `https://portal.voltpilot.de/k/<referenz>` (42 Zeichen, QR-Code Fassung 3, 29 × 29 Module,
 Fehlerkorrektur M). nginx leitet `/k/<referenz>` auf `/#/k/<referenz>` um (`frontend/portal/nginx.conf`). Das
-Portal liest die Referenz beim Start, prüft ihr Prüfzeichen, legt sie in den `sessionStorage` dieses Tabs und nimmt
-den Link aus der Adresse (`koppelLink.ts`). So übersteht sie die Anmeldung und das Neuladen nach der
-Selbstregistrierung (K1). Danach:
+Portal liest die Referenz beim Start, prüft ihr Prüfzeichen, legt sie in den `sessionStorage` dieses Tabs und
+zusätzlich 24 Stunden in den `localStorage` dieses Browsers (`vp.koppel.vormerk`, nur die Referenz mit ihrer Frist;
+Entscheid QE-3 B vom 04.11.2026) und nimmt den Link aus der Adresse (`koppelLink.ts`). So übersteht sie die
+Anmeldung, das Neuladen nach der Selbstregistrierung (K1), einen geschlossenen Tab und „später verbinden“.
+Gelöscht wird sie nach dem Verbinden, beim Abbruch und beim Abmelden. Auf ein anderes Gerät reist sie nicht; dafür
+steht sie unten auf der Box. Die Seiten danach (Konzept `vp-qr-einstieg`, entschieden 04.11.2026):
 
+- ohne Sitzung: die Empfangsseite „Ihre VoltPilot-Box ist da“ mit der Kennung, drei Schritten und „Konto
+  erstellen“ / „Ich habe schon ein Konto“; bei falschem Prüfzeichen „Dieser Code ist nicht vollständig lesbar“
+  mit Eingabefeld. Beide fragen den Server nichts und zeigen nur, was im Code steht. Registrierung und Anmeldung
+  tragen ein Box-Band (die Anmeldeseite über `deploy/keycloak/…/js/box-band.js`, gleiche Herkunft `/auth/`);
 - ein Kunde ohne Anlage: der Einrichtungs-Assistent, im Schritt „Box“ steht die Referenz im Feld;
-- ein Kunde mit Anlage: der Aufbau der ersten Anlage mit „VoltPilot-Box hinzufügen“ (`?neu=box&ref=`);
+- ein Kunde mit einer Anlage: deren Aufbau mit „VoltPilot-Box hinzufügen“ (`?neu=box&ref=`), mit mehreren erst
+  „An welcher Anlage steht die Box?“;
+- die Box steht schon in der eigenen Geräteliste: „Diese Box gehört schon zu Ihnen“; ohne Recht
+  `geraet.einrichten`: „Für das Verbinden fehlt Ihnen das Recht“ mit den Kundenadministratoren;
 - ein VoltPilot-Admin: die Werkstatt bei genau dieser Box.
 
-Verbunden wird nie von selbst; der Kunde drückt selbst auf „Verbinden“.
+Verbunden wird nie von selbst; der Kunde drückt selbst auf „Verbinden“. Danach zeigt das Portal ehrlich, ob sich
+die Box schon gemeldet hat („wartet auf das erste Lebenszeichen“ mit Prüfliste, nach 15 Minuten der Weg zum
+Ansprechpartner), und bei einer Box eines anderen Kontos eine eigene Seite, die dieses Konto nicht nennt.
 
 ## Was fehlt
 

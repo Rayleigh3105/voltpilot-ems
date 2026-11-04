@@ -84,6 +84,15 @@ describe('setupPath - die drei Schritte', () => {
     expect(view.steps[2].action).toBeNull();
   });
 
+  it('„meldet sich“ nur mit Lebenszeichen (Konzept vp-qr-einstieg §7)', () => {
+    expect(setupPath({ deviceCount: 1, onlineCount: 1 }).steps[0].line).toBe('Ihre VoltPilot-Box gehört zu dieser Anlage und meldet sich.');
+    const stumm = setupPath({ deviceCount: 1, onlineCount: 0 }).steps[0].line;
+    expect(stumm).toContain('wartet auf erste Daten');
+    expect(stumm).not.toContain('und meldet sich');
+    // Unbekannt ist keine Null - und kein „meldet sich“.
+    expect(setupPath({ deviceCount: 1 }).steps[0].line).toBe('Ihre VoltPilot-Box gehört zu dieser Anlage.');
+  });
+
   it('hakt Schritt 1 ab und bietet die gemeldeten Geräte an', () => {
     const view = setupPath({
       deviceCount: 1,

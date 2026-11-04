@@ -163,9 +163,13 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     expect(await screen.findByText(/Diese Kennung kennen wir nicht/)).toBeInTheDocument();
     schweigt('Schritt 2 · Box, abgelehnt');
     fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    // Das Ergebnis nach dem Verbinden (QE-4 A) spricht auch kein Steuer- oder Geldwort.
+    expect(await screen.findByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
+    schweigt('Schritt 2 · Box, verbunden');
+    fireEvent.click(screen.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }));
 
-    // Schritt 3: Anlage — die Box sucht, Solar und Speicher, das Register mit Vorschau.
-    expect(await screen.findByText('Ihre Box meldet gerade ihre Geräte …')).toBeInTheDocument();
+    // Schritt 3: Anlage — die Box wartet auf erste Daten, Solar und Speicher, das Register mit Vorschau.
+    expect(await screen.findByText('Ihre Box hat sich noch nicht gemeldet')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Speicher' }));
     fireEvent.click(screen.getByRole('button', { name: 'Stimmt so' }));
     expect(await screen.findByText(/Kapazität des Speichers als Zahl/)).toBeInTheDocument();
@@ -194,7 +198,7 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     render(<AnlageFlow sites={[]} wirt="assistent" onDone={onDone} onSkipAll={() => {}} />);
     await ruhe();
     await anlegenBisZurBox();
-    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da – später verbinden' }));
     expect(await screen.findByRole('heading', { name: 'Was haben Sie?' })).toBeInTheDocument();
     schweigt('Schritt 3 ohne Box');
     fireEvent.click(screen.getByRole('button', { name: 'Später ergänzen' }));
@@ -207,7 +211,7 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     render(<AnlageFlow sites={[anlageLindach]} wirt="assistent" onDone={onDone} onSkipAll={() => {}} />);
     await ruhe();
     expect(leiste()).toEqual(['Adresse', 'Box', 'Anlage']);
-    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da – später verbinden' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Später ergänzen' }));
     schweigt('Ende nach dem Wiedereinstieg');
     expect(onDone).toHaveBeenCalledWith(MESSSTELLEN_LINDACH);
@@ -339,7 +343,7 @@ describe('Gegenprobe: derselbe Abtaster beißt beim Kunden mit Steuern', () => {
     expect(steuerGeldWoerter(lesbar())).toEqual(expect.arrayContaining(['veräußerung', 'vergüt', 'netzladen']));
 
     await anlegenBisZurBox();
-    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da – später verbinden' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Später ergänzen' }));
     expect(onDone).toHaveBeenCalledWith(anlageRoute(neueAnlage.id));
   });
@@ -349,7 +353,7 @@ describe('„Anlage anlegen" als Drawer: das Ende führt zu den Messstellen, ins
   async function bisZumEnde() {
     await ruhe();
     await anlegenBisZurBox();
-    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da – später verbinden' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Später ergänzen' }));
   }
 

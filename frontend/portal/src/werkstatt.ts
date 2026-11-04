@@ -12,7 +12,7 @@
  *
  * Reines Modul: kein React, kein Netzwerk.
  */
-import { koppelLink } from './koppelLink';
+import { kennungWieGedruckt, koppelLink } from './koppelLink';
 
 // ── Formen der API (/api/v1/admin/werkstatt) ────────────────────────────────
 
@@ -107,7 +107,7 @@ export interface Beschriftung {
 }
 
 export function beschriftung(ref: string): Beschriftung {
-  return { klartext: ref.toUpperCase(), link: koppelLink(ref) };
+  return { klartext: kennungWieGedruckt(ref), link: koppelLink(ref) };
 }
 
 /**

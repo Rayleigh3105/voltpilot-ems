@@ -143,9 +143,13 @@ describe('MessenAssistent — „Messanlage anlegen" öffnet den Anlege-Fluss im
     fireEvent.change(within(fluss).getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
     fireEvent.click(within(fluss).getByRole('button', { name: 'Box verbinden' }));
     await waitFor(() => expect(claimDevice).toHaveBeenCalledTimes(1));
+    // Das Ergebnis nach dem Verbinden (QE-4 A) - weiter ohne Warten.
+    expect(await within(fluss).findByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
+    schweigt('Schritt 2 · Box, verbunden');
+    fireEvent.click(within(fluss).getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }));
 
     // Schritt 3: Anlage - und danach ohne Fertig-Bildschirm zurück in den Assistenten (D7).
-    expect(await within(fluss).findByText('Ihre Box meldet gerade ihre Geräte …')).toBeInTheDocument();
+    expect(await within(fluss).findByText('Ihre Box hat sich noch nicht gemeldet')).toBeInTheDocument();
     schweigt('Schritt 3 · Anlage');
     fireEvent.click(within(fluss).getByRole('button', { name: 'Stimmt so' }));
 

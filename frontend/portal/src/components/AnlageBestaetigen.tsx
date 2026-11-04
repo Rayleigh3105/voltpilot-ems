@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
-import { api, ApiError, type Site, type SiteAsset, type SiteEntities } from '../api';
+import { api, ApiError, deviceLiveStatus, type Site, type SiteAsset, type SiteEntities } from '../api';
 import {
   bekannterSpeicher,
   erzeugerPlaene,
@@ -67,6 +67,9 @@ export function AnlageBestaetigen({
   onEntwurf?: (e: TeileEntwurf) => void;
 }) {
   const [entities, setEntities] = useState<SiteEntities | null>(null);
+  // Ob die Box dieser Anlage gerade ein Lebenszeichen gibt (Konzept vp-qr-einstieg §7): null = noch
+  // unbekannt. „meldet gerade ihre Geräte“ nur mit echtem Lebenszeichen, nie für eine stumme Box.
+  const [meldetSich, setMeldetSich] = useState<boolean | null>(null);
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
   const [solarAn, setSolarAn] = useState(entwurf?.solarAn ?? true);
   const [speicherAn, setSpeicherAn] = useState(entwurf?.speicherAn ?? false);
@@ -107,6 +110,16 @@ export function AnlageBestaetigen({
         (d) => aktiv && setEntities(d),
         () => {
           // Ein Aussetzer lässt die Liste stehen, wie sie ist.
+        },
+      );
+      api.listDevices().then(
+        (liste) => {
+          if (!aktiv) return;
+          const boxen = liste.eintraege.filter((d) => d.siteId === site.id);
+          setMeldetSich(boxen.some((d) => deviceLiveStatus(d) === 'online'));
+        },
+        () => {
+          // Ein Aussetzer lässt die Aussage stehen, wie sie ist.
         },
       );
     };
@@ -225,11 +238,21 @@ export function AnlageBestaetigen({
     );
   }
 
-  const titel = mitBox ? (gefunden ? 'Das hat Ihre Box gefunden' : 'Ihre Box meldet gerade ihre Geräte\u00a0…') : 'Was haben Sie?';
+  const titel = mitBox
+    ? gefunden
+      ? 'Das hat Ihre Box gefunden'
+      : meldetSich === true
+        ? 'Ihre Box meldet gerade ihre Geräte\u00a0…'
+        : meldetSich === false
+          ? 'Ihre Box hat sich noch nicht gemeldet'
+          : 'Ihre Box und ihre Geräte'
+    : 'Was haben Sie?';
   const unterzeile = mitBox
     ? gefunden
       ? 'Stimmt das? Dann übernehmen wir es so.'
-      : 'Sie können schon weitermachen, bevor sie fertig ist.'
+      : meldetSich === true
+        ? 'Sie können schon weitermachen, bevor sie fertig ist.'
+        : 'Sobald sie Strom und Internet hat, meldet sie ihre Geräte. Sie können schon weitermachen.'
     : 'Zwei Zahlen genügen für die Sonnenprognose. Alles ist freiwillig.';
 
   return (
@@ -248,7 +271,7 @@ export function AnlageBestaetigen({
               </span>
               <span className="vp-fund-text">
                 <strong>Wechselrichter, Speicher und Zähler</strong>
-                <span className="vp-muted">werden gesucht</span>
+                <span className="vp-muted">{meldetSich === true ? 'werden gesucht' : 'wartet auf erste Daten der Box'}</span>
               </span>
             </li>
           )}

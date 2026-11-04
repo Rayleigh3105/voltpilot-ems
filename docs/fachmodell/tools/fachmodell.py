@@ -884,6 +884,12 @@ VERFEINERUNGEN = {
 # wörtlich ins Glossar kommen: Summenwert (PR 855), Ersatzwert/Korrektur/Widerruf (PR 909).
 # ---------------------------------------------------------------------------------------------
 ABSCHNITTE_NACH = {
+    "box": ["""**Box verbinden nach dem Scan des Gehäuse-QR (Konzept vp-qr-einstieg, entschieden 04.11.2026: QE-1 A, QE-2 A, QE-3 B, QE-4 A, QE-5 A).**
+Die Kennung steht unten auf der Box, groß gedruckt wie „EDGE-K7M2XQ3“ („EDGE-“ und sieben Zeichen); der QR-Code darüber führt ins Portal. Das Portal zeigt sie überall so, wo der Kunde sie mit dem Aufdruck vergleicht, und sendet die kanonische Form („edge-k7m2xq3“).
+Ohne Sitzung steht die Empfangsseite „Ihre VoltPilot-Box ist da“: nur, was im Code steht, keine Serverabfrage, nie ob die Box existiert, wem sie gehört oder ob sie online ist. Ein falsches Prüfzeichen heißt „Dieser Code ist nicht vollständig lesbar“.
+Die Handlung heißt „Box verbinden“ (im Aufbau „VoltPilot-Box hinzufügen“), nie „koppeln“ oder „claim“. Danach sagt das Portal „wartet auf das erste Lebenszeichen“ mit Prüfliste und erst mit echtem Lebenszeichen „Ihre Box ist online“; „meldet sich“ steht nie für eine stumme Box.
+Gehört die Box einem anderen Konto, nennt das Portal dieses Konto nicht („Diese Box ist schon mit einem anderen Konto verbunden“); gehört sie schon zum eigenen, sagt es „Diese Box gehört schon zu Ihnen“.
+Wortlaut: PORTAL/koppelTexte.ts; Weiche: PORTAL/koppelLink.ts."""],
     "datenquelle": ["""**Anbindung statt Datenquelle (Konzept „Ein Gerät, ein Eintrag“, Captain 23.10.2026, GD-5 A).**
 Der Aufbau zeigt, was man anfassen kann — je Kasten ein Eintrag; der Weg zu einem Gerät ist Teil seiner Seite und heißt dort „Anbindung“ (Adresse, lesende Box, Empfang, Last, Verlauf).
 Die Kennung DQ-n bleibt die stabile Kennung im Box-Verkehr, im Protokoll und im Support; der Kunde sieht sie klein neben der Anbindung („Kennung DQ-1“).

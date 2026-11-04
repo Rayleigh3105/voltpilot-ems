@@ -48,25 +48,22 @@ export function normalizeDeviceIdInput(value: string): string {
 
 /**
  * Shared claim-field copy so the flow and the Box dialog speak with ONE voice
- * about where the Kennung comes from - the box shows it in its own app; there
- * is no sticker (Captain, Anlage-Flow a1 Runde 1: „Wir haben keinen Aufkleber,
- * sag einfach das man die Kennung eintragen soll“). The path and labels are the
- * box web app's (edge-app/core/internal/web/static/einrichten.html, card
- * #portal); the box shows the reference from its first start, with no device
- * connected - coupling comes first, the devices are then added in the portal.
- * The check itself lives in `edgeRef.ts`.
+ * about where the Kennung comes from: seit Entscheid 8 (26.10.2026) steht sie
+ * gedruckt unten auf dem Gehäuse, unter dem QR-Code („EDGE-“ und sieben Zeichen,
+ * `werkstatt.ts → beschriftung`); die Einrichtungsseite der Box zeigt sie weiter
+ * als „Referenz-ID dieses Geräts“ (edge-app `web/static/einrichten.html`). Der
+ * QR-Code führt direkt ins Portal (`koppelLink.ts`). The check itself lives in
+ * `edgeRef.ts`.
  */
 export const DEVICE_ID_FIELD = {
   label: 'Kennung',
   placeholder: 'z. B. edge-k7m2xq3',
-  // Die Einrichtungsseite der Box nennt sie „Referenz-ID dieses Geräts“ (edge-app `web/static/einrichten.html`,
-  // Karte #portal); einen Menüpunkt „Gerät verbinden“ gibt es dort nicht.
-  help: 'Die Kennung zeigt Ihre Box in ihrer App unter „Einrichten" → „Kopplung mit dem VoltPilot-Portal" als „Referenz-ID dieses Geräts". Sie steht dort gleich nach dem ersten Start - ein Gerät muss dafür nicht verbunden sein.',
+  help: 'Die Kennung steht unten auf Ihrer Box, unter dem QR-Code: „EDGE-“ und sieben Zeichen. Groß- oder Kleinschreibung spielt keine Rolle. Scannen Sie den QR-Code, steht sie schon im Feld.',
 } as const;
 
 /** One 422 message for both gates (unknown register ID OR a ref that is no box Kennung). */
 export const DEVICE_ID_UNKNOWN_MSG =
-  'Diese Kennung kennen wir nicht. Bitte vergleichen Sie sie Zeichen für Zeichen mit der App Ihrer Box - schon ein Tippfehler verhindert die Verbindung.';
+  'Diese Kennung kennen wir nicht. Bitte vergleichen Sie sie Zeichen für Zeichen mit dem Aufdruck unten auf Ihrer Box - schon ein Tippfehler verhindert die Verbindung.';
 
 /** 409: die Kennung gehört schon einem anderen Konto. */
 export const DEVICE_ID_TAKEN_MSG =

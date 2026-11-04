@@ -242,6 +242,7 @@ import {
   UEMS_WIRKSAMKEIT,
   UEMS_WORTLAUT,
 } from './glossar';
+import * as koppelTexte from './koppelTexte';
 
 /**
  * Portal v3 · M7 — the copy guard.
@@ -4802,5 +4803,61 @@ describe('Konzept k1 · Womit laden? - ein Modus, ein Name, ein Versprechen', ()
     for (const v of ['Nur Überschuss, sonst Pause', 'Immer etwas, Sonne obendrauf', 'Sonne, dazu der Speicher-Rest', 'Netzstrom, wenn er billig ist', 'So laden']) {
       expect(hilfe).toContain(v);
     }
+  });
+});
+
+/**
+ * QR-Einstieg (Konzept vp-qr-einstieg, entschieden 04.11.2026): die Seiten nach dem Scan des Gehäuse-QR.
+ * Jeder Satz aus `koppelTexte.ts` (Funktionen mit Beispielwerten) spricht das Kunden-Wörterbuch in Sie-Form:
+ * „VoltPilot-Box“/„Box“, „Kennung“, „verbinden“ - nie „Edge“, „Device“, „koppeln“ oder „claim“. Und
+ * „meldet sich“ steht nur dort, wo die Seite ein echtes Lebenszeichen hat (M9, nie im Wartezustand M8).
+ */
+describe('QR-Einstieg · die Seiten nach dem Scan sprechen das Kunden-Wörterbuch', () => {
+  const saetze = (): Array<{ wo: string; text: string }> => {
+    const out: Array<{ wo: string; text: string }> = [];
+    const sammeln = (wo: string, wert: unknown): void => {
+      if (typeof wert === 'string') out.push({ wo, text: wert });
+      else if (typeof wert === 'function') {
+        const f = wert as (...a: unknown[]) => unknown;
+        sammeln(wo, f.length >= 2 ? f('EDGE-K7M2XQ3', 'Zuhause') : f(f.name === 'mehrereAnlagen' ? 2 : 'EDGE-K7M2XQ3'));
+      } else if (Array.isArray(wert)) wert.forEach((w, i) => sammeln(`${wo}[${i}]`, w));
+      else if (wert && typeof wert === 'object') for (const [k, v] of Object.entries(wert)) sammeln(`${wo}.${k}`, v);
+    };
+    for (const [name, wert] of Object.entries(koppelTexte)) {
+      if (name === 'bandText') {
+        for (const ort of ['registrierung', 'anmeldung', 'assistent'] as const) sammeln(`bandText ${ort}`, koppelTexte.bandText(ort, 'EDGE-K7M2XQ3'));
+      } else sammeln(name, wert);
+    }
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    expect(saetze().length).toBeGreaterThan(50);
+  });
+
+  it('kein Satz trägt ein verbotenes oder internes Wort, keiner duzt', () => {
+    const violations: string[] = [];
+    for (const { wo, text } of saetze()) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN]) {
+        const m = re.exec(ohneAusnahmen(text));
+        if (m) violations.push(`${wo}: „${m[0]}“ in „${text}“ — ${why}`);
+      }
+      if (/\b(?:edge|device|claim|koppeln|gekoppelt|Kopplung)\b/i.test(text.replace(/EDGE-K7M2XQ3|„EDGE-“/g, ''))) {
+        violations.push(`${wo}: internes Box-Wort in „${text}“`);
+      }
+      if (/\b(?:du|dein(?:e|en|em|er|es)?|euch)\b/i.test(text)) violations.push(`${wo}: duzt in „${text}“`);
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('„meldet sich“ nur mit Lebenszeichen: der Wartezustand behauptet es nie', () => {
+    const warten = [koppelTexte.ERGEBNIS.wartetChip, koppelTexte.ERGEBNIS.wartetTitel, koppelTexte.ERGEBNIS.stillTitel];
+    for (const t of warten) expect(t).not.toMatch(/meldet sich(?! gerade nicht| noch nicht)|ist online/);
+    expect(koppelTexte.ERGEBNIS.onlineTitel).toBe('Ihre Box ist online');
+  });
+
+  it('vor der Anmeldung sagt die Empfangsseite nichts, was nur der Server wissen kann', () => {
+    const oeffentlich = [...JSON.stringify(koppelTexte.EMPFANG).split('","'), ...JSON.stringify(koppelTexte.UNLESBAR).split('","')];
+    for (const t of oeffentlich) expect(t).not.toMatch(/online|verbunden mit|gehört (?:schon|bereits)|Werkstatt|zuletzt|Konto „/);
   });
 });

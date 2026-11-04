@@ -3,6 +3,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { DEVICE_ID_FIELD, normalizeDeviceIdInput } from '../anlageFlow';
 import { kennungFehler, pruefeKennung } from '../edgeRef';
+import { FELD_AUS_QR } from '../koppelBandText';
 
 /**
  * Das EINE Feld für die Kennung einer VoltPilot-Box (Anlage-Flow a1, B4): im Anlege-Schritt
@@ -25,9 +26,11 @@ export const KennungFeld = forwardRef<
     serverFehler?: string | null;
     frei?: boolean;
     pflicht?: boolean;
+    /** Die Referenz aus dem Direktlink vom Gehäuse: steht sie im Feld, sagt der Haken woher (M6). */
+    ausDemQrCode?: string | null;
     onEnter?: () => void;
   }
->(function KennungFeld({ id, wert, onWert, abgeschickt, serverFehler = null, frei = false, pflicht = false, onEnter }, ref) {
+>(function KennungFeld({ id, wert, onWert, abgeschickt, serverFehler = null, frei = false, pflicht = false, ausDemQrCode = null, onEnter }, ref) {
   const [verlassen, setVerlassen] = useState(false);
   const pruefung = pruefeKennung(wert);
   const fehler = serverFehler
@@ -63,7 +66,11 @@ export const KennungFeld = forwardRef<
         stimmt ? (
           <span style={{ color: 'var(--vp-ok-ink)' }}>
             <Icon name="check" size={12} strokeWidth={3} style={{ verticalAlign: '-1px', marginRight: 4 }} />
-            {pruefung.kennung === wert ? 'Kennung stimmt' : `Kennung stimmt: ${pruefung.kennung}`}
+            {ausDemQrCode != null && pruefung.kennung === ausDemQrCode
+              ? FELD_AUS_QR
+              : pruefung.kennung === wert
+                ? 'Kennung stimmt'
+                : `Kennung stimmt: ${pruefung.kennung}`}
           </span>
         ) : null
       }

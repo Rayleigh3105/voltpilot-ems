@@ -23,6 +23,10 @@ import { DangerZone } from './DangerZone';
 import { VpPicker } from './VpPicker';
 import { HelpLink } from '../help/HelpProvider';
 import { DEVICE_ID_FIELD, DEVICE_ID_TAKEN_MSG, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
+import { BoxErgebnis, BoxFremdKonto } from './BoxVerbunden';
+import { KoppelBand } from './KoppelBand';
+import { kennungWieGedruckt, vergissKoppelRef } from '../koppelLink';
+import { BLATT } from '../koppelTexte';
 import { isPlatformAdmin } from '../auth';
 import { kennungSendbar, pruefeKennung } from '../edgeRef';
 import { KennungFeld } from './KennungFeld';
@@ -96,6 +100,8 @@ export function AddDeviceDrawer({
   const [error, setError] = useState<string | null>(null);
   const [claimed, setClaimed] = useState<Device | null>(null);
   const [tausch, setTausch] = useState<BoxTauschAntwort | null>(null);
+  // M11 (Konzept vp-qr-einstieg, QE-5 A): die Box gehört einem anderen Konto - eigene Ansicht statt roter Zeile.
+  const [fremd, setFremd] = useState<string | null>(null);
   const refInput = useRef<HTMLInputElement>(null);
   // Die Plattform verbindet auch freie Kennungen (der Server erlaubt sie nur ihr, B4).
   const frei = isPlatformAdmin();
@@ -124,11 +130,17 @@ export function AddDeviceDrawer({
     setError(null);
     try {
       const device = await api.claimDevice(siteId, kennung);
+      // Verbunden: die Box aus dem QR-Code ist erledigt, Tab und Browser vergessen sie (QE-3 B).
+      if (vorschlag && kennung === vorschlag) vergissKoppelRef();
       setClaimed(device);
       setExternalRef('');
       setAbgeschickt(false);
       onClaimed(device);
     } catch (e) {
+      if (!nachfolgerVon && e instanceof ApiError && e.status === 409) {
+        setFremd(kennung);
+        return;
+      }
       setError(
         e instanceof ApiError && e.status === 422
           ? DEVICE_ID_UNKNOWN_MSG
@@ -157,9 +169,12 @@ export function AddDeviceDrawer({
   }
 
   function close() {
+    // Abbruch ohne Verbinden: die Box aus dem QR-Code ist damit erledigt (QE-2 A, QE-3 B).
+    if (vorschlag && !claimed) vergissKoppelRef();
     setClaimed(null);
     setTausch(null);
     setError(null);
+    setFremd(null);
     onClose();
   }
 
@@ -192,6 +207,10 @@ export function AddDeviceDrawer({
           <Button variant="primary" onClick={close}>
             Fertig
           </Button>
+        ) : fremd ? (
+          <Button variant="ghost" onClick={close}>
+            Abbrechen
+          </Button>
         ) : (
           <>
             <Button variant="ghost" onClick={close}>
@@ -206,15 +225,15 @@ export function AddDeviceDrawer({
     >
       {claimed ? (
         <>
-          <div className={`vp-alert ${tausch?.zugestellt ? 'vp-alert-ok' : 'vp-alert-info'}`} style={{ marginTop: 0 }} role="status">
+          {nachfolgerVon && <div className={`vp-alert ${tausch?.zugestellt ? 'vp-alert-ok' : 'vp-alert-info'}`} style={{ marginTop: 0 }} role="status">
             {nachfolgerVon
               ? tausch
                 ? tausch.zugestellt
                   ? 'Box-Tausch abgeschlossen. Die neue Box übernimmt die Aufgaben.'
                   : 'Box-Tausch vorbereitet. Die Änderung wird zugestellt, sobald die Box erreichbar ist.'
                 : <>Neue Box <b>{claimed.externalRef}</b> verbunden. Der Tausch ist noch nicht bestätigt.</>
-              : <>VoltPilot-Box <b>{claimed.externalRef}</b> wurde der Anlage <b>{siteName(claimed.siteId)}</b> zugeordnet.</>}
-          </div>
+              : null}
+          </div>}
           {nachfolgerVon && !tausch ? (
             <section className="vp-dqa-folgen" aria-label="Folgen des Box-Tauschs">
               <h3>Was danach gilt</h3>
@@ -226,57 +245,35 @@ export function AddDeviceDrawer({
               ).map((satz) => <li key={satz}>{satz}</li>)}</ul>
               <p>Bestätigen Sie erst nach dieser Prüfung. Bis dahin bleibt die bisherige Box zuständig.</p>
             </section>
-          ) : !nachfolgerVon ? <p style={{ margin: 'var(--vp-space-4) 0' }}>
-            Mehr ist nicht zu tun: sobald die Box mit dieser Referenz online geht,
-            erhält sie ihre Konfiguration automatisch und beginnt zu senden.
-            {onGeraeteSuchen && ' Danach findet „Geräte suchen“ Wechselrichter, Zähler, Wallboxen und Schalter in Ihrem Heimnetz – es wird nur gelesen.'}
-          </p> : null}
+          ) : null}
           {error && <div className="vp-alert vp-alert-err">{error}</div>}
+          {/* M8/M9 (QE-4 A): ehrlich, ob sich die Box schon meldet - die Knöpfe trägt der Fuß des Blatts. */}
           {!nachfolgerVon && (
-          <ul className="vp-checklist">
-            <li>
-              <span className="mk">
-                <Icon name="check" size={13} strokeWidth={3} />
-              </span>
-              <div>
-                <b>Box registriert</b>
-                <div className="vp-note">
-                  Zugeordnet zur Anlage {siteName(claimed.siteId)}.
-                </div>
-              </div>
-            </li>
-            <li>
-              <span className="mk todo">2</span>
-              <div>
-                <b>Box einschalten</b>
-                <div className="vp-note">
-                  Die Box meldet sich mit ihrer Referenz an und wird automatisch
-                  konfiguriert - keine IDs, kein Kopieren.
-                </div>
-              </div>
-            </li>
-            <li>
-              <span className="mk todo">3</span>
-              <div>
-                <b>Auf erste Daten warten</b>
-                <div className="vp-note">
-                  Sobald erste Messwerte eintreffen, wechselt der Status automatisch von{' '}
-                  <Badge variant="warn" dot style={{ fontSize: '0.7rem' }}>
-                    wartet auf erste Daten
-                  </Badge>{' '}
-                  auf{' '}
-                  <Badge variant="ok" dot style={{ fontSize: '0.7rem' }}>
-                    online
-                  </Badge>
-                  .
-                </div>
-              </div>
-            </li>
-          </ul>
+            <>
+              <BoxErgebnis box={claimed} anlageName={siteName(claimed.siteId)} />
+              {onGeraeteSuchen && (
+                <p className="vp-note">Danach findet „Geräte suchen“ Wechselrichter, Zähler, Wallboxen und Schalter in Ihrem Heimnetz – es wird nur gelesen.</p>
+              )}
+            </>
           )}
         </>
+      ) : fremd ? (
+        <BoxFremdKonto
+          kennung={fremd}
+          onAndere={() => {
+            if (vorschlag && fremd === vorschlag) vergissKoppelRef();
+            setFremd(null);
+            setExternalRef('');
+            setAbgeschickt(false);
+            requestAnimationFrame(() => refInput.current?.focus());
+          }}
+        />
       ) : (
         <>
+          {/* M7: die Kennung kam aus dem QR-Code - woher, sagt das Band. */}
+          {vorschlag && !nachfolgerVon && (
+            <KoppelBand zeile={BLATT.bandZeile}>{BLATT.band(kennungWieGedruckt(vorschlag))}</KoppelBand>
+          )}
           <p className="vp-note" style={{ marginTop: 0 }}>
             {nachfolgerVon
               ? `Verbinden Sie die neue Box mit ihrer Kennung als Nachfolger von ${nachfolgerVon.name || nachfolgerVon.externalRef}. Die bisherige Box bleibt bis zur zweiten Bestätigung unverändert.`
@@ -303,6 +300,9 @@ export function AddDeviceDrawer({
               searchPlaceholder="Anlage suchen …"
               disabled={Boolean(nachfolgerVon)}
             />
+            {vorschlag && !nachfolgerVon && sites.length > 1 && (
+              <p className="vp-note" style={{ margin: 0 }}>{BLATT.mehrereAnlagen(sites.length)}</p>
+            )}
           </div>
           {sites.length === 0 && (
             <div className="vp-alert vp-alert-info">

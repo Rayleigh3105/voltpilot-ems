@@ -264,8 +264,13 @@ for (const breite of BREITEN) {
     await ohneQuerlauf(page, breite, 'erst-5-box');
     await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
 
-    // 3 · Anlage - kein Warte-Bildschirm (D7): die Box meldet ihre Geräte im Hintergrund.
-    await expect(page.getByRole('heading', { name: /^Ihre Box meldet gerade ihre Geräte/ })).toBeVisible();
+    // Das ehrliche Ergebnis (QE-4 A): verbunden, noch kein Lebenszeichen - weiter geht es ohne Warten.
+    await expect(page.getByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeVisible();
+    await ohneQuerlauf(page, breite, 'erst-5b-box-wartet');
+    await page.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }).click();
+
+    // 3 · Anlage - die Box hat sich noch nicht gemeldet; ihre Geräte kommen im Hintergrund dazu (D7).
+    await expect(page.getByRole('heading', { name: 'Ihre Box hat sich noch nicht gemeldet' })).toBeVisible();
     expect(cloud.posts.at(-1)).toMatchObject({ pfad: 'claim', body: { externalRef: 'edge-k7m2xq3' } });
     expect(cloud.posts.at(-1)?.kennung).toMatch(/:box:edge-k7m2xq3$/);
     await ohneQuerlauf(page, breite, 'erst-6-box-sucht');

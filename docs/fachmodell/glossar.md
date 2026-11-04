@@ -273,6 +273,13 @@ Eine Box hat genau eine Heimat-Anlage (E7, unverändert: sie ist die Topic-Adres
 
 > **Verfeinert durch AP-04 E11:** Ein Wechsel der zuständigen Box ist eine reine Zuständigkeitssache — Messstelle und Quellenbindung bleiben unberührt; ab dem Zeitpunkt nennt die Herkunft je Wert die neue Box.
 
+**Box verbinden nach dem Scan des Gehäuse-QR (Konzept vp-qr-einstieg, entschieden 04.11.2026: QE-1 A, QE-2 A, QE-3 B, QE-4 A, QE-5 A).**
+Die Kennung steht unten auf der Box, groß gedruckt wie „EDGE-K7M2XQ3“ („EDGE-“ und sieben Zeichen); der QR-Code darüber führt ins Portal. Das Portal zeigt sie überall so, wo der Kunde sie mit dem Aufdruck vergleicht, und sendet die kanonische Form („edge-k7m2xq3“).
+Ohne Sitzung steht die Empfangsseite „Ihre VoltPilot-Box ist da“: nur, was im Code steht, keine Serverabfrage, nie ob die Box existiert, wem sie gehört oder ob sie online ist. Ein falsches Prüfzeichen heißt „Dieser Code ist nicht vollständig lesbar“.
+Die Handlung heißt „Box verbinden“ (im Aufbau „VoltPilot-Box hinzufügen“), nie „koppeln“ oder „claim“. Danach sagt das Portal „wartet auf das erste Lebenszeichen“ mit Prüfliste und erst mit echtem Lebenszeichen „Ihre Box ist online“; „meldet sich“ steht nie für eine stumme Box.
+Gehört die Box einem anderen Konto, nennt das Portal dieses Konto nicht („Diese Box ist schon mit einem anderen Konto verbunden“); gehört sie schon zum eigenen, sagt es „Diese Box gehört schon zu Ihnen“.
+Wortlaut: PORTAL/koppelTexte.ts; Weiche: PORTAL/koppelLink.ts.
+
 ## Datenquelle
 
 *Sicht: Erfassung*

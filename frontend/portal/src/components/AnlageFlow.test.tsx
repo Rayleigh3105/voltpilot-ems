@@ -175,16 +175,20 @@ function mitFund(localSetup: EntityLocalSetup[]): SiteEntities {
 }
 
 /** Schritt 1 (Bestand ohne Standort-Objekt) und Schritt 2 durchlaufen - mit Box oder ohne. */
-async function bisSchritt3(box: 'verbinden' | 'spaeter') {
+async function bisSchritt3(box: 'verbinden' | 'versuchen' | 'spaeter') {
   fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
   fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
   expect(await screen.findByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeInTheDocument();
   if (box === 'spaeter') {
-    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da – später verbinden' }));
     return;
   }
   fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+  if (box === 'versuchen') return;
+  // QE-4 A: nach dem Verbinden das ehrliche Ergebnis (M8) - weiter geht es ohne Warten.
+  expect(await screen.findByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }));
 }
 
 beforeEach(() => {
@@ -192,6 +196,7 @@ beforeEach(() => {
   sessionStorage.clear();
   localStorage.clear();
   vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+  vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [], teilansicht: null } as never);
 });
 
 describe('AnlageFlow - Adresse · Box · Anlage (Anlage-Flow a1, Paket 2)', () => {
@@ -245,6 +250,14 @@ describe('AnlageFlow - Adresse · Box · Anlage (Anlage-Flow a1, Paket 2)', () =
       const entities = vi.spyOn(api, 'siteEntities').mockResolvedValue(emptyEntities);
       render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
       await bisSchritt3('verbinden');
+      // „meldet gerade“ nur mit echtem Lebenszeichen (Konzept vp-qr-einstieg §7): erst die stumme Box, dann ihr Herzschlag.
+      expect(await screen.findByRole('heading', { name: 'Ihre Box hat sich noch nicht gemeldet' })).toBeInTheDocument();
+      expect(screen.getByText('wartet auf erste Daten der Box')).toBeInTheDocument();
+      vi.mocked(api.listDevices).mockResolvedValue({
+        eintraege: [{ ...device, siteId: 's-1', lastSeenAt: new Date().toISOString() }],
+        teilansicht: null,
+      } as never);
+      await vi.advanceTimersByTimeAsync(5000);
       expect(await screen.findByRole('heading', { name: /^Ihre Box meldet gerade ihre Geräte/ })).toBeInTheDocument();
       expect(screen.getByText('werden gesucht')).toBeInTheDocument();
       // Weiter geht es trotzdem: der Knopf steht.
@@ -410,14 +423,15 @@ describe('AnlageFlow - Adresse · Box · Anlage (Anlage-Flow a1, Paket 2)', () =
     sessionStorage.clear();
     devices.mockResolvedValue({ eintraege: [device], teilansicht: null } as never);
     render(<AnlageFlow sites={[site]} wirt="assistent" onDone={() => {}} />);
-    expect(await screen.findByRole('heading', { name: /^Ihre Box meldet gerade ihre Geräte/ })).toBeInTheDocument();
+    // Die Box hat nie ein Lebenszeichen gegeben: der Schritt sagt das, statt „meldet gerade“ zu behaupten.
+    expect(await screen.findByRole('heading', { name: 'Ihre Box hat sich noch nicht gemeldet' })).toBeInTheDocument();
   });
 
   it('maps the 422 claim refusal to the shared unknown-ID message', async () => {
     vi.spyOn(api, 'createSite').mockResolvedValue(site);
     vi.spyOn(api, 'claimDevice').mockRejectedValue(new ApiError(422, 'unknown'));
     render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
-    await bisSchritt3('verbinden');
+    await bisSchritt3('versuchen');
     expect(await screen.findByText(/Diese Kennung kennen wir nicht/)).toBeInTheDocument();
     expect(screen.getByLabelText('Kennung')).toHaveFocus();
   });

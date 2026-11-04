@@ -1,5 +1,6 @@
 import Keycloak from 'keycloak-js';
 import { isStandalone } from './installApp';
+import { vergissKoppelRef } from './koppelLink';
 
 const KC_URL = import.meta.env.VITE_KEYCLOAK_URL ?? 'http://localhost:8081';
 const KC_REALM = import.meta.env.VITE_KEYCLOAK_REALM ?? 'voltpilot';
@@ -439,6 +440,8 @@ export function login(loginHint?: string): void {
 export function logout(): void {
   clearStoredTokens();
   localStorage.removeItem(TOKEN_STORE_KEY);
+  // Die vorgemerkte Box aus dem QR-Code geht mit (QE-3 B: gelöscht beim Abmelden).
+  vergissKoppelRef();
   void keycloak.logout({ redirectUri: window.location.origin });
 }
 
