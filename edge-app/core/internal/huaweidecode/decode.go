@@ -14,8 +14,11 @@
 // PV is the DC-side input power (32064), never the AC active power (32080),
 // because the AC side of a hybrid already nets out the battery; the grid meter
 // (37113) exists only with a Smart Power Sensor, so a refused block drops the
-// channel instead of fabricating 0; a SoC outside (0, 100] is a comms artefact
-// and is dropped. Read only - nothing here controls the inverter.
+// channel instead of fabricating 0, and its register is "+ = feeding INTO the
+// grid" (Huawei Modbus Interface Definitions), so it is NEGATED into
+// VoltPilot's + = import unless the invert hatch is set; the battery register
+// (37765) is already "+ = charging"; a SoC outside (0, 100] is a comms
+// artefact and is dropped. Read only - nothing here controls the inverter.
 package huaweidecode
 
 import "math"
@@ -151,9 +154,11 @@ func Decode(blocks []Block, opts Options) *Result {
 	}
 
 	if gridW, ok := i32At(blocks, RegMeterActivePowerW); ok {
-		sign := 1.0
+		// 37113 is + = feeding INTO the grid; VoltPilot's power_kw is + = import,
+		// hence -1 by default (the module's `+ 0` against -0 is noNegZero here).
+		sign := -1.0
 		if opts.InvertGridSign {
-			sign = -1
+			sign = 1
 		}
 		reading["power_kw"] = round3((sign * float64(gridW)) / 1000)
 	}

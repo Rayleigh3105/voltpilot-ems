@@ -282,10 +282,11 @@ func TestEdgeLightReadsTheCustomerPlantHuaweiAndPowador(t *testing.T) {
 	a := startLightBox(t, layer1.Options{FirstPoll: 50 * time.Millisecond, Poll: 200 * time.Millisecond,
 		SourcesFirstPoll: 50 * time.Millisecond, SourcesPoll: 200 * time.Millisecond})
 
-	// H4 of the checklist: SUN2000-M1, unit 1 (behind the dongle), grid sign inverted.
+	// H4 of the checklist: SUN2000-M1, unit 1 (behind the dongle); the decoder
+	// turns Huawei's grid sign (+ = export) into VoltPilot's + = Bezug itself.
 	if _, err := a.SetInverter(inverter.SelectionRequest{
 		Brand: inverter.BrandHuawei, Model: "sun2000-m1",
-		Connection: inverter.Connection{IP: hwHost, Port: hwPort, UnitID: 1, InvertGridSign: true},
+		Connection: inverter.Connection{IP: hwHost, Port: hwPort, UnitID: 1},
 	}); err != nil {
 		t.Fatalf("Huawei-Auswahl abgelehnt: %v", err)
 	}
@@ -326,7 +327,7 @@ func TestEdgeLightReadsTheCustomerPlantHuaweiAndPowador(t *testing.T) {
 	// "Verbindung testen" for both, end to end through the core.
 	hw := a.TestConnection(testconn.Request{
 		Brand: inverter.BrandHuawei, Model: "sun2000-m1",
-		Connection: testconn.Connection{"ip": hwHost, "port": hwPort, "unit_id": 1, "invert_grid_sign": true},
+		Connection: testconn.Connection{"ip": hwHost, "port": hwPort, "unit_id": 1},
 	})
 	if !hw.OK || hw.Reading == nil || hw.Reading.PvKw == nil || *hw.Reading.PvKw != 2.692 || hw.Reading.GridKw == nil || *hw.Reading.GridKw != 9.908 {
 		t.Fatalf("Verbindungstest Huawei ueber den Kern: %+v", hw)

@@ -67,12 +67,11 @@ func (r *Runtime) pollKacoSerial(ctx context.Context, p *kacoSerialPlan) {
 	r.publishTelemetry(p.Addr, telemetryFrom(res.Reading, nil, "", r.opts.Now()))
 }
 
-// testKacoSerial is "Verbindung testen" for a Powador behind its converter.
-// Unlike test-read.js readKacoSerial (which maps every failure to
-// invalid_response, a known gap) the Go side tells them apart: a failed connect
-// is unreachable, silence is no_answer, a frame that does not decode is
-// invalid_response - and a reply head with another KACO protocol's command byte
-// is NAMED instead of guessed at.
+// testKacoSerial is "Verbindung testen" for a Powador behind its converter,
+// classified like test-read.js readKacoSerial (since #1672): a failed connect
+// is unreachable, connected but silent is no_answer, bytes that do not decode
+// are invalid_response. On top, a reply head with another KACO protocol's
+// command byte is NAMED in the message instead of guessed at.
 func (r *Runtime) testKacoSerial(ctx context.Context, p *kacoSerialPlan, role string) testReadResult {
 	release, ok := r.lanes.acquire(ctx, p.Addr, r.opts.LaneWait)
 	if !ok {

@@ -67,9 +67,9 @@ function regs(set) {
 
 const R = H.REG;
 
-// Das gesunde Bild: PV 2,5 kW (DC), AC 1,8 kW (die LUNA laedt), Zaehler 0,3 kW
-// (Huawei-Vorzeichen: + = Einspeisung), SoC 62,5 %, Batterie laedt 0,7 kW,
-// Status 2 (running).
+// Das gesunde Bild: PV 2,5 kW (DC), AC 1,8 kW (die LUNA laedt), Zaehler +300 W
+// (Huawei-Register: + = Einspeisung, der Decoder dreht es auf VoltPilots
+// + = Bezug, also -0,3 kW), SoC 62,5 %, Batterie laedt 0,7 kW, Status 2 (running).
 const HEALTHY = {
   [R.INPUT_POWER_W]: i32words(2500),
   [R.ACTIVE_POWER_W]: i32words(1800),
@@ -97,14 +97,14 @@ const INV_BOTH = { invertGridSign: true, invertBattSign: true };
 
 const cases = [
   // --- das gesunde Bild und die Vorzeichen ------------------------------------
-  { name: 'gesundes Bild (PV 2,5 kW DC, Zaehler +0,3, SoC 62,5 %, Batterie laedt 0,7)', blocks: image(regs(HEALTHY)), opts: NONE },
-  { name: 'gesundes Bild, Netz-Vorzeichen invertiert', blocks: image(regs(HEALTHY)), opts: INV_GRID },
+  { name: 'gesundes Bild (PV 2,5 kW DC, Zaehler-Register +300 W = Einspeisung -> power_kw -0,3, SoC 62,5 %, Batterie laedt 0,7)', blocks: image(regs(HEALTHY)), opts: NONE },
+  { name: 'gesundes Bild, Netz-Vorzeichen-Klappe (Sensor verkehrt): Rohvorzeichen durchgereicht', blocks: image(regs(HEALTHY)), opts: INV_GRID },
   { name: 'gesundes Bild, Batterie-Vorzeichen invertiert', blocks: image(regs(HEALTHY)), opts: INV_BATT },
   { name: 'gesundes Bild, beide Klappen', blocks: image(regs(HEALTHY)), opts: INV_BOTH },
-  { name: 'Entladung 0,7 kW und Einspeisung 0,3 kW lesen negativ', blocks: image(regs({ ...HEALTHY, [R.BATTERY_CHARGE_DISCHARGE_POWER_W]: i32words(-700), [R.METER_ACTIVE_POWER_W]: i32words(-300) })), opts: NONE },
-  { name: 'Entladung/Einspeisung mit beiden Klappen', blocks: image(regs({ ...HEALTHY, [R.BATTERY_CHARGE_DISCHARGE_POWER_W]: i32words(-700), [R.METER_ACTIVE_POWER_W]: i32words(-300) })), opts: INV_BOTH },
-  { name: 'Kundenanlage: 11 kW Wallbox am Netzpunkt (Huawei: -9908 W = Bezug)', blocks: image(regs(KUNDE)), opts: NONE },
-  { name: 'Kundenanlage mit Haken "Netz-Vorzeichen invertieren" (VoltPilot: + = Bezug)', blocks: image(regs(KUNDE)), opts: INV_GRID },
+  { name: 'Entladung 0,7 kW liest negativ; Zaehler-Register -300 W = Bezug -> power_kw +0,3', blocks: image(regs({ ...HEALTHY, [R.BATTERY_CHARGE_DISCHARGE_POWER_W]: i32words(-700), [R.METER_ACTIVE_POWER_W]: i32words(-300) })), opts: NONE },
+  { name: 'Entladung/Bezug mit beiden Klappen', blocks: image(regs({ ...HEALTHY, [R.BATTERY_CHARGE_DISCHARGE_POWER_W]: i32words(-700), [R.METER_ACTIVE_POWER_W]: i32words(-300) })), opts: INV_BOTH },
+  { name: 'Kundenanlage: 11 kW Wallbox am Netzpunkt (Huawei-Register -9908 W = Bezug -> power_kw +9,908)', blocks: image(regs(KUNDE)), opts: NONE },
+  { name: 'Kundenanlage mit Haken "Netz-Vorzeichen invertieren" (nur bei verkehrt angeschlossenem Sensor)', blocks: image(regs(KUNDE)), opts: INV_GRID },
   // --- Ladestand: nur (0, 100] ist eine Tatsache -----------------------------
   { name: 'SoC 0,0 % wird verworfen (Komm-Artefakt), Rest bleibt', blocks: image(regs({ ...HEALTHY, [R.BATTERY_SOC_PCT_X10]: 0 })), opts: NONE },
   { name: 'SoC 0,1 % ist plausibel', blocks: image(regs({ ...HEALTHY, [R.BATTERY_SOC_PCT_X10]: 1 })), opts: NONE },

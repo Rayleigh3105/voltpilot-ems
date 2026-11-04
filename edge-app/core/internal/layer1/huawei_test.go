@@ -144,11 +144,11 @@ func (r *rig) selectHuawei(sim *huaweiSim, conn map[string]any) {
 func TestTheRetainedHuaweiSelectionDrivesTheReadOntoTheBus(t *testing.T) {
 	sim := startHuaweiSim(t, kundenanlage())
 	r := newRig(t, Options{})
-	r.selectHuawei(sim, map[string]any{"invert_grid_sign": true})
+	r.selectHuawei(sim, nil)
 
 	msg := decodeJSON(t, r.wait(localbus.TopicTelemetry, 1, 5*time.Second)[0])
 	// The flow's reading: decoded channels + battery_power_kw (local bus only)
-	// + ts; the grid hatch turns Huawei's -9908 W into VoltPilot's +9,908 kW Bezug.
+	// + ts; Huawei's -9908 W (register: + = export) becomes VoltPilot's +9,908 kW Bezug.
 	for k, want := range map[string]float64{"pv_power_kw": 2.692, "power_kw": 9.908, "soc_pct": 68.6, "battery_power_kw": 0.9} {
 		if msg[k] != want {
 			t.Errorf("%s = %v, want %v (%v)", k, msg[k], want, msg)
@@ -217,22 +217,22 @@ func TestHuaweiConnectionTestClassifiesHonestly(t *testing.T) {
 	r := newRig(t, Options{Poll: time.Hour, FirstPoll: time.Hour, ConnectTimeout: 400 * time.Millisecond, ReadTimeout: 300 * time.Millisecond})
 	host, port := sim.addr()
 
-	ok := testRead(t, r, "ok", huaweiSel(host, port, map[string]any{"invert_grid_sign": true}))
+	ok := testRead(t, r, "ok", huaweiSel(host, port, nil))
 	if ok["ok"] != true {
 		t.Fatalf("gesunder Huawei: %v", ok)
 	}
 	rd, _ := ok["reading"].(map[string]any)
 	if rd["pv_kw"] != 2.692 || rd["grid_kw"] != 9.908 || rd["soc_pct"] != 68.6 || len(rd) != 3 {
-		t.Errorf("Messwert im Test (PV, Netz mit Klappe, SoC): %v", rd)
+		t.Errorf("Messwert im Test (PV, Netz als Bezug, SoC): %v", rd)
 	}
-	// Without the hatch the Huawei sign is handed through: - = Bezug would be wrong in VoltPilot.
-	raw := testRead(t, r, "raw", huaweiSel(host, port, nil))
+	// The hatch is the escape for a reversed Smart Power Sensor: the raw Huawei sign.
+	raw := testRead(t, r, "raw", huaweiSel(host, port, map[string]any{"invert_grid_sign": true}))
 	if rdr, _ := raw["reading"].(map[string]any); rdr["grid_kw"] != -9.908 {
-		t.Errorf("ohne Klappe das Huawei-Vorzeichen: %v", raw["reading"])
+		t.Errorf("mit Klappe das Huawei-Rohvorzeichen: %v", raw["reading"])
 	}
 	// A grid meter shows only Netzbezug.
 	grid := testRead(t, r, "grid", func() map[string]any { s := huaweiSel(host, port, nil); s["role"] = "grid-meter"; return s }())
-	if rdg, _ := grid["reading"].(map[string]any); grid["ok"] != true || len(rdg) != 1 || rdg["grid_kw"] != -9.908 {
+	if rdg, _ := grid["reading"].(map[string]any); grid["ok"] != true || len(rdg) != 1 || rdg["grid_kw"] != 9.908 {
 		t.Errorf("Rolle Netz-Zaehler: %v", grid)
 	}
 	// Unit 2 is a form value and reaches the wire.
@@ -306,7 +306,7 @@ func TestAHuaweiSourceIsReadByItsRole(t *testing.T) {
 	host, port := sim.addr()
 	if err := r.bus.Publish(sources.TopicConfig, sourcesConfig(
 		huaweiSource("src-pv", "pv-generation", host, port, nil),
-		huaweiSource("src-netz", "grid-meter", host, port, map[string]any{"invert_grid_sign": true}),
+		huaweiSource("src-netz", "grid-meter", host, port, nil),
 		huaweiSource("src-last", "consumer", host, port, nil),
 	), true); err != nil {
 		t.Fatal(err)
@@ -317,7 +317,7 @@ func TestAHuaweiSourceIsReadByItsRole(t *testing.T) {
 	}
 	netz := decodeJSON(t, r.wait(sources.TopicPrefix+"src-netz/telemetry", 1, 5*time.Second)[0])
 	if netz["power_kw"] != 9.908 || len(netz) != 2 {
-		t.Fatalf("Netz-Quelle: nur power_kw (mit Klappe) + ts: %v", netz)
+		t.Fatalf("Netz-Quelle: nur power_kw (+ = Bezug) + ts: %v", netz)
 	}
 	time.Sleep(300 * time.Millisecond)
 	if r.count(sources.TopicPrefix+"src-last/telemetry") != 0 {

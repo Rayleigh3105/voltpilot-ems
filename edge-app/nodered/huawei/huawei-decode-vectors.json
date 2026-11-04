@@ -97,7 +97,7 @@
   ],
   "cases": [
     {
-      "name": "gesundes Bild (PV 2,5 kW DC, Zaehler +0,3, SoC 62,5 %, Batterie laedt 0,7)",
+      "name": "gesundes Bild (PV 2,5 kW DC, Zaehler-Register +300 W = Einspeisung -> power_kw -0,3, SoC 62,5 %, Batterie laedt 0,7)",
       "blocks": [
         {
           "start": 32064,
@@ -137,7 +137,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3,
+          "power_kw": -0.3,
           "soc_pct": 62.5
         },
         "battKw": 0.7,
@@ -148,7 +148,7 @@
       }
     },
     {
-      "name": "gesundes Bild, Netz-Vorzeichen invertiert",
+      "name": "gesundes Bild, Netz-Vorzeichen-Klappe (Sensor verkehrt): Rohvorzeichen durchgereicht",
       "blocks": [
         {
           "start": 32064,
@@ -190,7 +190,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": -0.3,
+          "power_kw": 0.3,
           "soc_pct": 62.5
         },
         "battKw": 0.7,
@@ -243,7 +243,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3,
+          "power_kw": -0.3,
           "soc_pct": 62.5
         },
         "battKw": -0.7,
@@ -297,7 +297,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": -0.3,
+          "power_kw": 0.3,
           "soc_pct": 62.5
         },
         "battKw": -0.7,
@@ -308,7 +308,7 @@
       }
     },
     {
-      "name": "Entladung 0,7 kW und Einspeisung 0,3 kW lesen negativ",
+      "name": "Entladung 0,7 kW liest negativ; Zaehler-Register -300 W = Bezug -> power_kw +0,3",
       "blocks": [
         {
           "start": 32064,
@@ -348,7 +348,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": -0.3,
+          "power_kw": 0.3,
           "soc_pct": 62.5
         },
         "battKw": -0.7,
@@ -359,7 +359,7 @@
       }
     },
     {
-      "name": "Entladung/Einspeisung mit beiden Klappen",
+      "name": "Entladung/Bezug mit beiden Klappen",
       "blocks": [
         {
           "start": 32064,
@@ -402,7 +402,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3,
+          "power_kw": -0.3,
           "soc_pct": 62.5
         },
         "battKw": 0.7,
@@ -413,7 +413,7 @@
       }
     },
     {
-      "name": "Kundenanlage: 11 kW Wallbox am Netzpunkt (Huawei: -9908 W = Bezug)",
+      "name": "Kundenanlage: 11 kW Wallbox am Netzpunkt (Huawei-Register -9908 W = Bezug -> power_kw +9,908)",
       "blocks": [
         {
           "start": 32064,
@@ -453,7 +453,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.692,
-          "power_kw": -9.908,
+          "power_kw": 9.908,
           "soc_pct": 68.6
         },
         "battKw": 0.9,
@@ -464,7 +464,7 @@
       }
     },
     {
-      "name": "Kundenanlage mit Haken \"Netz-Vorzeichen invertieren\" (VoltPilot: + = Bezug)",
+      "name": "Kundenanlage mit Haken \"Netz-Vorzeichen invertieren\" (nur bei verkehrt angeschlossenem Sensor)",
       "blocks": [
         {
           "start": 32064,
@@ -506,7 +506,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.692,
-          "power_kw": 9.908,
+          "power_kw": -9.908,
           "soc_pct": 68.6
         },
         "battKw": 0.9,
@@ -557,7 +557,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3
+          "power_kw": -0.3
         },
         "battKw": 0.7,
         "meta": {
@@ -607,7 +607,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3,
+          "power_kw": -0.3,
           "soc_pct": 0.1
         },
         "battKw": 0.7,
@@ -658,7 +658,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3,
+          "power_kw": -0.3,
           "soc_pct": 100
         },
         "battKw": 0.7,
@@ -709,7 +709,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3
+          "power_kw": -0.3
         },
         "battKw": 0.7,
         "meta": {
@@ -759,7 +759,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3
+          "power_kw": -0.3
         },
         "battKw": 0.7,
         "meta": {
@@ -809,7 +809,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3
+          "power_kw": -0.3
         },
         "battKw": 0.7,
         "meta": {
@@ -859,7 +859,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3,
+          "power_kw": -0.3,
           "soc_pct": 55.5
         },
         "battKw": 0.7,
@@ -941,7 +941,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3
+          "power_kw": -0.3
         },
         "battKw": null,
         "meta": {
@@ -983,7 +983,7 @@
       "opts": {},
       "decode": {
         "reading": {
-          "power_kw": 0.3,
+          "power_kw": -0.3,
           "soc_pct": 62.5
         },
         "battKw": 0.7,
@@ -1027,7 +1027,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3,
+          "power_kw": -0.3,
           "soc_pct": 62.5
         },
         "battKw": 0.7,
@@ -1213,7 +1213,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3,
+          "power_kw": -0.3,
           "soc_pct": 62.5
         },
         "battKw": 0.7,
@@ -1271,7 +1271,7 @@
       "opts": {},
       "decode": {
         "reading": {
-          "power_kw": -0.05
+          "power_kw": 0.05
         },
         "battKw": null,
         "meta": {
@@ -1321,7 +1321,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 0.001,
-          "power_kw": -0.001
+          "power_kw": 0.001
         },
         "battKw": 0.001,
         "meta": {
@@ -1474,7 +1474,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2147483.647,
-          "power_kw": 2147483.647
+          "power_kw": -2147483.647
         },
         "battKw": 2147483.647,
         "meta": {
@@ -1527,7 +1527,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": -2147483.648,
-          "power_kw": 2147483.648
+          "power_kw": -2147483.648
         },
         "battKw": 2147483.648,
         "meta": {
@@ -1727,7 +1727,7 @@
       "decode": {
         "reading": {
           "pv_power_kw": 2.5,
-          "power_kw": 0.3,
+          "power_kw": -0.3,
           "soc_pct": 62.5
         },
         "battKw": 0.7,

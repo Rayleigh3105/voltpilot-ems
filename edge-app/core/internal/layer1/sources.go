@@ -38,9 +38,8 @@ type sourceNote struct {
 }
 
 // The transports the flow can read as a source. Edge Light names the ones it
-// does not read yet instead of calling them unknown. (kaco_serial and
-// huawei_modbus are read here; the Docker box's source executor does not know
-// them yet - build-flows.js, scout vp-kundenanlage-drei-geraete §2.5.)
+// does not read yet instead of calling them unknown (kaco_serial and
+// huawei_modbus are read here, like in the flow's source executor since #1672).
 var knownSourceComms = map[string]bool{
 	"modbus_tcp": true, "fronius_sunspec": true, "sunspec_tcp": true, "kaco_http": true,
 	"kaco_modbus": true, "goe_http_api": true, "solarman_v5": true, "fronius_solar_api": true,

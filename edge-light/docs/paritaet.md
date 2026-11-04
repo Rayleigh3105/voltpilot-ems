@@ -41,8 +41,8 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 | KOSTAL PLENTICORE | `kostal/*.js` | ⬜ |
 | KACO HTTP, AISWEI NH3 | `kaco/*.js` | ⬜ |
 | Generisches Modbus TCP | `modbus-tcp.js` | ⬜ |
-| **Weitere Energiequellen** (Erzeuger, Netz-Zähler, Verbraucher – alle obigen Wege) | Tab „Energiequellen (automatisch)" | 🟡 go-e als Verbraucher, Huawei als Erzeuger oder Netz-Zähler, Powador als Erzeuger (mehr als die Docker-Box, deren Quellen-Executor `kaco_serial`/`huawei_modbus` noch nicht kennt); jede andere Anbindung wird je Quelle im Protokoll benannt |
-| Verbindung testen für alle obigen, Suche nach weiteren Wechselrichtern (Unit-IDs) | `test-read.js` | 🟡 go-e, Huawei, Powador ✅ (Huawei/Powador unterscheiden `unreachable`/`no_answer`/`invalid_response` ehrlicher als `test-read.js`, das jede Störung als `invalid_response` meldet; ein fremdes KACO-Kommando-Byte kommt als Satz an); übrige: benannte Ablehnung der Schicht 1 (sofort, z. B. Fronius 0,2 s am VoltPilotGATE) |
+| **Weitere Energiequellen** (Erzeuger, Netz-Zähler, Verbraucher – alle obigen Wege) | Tab „Energiequellen (automatisch)" | 🟡 go-e als Verbraucher, Huawei als Erzeuger oder Netz-Zähler, Powador als Erzeuger (wie der Quellen-Executor der Docker-Box seit #1672); jede andere Anbindung wird je Quelle im Protokoll benannt |
+| Verbindung testen für alle obigen, Suche nach weiteren Wechselrichtern (Unit-IDs) | `test-read.js` | 🟡 go-e, Huawei, Powador ✅ (Powador wie `test-read.js` seit #1672 mit `unreachable`/`no_answer`/`invalid_response`, dazu das fremde KACO-Kommando-Byte als Satz; Huawei meldet Stille als `no_answer`, wo `test-read.js` `invalid_response` sagt); übrige: benannte Ablehnung der Schicht 1 (sofort, z. B. Fronius 0,2 s am VoltPilotGATE) |
 
 ## C. Steuern (Schicht 1) – nur mit Prüfstand
 

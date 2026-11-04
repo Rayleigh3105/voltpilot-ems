@@ -289,10 +289,9 @@ denselben Weg seit 04.11.2026 mit dem Go-Zwilling `core/internal/kacoserial`
 Vektoren `kaco/kaco-serial-vectors.json`, erzeugt aus
 `kaco-serial-decode.js` (`node kaco/kaco-serial-vectors.gen.js` nach jeder
 Änderung am Decoder); sie prüfen auch das Framing (Störbytes, Teilantworten,
-Prüfsumme als `0x0A`/`0x0D`). Der Verbindungstest dort unterscheidet
-`unreachable`, `no_answer` und `invalid_response` und nennt ein fremdes
-Kommando-Byte im Satz - der Docker-Box-Test (`test-read.js`) meldet jede
-Störung als `invalid_response`.
+Prüfsumme als `0x0A`/`0x0D`). Der Verbindungstest dort unterscheidet wie
+`test-read.js` `unreachable`, `no_answer` und `invalid_response` und nennt
+zusätzlich ein fremdes Kommando-Byte im Satz.
 
 ### 11.4 Grenzen
 
