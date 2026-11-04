@@ -53,6 +53,11 @@ const (
 // Sidecars.
 func (a *Agent) otaSignalLoop(ctx context.Context) {
 	defer a.done.Done()
+	if a.isLight() {
+		// Edge Light hat keinen Sidecar, der das Signal liest - und sein
+		// DataDir/ota liegt im Flash, der kein Schreiben alle 2 s vertraegt.
+		return
+	}
 	t := time.NewTicker(otaSignalInterval)
 	defer t.Stop()
 	for {
@@ -66,6 +71,9 @@ func (a *Agent) otaSignalLoop(ctx context.Context) {
 }
 
 func (a *Agent) otaSignalOnce() {
+	if a.isLight() {
+		return
+	}
 	now := time.Now()
 	snap := a.State.Get()
 	up, _ := otaapply.ReadJSON[otaapply.UpdaterState](a.Cfg.DataDir, otaapply.FileUpdaterState)
@@ -171,6 +179,11 @@ func (a *Agent) otaControlActive(snap state.Snapshot) bool {
 // noch sehen.
 func (a *Agent) otaSelfTestOnBoot(ctx context.Context) {
 	defer a.done.Done()
+	if a.isLight() {
+		// Edge Light: die Probe kommt vom Loader (probe.json), nicht vom Sidecar.
+		a.otaLightProbeLoop(ctx, otaLightProbeTakt, otaSelfTestSettle)
+		return
+	}
 	a.otaSelfTestLoop(ctx, otaSignalInterval, otaSelfTestSettle)
 }
 

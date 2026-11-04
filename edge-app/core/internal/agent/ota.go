@@ -126,6 +126,11 @@ func (a *Agent) otaCheckLoop(ctx context.Context) {
 	if err := os.MkdirAll(a.otaDir(), 0o755); err != nil {
 		slog.Warn("OTA: Ablage-Verzeichnis konnte nicht angelegt werden", "err", err)
 	}
+	if a.otaRAMDir() != a.otaDir() {
+		if err := os.MkdirAll(a.otaRAMDir(), 0o755); err != nil {
+			slog.Warn("OTA: RAM-Verzeichnis konnte nicht angelegt werden", "err", err)
+		}
+	}
 	a.otaCheckOnce()
 	t := time.NewTicker(otaCheckInterval)
 	defer t.Stop()
@@ -154,6 +159,11 @@ func (a *Agent) otaCheckOnce() {
 	// (offener TOFU-Crossover, laufende Schluessel-Rotation).
 	a.otaRefreshTrust()
 	if v, ok := a.otaCheckTarget(); ok {
+		if a.isLight() {
+			// Edge Light wendet selbst an (ota_light.go): aus „verifiziert"
+			// wird laden, Probe, bestaetigt - oder der Grund, warum nicht.
+			v = a.otaLightSchritt(v)
+		}
 		a.setOtaVerdict(v)
 		return
 	}

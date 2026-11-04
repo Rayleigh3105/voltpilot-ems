@@ -32,6 +32,13 @@ type Config struct {
 	Ref string `json:"ref"`
 	// DataDir holds identity, certs, the telemetry buffer and the cached plan.
 	DataDir string `json:"data_dir"`
+	// OtaRAMDir is where Edge Light keeps the FLEETING update files (the
+	// retained assignment, the downloaded candidate, the probation files
+	// shared with the loader boot.sh). Only the Edge Light loader sets it
+	// (VP_OTA_RAM_DIR, a tmpfs path): on its flash, DataDir/ota keeps only
+	// what must survive a power loss (trust set, current.json, the attempt
+	// log). "" = DataDir/ota, the Docker box's single OTA directory.
+	OtaRAMDir string `json:"ota_ram_dir"`
 	// BoxArt is the box type of the BINARY (geraetesuche.BoxArtDocker for
 	// vp-edge-core, BoxArtEdgeLight for vp-edge-light), set by
 	// edgemain.Options - never from the environment: what a build can do is
@@ -380,6 +387,7 @@ func applyEnv(cfg *Config) {
 	num("VP_MQTT_PORT", &cfg.MQTTPort)
 	str("VP_REF", &cfg.Ref)
 	str("VP_DATA_DIR", &cfg.DataDir)
+	str("VP_OTA_RAM_DIR", &cfg.OtaRAMDir)
 	str("VP_LOCAL_MQTT_ADDR", &cfg.LocalMQTTAddr)
 	str("VP_HTTP_ADDR", &cfg.HTTPAddr)
 	str("VP_LAN_HOST", &cfg.LANHost)

@@ -599,6 +599,8 @@ type Agent struct {
 	// ota holds the verdict of the last OTA release verification (agent/ota.go,
 	// OTA Stufe 1). Verification only - there is no apply path on the device.
 	ota otaState
+	// otaLight ist der Stand eines Edge-Light-Updates (ota_light.go).
+	otaLight otaLightState
 	// otaRoots overrides the BAKED trust root - a TEST SEAM only (the repo
 	// carries no private key, so a test must mint its own throwaway root).
 	// nil = the production path: otaverify.BakedRoots(), i.e. rootkeys.json.

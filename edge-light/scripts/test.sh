@@ -24,8 +24,10 @@ else
 fi
 
 echo "--- 2.+3. Go-Zwillinge und Schicht 1 (mit Race-Detector)"
-go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/
-go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/layer1/... ./internal/geraetesuche/...
+go_run -- vet ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/layer1/... ./internal/edgemain/... ./internal/geraetesuche/... ./internal/otalight/... ./cmd/vp-edge-light/ ./cmd/vp-solarman-sim/ ./cmd/vp-geraete-sim/
+go_run CGO_ENABLED=1 -- test -count=1 -race ./internal/solarmanv5/... ./internal/deyedecode/... ./internal/goeapi/... ./internal/layer1/... ./internal/geraetesuche/... ./internal/otalight/...
+# Das Update im Programm (Konzept vp-edge-light-update, K3): laden, pruefen, Probe.
+go_run CGO_ENABLED=1 -- test -count=1 -race -run 'EdgeLight' ./internal/agent/
 
 echo "--- 4. MIPS-Build (Mango)"
 go_run GOOS=linux GOARCH=mipsle GOMIPS=softfloat CGO_ENABLED=0 -- build -o /dev/null ./cmd/vp-edge-light

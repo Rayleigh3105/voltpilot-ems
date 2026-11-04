@@ -8,6 +8,7 @@ package edgemain
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -40,6 +41,15 @@ type Options struct {
 // exits (internal/werkstatt, docs/contracts/werkstatt-einloesen-v1.md) - in
 // both binaries, from the same code.
 func Main(o Options) {
+	// `<programm> version`: die eingestempelte Fassung, sonst nichts. Der
+	// Edge-Light-Loader startet eine neue Fassung damit zur Probe (5 s Frist),
+	// bevor er sie wirklich startet - ein Programm fuer die falsche
+	// Architektur oder ein kaputtes scheitert hier sofort (Konzept
+	// vp-edge-light-update, Schicht 2). Kein Laden der Konfiguration, kein Netz.
+	if len(os.Args) == 2 && os.Args[1] == "version" {
+		fmt.Println(agent.Version)
+		os.Exit(0)
+	}
 	if len(os.Args) > 1 && os.Args[1] == werkstatt.BefehlName {
 		os.Exit(werkstatt.Befehl(os.Args[2:], agent.Version, os.Stdin, os.Stdout, os.Stderr))
 	}
