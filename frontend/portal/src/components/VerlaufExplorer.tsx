@@ -15,7 +15,6 @@ import {
   type MessstelleVerlauf,
   type Site,
 } from '../api';
-import { fmtNum } from '../format';
 import { SUMMENWERT } from '../glossar';
 import { ladeSiteGesamtwerte } from '../gesamtwertQuelle';
 import { erzeugerGeraetId, erzeugerGruppe, istErzeugerZiel, seriesFromErzeugerVerlauf } from '../anlagensteuerung';
@@ -47,6 +46,7 @@ import {
   type VerlaufSeries,
   type VerlaufTarget,
 } from '../verlauf';
+import { statKacheln, vorzeichenRegel, type StatKachel } from '../verlaufRichtung';
 import { BottomSheet } from './BottomSheet';
 import { ChartCardSkeleton, EmptyState, ErrorState } from './States';
 import { ChartSubtitle } from './ChartExplain';
@@ -565,6 +565,8 @@ export function VerlaufExplorer({
               <div className="vp-verlauf-statblocks">
                 {withData.map((s) => {
                   const stats = verlaufStats(s.series);
+                  // Netz und Speicher sagen ihre Richtung in Worten statt mit Minus.
+                  const kacheln = statKacheln(stats, s.series.unit, vorzeichenRegel(s.channel, s.role));
                   return (
                     <div key={s.key} className="vp-verlauf-statblock">
                       {withData.length > 1 && (
@@ -579,25 +581,15 @@ export function VerlaufExplorer({
                       )}
                       <div className="vp-verlauf-stats" aria-label={`Kennzahlen im Zeitraum: ${s.label}`}>
                         <StatCell
-                          label="Minimum"
-                          value={fmtNum(stats.min?.value, s.series.unit)}
+                          kachel={kacheln.min}
                           note={stats.min ? atTime(stats.min.t, range) : null}
                         />
                         <StatCell
-                          label="Maximum"
-                          value={fmtNum(stats.max?.value, s.series.unit)}
+                          kachel={kacheln.max}
                           note={stats.max ? atTime(stats.max.t, range) : null}
                         />
-                        <StatCell
-                          label="Durchschnitt"
-                          value={fmtNum(stats.avg, s.series.unit)}
-                          note={null}
-                        />
-                        <StatCell
-                          label="Letzter Wert"
-                          value={fmtNum(stats.last, s.series.unit)}
-                          note={null}
-                        />
+                        <StatCell kachel={kacheln.avg} note={null} />
+                        <StatCell kachel={kacheln.last} note={null} />
                       </div>
                     </div>
                   );
@@ -664,11 +656,14 @@ function atTime(iso: string, range: HistoryRange): string {
   return 'am ' + d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 }
 
-function StatCell({ label, value, note }: { label: string; value: string; note: string | null }) {
+function StatCell({ kachel, note }: { kachel: StatKachel; note: string | null }) {
   return (
     <div className="vp-verlauf-stat">
-      <span className="vp-vs-label">{label}</span>
-      <span className="vp-vs-value">{value}</span>
+      <span className="vp-vs-label">{kachel.label}</span>
+      <span className="vp-vs-value">
+        {kachel.wert}
+        {kachel.wort && <span className="vp-vs-richtung"> {kachel.wort}</span>}
+      </span>
       {note && <span className="vp-vs-note">{note}</span>}
     </div>
   );

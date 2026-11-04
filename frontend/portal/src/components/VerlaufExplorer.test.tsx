@@ -313,3 +313,49 @@ describe('VerlaufExplorer — Anlagensteuerung (UEMS EZ-10)', () => {
     expect(eh).not.toHaveBeenCalledWith('s-1', `erzeuger-${GERAET_GORE}`, expect.anything(), expect.anything());
   });
 });
+
+describe('VerlaufExplorer — Richtung statt Vorzeichen in der Kennzahlen-Reihe', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  // Die Werte aus dem Bildschirmfoto: Netzanschluss · Leistung im Monat,
+  // −9,1 kW am 22.10., 11,3 kW am 05.10., Ø −0,5 kW, zuletzt −0,6 kW.
+  const monat: EntityHistory = {
+    range: 'month',
+    from: '2026-10-01T00:00:00Z',
+    to: '2026-11-01T00:00:00Z',
+    bucketMinutes: 1440,
+    channels: {
+      power_kw: [
+        { start: '2026-10-05T12:00:00Z', avg: 0.4, min: -2, max: 11.3, last: 0.4, n: 1 },
+        { start: '2026-10-22T12:00:00Z', avg: -1.3, min: -9.1, max: 1, last: -1.3, n: 1 },
+        { start: '2026-10-30T12:00:00Z', avg: -0.6, min: -3, max: 2, last: -0.6, n: 1 },
+      ],
+    },
+  };
+
+  it('nennt die Extreme nach ihrer Bedeutung und Ø/Letzter Wert mit Richtung, ohne Minus', async () => {
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(fullPlant);
+    vi.spyOn(api, 'topology').mockResolvedValue(fullTopology);
+    vi.spyOn(api, 'entityHistory').mockResolvedValue(monat);
+    render(
+      <VerlaufExplorer
+        site={site}
+        range="month"
+        anchor={new Date('2026-10-15T12:00:00Z')}
+        initialTargets={[{ entityId: 'grid', channel: 'power_kw' }]}
+      />,
+    );
+    const reihe = await screen.findByLabelText(/Kennzahlen im Zeitraum:/, undefined, { timeout: 5000 });
+    const kacheln = Array.from(reihe.querySelectorAll('.vp-verlauf-stat')).map((k) =>
+      (k.textContent ?? '').replace(/ /g, ' '),
+    );
+    expect(kacheln).toEqual([
+      'Höchste Einspeisung9,1 kWam 22.10.',
+      'Höchster Bezug11,3 kWam 05.10.',
+      'Durchschnitt0,5 kW Einspeisung',
+      'Letzter Wert0,6 kW Einspeisung',
+    ]);
+    expect(reihe.textContent).not.toMatch(/[-−]\d/);
+    expect(reihe.textContent).not.toMatch(/Minimum|Maximum/);
+  });
+});

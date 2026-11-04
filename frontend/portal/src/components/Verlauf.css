@@ -189,6 +189,14 @@
   color: var(--vp-text, #1a1a1a);
   overflow-wrap: anywhere;
 }
+/* Das Richtungswort hinter dem Betrag („0,5 kW Einspeisung“): leiser als die
+   Zahl und immer in eigener Zeile, damit „Laden“ und „Einspeisung“ gleich stehen. */
+.vp-vs-richtung {
+  display: block;
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: 400;
+  color: var(--vp-text-muted, #667);
+}
 .vp-vs-note {
   font-size: 0.74rem;
   color: var(--vp-text-muted, #667);
