@@ -38,6 +38,7 @@ import {
   slotTimeLabel,
   slotWaterfall,
   SPEICHERSCHONUNG_PRESETS,
+  verdichtungsHinweis,
   verdict,
   whatIfDeltaRows,
   whatIfFallbackNote,
@@ -280,6 +281,9 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
         </Card>
       ) : diag ? (
         <div className="vp-optim-body">
+          {verdichtungsHinweis(diag) && (
+            <ChartInsight icon="calendar">{verdichtungsHinweis(diag)}</ChartInsight>
+          )}
           <VerdictBanner diag={diag} siteName={siteName} />
           <InputsAtAGlance diag={diag} />
           <PlanSection diag={diag} selectedSlot={selectedSlot} onSelectSlot={setSelectedSlot} />
