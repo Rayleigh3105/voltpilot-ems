@@ -19,8 +19,9 @@ name: Edge-Light-Fassung
 # Architektur Pruefsumme und Groesse von Programm und Lieferung), signiert es
 # mit dem Release-Schluessel der Docker-Box, prueft es gegen die eingebackene
 # Wurzel (Backend light) und traegt es ins Register ein - genau der Weg von
-# edge-images.yaml (tools/ota/release-publish.sh). Erst damit kann das Portal
-# ein Edge-Light-Release zuweisen.
+# edge-images.yaml (tools/ota/release-publish.sh). Zuletzt laedt er die
+# gepackten Programme ins Portal (K2, in Teilen); erst wenn sie dort geprueft
+# liegen, kann das Portal ein Edge-Light-Release zuweisen.
 #
 # ⚠ DAS SIGNIEREN IST AUSDRUECKLICH EINGESCHALTET, NICHT VON SELBST: Es braucht
 # die Repo-Variable EDGE_LIGHT_SIGNIEREN=true UND die Geheimnisse der
@@ -277,6 +278,22 @@ jobs:
           FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
           FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
 
+      # Die gepackten Programme ins Portal (offene Abruf-Route fuer die Boxen,
+      # U-4 A). Erst danach ist das Release zuweisbar: das Portal prueft jede
+      # Lieferung gegen gz_sha256/gz_size aus dem eben registrierten Manifest.
+      - name: Programme ins Portal laden
+        if: steps.inputs.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          token="$(cat "${RUNNER_TEMP}/vp-ota-token")"
+          for arch in mipsle arm64; do
+            ota_light_upload "${PORTAL}" "$token" "${GITHUB_REF_NAME}" "linux/$arch" \
+              "${RUNNER_TEMP}/fassung/vp-edge-light-linux-$arch.gz"
+          done
+        env:
+          PORTAL: ${{ steps.inputs.outputs.portal }}
+
       - name: Schluessel + Token vom Runner entfernen
         if: always()
         run: |
@@ -286,7 +303,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ steps.inputs.outputs.ready }}" = "true" ]; then
-            echo "Fassung $GITHUB_REF_NAME angehaengt, signiert, gegen die eingebackene Wurzel geprueft und im Register eingetragen (Stand ${{ steps.inputs.outputs.seq }})."
+            echo "Fassung $GITHUB_REF_NAME angehaengt, signiert, gegen die eingebackene Wurzel geprueft, im Register eingetragen (Stand ${{ steps.inputs.outputs.seq }}) und die Programme ins Portal geladen."
             echo "Kein Geraet bekam ein Ziel - zuweisen ist Portal -> Plattform -> Edge-Updates."
           else
             echo "Fassung $GITHUB_REF_NAME angehaengt (NICHT signiert, NICHT im Register; siehe Hinweise oben)."

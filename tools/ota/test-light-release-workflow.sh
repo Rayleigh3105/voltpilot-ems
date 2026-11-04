@@ -43,7 +43,7 @@ steps = {s.get("name"): s for s in jobs["release"]["steps"]}
 inp = steps["Release-Eingaben bestimmen"]
 assert inp["env"]["EDGE_LIGHT_SIGNIEREN"] == "${{ vars.EDGE_LIGHT_SIGNIEREN }}", inp["env"]
 assert '[ "${EDGE_LIGHT_SIGNIEREN:-}" = "true" ]' in inp["run"]
-for name in ("Manifest erzeugen", "Signieren + gegen die eingebackene Wurzel pruefen", "Manifest anhaengen + ins Register eintragen"):
+for name in ("Manifest erzeugen", "Signieren + gegen die eingebackene Wurzel pruefen", "Manifest anhaengen + ins Register eintragen", "Programme ins Portal laden"):
     assert steps[name]["if"] == "steps.inputs.outputs.ready == 'true'", (name, steps[name].get("if"))
 man = steps["Manifest erzeugen"]["run"]
 for arch in ("mipsle", "arm64"):
@@ -51,6 +51,11 @@ for arch in ("mipsle", "arm64"):
 assert "--artifact" not in man
 assert "ota_sign " in steps["Signieren + gegen die eingebackene Wurzel pruefen"]["run"]
 assert "ota_publish " in steps["Manifest anhaengen + ins Register eintragen"]["run"]
+# K2: die Programme ins Portal NACH dem Register (das Portal prueft gegen das Manifest dort)
+names = [s.get("name") for s in jobs["release"]["steps"]]
+assert names.index("Programme ins Portal laden") > names.index("Manifest anhaengen + ins Register eintragen")
+up = steps["Programme ins Portal laden"]["run"]
+assert "ota_light_upload" in up and "for arch in mipsle arm64" in up and 'vp-edge-light-linux-$arch.gz' in up, up
 assert steps["Schluessel + Token vom Runner entfernen"]["if"] == "always()"
 # Der Lauf weist nie etwas zu und startet keinen Rollout.
 code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))

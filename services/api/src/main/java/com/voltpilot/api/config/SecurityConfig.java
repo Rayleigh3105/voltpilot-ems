@@ -122,6 +122,12 @@ public class SecurityConfig {
                 // schlicht schreibt, was er laedt.
                 .requestMatchers(HttpMethod.GET, "/api/v1/edge/trust-set/trust-set.json",
                         "/api/v1/edge/trust-set/trust-set.json.sig").permitAll()
+                // Edge Light (Konzept vp-edge-light-update, U-4 A): die gepackten
+                // Programme SIGNIERTER Edge-Light-Releases, benannt nach ihrer
+                // Pruefsumme. Die Box laedt ohne Token; die Echtheit entsteht
+                // auf ihr (Manifest gegen die eingebackene Wurzel, Bytes gegen
+                // gz_sha256 aus diesem Manifest). Genau EIN Pfadsegment.
+                .requestMatchers(HttpMethod.GET, "/api/v1/edge/light-programm/*").permitAll()
                 // Alerting Scheibe 0 (§6.6): der Bestätigungslink aus der E-Mail
                 // hat keine Anmeldung - die Person hat zu diesem Zeitpunkt noch
                 // keinen bestätigten Zustellweg; der einmalige, ablaufende Token

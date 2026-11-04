@@ -6301,6 +6301,97 @@ paths:
                     example: edge-2026.08.0
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/edge-releases/{version}/programme/{os}/{arch}:
+    put:
+      tags: [admin]
+      summary: One part of the packed program of a signed Edge Light release (upload).
+      description: >
+        Edge Light K2 (concept vp-edge-light-update, U-4 A). The release run
+        uploads the gzip delivery of each program in parts of at most 1 MiB
+        (it sends 512 KiB), so no proxy size limit in front of the api applies.
+        Size and checksum are NOT named by the uploader: they are taken from
+        the signed manifest already in the register (`gz_size`, `gz_sha256` of
+        the binary for `{os}/{arch}`). `ab=0` starts over; any other offset must
+        equal the bytes received so far (otherwise 409). The delivery is
+        `fertig` only when it has exactly `gz_size` bytes AND that checksum; a
+        wrong one is discarded (400). A finished delivery answers every further
+        part with `fertig: true` and stays unchanged.
+        Reachable by `platform-admin` and by `edge-release-publisher`.
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: string, example: edge-light-2026.11.1 } }
+        - { name: os, in: path, required: true, schema: { type: string, example: linux } }
+        - { name: arch, in: path, required: true, schema: { type: string, example: mipsle } }
+        - { name: ab, in: query, required: true, schema: { type: integer, format: int64, minimum: 0 } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary, maxLength: 1048576 }
+      responses:
+        "200":
+          description: State of the delivery after this part.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EdgeLightProgrammStand" }
+        "400": { description: Empty part, too long, or wrong checksum (discarded). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Release not registered, or its manifest names no program for this platform. }
+        "409": { description: Not a signed Edge Light release, or the part does not fit the bytes received so far. }
+        "413": { description: Part larger than 1 MiB. }
+  /api/v1/admin/edge-releases/{version}/programme:
+    get:
+      tags: [admin]
+      summary: Per platform of the manifest, how much of the packed program is in the portal.
+      description: >
+        An Edge Light release can only be assigned once EVERY program of its
+        manifest is `fertig` (otherwise assigning answers 409). Platform admin only.
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: One row per program named in the manifest.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [arch, gzSha256, groesse, empfangen, fertig]
+                  properties:
+                    arch: { type: string, example: linux/mipsle }
+                    gzSha256: { type: string }
+                    groesse: { type: integer, format: int64 }
+                    empfangen: { type: integer, format: int64 }
+                    fertig: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Release not registered. }
+        "409": { description: Not a signed Edge Light release. }
+  /api/v1/edge/light-programm/{gzSha256}:
+    get:
+      tags: [registry]
+      summary: The packed program of a signed Edge Light release, by its checksum (open).
+      security: []
+      description: >
+        Edge Light K2 (U-4 A). A box downloads the program it is updating to,
+        and the loader re-downloads its confirmed version after a power loss
+        during the flash swap - both know exactly `gz_sha256` from the manifest
+        they verified, hence the route is named after it. Served only for a
+        FINISHED delivery of a SIGNED Edge Light release; 404 otherwise.
+        UNAUTHENTICATED on purpose: authenticity comes from the signature, which
+        the box checks against its baked-in root before it downloads anything,
+        and the bytes are checked against `gz_sha256` from that manifest. The
+        program carries no secrets (a box's secrets live in its flash).
+      parameters:
+        - { name: gzSha256, in: path, required: true, schema: { type: string, pattern: "^[0-9a-f]{64}$" } }
+      responses:
+        "200":
+          description: The gzip delivery, byte for byte. Immutable (cached for a year).
+          content:
+            application/gzip:
+              schema: { type: string, format: binary }
+        "404": { description: No finished delivery of a signed Edge Light release with this checksum. }
   /api/v1/edge/trust-set/trust-set.json:
     get:
       tags: [registry]
@@ -20050,6 +20141,15 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    EdgeLightProgrammStand:
+      type: object
+      required: [version, arch, empfangen, groesse, fertig]
+      properties:
+        version: { type: string, example: edge-light-2026.11.1 }
+        arch: { type: string, example: linux/mipsle }
+        empfangen: { type: integer, format: int64, description: Bytes received so far. }
+        groesse: { type: integer, format: int64, description: gz_size from the signed manifest. }
+        fertig: { type: boolean, description: Complete AND checksum verified - only then served and assignable. }
     BewertungKriterienWerte:
       type: object
       additionalProperties: false

@@ -81,6 +81,15 @@ public final class ReleaseManifest {
     public record Artifact(String type, String name, String arch) {
     }
 
+    /**
+     * Ein Programm eines Edge-Light-Release (Artefakt-Typ binary): was die Box
+     * lädt ({@code gzSha256}, {@code gzSize}) und was sie danach entpackt hat
+     * ({@code sha256}, {@code size}).
+     */
+    public record Program(String name, String arch, String sha256, long size, String gzSha256,
+            long gzSize) {
+    }
+
     /** Ein Manifest, das nicht die Form des Vertrags hat - mit deutschem Grund. */
     public static final class InvalidManifestException extends IllegalArgumentException {
         InvalidManifestException(String message) {
@@ -92,13 +101,15 @@ public final class ReleaseManifest {
     private final long releaseSeq;
     private final List<String> backends;
     private final List<Artifact> artifacts;
+    private final List<Program> programs;
 
     private ReleaseManifest(String release, long releaseSeq, List<String> backends,
-            List<Artifact> artifacts) {
+            List<Artifact> artifacts, List<Program> programs) {
         this.release = release;
         this.releaseSeq = releaseSeq;
         this.backends = List.copyOf(backends);
         this.artifacts = List.copyOf(artifacts);
+        this.programs = List.copyOf(programs);
     }
 
     public String release() {
@@ -116,6 +127,16 @@ public final class ReleaseManifest {
 
     public List<Artifact> artifacts() {
         return artifacts;
+    }
+
+    /** Die binary-Artefakte mit ihren Prüfsummen, in Manifest-Reihenfolge. */
+    public List<Program> programs() {
+        return programs;
+    }
+
+    /** Das Programm für eine Plattform ({@code linux/mipsle}), falls das Manifest eines nennt. */
+    public Optional<Program> program(String arch) {
+        return programs.stream().filter(p -> p.arch().equals(arch)).findFirst();
     }
 
     /** Ist dieses Release für das Backend bestimmt? */
@@ -227,9 +248,10 @@ public final class ReleaseManifest {
             }
         }
 
-        List<Artifact> artifacts = readArtifacts(m.get("artifacts"));
+        List<Program> programs = new ArrayList<>();
+        List<Artifact> artifacts = readArtifacts(m.get("artifacts"), programs);
         List<String> backends = readBackends(m.get("compat"));
-        return new ReleaseManifest(release, seq, backends, artifacts);
+        return new ReleaseManifest(release, seq, backends, artifacts, programs);
     }
 
     /**
@@ -314,7 +336,7 @@ public final class ReleaseManifest {
         return true;
     }
 
-    private static List<Artifact> readArtifacts(JsonNode node) {
+    private static List<Artifact> readArtifacts(JsonNode node, List<Program> programs) {
         if (node == null || node.isNull() || (node.isArray() && node.isEmpty())) {
             throw new InvalidManifestException(
                     "artifacts ist leer - ein Release ohne Artefakt beschreibt nichts");
@@ -385,6 +407,9 @@ public final class ReleaseManifest {
                 }
             }
             out.add(new Artifact(type, name, TYPE_BINARY.equals(type) ? arch : null));
+            if (TYPE_BINARY.equals(type)) {
+                programs.add(new Program(name, arch, sha256, size, gzSha256, gzSize));
+            }
             i++;
         }
         return out;

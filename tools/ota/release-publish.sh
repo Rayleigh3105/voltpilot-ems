@@ -221,6 +221,41 @@ ota_register() {
 	esac
 }
 
+# ota_light_upload <portal-basis> <token> <version> <GOOS/GOARCH> <datei.gz>
+#
+# Laedt die gepackte Lieferung eines Edge-Light-Programms ins Portal (K2) - in
+# Teilen von 512 KiB, damit kein Groessenlimit eines Proxys vor der api greift.
+# Pruefsumme und Groesse kennt das Portal aus dem signierten Manifest im
+# Register; es meldet "fertig" erst, wenn beides stimmt. Beginnt immer bei 0
+# (ab=0 setzt eine halbe Lieferung zurueck); eine schon fertige Lieferung
+# beantwortet das Portal sofort mit fertig=true - dann endet die Schleife.
+OTA_LIGHT_TEIL=$((512 * 1024))
+ota_light_upload() {
+	local portal="${1%/}" token="$2" version="$3" arch="$4" file="$5"
+	local size ab=0 res code body="" fertig="" part
+	[ -f "$file" ] || ota_die "Lieferung fehlt: $file"
+	size="$(wc -c <"$file" | tr -d ' ')"
+	part="$(mktemp)"
+	while [ "$ab" -lt "$size" ]; do
+		dd if="$file" of="$part" bs="$OTA_LIGHT_TEIL" skip="$((ab / OTA_LIGHT_TEIL))" count=1 2>/dev/null ||
+			{ rm -f "$part"; ota_die "Teil ab $ab nicht lesbar: $file"; }
+		res="$(curl -sS -o - -w '\n%{http_code}' -X PUT \
+			-H "Authorization: Bearer $token" \
+			-H 'Content-Type: application/octet-stream' \
+			--data-binary "@$part" \
+			"$portal/api/v1/admin/edge-releases/$version/programme/$arch?ab=$ab" || true)"
+		code="${res##*$'\n'}"
+		body="${res%$'\n'*}"
+		[ "$code" = "200" ] || { rm -f "$part"; ota_die "Programm $arch: Teil ab $ab abgelehnt (HTTP $code): $body"; }
+		fertig="$(printf '%s' "$body" | ota_json_field fertig)"
+		[ "$fertig" = "true" ] && break
+		ab=$((ab + OTA_LIGHT_TEIL))
+	done
+	rm -f "$part"
+	[ "$fertig" = "true" ] || ota_die "Programm $arch: nach $size Bytes nicht fertig - Pruefsumme oder Groesse passen nicht zum Manifest: $body"
+	ota_info "Programm $arch: im Portal ($size Bytes, geprueft)."
+}
+
 # --- Forgejo (Release-Assets) ------------------------------------------------
 
 # ota_forgejo_auth_header <token> <user> <password> - druckt den Wert fuer den
@@ -530,6 +565,8 @@ release-publish.sh - ein signiertes Edge-Release veroeffentlichen
   sign         <manifest> <keyfile>               signieren + gegen die eingebackene Wurzel pruefen
   publish      <manifest> <tag>                   Forgejo-Assets + Register-Eintrag
   next-seq     <portal> <token>                   "<nextSeq> <currentSeq>"
+  light-upload <portal> <token> <version> <GOOS/GOARCH> <datei.gz>
+                                                  Edge-Light-Programm ins Portal (in Teilen)
   token        <token-url> <client-id> <secret>   client_credentials-Token
   next-release <JJJJ.MM>                          naechster freier Tag-Name (Tags auf STDIN)
   tag-release  <release> <commit> [annotation]    annotierten Tag anlegen + pushen
@@ -613,6 +650,7 @@ ota_main() {
 	sign) ota_sign "$@" ;;
 	publish) ota_publish "$@" ;;
 	next-seq) ota_next_seq "$@" ;;
+	light-upload) ota_light_upload "$@" ;;
 	token) ota_token "$@" ;;
 	state-schema) ota_state_schema "$@" ;;
 	next-release) ota_next_release "$@" ;;

@@ -429,7 +429,8 @@ if command -v go >/dev/null 2>&1; then
 	# Das Manifest traegt je Architektur Programm und Lieferung; es verifiziert
 	# auf dem Backend light und NUR dort (die Gegenpruefung in ota_sign waehlt
 	# das Backend nach dem Namen).
-	printf 'mipsle-programm' >"$CER/vp-edge-light-linux-mipsle"
+	# 1,3 MB kaum packbare Bytes: das Hochladen ins Portal braucht drei Teile.
+	head -c 1300000 /dev/urandom >"$CER/vp-edge-light-linux-mipsle"
 	gzip -9 -n -c "$CER/vp-edge-light-linux-mipsle" >"$CER/vp-edge-light-linux-mipsle.gz"
 	mkdir -p "$CER/light"
 	(cd "$CORE" && go run ./cmd/vp-ota manifest \
@@ -449,6 +450,25 @@ if command -v go >/dev/null 2>&1; then
 		--trust-set "$CER/trust-set.json" --manifest "$CER/light/release.json"
 	[ -f "$CER/light/register.json" ] && ok "auch fuer Edge Light liegt der Register-Rumpf daneben" ||
 		bad "Register-Rumpf Edge Light" "register.json" "fehlt"
+
+	# K2: registrieren, dann die Lieferung in Teilen ins Portal. Eine falsche
+	# Lieferung wird am Ende abgelehnt, die richtige gemeldet, eine Wiederholung
+	# endet sofort.
+	out="$(ota_register "$BASE" "$TOK" "$CER/light/register.json")"
+	eq "das Edge-Light-Release wird registriert" "Register: neu eingetragen." "$out"
+	cp "$CER/vp-edge-light-linux-mipsle" "$CER/falsch"
+	printf 'x' >>"$CER/falsch"
+	gzip -9 -n -c "$CER/falsch" >"$CER/falsch.gz"
+	fails "eine Lieferung, die nicht zum Manifest passt, wird abgelehnt" \
+		ota_light_upload "$BASE" "$TOK" edge-light-2026.08.0 linux/mipsle "$CER/falsch.gz"
+	out="$(ota_light_upload "$BASE" "$TOK" edge-light-2026.08.0 linux/mipsle "$CER/vp-edge-light-linux-mipsle.gz")"
+	eq "die Lieferung kommt in Teilen ins Portal und ist geprueft" \
+		"Programm linux/mipsle: im Portal ($(wc -c <"$CER/vp-edge-light-linux-mipsle.gz" | tr -d ' ') Bytes, geprueft)." "$out"
+	out="$(ota_light_upload "$BASE" "$TOK" edge-light-2026.08.0 linux/mipsle "$CER/vp-edge-light-linux-mipsle.gz")"
+	eq "…und ein Wiederholungslauf ist still in Ordnung" \
+		"Programm linux/mipsle: im Portal ($(wc -c <"$CER/vp-edge-light-linux-mipsle.gz" | tr -d ' ') Bytes, geprueft)." "$out"
+	fails "ohne Token kein Hochladen" \
+		ota_light_upload "$BASE" falsch edge-light-2026.08.0 linux/mipsle "$CER/vp-edge-light-linux-mipsle.gz"
 
 	# --- der ganze Veroeffentlichungs-Weg, einmal komplett ------------------
 	# ota_publish gegen den Stub: Release anlegen, VIER Assets anhaengen,

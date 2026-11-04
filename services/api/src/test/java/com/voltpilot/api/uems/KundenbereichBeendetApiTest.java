@@ -93,6 +93,8 @@ class KundenbereichBeendetApiTest {
         m.put("POST /api/v1/admin/forecast-models", "Plattform-Modell");
         m.put("POST /api/v1/admin/simulation", "Plattform-Simulation ohne Kundendaten");
         m.put("POST /api/v1/admin/edge-releases", "Box-Software der Plattform");
+        m.put("PUT /api/v1/admin/edge-releases/{version}/programme/{os}/{arch}",
+                "Programme der Box-Software der Plattform (Edge Light)");
         m.put("POST /api/v1/admin/rollouts", "Flotten-Rollout — Befund im PR: er erreicht auch Boxen beendeter Bereiche");
         m.put("POST /api/v1/admin/control-certifications", "Freigaben je Gerätemodell, nicht je Kundenbereich");
         m.put("DELETE /api/v1/admin/control-certifications", "Freigaben je Gerätemodell, nicht je Kundenbereich");

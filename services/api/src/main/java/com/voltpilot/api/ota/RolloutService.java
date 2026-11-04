@@ -77,6 +77,17 @@ public class RolloutService {
     private final ObjectMapper json;
     private final Duration republishAfter;
 
+    /**
+     * Die Programme der Edge-Light-Releases (K2). Ohne Spring {@code null}: dann
+     * prüft niemand, ob die Programme im Portal liegen.
+     */
+    private com.voltpilot.api.repo.EdgeLightProgrammRepository lightProgramme;
+
+    @Autowired(required = false)
+    void setLightProgramme(com.voltpilot.api.repo.EdgeLightProgrammRepository lightProgramme) {
+        this.lightProgramme = lightProgramme;
+    }
+
     /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
     private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
 
@@ -121,6 +132,7 @@ public class RolloutService {
                     "Release '" + release.version() + "' ist diesem Gerät nicht zuweisbar: "
                             + grund);
         }
+        requireLightProgramme(release);
         rollouts.upsertTarget(deviceId, releaseSeq, release.version(), rolloutId, actor);
         rollouts.appendEvent(actor, "target_assigned", rolloutId, deviceId, release.version());
         publishTarget(device, release.version(), release.releaseSeq(), rolloutId,
@@ -236,6 +248,7 @@ public class RolloutService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     boxArtConflict(release.version(), gesperrt));
         }
+        requireLightProgramme(release);
 
         // Vollständig prüfen, BEVOR das Erste geschrieben wird - die Regel, die
         // hier die fehlende Transaktion trägt (siehe Klassen-Javadoc).
@@ -636,5 +649,32 @@ public class RolloutService {
                             + "Vertrauensanker prüfen könnte - es wird nicht verteilt.");
         }
         return release;
+    }
+
+    /**
+     * Ein Edge-Light-Release ist erst zuweisbar, wenn JEDES Programm seines
+     * Manifests fertig und geprüft im Portal liegt (K2): die Box lädt es von
+     * dort, und eine Zuweisung, deren Download ins Leere geht, endete nur in
+     * „fehlgeschlagen". Der Release-Lauf lädt die Programme gleich nach dem
+     * Eintrag ins Register hoch.
+     */
+    private void requireLightProgramme(EdgeReleaseDto release) {
+        if (lightProgramme == null || !BoxArt.LIGHT.equals(releaseBoxArt(release))) {
+            return;
+        }
+        List<String> fehlen;
+        try {
+            java.util.Set<String> fertig = lightProgramme.fertigeArchs(release.releaseSeq());
+            fehlen = ReleaseManifest.read(release.manifest()).programs().stream()
+                    .map(ReleaseManifest.Program::arch).filter(a -> !fertig.contains(a)).toList();
+        } catch (ReleaseManifest.InvalidManifestException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Release '" + release.version() + "' hat kein lesbares Manifest: " + e.getMessage());
+        }
+        if (!fehlen.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Release '" + release.version() + "' ist noch nicht verteilbar: die Programme fuer "
+                            + String.join(", ", fehlen) + " liegen noch nicht vollstaendig im Portal.");
+        }
     }
 }

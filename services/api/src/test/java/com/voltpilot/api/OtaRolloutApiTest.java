@@ -154,6 +154,13 @@ class OtaRolloutApiTest {
               "signing_key_id": "rel-2026-a"
             }
             """;
+    /**
+     * Die gepackte Lieferung eines Edge-Light-"Programms" für den Test: 1,3 MB
+     * kaum packbarer Bytes, damit das Hochladen mehrere Teile braucht.
+     */
+    private static final byte[] LIGHT_GZ = lightGz();
+    private static final String LIGHT_GZ_SHA = sha256Hex(LIGHT_GZ);
+
     /** Ein Edge-Light-Manifest in der Form, die {@code vp-ota manifest --binary} erzeugt. */
     private static final String LIGHT_MANIFEST = """
             {
@@ -168,8 +175,8 @@ class OtaRolloutApiTest {
                   "arch": "linux/mipsle",
                   "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
                   "size": 14614743,
-                  "gz_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
-                  "gz_size": 4679121
+                  "gz_sha256": "%s",
+                  "gz_size": %d
                 }
               ],
               "min_from_seq": 0,
@@ -180,7 +187,29 @@ class OtaRolloutApiTest {
               },
               "signing_key_id": "rel-2026-a"
             }
-            """;
+            """.formatted(LIGHT_GZ_SHA, LIGHT_GZ.length);
+
+    private static byte[] lightGz() {
+        byte[] roh = new byte[1_300_000];
+        new java.util.Random(4711).nextBytes(roh);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.GZIPOutputStream gz = new java.util.zip.GZIPOutputStream(out)) {
+            gz.write(roh);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+        return out.toByteArray();
+    }
+
+    private static String sha256Hex(byte[] b) {
+        try {
+            return java.util.HexFormat.of().formatHex(
+                    java.security.MessageDigest.getInstance("SHA-256").digest(b));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static final String SIGNATURE =
             "{\"schema_version\":\"1.0\",\"alg\":\"ed25519\",\"key_id\":\"rel-2026-a\","
                     + "\"domain\":\"release\",\"signature\":\"AAAA\"}\n";
@@ -493,6 +522,56 @@ class OtaRolloutApiTest {
         assertThat((String) lightOnUnknown.getBody().get("message"))
                 .contains("Box-Art dieses Geräts ist unbekannt");
 
+        // ── Edge Light: erst verteilbar, wenn die Programme im Portal liegen ─
+        ResponseEntity<Map<String, Object>> ohneProgramm = post(
+                "/api/v1/admin/devices/" + light + "/update-target", admin, Map.of("releaseSeq", 41));
+        assertThat(ohneProgramm.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) ohneProgramm.getBody().get("message"))
+                .contains("noch nicht verteilbar").contains("linux/mipsle");
+        assertThat(rest.getForEntity(url("/api/v1/edge/light-programm/" + LIGHT_GZ_SHA), byte[].class)
+                .getStatusCode()).as("vor dem Hochladen gibt es nichts").isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(putTeil(admin, "edge-2026.10.0", "linux/mipsle", 0, new byte[] {1}).getStatusCode())
+                .as("ein Docker-Release hat keine Programme").isEqualTo(HttpStatus.CONFLICT);
+        assertThat(putTeil(admin, "edge-light-2026.10.1", "linux/arm64", 0, new byte[] {1}).getStatusCode())
+                .as("eine Plattform, die das Manifest nicht nennt").isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Eine falsche Lieferung in voller Länge wird am Ende verworfen.
+        byte[] falsch = LIGHT_GZ.clone();
+        falsch[falsch.length - 1] ^= 1;
+        ResponseEntity<Map<String, Object>> verworfen = hochladen(admin, falsch);
+        assertThat(verworfen.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) verworfen.getBody().get("message")).contains("Pruefsumme");
+        // Ein Teil an der falschen Stelle passt nicht.
+        assertThat(putTeil(admin, "edge-light-2026.10.1", "linux/mipsle", 0,
+                java.util.Arrays.copyOfRange(LIGHT_GZ, 0, 1000)).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(putTeil(admin, "edge-light-2026.10.1", "linux/mipsle", 5000,
+                java.util.Arrays.copyOfRange(LIGHT_GZ, 5000, 6000)).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+
+        // Die richtige Lieferung, in Teilen von 512 KiB: fertig erst mit dem letzten.
+        ResponseEntity<Map<String, Object>> fertig = hochladen(admin, LIGHT_GZ);
+        assertThat(fertig.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(fertig.getBody()).containsEntry("fertig", true);
+        assertThat(((Number) fertig.getBody().get("empfangen")).longValue()).isEqualTo(LIGHT_GZ.length);
+        // Ein wiederholter Lauf ändert nichts.
+        assertThat(putTeil(admin, "edge-light-2026.10.1", "linux/mipsle", 0, new byte[] {9}).getBody())
+                .containsEntry("fertig", true);
+        JsonNode stand = json.readTree(rest.exchange(url("/api/v1/admin/edge-releases/edge-light-2026.10.1/programme"),
+                HttpMethod.GET, new HttpEntity<>(bearer(admin)), String.class).getBody());
+        assertThat(stand.get(0).get("arch").asText()).isEqualTo("linux/mipsle");
+        assertThat(stand.get(0).get("fertig").asBoolean()).isTrue();
+
+        // Offen abrufbar, ohne Token, Byte für Byte.
+        ResponseEntity<byte[]> abruf = rest.getForEntity(url("/api/v1/edge/light-programm/" + LIGHT_GZ_SHA),
+                byte[].class);
+        assertThat(abruf.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(abruf.getHeaders().getContentType().toString()).isEqualTo("application/gzip");
+        assertThat(abruf.getBody()).isEqualTo(LIGHT_GZ);
+        assertThat(rest.getForEntity(url("/api/v1/edge/light-programm/" + "0".repeat(64)), byte[].class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.getForEntity(url("/api/v1/edge/light-programm/nicht-hex"), byte[].class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
         // ── Passende Zuweisungen gehen durch ──────────────────────────────
         assertThat(post("/api/v1/admin/rollouts", admin,
                 Map.of("releaseSeq", 40, "devices", List.of(docker.toString(), silent.toString())))
@@ -697,6 +776,31 @@ class OtaRolloutApiTest {
                 .filter(e -> event.equals(e.get("event").asText()))
                 .map(e -> e.get("actor").asText())
                 .toList();
+    }
+
+    /** Ein Teil einer Edge-Light-Lieferung hochladen. */
+    private ResponseEntity<Map<String, Object>> putTeil(String token, String version, String arch, long ab,
+            byte[] teil) {
+        HttpHeaders h = bearer(token);
+        h.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        return rest.exchange(url("/api/v1/admin/edge-releases/" + version + "/programme/" + arch + "?ab=" + ab),
+                HttpMethod.PUT, new HttpEntity<>(teil, h), new ParameterizedTypeReference<>() {});
+    }
+
+    /** Die ganze Lieferung so hochladen wie der Release-Lauf: 512 KiB je Teil, ab 0. */
+    private ResponseEntity<Map<String, Object>> hochladen(String token, byte[] gz) {
+        ResponseEntity<Map<String, Object>> last = null;
+        for (int ab = 0; ab < gz.length; ab += 512 * 1024) {
+            last = putTeil(token, "edge-light-2026.10.1", "linux/mipsle", ab,
+                    java.util.Arrays.copyOfRange(gz, ab, Math.min(gz.length, ab + 512 * 1024)));
+            if (!last.getStatusCode().is2xxSuccessful()) {
+                return last;
+            }
+            if (ab + 512 * 1024 < gz.length) {
+                assertThat(last.getBody()).containsEntry("fertig", false);
+            }
+        }
+        return last;
     }
 
     private ResponseEntity<Map<String, Object>> post(String path, String token, Object body) {
