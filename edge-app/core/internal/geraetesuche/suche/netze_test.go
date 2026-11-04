@@ -180,3 +180,79 @@ func TestGesamtRechnetNachlaufUndErkennenVorab(t *testing.T) {
 		t.Fatalf("done: %d/%d", z.Erledigt, z.Gesamt)
 	}
 }
+
+// The box's own address for D5 (agent/network.go), by the rule of the search:
+// the customer network is the default route's interface, never a tunnel. On
+// 04.11.2026 the pilot Mango's portal told the customer to enter the tunnel
+// address 10.10.1.25 into the charge point - Edge Light detected nothing and
+// the technician's call over WireGuard was all the cloud had.
+func TestEdgeLightKenntIhreEigeneAdresseImKundennetz(t *testing.T) {
+	mango := []Schnittstelle{
+		{Name: "br-lan", Prefixe: []netip.Prefix{netip.MustParsePrefix("192.168.1.1/24")}},
+		{Name: "eth0.2", Prefixe: []netip.Prefix{netip.MustParsePrefix("192.168.178.21/24")}},
+		{Name: "wg_service", Prefixe: []netip.Prefix{netip.MustParsePrefix("10.10.1.25/24")}},
+		{Name: "docker0", Prefixe: []netip.Prefix{netip.MustParsePrefix("172.17.0.1/16")}},
+	}
+	eigene := []Route{
+		{Schnittstelle: "eth0.2", Ziel: netip.MustParsePrefix("192.168.178.0/24")},
+		{Schnittstelle: "br-lan", Ziel: netip.MustParsePrefix("192.168.1.0/24")},
+		{Schnittstelle: "wg_service", Ziel: netip.MustParsePrefix("10.10.1.0/24")},
+	}
+	umgebung := func(ifs []Schnittstelle, routen []Route) Umgebung {
+		return Umgebung{BoxArt: geraetesuche.BoxArtEdgeLight,
+			Schnittstellen: func() ([]Schnittstelle, error) { return ifs, nil },
+			Routen:         func() ([]Route, error) { return routen, nil }}
+	}
+
+	// The normal Mango: default route over the WAN into the customer network.
+	wan := append(eigene, Route{Schnittstelle: "eth0.2", Ziel: netip.MustParsePrefix("0.0.0.0/0"),
+		Gateway: netip.MustParseAddr("192.168.178.1")})
+	e := EigeneErreichbarkeit(umgebung(mango, wan))
+	if e.Kundennetz != netip.MustParseAddr("192.168.178.21") || e.Schnittstelle != "eth0.2" {
+		t.Fatalf("customer network address: %+v", e)
+	}
+	if !e.ImTunnel(netip.MustParseAddr("10.10.1.25")) || !e.ImTunnel(netip.MustParseAddr("172.17.0.1")) ||
+		e.ImTunnel(netip.MustParseAddr("192.168.178.21")) || e.ImTunnel(netip.MustParseAddr("192.168.1.1")) {
+		t.Fatalf("tunnel/container addresses: %+v", e.Tunnel)
+	}
+
+	// Default route into the tunnel: WAN and br-lan remain, the box cannot
+	// tell which is the customer's - nothing, never a guess.
+	tunnel := append(eigene, Route{Schnittstelle: "wg_service", Ziel: netip.MustParsePrefix("0.0.0.0/0")})
+	if e := EigeneErreichbarkeit(umgebung(mango, tunnel)); e.Kundennetz.IsValid() {
+		t.Fatalf("ambiguous networks must stay unknown, got %+v", e)
+	}
+
+	// One home network beside the tunnel (no default route at all, or the
+	// default route in the tunnel): the only candidate is the answer.
+	einzeln := []Schnittstelle{mango[1], mango[2]}
+	if e := EigeneErreichbarkeit(umgebung(einzeln, tunnel)); e.Kundennetz != netip.MustParseAddr("192.168.178.21") {
+		t.Fatalf("single candidate: %+v", e)
+	}
+	if e := EigeneErreichbarkeit(umgebung(einzeln, nil)); e.Kundennetz != netip.MustParseAddr("192.168.178.21") {
+		t.Fatalf("single candidate without routes: %+v", e)
+	}
+
+	// Befund 2 of 30.10.: the only home network's route leaves through the
+	// tunnel - replies would go there, so it is no address to hand out.
+	nurLan := []Schnittstelle{mango[0], mango[2]}
+	weg := append(eigene, Route{Schnittstelle: "wg_service", Ziel: netip.MustParsePrefix("192.168.1.0/25")})
+	if e := EigeneErreichbarkeit(umgebung(nurLan, weg)); e.Kundennetz.IsValid() {
+		t.Fatalf("unreachable network must not be reported, got %+v", e)
+	}
+
+	// Only the tunnel, or no interfaces at all: nothing.
+	if e := EigeneErreichbarkeit(umgebung([]Schnittstelle{mango[2]}, nil)); e.Kundennetz.IsValid() || len(e.Tunnel) != 1 {
+		t.Fatalf("tunnel only: %+v", e)
+	}
+	if e := EigeneErreichbarkeit(Umgebung{BoxArt: geraetesuche.BoxArtEdgeLight}); e.Kundennetz.IsValid() || e.Tunnel != nil {
+		t.Fatalf("no readers: %+v", e)
+	}
+
+	// The search itself still walks the same networks (one truth).
+	w, grund := waehleNetze(umgebung(mango, wan))
+	if grund != "" || len(w) != 2 || w[0].netz.Rolle != "kundennetz" || w[0].netz.BoxAdresse != "192.168.178.21" ||
+		w[1].netz.Rolle != "box_netz" || w[1].netz.BoxAdresse != "192.168.1.1" {
+		t.Fatalf("search networks: %q %+v", grund, w)
+	}
+}

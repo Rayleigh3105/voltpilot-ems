@@ -110,6 +110,24 @@ describe('Endpunkt', () => {
     expect(e.grund).toBeNull();
   });
 
+  it('Edge Light: zeigt die erkannte Adresse im Kundennetz (WAN-Seite), nie den Wartungstunnel', () => {
+    // Regression 04.11.2026: der Pilot-Mango meldete nur den beobachteten
+    // Tunnel-Aufruf (10.10.1.25, `erreicht`), die Fläche zeigte ihn als
+    // OCPP-Adresse - keine Säule im Kundennetz erreicht ihn. Die reparierte Box
+    // erkennt ihre Adresse im Kundennetz selbst (`schnittstelle`); genau die
+    // kommt in die Säule.
+    const mango = {
+      ...BOX,
+      lanHost: '192.168.178.21:8484',
+      lanSource: 'schnittstelle',
+      lanSeenAt: '2026-11-04T18:20:00Z',
+    } as Device;
+    const e = endpunkt(mango, laden(), 'goe-300808');
+    expect(e.url).toBe('ws://192.168.178.21:8887/ocpp/goe-300808');
+    expect(e.basis).toBe('ws://192.168.178.21:8887/ocpp');
+    expect(e.grund).toBeNull();
+  });
+
   it('schneidet den Anschluss der lokalen Oberfläche ab - OCPP hat seinen eigenen', () => {
     expect(endpunkt(BOX, laden(), 'x').url).toContain(':8887/');
     expect(endpunkt(BOX, laden(), 'x').url).not.toContain('8484');
