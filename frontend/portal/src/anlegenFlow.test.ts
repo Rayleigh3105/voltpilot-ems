@@ -52,10 +52,6 @@ describe('keineVorlageHinweis', () => {
     expect(keineVorlageHinweis('zaehler')).toMatch(/Für Zähler gibt es noch keine eigene Vorlage/);
     expect(keineVorlageHinweis('zaehler')).toMatch(/Netz-Zähler/);
   });
-
-  it('führt die Batterie ohne Vorlagen - sie hat ihren eigenen Weg', () => {
-    expect(geraeteFuerTyp(alle, 'batterie')).toEqual({ templates: [], erweitert: false });
-  });
 });
 
 describe('geraeteFuerTyp', () => {

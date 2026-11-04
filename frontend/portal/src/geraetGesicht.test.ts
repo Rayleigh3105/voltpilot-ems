@@ -467,28 +467,27 @@ describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
   });
 
   /**
-   * P6 Speiser-Bindung: der Live-Fall dieses Pakets. Der Deye im
-   * Spannungsmodus MISST keinen Ladestand - das gebundene DIYBMS rechnet ihn.
-   * Ohne diesen Zweig zeigte die Geräteseite weiter das Schweigen des
-   * Wechselrichters, während das Cockpit daneben den gebundenen Wert führt.
+   * Liefert ein ANDERES Gerät den Ladestand, steht er am Wechselrichter - und
+   * sagt, von wem. Sonst zeigte die Geräteseite weiter das Schweigen des
+   * Wechselrichters, während das Cockpit daneben den anderen Wert führt.
    */
-  it('B · der gebundene Ladestand steht am Wechselrichter - und sagt, von wem', () => {
+  it('B · der Ladestand eines anderen Geräts steht am Wechselrichter - und sagt, von wem', () => {
     const g = gesicht(input({
       komponenten: [komponente({ role: 'storage', entityId: 'e-batt', reading: null })],
       speicherKnoten: {
         role: 'storage',
         soc_pct: 7.4,
-        soc_source: { entity_id: 'e-diy', label: 'DIY-Speicher Keller' },
+        soc_source: { entity_id: 'e-zweit', label: 'Zweiter Speicher' },
         flow_active: false,
         members: [{ entity_id: 'e-batt', label: 'Deye SUN-30K', primary: true }],
       } as never,
     }));
     const speicher = g.held.kacheln.find((k) => k.key === 'speicher');
     expect(speicher?.wert).toBe(`7,4${NBSP}%`);
-    expect(speicher?.wort).toBe('Ladestand von: DIY-Speicher Keller');
+    expect(speicher?.wort).toBe('Ladestand von: Zweiter Speicher');
   });
 
-  /** Meldet das Gerät SELBST den Ladestand, ändert P6 nichts. */
+  /** Meldet das Gerät SELBST den Ladestand, ändert sich nichts. */
   it('B · der eigene Ladestand des Geräts bleibt unangetastet', () => {
     const g = gesicht(input({
       komponenten: [komponente({
@@ -506,37 +505,6 @@ describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
     const speicher = g.held.kacheln.find((k) => k.key === 'speicher');
     expect(speicher?.wert).toBe(`62,0${NBSP}%`);
     expect(speicher?.wort).toBe('geladen');
-  });
-
-  /**
-   * P6: was das BMS ZULÄSST. Eine gesperrte Richtung erklärt einen ruhenden
-   * Speicher, den sonst niemand erklärt - und ein abwesendes Feld wird
-   * ÜBERGANGEN, nie als „erlaubt" gelesen.
-   */
-  it('B · die BMS-Hülle steht neben dem Ladestand, ohne Freigaben zu erfinden', () => {
-    const g = gesicht(input({
-      komponenten: [komponente({ role: 'storage', entityId: 'e-batt', reading: null })],
-      speicherKnoten: {
-        role: 'storage',
-        flow_active: false,
-        limits: {
-          source: { entity_id: 'e-diy', label: 'DIY' },
-          charge_limit_a: 22,
-          discharge_allowed: false,
-        },
-        members: [],
-      } as never,
-    }));
-    const keys = g.held.kacheln.map((k) => k.key);
-    expect(keys).toContain('bms-laden');
-    expect(keys).toContain('bms-entladen');
-    expect(g.held.kacheln.find((k) => k.key === 'bms-entladen')?.wert).toBe('gesperrt');
-
-    const ohne = gesicht(input({
-      komponenten: [komponente({ role: 'storage', entityId: 'e-batt', reading: null })],
-      speicherKnoten: { role: 'storage', flow_active: false, members: [] } as never,
-    }));
-    expect(ohne.held.kacheln.map((k) => k.key)).not.toContain('bms-laden');
   });
 
   it('⚠ B · was dieses Gerät NICHT misst, bekommt keine Kachel', () => {

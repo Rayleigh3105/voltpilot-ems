@@ -33,7 +33,7 @@ import {
 /**
  * Die ART eines Anlege-Wegs. Seit dem Gerätekatalog (Konzept „Aufbau und
  * Gerätekatalog") ergibt sie sich aus dem gewählten Modell (`typFuerTemplate`)
- * oder aus dem gewählten Weg ohne Vorlage (Ladesäule, Batterie, Modbus-Gerät).
+ * oder aus dem gewählten Weg ohne Vorlage (Ladesäule, Modbus-Gerät).
  */
 export type TypId =
   | 'wechselrichter'
@@ -41,16 +41,14 @@ export type TypId =
   | 'ladesaeule'
   | 'verbraucher'
   | 'zaehler'
-  | 'batterie'
   | 'eigenbau';
 
 /**
  * Die Gerätetyp-Dimension des Katalogs, auf die eine Art hört.
  *
- * ⚠ `ladesaeule`, `batterie` und `eigenbau` haben KEINE: die erste erklärt nur
- * den Weg (die Säule wählt VoltPilot selbst an), die beiden anderen
- * beschreiben das Gerät selbst. Eine Vorlagen-Auswahl an ihnen wäre ein
- * Formular ohne Wirkung.
+ * ⚠ `ladesaeule` und `eigenbau` haben KEINE: die erste erklärt nur den Weg
+ * (die Säule wählt VoltPilot selbst an), die zweite beschreibt das Gerät
+ * selbst. Eine Vorlagen-Auswahl an ihnen wäre ein Formular ohne Wirkung.
  */
 const TYP_DEVICE_TYPES: Record<TypId, string[]> = {
   wechselrichter: ['inverter'],
@@ -61,7 +59,6 @@ const TYP_DEVICE_TYPES: Record<TypId, string[]> = {
   verbraucher: ['switch', 'io_module'],
   zaehler: ['meter'],
   ladesaeule: [],
-  batterie: [],
   eigenbau: [],
 };
 
@@ -89,7 +86,6 @@ const TYP_ROLLEN: Record<TypId, KomponentenRolle[]> = {
   verbraucher: ['consumer'],
   zaehler: ['grid-meter'],
   ladesaeule: [],
-  batterie: [],
   eigenbau: [],
 };
 

@@ -17,7 +17,6 @@ import {
 } from '../api';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CenteredConfirmDialog } from './CenteredConfirmDialog';
-import { BatterieAssistent } from './BatterieAssistent';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
 import { LadesaeuleAnbinden } from './LadesaeuleAnbinden';
 import { HEBEL_HINWEIS, HEBEL_INTRO, SKALIERUNG_X10, hebel } from '../testHebel';
@@ -75,21 +74,10 @@ function typFuerRolle(rolle: KomponentenRolle): TypId {
   return 'wechselrichter';
 }
 
-/**
- * Der Weg, auf dem eine BESTEHENDE Zeile bearbeitet wird.
- *
- * ⚠ Der ENTITÄTSTYP entscheidet zuerst, nicht die Rolle: eine selbst
- * angebundene Batterie ist Rolle „storage" und liefe über `typFuerRolle` in
- * den Katalog-Weg - der nach Marke und Modell fragt, die es bei ihr nicht
- * gibt. Sie gehört in ihren eigenen Assistenten, so wie sie angelegt wurde.
- */
+/** Der Weg, auf dem eine BESTEHENDE Zeile bearbeitet wird: ihre Rolle entscheidet. */
 function typFuerZeile(row: SiteComponentRow): TypId {
-  if (row.entityType === UDB_TYP) return 'batterie';
   return typFuerRolle(kundenRolle(row));
 }
-
-/** Der Entitätstyp der selbst angebundenen Batterie (P5 Ebene 1). */
-const UDB_TYP = 'user-defined-battery';
 
 /**
  * Der ANLEGE-FLUSS nach dem Gerätekatalog (Konzept „Aufbau und
@@ -158,8 +146,6 @@ export function AnlegenFlow({
   /**
    * Ein Weg ohne Vorlage aus dem Gerätekatalog: Ladesäule (`ladesaeule`)
    * oder Modbus-Gerät (`eigenbau`). Keine Anlege-Semantik ändert sich dadurch.
-   * `batterie` (selbst angebundene Batterie) bietet der Katalog nicht mehr an;
-   * der Wert bleibt nur für das Bearbeiten einer bestehenden Batterie.
    */
   initialTyp?: TypId | null;
   /** Bestehende stabile Komponente: derselbe Assistent, mit ihren Sollwerten. */
@@ -220,8 +206,6 @@ export function AnlegenFlow({
   const [typ] = useState<TypId | null>(
     vorlage ? 'eigenbau' : (edit ? typFuerZeile(edit) : (startTyp ?? initialTyp ?? null)),
   );
-  // Nur die Batterie-Bearbeitung auf der Geräteseite hat noch Schritte.
-  const [batterieSchritt, setBatterieSchritt] = useState<1 | 2 | 3 | 4>(1);
   const [rolle, setRolle] = useState<KomponentenRolle | null>(() =>
     edit ? kundenRolle(edit) : startTyp ? vorschlagRolle(startTyp, [], startRolle) : null,
   );
@@ -443,7 +427,7 @@ export function AnlegenFlow({
   useEffect(() => {
     // Auf der Einrichten-Seite läuft er, sobald alles dasteht; die Bearbeitung
     // auf der Geräteseite prüft ausdrücklich per Knopf.
-    if (inlineBearbeitung || typ === 'eigenbau' || typ === 'batterie' || typ === 'ladesaeule')
+    if (inlineBearbeitung || typ === 'eigenbau' || typ === 'ladesaeule')
       return;
     if (!template || !testNoetig || testZustand !== 'ungeprueft' || laeuft.current) return;
     if (fehlend.length > 0) return;
@@ -729,48 +713,6 @@ export function AnlegenFlow({
    * wird aber erst auf Wunsch sichtbar. Alle Zustands- und Speicherregeln oben
    * sind dieselben wie im bisherigen Assistenten.
    */
-  /*
-   * Eine SELBST ANGEBUNDENE BATTERIE bearbeitet ihr eigener Assistent - auch
-   * hier auf der Geräteseite. Das Formular darunter fragt nach Marke, Modell
-   * und Verbindungsfeldern einer VORLAGE; diese Batterie hat keine, und ihre
-   * ganze Definition (Broker, Topics, Wertepfade, wie der Ladestand entsteht)
-   * käme darin gar nicht vor. Ein zweites Formular für dieselben Felder wären
-   * zwei Wahrheiten über denselben Anschluss.
-   */
-  if (edit && inlineBearbeitung && edit.entityType === UDB_TYP) {
-    return (
-      <section className="vp-geraet-edit" data-testid="batterie-bearbeiten">
-        <header className="vp-geraet-edit-head">
-          <div>
-            <p className="vp-geraet-edit-eyebrow">Bearbeitungsmodus</p>
-            <h1>{edit.label?.trim() || 'Batterie'} bearbeiten</h1>
-            <p>
-              Ändern Sie die Verbindung, die Feld-Zuordnung oder die Art, wie der Ladestand
-              entsteht. Die bisherige Fassung läuft bis zur Bestätigung der Box weiter.
-            </p>
-          </div>
-          <span className="vp-pill vp-pill-info">Fassung {edit.definitionVersion}</span>
-        </header>
-        <BatterieAssistent
-          siteId={siteId}
-          schritt={batterieSchritt}
-          onSchritt={setBatterieSchritt}
-          navPortal={null}
-          bearbeiten={{
-            entityId: edit.id,
-            label: edit.label ?? null,
-            connection: edit.connection ?? null,
-          }}
-          onBack={onClose}
-          onSaved={(result) => {
-            onSaved(result);
-            onClose();
-          }}
-        />
-      </section>
-    );
-  }
-
   if (edit && inlineBearbeitung) {
     const modell = template
       ? `${template.brandLabel} ${template.modelLabel}`.trim()
@@ -1097,7 +1039,7 @@ export function AnlegenFlow({
    * Gespeichert wird erst mit Beleg: bestandener Test oder die abgenickte
    * Ausnahme. Aufrufe und Rümpfe sind dieselben wie zuvor im Assistenten.
    */
-  if (!edit && template && typ && typ !== 'eigenbau' && typ !== 'batterie' && typ !== 'ladesaeule') {
+  if (!edit && template && typ && typ !== 'eigenbau' && typ !== 'ladesaeule') {
     const symbol = KATEGORIE_SYMBOL[typ === 'zaehler' ? 'zaehler' : kategorieVon(template)];
     const vorschlag = vorschlagRolle(typ, vorhandene, startRolle);
     const rolleOk = rollen.some((r) => r.rolle === rolle && r.verfuegbar);
@@ -1443,15 +1385,6 @@ export function AnlegenFlow({
     );
   }
 
-  /** Nach dem Anlegen über einen Weg ohne Vorlage: melden, was entstanden ist, und schließen. */
-  function fertigMelden(result: SiteComponents, fallback: string) {
-    const id = neueKomponente(vorherigeIds, result.components);
-    const titel = result.components.find((r) => r.id === id)?.label?.trim() || fallback;
-    onSaved(result);
-    onFertig?.({ id, titel, uebernommen: false });
-    onClose();
-  }
-
   /*
    * Das MODBUS-GERÄT (auch aus einer eigenen Vorlage): Anschluss, Messwerte und
    * Name auf einer Seite - der Assistent zeichnet sie selbst, denn nur er weiß,
@@ -1477,17 +1410,6 @@ export function AnlegenFlow({
           onFertig?.({ id: info.id, titel: info.titel, uebernommen: false, hinweis: info.hinweis });
           onClose();
         }}
-      />
-    );
-  }
-
-  /* Die BATTERIE mit eigenem BMS (P5d): derselbe Assistent, als eine Seite - nur noch für Bestand (das Anlegen bietet der Katalog nicht mehr an). */
-  if (typ === 'batterie') {
-    return (
-      <BatterieAssistent
-        siteId={siteId}
-        seite={{ onZurueck, onClose }}
-        onSaved={(result) => fertigMelden(result, 'Batterie')}
       />
     );
   }
