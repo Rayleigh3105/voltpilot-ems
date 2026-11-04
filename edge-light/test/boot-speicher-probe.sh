@@ -14,7 +14,8 @@
 # drop_caches schrieb (danach 73 980 kB).
 #
 #   1. Bild aus dem Bericht, lokale Kopie: Cache geraeumt, Programm startet
-#   2. dasselbe Bild beim Download (base_url): Programm startet
+#   2. dasselbe Bild mit gesetztem base_url (abgeschafft): ignoriert, die
+#      bestaetigte Fassung startet
 #   3. drop_caches nicht schreibbar: ehrlich verweigert (Schwelle unveraendert)
 #   4. auch nach dem Raeumen zu knapp: verweigert
 #   5. genug Speicher: der Cache bleibt unberuehrt
@@ -98,11 +99,12 @@ enthaelt "Seitencache einmal geraeumt (\"1\" in drop_caches)" /probe/proc/geraeu
 enthaelt "Loader meldet 39600 -> 73980 kB" /probe/bericht.err "Seitencache geraeumt: 39600 kB -> 73980 kB verfuegbar"
 enthaelt "lokale Kopie entpackt" /probe/bericht.err "lokale Kopie entpackt"
 
-schritt "2. Dasselbe Bild beim Download (base_url)"
+schritt "2. Dasselbe Bild, base_url gesetzt (abgeschafft, wird ignoriert)"
 raeumbar "$BERICHT" "$GERAEUMT"
 lauf download https://downloads.example.invalid/edge-light
 enthaelt "Programm startet" /probe/download.out "PROGRAMM GESTARTET"
-enthaelt "Programm geladen (Download-Weg)" /probe/download.err "Programm geladen"
+enthaelt "base_url ignoriert" /probe/download.err "base_url ist abgeschafft"
+enthaelt "bestaetigte Fassung aus dem Flash" /probe/download.err "lokale Kopie entpackt"
 enthaelt "Seitencache geraeumt" /probe/download.err "Seitencache geraeumt: 39600 kB -> 73980 kB verfuegbar"
 
 schritt "3. drop_caches nicht schreibbar: verweigert, nichts gestartet"

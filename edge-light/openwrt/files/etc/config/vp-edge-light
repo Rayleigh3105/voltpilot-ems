@@ -1,20 +1,25 @@
 
 config vp-edge-light 'main'
-	# 1 = Dienst aktiv. Erst einschalten, wenn base_url gesetzt oder die
-	# lokale Kopie aufgespielt ist (install.sh erledigt beides).
+	# 1 = Dienst aktiv. Erst einschalten, wenn die bestaetigte Fassung im
+	# Flash liegt (install.sh erledigt das).
 	option enabled '0'
 
-	# Woher das Programm bei jedem Start geladen wird (HTTPS Pflicht).
-	# Erwartet: <base_url>/<channel>/vp-edge-light-linux-<arch>(.sha256)
-	# Leer = nur die lokale Kopie.
-	option base_url ''
-	option channel 'latest'
 	option arch 'mipsle'
 
-	# Lokale Kopie im Flash: <local_dir>/vp-edge-light-linux-<arch>.gz und
-	# .sha256 (Pruefsumme des ungepackten Programms). Startet die Box ohne
-	# Download-Server und nach einem Stromausfall ohne Internet.
+	# Die bestaetigte Fassung im Flash: <local_dir>/vp-edge-light-linux-<arch>.gz
+	# und .sha256 (Zeile 1: Pruefsumme des ungepackten Programms, Zeile 2:
+	# der gepackten Kopie - mit ihr laedt der Loader genau diese Fassung aus
+	# dem Portal nach, falls die Kopie beim Update unvollstaendig blieb).
+	# Neue Fassungen kommen signiert ueber das Portal (Edge-Updates), nie
+	# ueber eine Download-Adresse; base_url ist abgeschafft und wird ignoriert.
 	option local_dir '/usr/share/vp-edge-light'
+
+	# Wache einer neuen Fassung in der Probe (wie die Docker-Box): Frist in s
+	# fuer einen gruenen Selbsttest mit Cloud, hoechstens so viele Starts,
+	# Frist in s fuer den Probestart `version`.
+	option probe_frist '600'
+	option probe_starts '3'
+	option version_frist '5'
 
 	# Dauerhafter Zustand (Flash) und fluechtiger Zustand (RAM).
 	option data_dir '/etc/vp-edge-light'
@@ -29,6 +34,8 @@ config vp-edge-light 'main'
 	# das Programm im tmpfs und der Prozess).
 	option gomemlimit '48MiB'
 	option min_free_kb '40000'
+	# Bei Speichernot trifft der Kernel zuerst das Programm, nie WireGuard/SSH.
+	option oom_score_adj '800'
 
 	# Weitere Einstellungen der Box (wie in edge-app/.env.example), z. B.:
 	# list env 'VP_REF=VP-1234'

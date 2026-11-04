@@ -1,7 +1,8 @@
 #!/bin/sh /etc/rc.common
 # Edge Light als procd-Dienst. Der Loader laedt das Programm in den RAM und
 # startet es; endet es (Absturz, Update-Neustart), startet procd den Loader
-# nach 10 s erneut - unbegrenzt oft.
+# nach 10 s erneut - unbegrenzt oft. Nach einem Update tauscht der Loader beim
+# naechsten Start und wacht ueber die Probe (boot.sh).
 
 START=99
 STOP=10
