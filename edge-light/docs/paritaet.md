@@ -77,7 +77,7 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 | Funktion | Docker-Box | Edge Light |
 |---|---|---|
 | Installation | `install.sh` (Docker Compose) | 🟡 OpenWrt-Loader (Pilot) |
-| Updates mit signierter Kette, Rückfall, Selbsttest | Updater-Container | ⬜ Stufe 2 ([boot-und-updates.md](boot-und-updates.md)) |
+| Updates mit signierter Kette, Rückfall, Selbsttest | Updater-Container | ✅ gebaut (Konzept vp-edge-light-update, K1–K5): Zuweisung im Portal wie bei der Docker-Box, Programm prüft und lädt, Loader tauscht, wacht 10 min / 3 Starts und nimmt zurück, eine bestätigte Fassung im Flash ([boot-und-updates.md](boot-und-updates.md)) · belegt im Container (`boot-update-probe.sh`, `labor/labor-probe.sh`) · 🔒 Laborbeweis P1–P11 an der Labor-Mango und erstes Portal-Update auf `edge-tgjn9gd` offen ([Labor](../labor/README.md), [Nachrüsten](nachruesten.md)) |
 | Node-RED-Editor als Servicezugang (`:1881`) | ja | **entfällt** – Ersatz für individuelle Verdrahtungen (`CUSTOM-INVERTER.md`) sind Selbstbau-Geräte und Automationen aus dem Portal. Bestandsanlagen mit Handverdrahtung vor einem Umstieg prüfen |
 
 ## Reihenfolge

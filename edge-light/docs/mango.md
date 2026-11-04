@@ -494,7 +494,7 @@ Anlass war die Abnahme am VoltPilotGATE (Mangel M1): Nach einem Update zeigte de
 
 ## Lokale Kopie im Flash (gebaut, am Gerät geprüft 03.10.2026)
 
-`install.sh` legt das Programm gepackt nach `/usr/share/vp-edge-light/` (4,4 MB gzip am 03.10.2026, 4,6 MiB am 26.10.2026, + `.sha256` des ungepackten Programms, auf dem Gerät nachgeprüft). Der Loader nimmt: Download (nur mit `base_url`) → die schon geladene Fassung im RAM → die lokale Kopie. Geschrieben wird die Kopie nur bei einer Installation, also selten. Flash danach: 4,9 MB frei (03.10.2026); jede größere Fassung zieht das ab.
+`install.sh` legt das Programm gepackt nach `/usr/share/vp-edge-light/` (4,4 MB gzip am 03.10.2026, 4,6 MiB am 26.10.2026, + `.sha256` des ungepackten Programms, auf dem Gerät nachgeprüft). Seit den Updates (K4) ist das die **bestätigte Fassung**: Die Prüfsummen-Datei trägt in Zeile 2 die Prüfsumme der gepackten Kopie, mit der der Loader genau diese Fassung aus dem Portal nachlädt, wenn die Kopie beim Update unvollständig blieb. Der Loader nimmt die schon geladene Fassung im RAM oder entpackt die Kopie; `base_url` ist abgeschafft. Geschrieben wird die Kopie nur bei einer Installation und beim Behalten eines Updates (Prüfsummen zuerst), also selten ([boot-und-updates.md](boot-und-updates.md)). Flash danach: 4,9 MB frei (03.10.2026); jede größere Fassung zieht das ab.
 
 | Test am Mango | Ergebnis |
 |---|---|
@@ -511,7 +511,7 @@ NOR-Flash verträgt Dauerschreiben schlecht. Deshalb liegen im RAM (`boot.sh`, `
 - `buffer` – Messwert-Puffer (wird alle paar Sekunden geschrieben),
 - `measurement-outbox` – Zusatzmesswerte vor dem Hochladen,
 - `ocpp-journal` – OCPP-Ereignisse vor dem Hochladen,
-- `ota` – der Core schreibt `ota/core-signal.json` **alle 2 s**; Stufe 1 hält dort nichts Dauerhaftes (Stufe 2 muss Trust-Set und `current.json` in den Flash legen).
+- `ota` (RAM-Teil, `VP_OTA_RAM_DIR` = `/tmp/vp-edge-light/ota`) – Zuweisung, geladene Fassung und Dateien der Probe. Seit den Updates (K3/K4) liegt `/etc/vp-edge-light/ota` im Flash und trägt nur, was selten geschrieben wird: Vertrauens-Set, `current.json` und die Marken der Versuche (höchstens 40 Zeilen, eine je Schritt eines Updates). Das frühere `core-signal.json` alle 2 s schreibt Edge Light nicht mehr.
 
 Im Flash bleiben Identität, Zertifikat, Auswahl, Freigaben, Fahrplan-Cache (alle 15 min), das OCPP-Befehlsbuch (Sicherheit: höchstens einmal ausführen, auch über einen Neustart) und die Box-Ereignisse vor dem Hochladen (`box-event-outbox`, seit dem Stand vom 10.10.2026; geschrieben bei einem Ereignis wie dem Neustart der Box). Ob sie in den RAM wandern, ist nicht entschieden; `boot.sh` nennt sie bisher nicht. Außerhalb des Programms schreibt die Fernwartung ihre [Ereignisliste](#protokoll-der-box-wer-wann-auf-einer-box-war) in den Flash: nur, wenn ein Ereignis dazukam, höchstens 250 Zeilen.
 
