@@ -16,8 +16,7 @@ GESCHLOSSENEN Vokabular (`domain.SOC_SOURCES`, ein Wort außerhalb wird verworfe
 geraten — auch der CHECK in der Migration):
 
 - `gemessen` — echte `soc_pct`-Telemetrie im Frischefenster. Normalfall, alles wie vor P7.
-- `berechnet` — ein ABGELEITETER Stand. Der generische SoC-Baustein folgt in einem eigenen
-  Paket; die Spalte nimmt ihn schon auf. **Planungstechnisch dem gemessenen
+- `berechnet` — ein ABGELEITETER Stand. **Planungstechnisch dem gemessenen
   gleichgestellt, aber gekennzeichnet**, damit eine Fläche die schwächere Herkunft benennen
   kann (`schedule.ts ladestandHerkunftNote`). Heute schreibt ihn niemand.
 - `unbekannt` — kein Ladestand. **Der einzige Zustand, der den Plan ändert.**

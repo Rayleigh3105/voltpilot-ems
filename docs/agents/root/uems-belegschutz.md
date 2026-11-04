@@ -23,7 +23,7 @@ seinen Messstellen:
 | Weg | Route | Prüfung, jeweils vor dem ersten Schreiben | Antwort |
 |---|---|---|---|
 | Komponente entfernen (Gefahrenzone, „Zuordnung ändern“) | `DELETE /api/v1/sites/{id}/v2-entities/{entityId}` | `SiteEntityAdoptController.delete`, nach den Grundausstattungs-Wächtern | 409 `berichts_belege` |
-| Selbst definiertes Gerät, eigene Batterie | `DELETE …/components/custom/{id}`, `…/components/battery/{id}` | `SelfBuildComponentService`/`UserDefinedBatteryService.delete`, nach 404/409/422, vor `retireActive` | 409 `berichts_belege` |
+| Selbst definiertes Gerät | `DELETE …/components/custom/{id}` | `SelfBuildComponentService.delete`, nach 404/409/422, vor `retireActive` | 409 `berichts_belege` |
 | Batterie am Standort abmelden ⁺ | `DELETE /api/v1/sites/{id}/battery` | `SiteBatteryController`, vor Asset, Claim und Komponente | 409 `berichts_belege` |
 | Verbraucher entfernen ⁺ | `DELETE /api/v1/sites/{id}/consumers/{id}` | `ConsumerService.delete`, nach „noch verbunden“ | 409 `berichts_belege` |
 | Datenaufzeichnungen löschen | `POST /api/v1/devices/{id}/purge-data` (+ MQTT) | `DevicePurgeService.purge` (IP-11) | 409 `messstellen_belege` + `berichtsstaende` |

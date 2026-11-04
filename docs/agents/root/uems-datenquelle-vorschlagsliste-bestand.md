@@ -37,7 +37,7 @@ Referenz), `DatenquelleSchnittstelleVertragTest`; der ganze Portal-Weg des Messk
 - **Deye = `solarman_v5`, eigenes Protokoll-Wort** (nie `modbus_tcp`): Adresse `host:port/seriennummer`
   (`DatenquelleAdresse`, Port fehlend 8899, ohne Logger-Seriennummer keine Adresse), `mb_slave_id` als
   Geräte-ID. Fehlender Port/Geräte-ID = Vorgabe des Treibers (0 wie „fehlt“, außer im Selbstbau).
-  `mqtt_local` mit mehreren Themen hat keine Adresse; ein fehlender Takt bleibt NULL.
+  Ein fehlender Takt bleibt NULL.
 - **Reihenbeginn** = erste Speisung der Komponente, frühestens ab Ankunft der Box in ihrer Anlage
   (nächste volle Minute) — der EINZIGE rückwirkende Zeitraum und Protokoll-Eintrag (`gilt_ab`).
 - **Bestätigt wird nur, was gezeigt wurde** (Box, Protokoll, Adresse, Komponenten): sonst 409
