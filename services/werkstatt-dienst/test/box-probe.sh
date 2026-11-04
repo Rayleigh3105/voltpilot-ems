@@ -49,6 +49,7 @@ docker info >/dev/null 2>&1 || { echo "FEHLER: Docker antwortet nicht" >&2; exit
 ARCH=$(docker version --format '{{.Server.Arch}}')
 TMP=$(mktemp -d)
 chmod 755 "$TMP"
+. "$HIER/volumen.sh"
 fehler=0
 ok() { echo "ok: $*"; }
 nein() { echo "FEHLER: $*"; fehler=1; }
@@ -60,7 +61,7 @@ aufraeumen() {
   fi
   docker rm -f "$P-dienst" "$P-bruecke" "$P-box" "$P-server" "$P-bau" >/dev/null 2>&1 || true
   docker network rm "$P-a-inet" "$P-b-werk" >/dev/null 2>&1 || true
-  docker volume rm "$P-daten" >/dev/null 2>&1 || true
+  docker volume rm "$P-daten" "$P-geheim" "$P-oeffentlich" "$P-freigabe" >/dev/null 2>&1 || true
   docker image rm "$BILD_DIENST" "$BILD_DEB" "$BILD_BOX" >/dev/null 2>&1 || true
   rm -rf "$TMP"
 }
@@ -182,8 +183,12 @@ docker network create --subnet 198.51.100.0/24 --gateway 198.51.100.1 "$P-a-inet
 docker network create --subnet 192.168.1.0/24 --gateway 192.168.1.254 "$P-b-werk" >/dev/null
 
 # Wartungsserver: wg-wartung, API-Attrappe mit dem Soll-Stand, Tunnel-Dienst
-docker run -d --name "$P-server" --hostname server --network "$P-a-inet" --ip 198.51.100.10 --cap-add NET_ADMIN \
-  --sysctl net.ipv4.ip_forward=1 -v "$TMP/bin:/opt/vptd:ro" "$BILD_DEB" sleep infinity >/dev/null
+# Dateien per docker cp bzw. Volume, nie per Bind-Mount: auf dem Runner gibt es
+# $TMP für den Docker-Daemon nicht (volumen.sh).
+docker create --name "$P-server" --hostname server --network "$P-a-inet" --ip 198.51.100.10 --cap-add NET_ADMIN \
+  --sysctl net.ipv4.ip_forward=1 "$BILD_DEB" sleep infinity >/dev/null
+docker cp "$TMP/bin/." "$P-server:/opt/vptd"
+docker start "$P-server" >/dev/null
 x server sh -c 'umask 077; wg genkey > /k; wg pubkey < /k > /p
   ip link add wg-wartung type wireguard && wg set wg-wartung private-key /k listen-port 51820 &&
   ip addr add 10.10.16.1/20 dev wg-wartung && ip addr add 10.10.32.1/24 dev wg-wartung && ip link set wg-wartung up
@@ -242,7 +247,17 @@ box_starten() {
     --tmpfs /tmp:exec,mode=1777 "$BILD_BOX" /sbin/init >/dev/null
 }
 box_starten
-warte 60 x box ubus call network.interface.lan status || nein "OpenWrt startet nicht"
+# Bereit, sobald netifd das LAN kennt. Jeder Aufruf mit eigener kurzer Frist:
+# ohne -t hängt ein ubus call bis zu 30 s, solange ubusd/netifd noch anlaufen,
+# und zwei solche Aufrufe verbrauchen die ganze Frist. Der Kaltstart dauerte
+# auf dem geteilten Runner länger als 60 s (Lauf 467), lokal wenige Sekunden;
+# die Frist hier ist die Bereitschaft des Rigs, keine Aussage über die Box.
+box_start=$(date +%s)
+if warte 180 x box ubus -t 5 call network.interface.lan status; then
+  echo "   OpenWrt bereit nach $(($(date +%s) - box_start)) s"
+else
+  nein "OpenWrt startet nicht (180 s)"
+fi
 MAC_BOX=$(docker inspect "$P-box" --format "{{(index .NetworkSettings.Networks \"$P-b-werk\").MacAddress}}")
 x box sh -c "d=\$(grep -il '$MAC_BOX' /sys/class/net/eth*/address | cut -d/ -f5)
   uci -q delete network.wan6; uci -q delete network.wan; uci -q delete network.@device[0]
@@ -265,13 +280,18 @@ x box sh -c '. /etc/openwrt_release; [ "$DISTRIB_RELEASE" = 25.12.5 ] && [ -z "$
 # Werkstatt-Dienst wie im Pod (Benutzer 10001, nur lesbar, ohne Capabilities)
 API_ENV=""
 [ "$API" = 0 ] || API_ENV="-e VP_WERKSTATT_API_URL=http://198.51.100.10:8090 -e VP_WERKSTATT_TOKEN_URL=http://198.51.100.10:8090/token -e VP_WERKSTATT_TECHNIKER_ADRESSE=10.10.32.50"
-docker volume create "$P-daten" >/dev/null
-docker run --rm -u 0 -v "$P-daten:/d" -v "$TMP/fassungen:/f:ro" --entrypoint sh "$BILD_DIENST" -c 'mkdir -p /d/fassungen && cp /f/* /d/fassungen/ && chown -R 10001:10001 /d'
+mkdir -p "$TMP/daten"
+mv "$TMP/fassungen" "$TMP/daten/fassungen"
+volumen_aus "$P-daten" "$TMP/daten" "$BILD_DIENST"
+docker run --rm -u 0 -v "$P-daten:/d" --entrypoint chown "$BILD_DIENST" -R 10001:10001 /d
+volumen_aus "$P-geheim" "$TMP/geheim" "$BILD_DIENST"
+volumen_aus "$P-oeffentlich" "$TMP/oeffentlich" "$BILD_DIENST"
+volumen_aus "$P-freigabe" "$TMP/freigabe" "$BILD_DIENST"
 # shellcheck disable=SC2086 # API_ENV trägt bewusst mehrere Worte
 docker run -d --name "$P-dienst" --network "$P-a-inet" --ip 198.51.100.241 \
   --read-only --tmpfs /tmp:rw,exec,size=64m,uid=10001 --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges \
-  -v "$P-daten:/var/lib/vp-werkstatt-dienst" -v "$TMP/geheim:/etc/vp-werkstatt/geheim:ro" \
-  -v "$TMP/oeffentlich:/etc/vp-werkstatt/oeffentlich:ro" -v "$TMP/freigabe:/etc/vp-werkstatt/freigabe:ro" \
+  -v "$P-daten:/var/lib/vp-werkstatt-dienst" -v "$P-geheim:/etc/vp-werkstatt/geheim:ro" \
+  -v "$P-oeffentlich:/etc/vp-werkstatt/oeffentlich:ro" -v "$P-freigabe:/etc/vp-werkstatt/freigabe:ro" \
   -e VP_WERKBANK_ADRESSE=198.51.100.50 -e VP_WERKBANK_SSH_QUELLEN=198.51.100.241 \
   -e VP_WERKSTATT_NOTFALL_PUB=/etc/vp-werkstatt/oeffentlich/voltpilot-notfall.pub \
   -e VP_WERKSTATT_PASSWORT_EMPFAENGER="$AGE_PUB" -e VP_WARTUNG_PUBKEY="$SERVER_PUB" -e VP_WARTUNG_ENDPUNKT=198.51.100.10 \
@@ -289,7 +309,7 @@ while :; do
   # Ein reboot beendet den OpenWrt-Container: wie Strom weg und wieder da.
   if [ "$(docker inspect -f '{{.State.Running}}' "$P-box" 2>/dev/null)" = false ]; then
     docker start "$P-box" >/dev/null
-    warte 60 x box ubus call network.interface.lan status || true
+    warte 180 x box ubus -t 5 call network.interface.lan status || true
     box_mango
   fi
   z=$(zustand)

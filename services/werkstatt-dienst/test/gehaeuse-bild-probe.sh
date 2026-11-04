@@ -25,8 +25,10 @@ NAME=vp-werkstatt-gehaeuse-probe-$$
 
 command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 || { echo "FEHLER: Docker antwortet nicht" >&2; exit 2; }
 TMP=$(mktemp -d)
+. "$HIER/volumen.sh"
 aufraeumen() {
   docker rm -f "$NAME" >/dev/null 2>&1 || true
+  docker volume rm "$NAME-aus" >/dev/null 2>&1 || true
   if [ "${VP_PROBE_BEHALTEN:-}" = 1 ]; then echo "behalten: $BILD, $TMP"; return; fi
   [ -n "${VP_PROBE_BILD:-}" ] || docker image rm "$BILD" >/dev/null 2>&1 || true
   rm -rf "$TMP"
@@ -47,14 +49,20 @@ docker image inspect "$BILD" --format '{{.Architecture}} {{.Size}}' | {
 }
 [ "$(docker run --rm --platform linux/amd64 --entrypoint id "$BILD" -u)" = 10001 ] && ok "läuft als 10001" || nein "Benutzer"
 
+# aus/ ist ein frisches Volume (wie die Ablage des Jobs, das Bild gibt ihm
+# 10001 als Eigentümer); danach kommt sein Inhalt per docker cp nach <ziel>.
+# Kein Bind-Mount: auf dem Runner gibt es $TMP für den Docker-Daemon nicht
+# (volumen.sh).
 lauf() { # lauf <ziel> <referenz>
   mkdir -p "$1"
-  chmod 0777 "$1"
+  docker volume create "$NAME-aus" >/dev/null
+  rc=0
   docker run --name "$NAME" --platform linux/amd64 --network none \
     --read-only --tmpfs /tmp:rw,size=4g --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges \
-    -e HOME=/tmp -v "$1:/opt/vp/edge-light/gehaeuse/glinet-gl-mt300n-v2/aus" "$BILD" "$2" >/dev/null 2>&1
-  rc=$?
+    -e HOME=/tmp -v "$NAME-aus:/opt/vp/edge-light/gehaeuse/glinet-gl-mt300n-v2/aus" "$BILD" "$2" >/dev/null 2>&1 || rc=$?
   docker rm "$NAME" >/dev/null 2>&1 || true
+  volumen_nach "$NAME-aus" "$1" "$BILD"
+  docker volume rm "$NAME-aus" >/dev/null 2>&1 || true
   return $rc
 }
 

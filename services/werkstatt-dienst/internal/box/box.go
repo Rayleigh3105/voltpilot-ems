@@ -137,11 +137,33 @@ var Abgerissen = errors.New("Verbindung zur Box abgerissen")
 // Fuehre führt einen Befehl aus. Ein Ausgang ungleich 0 ist kein Fehler,
 // sondern steht im Ergebnis; Fehler heißt: kein Ergebnis.
 func (v *Verbindung) Fuehre(ctx context.Context, befehl string, ein io.Reader) (Ergebnis, error) {
-	s, err := v.cl.NewSession()
-	if err != nil {
-		return Ergebnis{}, fmt.Errorf("%w: %v", Abgerissen, err)
+	// Schon das Öffnen der Sitzung wartet auf die Box, bei still abgerissenem
+	// Weg (keine Antwort, kein RST) ohne Ende. Darum gilt ctx auch hier: Läuft
+	// es ab, schließt Fuehre die Verbindung, nur das beendet das Warten. Sonst
+	// hängt ein Schritt weit über seine Frist (Probe-Lauf 473: internet_weg
+	// 24 Minuten statt 3).
+	type geoeffnet struct {
+		s   *ssh.Session
+		err error
+	}
+	auf := make(chan geoeffnet, 1)
+	go func() {
+		s, err := v.cl.NewSession()
+		auf <- geoeffnet{s, err}
+	}()
+	var s *ssh.Session
+	select {
+	case g := <-auf:
+		if g.err != nil {
+			return Ergebnis{}, fmt.Errorf("%w: %v", Abgerissen, g.err)
+		}
+		s = g.s
+	case <-ctx.Done():
+		_ = v.cl.Close()
+		return Ergebnis{}, ctx.Err()
 	}
 	defer s.Close()
+	var err error
 	var o, e bytes.Buffer
 	s.Stdout, s.Stderr = &o, &e
 	if ein != nil {

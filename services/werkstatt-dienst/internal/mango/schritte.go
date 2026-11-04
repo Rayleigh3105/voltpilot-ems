@@ -1020,9 +1020,28 @@ func (l *Lauf) internetWeg(ctx context.Context, _ *lauf.Kontext) (protokoll.Bele
 	if err := l.netzNeuLaden(ctx, "uci -q delete network.lan.gateway\nuci -q delete network.lan.dns", l.ziel); err != nil {
 		return nil, err
 	}
-	w, _, err := l.v.Werte(ctx, `echo "gateway=$(uci -q get network.lan.gateway || echo keiner)"
+	// Die neue Sitzung kann noch während des Neuladens still abreißen (Probe-
+	// Lauf 473: danach keine Antwort mehr). Darum je Versuch eine eigene Frist
+	// und nach einem Fehler neu anmelden, wie beim Warten auf das Internet.
+	var w map[string]string
+	err := l.warteAuf(ctx, l.k.Zeiten.Netz, func() error {
+		if l.v == nil {
+			if err := l.neuVerbinden(ctx, l.ziel, l.k.Zeiten.Netz); err != nil {
+				return err
+			}
+		}
+		vctx, cancel := context.WithTimeout(ctx, l.k.Zeiten.Verbinden)
+		defer cancel()
+		var err error
+		w, _, err = l.v.Werte(vctx, `echo "gateway=$(uci -q get network.lan.gateway || echo keiner)"
 echo "dns=$(uci -q get network.lan.dns || echo keiner)"
 echo "weg=$(ip -4 route show default | head -n1)"`)
+		if err != nil {
+			l.v.Schliesse()
+			l.v = nil
+		}
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -81,6 +81,10 @@ RUN apt-get update \
 EOF
 
 cp "$HIER/bruecke-probe-innen.sh" "$TMP/innen.sh"
-docker run -d --name "$NAME" --privileged --network none -v "$TMP:/probe:ro" "$BILD" sleep infinity >/dev/null
+# Die Dateien kommen per docker cp in den Container, nicht per Bind-Mount: auf
+# dem Runner gibt es $TMP für den Docker-Daemon nicht (volumen.sh).
+docker create --name "$NAME" --privileged --network none "$BILD" sleep infinity >/dev/null
+docker cp "$TMP/." "$NAME:/probe"
+docker start "$NAME" >/dev/null
 echo "== Probe im Container"
 docker exec "$NAME" bash /probe/innen.sh
