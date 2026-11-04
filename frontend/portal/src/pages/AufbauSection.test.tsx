@@ -446,7 +446,7 @@ describe('AufbauSection · der Baum', () => {
     expect(neu.tagName).not.toBe('BUTTON');
     fireEvent.click(within(neu).getByRole('button', { name: 'Übernehmen' }));
     expect(await screen.findByText('Gerät zuordnen')).toBeInTheDocument();
-    expect(screen.getByText('Was misst dieses Gerät?')).toBeInTheDocument();
+    expect(screen.getByText('Wird angezeigt als')).toBeInTheDocument();
     expect(screen.getByText('Wallbox')).toBeInTheDocument();
   });
 
@@ -455,7 +455,7 @@ describe('AufbauSection · der Baum', () => {
     vi.spyOn(entitiesApi, 'adopt').mockRejectedValue(new ApiError(403, 'Forbidden'));
     rendere();
     fireEvent.click(within(await zeile('neu:goe-1')).getByRole('button', { name: 'Übernehmen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Fertig' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Zuordnen' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/VoltPilot/));
   });
 

@@ -1,7 +1,7 @@
 import { Recht } from './Recht';
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { Icon } from '../../designsystem/components/core/Icon';
+import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { Input } from '../../designsystem/components/forms/Input';
 import { VpPicker } from './VpPicker';
@@ -11,6 +11,7 @@ import { deviceName } from '../entityLabel';
 import type { ReconnectCandidate } from '../komponenten';
 import { suggestEntityType, type AdoptableSource } from '../rollen';
 import { ADOPT_FORBIDDEN_MSG } from '../setupPath';
+import './ZuordnenDialog.css';
 
 /**
  * Portal v3 · M6 — the ONE-MOVE assignment dialog ("Zuordnen ist ein Zug, kein
@@ -20,13 +21,23 @@ import { ADOPT_FORBIDDEN_MSG } from '../setupPath';
  * ONLY the customer knows (a producer's kWp/MaStR, a Verbraucher's rated
  * power), and then performs the existing adoption + role assignment together.
  *
- * The role is PRESENTATION only and never widens control — the dialog says so.
+ * The role is PRESENTATION only and never widens control — the dialog says so,
+ * in customer words, right under the role it shows.
+ *
+ * Layout (vp-geraet-zuordnen-dialog): one card says WHAT the box reported and
+ * WHAT it will be shown as (a read-only pair — the guided type is derived,
+ * never picked), then the fields only the customer knows. The primary button
+ * names the move („Zuordnen" / „Wieder verbinden"), never a bare „Fertig".
  */
+
+/** The honesty line under the shown role — what the assignment does NOT touch. */
+export const ZUORDNEN_HONESTY =
+  'Die Zuordnung legt nur fest, wie das Gerät im Portal erscheint. An der Steuerung ändert sie nichts.';
 
 /** The guided type → its role + measure channel + what the customer must add. */
 interface Guided {
   entityType: string;
-  /** The customer name for what this device measures ("Was misst dieses Gerät?"). */
+  /** The customer name the device is shown as („Wird angezeigt als"). */
   what: string;
   role: string;
   channel: string;
@@ -51,6 +62,22 @@ export function guidedFor(source: AdoptableSource): Guided | null {
   }
 }
 
+/** Symbol + colour of the reported device's card, by its guided type. */
+function symbolFor(guided: Guided | null): { icon: IconName; tone: string } {
+  switch (guided?.entityType) {
+    case 'producer':
+      return { icon: 'sun', tone: 'rolle-pv' };
+    case 'grid-meter':
+      return { icon: 'pole', tone: 'rolle-netz' };
+    case 'wallbox':
+      return { icon: 'car', tone: 'rolle-last' };
+    case 'generic-load':
+      return { icon: 'plug', tone: 'rolle-last' };
+    default:
+      return { icon: 'cpu', tone: 'rolle-offen' };
+  }
+}
+
 export function ZuordnenDialog({
   siteId,
   source,
@@ -66,6 +93,7 @@ export function ZuordnenDialog({
   onAssigned: () => void;
 }) {
   const guided = guidedFor(source);
+  const symbol = symbolFor(guided);
   // Identity churn (vp-vier-erzeuger-p9): when an orphaned same-type component
   // exists, the safe default is RECONNECTING it - adopting again would mint a
   // duplicate (the Pilsting ghost). "Als neue Komponente anlegen" stays one
@@ -80,6 +108,8 @@ export function ZuordnenDialog({
   const [label, setLabel] = useState(
     deviceName({ edgeLabel: source.label, brand: source.brand, model: source.model }) ?? '',
   );
+  // The shown role belongs to a NEW component; reconnecting keeps the old one's.
+  const showRole = mode === 'new' && guided !== null;
   const [kwp, setKwp] = useState('');
   const [see, setSee] = useState('');
   const [maxPowerKw, setMaxPowerKw] = useState('');
@@ -173,15 +203,32 @@ export function ZuordnenDialog({
             Abbrechen
           </Button>
           <Recht aktion="geraet.einrichten"><Button onClick={submit} disabled={busy || (mode === 'new' && !guided)}>
-            Fertig
+            {mode === 'reconnect' ? 'Wieder verbinden' : 'Zuordnen'}
           </Button></Recht>
         </>
       }
     >
-      <div className="vp-form-stack">
-        <p className="vp-note" style={{ marginTop: 0 }}>
-          Ihr Gerät meldet: <strong>{source.summary}</strong>.
-        </p>
+      <div className="vp-form-stack vp-zuordnen-dialog">
+        <section className="vp-zuordnen-geraet" aria-label="Gemeldetes Gerät">
+          <span className={`vp-zuordnen-symbol ${symbol.tone}`} aria-hidden="true">
+            <Icon name={symbol.icon} size={20} />
+          </span>
+          <div className="vp-zuordnen-text">
+            <dl className="vp-zuordnen-daten">
+              <div>
+                <dt>Von Ihrer Box gemeldet</dt>
+                <dd>{source.summary}</dd>
+              </div>
+              {showRole && guided && (
+                <div>
+                  <dt>Wird angezeigt als</dt>
+                  <dd>{guided.what}</dd>
+                </div>
+              )}
+            </dl>
+            {showRole && <p className="vp-note">{ZUORDNEN_HONESTY}</p>}
+          </div>
+        </section>
 
         {candidates.length > 0 && (
           <div className="vp-reconnect" role="radiogroup" aria-label="Zuordnung">
@@ -227,10 +274,6 @@ export function ZuordnenDialog({
 
         {mode === 'new' && guided ? (
           <>
-            <div className="vp-zuordnen-what">
-              <span className="vp-note">Was misst dieses Gerät?</span>
-              <strong>{guided.what}</strong>
-            </div>
             <Input
               label="Name der Komponente"
               value={label}
@@ -263,25 +306,15 @@ export function ZuordnenDialog({
                 inputMode="decimal"
               />
             )}
-            <p className="vp-note vp-zuordnen-hint">
-              Die Zuordnung ist reine Darstellung — sie ändert nie die Steuerung. Steuer-Rechte
-              hängen am Gerät, nicht an der Rolle.
-            </p>
-            {/* Alias-Politur: a loose source has no name to give yet, so the
-                pencil is deliberately absent on its row — this says where the
-                naming lives instead of leaving a dead end. */}
-            <p className="vp-note vp-zuordnen-hint">
-              Nach dem Zuordnen können Sie der Komponente einen eigenen Namen geben.
-            </p>
           </>
         ) : mode === 'new' ? (
-          <p className="vp-note">
+          <p className="vp-note" style={{ margin: 0 }}>
             Dieses Gerät kann VoltPilot für Sie einrichten — sprechen Sie uns an.
           </p>
         ) : null}
 
         {error && (
-          <div className="vp-alert vp-alert-err" role="alert" style={{ marginTop: 0 }}>
+          <div className="vp-alert vp-alert-err" role="alert">
             {error}
           </div>
         )}
