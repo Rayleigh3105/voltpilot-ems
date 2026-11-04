@@ -505,16 +505,32 @@ function makeReadOnce(deps) {
 
   // readKacoSerial liest EINMAL ueber den RS485-zu-Ethernet-Wandler der
   // Powador-Altgeraete-Plattform (embedded kaco/kaco-serial-decode.js). Der
-  // Reader oeffnet/schliesst seine eigene TCP-Verbindung und klassifiziert
-  // jeden Fehler selbst zu null - ein dead Wandler oder ein unbekanntes
-  // KACO-Protokoll (Kommando-Byte-Mismatch) liest deshalb als invalid_response
-  // statt zu werfen.
+  // Reader oeffnet/schliesst seine eigene TCP-Verbindung und liefert bei jedem
+  // Fehler null. Damit der Techniker im Termin den WAHREN Fehler sieht, beobachtet
+  // ein duenner net-Wrapper, wie weit der Zyklus kam: nie verbunden (abgewiesen,
+  // kein Weg zum Wandler) = unreachable; verbunden, aber kein einziges Byte
+  // zurueck (Baudrate/Verdrahtung/Adresse am Bus) = no_answer; Bytes da, aber
+  // kein gueltiges Frame (anderes Protokoll, Kommando-Byte-Mismatch) =
+  // invalid_response.
   function readKacoSerial(plan, role) {
-    const read = kacoSerial.makeKacoSerialReader({ net, timeoutMs: READ_TIMEOUT_MS });
+    const seen = { connected: false, bytes: false };
+    const watchedNet = {
+      Socket: function () {
+        const sock = new net.Socket();
+        sock.on('connect', () => { seen.connected = true; });
+        sock.on('data', () => { seen.bytes = true; });
+        return sock;
+      },
+    };
+    const read = kacoSerial.makeKacoSerialReader({ net: watchedNet, timeoutMs: READ_TIMEOUT_MS });
+    const failure = () => ({
+      ok: false,
+      error_code: !seen.connected ? ERR_UNREACHABLE : (!seen.bytes ? ERR_NO_ANSWER : ERR_INVALID_RESPONSE),
+    });
     return read({ ip: plan.ip, port: plan.port, address: plan.address }).then((out) => {
-      if (!out || !out.reading) return { ok: false, error_code: ERR_INVALID_RESPONSE };
+      if (!out || !out.reading) return failure();
       return { ok: true, reading: toReading(out.reading, role) };
-    }).catch(() => ({ ok: false, error_code: ERR_INVALID_RESPONSE }));
+    }).catch(() => failure());
   }
 
   return function readOnce(selection, role) {

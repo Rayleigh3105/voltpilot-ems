@@ -236,6 +236,43 @@ test('flow auto-kaco-serial embeds the current kaco/kaco-serial-decode.js source
   );
 });
 
+// Der Energiequellen-Executor ("Quellen lesen (sequenziell)") liest einen zweiten
+// Wechselrichter ueber dieselben Decoder wie der Hauptweg. Pruefmuster aus dem
+// Anlagen-Befund (Go-live 2026-11): flows.json enthielt weder kaco_serial noch
+// huawei_modbus noch die Module im Quellen-Knoten - "Weiterer Erzeuger" blieb
+// "NICHT VERDRAHTET: unbekannte Kommunikation". Umgekehrt geprueft + Drift-Waechter.
+test('flows.json: the source executor wires kaco_serial and huawei_modbus with the current decoders', () => {
+  const store = byId['sources-store'].func;
+  const read = byId['sources-read'].func;
+  for (const way of ['kaco_serial', 'huawei_modbus']) {
+    assert.ok(store.includes("s.communication === '" + way + "'"), 'sources-store routes ' + way);
+    assert.ok(read.includes("plan.adapter === '" + way + "'"), 'sources-read executes ' + way);
+  }
+  assert.ok(read.includes(fs.readFileSync(path.join(__dirname, 'kaco/kaco-serial-decode.js'), 'utf8')),
+    'sources-read embeds kaco/kaco-serial-decode.js - re-run build-flows.js');
+  assert.ok(read.includes(fs.readFileSync(path.join(__dirname, 'huawei/huawei-decode.js'), 'utf8')),
+    'sources-read embeds huawei/huawei-decode.js - re-run build-flows.js');
+});
+
+test('sources-store and sources-routing.planSources agree on the adapters for kaco_serial and huawei_modbus', () => {
+  const sourcesRouting = require('./sources-routing');
+  const cases = [
+    { communication: 'kaco_serial', family: 'kaco_serial', connection: { ip: '10.0.0.30', port: 4196, address: 1 } },
+    { communication: 'huawei_modbus', family: 'huawei_sun2000_luna', connection: { ip: '10.0.0.31', port: 502, unit_id: 0 } },
+  ];
+  for (const sel of cases) {
+    const entry = { id: 'src-x', role: 'pv-generation', brand: 'x', model: 'y', ...sel, interval_s: 5, capacity_kwp: 3 };
+    const planned = sourcesRouting.planSources(sourcesRouting.parseSourcesConfig({ schema_version: '1.0', sources: [entry] }));
+    assert.strictEqual(planned.length, 1, sel.communication + ' is planned by sources-routing');
+    const flow = {};
+    runFunctionNode(byId['sources-store'].func, { msg: { payload: [entry] }, flow });
+    assert.strictEqual(flow.source_plans.length, 1, sel.communication + ' is planned by the flow node');
+    assert.strictEqual(flow.source_plans[0].adapter, planned[0].plan.adapter);
+    assert.strictEqual(flow.source_plans[0].conn.ip, planned[0].plan.connection.ip);
+    assert.strictEqual(flow.source_plans[0].conn.port, planned[0].plan.connection.port);
+  }
+});
+
 test('flow router matches inverter-routing.route() for huawei_modbus (SUN2000 + LUNA2000)', () => {
   const sel = {
     schema_version: '1.0', brand: 'huawei', label: 'Huawei · SUN2000-3KTL-M1',

@@ -762,17 +762,17 @@ test('kaco_serial: liest + dekodiert einen simulierten Wandler -> ok mit Messwer
   }
 });
 
-test('kaco_serial: unreachable - ein abgewiesener Connect', async () => {
+test('kaco_serial: unreachable - ein abgewiesener Connect (nicht "passt nicht zu diesem Modell")', async () => {
   const readOnce = testRead.makeReadOnce(deps({ connectTimeoutMs: 500 }));
   const res = await readOnce({
     communication: 'kaco_serial', family: 'kaco_serial',
     connection: { ip: '127.0.0.1', port: 1, address: 1 },
   });
   assert.strictEqual(res.ok, false);
-  assert.strictEqual(res.error_code, testRead.ERR_INVALID_RESPONSE);
+  assert.strictEqual(res.error_code, testRead.ERR_UNREACHABLE);
 });
 
-test('kaco_serial: ein stiller Wandler liefert invalid_response statt haengenzubleiben', async () => {
+test('kaco_serial: ein stiller Wandler liefert no_answer statt haengenzubleiben', async () => {
   const { server, port } = await startKacoSerialSilentServer();
   try {
     const readOnce = testRead.makeReadOnce(deps({ readTimeoutMs: 400 }));
@@ -781,7 +781,7 @@ test('kaco_serial: ein stiller Wandler liefert invalid_response statt haengenzub
       connection: { ip: '127.0.0.1', port, address: 1 },
     });
     assert.strictEqual(res.ok, false);
-    assert.strictEqual(res.error_code, testRead.ERR_INVALID_RESPONSE);
+    assert.strictEqual(res.error_code, testRead.ERR_NO_ANSWER);
   } finally {
     server.close();
   }
