@@ -3,7 +3,8 @@ import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api';
-import type { LaufStand, WerkstattAnsicht, WerkstattDienst, WerkstattFreigabe } from '../../werkstattBank';
+import { FEHLER_IM_BEREICH, Fehlergrenze } from '../../components/Fehlergrenze';
+import { SCHRITTE, type LaufStand, type WerkstattAnsicht, type WerkstattDienst, type WerkstattFreigabe } from '../../werkstattBank';
 
 const werkstattBoxen = vi.fn();
 const werkstattDienst = vi.fn();
@@ -176,5 +177,106 @@ describe('Werkstatt: Bildschirme an der Werkbank', () => {
     render(<WerkstattPage />);
     expect(await screen.findByTestId('wsb-kein-dienst')).toBeInTheDocument();
     expect(screen.queryByTestId('wsb-mango')).toBeNull();
+  });
+});
+
+/**
+ * Die Ansicht, wie der Dienst sie am 04.11.2026 um 10:28–10:29Z meldete:
+ * `TestAnsichtZustaende` (services/werkstatt-dienst/internal/dienst) erzeugt
+ * sie aus dem Dienst selbst. Ein Lauf ohne erledigten Schritt kam dabei mit
+ * `erledigt: null` an und brachte die Werkbank in die Fehlergrenze.
+ */
+const zustaende: Record<string, WerkstattAnsicht> = JSON.parse(
+  readFileSync(resolve(__dirname, '../../../../../docs/contracts/werkstatt-ansicht-v1.zustaende.json'), 'utf8'),
+);
+
+/**
+ * Die API hält je Lauf seinen letzten Stand (`DienstAnsichtService`): `laeufe` nennt die Zustände, deren Lauf zu dem
+ * Zeitpunkt in der Liste stand (neueste zuerst).
+ */
+function ausZustand(name: string, laeufeAus: readonly string[]): WerkstattDienst {
+  const ansicht = zustaende[name];
+  const laeufe = laeufeAus.map((n) => {
+    const s = zustaende[n].lauf as LaufStand;
+    return {
+      kennung: s.kennung, freigabe: s.freigabe, boxArt: s.box_art, zustand: s.zustand, schritt: s.schritt ?? null, titel: s.titel ?? null,
+      grund: s.grund ?? null, beginn: s.beginn, ende: s.ende ?? null, aktualisiertAm: ansicht.zeit, stand: s,
+    };
+  });
+  return { ansicht, gemeldetAm: new Date().toISOString(), dienstZeit: ansicht.zeit, alterSekunden: 2, aktuell: true, laeufe };
+}
+
+/** Welcher Bildschirm an der Werkbank zu welchem Zustand gehört. */
+function erwarteterBildschirm(name: string): string {
+  if (name.startsWith('laeuft_')) return 'laeuft';
+  if (name.startsWith('wartet_')) return 'du';
+  if (name === 'angehalten_startlader') return 'startlader';
+  if (name.startsWith('angehalten_')) return 'problem';
+  if (name === 'fertig') return 'fertig';
+  return 'anschliessen';
+}
+
+/** Die Läufe, die zu dem Zustand in der Liste der API stehen: sein eigener und der angehaltene von 10:28:08Z. */
+function laeufeZu(name: string): string[] {
+  if (!zustaende[name].lauf) return [];
+  return name === 'angehalten_beim_erkennen' ? [name] : [name, 'angehalten_beim_erkennen'];
+}
+
+describe('Werkstatt: Ansichten des Dienstes vom 04.11.2026', () => {
+  const ABLAUF = Object.keys(zustaende).sort().map((n): [string, string[], string] => [n, laeufeZu(n), erwarteterBildschirm(n)]);
+
+  it('die Datei trägt jeden Zustand eines Laufs', () => {
+    expect(ABLAUF.map(([n]) => n)).toEqual(expect.arrayContaining([
+      'ohne_kabel', 'mit_kabel', 'angehalten_beim_erkennen', 'laeuft_erkennen', 'laeuft_wiedererkennen', 'wartet_tunnel_adresse',
+      'wartet_probe', 'angehalten_beim_neustart', 'angehalten_startlader', 'fertig',
+    ]));
+    // jeder Schritt des echten Laufs ab Werk; ohne Portal-API kommt die Tunnel-Adresse aus dem Portal statt einloesen
+    expect(ABLAUF.filter(([n]) => n.startsWith('laeuft_')).map(([n]) => n.slice('laeuft_'.length)).sort())
+      .toEqual(SCHRITTE.filter((s) => s !== 'einloesen').slice().sort());
+  });
+
+  it.each(ABLAUF)('An der Werkbank: %s (Läufe %j) zeichnet den Bildschirm %s', async (name, laeufe, art) => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    werkstattDienst.mockResolvedValue(ausZustand(name, laeufe));
+    const fehler = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<Fehlergrenze><WerkstattPage /></Fehlergrenze>);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    expect(screen.queryByText(FEHLER_IM_BEREICH)).toBeNull();
+    expect(screen.getByTestId('wsb')).toHaveAttribute('data-bildschirm', art);
+    expect(fehler).not.toHaveBeenCalled();
+    fehler.mockRestore();
+  });
+
+  /** So meldete der Dienst bis 724ebdde9 einen Lauf ohne erledigten Schritt; die API hält solche Stände je Lauf fest. */
+  function mitNull(name: string, laeufe: string[]): WerkstattDienst {
+    const d = ausZustand(name, laeufe);
+    const ohne = (s: LaufStand): LaufStand => (s.erledigt.length === 0 ? ({ ...s, erledigt: null } as unknown as LaufStand) : s);
+    return { ...d, ansicht: d.ansicht && { ...d.ansicht, lauf: d.ansicht.lauf && ohne(d.ansicht.lauf) }, laeufe: d.laeufe.map((l) => ({ ...l, stand: ohne(l.stand) })) };
+  }
+
+  it.each([
+    ['angehalten_beim_erkennen', 'problem'],
+    ['laeuft_erkennen', 'laeuft'],
+  ])('ein gespeicherter Stand mit erledigt: null (Dienst bis 724ebdde9): %s zeichnet %s', async (name, art) => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    werkstattDienst.mockResolvedValue(mitNull(name, laeufeZu(name)));
+    const fehler = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<Fehlergrenze><WerkstattPage /></Fehlergrenze>);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    expect(screen.queryByText(FEHLER_IM_BEREICH)).toBeNull();
+    expect(screen.getByTestId('wsb')).toHaveAttribute('data-bildschirm', art);
+    expect(fehler).not.toHaveBeenCalled();
+    fehler.mockRestore();
+  });
+
+  it.each(ABLAUF)('Übersicht am Rechner mit gewählter Box: %s (Läufe %j)', async (name, laeufe) => {
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    werkstattDienst.mockResolvedValue(ausZustand(name, laeufe));
+    const fehler = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<Fehlergrenze><WerkstattPage /></Fehlergrenze>);
+    expect(await screen.findByTestId('ws-detail')).toBeInTheDocument();
+    expect(screen.queryByText(FEHLER_IM_BEREICH)).toBeNull();
+    expect(fehler).not.toHaveBeenCalled();
+    fehler.mockRestore();
   });
 });

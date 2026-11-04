@@ -3,6 +3,7 @@ package lauf_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -195,5 +196,19 @@ func TestWartenUndEingabe(t *testing.T) {
 	}
 	if got := arten(t, a, l); got != "lauf_begonnen schritt_begonnen:tunnel wartet:tunnel eingabe:tunnel schritt_belegt:tunnel lauf_beendet=fertig" {
 		t.Fatalf("Protokoll %s", got)
+	}
+}
+
+// Ein Lauf ohne erledigten Schritt meldet erledigt als leere Liste, nie als
+// null: das Portal liest eine Liste (werkstatt-ansicht-v1); null brachte am
+// 04.11.2026 die Werkbank-Bildschirme in die Fehlergrenze.
+func TestStandErledigtIstNieNull(t *testing.T) {
+	l := lauf.Neu(time.Date(2026, 11, 4, 10, 28, 8, 0, time.UTC), "2026-11-mango-1", "mango")
+	b, err := json.Marshal(l.Stand())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"erledigt":[]`) {
+		t.Fatalf("erledigt nicht als leere Liste: %s", b)
 	}
 }

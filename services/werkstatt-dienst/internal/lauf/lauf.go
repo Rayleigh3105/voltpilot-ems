@@ -102,7 +102,9 @@ func (l *Lauf) Stand() Stand {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	s := l.stand
-	s.Erledigt = append([]string(nil), l.stand.Erledigt...)
+	// Nie nil: eine nil-Liste ginge als null ans Portal, der Vertrag sagt Liste
+	// (werkstatt-ansicht-v1, Werkbank-Absturz vom 04.11.2026).
+	s.Erledigt = append([]string{}, l.stand.Erledigt...)
 	return s
 }
 

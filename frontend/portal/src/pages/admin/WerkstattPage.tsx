@@ -23,6 +23,7 @@ import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
 import {
   freigabeZeile,
+  liesDienst,
   laufendeFreigabe,
   uebersicht,
   uhrzeit,
@@ -59,7 +60,7 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
   async function laden() {
     const [b, d, f] = await Promise.allSettled([adminApi.werkstattBoxen(), adminApi.werkstattDienst(), adminApi.werkstattFreigaben()]);
     if (b.status === 'fulfilled') setBoxen(b.value);
-    if (d.status === 'fulfilled') setDienst(d.value);
+    if (d.status === 'fulfilled') setDienst(liesDienst(d.value));
     if (f.status === 'fulfilled') setFreigaben(f.value);
     const erster = [b, d, f].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
     setLadeFehler(erster ? fehlerText(erster.reason, 'Die Werkstatt ließ sich nicht laden. Bitte erneut versuchen.') : null);

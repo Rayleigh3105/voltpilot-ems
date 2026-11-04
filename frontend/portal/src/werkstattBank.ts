@@ -103,6 +103,20 @@ export interface WerkstattFreigabe {
   grund: string | null;
 }
 
+/**
+ * Liest die Antwort der API so, wie der Vertrag sie meint: `erledigt` ist eine Liste. Der Dienst bis 724ebdde9 meldete
+ * einen Lauf ohne erledigten Schritt mit `erledigt: null`, und die API hält je Lauf seinen letzten Stand – solche Stände
+ * bleiben in `laeufe` stehen. `null` heißt hier nur „noch nichts erledigt“.
+ */
+export function liesDienst(d: WerkstattDienst): WerkstattDienst {
+  const stand = (s: LaufStand): LaufStand => (Array.isArray(s.erledigt) ? s : { ...s, erledigt: [] });
+  return {
+    ...d,
+    ansicht: d.ansicht?.lauf ? { ...d.ansicht, lauf: stand(d.ansicht.lauf) } : d.ansicht,
+    laeufe: (d.laeufe ?? []).map((l) => (l.stand ? { ...l, stand: stand(l.stand) } : l)),
+  };
+}
+
 // ── Phasen ─────────────────────────────────────────────────────────────────
 
 export type PhaseZustand = 'ok' | 'lauf' | 'offen' | 'warn';
