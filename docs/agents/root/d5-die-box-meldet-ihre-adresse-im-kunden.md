@@ -30,6 +30,13 @@ zeichengleich wie vorher.
   mehreren Kandidaten wird GAR KEINE gemeldet statt einer geratenen. Eine
   Adresse älter als 14 Tage gilt nicht mehr — eine falsche Adresse ist schlimmer
   als keine.
+- **Edge Light (04.11.2026):** ohne Installer gab es dort kein `lan_host`, und
+  der beobachtete `host` war die Tunnel-Adresse des Technikers - der
+  OCPP-Anbinden-Dialog zeigte `ws://10.10.1.25:8887/ocpp`. Die Box erkennt ihre
+  Kundennetz-Adresse jetzt selbst nach der Regel der Gerätesuche
+  (Standardroute ohne Tunnel/Container; mehrdeutig = keine) und lässt einen über
+  den eigenen Tunnel beobachteten `host` weg; Details im
+  [Edge-Thema](../edge/die-box-meldet-ihre-adresse-im-kunden-la.md).
 - **Draht:** additiver Top-Level-Block `network` im Herzschlag
   (`cloud.NetworkSummary`, gespeist über `Options.NetworkFn` — er hängt am LINK
   wie `version`, damit kein künftiger Aufrufer ihn vergessen kann, und weil die

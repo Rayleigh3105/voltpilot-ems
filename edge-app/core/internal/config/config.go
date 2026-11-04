@@ -51,11 +51,12 @@ type Config struct {
 	// HTTPAddr is the listen address of the local web app + health endpoint.
 	HTTPAddr string `json:"http_addr"`
 	// LANHost is the customer-LAN endpoint of that web app, including the
-	// published host port (for example "192.168.178.42:8484"). The installer
-	// derives it from the host's non-VPN default route; VP_LAN_HOST can override
-	// it on unusual multi-homed installations. It is deliberately separate from
-	// HTTPAddr: the core listens inside a bridge container, while customers open
-	// the Docker host on the LAN.
+	// published host port (for example "192.168.178.42:8484"). The Docker
+	// installer derives it from the host's non-VPN default route; Edge Light
+	// detects it itself from its interfaces (agent/network.go). VP_LAN_HOST can
+	// override it on unusual multi-homed installations. It is deliberately
+	// separate from HTTPAddr: the core listens inside a bridge container, while
+	// customers open the Docker host on the LAN.
 	LANHost string `json:"lan_host"`
 
 	// Guard limits. Per-customer wiring sets the real battery values; the

@@ -609,9 +609,11 @@ type LocalSetupEntry struct {
 type NetworkSummary struct {
 	// ReportedAt is when the edge assembled this view (RFC 3339).
 	ReportedAt string `json:"reported_at"`
-	// LANHost is the endpoint of the Docker host on the CUSTOMER LAN, including
-	// its published web port. The installer detects/configures it outside the
-	// bridge container, so a later service visit over a VPN cannot replace it.
+	// LANHost is the endpoint of the box on the CUSTOMER LAN, including its
+	// published web port. The Docker installer detects/configures it outside
+	// the bridge container; Edge Light detects it itself on the router by the
+	// rule of the device search (default route, never a tunnel). A later
+	// service visit over a VPN cannot replace it.
 	LANHost string `json:"lan_host,omitempty"`
 	// Host is the proven address VERBATIM, port included (the port is part of
 	// what a human types). It is retained as fallback evidence for older/manual

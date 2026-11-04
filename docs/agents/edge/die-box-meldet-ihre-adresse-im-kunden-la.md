@@ -31,6 +31,20 @@ ANZEIGE — es entsteht kein Schreibweg und keine Entscheidung.**
   (genau das schickt der Installer-Selbsttest bei jedem Start), ein leerer Wert
   und ein PUNKTLOSER Hostname (`voltpilot` — er löst nur in fremden Suchdomänen
   auf). Alles andere reist VERBATIM inklusive Port.
+- **Edge Light erkennt `lan_host` SELBST** (`suche.EigeneErreichbarkeit`,
+  `agent/network.go`; 04.11.2026). Die Box läuft auf dem Router, ein Installer
+  schreibt kein `VP_LAN_HOST`; bis dahin meldete sie nur den beobachteten
+  `host`, und der war am Pilot-Mango die Tunnel-Adresse eines Technikers
+  (`10.10.1.25`) - das Portal nannte sie als OCPP-Adresse, keine Säule im
+  Kundennetz erreicht sie. Die Regel ist die der Gerätesuche (EINE Wahrheit:
+  dieselben Schnittstellen, dieselbe Routingtabelle, `lan-range-vectors.json`):
+  Kundennetz = Schnittstelle der Standardroute ohne Tunnel (`wg*`, `tun*`) und
+  Container; ohne Standardroute der EINZIGE verbleibende Kandidat; bei mehreren
+  GAR KEINER. Ein beobachteter `host`, der eine eigene Tunnel-/Container-Adresse
+  ist, reist NICHT (er beweist nichts im Kundennetz). Ein von Hand gesetztes
+  `VP_LAN_HOST` (UCI `env`) gewinnt weiterhin; die Docker-Box liest ihre
+  Container-Schnittstellen dafür nie. Beweise: `agent/network_test.go`
+  (Mango mit WAN, br-lan, wg_service), `suche/netze_test.go`.
 - **`<data>/network.json` (tmp+rename, EIN Schreiber)** lässt die Adresse einen
   Neustart überleben — sonst wäre sie nach jedem Update genau dann unbekannt,
   wenn jemand sie sucht. Älter als 14 Tage gilt sie nicht mehr: eine falsche

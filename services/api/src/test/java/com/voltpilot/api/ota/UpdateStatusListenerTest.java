@@ -379,6 +379,29 @@ class UpdateStatusListenerTest {
                 eq(Instant.parse("2026-08-28T07:10:00Z")), eq("schnittstelle"));
     }
 
+    /**
+     * Regression 04.11.2026 (Edge Light, Pilot-Mango): the portal's "Adresse in
+     * der Säule eintragen" showed {@code ws://10.10.1.25:8887/ocpp} - the
+     * maintenance-tunnel address a technician had opened the web app under.
+     * The box had sent only {@code host} (it set no VP_LAN_HOST and withheld
+     * its own address among several interfaces). The fixed box detects its
+     * address in the customer network itself and sends it as {@code lan_host};
+     * the tunnel observation it drops, so the block carries no {@code host}
+     * at all. That heartbeat stores the WAN-side address as the detected
+     * customer-LAN endpoint - the one a charge point can reach.
+     */
+    @Test
+    void anEdgeLightHeartbeatStoresItsDetectedCustomerNetworkAddress() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-light-2026.11.4\","
+                + "\"network\":{\"reported_at\":\"2026-11-04T18:20:00Z\","
+                + "\"lan_host\":\"192.168.178.21:8484\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices).setLanAddress(eq(DEVICE), eq("192.168.178.21:8484"),
+                eq(Instant.parse("2026-11-04T18:20:00Z")), eq("schnittstelle"));
+    }
+
     /** Ohne bewiesene Adresse ist die eigene Schnittstelle die schwächere, aber
      *  ehrliche Aussage - und sie wird als solche BENANNT. */
     @Test

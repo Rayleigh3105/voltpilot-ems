@@ -89,63 +89,17 @@ func netzDocker(lanHost string) ([]netzwahl, string) {
 // 30.10. the router's LAN route pointed into the tunnel) is reported as not
 // reachable and not walked.
 func netzeEdgeLight(u Umgebung) ([]netzwahl, string) {
-	if u.Schnittstellen == nil {
+	ifs, routen, ok := liesNetze(u)
+	if !ok {
 		return nil, GrundKeinPrivatesNetz
 	}
-	ifs, err := u.Schnittstellen()
-	if err != nil {
-		return nil, GrundKeinPrivatesNetz
-	}
-	var routen []Route
-	if u.Routen != nil {
-		routen, _ = u.Routen()
-	}
-	standard, gateway := standardRoute(routen)
-
-	type kandidat struct {
-		w    netzwahl
-		name string
-	}
-	var kandidaten []kandidat
-	for _, s := range ifs {
-		for _, p := range s.Prefixe {
-			if !p.Addr().Is4() {
-				continue
-			}
-			b, grund := probe.SuchBereich(p.String(), s.Name)
-			if grund != "" {
-				continue
-			}
-			w := netzwahl{
-				netz: geraetesuche.Netz{Netz: b.Netz.String(), BoxAdresse: b.BoxAdresse.String(),
-					Ausschnitt: b.Ausschnitt, Erreichbar: routeGehtUeber(routen, b.Netz, s.Name)},
-				bereich: b, schnittstelle: s.Name,
-			}
-			kandidaten = append(kandidaten, kandidat{w: w, name: s.Name})
-		}
-	}
+	kandidaten, kunde := kandidatenEdgeLight(ifs, routen)
 	if len(kandidaten) == 0 {
 		return nil, GrundKeinPrivatesNetz
 	}
 	var out []netzwahl
-	// The customer network: on the default route's interface, the network that
-	// holds the gateway (else the first one there).
-	kunde := -1
-	for i, k := range kandidaten {
-		if k.name != standard {
-			continue
-		}
-		if kunde < 0 || (gateway.IsValid() && k.w.bereich.Netz.Contains(gateway)) {
-			kunde = i
-		}
-	}
 	if kunde >= 0 {
-		w := kandidaten[kunde].w
-		w.netz.Rolle = "kundennetz"
-		if gateway.IsValid() && w.bereich.Netz.Contains(gateway) {
-			w.gateway = gateway
-		}
-		out = append(out, w)
+		out = append(out, kandidaten[kunde].w)
 	}
 	// The box network: br-lan before the rest, the rest by name.
 	rest := make([]kandidat, 0, len(kandidaten))
@@ -166,6 +120,138 @@ func netzeEdgeLight(u Umgebung) ([]netzwahl, string) {
 		out = append(out, w)
 	}
 	return out, ""
+}
+
+// kandidat is one network of Edge Light's own interfaces that may be a home
+// network, with the interface it sits on.
+type kandidat struct {
+	w    netzwahl
+	name string
+}
+
+// liesNetze reads interfaces and routing table from the environment; false
+// when the box cannot see its interfaces at all.
+func liesNetze(u Umgebung) ([]Schnittstelle, []Route, bool) {
+	if u.Schnittstellen == nil {
+		return nil, nil, false
+	}
+	ifs, err := u.Schnittstellen()
+	if err != nil {
+		return nil, nil, false
+	}
+	var routen []Route
+	if u.Routen != nil {
+		routen, _ = u.Routen()
+	}
+	return ifs, routen, true
+}
+
+// kandidatenEdgeLight lists the networks of every interface with a private
+// IPv4 address, without tunnels and containers (the shared range rule), and
+// the index of the customer network (-1 = none): on the default route's
+// interface, the network that holds the gateway (else the first one there).
+// That one carries the role kundennetz and its gateway.
+func kandidatenEdgeLight(ifs []Schnittstelle, routen []Route) ([]kandidat, int) {
+	standard, gateway := standardRoute(routen)
+	var kandidaten []kandidat
+	for _, s := range ifs {
+		for _, p := range s.Prefixe {
+			if !p.Addr().Is4() {
+				continue
+			}
+			b, grund := probe.SuchBereich(p.String(), s.Name)
+			if grund != "" {
+				continue
+			}
+			w := netzwahl{
+				netz: geraetesuche.Netz{Netz: b.Netz.String(), BoxAdresse: b.BoxAdresse.String(),
+					Ausschnitt: b.Ausschnitt, Erreichbar: routeGehtUeber(routen, b.Netz, s.Name)},
+				bereich: b, schnittstelle: s.Name,
+			}
+			kandidaten = append(kandidaten, kandidat{w: w, name: s.Name})
+		}
+	}
+	kunde := -1
+	for i, k := range kandidaten {
+		if k.name != standard {
+			continue
+		}
+		if kunde < 0 || (gateway.IsValid() && k.w.bereich.Netz.Contains(gateway)) {
+			kunde = i
+		}
+	}
+	if kunde >= 0 {
+		kandidaten[kunde].w.netz.Rolle = "kundennetz"
+		if gateway.IsValid() && kandidaten[kunde].w.bereich.Netz.Contains(gateway) {
+			kandidaten[kunde].w.gateway = gateway
+		}
+	}
+	return kandidaten, kunde
+}
+
+// Erreichbarkeit is what Edge Light knows about its OWN reachability from its
+// interfaces and routing table - the box's half of D5 (agent/network.go). The
+// Docker box gets its customer-LAN endpoint from the installer, which reads
+// the host's non-VPN default route; Edge Light runs on the router itself and
+// reads the same thing where the search reads its networks, so the address
+// the portal shows and the network the search walks are ONE answer.
+type Erreichbarkeit struct {
+	// Kundennetz is the box's own address in the customer network: the
+	// address a device there (a charge point, the customer's browser) reaches
+	// the box under. Invalid = unknown; a guessed address is worse than none.
+	Kundennetz netip.Addr
+	// Schnittstelle carries Kundennetz ("" when unknown).
+	Schnittstelle string
+	// Tunnel are the box's own addresses on tunnel and container interfaces.
+	// A caller that reached the box under one of them (support over
+	// WireGuard) is not in the customer network, so that address proves
+	// nothing a customer could use.
+	Tunnel []netip.Addr
+}
+
+// ImTunnel says whether ip is one of the box's own tunnel/container addresses.
+func (e Erreichbarkeit) ImTunnel(ip netip.Addr) bool {
+	for _, t := range e.Tunnel {
+		if t == ip.Unmap() {
+			return true
+		}
+	}
+	return false
+}
+
+// EigeneErreichbarkeit determines Edge Light's own address in the customer
+// network by the rule of the search: the network it walks as kundennetz (the
+// default route's interface, tunnels and containers excluded). Without a
+// default route into a home network it is the ONLY remaining candidate; with
+// several the box cannot tell which one the customer's is and says nothing
+// rather than guessing. A network whose route leaves through another
+// interface is no address to hand out either.
+func EigeneErreichbarkeit(u Umgebung) Erreichbarkeit {
+	var e Erreichbarkeit
+	ifs, routen, ok := liesNetze(u)
+	if !ok {
+		return e
+	}
+	for _, s := range ifs {
+		for _, p := range s.Prefixe {
+			if _, grund := probe.SuchBereich(p.String(), s.Name); grund == probe.BereichTunnel || grund == probe.BereichContainer {
+				e.Tunnel = append(e.Tunnel, p.Addr().Unmap())
+			}
+		}
+	}
+	kandidaten, kunde := kandidatenEdgeLight(ifs, routen)
+	wahl := -1
+	switch {
+	case kunde >= 0:
+		wahl = kunde
+	case len(kandidaten) == 1:
+		wahl = 0
+	}
+	if wahl < 0 || !kandidaten[wahl].w.netz.Erreichbar {
+		return e
+	}
+	e.Kundennetz, e.Schnittstelle = kandidaten[wahl].w.bereich.BoxAdresse, kandidaten[wahl].name
+	return e
 }
 
 // standardRoute is the interface and gateway of the default route with the

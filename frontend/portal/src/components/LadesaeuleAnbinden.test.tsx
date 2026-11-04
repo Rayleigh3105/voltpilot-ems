@@ -92,6 +92,18 @@ describe('LadesaeuleAnbinden', () => {
     expect((screen.getByLabelText('Kennung') as HTMLInputElement).value).toBe('meine-saeule');
   });
 
+  it('Edge Light: zeigt die von der Box erkannte Adresse im Kundennetz, nie den Wartungstunnel', async () => {
+    // Regression 04.11.2026: der gespeicherte `lanHost` ist, was die API aus
+    // dem Herzschlag der reparierten Box (`network.lan_host`) ablegt - die
+    // WAN-Adresse des Mango im Kundennetz. Die Fläche zeigt genau sie.
+    mount({ ...BOX, lanHost: '192.168.178.21:8484', lanSource: 'schnittstelle' } as Device);
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'goe-300808' } });
+    await waitFor(() =>
+      expect(screen.getByText('ws://192.168.178.21:8887/ocpp/goe-300808')).toBeTruthy(),
+    );
+    expect(screen.queryByText(/10\.10\.1\.25/)).toBeNull();
+  });
+
   it('zeigt BEIDE Adress-Formen zum Kopieren', async () => {
     mount();
     fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'hof-nord' } });

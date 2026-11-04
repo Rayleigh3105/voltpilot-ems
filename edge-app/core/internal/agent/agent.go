@@ -442,6 +442,10 @@ type Agent struct {
 	geraetesucheMu     sync.Mutex
 	geraetesucheSpur   func(ctx context.Context, addr string) (func(), bool)
 	geraetesucheDialer func(ctx context.Context, addr string) (net.Conn, error)
+	// netzSchnittstellen / netzRouten replace the kernel readers of Edge
+	// Light's own networks (network.go, netzUmgebung) in tests only.
+	netzSchnittstellen func() ([]suche.Schnittstelle, error)
+	netzRouten         func() ([]suche.Route, error)
 
 	entMu        sync.Mutex
 	entStore     *entities.Store
