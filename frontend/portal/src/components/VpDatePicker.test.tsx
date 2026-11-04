@@ -1,8 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VpDatePicker } from './VpDatePicker';
 import { VpTimePicker } from './VpTimePicker';
-import { MAX_KALENDER_PX, MIN_PANEL_PX, platziere } from './VpPanel';
+import { MAX_KALENDER_PX, MIN_KALENDER_PX, MIN_PANEL_PX, platziere } from './VpPanel';
 
 function phone(an: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -149,8 +149,50 @@ describe('VpDatePicker: Woche und Monat sind DASSELBE Gitter', () => {
     render(<VpDatePicker ariaLabel="Monat" art="monat" value="2026-08" onChange={onChange} />);
     expect(feld('Monat')).toHaveTextContent('August 2026');
     fireEvent.click(feld('Monat'));
-    fireEvent.click(screen.getByRole('gridcell', { name: '11' }));
-    expect(onChange).toHaveBeenCalledWith('2026-08');
+    fireEvent.click(screen.getByRole('gridcell', { name: 'Oktober 2026' }));
+    expect(onChange).toHaveBeenCalledWith('2026-10');
+  });
+});
+
+describe('VpDatePicker: der MONAT ist ein Raster der zwölf Monate unter seinem Jahr', () => {
+  it('zeigt zwölf Monate, das Jahr als Überschrift, und blättert das Jahr', () => {
+    const onChange = vi.fn();
+    render(<VpDatePicker ariaLabel="Monat" art="monat" value="2026-08" onChange={onChange} />);
+    fireEvent.click(feld('Monat'));
+    const raster = screen.getByRole('grid', { name: 'Monat' });
+    expect(within(raster).getAllByRole('gridcell')).toHaveLength(12);
+    expect(within(raster).getByRole('gridcell', { name: 'August 2026' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('2026')).toBeInTheDocument();
+    // Kein Tagesgitter mehr: keine Wochentage, keine KW.
+    expect(screen.queryByRole('columnheader')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Voriges Jahr' }));
+    expect(screen.getByText('2025')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('gridcell', { name: 'März 2025' }));
+    expect(onChange).toHaveBeenCalledWith('2025-03');
+  });
+
+  it('sperrt Monate und Jahre außerhalb der Grenzen', () => {
+    render(
+      <VpDatePicker ariaLabel="Monat" art="monat" value="2026-08" min="2026-06" max="2026-11" onChange={() => {}} />,
+    );
+    fireEvent.click(feld('Monat'));
+    expect(screen.getByRole('gridcell', { name: 'Mai 2026' })).toBeDisabled();
+    expect(screen.getByRole('gridcell', { name: 'Juni 2026' })).toBeEnabled();
+    expect(screen.getByRole('gridcell', { name: 'Dezember 2026' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Voriges Jahr' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Nächstes Jahr' })).toBeDisabled();
+  });
+
+  it('wählt mit der Tastatur: Pfeile ±1/±3 Monate, Enter', () => {
+    const onChange = vi.fn();
+    render(<VpDatePicker ariaLabel="Monat" art="monat" value="2026-08" onChange={onChange} />);
+    fireEvent.click(feld('Monat'));
+    const raster = screen.getByRole('grid', { name: 'Monat' });
+    fireEvent.keyDown(raster, { key: 'ArrowDown' });
+    fireEvent.keyDown(raster, { key: 'ArrowRight' });
+    fireEvent.keyDown(raster, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith('2026-12');
   });
 });
 
@@ -302,5 +344,60 @@ describe('platziere: der Kalender bleibt so breit, wie ein Kalender ist', () => 
 
   it('unterschreitet die Mindestbreite auch mit Deckel nie', () => {
     expect(platziere(feldMit(90), panel, 100).width).toBe(MIN_PANEL_PX);
+  });
+});
+
+/**
+ * Captain-Befund 04.11.2026: das Datum-Feld der Zeit-Leiste (rund 240 px) steht
+ * am rechten Rand der Leiste. Das Panel nahm die Breite des Feldes, das Gitter
+ * braucht aber 19rem - Sa/So und „Nächster Monat" waren abgeschnitten, und das
+ * Panel lief links ausgerichtet über das Feld hinaus.
+ */
+describe('platziere: der Kalender wird nie abgeschnitten', () => {
+  const feldAn = (left: number, breite: number) =>
+    ({
+      getBoundingClientRect: () => ({
+        width: breite,
+        left,
+        right: left + breite,
+        top: 100,
+        bottom: 144,
+      }),
+    }) as unknown as HTMLElement;
+  const panel = { offsetHeight: 360 } as unknown as HTMLElement;
+  const viewport = (breite: number) => {
+    Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: breite });
+    Object.defineProperty(document.documentElement, 'clientHeight', { configurable: true, value: 900 });
+  };
+  afterEach(() => {
+    // @ts-expect-error - zurück auf jsdom
+    delete document.documentElement.clientWidth;
+    // @ts-expect-error - zurück auf jsdom
+    delete document.documentElement.clientHeight;
+  });
+
+  it('bekommt seine natürliche Breite, auch an einem schmalen Feld', () => {
+    viewport(1440);
+    expect(platziere(feldAn(100, 220), panel, MAX_KALENDER_PX, MIN_KALENDER_PX).width).toBe(MIN_KALENDER_PX);
+  });
+
+  it('richtet sich am RECHTEN Rand des Feldes aus, wenn rechts der Platz fehlt', () => {
+    viewport(1440);
+    // Feld 1180…1420: linksbündig endete das Panel bei 1500.
+    const p = platziere(feldAn(1180, 240), panel, MAX_KALENDER_PX, MIN_KALENDER_PX);
+    expect(p.left + p.width).toBe(1420);
+    expect(p.left + p.width).toBeLessThanOrEqual(1440 - 12);
+  });
+
+  it('bleibt linksbündig, wo der Platz reicht', () => {
+    viewport(1440);
+    expect(platziere(feldAn(100, 240), panel, MAX_KALENDER_PX, MIN_KALENDER_PX).left).toBe(100);
+  });
+
+  it('wird nie breiter als der sichtbare Bereich', () => {
+    viewport(300);
+    const p = platziere(feldAn(20, 200), panel, MAX_KALENDER_PX, MIN_KALENDER_PX);
+    expect(p.left).toBeGreaterThanOrEqual(12);
+    expect(p.left + p.width).toBeLessThanOrEqual(300 - 12);
   });
 });

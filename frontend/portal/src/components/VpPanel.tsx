@@ -57,17 +57,36 @@ export const MIN_PANEL_PX = 240;
  */
 export const MAX_KALENDER_PX = 320;
 
+/**
+ * Die Breite, unter die ein Kalender nie fällt - genau seine natürliche Breite
+ * (siehe {@link platziere}): ein schmales Feld macht das Gitter nicht schmaler.
+ */
+export const MIN_KALENDER_PX = MAX_KALENDER_PX;
+
 /** Ab wie vielen Pixeln ein Zug am Sheet-Griff wirklich schliesst. */
 export const WISCH_ZU_PX = 90;
 
 /**
  * KOLLISIONS-UMSCHLAG: unter dem Feld, sonst darüber - und immer waagerecht in
  * den sichtbaren Bereich geklemmt.
+ *
+ * <b>⚠ Ein Kalender ist nie schmaler als sein Gitter.</b> Vorher nahm er die
+ * Breite seines Feldes (mindestens {@link MIN_PANEL_PX}); das Gitter verlangt
+ * aber KW-Spalte plus sieben Tage (`min-width: 19rem`). Am Datum-Feld der
+ * Zeit-Leiste (rund 240 px breit) schnitt das `overflow: hidden` des Panels
+ * Sa/So, „Nächster Monat" und den Fuß ab. `mindestPx` gibt ihm deshalb seine
+ * natürliche Breite, unabhängig vom Feld.
+ *
+ * <b>Waagerecht:</b> linksbündig unter dem Feld; reicht der Platz rechts nicht,
+ * rechtsbündig am Feld (das Feld steht dann am rechten Rand einer Leiste), und
+ * erst danach in den sichtbaren Bereich geklemmt. Breiter als der sichtbare
+ * Bereich wird das Panel nie.
  */
 export function platziere(
   feld: HTMLElement,
   panel: HTMLElement,
   maxPx?: number,
+  mindestPx?: number,
 ): PanelPlatz {
   const r = feld.getBoundingClientRect();
   const ph = panel.offsetHeight;
@@ -75,9 +94,12 @@ export function platziere(
   const luft = 4;
   const vw = document.documentElement.clientWidth;
   const vh = document.documentElement.clientHeight;
-  const roh = Math.max(r.width, MIN_PANEL_PX);
-  const width = maxPx ? Math.min(roh, Math.max(maxPx, MIN_PANEL_PX)) : roh;
-  const left = Math.max(rand, Math.min(r.left, Math.max(rand, vw - width - rand)));
+  const roh = Math.max(r.width, MIN_PANEL_PX, mindestPx ?? 0);
+  const gedeckelt = maxPx ? Math.min(roh, Math.max(maxPx, MIN_PANEL_PX, mindestPx ?? 0)) : roh;
+  // Ohne gemessenen sichtbaren Bereich (jsdom: 0) gibt es nichts zu begrenzen.
+  const width = vw > 0 ? Math.min(gedeckelt, Math.max(MIN_PANEL_PX, vw - 2 * rand)) : gedeckelt;
+  const wunsch = r.left + width > vw - rand ? r.right - width : r.left;
+  const left = Math.max(rand, Math.min(wunsch, Math.max(rand, vw - width - rand)));
   let top = r.bottom + luft;
   let oben = false;
   if (top + ph > vh - rand && r.top - luft - ph > rand) {
@@ -126,6 +148,7 @@ export function VpPanel({
   triggerAsField = false,
   labelFor,
   maxPanelPx,
+  minPanelPx,
 }: {
   basisId: string;
   label?: ReactNode;
@@ -168,6 +191,8 @@ export function VpPanel({
   labelFor?: string;
   /** Obergrenze der Panel-Breite - siehe {@link MAX_KALENDER_PX}. */
   maxPanelPx?: number;
+  /** Untergrenze der Panel-Breite - siehe {@link MIN_KALENDER_PX}. */
+  minPanelPx?: number;
 }) {
   const [platz, setPlatz] = useState<PanelPlatz | null>(null);
   const [wisch, setWisch] = useState(0);
@@ -180,8 +205,8 @@ export function VpPanel({
     const feld = ausloeserRef.current;
     const panel = panelRef.current;
     if (!feld || !panel) return;
-    setPlatz(platziere(feld, panel, maxPanelPx));
-  }, [maxPanelPx]);
+    setPlatz(platziere(feld, panel, maxPanelPx, minPanelPx));
+  }, [maxPanelPx, minPanelPx]);
 
   useLayoutEffect(() => {
     if (!offen || isPhone) {

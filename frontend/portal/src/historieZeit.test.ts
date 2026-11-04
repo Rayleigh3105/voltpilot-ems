@@ -13,7 +13,6 @@ import {
   sprungJahre,
   sprungWert,
   streifenAnker,
-  streifenSlots,
   zeigtStreifen,
 } from './historieZeit';
 
@@ -119,26 +118,6 @@ describe('F2 · Monatsstreifen', () => {
     expect(zeigtStreifen('month')).toBe(true);
     expect(zeigtStreifen('week')).toBe(false);
     expect(zeigtStreifen('year')).toBe(false);
-  });
-
-  it('zeigt zwölf Monate ohne erfundene Zahlen und markiert den laufenden', () => {
-    const slots = streifenSlots(NOW, coverage());
-    expect(slots).toHaveLength(12);
-    expect(slots[11]).toMatchObject({ month: '2026-07-01', label: 'Jul', isCurrent: true });
-    expect(slots[0]).toMatchObject({ month: '2025-08-01', label: 'Aug', isCurrent: false });
-    // KEINE Werte - die Historie kennt sie nicht, und erfinden wäre keine Option.
-    expect(slots.every((s) => s.value === null)).toBe(true);
-  });
-
-  it('markiert Monate ohne Daten - und lässt sie unbekannt, wenn wir es nicht wissen', () => {
-    const slots = streifenSlots(NOW, coverage());
-    const key = (m: string) => slots.find((s) => s.month === m);
-    expect(key('2026-05-01')?.hasData).toBe(false); // vor der ersten Messung
-    expect(key('2026-06-01')?.hasData).toBe(true);
-    expect(key('2026-07-01')?.hasData).toBe(true);
-
-    // Ohne Abdeckungsdaten bleibt es UNBEKANNT (undefined), nie „keine Daten".
-    for (const s of streifenSlots(NOW, null)) expect(s.hasData).toBeUndefined();
   });
 
   it('führt ein Tipp im Monatsmodus in den Monat, im Tagesmodus auf einen Tag darin', () => {

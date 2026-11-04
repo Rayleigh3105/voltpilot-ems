@@ -1086,8 +1086,10 @@
   gap: var(--vp-space-3);
 }
 
-.vp-zl-pop .vp-mstrip {
-  margin-bottom: 0;
+/* Das Monats-Raster im Popover: der Rahmen ist das Popover selbst. */
+.vp-zl-pop .vp-monatsraster {
+  padding: 0;
+  min-width: 0;
 }
 
 .vp-zl-pop .vp-zl-cover,

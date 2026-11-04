@@ -632,47 +632,45 @@ describe('F2 · In der Vergangenheit navigieren', () => {
     expect(screen.getAllByRole('option').length).toBeGreaterThan(0);
   });
 
-  it('trägt den Monatsstreifen der Geld-Ansicht - hier als Navigator OHNE erfundene Zahlen', async () => {
+  it('trägt im Tag ein Monats-Raster unter seinem Jahr - ohne Streifen, ohne Scroll-Leiste', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     const { container } = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
     );
     await screen.findByRole('group', { name: /^Energie · / });
 
-    // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
-    // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
-    // noch, was man ständig braucht.
+    // E3: Monats-Sprung, „Vergleichen" und Datenlage liegen HINTER dem
+    // Datum-Feld (⋯) — eine klebende Leiste trägt nur, was man ständig braucht.
+    fireEvent.click(screen.getByRole('tab', { name: 'Tag' }));
     fireEvent.click(screen.getByRole('button', { name: 'Monat, Vergleich & Datenlage' }));
-    const streifen = screen.getByRole('tablist', { name: 'Monat anspringen' });
-    const chips = within(streifen).getAllByRole('tab');
-    expect(chips).toHaveLength(12);
-    // Kein Chip behauptet einen Wert (die Historie kennt keine Monatswerte).
-    expect(streifen.querySelector('.mv')).toBeNull();
+    const raster = screen.getByRole('grid', { name: 'Monat anspringen' });
+    const monate = within(raster).getAllByRole('gridcell');
+    expect(monate).toHaveLength(12);
+    // Der alte Chip-Streifen ist weg.
+    expect(container.querySelector('.vp-mstrip')).toBeNull();
     // Monate vor der ersten Messung sind nicht anspringbar.
-    expect(chips.some((c) => (c as HTMLButtonElement).disabled)).toBe(true);
+    expect(monate.some((c) => (c as HTMLButtonElement).disabled)).toBe(true);
 
-    fireEvent.click(within(streifen).getAllByRole('tab', { name: /Jul/ })[0]);
+    const juli = monate.find((c) => /^Juli /.test(c.getAttribute('aria-label') ?? ''))!;
+    fireEvent.click(juli);
     await waitFor(() =>
-      expect(container.querySelector('.vp-period-nav .label')?.textContent).toContain('2026'),
+      expect(container.querySelector('.vp-period-nav .label')?.textContent).toMatch(/07\.20\d\d/),
     );
   });
 
-  it('zeigt den Streifen nur dort, wo Blättern wirklich weh tut', async () => {
+  it('zeigt das Raster nur dort, wo Blättern wirklich weh tut', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await screen.findByRole('group', { name: /^Energie · / });
-    // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
-    // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
-    // noch, was man ständig braucht.
     fireEvent.click(screen.getByRole('button', { name: 'Monat, Vergleich & Datenlage' }));
-    expect(screen.getByRole('tablist', { name: 'Monat anspringen' })).toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: 'Monat anspringen' })).toBeInTheDocument();
 
-    // Im Jahres-Zeitraum gibt es den Streifen nicht — der ⋯-Knopf trägt dann
+    // Im Jahres-Zeitraum gibt es das Raster nicht — der ⋯-Knopf trägt dann
     // nur noch „Vergleichen" und die Datenlage.
     fireEvent.keyDown(window, { key: 'Escape' });
     fireEvent.click(screen.getByRole('tab', { name: 'Jahr' }));
     fireEvent.click(screen.getByRole('button', { name: 'Monat, Vergleich & Datenlage' }));
-    expect(screen.queryByRole('tablist', { name: 'Monat anspringen' })).toBeNull();
+    expect(screen.queryByRole('grid', { name: 'Monat anspringen' })).toBeNull();
   });
 });
 
