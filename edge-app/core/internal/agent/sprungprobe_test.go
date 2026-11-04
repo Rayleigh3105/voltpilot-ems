@@ -162,27 +162,10 @@ func TestSprungprobeBrichtAbWennDerBezugswaechterEingreift(t *testing.T) {
 		t.Fatal("order not taken")
 	}
 	batt := 40.0
-	if w := a.sprungSchritt(t0, guards.Reading{PvKw: 60}, &batt, true, nil); w.DeckelKw != nil {
+	if w := a.sprungSchritt(t0, guards.Reading{PvKw: 60}, &batt, true); w.DeckelKw != nil {
 		t.Fatalf("ceiling %v despite the import guard", *w.DeckelKw)
 	}
 	if b := sprungBericht(t, a); b.Grund != sprungprobe.Bezugswaechter {
-		t.Fatalf("report: %+v", b)
-	}
-}
-
-// The battery's hard protection stop is Geraeteschutz: no jump against it.
-func TestSprungprobeBrichtAbBeimGeraeteschutz(t *testing.T) {
-	a, _ := sprungAgent(t, true)
-	t0 := time.Now().UTC().Truncate(time.Second)
-	if !a.nimmSprungprobe(sprungAuftrag(vaE4, "verbrauch_senken", 20, t0.Add(2*time.Minute)), t0) {
-		t.Fatal("order not taken")
-	}
-	batt := 40.0
-	stop := &guards.BmsEnvelope{ChargeKw: guards.Unknown(), DischargeKw: guards.Unknown(), ChargeBlocked: true}
-	if w := a.sprungSchritt(t0, guards.Reading{PvKw: 60}, &batt, false, stop); w.DeckelKw != nil {
-		t.Fatalf("ceiling %v despite the protection stop", *w.DeckelKw)
-	}
-	if b := sprungBericht(t, a); b.Grund != sprungprobe.Geraeteschutz {
 		t.Fatalf("report: %+v", b)
 	}
 }

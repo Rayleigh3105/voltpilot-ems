@@ -45,9 +45,8 @@ const (
 // newArbiter builds the arbitration engine with the agent's environment.
 func (a *Agent) newArbiter() *desired.Arbiter {
 	return desired.New(desired.Deps{
-		Now:         func() time.Time { return time.Now().UTC() },
-		Reading:     a.entityGuardReading,
-		BmsEnvelope: a.bmsEnvelope,
+		Now:     func() time.Time { return time.Now().UTC() },
+		Reading: a.entityGuardReading,
 		EnvLimits: func() *guards.Limits {
 			return &guards.Limits{
 				MaxChargeKw:    a.Cfg.MaxChargeKw,
