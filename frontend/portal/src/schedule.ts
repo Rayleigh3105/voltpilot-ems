@@ -1039,16 +1039,10 @@ export const KEIN_LADESTAND_NOTE =
 /**
  * Vokabular von `SchedulePlan.socSource` (Spalte `schedule.soc_source`).
  *
- * ⚠ Es ist ADDITIV: seit P5b kennt die Box die feinere Herkunft ihres
- * gerechneten Ladestands (Kennlinie vs. Ladungszählung, `soc_source_code`).
- * Reicht ein Lauf sie als `berechnet:kennlinie` /
- * `berechnet:ladungszaehlung` weiter, NENNT die Fahrplan-Seite sie; ein Lauf
- * mit dem groben `berechnet` bleibt unverändert richtig gelesen.
+ * ⚠ Es ist ADDITIV: ein Wort außerhalb des Vokabulars wird nicht geraten.
  */
 export const SOC_SOURCE_GEMESSEN = 'gemessen';
 export const SOC_SOURCE_BERECHNET = 'berechnet';
-export const SOC_SOURCE_KENNLINIE = 'berechnet:kennlinie';
-export const SOC_SOURCE_LADUNGSZAEHLUNG = 'berechnet:ladungszaehlung';
 export const SOC_SOURCE_UNBEKANNT = 'unbekannt';
 
 /**
@@ -1065,14 +1059,10 @@ export function planOhneLadestand(plan: { socSource?: string | null } | null | u
 }
 
 /**
- * Der Herkunfts-Zusatz für einen BERECHNETEN Ladestand (P7 + P5b/P5d).
+ * Der Herkunfts-Zusatz für einen BERECHNETEN Ladestand (P7).
  *
- * Der generische SoC-Baustein DARF planen — aber die Fläche muss sagen, dass
- * sein Stand gerechnet und nicht gemessen ist. Nennt der Lauf zusätzlich die
- * METHODE, steht sie im Satz: „aus der Kennlinie" und „mitgezählt" führen zu
- * verschiedenen Handlungen (die eine braucht die richtige Zellchemie, die
- * andere eine Nachkalibrierung), und ein Satz, der beide gleich behandelt,
- * hilft bei keiner von beiden.
+ * Ein berechneter Ladestand DARF planen — aber die Fläche muss sagen, dass
+ * er gerechnet und nicht gemessen ist.
  *
  * ⚠ Ein Wort außerhalb des Vokabulars ergibt `null` — geraten wird hier
  * nichts, und `gemessen`/`unbekannt`/ein Alt-Lauf ohne Spalte tragen den Satz
@@ -1081,20 +1071,10 @@ export function planOhneLadestand(plan: { socSource?: string | null } | null | u
 export function ladestandHerkunftNote(
   plan: { socSource?: string | null } | null | undefined,
 ): string | null {
-  const kern =
-    'Der Ladestand dieser Anlage wird berechnet, nicht gemessen – der Fahrplan ist '
-    + 'entsprechend ungenauer';
-  switch (plan?.socSource) {
-    case SOC_SOURCE_BERECHNET:
-      return `${kern}.`;
-    case SOC_SOURCE_KENNLINIE:
-      return `${kern}. Er entsteht aus der Zellspannung über die Kennlinie Ihrer Zelle.`;
-    case SOC_SOURCE_LADUNGSZAEHLUNG:
-      return `${kern}. Er wird ab einem Startpunkt mitgezählt und läuft ohne `
-        + 'Nachkalibrierung mit der Zeit auseinander.';
-    default:
-      return null;
+  if (plan?.socSource !== SOC_SOURCE_BERECHNET) {
+    return null;
   }
+  return 'Der Ladestand dieser Anlage wird berechnet, nicht gemessen – der Fahrplan ist entsprechend ungenauer.';
 }
 
 export const HORIZON_HINT =
