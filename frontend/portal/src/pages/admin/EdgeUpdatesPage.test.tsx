@@ -6,6 +6,7 @@ const edgeUpdates = vi.fn();
 const createRollout = vi.fn();
 const setUpdateTarget = vi.fn();
 const revertUpdateTarget = vi.fn();
+const listDevices = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -13,6 +14,7 @@ vi.mock('../../admin/adminApi', () => ({
     createRollout: (...a: unknown[]) => createRollout(...a),
     setUpdateTarget: (...a: unknown[]) => setUpdateTarget(...a),
     revertUpdateTarget: (...a: unknown[]) => revertUpdateTarget(...a),
+    listDevices: (...a: unknown[]) => listDevices(...a),
   },
 }));
 
@@ -85,6 +87,7 @@ describe('EdgeUpdatesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     edgeUpdates.mockResolvedValue(data());
+    listDevices.mockResolvedValue([]);
   });
 
   it('zeigt Releases, die laufende Aktualisierung und den Verlauf', async () => {
@@ -480,5 +483,62 @@ describe('EdgeUpdatesPage', () => {
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
     expect(await screen.findByTestId('fleet-pointer')).toHaveTextContent('Crossover offen');
+  });
+
+  describe('Online-Status im Reiter Updates', () => {
+    const inventar = (lastSeen: Record<string, string | null>) =>
+      Object.entries(lastSeen).map(([deviceId, lastSeenAt]) => ({ deviceId, externalRef: deviceId, lastSeenAt }));
+
+    it('zählt, zeigt je Box und filtert nach derselben Regel wie die Registrierung', async () => {
+      const d = data();
+      d.fleet.push({ ...d.fleet[1], deviceId: 'd3', label: 'edge-c3', externalRef: 'edge-c3', siteName: 'Kirchdorf' });
+      d.fleet.push({ ...d.fleet[1], deviceId: 'd4', label: 'edge-d4', externalRef: 'edge-d4', siteName: 'Ohne Inventar' });
+      edgeUpdates.mockResolvedValue(d);
+      listDevices.mockResolvedValue(inventar({
+        d1: new Date(Date.now() - 30_000).toISOString(),
+        d2: new Date(Date.now() - 2 * 3600_000).toISOString(),
+        d3: null,
+      }));
+      render(<EdgeUpdatesPage />);
+      expect(await screen.findByTestId('online-zaehlung')).toHaveTextContent('1 online · 1 offline · 1 nie gemeldet');
+      const table = screen.getByTestId('box-versions');
+      const zeile = (name: string) => within(table).getAllByRole('row').find((r) => r.textContent?.includes(name))!;
+      expect(zeile('Pilsting')).toHaveTextContent('Verbunden');
+      expect(zeile('Auernheim')).toHaveTextContent('Meldet sich nicht');
+      expect(zeile('Auernheim')).toHaveTextContent('Letzte Meldung: vor 2 Std.');
+      expect(zeile('Kirchdorf')).toHaveTextContent('Letzte Meldung: noch nie');
+      // Unbekannt ist nicht online: ohne Inventarzeile kein Status, keine Zählung.
+      expect(zeile('Ohne Inventar')).not.toHaveTextContent('Verbunden');
+      expect(zeile('Ohne Inventar')).not.toHaveTextContent('Letzte Meldung');
+
+      const gruppe = screen.getByRole('group', { name: 'Boxen nach Online-Status filtern' });
+      fireEvent.click(within(gruppe).getByRole('button', { name: 'Online 1' }));
+      expect(within(screen.getByTestId('box-versions')).getAllByRole('row')).toHaveLength(2);
+      fireEvent.click(within(gruppe).getByRole('button', { name: 'Alle 4' }));
+      expect(within(screen.getByTestId('box-versions')).getAllByRole('row')).toHaveLength(5);
+    });
+
+    it('zählt ohne Inventar keine Box als online und sagt es', async () => {
+      listDevices.mockRejectedValue(new Error('offline'));
+      render(<EdgeUpdatesPage />);
+      expect(await screen.findByTestId('online-unbekannt')).toHaveTextContent('keine Box wird als online gezählt');
+      expect(screen.queryByTestId('online-zaehlung')).toBeNull();
+      expect(within(screen.getByTestId('box-versions')).queryByText('Verbunden')).toBeNull();
+    });
+
+    it('lässt den alten Stand stehen und nennt ihn, wenn die Aktualisierung fehlschlägt', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        listDevices.mockResolvedValue(inventar({ d1: new Date(Date.now() - 30_000).toISOString(), d2: null }));
+        render(<EdgeUpdatesPage />);
+        await waitFor(() => expect(screen.getByTestId('online-zaehlung')).toHaveTextContent('1 online · 0 offline · 1 nie gemeldet'));
+        listDevices.mockRejectedValue(new Error('offline'));
+        await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+        await waitFor(() => expect(screen.getByTestId('online-zaehlung')).toHaveTextContent('die Aktualisierung schlägt gerade fehl'));
+        expect(screen.getByTestId('online-zaehlung')).toHaveTextContent('1 online');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

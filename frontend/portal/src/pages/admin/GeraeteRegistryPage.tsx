@@ -26,12 +26,14 @@ import {
   type EdgeUpdates,
 } from '../../adminEdgeUpdates';
 import { geraetLinkAusgang } from '../../adminGeraet';
+import { verbindungZaehlung } from '../../adminFleet';
 import {
-  boxVerbindung,
-  verbindungZaehlung,
-  type BoxErreichbarkeit,
-  type BoxVerbindung,
-} from '../../adminFleet';
+  OnlineFilterLeiste,
+  OnlineStatusZelle,
+  OnlineZaehlung,
+  verbindungJeBox,
+  type OnlineFilter,
+} from './OnlineStatus';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 // LIST: die Online-Regel misst gegen ein 5-Minuten-Fenster.
 import { LIST_POLL_MS } from '../../pollCadence';
@@ -311,14 +313,10 @@ function DeviceInventory({
   // demselben Wortlaut wie die Plattform-Übersicht (`boxVerbindung`). Eine
   // gedruckte, unverbundene ID ist keine Box und hat keinen Online-Status.
   const rows = useMemo(() => (fleet == null ? [] : deviceRows(fleet)), [fleet]);
-  const verbindung = useMemo(() => {
-    const now = new Date(fetchedAt);
-    const map = new Map<string, BoxVerbindung>();
-    for (const r of rows) {
-      if (r.lifecycle === 'verbunden') map.set(r.key, boxVerbindung(r.row.lastSeenAt, now));
-    }
-    return map;
-  }, [rows, fetchedAt]);
+  const verbindung = useMemo(() => verbindungJeBox(
+    rows.filter((r) => r.lifecycle === 'verbunden').map((r) => ({ key: r.key, lastSeenAt: r.row.lastSeenAt })),
+    fetchedAt,
+  ), [rows, fetchedAt]);
   const zaehlung = verbindungZaehlung([...verbindung.values()].map((v) => v.zustand));
   const sichtbar = filter === 'alle'
     ? rows
@@ -366,25 +364,11 @@ function DeviceInventory({
           unabhängig davon, ob sie mit einem Kundenkonto verbunden ist.
         </p>
         {verbindung.size > 0 && (
-          <p className="vp-online-zaehlung" data-testid="online-zaehlung">
-            <strong>{zaehlung.text}</strong>
-            {refreshFailed && (
-              <span className="vp-muted">
-                {' '}· Stand {new Date(fetchedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })} Uhr,
-                die Aktualisierung schlägt gerade fehl
-              </span>
-            )}
-          </p>
+          <OnlineZaehlung zaehlung={zaehlung} fetchedAt={fetchedAt} refreshFailed={refreshFailed} />
         )}
       </div>
       {verbindung.size > 0 && (
-        <div className="vp-box-filters" role="group" aria-label="Boxen nach Online-Status filtern">
-          {ONLINE_FILTER.map((f) => (
-            <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
-              {f.label}<span>{f.id === 'alle' ? rows.length : zaehlung[f.id]}</span>
-            </button>
-          ))}
-        </div>
+        <OnlineFilterLeiste filter={filter} onFilter={setFilter} alle={rows.length} zaehlung={zaehlung} />
       )}
       <span className="vp-sr-only" role="status">{sichtbar.length} von {rows.length} Geräten angezeigt</span>
       {sichtbar.length === 0 ? (
@@ -434,16 +418,7 @@ function DeviceInventory({
                     </td>
                     <td data-label="Referenz" className="vp-mono">{d.externalRef}</td>
                     <td data-label="Online-Status">
-                      {online ? (
-                        <span className="vp-cell-main">
-                          <span><Badge variant={online.tone} dot>{online.text}</Badge></span>
-                          <span className="vp-cell-sub">
-                            Letzte Meldung: {online.zustand === 'nie' ? 'noch nie' : online.lastSeenText}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="vp-muted">–</span>
-                      )}
+                      <OnlineStatusZelle verbindung={online} />
                     </td>
                     <td data-label="Edge-Stand">
                       {connected ? (
@@ -502,15 +477,6 @@ function DeviceInventory({
     </Card>
   );
 }
-
-type OnlineFilter = 'alle' | BoxErreichbarkeit;
-
-const ONLINE_FILTER: { id: OnlineFilter; label: string }[] = [
-  { id: 'alle', label: 'Alle' },
-  { id: 'online', label: 'Online' },
-  { id: 'offline', label: 'Offline' },
-  { id: 'nie', label: 'Nie gemeldet' },
-];
 
 /**
  * Sektion „Wartet auf Zuordnung": Geräte, die sich gemeldet haben und auf

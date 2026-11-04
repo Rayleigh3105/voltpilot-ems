@@ -11,7 +11,7 @@ import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { fmtRelative } from '../../format';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import type { Route } from '../../nav';
-import { BoxVersions } from './BoxVersions';
+import { BoxVersions, type OnlineInventar } from './BoxVersions';
 import { BoxArtChip } from './BoxArtChip';
 import { AdminPageHead } from './AdminPageHead';
 import { GeraeteDrawer, UpdateActionError } from './GeraeteDrawer';
@@ -105,8 +105,28 @@ export function EdgeUpdatesPage({
   // Uhr über einem stehenden Schnappschuss rechnet, verfällt von selbst.
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   const [tick, setTick] = useState<number>(() => Date.now());
+  // Online-Status je Box: die letzte Meldung kommt aus dem Geräte-Inventar
+  // (dieselbe Quelle wie im Reiter „Registrierung"), nicht aus der
+  // Versionsmeldung. Eigene Bezugszeit; ein Fehlschlag lässt den alten Stand
+  // stehen und SAGT es, ohne die Versionsstände zu berühren.
+  const [inventar, setInventar] = useState<OnlineInventar | null>(null);
+  const [inventarFailed, setInventarFailed] = useState(false);
+
+  async function loadInventar() {
+    try {
+      const rows = await adminApi.listDevices();
+      if (!Array.isArray(rows)) throw new Error('kein Inventar');
+      const lastSeen = new Map<string, string | null>();
+      for (const r of rows) if (r.deviceId) lastSeen.set(r.deviceId, r.lastSeenAt);
+      setInventar({ lastSeen, fetchedAt: Date.now() });
+      setInventarFailed(false);
+    } catch {
+      setInventarFailed(true);
+    }
+  }
 
   async function load() {
+    void loadInventar();
     try {
       setData(await adminApi.edgeUpdates());
       setFetchedAt(Date.now());
@@ -224,6 +244,7 @@ export function EdgeUpdatesPage({
       ) : (
         <>
           <BoxVersions data={data} busy={busy}
+            online={inventar} onlineFailed={inventarFailed}
             onUpdate={(release) => { setActionError(null); setRolloutFor(release); }}
             onOpen={(id) => { setActionError(null); setDeviceFor(id); }} />
 

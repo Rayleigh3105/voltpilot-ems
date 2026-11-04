@@ -122,3 +122,32 @@ test('Registrierung: Online-Status je Box mit Zählung und Filter, ohne Überlau
   }
   expect(errors).toEqual([]);
 });
+
+test('Updates: Online-Status je Box mit Zählung und Schnellfilter, ohne Überlauf', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('/e2e/box-updates.html');
+  const table = page.getByTestId('box-versions');
+  await expect(table).toBeVisible();
+  // Derselbe Stand wie im Reiter „Registrierung" - eine Regel, ein Wortlaut.
+  await expect(page.getByTestId('online-zaehlung')).toHaveText('4 online · 1 offline · 1 nie gemeldet');
+  const still = table.locator('tbody tr').filter({ hasText: 'Hof Lindenallee' });
+  await expect(still).toContainText('Meldet sich nicht');
+  await expect(still).toContainText('Letzte Meldung: vor 4 Std.');
+
+  const gruppe = page.getByRole('group', { name: 'Boxen nach Online-Status filtern' });
+  await expect(gruppe).toBeVisible();
+  await gruppe.getByRole('button', { name: 'Offline 1' }).click();
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await gruppe.getByRole('button', { name: 'Online 4' }).click();
+  await expect(table.locator('tbody tr')).toHaveCount(4);
+  await gruppe.getByRole('button', { name: 'Alle 6' }).click();
+
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    expect(overflow, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
+  }
+  expect(errors).toEqual([]);
+});

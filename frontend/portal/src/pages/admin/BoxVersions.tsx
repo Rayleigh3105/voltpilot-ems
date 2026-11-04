@@ -11,17 +11,36 @@ import { crossoverState, stateLabel,
 import { versionDisplay } from '../../edgeVersionLabel';
 import { fmtRelative } from '../../format';
 import { boxVersionOverview, filterBoxVersions } from '../../boxVersions';
+import { verbindungZaehlung, type BoxVerbindung } from '../../adminFleet';
 import { BoxArtChip } from './BoxArtChip';
+import {
+  OnlineFilterLeiste,
+  OnlineStatusZelle,
+  OnlineZaehlung,
+  verbindungJeBox,
+  type OnlineFilter,
+} from './OnlineStatus';
 import './BoxVersions.css';
 
 /** Version and update status answer different questions: a confirmed target
  * can still be an older release. Keep the reported version next to the server
  * status; never infer a failure or an update requirement from missing data. */
-export function BoxVersions({ data, busy, onUpdate, onOpen }: {
+export interface OnlineInventar {
+  /** Letzte Meldung je Geräte-Id aus dem Geräte-Inventar (`listDevices`). */
+  lastSeen: Map<string, string | null>;
+  /** Abrufzeitpunkt des Inventars - Bezug der Online-Regel. */
+  fetchedAt: number;
+}
+
+export function BoxVersions({ data, busy, onUpdate, onOpen, online = null, onlineFailed = false }: {
   data: EdgeUpdates;
   busy: boolean;
   onUpdate: (release: EdgeUpdatesRelease) => void;
   onOpen: (deviceId: string) => void;
+  /** `null`: Inventar noch nicht (oder nie) geladen - dann hat keine Box einen Status. */
+  online?: OnlineInventar | null;
+  /** Die letzte Aktualisierung des Inventars schlug fehl. */
+  onlineFailed?: boolean;
 }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -30,8 +49,18 @@ export function BoxVersions({ data, busy, onUpdate, onOpen }: {
   const { releases, latest, sorted, versions, runningLatest, filters, boxArten } = useMemo(
     () => boxVersionOverview(data), [data],
   );
-  const rows = filterBoxVersions(sorted, releases, { search, filter, version, boxArt });
-  const filtered = filter !== 'all' || version !== 'all' || boxArt !== 'all' || !!search;
+  const [onlineFilter, setOnlineFilter] = useState<OnlineFilter>('alle');
+  // Online-Status nur für Boxen, die das Inventar kennt: wer dort fehlt, hat
+  // KEINEN Status (unbekannt ist nicht online) und zählt nirgends mit.
+  const verbindung = useMemo(() => online == null ? new Map<string, BoxVerbindung>() : verbindungJeBox(
+    sorted.filter((r) => online.lastSeen.has(r.deviceId))
+      .map((r) => ({ key: r.deviceId, lastSeenAt: online.lastSeen.get(r.deviceId) })),
+    online.fetchedAt,
+  ), [sorted, online]);
+  const zaehlung = verbindungZaehlung([...verbindung.values()].map((v) => v.zustand));
+  const rows = filterBoxVersions(sorted, releases, { search, filter, version, boxArt })
+    .filter((r) => onlineFilter === 'alle' || verbindung.get(r.deviceId)?.zustand === onlineFilter);
+  const filtered = filter !== 'all' || version !== 'all' || boxArt !== 'all' || !!search || onlineFilter !== 'alle';
 
   return (
     <div className="vp-box-versions">
@@ -60,11 +89,22 @@ export function BoxVersions({ data, busy, onUpdate, onOpen }: {
 
       <Card className="vp-box-fleet" style={{ padding: 0 }}>
         <div className="vp-box-fleet-head">
-          <div><h2>Versionen der Boxen</h2><p>Installierter Stand und Update-Ziel aus der letzten Meldung jeder Box.</p></div>
+          <div><h2>Versionen der Boxen</h2><p>Installierter Stand und Update-Ziel aus der letzten Meldung jeder Box.
+            „Online-Status“ sagt, ob sich die Box in den letzten 5 Minuten gemeldet hat.</p>
+            {verbindung.size > 0 && online && (
+              <OnlineZaehlung zaehlung={zaehlung} fetchedAt={online.fetchedAt} refreshFailed={onlineFailed} />
+            )}
+            {online == null && onlineFailed && sorted.length > 0 && (
+              <p className="vp-muted" data-testid="online-unbekannt">Online-Status gerade nicht abrufbar - keine Box wird als online gezählt.</p>
+            )}
+          </div>
           <span className="vp-box-total">{sorted.length} {sorted.length === 1 ? 'Box' : 'Boxen'}</span>
         </div>
         {sorted.length === 0 ? <EmptyState title="Noch keine Box verbunden"
           description="Sobald eine Box einem Kundenkonto zugeordnet ist, erscheint sie hier mit ihrem Software-Stand." /> : <>
+          {verbindung.size > 0 && (
+            <OnlineFilterLeiste filter={onlineFilter} onFilter={setOnlineFilter} alle={sorted.length} zaehlung={zaehlung} />
+          )}
           <details className="vp-box-filter-panel">
           <summary>Suche & Filter <span>{filtered ? `${rows.length} von ${sorted.length} Boxen` : 'Alle Boxen'}</span></summary>
           <div className="vp-box-tools">
@@ -85,11 +125,11 @@ export function BoxVersions({ data, busy, onUpdate, onOpen }: {
           <span className="vp-sr-only" role="status">{rows.length} von {sorted.length} Boxen angezeigt</span>
           {rows.length === 0 ? <EmptyState title="Keine passende Box"
             description="Ändern Sie die Suche oder setzen Sie die Filter zurück."
-            action={<Button variant="outline" onClick={() => { setSearch(''); setFilter('all'); setVersion('all'); setBoxArt('all'); }}>Filter zurücksetzen</Button>} /> :
+            action={<Button variant="outline" onClick={() => { setSearch(''); setFilter('all'); setVersion('all'); setBoxArt('all'); setOnlineFilter('alle'); }}>Filter zurücksetzen</Button>} /> :
             <div className="vp-table-scroll">
               <table className="vp-table responsive vp-box-table" data-testid="box-versions">
                 <caption className="vp-sr-only">Software-Version und Update-Status aller verbundenen Boxen</caption>
-                <thead><tr><th>Box / Anlage</th><th>Installierte Version</th><th>Zielversion</th><th>Update-Status</th><th><span className="vp-sr-only">Aktionen</span></th></tr></thead>
+                <thead><tr><th>Box / Anlage</th><th>Online-Status</th><th>Installierte Version</th><th>Zielversion</th><th>Update-Status</th><th><span className="vp-sr-only">Aktionen</span></th></tr></thead>
                 <tbody>{rows.map((r) => {
                   const cross = crossoverState(r.trust, r.boxArt);
                   const status = stateLabel(r.state);
@@ -101,6 +141,7 @@ export function BoxVersions({ data, busy, onUpdate, onOpen }: {
                         <span className="vp-box-art"><BoxArtChip boxArt={r.boxArt} /></span>
                       </span>
                     </td>
+                    <td data-label="Online-Status"><OnlineStatusZelle verbindung={verbindung.get(r.deviceId)} /></td>
                     <td data-label="Installierte Version" className="vp-box-installed">
                       <BoxVersion stamp={r.ist} releases={releases} empty="Noch nicht gemeldet" />
                       <span className="vp-cell-sub">{r.reportedAt ? `Gemeldet ${fmtRelative(r.reportedAt)}` : 'Keine Versionsmeldung'}</span>
