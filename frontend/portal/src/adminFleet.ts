@@ -409,9 +409,7 @@ function fleetBoxRow(
   now: Date,
   releases: AdminFleetRelease[],
 ): FleetBoxRow {
-  const lastSeen = box.lastSeenAt ? Date.parse(box.lastSeenAt) : Number.NaN;
-  const age = Number.isFinite(lastSeen) ? now.getTime() - lastSeen : null;
-  const connectionTone: Tone = age === null ? 'off' : age <= ONLINE_WINDOW_MS ? 'ok' : 'warn';
+  const verbindung = boxVerbindung(box.lastSeenAt, now);
   const version = box.update?.version ?? box.edge?.coreVersion ?? null;
   const release = version === null
     ? null
@@ -433,13 +431,9 @@ function fleetBoxRow(
       : box.fuehrtAnlage === false
         ? 'Weitere Box'
         : 'Führende Box nicht festgelegt',
-    connectionText: age === null
-      ? 'Wartet auf erste Meldung'
-      : connectionTone === 'ok'
-        ? 'Verbunden'
-        : 'Meldet sich nicht',
-    connectionTone,
-    lastSeenText: age === null ? DASH : relAge(age),
+    connectionText: verbindung.text,
+    connectionTone: verbindung.tone,
+    lastSeenText: verbindung.lastSeenText,
     software: edgeStand(box.edge, box.update, releases),
     capabilities: capabilityResult.faehigkeiten.map((capability, index) => ({
       code: capability.code,
@@ -496,6 +490,53 @@ function planCell(lastRun: string | null, now: Date): { text: string; tone: Tone
 }
 
 /** „vor 7 Min." in der Sprache von `format.fmtRelative`, aus einer Dauer. */
+/** Ob eine Box gerade erreichbar ist - die drei Zustände der Flotten-Regel. */
+export type BoxErreichbarkeit = 'online' | 'offline' | 'nie';
+
+export interface BoxVerbindung {
+  zustand: BoxErreichbarkeit;
+  tone: Tone;
+  /** „Verbunden" · „Meldet sich nicht" · „Wartet auf erste Meldung". */
+  text: string;
+  /** Alter der letzten Meldung („vor 3 Min.") oder „—" ohne Meldung. */
+  lastSeenText: string;
+}
+
+/**
+ * DIE Online-Regel der Plattform: eine Box gilt als online, wenn ihre letzte
+ * Meldung höchstens `ONLINE_WINDOW_MS` vor `now` liegt. Ohne Meldung ist sie
+ * NICHT online, sondern „nie" (fehlend ist keine Null). Die Plattform-Übersicht
+ * und die Geräteliste lesen beide diese Funktion, damit es nur EINE Schwelle
+ * und EINEN Wortlaut gibt. `now` ist der Abrufzeitpunkt der Daten, nie eine
+ * Uhr über einem stehenden Schnappschuss.
+ */
+export function boxVerbindung(lastSeenAt: string | null | undefined, now: Date): BoxVerbindung {
+  const lastSeen = lastSeenAt ? Date.parse(lastSeenAt) : Number.NaN;
+  const age = Number.isFinite(lastSeen) ? now.getTime() - lastSeen : null;
+  if (age === null) {
+    return { zustand: 'nie', tone: 'off', text: 'Wartet auf erste Meldung', lastSeenText: DASH };
+  }
+  return age <= ONLINE_WINDOW_MS
+    ? { zustand: 'online', tone: 'ok', text: 'Verbunden', lastSeenText: relAge(age) }
+    : { zustand: 'offline', tone: 'warn', text: 'Meldet sich nicht', lastSeenText: relAge(age) };
+}
+
+export interface VerbindungZaehlung {
+  online: number;
+  offline: number;
+  nie: number;
+  /** „12 online · 2 offline · 1 nie gemeldet" - Nullen bleiben stehen. */
+  text: string;
+}
+
+/** Zählt Boxen nach `boxVerbindung`. */
+export function verbindungZaehlung(zustaende: BoxErreichbarkeit[]): VerbindungZaehlung {
+  const online = zustaende.filter((z) => z === 'online').length;
+  const offline = zustaende.filter((z) => z === 'offline').length;
+  const nie = zustaende.filter((z) => z === 'nie').length;
+  return { online, offline, nie, text: `${online} online · ${offline} offline · ${nie} nie gemeldet` };
+}
+
 export function relAge(ms: number): string {
   const s = Math.max(0, ms / 1000);
   if (s < 60) return `vor ${Math.round(s)} Sek.`;

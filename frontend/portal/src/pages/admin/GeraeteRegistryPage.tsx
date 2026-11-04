@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -26,6 +26,15 @@ import {
   type EdgeUpdates,
 } from '../../adminEdgeUpdates';
 import { geraetLinkAusgang } from '../../adminGeraet';
+import {
+  boxVerbindung,
+  verbindungZaehlung,
+  type BoxErreichbarkeit,
+  type BoxVerbindung,
+} from '../../adminFleet';
+import { useFreshnessPoll } from '../../useFreshnessPoll';
+// LIST: die Online-Regel misst gegen ein 5-Minuten-Fenster.
+import { LIST_POLL_MS } from '../../pollCadence';
 import { BoxArtChip } from './BoxArtChip';
 import { parseGeraetRef, type Route } from '../../nav';
 import { replaceCurrentNavigation } from '../../navigationBlocker';
@@ -64,6 +73,12 @@ export function GeraeteRegistryPage({
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
+  // Der Bezugszeitpunkt des Inventars: der Online-Status rechnet DAGEGEN,
+  // nie gegen eine Uhr über einem stehenden Schnappschuss (wie die
+  // Plattform-Übersicht). Schlägt der stille Takt fehl, bleibt die Tabelle mit
+  // ihrem alten Stand stehen und SAGT das (`refreshFailed`).
+  const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
+  const [refreshFailed, setRefreshFailed] = useState(false);
 
   // Der Sprung-Rückruf, stabil gehalten für den Weiterleitungs-Effekt unten.
   const jumpRef = useRef(onJumpToTenant);
@@ -75,8 +90,11 @@ export function GeraeteRegistryPage({
     const [inventory, releases, enrollments] = await Promise.allSettled([
       adminApi.listDevices(), adminApi.edgeUpdates(), adminApi.listPendingEnrollments(),
     ]);
-    if (inventory.status === 'fulfilled') setFleet(inventory.value);
-    else setLoadError('Das Geräte-Inventar ist gerade nicht abrufbar. Bitte erneut versuchen.');
+    if (inventory.status === 'fulfilled') {
+      setFleet(inventory.value);
+      setFetchedAt(Date.now());
+      setRefreshFailed(false);
+    } else setLoadError('Das Geräte-Inventar ist gerade nicht abrufbar. Bitte erneut versuchen.');
     setUpdates(releases.status === 'fulfilled' ? releases.value : null);
     setPending(enrollments.status === 'fulfilled' ? enrollments.value : null);
     setPendingFailed(enrollments.status === 'rejected');
@@ -104,6 +122,21 @@ export function GeraeteRegistryPage({
   useEffect(() => {
     void reload();
   }, []);
+
+  // Stiller 30-s-Takt nur für das Inventar (Online-Status): eine Antwort setzt
+  // Liste UND Bezugszeit, ein Fehlschlag kippt die Tabelle nicht, macht ihren
+  // Stand aber sichtbar.
+  async function refreshInventory() {
+    try {
+      const inventory = await adminApi.listDevices();
+      setFleet(inventory);
+      setFetchedAt(Date.now());
+      setRefreshFailed(false);
+    } catch {
+      setRefreshFailed(true);
+    }
+  }
+  useFreshnessPoll(() => void refreshInventory(), LIST_POLL_MS, !loading && loadError == null);
 
   // Die Adresse ist der Zustand: ein Deep-Link, ein Klick auf den Nav-Punkt
   // (der den Parameter abräumt) und ein von Hand editierter Hash führen alle
@@ -201,6 +234,8 @@ export function GeraeteRegistryPage({
         >
           <DeviceInventory
             fleet={fleet}
+            fetchedAt={fetchedAt}
+            refreshFailed={refreshFailed}
             releases={updates?.releases ?? []}
             onOpen={oeffneGeraet}
             onRemove={setRemoving}
@@ -256,17 +291,39 @@ export function GeraeteRegistryPage({
  */
 function DeviceInventory({
   fleet,
+  fetchedAt,
+  refreshFailed,
   releases,
   onOpen,
   onRemove,
   registerButton,
 }: {
   fleet: AdminDeviceRow[] | null;
+  fetchedAt: number;
+  refreshFailed: boolean;
   releases: { version: string }[];
   onOpen: (ref: string) => void;
   onRemove: (externalRef: string) => void;
   registerButton: React.ReactNode;
 }) {
+  const [filter, setFilter] = useState<OnlineFilter>('alle');
+  // Der Online-Status je VERBUNDENER Box - nach derselben Regel und mit
+  // demselben Wortlaut wie die Plattform-Übersicht (`boxVerbindung`). Eine
+  // gedruckte, unverbundene ID ist keine Box und hat keinen Online-Status.
+  const rows = useMemo(() => (fleet == null ? [] : deviceRows(fleet)), [fleet]);
+  const verbindung = useMemo(() => {
+    const now = new Date(fetchedAt);
+    const map = new Map<string, BoxVerbindung>();
+    for (const r of rows) {
+      if (r.lifecycle === 'verbunden') map.set(r.key, boxVerbindung(r.row.lastSeenAt, now));
+    }
+    return map;
+  }, [rows, fetchedAt]);
+  const zaehlung = verbindungZaehlung([...verbindung.values()].map((v) => v.zustand));
+  const sichtbar = filter === 'alle'
+    ? rows
+    : rows.filter((r) => verbindung.get(r.key)?.zustand === filter);
+
   // ⚠ Ohne Inventar (älteres Backend, 404) wird die Registry NICHT als Ersatz
   // gerendert: eine beanspruchte Aufkleber-ID hat dort zwar `claimed`, aber
   // keine Geräte-Id - jede Zeile läse sich als „noch nicht verbunden", und das
@@ -285,8 +342,6 @@ function DeviceInventory({
       </Card>
     );
   }
-  const rows = deviceRows(fleet);
-
   if (rows.length === 0) {
     return (
       <Card padding="lg" radius="lg">
@@ -307,99 +362,155 @@ function DeviceInventory({
         <h2>Alle Geräte</h2>
         <p>
           Gedruckte Aufkleber-IDs und die verbundene Flotte. Eine Zeile öffnet das Gerät.
+          „Online-Status“ sagt, ob sich die Box in den letzten 5 Minuten gemeldet hat -
+          unabhängig davon, ob sie mit einem Kundenkonto verbunden ist.
         </p>
+        {verbindung.size > 0 && (
+          <p className="vp-online-zaehlung" data-testid="online-zaehlung">
+            <strong>{zaehlung.text}</strong>
+            {refreshFailed && (
+              <span className="vp-muted">
+                {' '}· Stand {new Date(fetchedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })} Uhr,
+                die Aktualisierung schlägt gerade fehl
+              </span>
+            )}
+          </p>
+        )}
       </div>
-      <div className="vp-table-scroll">
-        <table className="vp-table responsive" data-testid="devices">
-          <thead>
-            <tr>
-              <th>Gerät</th>
-              <th>Referenz</th>
-              <th>Edge-Stand</th>
-              <th>Vertrauen</th>
-              <th aria-label="Aktionen" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const d = r.row;
-              const connected = r.lifecycle === 'verbunden';
-              const cross = crossoverState(d.trust, d.boxArt);
-              const st = stateLabel(d.state);
+      {verbindung.size > 0 && (
+        <div className="vp-box-filters" role="group" aria-label="Boxen nach Online-Status filtern">
+          {ONLINE_FILTER.map((f) => (
+            <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
+              {f.label}<span>{f.id === 'alle' ? rows.length : zaehlung[f.id]}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <span className="vp-sr-only" role="status">{sichtbar.length} von {rows.length} Geräten angezeigt</span>
+      {sichtbar.length === 0 ? (
+        <EmptyState
+          icon="list"
+          category="primary"
+          title="Keine Box mit diesem Online-Status"
+          description="Wählen Sie einen anderen Filter."
+          action={<Button variant="outline" onClick={() => setFilter('alle')}>Alle zeigen</Button>}
+        />
+      ) : (
+        <div className="vp-table-scroll">
+          <table className="vp-table responsive" data-testid="devices">
+            <thead>
+              <tr>
+                <th>Gerät</th>
+                <th>Referenz</th>
+                <th>Online-Status</th>
+                <th>Edge-Stand</th>
+                <th>Vertrauen</th>
+                <th aria-label="Aktionen" />
+              </tr>
+            </thead>
+            <tbody>
+              {sichtbar.map((r) => {
+                const d = r.row;
+                const connected = r.lifecycle === 'verbunden';
+                const online = verbindung.get(r.key) ?? null;
+                const cross = crossoverState(d.trust, d.boxArt);
+                const st = stateLabel(d.state);
 
-              return (
-                <tr
-                  key={r.key}
-                  className={connected ? 'vp-row-click' : undefined}
-                  onClick={connected ? () => onOpen(r.key) : undefined}
-                  title={connected ? 'Gerät öffnen' : undefined}
-                >
-                  <td data-label="Gerät">
-                    <span className="vp-cell-main">
-                      <span>
-                        {connected ? r.name : <span className="vp-muted">— noch nicht verbunden —</span>}
-                      </span>
-                      {r.context && <span className="vp-cell-sub">{r.context}</span>}
-                      {connected && <span className="vp-box-art"><BoxArtChip boxArt={d.boxArt} /></span>}
-                    </span>
-                  </td>
-                  <td data-label="Referenz" className="vp-mono">{d.externalRef}</td>
-                  <td data-label="Edge-Stand">
-                    {connected ? (
+                return (
+                  <tr
+                    key={r.key}
+                    className={connected ? 'vp-row-click' : undefined}
+                    onClick={connected ? () => onOpen(r.key) : undefined}
+                    title={connected ? 'Gerät öffnen' : undefined}
+                  >
+                    <td data-label="Gerät">
                       <span className="vp-cell-main">
-                        {/* Tag + Build getrennt statt Roh-Stempel. */}
-                        <span>{versionLabel(d.ist, releases)}</span>
-                        <span className="vp-cell-sub">
-                          <span className={`vp-ustate vp-ustate-${st.cls}`}>
-                            <i className="vp-ustate-dot" aria-hidden="true" />
-                            {st.label}
+                        <span>
+                          {connected ? r.name : <span className="vp-muted">— noch nicht verbunden —</span>}
+                        </span>
+                        {r.context && <span className="vp-cell-sub">{r.context}</span>}
+                        {connected && <span className="vp-box-art"><BoxArtChip boxArt={d.boxArt} /></span>}
+                      </span>
+                    </td>
+                    <td data-label="Referenz" className="vp-mono">{d.externalRef}</td>
+                    <td data-label="Online-Status">
+                      {online ? (
+                        <span className="vp-cell-main">
+                          <span><Badge variant={online.tone} dot>{online.text}</Badge></span>
+                          <span className="vp-cell-sub">
+                            Letzte Meldung: {online.zustand === 'nie' ? 'noch nie' : online.lastSeenText}
                           </span>
                         </span>
-                      </span>
-                    ) : (
-                      <span className="vp-muted">–</span>
-                    )}
-                  </td>
-                  <td data-label="Vertrauen">
-                    {connected ? (
-                      <Badge variant={cross.tone === 'ok' ? 'ok' : cross.tone === 'warn' ? 'warn' : 'off'}
-                             dot title={cross.detail ?? undefined}>
-                        {cross.label}
-                      </Badge>
-                    ) : (
-                      <span className="vp-muted">–</span>
-                    )}
-                  </td>
-                  <td data-label="" style={{ textAlign: 'right' }}>
-                    {/* Nur eine gedruckte, UNVERBUNDENE ID darf aus der
-                        Registry - eine verbundene müsste der Kunde zuerst
-                        trennen. Die Bedingung kommt aus der Zeile SELBST
-                        (`provisioned`), nicht aus einer zweiten Liste: die
-                        Vereinigung weiß es bereits. */}
-                    {d.provisioned && !connected && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="vp-btn-danger"
-                        iconLeft={<Icon name="trash" size={16} />}
-                        onClick={(e: React.MouseEvent) => {
-                          e.stopPropagation();
-                          onRemove(d.externalRef);
-                        }}
-                      >
-                        Entfernen
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                      ) : (
+                        <span className="vp-muted">–</span>
+                      )}
+                    </td>
+                    <td data-label="Edge-Stand">
+                      {connected ? (
+                        <span className="vp-cell-main">
+                          {/* Tag + Build getrennt statt Roh-Stempel. */}
+                          <span>{versionLabel(d.ist, releases)}</span>
+                          <span className="vp-cell-sub">
+                            <span className={`vp-ustate vp-ustate-${st.cls}`}>
+                              <i className="vp-ustate-dot" aria-hidden="true" />
+                              {st.label}
+                            </span>
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="vp-muted">–</span>
+                      )}
+                    </td>
+                    <td data-label="Vertrauen">
+                      {connected ? (
+                        <Badge variant={cross.tone === 'ok' ? 'ok' : cross.tone === 'warn' ? 'warn' : 'off'}
+                               dot title={cross.detail ?? undefined}>
+                          {cross.label}
+                        </Badge>
+                      ) : (
+                        <span className="vp-muted">–</span>
+                      )}
+                    </td>
+                    <td data-label="" style={{ textAlign: 'right' }}>
+                      {/* Nur eine gedruckte, UNVERBUNDENE ID darf aus der
+                          Registry - eine verbundene müsste der Kunde zuerst
+                          trennen. Die Bedingung kommt aus der Zeile SELBST
+                          (`provisioned`), nicht aus einer zweiten Liste: die
+                          Vereinigung weiß es bereits. */}
+                      {d.provisioned && !connected && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="vp-btn-danger"
+                          iconLeft={<Icon name="trash" size={16} />}
+                          onClick={(e: React.MouseEvent) => {
+                            e.stopPropagation();
+                            onRemove(d.externalRef);
+                          }}
+                        >
+                          Entfernen
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Card>
   );
 }
+
+type OnlineFilter = 'alle' | BoxErreichbarkeit;
+
+const ONLINE_FILTER: { id: OnlineFilter; label: string }[] = [
+  { id: 'alle', label: 'Alle' },
+  { id: 'online', label: 'Online' },
+  { id: 'offline', label: 'Offline' },
+  { id: 'nie', label: 'Nie gemeldet' },
+];
 
 /**
  * Sektion „Wartet auf Zuordnung": Geräte, die sich gemeldet haben und auf

@@ -55,10 +55,21 @@ const data: EdgeUpdates = {
   ],
   kpi: { known: 5, upToDate: 1, unknown: 1, inRollout: 1, failed: 0, newestRelease: 'edge-2026.09.10' },
 };
+const LETZTE_MELDUNG: Record<string, string | null> = {
+  d4: new Date(Date.now() - 4 * 3600_000).toISOString(),
+  d5: null,
+};
 Object.assign(keycloak, { tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } } });
 Object.assign(adminApi, {
   edgeUpdates: async () => data,
-  listDevices: async () => fleet.map((d) => ({ ...d, provisioned: true, provisionedAt: now, kind: 'inverter', note: null })),
+  // Online-Status der Registrierung: je Box eine eigene letzte Meldung - zwei
+  // frisch, eine seit 4 Std. still, eine hat sich noch nie gemeldet.
+  listDevices: async () => fleet.map((d) => ({
+    ...d, provisioned: true, provisionedAt: now, kind: 'inverter', note: null,
+    lastSeenAt: d.deviceId! in LETZTE_MELDUNG
+      ? LETZTE_MELDUNG[d.deviceId!]
+      : new Date(Date.now() - 40_000).toISOString(),
+  })),
   listPendingEnrollments: async () => [{ externalRef: 'edge-xyz234q', deviceInfo: 'Box im Lager', csrUpdatedAt: now, everIssued: false, issuedAt: null }],
   createRollout: async () => { throw new Error('Vorschau: Es werden keine Updates an echte Boxen gesendet.'); },
   setUpdateTarget: async () => { throw new Error('Vorschau: Es werden keine Updates an echte Boxen gesendet.'); },

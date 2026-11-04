@@ -93,3 +93,32 @@ test('Versionsübersicht bleibt bei 320, 768, 1024 und 1440 px innerhalb des Bil
     expect(metrics.tableOverflow, `Versionen bei ${width}px`).toBeLessThanOrEqual(1);
   }
 });
+
+test('Registrierung: Online-Status je Box mit Zählung und Filter, ohne Überlauf', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('/e2e/box-updates.html');
+  await page.getByRole('tab', { name: 'Registrierung' }).click();
+  const devices = page.getByTestId('devices');
+  await expect(devices).toBeVisible();
+  await expect(page.getByTestId('online-zaehlung')).toHaveText('4 online · 1 offline · 1 nie gemeldet');
+  const still = devices.locator('tr').filter({ hasText: 'Hof Lindenallee' });
+  await expect(still).toContainText('Meldet sich nicht');
+  await expect(still).toContainText('Letzte Meldung: vor 4 Std.');
+  await expect(devices.locator('tr').filter({ hasText: 'Neubau am Feldrain' }))
+    .toContainText('Letzte Meldung: noch nie');
+
+  const gruppe = page.getByRole('group', { name: 'Boxen nach Online-Status filtern' });
+  await gruppe.getByRole('button', { name: 'Offline 1' }).click();
+  await expect(devices.locator('tbody tr')).toHaveCount(1);
+  await gruppe.getByRole('button', { name: 'Online 4' }).click();
+  await expect(devices.locator('tbody tr')).toHaveCount(4);
+
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    expect(overflow, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
+  }
+  expect(errors).toEqual([]);
+});

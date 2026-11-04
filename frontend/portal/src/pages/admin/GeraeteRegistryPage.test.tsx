@@ -283,3 +283,61 @@ describe('GeraeteRegistryPage · Weg in die Geräteseite', () => {
     expect(screen.queryByRole('heading', { name: /Grenzen & Wächter/ })).toBeNull();
   });
 });
+
+describe('Geräte: Online-Status je Box (dieselbe Regel wie die Plattform-Übersicht)', () => {
+  function inventar() {
+    const jetzt = Date.now();
+    const vor = (ms: number) => new Date(jetzt - ms).toISOString();
+    listDevices.mockResolvedValue([
+      { ...FLEET_ROW, deviceId: 'd1', externalRef: 'edge-online', siteName: 'Auernheim', lastSeenAt: vor(30_000) },
+      { ...FLEET_ROW, deviceId: 'd2', externalRef: 'edge-still', siteName: 'Birkach', lastSeenAt: vor(2 * 3600_000) },
+      { ...FLEET_ROW, deviceId: 'd3', externalRef: 'edge-neu', siteName: 'Celle', lastSeenAt: null },
+      PRINTED,
+    ]);
+  }
+
+  it('zählt oben und zeigt je verbundener Box Zustand und letzte Meldung', async () => {
+    inventar();
+    render(<GeraeteRegistryPage />);
+    const table = await screen.findByTestId('devices');
+    expect(screen.getByTestId('online-zaehlung')).toHaveTextContent('1 online · 1 offline · 1 nie gemeldet');
+    const zeile = (ref: string) => within(table).getByText(ref).closest('tr') as HTMLElement;
+    expect(zeile('edge-online')).toHaveTextContent('Verbunden');
+    expect(zeile('edge-online')).toHaveTextContent('Letzte Meldung: vor 30 Sek.');
+    expect(zeile('edge-still')).toHaveTextContent('Meldet sich nicht');
+    expect(zeile('edge-still')).toHaveTextContent('Letzte Meldung: vor 2 Std.');
+    // Unbekannt ist nicht online.
+    expect(zeile('edge-neu')).toHaveTextContent('Wartet auf erste Meldung');
+    expect(zeile('edge-neu')).toHaveTextContent('Letzte Meldung: noch nie');
+    // Eine gedruckte ID ist keine Box und hat keinen Online-Status.
+    expect(zeile('VP-DEMO-0002')).not.toHaveTextContent('Letzte Meldung');
+  });
+
+  it('filtert auf online und offline', async () => {
+    inventar();
+    render(<GeraeteRegistryPage />);
+    const table = await screen.findByTestId('devices');
+    const gruppe = screen.getByRole('group', { name: 'Boxen nach Online-Status filtern' });
+
+    fireEvent.click(within(gruppe).getByRole('button', { name: /^Online/ }));
+    expect(within(gruppe).getByRole('button', { name: /^Online/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(table).toHaveTextContent('edge-online');
+    expect(table).not.toHaveTextContent('edge-still');
+    expect(table).not.toHaveTextContent('VP-DEMO-0002');
+
+    fireEvent.click(within(gruppe).getByRole('button', { name: /^Offline/ }));
+    expect(screen.getByTestId('devices')).toHaveTextContent('edge-still');
+    expect(screen.getByTestId('devices')).not.toHaveTextContent('edge-online');
+
+    fireEvent.click(within(gruppe).getByRole('button', { name: /^Alle/ }));
+    expect(screen.getByTestId('devices')).toHaveTextContent('VP-DEMO-0002');
+  });
+
+  it('zeigt ohne verbundene Box weder Zählung noch Filter', async () => {
+    listDevices.mockResolvedValue([PRINTED]);
+    render(<GeraeteRegistryPage />);
+    await screen.findByTestId('devices');
+    expect(screen.queryByTestId('online-zaehlung')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Boxen nach Online-Status filtern' })).toBeNull();
+  });
+});

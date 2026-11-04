@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ControlStatus, CurtailmentStatus } from './api';
 import type { AdminFleetSite } from './admin/fleetApi';
 import {
+  boxVerbindung,
   controlMatrixInputs,
   controlMatrixRows,
   edgeStand,
@@ -11,6 +12,7 @@ import {
   releaseIsRunning,
   sollRelease,
   sourceHealth,
+  verbindungZaehlung,
 } from './adminFleet';
 
 const NOW = new Date('2026-08-03T12:00:00Z');
@@ -580,5 +582,48 @@ describe('controlMatrixRows (B2 - die Pilsting-Sicht)', () => {
       NOW,
     );
     expect(rows.map((r) => r.siteName)).toEqual(['Ungefreigegeben', 'Gesund']);
+  });
+});
+
+describe('boxVerbindung - die EINE Online-Regel', () => {
+  it('online innerhalb des 5-Minuten-Fensters, an der Grenze noch online', () => {
+    expect(boxVerbindung(ago(20_000), NOW)).toEqual({
+      zustand: 'online', tone: 'ok', text: 'Verbunden', lastSeenText: 'vor 20 Sek.',
+    });
+    expect(boxVerbindung(ago(5 * 60_000), NOW).zustand).toBe('online');
+  });
+
+  it('veraltet ist nicht aktuell: hinter dem Fenster meldet sie sich nicht', () => {
+    expect(boxVerbindung(ago(5 * 60_000 + 1), NOW)).toMatchObject({
+      zustand: 'offline', tone: 'warn', text: 'Meldet sich nicht',
+    });
+    expect(boxVerbindung(ago(3 * 3600_000), NOW).lastSeenText).toBe('vor 3 Std.');
+  });
+
+  it('ohne Meldung ist unbekannt, nie online', () => {
+    for (const leer of [null, undefined, '', 'kein-datum']) {
+      expect(boxVerbindung(leer, NOW)).toEqual({
+        zustand: 'nie', tone: 'off', text: 'Wartet auf erste Meldung', lastSeenText: '—',
+      });
+    }
+  });
+
+  it('die Plattform-Übersicht spricht denselben Wortlaut', () => {
+    const [group] = fleetBoxGroups([site({
+      boxes: [{
+        deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box', fuehrtAnlage: true,
+        lastSeenAt: ago(10 * 60_000), edge: null, update: null,
+      }],
+    })], NOW, []);
+    const v = boxVerbindung(ago(10 * 60_000), NOW);
+    expect(group.boxes[0].connectionText).toBe(v.text);
+    expect(group.boxes[0].connectionTone).toBe(v.tone);
+    expect(group.boxes[0].lastSeenText).toBe(v.lastSeenText);
+  });
+
+  it('zählt online · offline · nie gemeldet, Nullen bleiben stehen', () => {
+    expect(verbindungZaehlung(['online', 'online', 'offline', 'nie']).text)
+      .toBe('2 online · 1 offline · 1 nie gemeldet');
+    expect(verbindungZaehlung([]).text).toBe('0 online · 0 offline · 0 nie gemeldet');
   });
 });
