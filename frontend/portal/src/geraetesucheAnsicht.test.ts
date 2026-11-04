@@ -158,6 +158,14 @@ describe('Gerätesuche · was ein Fund anbietet', () => {
     expect(fundAktion(fund({ anbindung: 'nicht_mit_dieser_box' }), 'nicht_anbindbar', true)).toEqual({ art: 'keine' });
     expect(fundHinweis(fund({ anbindung: 'kein_leseweg' }))).toBe('Erkannt, aber VoltPilot kann es noch nicht lesen.');
     expect(fundAktion(gsGoe, 'schon_eingerichtet', true)).toEqual({ art: 'keine' });
+    // Live-Fall „Zuhause“ (04.11.2026): wartet die Komponente auf ihr Gerät, führt der Fund ins Zuordnen.
+    const k = { id: 'stab', name: 'Heizstab' };
+    expect(fundAktion(fund({ abgleich: 'adresse_bekannt_kennung_offen', komponente: k }), 'schon_eingerichtet', true, true))
+      .toEqual({ art: 'wiederverbinden', komponente: k });
+    expect(fundAktion(fund({ abgleich: 'adresse_bekannt_kennung_offen', komponente: k }), 'schon_eingerichtet', false, true))
+      .toEqual({ art: 'keine' });
+    expect(fundAktion(fund({ abgleich: 'adresse_bekannt_kennung_offen', komponente: k }), 'schon_eingerichtet', true, false))
+      .toEqual({ art: 'keine' });
     expect(fundAktion(fund({ anbindung: 'selbst_beschreiben', erkennung: 'unbekannt' }), 'vielleicht', true)).toEqual({ art: 'selbst' });
   });
 

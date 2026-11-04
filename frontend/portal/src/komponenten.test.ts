@@ -17,6 +17,7 @@ import {
   reconnectCandidates,
   swapNote,
   toComponentHealth,
+  wiederVerbindenAusSuche,
   type AssignChoice,
   type ComponentRole,
   type PlantComponent,
@@ -1470,5 +1471,84 @@ describe('plantModel - K4: Verbraucher an den Relais eines I/O-Moduls', () => {
     ]);
     const heiz = ohneModul.components.find((c) => c.entityId === 'heiz');
     expect(heiz?.io ?? null).toBeNull();
+  });
+});
+
+/**
+ * Live-Fall „Zuhause“ (04.11.2026): der Heizstab hinter einem Shelly Pro 3 wartet auf sein Gerät
+ * („nicht mehr verbunden“), die Box meldet denselben Shelly unter einer neuen Kennung.
+ */
+describe('Heizstab wieder verbinden (Live-Fall „Zuhause“)', () => {
+  const stab = entity('stab', 'heating-rod', {
+    typeLabel: 'Heizstab',
+    label: 'Heizstab',
+    control: true,
+    edgeSourceId: 'src-weg00001',
+    orphanedPin: true,
+  });
+  const shelly = source('src-7q7pdrwh', 'consumer', {
+    brand: 'shelly',
+    model: 'shelly_http',
+    label: 'Heizstab',
+    communication: 'shelly_http',
+    host: '192.168.178.43',
+    port: 80,
+  });
+  const shellySource: AdoptableSource = {
+    id: 'src-7q7pdrwh',
+    role: 'consumer',
+    brand: 'shelly',
+    model: 'shelly_http',
+    label: 'Heizstab',
+    roleLabel: 'Verbraucher',
+    summary: 'Heizstab',
+    suggestedType: null,
+  };
+
+  it('„Gerät zuordnen“ bietet den wartenden Heizstab zum Wiederverbinden an', () => {
+    // Vorher: der vorgeschlagene Typ eines Shelly ist generic-load - der Heizstab fiel heraus,
+    // und „Fertig“ legte eine zweite Komponente „Heizstab“ daneben an.
+    expect(reconnectCandidates(shellySource, [stab])).toEqual([{ entityId: 'stab', label: 'Heizstab' }]);
+  });
+
+  it('der vorgeschlagene Typ steht vorn, ein Erzeuger passt nie auf eine Verbraucher-Meldung', () => {
+    const last = entity('last', 'generic-load', { typeLabel: 'Verbraucher', label: 'Pumpe', orphanedPin: true, edgeSourceId: 'src-x' });
+    const wr = entity('wr', 'producer', { typeLabel: 'Erzeuger', label: 'Dach', orphanedPin: true, edgeSourceId: 'src-y' });
+    expect(reconnectCandidates(shellySource, [stab, wr, last]).map((c) => c.entityId)).toEqual(['last', 'stab']);
+  });
+
+  it('„Geräte suchen“ führt zum Zuordnen des Heizstabs, die Quelle an der Adresse ist vorgewählt', () => {
+    const m = plantModel([stab], null, [shelly], []);
+    const w = wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m.components, [stab], [shelly], []);
+    expect(w?.komponente.entityId).toBe('stab');
+    expect(w?.vorschlag).toBe('src-7q7pdrwh');
+  });
+
+  it('ohne eindeutige Quelle an der Adresse wählt der Kunde selbst', () => {
+    const zweiter = source('src-zweiter1', 'consumer', { brand: 'shelly', host: '192.168.178.43', port: 80 });
+    const m = plantModel([stab], null, [shelly, zweiter], []);
+    const w = wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m.components, [stab], [shelly, zweiter], []);
+    expect(w?.komponente.entityId).toBe('stab');
+    expect(w?.vorschlag).toBeNull();
+    // Eine Quelle an einer anderen Adresse ist kein Vorschlag - die Komponente wartet trotzdem.
+    const anders = source('src-anders01', 'consumer', { brand: 'shelly', host: '192.168.178.99', port: 80 });
+    const m2 = plantModel([stab], null, [anders], []);
+    expect(wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m2.components, [stab], [anders], [])?.vorschlag)
+      .toBeNull();
+  });
+
+  it('eine lebende Bindung wartet nie', () => {
+    const verbunden = { ...stab, edgeSourceId: 'src-7q7pdrwh', orphanedPin: false };
+    const m = plantModel([verbunden], null, [shelly], []);
+    expect(wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m.components, [verbunden], [shelly], [])).toBeNull();
+  });
+
+  it('ohne Pin wartet sie nur, wenn die Box an dieser Adresse eine freie Quelle meldet', () => {
+    const ohnePin = { ...stab, edgeSourceId: null, orphanedPin: null };
+    const m = plantModel([ohnePin], null, [shelly], []);
+    expect(wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m.components, [ohnePin], [shelly], [])?.vorschlag)
+      .toBe('src-7q7pdrwh');
+    const m2 = plantModel([ohnePin], null, [], []);
+    expect(wiederVerbindenAusSuche('stab', { ip: '192.168.178.43', port: 80 }, m2.components, [ohnePin], [], [])).toBeNull();
   });
 });

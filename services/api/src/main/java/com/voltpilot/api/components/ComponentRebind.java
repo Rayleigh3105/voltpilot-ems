@@ -72,7 +72,16 @@ public final class ComponentRebind {
      * Verbindung. Ohne diese Ausnahme scheiterte jeder Vergleich genau an der
      * Kopie, die wir selbst hineingeschrieben haben.
      */
-    private static final Set<String> IGNORED_CONNECTION_FIELDS = Set.of("interval_s");
+    private static final Set<String> IGNORED_CONNECTION_FIELDS = Set.of("interval_s",
+            // Der Heizstab über eine Shelly-Ausgangsmenge (docs/contracts/v2/heizstab-shelly.md):
+            // Anschluss, kW je Element, Stufen, Phasenwahl und Totmann-Zeit beschreiben, WIE der
+            // Stab geschaltet wird, nicht WELCHES Gerät es ist. Die Box liest sie aus dem
+            // Treiberblock, führt sie aber nicht in ihrer Quellen-Verbindung und meldet sie nie
+            // zurück (`inverter.Connection` kennt nur `channels`). Mit ihnen verglich die Cloud ihre
+            // eigene Kopie gegen eine Meldung, die sie nie tragen kann: ein Heizstab wurde nie an
+            // seine Quelle gebunden und nach einem Kennungswechsel nie wiedererkannt (Anlage
+            // „Zuhause“, 04.11.2026).
+            "anschluss", "output_kw", "stages", "rotation", "on_timer_s");
 
     /** Eine gepinnte Komponente der Anlage. */
     public record PinnedComponent(UUID pointId, String edgeSourceId, String role,
@@ -196,7 +205,7 @@ public final class ComponentRebind {
             if (v == null || v.isNull()) {
                 continue;
             }
-            String text = v.isNumber() ? trimNumber(v) : v.asText();
+            String text = v.isArray() ? listText(v) : v.isNumber() ? trimNumber(v) : v.asText();
             if (text == null || text.isBlank() || "false".equals(text) || "0".equals(text)) {
                 // Ein Feld auf seinem Nullwert ist dasselbe wie ein fehlendes -
                 // die Box lässt es beim Melden weg (`omitempty`), die Cloud kann
@@ -212,6 +221,25 @@ public final class ComponentRebind {
                 .append(communication.trim());
         for (Map.Entry<String, String> f : canonical.entrySet()) {
             sb.append('\n').append(f.getKey()).append('=').append(f.getValue());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Eine Liste in ihrer Reihenfolge, die Elemente wie einzelne Werte geschrieben. Bis zum
+     * 04.11.2026 fiel eine Liste ganz heraus ({@code asText()} einer Liste ist leer) - die
+     * Ausgangsmenge eines Heizstabs ({@code channels}) zählte damit nicht zum Gerät, obwohl die Box
+     * sie als seine Identität führt ({@code set:0,1,2}, {@code sources.TransportIdentity}). Der
+     * Fingerabdruck war an dieser Stelle schwächer als die Identität der Box, nicht strenger.
+     * Die Reihenfolge zählt: sie ist die Phasenfolge.
+     */
+    private static String listText(JsonNode list) {
+        StringBuilder sb = new StringBuilder();
+        for (JsonNode e : list) {
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+            sb.append(e.isNumber() ? trimNumber(e) : e.asText());
         }
         return sb.toString();
     }

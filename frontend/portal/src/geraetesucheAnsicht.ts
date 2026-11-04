@@ -235,13 +235,27 @@ export type FundAktion =
   | { art: 'adresse'; komponente: { id: string; name: string }; neu: string; bisher: string | null }
   /** „Modbus-Gerät selbst beschreiben" mit vorbelegter Adresse. */
   | { art: 'selbst' }
+  /**
+   * Die abgeglichene Komponente wartet auf ihr Gerät („nicht mehr verbunden“): der Fund führt in ihr Zuordnen
+   * (Live-Fall „Zuhause“, 04.11.2026). Ob sie wartet, weiß nur der Wirt (`wiederVerbindenAusSuche`).
+   */
+  | { art: 'wiederverbinden'; komponente: { id: string; name: string } }
   | { art: 'keine' };
 
 /**
  * Was ein Fund in seiner Gruppe anbietet. `portalVerwaltet` false (Geräte werden an der Box gepflegt): suchen ja,
- * übernehmen nein (Bericht §4 „Übernehmen", letzter Punkt).
+ * übernehmen nein (Bericht §4 „Übernehmen", letzter Punkt). `wartet` true: die abgeglichene Komponente eines
+ * eingerichteten Fundes wartet auf ihr Gerät - dann ist „eingerichtet ✓“ falsch und der Fund führt ins Zuordnen.
  */
-export function fundAktion(f: GeraetesucheFund, gruppe: GeraetesucheGruppeWort, portalVerwaltet: boolean): FundAktion {
+export function fundAktion(
+  f: GeraetesucheFund,
+  gruppe: GeraetesucheGruppeWort,
+  portalVerwaltet: boolean,
+  wartet = false,
+): FundAktion {
+  if (portalVerwaltet && gruppe === 'schon_eingerichtet' && wartet && f.komponente) {
+    return { art: 'wiederverbinden', komponente: f.komponente };
+  }
   if (!portalVerwaltet || gruppe === 'schon_eingerichtet' || gruppe === 'weitere' || gruppe === 'nicht_anbindbar') {
     return { art: 'keine' };
   }
@@ -282,6 +296,11 @@ export function fundHinweis(f: GeraetesucheFund): string | null {
   if (f.anbindung === 'kein_leseweg') return 'Erkannt, aber VoltPilot kann es noch nicht lesen.';
   if (f.liestBoxSchon) return 'Ihre Box liest dieses Gerät schon.';
   return null;
+}
+
+/** Der Satz an einem gefundenen Gerät, dessen Komponente auf ihr Gerät wartet („nicht mehr verbunden“). */
+export function wartetHinweis(name: string): string {
+  return `„${name}“ ist nicht mehr mit einem gemeldeten Gerät verbunden. Ist es dieses Gerät, verbinden Sie es wieder.`;
 }
 
 /** Der Zustand eines eingerichteten Fundes in einem Wort („liefert Daten"), den der Wirt aus seiner Komponente kennt. */

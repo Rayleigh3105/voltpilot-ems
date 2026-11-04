@@ -187,6 +187,73 @@ class ComponentRebindTest {
                 MAPPER)).isEmpty();
     }
 
+    /** Was die Cloud für den Heizstab des Captains speichert (Anlage „Zuhause“, Shelly Pro 3). */
+    private static final String HEIZSTAB_GESPEICHERT = "{\"ip\":\"192.168.178.43\",\"port\":80,"
+            + "\"channels\":[0,1,2],\"output_kw\":[1.5,1.5,1.5],\"stages\":[1,2,3],"
+            + "\"anschluss\":\"stern_mit_n\",\"rotation\":\"daily\",\"interval_s\":5}";
+
+    /** Was die Box dazu in `local_setup` meldet (sources.json der VoltPilotGATE, 02.11.2026). */
+    private static final String HEIZSTAB_GEMELDET =
+            "{\"ip\":\"192.168.178.43\",\"port\":80,\"channels\":[0,1,2]}";
+
+    private static final UUID STAB = UUID.fromString("768a7939-567c-47fd-99ce-8e6df74ab857");
+
+    @Test
+    @DisplayName("Heizstab: die wartende Komponente findet ihre Shelly-Ausgangsmenge wieder")
+    void aWaitingHeatingRodIsReboundToItsOutputSet() {
+        // Der Fall „Zuhause“: der Pin zeigt ins Leere, die Box meldet denselben Shelly
+        // unter einer Kennung, die keine Komponente trägt. Bis zum 04.11.2026 blieb das
+        // so - `anschluss`/`rotation` stehen nur in der Cloud-Kopie, also passte der
+        // Fingerabdruck nie, und der Kunde sah „nicht mehr verbunden“.
+        List<ComponentRebind.Rebind> plan = ComponentRebind.decide(
+                List.of(new ComponentRebind.PinnedComponent(STAB, "src-weg00001", "consumer",
+                        "shelly_http", HEIZSTAB_GESPEICHERT, "Heizstab")),
+                List.of(new ComponentRebind.ReportedDevice("src-7q7pdrwh", "consumer",
+                        "shelly_http", HEIZSTAB_GEMELDET, "Heizstab")),
+                MAPPER);
+        assertThat(plan).singleElement().satisfies(r -> {
+            assertThat(r.pointId()).isEqualTo(STAB);
+            assertThat(r.fromSourceId()).isEqualTo("src-weg00001");
+            assertThat(r.toSourceId()).isEqualTo("src-7q7pdrwh");
+        });
+    }
+
+    @Test
+    @DisplayName("Heizstab: die Erstbindung gelingt ohne Klick")
+    void aNewHeatingRodIsBoundToItsReportedSource() {
+        assertThat(ComponentRebind.decide(
+                List.of(new ComponentRebind.PinnedComponent(STAB, null, "consumer",
+                        "shelly_http", HEIZSTAB_GESPEICHERT, "Heizstab")),
+                List.of(new ComponentRebind.ReportedDevice("src-7q7pdrwh", "consumer",
+                        "shelly_http", HEIZSTAB_GEMELDET, "Heizstab")),
+                MAPPER))
+                .extracting(ComponentRebind.Rebind::toSourceId).containsExactly("src-7q7pdrwh");
+    }
+
+    @Test
+    @DisplayName("Die Ausgangsmenge gehört zum Gerät: andere Menge, einzelner Ausgang = anderes Gerät")
+    void theOutputSetIsPartOfTheDevice() {
+        String stab = ComponentRebind.fingerprint("consumer", "shelly_http",
+                HEIZSTAB_GESPEICHERT, MAPPER);
+        assertThat(stab).isEqualTo(ComponentRebind.fingerprint("consumer", "shelly_http",
+                HEIZSTAB_GEMELDET, MAPPER));
+        // Zwei Phasen sind ein anderes Gerät als drei (die Box: set:0,1 ≠ set:0,1,2).
+        assertThat(stab).isNotEqualTo(ComponentRebind.fingerprint("consumer", "shelly_http",
+                "{\"ip\":\"192.168.178.43\",\"port\":80,\"channels\":[0,1]}", MAPPER));
+        // Die Reihenfolge ist die Phasenfolge.
+        assertThat(stab).isNotEqualTo(ComponentRebind.fingerprint("consumer", "shelly_http",
+                "{\"ip\":\"192.168.178.43\",\"port\":80,\"channels\":[2,1,0]}", MAPPER));
+        // Ein einzelner Ausgang desselben Shelly ist nie der Stab.
+        assertThat(stab).isNotEqualTo(ComponentRebind.fingerprint("consumer", "shelly_http",
+                "{\"ip\":\"192.168.178.43\",\"port\":80,\"channel\":0}", MAPPER));
+        assertThat(ComponentRebind.decide(
+                List.of(new ComponentRebind.PinnedComponent(STAB, "src-weg00001", "consumer",
+                        "shelly_http", HEIZSTAB_GESPEICHERT, "Heizstab")),
+                List.of(new ComponentRebind.ReportedDevice("src-ausgang0", "consumer",
+                        "shelly_http", "{\"ip\":\"192.168.178.43\",\"port\":80}", "Relais")),
+                MAPPER)).isEmpty();
+    }
+
     @Test
     @DisplayName("Ohne Meldung und ohne Pin passiert nichts")
     void nothingHappensWithoutBothSides() {

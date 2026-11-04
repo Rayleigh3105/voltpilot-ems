@@ -392,6 +392,28 @@ describe('GeraetesucheDialog · Adresse geändert (DP-7 A, m9)', () => {
     expect(within(region).getByText('Wechselrichter')).toBeInTheDocument();
     expect(within(region).getByText('eingerichtet')).toBeInTheDocument();
   });
+
+  // Live-Fall „Zuhause“ (04.11.2026): die Komponente wartet auf ihr Gerät - die Suche hat es gefunden,
+  // also führt der Fund ins Zuordnen statt „eingerichtet ✓“ zu behaupten.
+  it('wartet die eingerichtete Komponente auf ihr Gerät, führt „Wieder verbinden“ ins Zuordnen', async () => {
+    starten(F.hinweis);
+    const onWiederVerbinden = vi.fn();
+    rendere({ wartet: () => true, onWiederVerbinden });
+    const region = await screen.findByRole('region', { name: 'Schon eingerichtet' });
+    expect(within(region).queryByText('eingerichtet')).not.toBeInTheDocument();
+    expect(within(region).getByText(/ist nicht mehr mit einem gemeldeten Gerät verbunden/)).toBeInTheDocument();
+    fireEvent.click(within(region).getByRole('button', { name: 'Wechselrichter wieder verbinden' }));
+    expect(onWiederVerbinden).toHaveBeenCalledTimes(1);
+    expect(onWiederVerbinden.mock.calls[0][0].komponente?.name).toBe('Wechselrichter');
+  });
+
+  it('ohne Wirt-Zusage bleibt es bei „eingerichtet“', async () => {
+    starten(F.hinweis);
+    rendere({ wartet: () => false, onWiederVerbinden: vi.fn() });
+    const region = await screen.findByRole('region', { name: 'Schon eingerichtet' });
+    expect(within(region).getByText('eingerichtet')).toBeInTheDocument();
+    expect(within(region).queryByRole('button', { name: /wieder verbinden/ })).not.toBeInTheDocument();
+  });
 });
 
 describe('GeraetesucheDialog · OCPP „klopft an"', () => {

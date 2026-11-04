@@ -25,6 +25,8 @@ Die Box lehnt eine ungültige Menge mit einem deutschen Satz ab und schaltet dan
 
 Für den Lesepfad (Quelle der Box) zählt nur `channels`. Die Quelle eines Stabs bekommt eine eigene Identität (`set:0,1,2`) und teilt sie nie mit einem einzelnen Ausgang desselben Geräts.
 
+Die Box meldet die Quelle in `local_setup` nur mit `ip`, `port` und `channels`. Die Cloud bindet einen Stab daran (Erstbindung) und erkennt ihn nach einem Kennungswechsel wieder (`ComponentRebind`). Dabei zählen Rolle, Kommunikationsart, `ip`, `port` und `channels` in Phasenfolge. `anschluss`, `output_kw`, `stages`, `rotation` und `on_timer_s` gehören nicht zur Identität. Bis zum 04.11.2026 verglich die Cloud ihre Kopie mit diesen Feldern: Ein Stab wurde nie gebunden und blieb nach einem Kennungswechsel „nicht mehr verbunden“.
+
 ## Entitätsbeschreibung (Registry-Push → Box)
 
 Gemeinsame Vektoren: [heizstab-push-vectors.json](heizstab-push-vectors.json). Die API prüft die komponierte Beschreibung dagegen (`HeizstabPushApiTest`), die Box ihre Ableitung (`edge-app/core/internal/componentapply/heizstab_push_vectors_test.go`).

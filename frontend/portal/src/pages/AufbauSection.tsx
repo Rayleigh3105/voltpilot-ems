@@ -25,6 +25,7 @@ import {
   ioBindungenAus,
   plantModel,
   reconnectCandidates,
+  wiederVerbindenAusSuche,
   type ComponentHealth,
   type PlantComponent,
 } from '../komponenten';
@@ -225,6 +226,8 @@ export function AufbauSection({
   const [renameError, setRenameError] = useState<string | null>(null);
   const [freigabe, setFreigabe] = useState<PlantComponent | null>(null);
   const [repin, setRepin] = useState<PlantComponent | null>(null);
+  // Aus „Geräte suchen“ geöffnet: die Quelle an der Adresse des Fundes ist vorgewählt (nie still gespeichert).
+  const [repinVorschlag, setRepinVorschlag] = useState<string | null>(null);
   const [remove, setRemove] = useState<PlantComponent | null>(null);
   const [sofort, setSofort] = useState<{ consumer: Consumer; action: SofortAktion } | null>(null);
   const [sofortBusy, setSofortBusy] = useState(false);
@@ -559,6 +562,16 @@ export function AufbauSection({
     setSucheZuletzt(null);
     setSucheFund(null);
     setSuche((alt) => ({ box, suchId: opts.suchId ?? null, start: opts.start ?? 'suche', lauf: (alt?.lauf ?? 0) + 1 }));
+  };
+  /**
+   * Ein gefundenes Gerät, dessen Komponente auf ihr Gerät wartet: sie und die vorgewählte Quelle, sonst null
+   * (Live-Fall „Zuhause“, 04.11.2026 - die Suche fand den Shelly des Heizstabs und bot nichts an).
+   */
+  const wiederVerbindenFuer = (f: GeraetesucheFund) => {
+    if (!f.komponente || !model || !data) return null;
+    const ip = typeof f.verbindung.ip === 'string' ? f.verbindung.ip : null;
+    const port = typeof f.verbindung.port === 'number' ? f.verbindung.port : null;
+    return wiederVerbindenAusSuche(f.komponente.id, { ip, port }, model.components, data.entities, data.localSetup, sources);
   };
   /** Aus der Suche in den bestehenden Anlege-Fluss: Vorlage und Anschluss vorbelegt, der Test startet von selbst. */
   const ausSucheAnlegen = (
@@ -1037,6 +1050,15 @@ export function AufbauSection({
             setComponents(result);
             reload();
           }}
+          wartet={(f) => wiederVerbindenFuer(f) != null}
+          onWiederVerbinden={(f) => {
+            const w = wiederVerbindenFuer(f);
+            if (!w) return;
+            setSuche(null);
+            setSucheBehalten(null);
+            setRepinVorschlag(w.vorschlag);
+            setRepin(w.komponente);
+          }}
         />
       )}
 
@@ -1219,9 +1241,14 @@ export function AufbauSection({
           entities={data.entities}
           localSetup={data.localSetup}
           sources={sources}
-          onClose={() => setRepin(null)}
+          vorschlag={repinVorschlag}
+          onClose={() => {
+            setRepin(null);
+            setRepinVorschlag(null);
+          }}
           onSaved={() => {
             setRepin(null);
+            setRepinVorschlag(null);
             reload();
           }}
         />

@@ -743,6 +743,51 @@ export function assignChoices(
   return out;
 }
 
+/** Was „Geräte suchen“ einer wartenden Komponente anbietet: ihr Zuordnen, mit Vorschlag. */
+export interface WiederVerbindenAusSuche {
+  komponente: PlantComponent;
+  /** Die eine freie, passende Meldung an der Adresse des Fundes - vorgewählt, nie still gespeichert. */
+  vorschlag: string | null;
+}
+
+/**
+ * „Geräte suchen“ hat ein Gerät gefunden, das die Anlage schon kennt (Abgleich über die Adresse) - wartet
+ * die Komponente dazu auf ihr Gerät, führt der Fund direkt in ihr Zuordnen (Live-Fall „Zuhause“,
+ * 04.11.2026: der Heizstab „nicht mehr verbunden“, die Suche fand seinen Shelly und zeigte nur
+ * „✓ eingerichtet“ - kein Weg weiter).
+ *
+ * Sie wartet, wenn ihr Pin ins Leere zeigt (`orphanedPin`), oder wenn sie noch keinen trägt und die Box
+ * an der Adresse des Fundes eine freie, passende Quelle meldet. Eine lebende Bindung wartet nie.
+ *
+ * ⚠ Die Adresse beweist keine Gerätegleichheit (Hausregel). Sie wählt nur VOR: gespeichert wird erst
+ * mit „Übernehmen“ im Zuordnen-Dialog, und nur bei genau einer freien Quelle an dieser Adresse - bei
+ * zweien wählt der Kunde selbst.
+ */
+export function wiederVerbindenAusSuche(
+  komponenteId: string,
+  adresse: { ip: string | null; port: number | null },
+  components: PlantComponent[],
+  entities: SiteEntity[],
+  localSetup: EntityLocalSetup[],
+  sources?: SiteSource[] | null,
+): WiederVerbindenAusSuche | null {
+  const komponente = components.find((c) => c.entityId === komponenteId && c.aspect === 'main');
+  const entity = entities.find((e) => e.id === komponenteId);
+  if (!komponente || !entity || !componentActions(komponente, entity).canRepin) return null;
+  const hostById = new Map(localSetup.map((l) => [l.id, l] as const));
+  const ip = adresse.ip?.trim().toLowerCase() || null;
+  const anAdresse = assignChoices(komponente, entities, localSetup, sources).filter((ch) => {
+    if (ch.current || ch.heldByLabel != null || ip == null) return false;
+    const l = hostById.get(ch.sourceId);
+    const host = l?.host?.trim().toLowerCase() || null;
+    return host === ip && (adresse.port == null || l?.port == null || l.port === adresse.port);
+  });
+  const ohnePin = entity.edgeSourceId == null || entity.edgeSourceId === '';
+  const wartet = entity.orphanedPin === true || (ohnePin && anAdresse.length > 0);
+  if (!wartet) return null;
+  return { komponente, vorschlag: anAdresse.length === 1 ? anAdresse[0].sourceId : null };
+}
+
 /** The choice a component is currently assigned to, or null (orphaned/unpinned). */
 export function currentChoice(choices: AssignChoice[]): AssignChoice | null {
   return choices.find((c) => c.current) ?? null;
@@ -819,6 +864,15 @@ export function deleteConsequences(
  * deren Pin beim Tauschen freigegeben wurde. Vorher fielen alle drei heraus
  * (`orphanedPin` ist dort `null`, nicht `true`), und der Dialog bot nur „Als
  * neue Komponente anlegen" an - die namenlose Parallel-Komponente.
+ *
+ * <p><b>⚠ Ein VERBRAUCHER passt auf jeden Verbraucher-Typ</b> (Live-Fall
+ * „Zuhause“, 04.11.2026). Die Box meldet nur die Rolle `consumer`; welcher
+ * Verbraucher es ist (Heizstab, Wallbox, allgemeine Last), weiß sie nicht. Der
+ * vorgeschlagene Typ ist für einen Shelly `generic-load` - der wartende
+ * HEIZSTAB desselben Shelly kam deshalb nie als „Wieder verbinden“ vor, und
+ * „Fertig“ legte eine zweite Komponente „Heizstab“ daneben an. Die Regel ist
+ * jetzt die des Servers (`requireRoleFit`, hier `sourceFitsType`): jede wartende
+ * Komponente der Verbraucher-Seite; der vorgeschlagene Typ steht vorn.
  */
 export function reconnectCandidates(
   source: AdoptableSource,
@@ -826,12 +880,14 @@ export function reconnectCandidates(
 ): ReconnectCandidate[] {
   const type = source.suggestedType ?? suggestEntityType(source.role, source.brand);
   if (!type) return [];
+  const passt = (e: SiteEntity) =>
+    source.role === 'consumer' ? sourceFitsType(source.role, e.entityType) : e.entityType === type;
+  const wartet = (e: SiteEntity) =>
+    e.orphanedPin === true || e.edgeSourceId == null || e.edgeSourceId === '';
   return entities
-    .filter(
-      (e) =>
-        e.entityType === type
-        && (e.orphanedPin === true || e.edgeSourceId == null || e.edgeSourceId === ''),
-    )
+    .filter((e) => passt(e) && wartet(e))
+    // Stabil: erst der vorgeschlagene Typ, sonst die Reihenfolge der Anlage.
+    .sort((a, b) => Number(b.entityType === type) - Number(a.entityType === type))
     .map((e) => ({
       entityId: e.id,
       label: componentLabel(e.label, componentRole(e.entityType, null), e.typeLabel),

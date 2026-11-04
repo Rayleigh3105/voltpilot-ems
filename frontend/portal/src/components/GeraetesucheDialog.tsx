@@ -42,6 +42,7 @@ import {
   verlaufZeile,
   vorbelegung,
   wann,
+  wartetHinweis,
   weitere,
   weitereTitel,
   wer,
@@ -152,6 +153,8 @@ export function GeraetesucheDialog({
   onSelbst,
   onVonHand,
   onAdresseGespeichert,
+  wartet,
+  onWiederVerbinden,
 }: {
   /** false, solange der Anlege-Fluss darüber liegt - die Suche und ihr Zustand bleiben. */
   open: boolean;
@@ -182,6 +185,13 @@ export function GeraetesucheDialog({
   /** „Von Hand hinzufügen": der Katalog. */
   onVonHand: () => void;
   onAdresseGespeichert: (result: SiteComponents, satz: string) => void;
+  /**
+   * Wartet die abgeglichene Komponente eines eingerichteten Fundes auf ihr Gerät? Der Wirt weiß es aus dem
+   * Anlagen-Modell (`wiederVerbindenAusSuche`); ohne ihn bleibt es bei „eingerichtet“.
+   */
+  wartet?: (fund: GeraetesucheFund) => boolean;
+  /** „Wieder verbinden“ an einem solchen Fund: der Wirt öffnet das Zuordnen dieser Komponente. */
+  onWiederVerbinden?: (fund: GeraetesucheFund) => void;
 }) {
   const telefon = useIsPhone();
   const ich = useRollen().selbst?.name ?? null;
@@ -586,6 +596,8 @@ export function GeraetesucheDialog({
         onBestaetigenAbbrechen={() => setBestaetigen(null)}
         onAdresse={(f, k) => void adresseUebernehmen(f, k)}
         onSelbst={(f) => onSelbst(f, suche?.suchId ?? null)}
+        wartet={onWiederVerbinden ? wartet : undefined}
+        onWiederVerbinden={onWiederVerbinden}
         onZulassen={(id) => void zulassen(id)}
         onVonHand={onVonHand}
         onVerlauf={() => setAnsicht({ art: 'verlauf', zurueck: true })}
@@ -783,6 +795,8 @@ function Ergebnis({
   onBestaetigenAbbrechen,
   onAdresse,
   onSelbst,
+  wartet,
+  onWiederVerbinden,
   onZulassen,
   onVonHand,
   onVerlauf,
@@ -804,6 +818,8 @@ function Ergebnis({
   onBestaetigenAbbrechen: () => void;
   onAdresse: (f: GeraetesucheFund, k: { id: string; name: string }) => void;
   onSelbst: (f: GeraetesucheFund) => void;
+  wartet?: (f: GeraetesucheFund) => boolean;
+  onWiederVerbinden?: (f: GeraetesucheFund) => void;
   onZulassen: (chargePointId: string) => void;
   onVonHand: () => void;
   onVerlauf: () => void;
@@ -840,6 +856,8 @@ function Ergebnis({
               onBestaetigenAbbrechen={onBestaetigenAbbrechen}
               onAdresse={onAdresse}
               onSelbst={() => onSelbst(f)}
+              wartet={wartet?.(f) ?? false}
+              onWiederVerbinden={onWiederVerbinden ? () => onWiederVerbinden(f) : undefined}
             />
           ))}
         </ul>
@@ -1003,6 +1021,8 @@ function FundZeile({
   onBestaetigenAbbrechen,
   onAdresse,
   onSelbst,
+  wartet = false,
+  onWiederVerbinden,
 }: {
   fund: GeraetesucheFund;
   gruppe: GeraetesucheGruppeWort;
@@ -1016,10 +1036,12 @@ function FundZeile({
   onBestaetigenAbbrechen: () => void;
   onAdresse: (f: GeraetesucheFund, k: { id: string; name: string }) => void;
   onSelbst: () => void;
+  wartet?: boolean;
+  onWiederVerbinden?: () => void;
 }) {
   const [offen, setOffen] = useState(false);
-  const aktion = fundAktion(f, gruppe, portalVerwaltet);
-  const hinweis = fundHinweis(f);
+  const aktion = fundAktion(f, gruppe, portalVerwaltet, wartet && onWiederVerbinden != null);
+  const hinweis = aktion.art === 'wiederverbinden' ? wartetHinweis(aktion.komponente.name) : fundHinweis(f);
   // Eingerichtet oder mit neuer Adresse ist es DASSELBE Gerät: die Zeile nennt es so, wie der Kunde es benannt hat.
   const titel = (gruppe === 'schon_eingerichtet' || f.abgleich === 'adresse_geaendert') && f.komponente
     ? f.komponente.name
@@ -1064,6 +1086,19 @@ function FundZeile({
       <Recht aktion="geraet.einrichten">
         <button type="button" className="vp-gs-tun" onClick={onSelbst} aria-label={`${titel} selbst beschreiben`}>
           Beschreiben
+        </button>
+      </Recht>
+    );
+  } else if (aktion.art === 'wiederverbinden' && onWiederVerbinden) {
+    tun = (
+      <Recht aktion="geraet.einrichten">
+        <button
+          type="button"
+          className="vp-gs-tun"
+          onClick={onWiederVerbinden}
+          aria-label={`${aktion.komponente.name} wieder verbinden`}
+        >
+          Wieder verbinden
         </button>
       </Recht>
     );
