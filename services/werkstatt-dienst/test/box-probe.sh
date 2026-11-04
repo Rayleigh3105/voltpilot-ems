@@ -82,6 +82,17 @@ python3 "$REPO/edge-light/scripts/skripte-paket.py" "$TMP/edge-light-openwrt.tar
 PROG_SHA=$(shasum -a 256 "$TMP/vp-edge-light-linux-amd64" | cut -d' ' -f1)
 SKR_SHA=$(shasum -a 256 "$TMP/edge-light-openwrt.tar.gz" | cut -d' ' -f1)
 # In die Ablage nach Prüfsumme: der Dienst lädt dann nichts aus dem Netz.
+# Das signierte Manifest der Fassung (K5, Update-bereit) wie der Release-Lauf,
+# im Zwischenspeicher des Dienstes; die Signatur prueft die Box erst beim
+# naechsten Update, die Werkstatt nur die Zugehoerigkeit.
+gzip -9 -n -c "$TMP/vp-edge-light-linux-amd64" >"$TMP/vp-edge-light-linux-amd64.gz"
+mkdir -p "$TMP/fassungen/manifest"
+(cd "$REPO/edge-app/core" && go run ./cmd/vp-ota manifest --release "$FASSUNG" --seq 77 --commit 3bf8c038a1b2 \
+  --binary "vp-edge-light:linux/amd64=$TMP/vp-edge-light-linux-amd64" --state-schema 1 --key-id rel-2026-a \
+  --out "$TMP/fassungen/manifest/$FASSUNG.json") >/dev/null
+printf '{"schema_version":"1.0","alg":"ed25519","key_id":"rel-2026-a","domain":"release","signature":"AAAA"}\n' \
+  >"$TMP/fassungen/manifest/$FASSUNG.json.sig"
+rm -f "$TMP/vp-edge-light-linux-amd64.gz"
 mv "$TMP/vp-edge-light-linux-amd64" "$TMP/fassungen/$PROG_SHA"
 mv "$TMP/edge-light-openwrt.tar.gz" "$TMP/fassungen/$SKR_SHA"
 
@@ -200,6 +211,14 @@ soll() { # soll <box-schlüssel oder leer>
   printf '{"version":1,"erzeugtAm":"%s","boxNetz":"10.10.16.0/20","technikerNetz":"10.10.32.0/24","peers":[%s],"fenster":[]}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$peers" | docker exec -i "$P-server" sh -c 'cat > /srv/soll.neu && mv /srv/soll.neu /srv/soll.json'
 }
+# Das echte, root-signierte Vertrauens-Set (oeffentlich, im Repo) liefert die
+# Portal-Attrappe aus - nie das echte Portal.
+docker exec "$P-server" mkdir -p /srv/trust-set
+docker cp "$REPO/edge-app/ota/trust-set.json" "$P-server:/srv/trust-set/trust-set.json"
+docker cp "$REPO/edge-app/ota/trust-set.json.sig" "$P-server:/srv/trust-set/trust-set.json.sig"
+if [ "$API" = 0 ]; then
+  docker exec -d "$P-server" sh -c "exec /opt/vptd/portal-attrappe -nur-vertrauen >>/srv/portal-attrappe.log 2>&1"
+fi
 if [ "$API" = 1 ]; then
   # Mit API schreibt die Portal-Attrappe den Soll-Stand: Techniker-Zugang des
   # Dienstes, nach der Einlösung die Box und das Probe-Fenster.
@@ -278,8 +297,8 @@ x box sh -c '. /etc/openwrt_release; [ "$DISTRIB_RELEASE" = 25.12.5 ] && [ -z "$
   ok "Box: frisches OpenWrt 25.12.5, root ohne Passwort" || nein "Box nicht im Ausgangszustand"
 
 # Werkstatt-Dienst wie im Pod (Benutzer 10001, nur lesbar, ohne Capabilities)
-API_ENV=""
-[ "$API" = 0 ] || API_ENV="-e VP_WERKSTATT_API_URL=http://198.51.100.10:8090 -e VP_WERKSTATT_TOKEN_URL=http://198.51.100.10:8090/token -e VP_WERKSTATT_TECHNIKER_ADRESSE=10.10.32.50"
+API_ENV="-e VP_WERKSTATT_PORTAL_URL=http://198.51.100.10:8090"
+[ "$API" = 0 ] || API_ENV="$API_ENV -e VP_WERKSTATT_API_URL=http://198.51.100.10:8090 -e VP_WERKSTATT_TOKEN_URL=http://198.51.100.10:8090/token -e VP_WERKSTATT_TECHNIKER_ADRESSE=10.10.32.50"
 mkdir -p "$TMP/daten"
 mv "$TMP/fassungen" "$TMP/daten/fassungen"
 volumen_aus "$P-daten" "$TMP/daten" "$BILD_DIENST"
@@ -361,6 +380,10 @@ else
 fi
 case "$(beleg internet standardweg)" in *"via 192.168.1.2"*) ok "Werkstatt-Internet über die Brücke (PS-12 in der Probe)" ;; *) nein "internet: $(beleg internet standardweg)" ;; esac
 case "$(beleg programm install)" in *"Pruefsumme auf dem Geraet bestaetigt"*) ok "install.sh aus dem Skriptstand: Prüfsumme auf der Box bestätigt" ;; *) nein "install: $(beleg programm install)" ;; esac
+case "$(beleg programm update_bereit)" in ja) ok "update-bereit: Vertrauens-Set geprüft, Stand 77 aus dem Manifest" ;; *) nein "update_bereit: $(beleg programm update_bereit)" ;; esac
+case "$(beleg fassungen manifest)" in *"Stand 77"*) ok "Manifest der Fassung aus dem Zwischenspeicher: $(beleg fassungen manifest)" ;; *) nein "manifest: $(beleg fassungen manifest)" ;; esac
+x box sh -c '[ -s /etc/vp-edge-light/ota/trust-set.json ] && [ ! -L /etc/vp-edge-light/ota ] && grep -q "\"release_seq\":77" /etc/vp-edge-light/ota/current.json' &&
+  ok "auf der Box: Vertrauens-Set und Stand im Flash" || nein "Vertrauens-Set/Stand auf der Box"
 REF=$(beleg programm referenz | cut -d' ' -f1)
 case "$REF" in edge-???????) ok "Referenz $REF mit gültigem Prüfzeichen" ;; *) nein "Referenz: $(beleg programm referenz)" ;; esac
 case "$(beleg tunnel handshake)" in *"latest handshake"*) ok "Tunnel: $(beleg tunnel handshake)" ;; *) nein "Tunnel ohne Handshake" ;; esac
@@ -379,9 +402,9 @@ if [ "$API" = 1 ]; then
   [ -n "$(beleg probe box_log_ende)" ] && ok "Box-Log nennt das Ende: $(beleg probe box_log_ende | cut -c1-60)" || nein "Box-Log ohne Ende"
   x server grep -q "fenster geschlossen" /srv/portal.log && ok "Probe-Fenster der Einlösung vom Dienst geschlossen" || nein "Fenster nicht geschlossen"
   docker cp "$P-server:/srv/abnahme.json" "$TMP/abnahme.json" 2>/dev/null || echo '{}' >"$TMP/abnahme.json"
-  [ "$(jq '.belege | length' "$TMP/abnahme.json")" = 8 ] && jq -e '.passwortAge | startswith("-----BEGIN AGE ENCRYPTED FILE-----")' "$TMP/abnahme.json" >/dev/null &&
+  [ "$(jq '.belege | length' "$TMP/abnahme.json")" = 9 ] && jq -e '.passwortAge | startswith("-----BEGIN AGE ENCRYPTED FILE-----")' "$TMP/abnahme.json" >/dev/null &&
     jq -e --arg fp "$FP_T" '.belege.anmeldeprobe | contains($fp)' "$TMP/abnahme.json" >/dev/null &&
-    ok "Abnahme an die API: acht Belege, Passwort nur mit age, Anmeldeprobe des Dienstes" || nein "Abnahme: $(cat "$TMP/abnahme.json")"
+    ok "Abnahme an die API: neun Belege, Passwort nur mit age, Anmeldeprobe des Dienstes" || nein "Abnahme: $(cat "$TMP/abnahme.json")"
   if docker logs "$P-dienst" 2>&1 | grep -qE 'wk-[a-z2-7]{26}' || grep -qE 'wk-[a-z2-7]{26}' "$TMP/protokoll.json"; then nein "Einmal-Code im Log oder Protokoll des Dienstes"; else ok "Einmal-Code in keinem Log und keinem Beleg"; fi
 fi
 

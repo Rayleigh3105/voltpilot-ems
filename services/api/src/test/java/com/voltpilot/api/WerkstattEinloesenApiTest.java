@@ -457,7 +457,7 @@ class WerkstattEinloesenApiTest {
         JsonNode erste = reg.get("abnahmen").get(0);
         assertThat(erste.get("quelle").asText()).isEqualTo("dienst");
         assertThat(erste.get("belege").get("anmeldeprobe").asText()).isEqualTo(belege().get("anmeldeprobe"));
-        assertThat(erste.get("belege").size()).isEqualTo(8);
+        assertThat(erste.get("belege").size()).isEqualTo(9);
         assertThat(erste.get("passwortAge").asText()).isEqualTo(ageText());
         assertThat(erste.get("probe").get("fensterId").asText()).isEqualTo(fensterId);
         assertThat(erste.get("hostSchluessel").asText()).isEqualTo(box.host());
@@ -472,7 +472,7 @@ class WerkstattEinloesenApiTest {
     private static Map<String, String> belege() {
         Map<String, String> b = new java.util.LinkedHashMap<>();
         for (String p : List.of("root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe",
-                "host_schluessel", "fenster_zu", "lan_netz", "neustart")) {
+                "host_schluessel", "fenster_zu", "lan_netz", "neustart", "update_bereit")) {
             b.put(p, "Schritt " + p + ": belegt im Test");
         }
         return b;

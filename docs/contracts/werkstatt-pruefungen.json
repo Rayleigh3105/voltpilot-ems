@@ -40,6 +40,11 @@
       "id": "neustart",
       "regel": "Ablauf Schritt 13",
       "text": "Neustart-Probe: Tunnel wieder oben, dieselbe Referenz, ein dauerhafter Schlüssel"
+    },
+    {
+      "id": "update_bereit",
+      "regel": "Entscheid 5c, Konzept vp-edge-light-update K5",
+      "text": "Update-bereit: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Light"
     }
   ]
 }

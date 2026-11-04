@@ -338,6 +338,10 @@ func (f *fakeOta) OtaRecordApplied(release string, seq int64) (otatarget.View, e
 	return f.view, nil
 }
 func (f *fakeOta) IsOtaRejection(err error) bool { return err != nil }
+func (f *fakeOta) OtaUpdate() *cloud.UpdateSummary {
+	return &cloud.UpdateSummary{Backend: cloud.UpdateBackendLight, Current: "edge-light-2026.11.2",
+		Trust: &cloud.TrustSummary{RootKeyIDs: []string{"root-2026-a"}, TrustSetKeyIDs: []string{"rel-2026-a"}}}
+}
 
 // fakeSources is an in-memory SourcesController for the HTTP-layer test.
 type fakeSources struct {
@@ -487,6 +491,31 @@ func TestHealthCarriesBuildVersion(t *testing.T) {
 	// unaffected.
 	if health.Status != "UP" || health.Ref != "edge-ver" {
 		t.Fatalf("/health changed shape: %+v", health)
+	}
+}
+
+// Die Werkstatt prueft "Update-bereit" an /health: Box-Art und ein gepruefter
+// Vertrauens-Set stehen dort (Konzept vp-edge-light-update, K5).
+func TestHealthCarriesTheUpdateBlock(t *testing.T) {
+	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
+	srv := httptest.NewServer(Handler(state.New("edge-ver", "edge-light-2026.11.2"), fi,
+		&fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{},
+		&fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var health struct {
+		Update *cloud.UpdateSummary `json:"ota_update"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+		t.Fatal(err)
+	}
+	if health.Update == nil || health.Update.Backend != "light" || health.Update.Trust == nil ||
+		len(health.Update.Trust.TrustSetKeyIDs) != 1 {
+		t.Fatalf("ota_update fehlt oder unvollstaendig: %+v", health.Update)
 	}
 }
 

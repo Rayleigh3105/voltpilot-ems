@@ -105,7 +105,7 @@ func TestLaufMitPortal(t *testing.T) {
 		t.Fatalf("Abnahmen %d", len(p.abnahmen))
 	}
 	an := p.abnahmen[0]
-	if len(an.Belege) != 8 || an.LanNetz != "10.213.0.1/24" || an.Fassung != "edge-light-2026.11.1" ||
+	if len(an.Belege) != len(mango.Pruefungen) || an.LanNetz != "10.213.0.1/24" || an.Fassung != "edge-light-2026.11.1" ||
 		an.HostSchluessel != gesehen.host || !strings.HasPrefix(an.PasswortAge, "-----BEGIN AGE ENCRYPTED FILE-----") {
 		t.Fatalf("Abnahme %+v", an)
 	}

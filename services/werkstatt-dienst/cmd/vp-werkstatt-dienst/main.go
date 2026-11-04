@@ -262,6 +262,7 @@ func dienstLaufen(log *slog.Logger) error {
 		WartungEP:  k.WartungEndpunkt,
 		BoxNetz:    k.BoxNetz,
 		Bauart:     k.Bauart,
+		PortalURL:  k.PortalURL,
 		Zeiten:     mango.VorgabeZeiten,
 		Log:        log.With("logger", "mango"),
 	}

@@ -39,6 +39,10 @@ type Mango struct {
 	WgPub                   string
 	Neustartdauer           time.Duration
 	Zweite                  bool // ein zweites Gerät mit eigener MAC unter derselben Adresse
+	// BestaetigterStand ist, was /health meldet (ota_update.current_seq);
+	// 0 = keiner. OhneVertrauensSet: /health meldet kein geprüftes Set.
+	BestaetigterStand int64
+	OhneVertrauensSet bool
 	// Anmelden antwortet auf werkstatt-anmelden (P7): Code von der
 	// Standardeingabe, Tunnel- und Host-Schlüssel aus den Argumenten; nil =
 	// Befehl unbekannt (wie eine Box ohne den Befehl).
@@ -392,7 +396,16 @@ func (m *Mango) exec(ch ssh.Channel, b string) (code int, abreissen bool) {
 		if !m.laeuft {
 			return 1, false
 		}
-		j, _ := json.Marshal(map[string]any{"status": "UP", "ref": m.Ref, "version": m.Version})
+		trust := map[string]any{"root_key_ids": []string{"root-2026-a"}, "trust_set_key_ids": []string{"rel-2026-a"},
+			"trust_set_signed_by": "root-2026-a"}
+		if m.OhneVertrauensSet {
+			trust = map[string]any{"root_key_ids": []string{"root-2026-a"}, "trust_set_error": "Kein Vertrauens-Set abgelegt."}
+		}
+		upd := map[string]any{"backend": "light", "current": m.Version, "trust": trust}
+		if m.BestaetigterStand > 0 {
+			upd["current_seq"] = m.BestaetigterStand
+		}
+		j, _ := json.Marshal(map[string]any{"status": "UP", "ref": m.Ref, "version": m.Version, "ota_update": upd})
 		aus("%s\n", j)
 	case b == "vp-attrappe key":
 		aus("oeffentlicher Schluessel des Geraets:\n%s\nBox-Referenz: %s\n", m.WgPub, m.Ref)

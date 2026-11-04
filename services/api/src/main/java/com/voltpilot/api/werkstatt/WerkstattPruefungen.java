@@ -20,7 +20,8 @@ public final class WerkstattPruefungen {
             "host_schluessel",
             "fenster_zu",
             "lan_netz",
-            "neustart");
+            "neustart",
+            "update_bereit");
 
     private WerkstattPruefungen() {
     }

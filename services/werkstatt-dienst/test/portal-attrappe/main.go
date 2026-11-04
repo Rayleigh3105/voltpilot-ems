@@ -166,7 +166,25 @@ func main() {
 	flag.StringVar(&a.techSSH, "techniker-ssh", "", "")
 	flag.StringVar(&a.techAdresse, "techniker-adresse", "10.10.32.50", "")
 	flag.StringVar(&a.boxAdresse, "box-adresse", "10.10.16.5", "")
+	vertrauen := flag.String("trust-set-dir", "/srv/trust-set", "trust-set.json(.sig) fuer /api/v1/edge/trust-set/")
+	nurVertrauen := flag.Bool("nur-vertrauen", false, "nur das Vertrauens-Set ausliefern (Probe ohne API)")
 	flag.Parse()
+	// Das Vertrauens-Set offen, wie EdgeTrustSetController: die Werkstatt legt
+	// es mit install.sh auf die Box (K5, Update-bereit).
+	for _, name := range []string{"trust-set.json", "trust-set.json.sig"} {
+		http.HandleFunc("GET /api/v1/edge/trust-set/"+name, func(w http.ResponseWriter, _ *http.Request) {
+			b, err := os.ReadFile(*vertrauen + "/" + name)
+			if err != nil {
+				http.NotFound(w, nil)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(b)
+		})
+	}
+	if *nurVertrauen {
+		log.Fatal(http.ListenAndServe(*adresse, nil))
+	}
 	// Wie die API (SshSchluessel): nur die Normalform „ssh-rsa <base64>“.
 	if f := strings.Fields(a.techSSH); len(f) >= 2 {
 		a.techSSH = f[0] + " " + f[1]

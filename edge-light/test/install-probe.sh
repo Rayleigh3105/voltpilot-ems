@@ -10,7 +10,16 @@
 #   3. die Bauart steht danach auf der Box (uci vp-edge-light.main.arch), und
 #      der Loader startet die lokale Kopie dieser Bauart,
 #   4. ein zweiter Aufruf ohne VP_SSH_KEY ruft ssh ohne -i auf,
-#   5. die Schlusszeile nennt die Web-App unter der Adresse des Ziels.
+#   5. die Schlusszeile nennt die Web-App unter der Adresse des Ziels,
+#   6. update-bereit (Konzept vp-edge-light-update, K5): base_url wird
+#      verweigert bzw. von der Box entfernt, ein fremdes Manifest und ein
+#      fehlendes Vertrauens-Set verweigert, bevor etwas auf die Box geht; das
+#      Vertrauens-Set (das echte, root-signierte aus edge-app/ota) liegt im
+#      Flash statt im alten RAM-Symlink, die Pruefsummen-Datei traegt die
+#      Nachlade-Pruefsumme, current.json den Stand - und /health meldet
+#      Box-Art light, ein gepruefte Vertrauens-Set und current_seq.
+#      Volle Pruefung nur mit einer Fassung mit Release-Namen:
+#        VP_LIGHT_VERSION=edge-light-2099.01.0 edge-light/scripts/build.sh amd64
 #
 # "ssh" ist ein Ersatz, der die Befehle per docker exec im Container
 # ausfuehrt und eine Schluesseldatei (-i) nur mitschreibt.
@@ -44,6 +53,11 @@ pruefe() { # pruefe <beschreibung> <befehl im container...>
 x() { docker exec "$C" sh -c "$*"; }
 
 [ -f "$BIN" ] || { echo "FEHLER: erst edge-light/scripts/build.sh amd64" >&2; exit 1; }
+REPO="$(cd "$HIER/../.." && pwd -P)"
+# Das echte, root-signierte Vertrauens-Set (oeffentlich, im Repo). Nie vom
+# Portal laden: die Probe beruehrt kein Live-System.
+VP_TRUST_SET_DIR="$REPO/edge-app/ota"
+export VP_TRUST_SET_DIR
 
 # ssh-Ersatz: ssh [-i <datei>] <ziel> <befehl>  ->  docker exec im Container
 mkdir -p "$ARBEIT/bin"
@@ -65,6 +79,25 @@ i=0
 until x 'ubus list service' >/dev/null 2>&1 || [ "$i" -ge 30 ]; do i=$((i + 1)); sleep 1; done
 pruefe "procd antwortet" 'ubus list service'
 
+schritt "0. Fassung und Manifest (Werkzeug vp-ota)"
+FASSUNG="$(docker run --rm --network none -v "$BIN:/p:ro" "$BILD" /p version 2>/dev/null || true)"
+MANIFEST=""
+SEQ=77
+case "$FASSUNG" in
+  edge-light-[0-9][0-9][0-9][0-9].[0-9][0-9].*)
+    gzip -9 -n -c "$BIN" >"$ARBEIT/prog.gz"
+    if (cd "$REPO/edge-app/core" && go run ./cmd/vp-ota manifest --release "$FASSUNG" --seq "$SEQ" --commit 3bf8c038a1b2 \
+      --binary "vp-edge-light:linux/amd64=$BIN,$ARBEIT/prog.gz" --state-schema 1 --key-id rel-2026-a \
+      --out "$ARBEIT/release.json") >/dev/null 2>&1; then
+      MANIFEST="$ARBEIT/release.json"
+      ok "Manifest fuer $FASSUNG (Stand $SEQ) erzeugt"
+    else
+      falsch "Manifest fuer $FASSUNG erzeugt"
+    fi
+    ;;
+  *) echo "  uebersprungen: Fassung '$FASSUNG' ohne Release-Namen - ohne Manifest (VP_LIGHT_VERSION=edge-light-2099.01.0 build.sh amd64)" ;;
+esac
+
 schritt "1. Verweigert, bevor etwas auf die Box geht"
 : > "$ARBEIT/schluessel"
 if VP_LIGHT_ARCH=sparc "$SKRIPT" root@box >/dev/null 2>&1; then falsch "unbekannte Bauart verweigert"; else ok "unbekannte Bauart verweigert"; fi
@@ -73,10 +106,29 @@ if VP_LIGHT_ARCH=amd64 VP_SSH_KEY="$ARBEIT/gibt-es-nicht" "$SKRIPT" root@box >/d
 else
   ok "fehlende Schluesseldatei verweigert"
 fi
+if VP_LIGHT_ARCH=amd64 "$SKRIPT" root@box https://downloads.example.invalid/edge-light >/dev/null 2>&1; then
+  falsch "base_url als zweites Argument verweigert"
+else
+  ok "base_url als zweites Argument verweigert"
+fi
+if VP_LIGHT_ARCH=amd64 VP_TRUST_SET_DIR='' VP_PORTAL_URL=http://127.0.0.1:9 "$SKRIPT" root@box >/dev/null 2>&1; then
+  falsch "ohne Vertrauens-Set verweigert"
+else
+  ok "ohne Vertrauens-Set verweigert"
+fi
+printf '{\n  "release": "edge-light-2099.01.0",\n  "release_seq": 5,\n  "artifacts": [\n    {\n      "arch": "linux/amd64",\n      "sha256": "%s",\n      "gz_sha256": "%s"\n    }\n  ]\n}\n' "$(printf '0%.0s' $(seq 64))" "$(printf '1%.0s' $(seq 64))" >"$ARBEIT/fremd.json"
+if VP_LIGHT_ARCH=amd64 VP_LIGHT_MANIFEST="$ARBEIT/fremd.json" "$SKRIPT" root@box >"$ARBEIT/fremd.out" 2>&1; then
+  falsch "Manifest eines anderen Programms verweigert"
+else
+  grep -q "anderes Programm" "$ARBEIT/fremd.out" && ok "Manifest eines anderen Programms verweigert" || falsch "Manifest eines anderen Programms verweigert (Grund)"
+fi
 [ "$(zeilen "$ARBEIT/ssh.log")" = 0 ] && ok "dabei kein ssh-Aufruf" || falsch "dabei kein ssh-Aufruf"
 
-schritt "2. VP_SSH_KEY und VP_LIGHT_ARCH=amd64"
-if VP_LIGHT_ARCH=amd64 VP_SSH_KEY="$ARBEIT/schluessel" "$SKRIPT" root@box >"$ARBEIT/install.1" 2>&1; then
+schritt "2. VP_SSH_KEY und VP_LIGHT_ARCH=amd64 (auf einer Box mit Stufe 1)"
+# Der Stand einer Box mit Stufe 1: ota als Symlink in den RAM, base_url gesetzt.
+x 'mkdir -p /etc/vp-edge-light /tmp/vp-edge-light/ota && ln -s /tmp/vp-edge-light/ota /etc/vp-edge-light/ota
+   mkdir -p /etc/config && printf "config vp-edge-light main\n\toption base_url https://downloads.example.invalid\n\toption enabled 0\n" >/etc/config/vp-edge-light'
+if VP_LIGHT_ARCH=amd64 VP_SSH_KEY="$ARBEIT/schluessel" VP_LIGHT_MANIFEST="$MANIFEST" "$SKRIPT" root@box >"$ARBEIT/install.1" 2>&1; then
   ok "install.sh laeuft durch"
 else
   falsch "install.sh laeuft durch"; sed 's/^/    | /' "$ARBEIT/install.1"
@@ -100,9 +152,28 @@ grep -q '"ref":"edge-' "$ARBEIT/health" && ok "Programm laeuft, /health nennt di
 pruefe "Loader: lokale Kopie entpackt" 'logread -l 200 -e vp-edge-light | grep -q "lokale Kopie entpackt"'
 pruefe "Loader: keine Meldung \"weder base_url noch lokale Kopie\"" '! logread -l 200 -e vp-edge-light | grep -q "weder base_url noch lokale Kopie"'
 
+schritt "3b. Update-bereit"
+pruefe "Vertrauens-Set im Flash (kein RAM-Symlink mehr)" '[ -d /etc/vp-edge-light/ota ] && [ ! -L /etc/vp-edge-light/ota ] && [ -s /etc/vp-edge-light/ota/trust-set.json ] && [ -s /etc/vp-edge-light/ota/trust-set.json.sig ]'
+pruefe "base_url auf der Box entfernt" '! uci -q get vp-edge-light.main.base_url'
+if [ -n "$MANIFEST" ]; then
+  GZ="$(sed -n 's/.*"gz_sha256": "\([0-9a-f]*\)".*/\1/p' "$MANIFEST")"
+  pruefe "Pruefsummen-Datei: Zeile 2 ist gz_sha256 aus dem Manifest" "[ \"\$(sed -n 2p /usr/share/vp-edge-light/vp-edge-light-linux-amd64.sha256 | cut -d' ' -f1)\" = $GZ ]"
+  pruefe "current.json: $FASSUNG, Stand $SEQ" "grep -q '\"release\":\"$FASSUNG\",\"release_seq\":$SEQ,\"state_schema\":1' /etc/vp-edge-light/ota/current.json"
+fi
+x 'wget -q -O - http://127.0.0.1:8484/health' >"$ARBEIT/health" 2>/dev/null || true
+python3 - "$ARBEIT/health" "${MANIFEST:+$SEQ}" >"$ARBEIT/bereit" 2>&1 <<'PY' && ok "/health: Box-Art light, Vertrauens-Set geprueft$( [ -n "$MANIFEST" ] && echo ", current_seq $SEQ")" || { falsch "/health meldet update-bereit"; sed 's/^/    | /' "$ARBEIT/bereit"; }
+import json, sys
+u = json.load(open(sys.argv[1]))["ota_update"]
+assert u["backend"] == "light", u
+t = u["trust"]
+assert t.get("trust_set_key_ids") and not t.get("trust_set_error"), t
+if sys.argv[2]:
+    assert u.get("current_seq") == int(sys.argv[2]), u
+PY
+
 schritt "4. Zweiter Aufruf ohne VP_SSH_KEY"
 VOR="$(zeilen "$ARBEIT/ssh-i.log")"
-if VP_LIGHT_ARCH=amd64 "$SKRIPT" root@box >"$ARBEIT/install.2" 2>&1; then ok "install.sh laeuft durch"; else falsch "install.sh laeuft durch"; fi
+if VP_LIGHT_ARCH=amd64 VP_LIGHT_MANIFEST="$MANIFEST" "$SKRIPT" root@box >"$ARBEIT/install.2" 2>&1; then ok "install.sh laeuft durch"; else falsch "install.sh laeuft durch"; sed 's/^/    | /' "$ARBEIT/install.2"; fi
 [ "$(zeilen "$ARBEIT/ssh-i.log")" = "$VOR" ] && ok "ohne VP_SSH_KEY kein -i" || falsch "ohne VP_SSH_KEY kein -i"
 pruefe "Bauart bleibt amd64" '[ "$(uci get vp-edge-light.main.arch)" = amd64 ]'
 

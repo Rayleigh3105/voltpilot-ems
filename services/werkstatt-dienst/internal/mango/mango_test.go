@@ -53,6 +53,8 @@ type aufbau struct {
 	r      *lauf.Laeufer
 	log    *bytes.Buffer
 	abbild []byte
+	// ohneManifest: das Release traegt kein release.json (Stufe 1).
+	ohneManifest bool
 }
 
 func summe(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
@@ -64,6 +66,7 @@ func neu(t *testing.T, abOpenWrt bool) *aufbau {
 	imager := attrappe.Schluessel(t)
 	a.b = attrappe.NeueBruecke(t, imager.PublicKey())
 	a.m = attrappe.NeueMango(t, abOpenWrt)
+	a.m.BestaetigterStand = 77
 	notfall := attrappe.Schluessel(t)
 	ziele := []netip.AddrPort{}
 	for _, z := range []string{"192.168.8.1:22", "192.168.8.1:80", "192.168.1.1:22", "192.168.1.1:80", "10.213.0.1:22", "10.213.0.1:8484"} {
@@ -90,8 +93,21 @@ func neu(t *testing.T, abOpenWrt bool) *aufbau {
 	_, _ = rand.Read(a.abbild)
 	programm := []byte("\x7fELF vp-edge-light attrappe")
 	skripte := attrappe.SkripteTarGz(t)
+	manifest, signatur := attrappe.Manifest("edge-light-2026.11.1", 77, summe(programm))
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/v1/edge/trust-set/trust-set.json":
+			_, _ = w.Write([]byte(`{"schema_version":"1.0","keys":[{"key_id":"rel-2026-a"}]}`))
+		case "/api/v1/edge/trust-set/trust-set.json.sig":
+			_, _ = w.Write([]byte(`{"key_id":"root-2026-a","domain":"trust-set","signature":"AAAA"}`))
+		case "/edge/release.json", "/edge/release.json.sig":
+			if a.ohneManifest {
+				http.NotFound(w, r)
+			} else if strings.HasSuffix(r.URL.Path, ".sig") {
+				_, _ = w.Write(signatur)
+			} else {
+				_, _ = w.Write(manifest)
+			}
 		case "/openwrt/openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin":
 			_, _ = w.Write(a.abbild)
 		case "/edge/vp-edge-light-linux-mipsle":
@@ -124,6 +140,7 @@ func neu(t *testing.T, abOpenWrt bool) *aufbau {
 		Notfall:    strings.TrimSpace(string(ssh.MarshalAuthorizedKey(notfall.PublicKey()))) + " voltpilot-notfall",
 		Empfaenger: a.id.Recipient(), WartungPub: "c2VydmVyc2NobHVlc3NlbGRlc3dhcnR1bmdzc2VydmU=",
 		BoxNetz: netip.MustParsePrefix("10.10.16.0/20"), Bauart: "mipsle", Zeiten: kurz, Log: log,
+		PortalURL: srv.URL,
 	}
 	return a
 }
@@ -358,5 +375,64 @@ func TestTunnelAdresse(t *testing.T) {
 		if _, err := mango.PruefeTunnelAdresse(nein, n); err == nil {
 			t.Errorf("%s angenommen", nein)
 		}
+	}
+}
+
+// Entscheid 5c als Prüfung (Konzept vp-edge-light-update, K5): eine Box, die
+// keine Updates aus dem Portal annehmen kann, bekommt keine Abnahme - der Lauf
+// endet an der Übergabe und nennt den Grund.
+func TestOhneUpdateBereitschaftKeineAbnahme(t *testing.T) {
+	for name, fall := range map[string]struct {
+		vorbereiten func(a *aufbau)
+		grund       string
+	}{
+		"Fassung nicht signiert": {func(a *aufbau) { a.ohneManifest = true }, "nicht signiert"},
+		"kein Vertrauens-Set":    {func(a *aufbau) { a.m.OhneVertrauensSet = true }, "kein geprueftes Vertrauens-Set"},
+		"Stand nicht gemeldet":   {func(a *aufbau) { a.m.BestaetigterStand = 0 }, "nicht den Stand 77"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := neu(t, true)
+			fall.vorbereiten(a)
+			l, z := a.fahre(t, mango.AbOpenWrt)
+			s := l.Stand()
+			if z == lauf.Fertig || s.Schritt != "uebergabe" || !strings.Contains(s.Grund, "nicht update-bereit") ||
+				!strings.Contains(s.Grund, fall.grund) || !strings.Contains(s.Grund, "Entscheid 5c") {
+				t.Fatalf("Zustand %s: %+v", z, s)
+			}
+			if v := wert(t, a.belege(t, l)["programm"], "update_bereit"); !strings.HasPrefix(v, "nein") {
+				t.Fatalf("Beleg update_bereit: %q", v)
+			}
+		})
+	}
+}
+
+// Ein Manifest, das ein anderes Programm beschreibt als die Freigabe, hält den
+// Lauf schon beim Bereitlegen an - nichts geht auf die Box.
+func TestEinFremdesManifestHaeltDenLaufAn(t *testing.T) {
+	a := neu(t, true)
+	a.f.EdgeLight.ProgrammSha256 = strings.Repeat("e", 64)
+	l, z := a.fahre(t, mango.AbOpenWrt)
+	s := l.Stand()
+	if z == lauf.Fertig || s.Schritt != "fassungen" {
+		t.Fatalf("Zustand %s: %+v", z, s)
+	}
+}
+
+func TestUpdateBereitBelegNenntSchluesselUndStand(t *testing.T) {
+	a := neu(t, true)
+	l, z := a.fahre(t, mango.AbOpenWrt)
+	if z != lauf.Fertig {
+		t.Fatalf("Zustand %s: %+v", z, l.Stand())
+	}
+	b := a.belege(t, l)
+	if !strings.Contains(wert(t, b["fassungen"], "manifest"), "signiert (rel-2026-a), Stand 77") {
+		t.Fatalf("Beleg manifest: %v", b["fassungen"])
+	}
+	u := wert(t, b["uebergabe"], "pruefung_update_bereit")
+	if !strings.Contains(u, "rel-2026-a") || !strings.Contains(u, "Stand 77") {
+		t.Fatalf("Beleg update_bereit: %q", u)
+	}
+	if !strings.Contains(wert(t, b["uebergabe"], "versand"), "Nicht versenden") {
+		t.Fatal("der Versand-Satz fehlt")
 	}
 }

@@ -317,6 +317,9 @@ func (a *Agent) OtaRecordApplied(release string, releaseSeq int64) (otatarget.Vi
 	return a.OtaTarget(), nil
 }
 
+// OtaUpdate ist der Update-Block des Herzschlags fuer /health.
+func (a *Agent) OtaUpdate() *cloud.UpdateSummary { return a.updateSummary() }
+
 // otaAppliedError ist eine ABLEHNUNG mit deutschem Grund (400 auf :8484).
 type otaAppliedError struct{ msg string }
 

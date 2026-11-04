@@ -144,6 +144,17 @@ func TestAPIQuelle(t *testing.T) {
 	}
 	if k.ClientID != "voltpilot-werkstatt-dienst" || k.ClientSecret.Offenbaren() != "dienst-secret-123" || geheim.Schwaerze("dienst-secret-123") != geheim.Ersatz {
 		t.Fatalf("%+v", k)
+	}	// Das Vertrauens-Set kommt vom Portal der API, ausser ein eigenes ist genannt.
+	if k.PortalURL != "https://portal.example" {
+		t.Fatalf("PortalURL %q", k.PortalURL)
+	}
+	env["VP_WERKSTATT_PORTAL_URL"] = "http://198.51.100.10:8090"
+	if k, err = Lies(umgebung(env), true); err != nil || k.PortalURL != "http://198.51.100.10:8090" {
+		t.Fatalf("%v %q", err, k.PortalURL)
+	}
+	env["VP_WERKSTATT_PORTAL_URL"] = "portal.example"
+	if _, err = Lies(umgebung(env), true); err == nil || !strings.Contains(err.Error(), "VP_WERKSTATT_PORTAL_URL") {
+		t.Fatalf("%v", err)
 	}
 }
 

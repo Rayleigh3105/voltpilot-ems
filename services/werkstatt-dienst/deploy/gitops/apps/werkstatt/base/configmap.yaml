@@ -28,6 +28,10 @@ data:
   VP_WARTUNG_BOX_NETZ: "10.10.16.0/20"
   VP_WERKSTATT_DNS: "9.9.9.9,1.1.1.1"
   VP_WERKSTATT_EDGE_BAUART: "mipsle"
+  # Update-bereit (Entscheid 5c, Konzept vp-edge-light-update K5): von hier
+  # laedt der Dienst das oeffentliche Vertrauens-Set und legt es mit install.sh
+  # auf die Box. Leer = die Portal-API (VP_WERKSTATT_API_URL).
+  VP_WERKSTATT_PORTAL_URL: "https://portal.voltpilot.de"
   # Ab V1: die Freigabe aus der Portal-API statt aus der Datei. Leer lassen,
   # solange der Keycloak-Client voltpilot-werkstatt-dienst nicht angelegt ist.
   VP_WERKSTATT_API_URL: ""

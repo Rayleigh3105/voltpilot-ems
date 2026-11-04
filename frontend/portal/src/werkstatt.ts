@@ -86,6 +86,10 @@ export const PRUEFUNGEN = [
   { id: 'fenster_zu', text: 'Fenster geschlossen, der neue Versuch endet mit Connection timed out' },
   { id: 'lan_netz', text: 'LAN der Box auf ein unübliches Netz gestellt' },
   { id: 'neustart', text: 'Neustart-Probe: Tunnel wieder oben, dieselbe Referenz, ein dauerhafter Schlüssel' },
+  {
+    id: 'update_bereit',
+    text: 'Update-bereit: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Light',
+  },
 ] as const;
 
 export type PruefungId = (typeof PRUEFUNGEN)[number]['id'];

@@ -65,6 +65,12 @@ type Konfig struct {
 	Bauart             string        // Edge Light: mipsle
 	DownloadToken      geheim.Geheim // Lese-Token für die Release-Anhänge (optional)
 
+	// PortalURL ist das Portal, von dem der Dienst das Vertrauens-Set offen
+	// laedt und auf die Box legt (Konzept vp-edge-light-update, K5):
+	// VP_WERKSTATT_PORTAL_URL, sonst VP_WERKSTATT_API_URL, sonst leer (dann
+	// laedt install.sh es selbst vom Standard-Portal).
+	PortalURL string
+
 	// Die Portal-API (V1): leer heißt, die Freigabe kommt aus der Datei.
 	APIURL       string
 	TokenURL     string
@@ -189,10 +195,15 @@ func Lies(env Umgebung, mitSchluesseln bool) (Konfig, error) {
 		WartungEndpunkt:    strings.TrimSpace(env("VP_WARTUNG_ENDPUNKT")),
 		Bauart:             wert(env, "VP_WERKSTATT_EDGE_BAUART", "mipsle"),
 		APIURL:             strings.TrimSpace(env("VP_WERKSTATT_API_URL")),
+		PortalURL:          strings.TrimSpace(env("VP_WERKSTATT_PORTAL_URL")),
 		TokenURL:           strings.TrimSpace(env("VP_WERKSTATT_TOKEN_URL")),
 		ClientID:           wert(env, "VP_WERKSTATT_CLIENT_ID", "voltpilot-werkstatt-dienst"),
 	}
-	for name, u := range map[string]string{"VP_WERKSTATT_API_URL": k.APIURL, "VP_WERKSTATT_TOKEN_URL": k.TokenURL} {
+	if k.PortalURL == "" {
+		k.PortalURL = k.APIURL
+	}
+	for name, u := range map[string]string{"VP_WERKSTATT_API_URL": k.APIURL, "VP_WERKSTATT_TOKEN_URL": k.TokenURL,
+		"VP_WERKSTATT_PORTAL_URL": k.PortalURL} {
 		if u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 			add(fmt.Errorf("%s %q: eine http(s)-Adresse", name, u))
 		}

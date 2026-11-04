@@ -213,8 +213,38 @@ func (l *Lauf) fassungenHolen(mitAbbild bool) func(context.Context, *lauf.Kontex
 				l.pfadSkripte = erg.Pfad
 			}
 		}
-		return b, nil
+		return l.manifestHolen(ctx, b)
 	}
+}
+
+// manifestHolen laedt das signierte Manifest der Fassung (release.json + .sig
+// am selben Release) und bindet es an die Freigabe: genau diese Fassung, genau
+// dieses Programm. Fehlt es, ist die Fassung nicht signiert (Stufe 1) - der Lauf
+// geht weiter, die Box wird aber nicht update-bereit. Widerspricht es der
+// Freigabe, bricht der Schritt ab.
+func (l *Lauf) manifestHolen(ctx context.Context, b protokoll.Beleg) (protokoll.Beleg, error) {
+	m, sig, err := l.k.Fassungen.HoleManifest(ctx, l.freigabe.EdgeLight.Quelle, l.freigabe.EdgeLight.Fassung)
+	if errors.Is(err, fassungen.ErrNichtSigniert) {
+		l.nichtBereit = "die Fassung " + l.freigabe.EdgeLight.Fassung + " ist nicht signiert (kein release.json am Release)"
+		return b.Mit("manifest", "keins - "+l.nichtBereit), nil
+	}
+	if err != nil {
+		// Nicht erreichbar heisst nicht falsch: der Lauf geht weiter, die Box
+		// wird aber nicht update-bereit (und bekommt keine Abnahme).
+		l.nichtBereit = "das Manifest der Fassung ist nicht erreichbar (" + err.Error() + ")"
+		return b.Mit("manifest", "keins - "+l.nichtBereit), nil
+	}
+	st, err := fassungen.PruefeManifest(m, sig, l.freigabe.EdgeLight.Fassung, l.k.Bauart, l.freigabe.EdgeLight.ProgrammSha256)
+	if err != nil {
+		return b, err
+	}
+	pfad := filepath.Join(l.dir, fassungen.ManifestDatei)
+	if err := os.WriteFile(pfad, m, 0o644); err != nil {
+		return b, err
+	}
+	l.pfadManifest, l.stand = pfad, &st
+	return b.Mit("manifest", fmt.Sprintf("signiert (%s), Stand %d, Datenformat %d", st.SigniertVon, st.ReleaseSeq,
+		st.StateSchema)), nil
 }
 
 // ---- P3: OpenWrt aufspielen ---------------------------------------------------------
@@ -497,6 +527,68 @@ type health struct {
 	Status  string `json:"status"`
 	Ref     string `json:"ref"`
 	Version string `json:"version"`
+	// Update ist der Update-Block des Herzschlags (seit K5 an /health).
+	Update *struct {
+		Backend    string `json:"backend"`
+		CurrentSeq *int64 `json:"current_seq"`
+		Trust      *struct {
+			TrustSetKeyIDs   []string `json:"trust_set_key_ids"`
+			TrustSetSignedBy string   `json:"trust_set_signed_by"`
+			TrustSetError    string   `json:"trust_set_error"`
+		} `json:"trust"`
+	} `json:"ota_update"`
+}
+
+// vertrauensSet laedt trust-set.json und .sig offen aus dem Portal in das
+// Verzeichnis des Laufs.
+func (l *Lauf) vertrauensSet(ctx context.Context) (string, error) {
+	set, sig, err := l.k.Fassungen.HoleVertrauensSet(ctx, l.k.PortalURL)
+	if errors.Is(err, fassungen.ErrNichtSigniert) {
+		return "", errors.New("das Portal " + l.k.PortalURL + " liefert kein Vertrauens-Set")
+	}
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(l.dir, "trust-set")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "trust-set.json"), set, 0o644); err != nil {
+		return "", err
+	}
+	return dir, os.WriteFile(filepath.Join(dir, "trust-set.json.sig"), sig, 0o644)
+}
+
+// updateBereit sagt, ob die Box neue Fassungen aus dem Portal annehmen kann:
+// Box-Art light, ein gegen ihre Wurzel geprueftes Vertrauens-Set und die
+// eingespielte Fassung als bestaetigter Stand (aus dem signierten Manifest).
+// Leer = bereit; sonst der Grund.
+func updateBereit(h health, st *fassungen.Stand) string {
+	u := h.Update
+	switch {
+	case u == nil:
+		return "das Programm meldet keinen Update-Block (/health ota_update) - Fassung vor K5"
+	case u.Backend != "light":
+		return "die Box meldet Backend " + orNone(u.Backend) + " statt light"
+	case u.Trust == nil || len(u.Trust.TrustSetKeyIDs) == 0 || u.Trust.TrustSetError != "":
+		grund := "kein geprueftes Vertrauens-Set"
+		if u.Trust != nil && u.Trust.TrustSetError != "" {
+			grund += " (" + u.Trust.TrustSetError + ")"
+		}
+		return grund
+	case st == nil:
+		return "die Fassung ist nicht signiert"
+	case u.CurrentSeq == nil || *u.CurrentSeq != st.ReleaseSeq:
+		return fmt.Sprintf("die Box meldet nicht den Stand %d der eingespielten Fassung", st.ReleaseSeq)
+	}
+	return ""
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "keins"
+	}
+	return s
 }
 
 func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, error) {
@@ -504,7 +596,21 @@ func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protoko
 	if err != nil || summe != l.freigabe.EdgeLight.ProgrammSha256 {
 		return nil, errors.New("Programm im Zwischenspeicher hat nicht die Prüfsumme der Freigabe")
 	}
-	r, err := l.skript(ctx, "install.sh", nil, "VP_LIGHT_ARCH="+l.k.Bauart)
+	env := []string{"VP_LIGHT_ARCH=" + l.k.Bauart}
+	if l.pfadManifest != "" {
+		env = append(env, "VP_LIGHT_MANIFEST="+l.pfadManifest)
+	}
+	if l.k.PortalURL != "" {
+		// Das Vertrauens-Set laedt der Dienst selbst (sein Bild hat kein
+		// curl); install.sh legt es auf die Box. Die Box prueft die
+		// Root-Signatur gegen ihre eingebackene Wurzel.
+		dir, err := l.vertrauensSet(ctx)
+		if err != nil {
+			return nil, err
+		}
+		env = append(env, "VP_TRUST_SET_DIR="+dir, "VP_PORTAL_URL="+strings.TrimRight(l.k.PortalURL, "/"))
+	}
+	r, err := l.skript(ctx, "install.sh", nil, env...)
 	if err != nil {
 		return nil, err
 	}
@@ -541,7 +647,17 @@ func (l *Lauf) programmEinspielen(ctx context.Context, k *lauf.Kontext) (protoko
 	if k != nil && k.Lauf != nil {
 		k.Box(h.Ref)
 	}
-	return b.Mit("referenz", h.Ref+" (Prüfzeichen gültig)"), nil
+	b = b.Mit("referenz", h.Ref+" (Prüfzeichen gültig)")
+	if l.nichtBereit == "" {
+		l.nichtBereit = updateBereit(h, l.stand)
+	}
+	if l.nichtBereit != "" {
+		delete(l.belege, "update_bereit")
+		return b.Mit("update_bereit", "nein - "+l.nichtBereit), nil
+	}
+	l.belege["update_bereit"] = fmt.Sprintf("Schritt programm: Box-Art light, Vertrauens-Set geprüft (Schlüssel %s, signiert von %s), bestätigte Fassung %s Stand %d aus dem signierten Manifest",
+		strings.Join(h.Update.Trust.TrustSetKeyIDs, ", "), h.Update.Trust.TrustSetSignedBy, h.Version, l.stand.ReleaseSeq)
+	return b.Mit("update_bereit", "ja"), nil
 }
 
 // ---- P5: Tunnel -----------------------------------------------------------------------
@@ -1057,7 +1173,7 @@ echo "weg=$(ip -4 route show default | head -n1)"`)
 // Pruefungen der Werkstatt-Regel (docs/contracts/werkstatt-pruefungen.json) in
 // ihrer Reihenfolge; anmeldeprobe und fenster_zu bleiben in V1a Handgriffe im
 // Portal, bestätigt im Schritt probe.
-var Pruefungen = []string{"root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu", "lan_netz", "neustart"}
+var Pruefungen = []string{"root_passwort", "notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel", "fenster_zu", "lan_netz", "neustart", "update_bereit"}
 
 func (l *Lauf) uebergabe(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg, error) {
 	b := protokoll.Beleg{}.
@@ -1068,6 +1184,14 @@ func (l *Lauf) uebergabe(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg,
 		Mit("lan_netz", l.k.LanNetz.String())
 	if !l.probeAutomatisch {
 		l.belege["host_schluessel"] += "; Tunnel-Weg: bei der Probe im Portal gelesen und verglichen (Schritt probe)"
+	}
+	if l.belege["update_bereit"] == "" {
+		// Entscheid 5c als Prüfung: ohne Update-Bereitschaft keine Abnahme.
+		grund := l.nichtBereit
+		if grund == "" {
+			grund = "nicht geprüft"
+		}
+		return b, fmt.Errorf("die Box ist nicht update-bereit (%s) - keine Abnahme (Entscheid 5c)", grund)
 	}
 	belege := map[string]string{}
 	for _, p := range Pruefungen {
@@ -1098,5 +1222,5 @@ func (l *Lauf) uebergabe(ctx context.Context, k *lauf.Kontext) (protokoll.Beleg,
 			b = b.Mit("gehaeuse", "Druckdatei bestellt ("+string(a.Zustand)+"), Abruf in der Werkstatt-Anzeige")
 		}
 	}
-	return b.Mit("versand", "Nicht versenden: Stufe 1 (Entscheid 5c)"), nil
+	return b.Mit("versand", "Nicht versenden: erst nach dem Laborbeweis und dem ersten Update über das Portal (Entscheid 5c, U-6)"), nil
 }

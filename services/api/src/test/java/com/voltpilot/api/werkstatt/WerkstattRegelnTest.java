@@ -35,7 +35,7 @@ class WerkstattRegelnTest {
     void fehlendUndUnbekanntInDerReihenfolgeDerRegel() {
         assertThat(WerkstattPruefungen.fehlend(List.of("neustart", "root_passwort")))
                 .containsExactly("notfall_schluessel", "tunnel_status", "anmeldeprobe", "host_schluessel",
-                        "fenster_zu", "lan_netz");
+                        "fenster_zu", "lan_netz", "update_bereit");
         assertThat(WerkstattPruefungen.fehlend(WerkstattPruefungen.ALLE)).isEmpty();
         assertThat(WerkstattPruefungen.unbekannt(List.of("neustart", "zz", "aa", "zz"))).containsExactly("aa", "zz");
     }

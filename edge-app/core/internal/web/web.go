@@ -231,6 +231,11 @@ type OtaController interface {
 	OtaRecordApplied(release string, releaseSeq int64) (otatarget.View, error)
 	// IsOtaRejection tells a refusal (400 + German reason) from a real failure.
 	IsOtaRejection(err error) bool
+	// OtaUpdate is the `update` block of the heartbeat (backend, running
+	// version, current_seq, trust identity). /health carries it so the
+	// Werkstatt can check "Update-bereit" on a box that has no customer yet
+	// (Konzept vp-edge-light-update, K5). nil = not known.
+	OtaUpdate() *cloud.UpdateSummary
 }
 
 // InstallerWriteController backs the deliberately NARROW remote installer
@@ -1189,6 +1194,9 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			"ota_target":         otaView.Release,
 			"ota_target_seq":     otaView.ReleaseSeq,
 			"ota_target_verdict": otaView.Verdict,
+			// Der Update-Block des Herzschlags (Box-Art, bestaetigter Stand,
+			// Vertrauens-Identitaet): die Werkstatt prueft daran "Update-bereit".
+			"ota_update": ota.OtaUpdate(),
 		})
 	})
 

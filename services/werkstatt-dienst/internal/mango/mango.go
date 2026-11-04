@@ -84,6 +84,9 @@ type Konfig struct {
 	WartungEP  string       // Endpunkt; leer: Vorgabe des Skripts (wartung.voltpilot.de)
 	BoxNetz    netip.Prefix // Tunnel-Adressen der Boxen
 	Bauart     string       // Edge Light: mipsle (Mango)
+	// PortalURL ist das Portal, von dem install.sh das Vertrauens-Set offen
+	// laedt (/api/v1/edge/trust-set/…); leer: Vorgabe des Skripts.
+	PortalURL string
 	// Portal ist der Dienst-Baum der API (V1): Einmal-Code, Probe-Fenster der
 	// Einlösung, Abnahme mit Belegen. nil heißt V1a: Tunnel-Adresse als
 	// Eingabe, Abnahme im Portal von Hand.
@@ -162,6 +165,11 @@ type Lauf struct {
 	dr                                    *durchreiche.Server
 	tmpFrei                               int64
 	belege                                map[string]string // Prüfung → wo ihr Beleg steht
+	// Update-bereit (Konzept vp-edge-light-update, K5): das signierte
+	// Manifest der Fassung (leer: Stufe 1) und, falls nicht update-bereit, warum.
+	pfadManifest string
+	stand        *fassungen.Stand
+	nichtBereit  string
 }
 
 // NeuerLauf legt den Zustand für eine Box an.

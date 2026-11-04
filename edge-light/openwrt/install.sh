@@ -1,46 +1,57 @@
 #!/bin/sh
-# Edge Light auf einem OpenWrt-Geraet einrichten (Pilot, Stufe 1).
+# Edge Light auf einem OpenWrt-Geraet einrichten - update-bereit (Konzept
+# vp-edge-light-update, K5).
 #
-# Kopiert Loader, Dienst und Standard-Konfiguration auf das Geraet und - wenn
-# gebaut - die lokale Kopie des Programms (gzip, ~4,4 MB) in den Flash. Mit
-# base_url laedt der Loader bei jedem Start die aktuelle Fassung per HTTPS und
-# nimmt die lokale Kopie nur als Notfall; ohne base_url startet er die lokale
-# Kopie.
+# Kopiert Loader, Dienst und Standard-Konfiguration auf das Geraet, legt das
+# Vertrauens-Set in den Flash und spielt das Programm als BESTAETIGTE Fassung
+# ein (gzip im Flash, mit Pruefsumme). Danach kommen neue Fassungen signiert
+# ueber das Portal (Edge-Updates); der Loader tauscht und nimmt zurueck.
 #
-#   edge-light/scripts/build.sh mipsle
-#   edge-light/openwrt/install.sh root@192.168.1.1                  # nur lokale Kopie
-#   edge-light/openwrt/install.sh root@10.8.0.23 https://downloads.example.de/edge-light
+#   edge-light/scripts/build.sh mipsle        (oder die Fassung aus einem Release)
+#   edge-light/openwrt/install.sh root@192.168.1.1
 #
-# Anmeldung an der Box: das Skript ruft ssh auf. VP_SSH_KEY=<datei> nennt die
-# Schluesseldatei (ssh -i), wie bei service-tunnel.sh; ohne die Variable
-# entscheidet ~/.ssh/config. VP_LIGHT_ARCH waehlt die Bauart (mipsle, arm64,
-# amd64); sie wird auf der Box eingetragen, damit der Loader die passende
-# lokale Kopie sucht.
+# Umgebung:
+#   VP_SSH_KEY=<datei>         Schluesseldatei fuer ssh (ssh -i), wie service-tunnel.sh;
+#                              ohne die Variable entscheidet ~/.ssh/config.
+#   VP_LIGHT_ARCH              Bauart (mipsle, arm64, amd64); wird auf der Box eingetragen.
+#   VP_LIGHT_MANIFEST=<datei>  das signierte Manifest (release.json) GENAU dieser Fassung.
+#                              Damit vermerkt die Box den Stand (current.json: release_seq,
+#                              state_schema = Anti-Rollback-Boden) und kann die bestaetigte
+#                              Fassung nach einem Stromausfall beim Update aus dem Portal
+#                              nachladen. Ohne Manifest: Programm laeuft, die Box ist aber
+#                              erst nach dem ersten Update ueber das Portal voll update-bereit.
+#   VP_TRUST_SET_DIR=<dir>     trust-set.json + trust-set.json.sig von dort (Labor: eigenes
+#                              Labor-Vertrauens-Set). Sonst offen vom Portal geladen:
+#   VP_PORTAL_URL              Vorgabe https://portal.voltpilot.de
+#                              (/api/v1/edge/trust-set/trust-set.json und .sig)
 #
-# Ein erneuter Aufruf aktualisiert Loader, Dienst und lokale Kopie; eine
-# bestehende Konfiguration bleibt (nur base_url, local_dir, arch und enabled
-# werden gesetzt). Danach auf dem Geraet:
+# Ein erneuter Aufruf aktualisiert Loader, Dienst, Vertrauens-Set und Fassung;
+# die Box-Daten bleiben (Identitaet, Zertifikat, Auswahl, Konfiguration). Nur
+# local_dir, arch und enabled werden gesetzt; ein altes base_url wird entfernt
+# (abgeschafft: es lud ungeprueft). Danach auf dem Geraet:
 #   /etc/init.d/vp-edge-light restart ; logread -f -e vp-edge-light
 set -eu
 
 TARGET="${1:?Ziel fehlt, z. B. root@192.168.1.1}"
-BASE_URL="${2:-}"
+if [ "$#" -gt 1 ]; then
+  echo "FEHLER: base_url ist abgeschafft - neue Fassungen kommen signiert ueber das Portal" >&2
+  exit 1
+fi
 ARCH="${VP_LIGHT_ARCH:-mipsle}"
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
 BIN="$HERE/../dist/vp-edge-light-linux-$ARCH"
 NAME="vp-edge-light-linux-$ARCH"
 LOCAL_DIR=/usr/share/vp-edge-light
+OTA_FEST=/etc/vp-edge-light/ota
+PORTAL="${VP_PORTAL_URL:-https://portal.voltpilot.de}"
+MANIFEST="${VP_LIGHT_MANIFEST:-}"
 
 case "$ARCH" in
   mipsle | arm64 | amd64) ;;
   *) echo "FEHLER: unbekannte Bauart VP_LIGHT_ARCH=$ARCH (mipsle|arm64|amd64)" >&2; exit 1 ;;
 esac
-case "$BASE_URL" in
-  "" | https://*) ;;
-  *) echo "FEHLER: base_url muss mit https:// beginnen" >&2; exit 1 ;;
-esac
-if [ -z "$BASE_URL" ] && [ ! -f "$BIN" ]; then
-  echo "FEHLER: ohne base_url braucht es die lokale Kopie - erst edge-light/scripts/build.sh $ARCH" >&2
+if [ ! -f "$BIN" ]; then
+  echo "FEHLER: das Programm fehlt ($BIN) - erst edge-light/scripts/build.sh $ARCH" >&2
   exit 1
 fi
 if [ -n "${VP_SSH_KEY:-}" ] && [ ! -r "$VP_SSH_KEY" ]; then
@@ -55,6 +66,72 @@ box_ssh() {
     ssh "$@"
   fi
 }
+summe() { sha256sum "$1" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$1" | awk '{print $1}'; }
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+SUM="$(summe "$BIN")"
+
+# --- Was die Box ueber diese Fassung wissen muss: aus dem Manifest ---------------
+# Das Manifest kommt deterministisch aus `vp-ota manifest` (eine Angabe je
+# Zeile); gelesen wird nur, was die Box braucht. Es muss GENAU dieses Programm
+# beschreiben - sonst stimmten Boden und Nachlade-Pruefsumme nicht.
+REL=""
+SEQ=""
+SCHEMA=""
+GZSUM=""
+if [ -n "$MANIFEST" ]; then
+  [ -r "$MANIFEST" ] || { echo "FEHLER: VP_LIGHT_MANIFEST=$MANIFEST ist nicht lesbar" >&2; exit 1; }
+  wert() { sed -n "s/^  \"$1\": *\"\{0,1\}\([^\",]*\)\"\{0,1\},\{0,1\}$/\1/p" "$MANIFEST" | head -n 1; }
+  REL="$(wert release)"
+  SEQ="$(wert release_seq)"
+  SCHEMA="$(wert state_schema)"
+  # shellcheck disable=SC2046 # bewusst zwei Woerter: sha256 und gz_sha256
+  set -- $(awk -v a="linux/$ARCH" '
+    index($0, "\"arch\": \"" a "\"") { f = 1; next }
+    f && /"sha256":/ { gsub(/[",]/, "", $2); s = $2 }
+    f && /"gz_sha256":/ { gsub(/[",]/, "", $2); g = $2 }
+    f && /}/ { f = 0 }
+    END { print s, g }' "$MANIFEST")
+  MSUM="${1:-}"
+  GZSUM="${2:-}"
+  case "$REL" in edge-light-*) ;; *) echo "FEHLER: $MANIFEST ist kein Edge-Light-Manifest (release '$REL')" >&2; exit 1 ;; esac
+  case "$SEQ" in '' | *[!0-9]*) echo "FEHLER: $MANIFEST traegt keine release_seq" >&2; exit 1 ;; esac
+  case "$SCHEMA" in '' | *[!0-9]*) SCHEMA=0 ;; esac
+  if [ "$MSUM" != "$SUM" ] || [ -z "$GZSUM" ]; then
+    echo "FEHLER: das Manifest $REL beschreibt fuer linux/$ARCH ein anderes Programm (Manifest ${MSUM:-keins}, Programm $SUM)" >&2
+    exit 1
+  fi
+  echo "--- Fassung $REL (Stand $SEQ, Datenformat $SCHEMA) laut signiertem Manifest"
+else
+  echo "--- ohne Manifest (VP_LIGHT_MANIFEST): kein Anti-Rollback-Boden, kein Nachladen der bestaetigten Fassung bis zum ersten Update"
+fi
+
+# --- Vertrauens-Set ---------------------------------------------------------------
+# Die Box prueft die Root-Signatur selbst gegen ihre eingebackene Wurzel; der
+# Weg hierher begruendet kein Vertrauen (docs/ota-signing.md, Trust-Set).
+if [ -n "${VP_TRUST_SET_DIR:-}" ]; then
+  cp "$VP_TRUST_SET_DIR/trust-set.json" "$tmp/trust-set.json"
+  cp "$VP_TRUST_SET_DIR/trust-set.json.sig" "$tmp/trust-set.json.sig"
+else
+  hole() { # hole <url> <ziel> - curl, sonst wget (Alpine/BusyBox)
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsS --max-time 30 -o "$2" "$1"
+    else
+      wget -q -T 30 -O "$2" "$1"
+    fi
+  }
+  for f in trust-set.json trust-set.json.sig; do
+    hole "$PORTAL/api/v1/edge/trust-set/$f" "$tmp/$f" || {
+      echo "FEHLER: Vertrauens-Set nicht ladbar ($PORTAL/api/v1/edge/trust-set/$f) - VP_PORTAL_URL oder VP_TRUST_SET_DIR" >&2
+      exit 1
+    }
+  done
+fi
+if ! grep -q '"keys"' "$tmp/trust-set.json" || ! grep -q '"signature"' "$tmp/trust-set.json.sig"; then
+  echo "FEHLER: das Vertrauens-Set sieht nicht wie trust-set.json/.sig aus" >&2
+  exit 1
+fi
 
 echo "--- kopiere Loader und Dienst nach $TARGET"
 # Einzeldateien per cat|ssh: Dropbear auf OpenWrt bringt oft kein scp/sftp mit.
@@ -65,38 +142,61 @@ done
 # Die Konfiguration nur anlegen, nie eine bestehende ueberschreiben.
 box_ssh "$TARGET" "[ -f /etc/config/vp-edge-light ] || cat > /etc/config/vp-edge-light" <"$HERE/files/etc/config/vp-edge-light"
 
-if [ -f "$BIN" ]; then
-  echo "--- lokale Kopie in den Flash ($LOCAL_DIR/$NAME.gz)"
-  sum="$(sha256sum "$BIN" | awk '{print $1}')"
-  tmp="$(mktemp)"
-  trap 'rm -f "$tmp"' EXIT
-  gzip -9 -n -c "$BIN" >"$tmp"
-  need_kb=$(($(wc -c <"$tmp") / 1024 + 512))
+echo "--- Vertrauens-Set in den Flash ($OTA_FEST)"
+# Bis Stufe 1 war ota ein Symlink in den RAM - dort ginge das Set beim
+# naechsten Stromausfall verloren.
+# shellcheck disable=SC2029
+box_ssh "$TARGET" "[ -L $OTA_FEST ] && rm -f $OTA_FEST; mkdir -p $OTA_FEST"
+for f in trust-set.json trust-set.json.sig; do
   # shellcheck disable=SC2029
-  avail_kb="$(box_ssh "$TARGET" "mkdir -p $LOCAL_DIR && df -k $LOCAL_DIR | awk 'NR==2 {print \$4}'")"
+  box_ssh "$TARGET" "cat > $OTA_FEST/$f.tmp && mv -f $OTA_FEST/$f.tmp $OTA_FEST/$f" <"$tmp/$f"
+done
+
+echo "--- bestaetigte Fassung in den Flash ($LOCAL_DIR/$NAME.gz)"
+gzip -9 -n -c "$BIN" >"$tmp/$NAME.gz"
+need_kb=$(($(wc -c <"$tmp/$NAME.gz") / 1024 + 512))
+# Pruefsummen ZUERST (eine Datei, atomar): bleibt die Kopie unvollstaendig
+# (Strom weg), startet nie eine falsche Fassung, und mit Zeile 2 laedt der
+# Loader genau diese aus dem Portal nach.
+if [ -n "$GZSUM" ]; then
+  printf '%s  %s\n%s  %s\n' "$SUM" "$NAME" "$GZSUM" "$NAME.gz" >"$tmp/sum"
+else
+  printf '%s  %s\n' "$SUM" "$NAME" >"$tmp/sum"
+fi
+# shellcheck disable=SC2029
+box_ssh "$TARGET" "mkdir -p $LOCAL_DIR && cat > $LOCAL_DIR/$NAME.sha256.tmp && mv -f $LOCAL_DIR/$NAME.sha256.tmp $LOCAL_DIR/$NAME.sha256 && sync" <"$tmp/sum"
+# shellcheck disable=SC2029
+avail_kb="$(box_ssh "$TARGET" "rm -f $LOCAL_DIR/$NAME.gz.part; df -k $LOCAL_DIR | awk 'NR==2 {print \$4}'")"
+if [ "$avail_kb" -lt "$need_kb" ]; then
+  # Kein Platz fuer alt und neu nebeneinander: die alte Kopie zuerst weg.
+  echo "    wenig Flash frei (${avail_kb} kB) - alte Kopie wird vorher entfernt"
   # shellcheck disable=SC2029
-  if [ "$avail_kb" -lt "$need_kb" ]; then
-    # Kein Platz fuer alt und neu nebeneinander: die alte Kopie zuerst weg.
-    echo "    wenig Flash frei (${avail_kb} kB) - alte Kopie wird vorher entfernt"
-    box_ssh "$TARGET" "rm -f $LOCAL_DIR/$NAME.gz $LOCAL_DIR/$NAME.sha256"
-  fi
+  box_ssh "$TARGET" "rm -f $LOCAL_DIR/$NAME.gz"
+fi
+# shellcheck disable=SC2029
+box_ssh "$TARGET" "cat > $LOCAL_DIR/$NAME.gz.part" <"$tmp/$NAME.gz"
+# shellcheck disable=SC2029
+remote_sum="$(box_ssh "$TARGET" "gunzip -c $LOCAL_DIR/$NAME.gz.part | sha256sum" | awk '{print $1}')"
+if [ "$remote_sum" != "$SUM" ]; then
   # shellcheck disable=SC2029
-  box_ssh "$TARGET" "cat > $LOCAL_DIR/$NAME.gz.part" <"$tmp"
+  box_ssh "$TARGET" "rm -f $LOCAL_DIR/$NAME.gz.part"
+  echo "FEHLER: Pruefsumme der lokalen Kopie stimmt auf dem Geraet nicht" >&2
+  exit 1
+fi
+# shellcheck disable=SC2029
+box_ssh "$TARGET" "mv -f $LOCAL_DIR/$NAME.gz.part $LOCAL_DIR/$NAME.gz && sync"
+awk -v b="$(wc -c <"$tmp/$NAME.gz")" 'BEGIN {printf "    %.1f MB gepackt, Pruefsumme auf dem Geraet bestaetigt\n", b / 1048576}'
+
+if [ -n "$SEQ" ]; then
+  echo "--- Stand vermerkt: $REL ist die bestaetigte Fassung (current.json)"
+  printf '{"release":"%s","release_seq":%s,"state_schema":%s}\n' "$REL" "$SEQ" "$SCHEMA" >"$tmp/current.json"
   # shellcheck disable=SC2029
-  remote_sum="$(box_ssh "$TARGET" "gunzip -c $LOCAL_DIR/$NAME.gz.part | sha256sum" | awk '{print $1}')"
-  if [ "$remote_sum" != "$sum" ]; then
-    box_ssh "$TARGET" "rm -f $LOCAL_DIR/$NAME.gz.part"
-    echo "FEHLER: Pruefsumme der lokalen Kopie stimmt auf dem Geraet nicht" >&2
-    exit 1
-  fi
-  # shellcheck disable=SC2029
-  box_ssh "$TARGET" "mv -f $LOCAL_DIR/$NAME.gz.part $LOCAL_DIR/$NAME.gz && echo '$sum  $NAME' > $LOCAL_DIR/$NAME.sha256 && sync"
-  awk -v b="$(wc -c <"$tmp")" 'BEGIN {printf "    %.1f MB gepackt, Pruefsumme auf dem Geraet bestaetigt\n", b / 1048576}'
+  box_ssh "$TARGET" "cat > $OTA_FEST/current.json.tmp && mv -f $OTA_FEST/current.json.tmp $OTA_FEST/current.json && sync" <"$tmp/current.json"
 fi
 
-echo "--- setze base_url, Bauart ($ARCH) und aktiviere den Dienst"
-# shellcheck disable=SC2029 # bewusst lokal expandiert: base_url kommt von hier
-box_ssh "$TARGET" "uci set vp-edge-light.main.base_url='$BASE_URL' && uci set vp-edge-light.main.local_dir='$LOCAL_DIR' && uci set vp-edge-light.main.arch='$ARCH' && uci set vp-edge-light.main.enabled='1' && uci commit vp-edge-light && /etc/init.d/vp-edge-light enable"
+echo "--- setze Bauart ($ARCH), entferne base_url und aktiviere den Dienst"
+# shellcheck disable=SC2029
+box_ssh "$TARGET" "uci -q delete vp-edge-light.main.base_url; uci -q delete vp-edge-light.main.channel; uci set vp-edge-light.main.local_dir='$LOCAL_DIR' && uci set vp-edge-light.main.arch='$ARCH' && uci set vp-edge-light.main.enabled='1' && uci commit vp-edge-light && /etc/init.d/vp-edge-light enable"
 
 echo "--- fertig. Starten:  ssh $TARGET /etc/init.d/vp-edge-light restart"
 echo "    Protokoll:         ssh $TARGET logread -f -e vp-edge-light"
