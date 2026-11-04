@@ -81,6 +81,17 @@ Hausverbrauch verworfen (Lücke im Chart) statt Batterie = 0 zu erfinden.
 Port/Unit-ID sind vorbelegt (502/0). „Verbindung testen" liest einmalig und
 zeigt PV, SoC und Batterieleistung (Netz nur mit installiertem Sensor).
 
+**Edge Light** (die Ein-Programm-Box, [Paritätsliste](../../edge-light/docs/paritaet.md))
+liest denselben Weg seit 04.11.2026 mit dem Go-Zwilling
+`core/internal/huaweidecode` über den gemeinsamen Modbus-TCP-Client
+`core/internal/modbustcp` - als Hauptgerät und als weitere Energiequelle
+(Erzeuger oder Netz-Zähler). Beide Seiten hängen an den gemeinsamen Vektoren
+`huawei/huawei-decode-vectors.json`, erzeugt aus `huawei-decode.js`
+(`node huawei/huawei-decode-vectors.gen.js` nach jeder Änderung am Decoder).
+Der Verbindungstest unterscheidet dort `unreachable`, `no_answer` und
+`invalid_response`; ein Gerät, das jeden Block ablehnt, bekommt den Hinweis
+auf Unit-ID und Modbus-TCP-Freischaltung.
+
 ## 4. Steuerung (erzwungener Sollwert, Tier 2 - vorbereitet, HART gesperrt)
 
 Huaweis "Forcible Charge/Discharge" ist ein echter forced-watts RAM-Sollwert -

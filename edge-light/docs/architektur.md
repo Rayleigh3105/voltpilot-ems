@@ -22,6 +22,8 @@ flowchart LR
         l1 <--> bus
     end
     l1 -- "Solarman V5 · TCP 8899" --> deye["Deye-Datenlogger"]
+    l1 -- "Modbus TCP 502" --> huawei["Huawei SUN2000 (+ LUNA2000)"]
+    l1 -- "KACO-RS485-ASCII über TCP" --> wandler["RS485-Wandler → Powador"]
     core -- "OCPP 1.6J" --- wallbox["Ladesäule (z. B. go-e)"]
     core -- "mTLS-MQTT 8883 · HTTPS" --> cloud["VoltPilot-Cloud"]
 ```
@@ -47,12 +49,16 @@ Jeder Go-Zwilling ist an **gemeinsame Testvektoren** gebunden, die aus dem JavaS
 | `nodered/deye/solarman-v5-vectors.json` | `solarman-v5-vectors.gen.js` | JS: `solarman-v5-vectors.test.js` · Go: `internal/solarmanv5` |
 | `nodered/deye/deye-decode-vectors.json` | `deye-decode-vectors.gen.js` | JS: `deye-decode-vectors.test.js` · Go: `internal/deyedecode` |
 | `nodered/goe/goe-api-vectors.json` | `goe-api-vectors.gen.js` | JS: `goe-api-vectors.test.js` · Go: `internal/goeapi` |
+| `nodered/huawei/huawei-decode-vectors.json` | `huawei-decode-vectors.gen.js` | JS: `huawei-decode-vectors.test.js` · Go: `internal/huaweidecode` |
+| `nodered/kaco/kaco-serial-vectors.json` | `kaco-serial-vectors.gen.js` | JS: `kaco-serial-vectors.test.js` · Go: `internal/kacoserial` |
 
-Wer das JS-Modul ändert, muss die Vektoren neu erzeugen (sonst ist der JS-Test rot) – und der Go-Test zeigt dann, ob der Zwilling nachziehen muss. Die Go-Seite rechnet dabei **JavaScript-treu**: gleiche Reihenfolge der Gleitkommaoperationen und `Math.round` („halb nach +∞") statt Gos `math.Round`. Sonst würde ein Grenzwert auf der Box anders gerundet als in Node-RED. Fünf eingebaute Abweichungen beim Deye (falsche Skala, vertauschte Wortreihenfolge, fehlende Klemmung …) und sieben bei der go-e (Phase statt Summe, fehlende Klemmung, Text als Zahl, erfundene 0, v1-Skala, unbekannter Fahrzeugzustand, `1e400` verwirft die Antwort) wurden von den Vektoren erkannt. Die go-e-Seite liest JSON dafür wie `JSON.parse`: eine Zahl außerhalb von float64 wird „unendlich" und damit kein Messwert, statt die ganze Antwort zu verwerfen.
+Wer das JS-Modul ändert, muss die Vektoren neu erzeugen (sonst ist der JS-Test rot) – und der Go-Test zeigt dann, ob der Zwilling nachziehen muss. Die Go-Seite rechnet dabei **JavaScript-treu**: gleiche Reihenfolge der Gleitkommaoperationen und `Math.round` („halb nach +∞") statt Gos `math.Round`. Sonst würde ein Grenzwert auf der Box anders gerundet als in Node-RED. Dazu gehört `float64(x*1000)` vor dem `+ 0.5`: Go darf Produkt und Summe sonst zu **einer** FMA-Instruktion verschmelzen (auf arm64 passiert das), die `-0,5 W` zu `-0,001 kW` rundet, wo JavaScript und der Mango ohne FMA `0` liefern – der KACO-Vektor „Rundung: -0,5 W“ hat es gefunden (04.11.2026). Die KACO-seriell-Vektoren prüfen außerdem das Framing (Störbytes, Teilantworten, Prüfsumme als `0x0A`/`0x0D`) und das Zahlenlesen wie JavaScripts `Number()` auf ein `'ascii'`-decodiertes Feld (leer = 0, hohes Bit fällt weg). Fünf eingebaute Abweichungen beim Deye (falsche Skala, vertauschte Wortreihenfolge, fehlende Klemmung …) und sieben bei der go-e (Phase statt Summe, fehlende Klemmung, Text als Zahl, erfundene 0, v1-Skala, unbekannter Fahrzeugzustand, `1e400` verwirft die Antwort) wurden von den Vektoren erkannt. Die go-e-Seite liest JSON dafür wie `JSON.parse`: eine Zahl außerhalb von float64 wird „unendlich" und damit kein Messwert, statt die ganze Antwort zu verwerfen.
 
 ## Ein Logger, ein Client
 
-Deye-/Solarman-Logger bedienen nur **eine** TCP-Verbindung. Abfrage und Verbindungstest teilen sich deshalb eine **Spur je Logger-Adresse** (`layer1/runtime.go`, `lanes`): Eine Abfrage, die die Spur belegt vorfindet, überspringt den Takt („Logger belegt"); ein Verbindungstest wartet bis zu 4 Sekunden. Der Integrationstest prüft mit einem Logger-Simulator, der zweite Verbindungen abweist, dass das nie passiert.
+Deye-/Solarman-Logger bedienen nur **eine** TCP-Verbindung. Abfrage und Verbindungstest teilen sich deshalb eine **Spur je Logger-Adresse** (`layer1/runtime.go`, `lanes`): Eine Abfrage, die die Spur belegt vorfindet, überspringt den Takt („Logger belegt"); ein Verbindungstest wartet bis zu 4 Sekunden. Der Integrationstest prüft mit einem Logger-Simulator, der zweite Verbindungen abweist, dass das nie passiert. Dieselbe Spur gilt für den Huawei-Dongle (nur ein Modbus-Client zur Zeit) und den RS485-Wandler eines Powador (ein TCP-Client); Quellen an derselben Adresse teilen sie sich mit dem Hauptgerät.
+
+Der Modbus-TCP-Client dafür ist einer für die ganze Box: `internal/modbustcp` (MBAP, FC1/2/3/5/6/15/16), aus dem eByte-Treiber herausgehoben, der ihn weiter benutzt. Register-Semantik und Geräte-Disziplin bleiben bei den Aufrufern.
 
 ## Verhalten wie Node-RED – bewusst
 
@@ -64,7 +70,7 @@ Deye-/Solarman-Logger bedienen nur **eine** TCP-Verbindung. Abfrage und Verbindu
 | SoC-Regeln: `no_answer` / `out_of_range` verwerfen, `missing` nur mit Opt-in, BMS-SoC ohne Opt-in | identisch (gemeinsame Vektoren) |
 | Verbindungstest: `unreachable` / `no_answer` / `invalid_response` / `implausible` mit Befund | identisch, ohne Opt-in (der Test sagt immer die Wahrheit) |
 
-**Eine bewusste Abweichung:** Die Go-Schicht 1 gibt die BMS-Kanäle (`bms_*`) und die Herkunft des Ladestands (`soc_source`) auf dem lokalen Bus weiter. Der Core liest `bms_*` ausdrücklich aus `edge/telemetry` – auf der Docker-Box filtert der Node-RED-Knoten `vp-telemetrie` diese Felder heraus, sodass sie den Core dort nie erreichen. Das ist ein bestehender Fehler der Docker-Box, kein Merkmal, das Edge Light nachbilden sollte.
+**Zwei bewusste Abweichungen:** Der Verbindungstest für Huawei und Powador unterscheidet `unreachable` (Verbindung abgewiesen), `no_answer` (verbunden, kein Byte) und `invalid_response` (Antwort unbrauchbar) und nennt ein fremdes KACO-Kommando-Byte im Satz; `test-read.js` meldet dort jede Störung als `invalid_response` (bekannte Lücke 5 des Scouts vp-kundenanlage-drei-geraete). Und: Die Go-Schicht 1 gibt die BMS-Kanäle (`bms_*`) und die Herkunft des Ladestands (`soc_source`) auf dem lokalen Bus weiter. Der Core liest `bms_*` ausdrücklich aus `edge/telemetry` – auf der Docker-Box filtert der Node-RED-Knoten `vp-telemetrie` diese Felder heraus, sodass sie den Core dort nie erreichen. Das ist ein bestehender Fehler der Docker-Box, kein Merkmal, das Edge Light nachbilden sollte.
 
 ## Was nicht portiert ist, wird benannt
 

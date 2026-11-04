@@ -283,6 +283,17 @@ Gerätetemperatur und Tagesertrag. Reine String-Erzeugung ohne Speicher: die
 AC-Ausgangsleistung **IST** die Erzeugung (`pv_power_kw`), dieselbe Regel wie
 bei einem String-Gerät der AISWEI-HTTP-Plattform (§8.3).
 
+**Edge Light** ([Paritätsliste](../../edge-light/docs/paritaet.md)) liest
+denselben Weg seit 04.11.2026 mit dem Go-Zwilling `core/internal/kacoserial`
+(Hauptgerät und weiterer Erzeuger). Beide Seiten hängen an den gemeinsamen
+Vektoren `kaco/kaco-serial-vectors.json`, erzeugt aus
+`kaco-serial-decode.js` (`node kaco/kaco-serial-vectors.gen.js` nach jeder
+Änderung am Decoder); sie prüfen auch das Framing (Störbytes, Teilantworten,
+Prüfsumme als `0x0A`/`0x0D`). Der Verbindungstest dort unterscheidet
+`unreachable`, `no_answer` und `invalid_response` und nennt ein fremdes
+Kommando-Byte im Satz - der Docker-Box-Test (`test-read.js`) meldet jede
+Störung als `invalid_response`.
+
 ### 11.4 Grenzen
 
 - **NUR LESEN.** Diese Geräte-Generation hat **keine dokumentierte
