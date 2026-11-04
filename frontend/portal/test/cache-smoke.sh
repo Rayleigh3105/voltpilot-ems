@@ -38,6 +38,9 @@
 #      carries text/css. nginx's `types` REPLACES the inherited map when it is
 #      declared on an inner level; the config adds the one mapping at the http
 #      level so it only ACCUMULATES - this check is the guard for that trap.
+#  11. the Werkstatt's 3MF downloads (Gehaeuse-Druckdatei, src/assets/gehaeuse)
+#      are hashed assets like the bundles AND carry `model/3mf` - without the
+#      mapping nginx would send application/octet-stream.
 #
 # Usage: test/cache-smoke.sh [image]
 #   Without an image argument, builds the portal Dockerfile first.
@@ -128,7 +131,9 @@ esac
 
 # Take the hashed bundles from the served index.html - never hardcode a hash.
 INDEX="$(req -fsS "$BASE/")"
-ASSETS="$(printf '%s' "$INDEX" | grep -oE '/assets/[A-Za-z0-9._-]+' | sort -u)"
+# Only real references (src=/href=): index.html also NAMES designsystem/assets/voltpilot-wordmark.png in
+# a comment, a file Vite deliberately never emits (the wordmark is inlined, see vite.config.ts).
+ASSETS="$(printf '%s' "$INDEX" | grep -oE '(src|href)="/assets/[A-Za-z0-9._-]+"' | grep -oE '/assets/[A-Za-z0-9._-]+' | sort -u)"
 [ -n "$ASSETS" ] || fail "index.html references no /assets/* bundle - did the Vite output dir change?"
 for a in $ASSETS; do
   assert_immutable "$a"
@@ -151,6 +156,19 @@ for a in $ASSETS; do
         *) fail "$a: expected a javascript type, got '${ATYPE:-<none>}' - did a 'types' block replace mime.types?" ;;
       esac
       ;;
+  esac
+done
+
+# Check 11: the 3MF downloads. They are only referenced from a lazy chunk, so
+# the file names come from the image, not from index.html.
+THREEMF="$(docker run --rm --entrypoint ls "$IMAGE" /usr/share/nginx/html/assets | grep -E '\.3mf$' || true)"
+[ -n "$THREEMF" ] || fail "no .3mf in the built /assets - did werkstattEinrichtung.ts stop importing the Gehaeuse files?"
+for f in $THREEMF; do
+  assert_immutable "/assets/$f"
+  F_TYPE="$(header_of content-type "$(hdrs "/assets/$f")")"
+  case "$F_TYPE" in
+    model/3mf*) pass "/assets/$f -> Content-Type: $F_TYPE" ;;
+    *) fail "/assets/$f: expected model/3mf, got '${F_TYPE:-<none>}'" ;;
   esac
 done
 

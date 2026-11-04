@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
 // WebKit braucht im Container mehr Zeit.
@@ -58,15 +61,27 @@ for (const breite of [1440, 375]) {
     await liste.getByRole('button', { name: 'edge-5t2dcy6' }).click();
     await expect(page).toHaveURL(/#\/werkstatt\?box=edge-5t2dcy6$/);
     const detail = page.getByTestId('ws-detail');
+    await expect(page.getByTestId('ws-boxen')).toHaveCount(0);
+    await expect(detail.getByTestId('ws-stand')).toHaveText('abgenommen');
+    await expect(detail.getByTestId('ws-zeile-hardware')).toContainText('GL-MT300N-V2');
+    await expect(detail.getByTestId('ws-zeile-edge-light')).toHaveText('edge-light-2026.11.1');
+    await expect(detail.getByTestId('ws-zeile-openwrt')).toHaveText('25.12.5');
+    await expect(detail.getByTestId('ws-zeile-tunnel')).toHaveText('10.10.16.9');
+    await expect(detail.getByTestId('ws-zeile-ort')).toHaveText('Halle 1 · Beispiel GmbH');
     await expect(detail.getByTestId('ws-belege')).toContainText('Schritt probe: Anmeldung über den Tunnel');
     await expect(detail.getByTestId('ws-abnahme-protokoll')).toContainText('vom Werkstatt-Dienst');
-    await detail.getByText('Beschriftung des Gehäuses').click();
     await expect(detail.getByTestId('ws-qr')).toBeVisible();
+    await expect(detail.getByTestId('ws-gehaeuse-hinweis')).toContainText('ohne Referenz und QR-Code dieser Box');
     await passt(page);
     await page.screenshot({ path: test.info().outputPath(`werkstatt-box-${breite}.png`), fullPage: true });
 
+    await detail.getByTestId('ws-zurueck').click();
+    await expect(page.getByTestId('ws-boxen')).toBeVisible();
     await liste.getByRole('button', { name: 'edge-p3n8rv4' }).click();
     await expect(page.getByTestId('ws-grund')).toContainText('kein Handshake an wg_wartung');
+    await expect(page.getByTestId('ws-bindung')).toContainText('noch kein Tunnel-Schlüssel hinterlegt');
+    await page.screenshot({ path: test.info().outputPath(`werkstatt-box-problem-${breite}.png`), fullPage: true });
+    await page.getByTestId('ws-zurueck').click();
 
     await page.getByTestId('ws-zur-werkbank').click();
     await expect(page.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'start');
@@ -124,6 +139,26 @@ for (const breite of [1440, 375]) {
     });
   }
 }
+
+test('Einrichtungs-Detailseite: die 3MF-Downloads liefern die Dateien des Gehäuses', async ({ page }) => {
+  const fehler = wache(page);
+  await page.goto('/e2e/werkstatt.html#/werkstatt?box=edge-5t2dcy6');
+  const summen = new Map(
+    readFileSync(resolve(process.cwd(), '../../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/SHA256SUMS'), 'utf8')
+      .trim().split('\n').map((z) => z.split(/\s+/) as [string, string]).map(([sha, name]) => [name, sha]),
+  );
+  for (const name of ['gehaeuse-v04.3mf', 'unterteil.3mf', 'deckel.3mf']) {
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByTestId(`ws-gehaeuse-${name}`).getByRole('link').click(),
+    ]);
+    expect(download.suggestedFilename()).toBe(name);
+    const bytes = readFileSync((await download.path())!);
+    expect(bytes.subarray(0, 2).toString('latin1')).toBe('PK');
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(summen.get(name));
+  }
+  expect(fehler).toEqual([]);
+});
 
 test('Werkbank: nach „Fertig“ führt „Nächste Box“ zum Anschließen, das Kabel steckt noch', async ({ page }) => {
   const fehler = wache(page);

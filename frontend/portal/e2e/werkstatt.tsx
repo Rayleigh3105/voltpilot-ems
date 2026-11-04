@@ -134,6 +134,14 @@ Object.assign(adminApi, {
     return lb && !register.some((b) => b.edgeRef === lb) ? [registerBox(lb, 'edge-light', { geaendertAm: new Date().toISOString() }), ...register] : register;
   },
   werkstattDienst: async () => dienst(),
+  // Bindung: nur die abgenommene Box ist einem Kunden gekoppelt, die anderen haben keinen Tunnel-Schlüssel.
+  fernwartungBox: async (ref: string) => {
+    if (ref !== 'edge-5t2dcy6') throw new ApiError(404, 'Für diese Box ist kein Tunnel-Schlüssel hinterlegt.');
+    return { id: 'fw1', edgeRef: ref, publicKey: 'erfunden', publicKeyKurz: 'q3Zr…Xk8=', adresse: '10.10.16.9', status: 'aktiv', notiz: null,
+      angelegtAm: iso(-35 * 60_000), geaendertAm: iso(-30 * 60_000), siteId: 's1', siteName: 'Halle 1', tenantId: 't1', tenantName: 'Beispiel GmbH',
+      laufendeFenster: [], rueckmeldung: null };
+  },
+  fernwartung: async () => ({ rueckmeldungen: [] }),
   werkstattFreigaben: async () => freigaben,
   werkstattFreigeben: async (i: { tage: number; obergrenze: number; openwrt: WerkstattFreigabe['openwrt']; edgeLight: WerkstattFreigabe['edgeLight'] }) => {
     if (!/^[0-9a-f]{64}$/.test(i.openwrt.sha256)) throw new ApiError(422, 'Freigabe ungültig: openwrt.sha256: 64 Zeichen 0-9a-f');
