@@ -154,4 +154,6 @@ func parseJS(body []byte) (any, error) {
 // jsRound is Math.round: half towards +Infinity.
 func jsRound(x float64) float64 { return math.Floor(x + 0.5) }
 
-func round3(x float64) float64 { return jsRound(x*1000) / 1000 }
+// float64(x*1000) keeps Go from fusing the product into the +0.5 of jsRound
+// (an FMA rounds differently from JavaScript; see deyedecode.round3).
+func round3(x float64) float64 { return jsRound(float64(x*1000)) / 1000 }
