@@ -47,6 +47,8 @@ import {
 
 export interface GeraeteReiterProps {
   bild: SeitenBild;
+  /** Steht der Reiter „Regeln“? Ohne ihn verweist die Geräteliste nicht darauf. */
+  mitRegeln?: boolean;
   /** Die Anlage - die Messen-Ansicht liest an ihr die Anlagensteuerung (UEMS EZ-10). */
   siteId: string;
   oeffne: (b: BlattZustand) => void;
@@ -114,7 +116,7 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
   );
   const sonne = rolle.erzaehlung === 'sonne';
 
-  if (bild.funktion.ohneTeilnahme) return <MessenAnsicht bild={bild} siteId={p.siteId} oeffne={p.oeffne} />;
+  if (bild.funktion.ohneTeilnahme) return <MessenAnsicht bild={bild} siteId={p.siteId} oeffne={p.oeffne} mitRegeln={p.mitRegeln} />;
   const t = sel ?? bild.raster.jetzt;
   return (
     <>
@@ -564,7 +566,7 @@ function Tagesbild({ bild, tag, setTag, sel, setSel, sonne = false, oeffne }: {
 // Messen-Ansicht (UEMS SZ-1 A): nur Gemessenes, die Geräte als ruhige Liste
 // ---------------------------------------------------------------------------
 
-function MessenAnsicht({ bild, siteId, oeffne }: { bild: SeitenBild; siteId: string; oeffne: (b: BlattZustand) => void }) {
+function MessenAnsicht({ bild, siteId, oeffne, mitRegeln }: { bild: SeitenBild; siteId: string; oeffne: (b: BlattZustand) => void; mitRegeln?: boolean }) {
   const m = messBild({ raster: bild.raster, jetzt: bild.jetztGemessen, geraete: bild.geraete, speicher: bild.speicher });
   const auf = (id: string) => oeffne(id === SPEICHER ? { art: 'speicher' } : { art: 'geraet', id });
   return (
@@ -607,7 +609,7 @@ function MessenAnsicht({ bild, siteId, oeffne }: { bild: SeitenBild; siteId: str
             </span>
           </button>
         ))}
-        <p className="leise" style={{ padding: '0 4px' }}>Antippen zeigt Messwerte und Steuerart des Geräts. Regeln stehen im Reiter Regeln.</p>
+        <p className="leise" style={{ padding: '0 4px' }}>Antippen zeigt Messwerte und Steuerart des Geräts.{mitRegeln === false ? '' : ' Regeln stehen im Reiter Regeln.'}</p>
       </section>
     </>
   );

@@ -14,6 +14,7 @@ const GERAETE = '/e2e/steuerung.html#/anlage/help-site/steuerung';
 const LADEN = '/e2e/steuerung.html#/anlage/help-site/laden';
 const LADEN_BEOBACHTET = '/e2e/steuerung.html?speicher=beobachtet#/anlage/help-site/laden';
 const REGELN = '/e2e/steuerung.html#/anlage/help-site/regeln';
+const REGELN_OHNE = '/e2e/steuerung.html?regeln=ohne#/anlage/help-site/regeln';
 
 test.use({ locale: 'de-DE', timezoneId: 'Europe/Berlin' });
 
@@ -410,5 +411,16 @@ test('UEMS SZ-2 A: die Plakette öffnet „Steuerung anhalten“ mit den Dauern 
   await expect(blatt.getByRole('button', { name: 'Anhalten' })).toBeEnabled();
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
   await bild(page, 'sz2-blatt', testInfo.project.name, { blatt: true });
+  expect(fehler).toEqual([]);
+});
+
+test('Regeln: ohne schaltbares Gerät und ohne Regel fällt der Reiter weg, das Lesezeichen landet auf „Geräte“', async ({ page }) => {
+  const fehler = await oeffnen(page, REGELN_OHNE);
+  await expect(page).toHaveURL(/#\/anlage\/help-site\/steuerung$/);
+  const reiter = page.getByRole('tablist', { name: 'Reiter der Steuerung' });
+  await expect(reiter.getByRole('tab')).toHaveText([/Geräte/, /Laden/]);
+  await expect(page.getByText('Noch gibt es kein Gerät, das eine Regel schalten kann.')).toHaveCount(0);
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(await ueberstehend(page)).toEqual([]);
   expect(fehler).toEqual([]);
 });

@@ -357,6 +357,56 @@ describe('Steuerung · Reiter Regeln', () => {
   });
 });
 
+describe('Steuerung · Reiter Regeln nur mit schaltbarem Gerät', () => {
+  /** Eine Anlage, deren einziges Gerät nur misst: nichts, was eine Regel schalten könnte. */
+  function ohneSchaltbaresGeraet({ regeln }: { regeln: boolean }) {
+    const lueft = VERBRAUCHER.verbraucher.find((v) => v.entityId === 'e-lueft')!;
+    vi.mocked(api.siteVerbraucher).mockResolvedValue({ ...VERBRAUCHER, verbraucher: [lueft], rangliste: [] });
+    cList.mockResolvedValue([]);
+    cStatus.mockResolvedValue([]);
+    BOUND.entities.mockResolvedValue([
+      { id: 'grid', entityType: 'grid-meter', label: 'Netz', measure: ['power_kw'], actuate: [] },
+      { id: 'e-lueft', entityType: 'modbus-load', label: 'Lüftung', measure: ['power_kw'], actuate: [] },
+    ]);
+    if (!regeln) BOUND.list.mockResolvedValue([]);
+  }
+  const reiterNamen = () =>
+    within(screen.getByRole('tablist', { name: 'Reiter der Steuerung' })).getAllByRole('tab').map((t) => t.textContent?.replace(/\d/g, ''));
+
+  it('blendet „Regeln“ aus, wenn kein Gerät eine Regel schalten kann und keine Regel besteht', async () => {
+    ohneSchaltbaresGeraet({ regeln: false });
+    zeige();
+    // Solange noch geladen wird, bleibt der Reiter stehen - unbekannt ist keine Null.
+    expect(reiterNamen()).toEqual(['Geräte', 'Laden', 'Regeln']);
+    await waitFor(() => expect(reiterNamen()).toEqual(['Geräte', 'Laden']));
+  });
+
+  it('zeigt „Regeln“, sobald ein Gerät eine Regel schalten kann', async () => {
+    BOUND.list.mockResolvedValue([]);
+    zeige('regeln');
+    // Der Knopf wird erst frei, wenn die schaltbaren Geräte geladen sind.
+    await waitFor(() => expect(screen.getByRole('button', { name: /Neue Regel/ })).toBeEnabled());
+    expect(reiterNamen()).toEqual(['Geräte', 'Laden', 'Regeln']);
+    expect(window.location.hash).toBe('#/anlage/s-1/steuerung');
+  });
+
+  it('behält „Regeln“ mit einer bestehenden Regel, auch ohne schaltbares Gerät - samt Hinweis', async () => {
+    ohneSchaltbaresGeraet({ regeln: true });
+    zeige('regeln');
+    await screen.findByText(/Wenn der Börsenpreis unter 0,0 ct\/kWh liegt/);
+    expect(screen.getByText(/Noch gibt es kein Gerät, das eine Regel schalten kann/)).toBeInTheDocument();
+    expect(reiterNamen()).toEqual(['Geräte', 'Laden', 'Regeln']);
+    expect(window.location.hash).toBe('#/anlage/s-1/steuerung');
+  });
+
+  it('leitet ein Lesezeichen auf den ausgeblendeten Reiter auf den ersten sichtbaren um', async () => {
+    ohneSchaltbaresGeraet({ regeln: false });
+    window.location.hash = '#/anlage/s-1/regeln';
+    zeige('regeln');
+    await waitFor(() => expect(window.location.hash).toBe('#/anlage/s-1/steuerung'));
+  });
+});
+
 describe('Steuerung · Reiter Laden', () => {
   it('stellt „Womit laden" über die Steuerart des Ladepunkts', async () => {
     const setze = vi.spyOn(api, 'setzeSteuerart').mockResolvedValue({ steuerart: { quelle: 'guenstig', herkunft: 'policy' }, aktiv: true });

@@ -77,6 +77,8 @@ export interface BlattKontext {
   busy: string | null;
   a: Aktionen;
   zu: () => void;
+  /** Gibt es ein Gerät, das eine Regel schalten kann (`regelZiele`)? Ohne fallen die Einstiege in eine neue Regel weg. */
+  neueRegel: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -376,12 +378,14 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
             ))}
             {!regeln.length && <p className="leise">Keine. Das Gerät folgt nur seinem Smart-Auftrag.</p>}
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); a.oeffne({ art: 'regel', geraet: g.id }); }}>
-              <Ic n="plus" s={16} />
-              Auch wenn …
-            </button></Recht>
-          </div>
+          {k.neueRegel && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); a.oeffne({ art: 'regel', geraet: g.id }); }}>
+                <Ic n="plus" s={16} />
+                Auch wenn …
+              </button></Recht>
+            </div>
+          )}
         </div>
       )}
       {!lp && g.consumer && hilft != null && (
@@ -1019,11 +1023,15 @@ export function NegativBlatt({ k }: { k: BlattKontext }) {
   return (
     <Blatt symbol="down" titel="Negativpreis-Abregelung" unter="läuft immer mit" onClose={k.zu}>
       <div className="warum">Kostet Strom an der Börse unter null, speist die Anlage nicht ein. Das schützt vor Kosten.</div>
-      <p className="leise">Besser als abregeln: den Strom selbst nutzen. Eine Regel schaltet dann Heizstab oder Pumpe ein.</p>
-      <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" onClick={(e) => { e.currentTarget.focus(); k.a.oeffne({ art: 'regel', vorlage: 'negativ' }); }}>
-        <Ic n="plus" s={18} />
-        Regel aus Vorlage
-      </button></Recht>
+      {k.neueRegel && (
+        <>
+          <p className="leise">Besser als abregeln: den Strom selbst nutzen. Eine Regel schaltet dann Heizstab oder Pumpe ein.</p>
+          <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" onClick={(e) => { e.currentTarget.focus(); k.a.oeffne({ art: 'regel', vorlage: 'negativ' }); }}>
+            <Ic n="plus" s={18} />
+            Regel aus Vorlage
+          </button></Recht>
+        </>
+      )}
     </Blatt>
   );
 }

@@ -368,6 +368,19 @@ export function regelZiele(alle: GeraetBild[], editor: EditorEntity[] | null): G
   return alle.filter((g) => !g.eintrag.ladepunkt && (schaltbar.has(g.id) || !editor));
 }
 
+/**
+ * Zeigt die Steuerung den Reiter „Regeln"? Bedingte Ansichten folgen den
+ * verfügbaren Fähigkeiten: ohne ein Gerät, das eine Regel schalten kann
+ * (`regelZiele`), ohne Szene und ohne bestehende Regel bliebe dort nur ein
+ * gesperrter Knopf - dann fällt der Reiter weg. Eine Regel, die der Kunde
+ * angelegt hat, verschwindet nie still: mit ihr bleibt der Reiter (samt
+ * Hinweis, dass kein schaltbares Gerät da ist). Solange etwas davon noch
+ * nicht geladen ist (`bereit`), bleibt er stehen - unbekannt ist keine Null.
+ */
+export function regelnReiterSichtbar(x: { bereit: boolean; ziele: number; regeln: number; szenen: boolean }): boolean {
+  return !x.bereit || x.ziele > 0 || x.regeln > 0 || x.szenen;
+}
+
 export function bezugAus(editor: EditorEntity[] | null): Bezug {
   const netz = liste(editor).find((e) => e.entityType === 'grid-meter' && e.measure.includes('power_kw')) ?? null;
   const sp = liste(editor).find((e) => e.measure.includes('soc_pct')) ?? null;

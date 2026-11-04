@@ -76,8 +76,10 @@ import { LadeWahlBlatt } from './LadeWahl';
 import { vorschauAnlage, type VorschauAnlage } from './ladeVorschau';
 import type { Gesendet } from './rueckmeldung';
 import { nurMessenKey, vorschlag } from './neu';
+import { anlageRoute, hashForRoute } from '../nav';
+import { szenenfaehig } from './szenen';
 import { RegelBlatt, RegelnReiter } from './RegelnReiter';
-import { bezugAus, greift, neuerEntwurf, regelKarten, regelZiele, VORLAGEN, zuGuided, type RegelEntwurf, type RegelKarte } from './regeln';
+import { bezugAus, greift, neuerEntwurf, regelKarten, regelnReiterSichtbar, regelZiele, VORLAGEN, zuGuided, type RegelEntwurf, type RegelKarte } from './regeln';
 import { seitenBild, type BlattZustand } from './seite';
 import { useSteuerungDaten } from './useSteuerungDaten';
 import { spannen, uhrTag, uhrVon } from './zeit';
@@ -136,6 +138,21 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
   }, [daten.editorEntities, bild.geraete]);
   const ziele = useMemo(() => regelZiele(bild.geraete.filter((g) => !g.ohneAuftrag || g.schreibbar), daten.editorEntities), [bild.geraete, daten.editorEntities]);
   const karten = useMemo(() => regelKarten(daten.flows, bezug, namen), [daten.flows, bezug, namen]);
+  // Ohne ein Gerät, das eine Regel schalten kann, und ohne bestehende Regel fällt der Reiter „Regeln“
+  // weg (samt den Einstiegen „Auch wenn …“ und „Regel aus Vorlage“); erst wenn alles geladen ist.
+  const mitRegeln = regelnReiterSichtbar({
+    bereit: geladen && daten.verbraucher != null && daten.flows != null && daten.editorEntities != null,
+    ziele: ziele.length,
+    regeln: karten.length,
+    szenen: bild.szene != null || bild.geraete.some(szenenfaehig),
+  });
+  const sichtbareTabs = mitRegeln ? tabs : tabs.filter((t) => t.sub !== 'regeln');
+  // Ein Lesezeichen auf den ausgeblendeten Reiter landet auf dem ersten sichtbaren - `replace`:
+  // kein Verlaufseintrag, der Zurück-Knopf springt nicht im Kreis.
+  const regelnUmleiten = reiter === 'regeln' && !mitRegeln ? (sichtbareTabs[0]?.sub ?? 'steuerung') : null;
+  useEffect(() => {
+    if (regelnUmleiten) window.location.replace(hashForRoute(anlageRoute(site.id, regelnUmleiten)));
+  }, [regelnUmleiten, site.id]);
 
   // Alte Regel-Lesezeichen (`?verbraucher=`, `?komponente=`, `?vorlage=`) öffnen den Baukasten.
   useEffect(() => {
@@ -495,6 +512,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
     busy,
     a: aktionen,
     zu,
+    neueRegel: ziele.length > 0,
   };
 
   const rahmen = daten.verbraucher?.ladepunkte.rahmen ?? null;
@@ -598,6 +616,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
         reoStart={reoStart}
         onReoGestartet={() => setReoStart(null)}
         zuLaden={() => onOpenSub('laden')}
+        mitRegeln={mitRegeln}
       />
     );
   }
@@ -636,7 +655,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
         )}
       </div>
       <div className="stn-reiter" role="tablist" aria-label="Reiter der Steuerung">
-        {tabs.map((t) => (
+        {sichtbareTabs.map((t) => (
           <button
             type="button"
             role="tab"

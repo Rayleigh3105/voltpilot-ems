@@ -227,6 +227,8 @@ export function installSteuerungFixtures() {
   const rahmen = { netzanschlussKw: 22, gepflegteGrenzeKw: 22, effektivGrenzeKw: 22, hausLastKw: 0.6, hoechsteHausLastKw: 5.2,
     verteiltKw: KW.wb[J], budgetKw: 17.2, sicherheitsabstandPct: 10, mindestleistungKw: 1.4, modus: 'measured', blind: false, steckerAnzahl: 2, gemeldetAm: JETZT };
 
+  // `?regeln=ohne`: kein Gerät, das eine Regel schalten kann, keine Regel, keine Szene - der Reiter „Regeln“ fällt weg.
+  const OHNE_REGELN = new URLSearchParams(location.search).get('regeln') === 'ohne';
   const consumers = GESTEUERT.filter((d) => !LADE.includes(d.id)).concat(DEFS.filter((d) => ['spuel', 'lueft', 'sauna'].includes(d.id)) as never[])
     .map((d) => ({
       id: eid(d.id), type: d.typ, typeLabel: d.typLabel, name: d.name,
@@ -234,7 +236,7 @@ export function installSteuerungFixtures() {
       resolutionKw: null, powerRangesKw: null, storageRelation: 'storage_first', defaultGridEnergyPolicy: 'avoid',
       allowStorageDischarge: d.hilft ?? false, failsafe: 'off', enabled: true, version: 1,
       connection: d.id === 'sauna' ? 'disconnected' : 'connected', edgeSourceId: `src-${d.id}`,
-      controlActivation: ['spuel', 'lueft', 'sauna'].includes(d.id) ? 'not_activated' : 'active', hasDraftPolicy: false, draftPolicyVersion: null,
+      controlActivation: OHNE_REGELN || ['spuel', 'lueft', 'sauna'].includes(d.id) ? 'not_activated' : 'active', hasDraftPolicy: false, draftPolicyVersion: null,
       confirmationChannel: d.gemessen ? 'power_kw' : 'relay_state',
       ioEntityId: d.id === 'hs' || d.id === 'wp' ? 'e-io' : null, ioChannel: d.id === 'hs' ? 1 : d.id === 'wp' ? 4 : null,
     }));
@@ -284,7 +286,7 @@ export function installSteuerungFixtures() {
   const entities = [
     komponente('help-battery', 'battery-hybrid', 'Speicher Scheune', ['soc_pct', 'battery_power_kw'], ['set_power']),
     komponente('help-grid', 'grid-meter', 'Netzanschluss', ['power_kw'], []),
-    ...DEFS.map((d) => komponente(eid(d.id), d.typ, d.name, d.gemessen ? ['power_kw'] : [], d.schreibbar === false ? [] : LADE.includes(d.id as Id) ? ['limit_kw'] : ['on_off', ...(d.levels ? ['setpoint_kw'] : [])])),
+    ...DEFS.map((d) => komponente(eid(d.id), d.typ, d.name, d.gemessen ? ['power_kw'] : [], d.schreibbar === false || OHNE_REGELN ? [] : LADE.includes(d.id as Id) ? ['limit_kw'] : ['on_off', ...(d.levels ? ['setpoint_kw'] : [])])),
     komponente('e-io', 'io-module', 'I/O-Modul Technikraum', [], []),
   ];
 
@@ -293,7 +295,7 @@ export function installSteuerungFixtures() {
     action: { kind: 'setpoint', entityId: eid('hs'), value: 3, ttlS: 300 } }, 'Negativpreise mitnehmen', SITE);
   const regelAus = buildGuidedFlow({ conditions: [{ kind: 'entity', entityId: 'help-battery', channel: 'soc_pct', direction: 'above', threshold: 90, hysteresis: 2 }], combinator: 'and',
     action: { kind: 'onoff', entityId: eid('klima'), ttlS: 300 } }, 'Speicher voll? Weiter', SITE);
-  const flows = [
+  const flows = OHNE_REGELN ? [] : [
     { flowId: 'f-neg', name: 'Negativpreise mitnehmen', runtime: 'edge', latestVersion: 2, latestLifecycle: 'active', activeVersion: 2, updatedAt: JETZT, simulation: null, latestDocument: regelDoc, versions: [1, 2] },
     { flowId: 'f-voll', name: 'Speicher voll? Weiter', runtime: 'edge', latestVersion: 1, latestLifecycle: 'draft', activeVersion: null, updatedAt: JETZT, simulation: null, latestDocument: regelAus, versions: [1] },
   ];
