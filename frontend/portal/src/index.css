@@ -4921,16 +4921,19 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-role-members { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .vp-role-member {
   display: flex;
+  /* Reicht die Breite nicht für Name UND Knopf, rutscht der Knopf in die nächste Zeile -
+     der Name wird nie zugunsten des Knopfs mitten im Wort gebrochen. */
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   padding: 6px 8px;
   border-radius: 8px;
   background: var(--vp-surface-2, #f6f8fb);
   font-size: 0.85rem;
 }
 .vp-role-member.primary { background: color-mix(in srgb, var(--vp-flow-grid) 10%, #f6f8fb); }
-.vp-role-member-main { display: flex; flex-direction: column; min-width: 0; }
-.vp-role-member-name { font-weight: 600; overflow-wrap: anywhere; }
+.vp-role-member-main { display: flex; flex-direction: column; flex: 1 1 9rem; min-width: 0; }
+.vp-role-member-name { font-weight: 600; overflow-wrap: break-word; hyphens: auto; }
 .vp-role-member-main .vp-muted { font-size: 0.78rem; font-variant-numeric: tabular-nums; }
 .vp-massgeblich { margin-left: auto; font-size: 0.74rem; font-weight: 700; color: #0f6d6b; white-space: nowrap; }
 .vp-role-member-action,

@@ -191,6 +191,8 @@ export interface SpeicherAussage {
   geplant: string | null;
   /** Derselbe Planwert als Betrag („+ 6,39 €"); null ohne Planwert. */
   geplantWert: string | null;
+  /** Das Vorzeichen des Planwerts (`plus`/`minus`/`null` = Totband); null ohne Planwert. */
+  geplantTon: SpeicherGeld['ton'] | null;
 
   /* --- Einordnung eines Tages (Konzept k1 §7, E1/E3/E4 = A) --- */
   /**
@@ -626,6 +628,7 @@ export function speicherAussage(
         ? null
         : `Vorab geplant hatte der Fahrplan ${tonWort(geplantEur).wort} durch die Steuerung`,
     geplantWert: geplantEur == null ? null : fest(tonWort(geplantEur).wort),
+    geplantTon: geplantEur == null ? null : tonWort(geplantEur).ton,
 
     gruende,
     grundZeile,

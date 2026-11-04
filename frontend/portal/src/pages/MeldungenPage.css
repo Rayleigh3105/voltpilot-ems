@@ -16,6 +16,9 @@
   color: var(--vp-c-muted-fg);
   padding: var(--vp-c-space-5) 0;
 }
+.vp-meldungen-leer .vp-empty {
+  padding: var(--vp-c-space-6, 32px) var(--vp-c-space-4);
+}
 
 .vp-meldungen-csv {
   display: flex;

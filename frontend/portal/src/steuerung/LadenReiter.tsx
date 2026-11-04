@@ -549,11 +549,12 @@ export function LadungenBlatt({ k, id, siteId, fahrzeuge }: {
     return f ? fahrzeugName(f) : `Karte ${kartenKurz(ref)}…`;
   };
   return (
-    <Blatt symbol="history" titel={`Ladungen · ${g.name}`} unter={monatLabel(monat)} voll onClose={k.zu}>
+    <Blatt symbol="history" titel={`Ladungen · ${g.name}`} voll onClose={k.zu}>
       <div className="blk">
-        <div className="mini-seg" role="group" aria-label="Monat" style={{ marginBottom: 10 }}>
-          <button type="button" onClick={() => setMonat(monatVerschoben(monat, -1))}><Ic n="chevL" s={16} />Vormonat</button>
-          <button type="button" disabled={monat >= heuteMonat} onClick={() => setMonat(monatVerschoben(monat, 1))}>Folgemonat<Ic n="chevR" s={16} /></button>
+        <div className="lq-monat" role="group" aria-label="Monat">
+          <button type="button" aria-label="Vormonat" onClick={() => setMonat(monatVerschoben(monat, -1))}><Ic n="chevL" s={18} /></button>
+          <b aria-live="polite">{monatLabel(monat)}</b>
+          <button type="button" aria-label="Folgemonat" disabled={monat >= heuteMonat} onClick={() => setMonat(monatVerschoben(monat, 1))}><Ic n="chevR" s={18} /></button>
         </div>
         {autos.length > 1 && (
           <div className="chips" role="group" aria-label="Auto" style={{ marginBottom: 10 }}>
@@ -572,7 +573,15 @@ export function LadungenBlatt({ k, id, siteId, fahrzeuge }: {
             {summe.durchschnittCtKwh != null ? <small> · Ø {fCt(summe.durchschnittCtKwh)}</small> : null}
           </p>
         ) : (
-          <p className="leise">Keine abgeschlossene Ladung in diesem Monat.</p>
+          <div className="lq-leer">
+            <span className="li" aria-hidden="true"><Ic n="history" s={20} /></span>
+            <b>Keine abgeschlossene Ladung</b>
+            <p className="leise">
+              {monat >= heuteMonat
+                ? 'Sobald ein Ladevorgang beendet ist, steht er hier mit Menge, Sonnenanteil und Euro.'
+                : `Im ${monatLabel(monat)} wurde an dieser Wallbox nichts geladen.`}
+            </p>
+          </div>
         )}
         {gefiltert.length > 0 && (
           <ul className="lq-ladungen">

@@ -376,6 +376,8 @@ a.vp-eb-zeile {
   overflow-wrap: anywhere;
 }
 .vp-eb-zn small {
+  /* Name und Zustand stehen in zwei Zeilen - sonst läuft „Wallbox Carport Ladevorgang läuft“ als ein Satz. */
+  display: block;
   font-weight: 500;
   font-size: 0.78rem;
   color: var(--vp-c-muted-fg, #475569);

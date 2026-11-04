@@ -381,6 +381,16 @@ describe('aufbauBaum — Standort als Wurzel', () => {
     expect(wurzel?.entwurf).toBe(true);
     expect(wurzel?.adresse).toBeNull();
   });
+
+  it('wiederholt die Straße nicht, wenn der Standort so heißt (Privatkunde: der Name IST die Adresse)', () => {
+    const st = STANDORTE([{ id: 's-1', name: 'Sandgrabener Str. 10A' }]);
+    st.standorte[0].name = 'Sandgrabener Str. 10A';
+    st.standorte[0].adresse = { strasse: 'Sandgrabener Straße 10a', plz: '86989', ort: 'Steingaden', land: 'DE' };
+    expect(aufbauWurzel(st, 's-1').wurzel?.adresse).toBe('86989 Steingaden');
+    // Ein anderer Name behält die ganze Adresse.
+    st.standorte[0].name = 'Ferienhaus';
+    expect(aufbauWurzel(st, 's-1').wurzel?.adresse).toBe('Sandgrabener Straße 10a · 86989 Steingaden');
+  });
 });
 
 describe('anlagenWerte — Live-Chips der Anlage', () => {

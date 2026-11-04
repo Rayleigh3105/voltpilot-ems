@@ -82,6 +82,15 @@
 .vp-kat-arten::-webkit-scrollbar {
   display: none;
 }
+/* Am Rechner ist Platz für zwei Zeilen: die Arten brechen um, statt am Rand abgeschnitten zu stehen („Zähler“ halb). */
+@media (min-width: 721px) {
+  .vp-kat-arten {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    margin: 0;
+    padding: 0;
+  }
+}
 .vp-kat-art {
   flex: 0 0 auto;
   display: inline-flex;

@@ -114,6 +114,12 @@ export interface AnlageNav {
   hoch?: PfadEintrag | null;
   /** The aggregated plant state; null = not known yet (no badge is shown). */
   health: HealthBadge | null;
+  /**
+   * Die Oberfläche der Anlage (`useAnlageSurface`) ist noch nicht da: „Fahrplan" und „Ladevorgänge" kommen erst mit
+   * ihr. Die Schale hält dann den Platz des zweiten Bereichs frei (eine Zeile in Eintragshöhe), damit Verlauf,
+   * Steuerung und Anlage beim Eintreffen nicht um eine Zeile nachrücken.
+   */
+  bereicheLaden?: boolean;
 }
 
 /**
@@ -407,6 +413,10 @@ export function AppShell({
           aktiv: eintragAktiv(kachel),
           oeffnen: () => ebenen?.onOpen(kachel.ziel),
         }));
+  /** Hält die Seitenleiste/Telefon-Leiste den Platz des zweiten Bereichs frei, bis die Oberfläche der Anlage da ist? */
+  const platzFuerBereich =
+    !!anlage?.bereicheLaden &&
+    !anlage.sidebar.bereiche.some((b) => b.key === 'fahrplan' || b.key === 'ladevorgaenge');
   const barName = anlage ? `Bereiche der Anlage ${anlage.siteName ?? ''}`.trim() : ebenen?.titel ?? '';
   /** 2+ Anlagen or a fleet level to return to = there is something to switch. */
   const canSwitchAnlage =
@@ -464,7 +474,13 @@ export function AppShell({
    * wäre nur Rauschen.
    */
   const anlageNav = anlage && (
-    <div className="vp-anlagenav">{anlage.sidebar.bereiche.map(navEntry)}</div>
+    <div className="vp-anlagenav">
+      {anlage.sidebar.bereiche.flatMap((item) =>
+        item.key === 'cockpit' && platzFuerBereich
+          ? [navEntry(item), <div key="bereich-platz" className="vp-navitem vp-navitem--platz" aria-hidden="true" data-bereich-platz />]
+          : [navEntry(item)],
+      )}
+    </div>
   );
 
   /**
@@ -886,11 +902,11 @@ export function AppShell({
         <nav
           className="vp-bottombar"
           aria-label={barName}
-          style={{ ['--vp-bar-slots' as string]: String(barSlots.length) } as React.CSSProperties}
+          style={{ ['--vp-bar-slots' as string]: String(barSlots.length + (platzFuerBereich ? 1 : 0)) } as React.CSSProperties}
         >
-          {barSlots.map((item) => {
+          {barSlots.flatMap((item) => {
             const active = item.aktiv;
-            return (
+            const eintrag = (
               <button
                 key={item.key}
                 type="button"
@@ -905,6 +921,9 @@ export function AppShell({
                 <span className="lbl">{item.label}</span>
               </button>
             );
+            return item.key === 'cockpit' && platzFuerBereich
+              ? [eintrag, <span key="bereich-platz" className="vp-bottombar-item vp-bottombar-item--platz" aria-hidden="true" data-bereich-platz />]
+              : [eintrag];
           })}
         </nav>
       )}

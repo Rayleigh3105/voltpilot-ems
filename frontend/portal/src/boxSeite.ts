@@ -399,7 +399,8 @@ export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
   return {
     gefunden: true,
     grund: null,
-    titel: `VoltPilot-Box ${name}`,
+    // Heißt die Box schon „VoltPilot Box“ (der Standardname), steht das Wort nicht noch einmal davor.
+    titel: /^voltpilot[\s-]*box\b/i.test(name) ? name : `VoltPilot-Box ${name}`,
     unterzeile: `${BOX_ROLLE} · Anlage ${input.siteName}`,
     kennung: box.externalRef,
     zustand,

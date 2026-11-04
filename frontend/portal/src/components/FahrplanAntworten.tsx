@@ -64,7 +64,7 @@ export function FahrplanAntworten({
               onClick={() => onWahl(a)}
             >
               <span className="vp-antw-label">{a.kurz.label}</span>
-              <span className={`vp-antw-wert${a.key === 'bringt' ? ' is-geld' : ''}`}>{a.kurz.wert}</span>
+              <span className={`vp-antw-wert${a.key === 'bringt' ? ` is-geld${a.kurz.ton ? ` is-${a.kurz.ton}` : ''}` : ''}`}>{a.kurz.wert}</span>
               {form === 'spalten' && a.kurz.meta && <span className="vp-antw-meta">{a.kurz.meta}</span>}
             </button>
           </li>

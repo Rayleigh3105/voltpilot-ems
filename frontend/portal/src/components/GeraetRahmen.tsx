@@ -303,7 +303,7 @@ export function GeraetRahmen({
           {kopf.kennung && (
             <>
               {' · '}
-              <span className="vp-mono">{kopf.kennung}</span>
+              <span className="vp-mono" style={{ whiteSpace: 'nowrap' }}>{kopf.kennung}</span>
             </>
           )}
         </p>

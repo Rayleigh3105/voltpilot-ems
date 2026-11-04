@@ -105,6 +105,45 @@
   cursor: pointer;
 }
 
+/* Der freigehaltene Platz des zweiten Bereichs („Fahrplan“), solange die Oberfläche der Anlage lädt: eine leise
+   Zeile in Eintragshöhe, kein Eintrag - so rückt beim Eintreffen nichts nach. */
+.vp-navitem--platz {
+  pointer-events: none;
+  cursor: default;
+}
+.vp-navitem--platz::before {
+  content: '';
+  width: 22px;
+  height: 16px;
+  border-radius: 5px;
+  background: var(--vp-bg-light);
+}
+.vp-navitem--platz::after {
+  content: '';
+  width: 5.5rem;
+  max-width: 55%;
+  height: 11px;
+  border-radius: 6px;
+  background: var(--vp-bg-light);
+}
+.vp-bottombar-item--platz {
+  pointer-events: none;
+}
+.vp-bottombar-item--platz::before {
+  content: '';
+  width: 22px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--vp-bg-light);
+}
+.vp-bottombar-item--platz::after {
+  content: '';
+  width: 2.4rem;
+  height: 9px;
+  border-radius: 5px;
+  background: var(--vp-bg-light);
+}
+
 /* Steuerung's active-mode badge reads as a count, not a muted note. */
 .vp-anlagenav .vp-navitem .count {
   background: var(--vp-tint);
@@ -757,6 +796,7 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
+  .vp-app > .vp-sidebar .vp-navitem--platz::after,
   .vp-app > .vp-sidebar .vp-navitem .count,
   .vp-app > .vp-sidebar .vp-anlagenav-ctx,
   .vp-app > .vp-sidebar .vp-sidebar-close {

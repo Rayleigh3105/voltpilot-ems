@@ -5,6 +5,7 @@ import { api, ladeMeldungenVerlaufCsv, type Anlagensteuerung } from '../api';
 import { boxRefOf } from '../geraetAdresse';
 import { useBoxen } from '../useBoxRef';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { EmptyState } from '../components/States';
 import { NeueUeberwachung } from '../components/NeueUeberwachung';
 import { UeberwachenBlatt } from '../components/UeberwachenBlatt';
 import { VpPicker } from '../components/VpPicker';
@@ -340,9 +341,18 @@ function MeldungListe({
   if (meldungen === null) return <p>Wird geladen …</p>;
   if (meldungen.length === 0) {
     return (
-      <p className="vp-meldungen-leer">
-        {reiter === 'jetzt' ? 'Alles ruhig. Keine offenen Meldungen.' : 'Noch keine erledigten Meldungen.'}
-      </p>
+      <div className="vp-meldungen-leer">
+        <EmptyState
+          icon={reiter === 'jetzt' ? 'check' : 'bell'}
+          category={reiter === 'jetzt' ? 'ev' : 'primary'}
+          title={reiter === 'jetzt' ? 'Alles ruhig' : 'Noch nichts erledigt'}
+          description={
+            reiter === 'jetzt'
+              ? 'Keine offenen Meldungen. Sobald etwas Ihre Aufmerksamkeit braucht, steht es hier.'
+              : 'Erledigte Meldungen erscheinen hier, sobald Sie eine abgeschlossen haben.'
+          }
+        />
+      </div>
     );
   }
   return (

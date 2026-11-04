@@ -1142,6 +1142,9 @@ function UnifiedPortal() {
         // Hervorgehoben wird der BEREICH, in dem die offene Unterseite wohnt
         // (`activeAreaKey`) - ein Reiter darf die Leiste nie ins Nichts zeigen
         // lassen.
+        // `surface` ist null, bis die Oberfläche einmal da ist (jeder Abruf dort ist fail-soft, sie kommt immer) - auch im
+        // ersten Bild, in dem `loading` noch nicht gesetzt ist.
+        bereicheLaden: surface == null,
         activeKey: activeAreaKey(route.sub, anlageSidebar(surface)),
         onOpenSub: (sub: Parameters<typeof anlageRoute>[1]) =>
           navigate(anlageRoute(shellSite.id, sub ?? null)),
