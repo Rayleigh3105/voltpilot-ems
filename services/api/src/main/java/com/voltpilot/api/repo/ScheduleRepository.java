@@ -73,7 +73,7 @@ public class ScheduleRepository {
      * slack, lower bound = 1 h of slack for a start slot floored below the
      * stamp. A longer horizon MUST raise {@link #PLAN_HORIZON_HOURS}, otherwise
      * the far end of the plan would be cut off silently;
-     * {@code ScheduleLatestWindowEqualityTest} pins the constant to config.py.
+     * {@code ScheduleQueryFixesEqualityTest} pins the constant to config.py.
      * Compile-time constants, never client input.
      */
     static final int PLAN_HORIZON_HOURS = 48;
