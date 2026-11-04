@@ -24,6 +24,7 @@ edge-light/scripts/test.sh          # Vektoren, Go-Tests (mit Race-Detector), MI
 edge-light/scripts/build.sh         # dist/vp-edge-light-linux-{mipsle,arm64,amd64} + .sha256
 edge-light/scripts/release.sh edge-light-JJJJ.MM.N <ausgabe>  # eine Fassung: mipsle, arm64, Skriptstand, sha256sums (nur lokales Go)
 edge-light/test/qemu-smoke.sh       # MIPS-Programm unter Emulation gegen simulierten Deye
+edge-light/test/verbraucherregel-probe.sh  # Fahrplan-Slot und reaktive Verbraucherregel gegen simulierte Verbraucher
 edge-light/test/install-probe.sh    # install.sh gegen OpenWrt im Container (nach build.sh amd64)
 edge-light/test/boot-speicher-probe.sh  # Speicherpruefung des Loaders gegen OpenWrt im Container
 edge-light/test/boot-update-probe.sh    # Update im Loader (Tausch, Probe, Behalten, Zurueck, Strom weg) gegen OpenWrt im Container

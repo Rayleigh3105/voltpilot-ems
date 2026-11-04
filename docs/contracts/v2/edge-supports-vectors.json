@@ -81,6 +81,12 @@
       "meaning": "Die Box führt den Parameterblock heizstab eines Heizstabs mit Shelly-Ausgangsmenge selbst aus (heizstab-regler.md, Heizstab-Konzept V1): Stufe aus dem Überschuss mit Eigenlast, Vorrang zum Speicher nach der Reihenfolge, Haltezeit, Mindestlauf und Mindestpause, Schaltungen je Stunde, ohne Cloud weiter, ohne frische Messwerte keine neue Stufe und nach 60 s aus; Wunsch der Klasse Regel (Rang 40) an den Arbiter, Zustand auf der Platte. Erst dann sendet die Cloud den Block statt einen Regel-Flow zu bauen; eine ältere Box überliest ihn.",
       "advertised": true,
       "evidence": "edge-app/core/internal/agent/heizstab_test.go"
+    },
+    {
+      "name": "verbraucherregeln",
+      "meaning": "Die Box führt die Verbraucherregeln der Cloud aus, wie die Steuerarten sie schreiben: die reaktive Regel mit lokalem Signal (Überschuss, Ladestand, Fahrzeug, Verfügbarkeit) als generiertes Regel-Artefakt mit dem Knoten vp-consumer-policy - in der Docker-Box über die Palette, in Edge Light über den Go-Zwilling im Programm (internal/verbraucherregel, gemeinsame Vektoren verbraucherregel-vectors.json) - und Zeitfenster, Preisfenster und Fristen aus Fahrplan und Registry-Push im Core. Erst dann gibt das Portal einer Edge Light die Steuerarten frei, die daran hängen.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/verbraucherregel/laufzeit_test.go"
     }
   ],
   "cases": [

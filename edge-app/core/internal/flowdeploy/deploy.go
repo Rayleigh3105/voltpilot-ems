@@ -166,10 +166,21 @@ func (dep *Deployer) verifyArtifact(a Artifact, raw []byte) (string, string) {
 		}
 	}
 	// Version gates: refuse instead of deploying a bundle the runtime cannot
-	// execute (the fleet is heterogeneous, no OTA).
-	pal, palErr := dep.paletteVersion()
-	if palErr != nil {
-		return "error", "Palette-Version nicht ermittelbar: " + palErr.Error()
+	// execute (the fleet is heterogeneous, no OTA). Without Node-RED the local
+	// runtime answers (Edge Light) - first whether it can run the bundle at
+	// all, then for the palette state it reproduces.
+	var pal string
+	if dep.nr == nil && dep.lokal != nil {
+		if ok, why := dep.lokal.Annehmbar(a.Bundle); !ok {
+			return "unsupported", why
+		}
+		pal = dep.lokal.PaletteVersion()
+	} else {
+		v, palErr := dep.paletteVersion()
+		if palErr != nil {
+			return "error", "Palette-Version nicht ermittelbar: " + palErr.Error()
+		}
+		pal = v
 	}
 	if !versionSatisfies(pal, a.MinPaletteVersion) {
 		return "unsupported", fmt.Sprintf("benötigt Palette >= %s (installiert: %s)", a.MinPaletteVersion, pal)
@@ -289,6 +300,21 @@ func parseSemver(v string) ([3]int, bool) {
 
 // --- Deployer ---------------------------------------------------------------
 
+// LokaleLaufzeit runs artifacts inside the box program when there is no
+// Node-RED: Edge Light's Go twin of the generated consumer rule
+// (internal/verbraucherregel). The Docker box never has one - its artifacts go
+// to Node-RED as before.
+type LokaleLaufzeit interface {
+	// PaletteVersion is the palette state the local runtime reproduces; it
+	// stands in for the installed palette in the min_palette_version gate.
+	PaletteVersion() string
+	// Annehmbar says whether every node of the bundle runs locally; the
+	// German reason of a refusal lands in the ack (state unsupported).
+	Annehmbar(Bundle) (bool, string)
+	// Angleichen runs exactly these verified artifacts (stops the rest).
+	Angleichen([]Artifact) error
+}
+
 // Deps wires the deployer into the agent.
 type Deps struct {
 	// NR is the Node-RED admin client; nil = flow deployment disabled (a
@@ -303,6 +329,8 @@ type Deps struct {
 	Registry func() entities.Registry
 	// Identity returns the device identity a deployment must address.
 	Identity func() Identity
+	// Lokal runs artifacts when NR is nil (Edge Light); nil = none.
+	Lokal LokaleLaufzeit
 }
 
 // Deployer consumes deployments and tracks acks.
@@ -313,6 +341,7 @@ type Deployer struct {
 	coreVersion string
 	registry    func() entities.Registry
 	identity    func() Identity
+	lokal       LokaleLaufzeit
 
 	applied     []cloud.AppliedFlow
 	current     *Deployment
@@ -332,7 +361,23 @@ func NewDeployer(d Deps) *Deployer {
 		id = func() Identity { return Identity{} }
 	}
 	return &Deployer{nr: d.NR, dir: d.DataDir, coreVersion: d.CoreVersion,
-		registry: reg, identity: id}
+		registry: reg, identity: id, lokal: d.Lokal}
+}
+
+// SetLokaleLaufzeit attaches the local runtime after start (the Edge Light
+// program starts it once the local bus is up) and re-applies the current or
+// persisted set at once, so a retained set that arrived first runs without
+// waiting for the next reconcile.
+func (dep *Deployer) SetLokaleLaufzeit(l LokaleLaufzeit) {
+	dep.mu.Lock()
+	defer dep.mu.Unlock()
+	dep.lokal = l
+	if dep.current == nil {
+		dep.loadPersistedLocked()
+	}
+	if dep.current != nil {
+		dep.applyLocked()
+	}
 }
 
 // paletteVersion queries (and caches) the installed vp-palette version from
@@ -428,7 +473,7 @@ func (dep *Deployer) applyLocked() {
 		switch {
 		case state != "active":
 			ack.State, ack.Detail = state, detail
-		case dep.nr == nil:
+		case dep.nr == nil && dep.lokal == nil:
 			ack.State = "error"
 			ack.Detail = "Flow-Runtime nicht konfiguriert (VP_NODERED_ADMIN_URL)"
 		default:
@@ -438,13 +483,18 @@ func (dep *Deployer) applyLocked() {
 		ackIdx[a.FlowID] = len(acks)
 		acks = append(acks, ack)
 	}
-	if dep.nr != nil {
-		if err := dep.converge(verified); err != nil {
-			slog.Warn("flow-runtime convergence failed", "err", err)
-			for _, a := range verified {
-				acks[ackIdx[a.FlowID]].State = "error"
-				acks[ackIdx[a.FlowID]].Detail = "Übernahme in die Flow-Runtime fehlgeschlagen: " + err.Error()
-			}
+	var err error
+	switch {
+	case dep.nr != nil:
+		err = dep.converge(verified)
+	case dep.lokal != nil:
+		err = dep.lokal.Angleichen(verified)
+	}
+	if err != nil {
+		slog.Warn("flow-runtime convergence failed", "err", err)
+		for _, a := range verified {
+			acks[ackIdx[a.FlowID]].State = "error"
+			acks[ackIdx[a.FlowID]].Detail = "Übernahme in die Flow-Runtime fehlgeschlagen: " + err.Error()
 		}
 	}
 	dep.applied = acks

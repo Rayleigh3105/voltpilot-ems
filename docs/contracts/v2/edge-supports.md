@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -93,6 +93,15 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   Beleg `agent/heizstab_test.go`). Beide Box-Arten melden es, der Regler steckt im Core. Die Cloud sendet den Block nur
   an eine Box mit diesem Wort; eine ältere Box überliest ihn und schaltet den Stab nicht automatisch. Keine Zeile in
   `edge-capabilities.json`, solange keine Fläche ein Update dafür verlangt.
+- `verbraucherregeln` (Steuerarten auf Edge Light, 04.11.2026): die Box führt die Verbraucherregeln aus, die die Cloud
+  aus einer Steuerart macht. Die reaktive Regel mit lokalem Signal (Überschuss an Schaltlast, SG-Ready-Freigabe,
+  Regelbaukasten mit Ladestand, Fahrzeug oder Verfügbarkeit) kommt als generiertes Artefakt mit dem Knoten
+  `vp-consumer-policy` ([Flow-Artefakt](flow-artifact.md)): die Docker-Box lädt es in die Palette, Edge Light führt
+  dasselbe Artefakt im Go-Zwilling `internal/verbraucherregel` an denselben Topics des lokalen Busses aus (gemeinsame
+  [Vektoren](verbraucherregel-vectors.json), Beleg `verbraucherregel/laufzeit_test.go`). Zeitfenster, Preisfenster und
+  Fristen („Feste Zeiten“, „Günstige Stunden“, „Fertig bis“) laufen ohnehin über Fahrplan und Registry-Push im Core
+  beider Box-Arten. Beide Box-Arten melden das Wort. Das Portal gibt einer Edge Light die Steuerarten, die daran
+  hängen, nur frei, wenn sie es meldet; eine Docker-Box hat die Palette immer und wird nie gesperrt.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

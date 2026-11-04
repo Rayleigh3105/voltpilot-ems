@@ -60,6 +60,15 @@ type StatusExtension struct {
 // Node-RED, so both builds carry it. The cloud sends the block only to a box
 // reporting this word; an older box would just ignore it.
 //
+// verbraucherregeln (Steuerarten auf Edge Light): the box runs the consumer
+// rules the cloud compiles from a Steuerart - the reactive rule with a local
+// signal as the generated vp-consumer-policy artifact (Docker box: the
+// palette; Edge Light: the Go twin internal/verbraucherregel behind the same
+// bus topics, held to verbraucherregel-vectors.json) and the time windows,
+// price windows and deadlines from plan and registry push in the core. Both
+// builds carry it; the portal unlocks those Steuerarten on an Edge Light only
+// for a box that reports it.
+//
 // EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
 // Edge Light has no Node-RED palette, so the words whose way ends in the
 // palette - the shared point read once per target, the Erzeuger image reader
@@ -71,7 +80,7 @@ func BuiltSupports(boxArt string) []string {
 	if boxArt != geraetesuche.BoxArtEdgeLight {
 		out = append(out, "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle")
 	}
-	return append(out, "geraetesuche", "heizstab_regler")
+	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln")
 }
 
 // UpdateBackend is the apply backend a box type reports in update.backend and

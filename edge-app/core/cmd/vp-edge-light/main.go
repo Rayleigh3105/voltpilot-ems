@@ -8,6 +8,10 @@
 // Node-RED uses on the Docker box. What the Go Layer 1 already covers is
 // listed in edge-light/docs/paritaet.md; everything else answers honestly
 // ("noch nicht unterstuetzt") instead of silently.
+//
+// The generated consumer rules (the cloud's flow artifacts with the
+// vp-consumer-policy node, which the Docker box runs in Node-RED) run here in
+// the Go twin internal/verbraucherregel, on its own local-bus client.
 package main
 
 import (
@@ -19,6 +23,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/edgemain"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/layer1"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/verbraucherregel"
 )
 
 func main() {
@@ -36,6 +41,15 @@ func startLayer1(ctx context.Context, cfg config.Config, a *agent.Agent) (func()
 	l1ctx, cancel := context.WithCancel(ctx)
 	rt := layer1.New(bus, layer1.Options{Logger: slog.Default().WithGroup("layer1")})
 	a.SetGeraetesucheSpur(rt.LoggerSpur)
+	regelBus, err := layer1.DialMQTT(cfg.LocalMQTTAddr, "vp-edge-light-verbraucherregeln")
+	if err != nil {
+		cancel()
+		bus.Close()
+		return nil, err
+	}
+	regeln := verbraucherregel.New(regelBus, verbraucherregel.Options{
+		Logger: slog.Default().WithGroup("verbraucherregel")})
+	a.SetLokaleFlowLaufzeit(regeln)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -46,6 +60,8 @@ func startLayer1(ctx context.Context, cfg config.Config, a *agent.Agent) (func()
 	return func() {
 		cancel()
 		<-done
+		regeln.Close()
+		regelBus.Close()
 		bus.Close()
 	}, nil
 }
