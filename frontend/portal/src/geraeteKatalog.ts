@@ -32,7 +32,7 @@ import type { AdoptableSource } from './rollen';
 
 export type KatalogKategorie = 'wr' | 'laden' | 'schalten' | 'batterie' | 'zaehler' | 'selbst' | 'weitere';
 export type KatalogChip = 'alle' | KatalogKategorie;
-export type KatalogWeg = 'ocpp' | 'bms' | 'modbus' | 'anlagensteuerung';
+export type KatalogWeg = 'ocpp' | 'modbus' | 'anlagensteuerung';
 
 export const KATEGORIE_LABEL: Record<KatalogKategorie, string> = {
   wr: 'Wechselrichter',
@@ -67,12 +67,6 @@ export const WEGE: Record<
     zusatz: 'Jede Säule, die OCPP 1.6 spricht · sie meldet sich selbst bei Ihrer Box',
     kategorie: 'laden',
     stichworte: 'ladesäule ladestation ladepunkt ocpp wallbox säule',
-  },
-  bms: {
-    titel: 'Batterie mit eigenem BMS',
-    zusatz: 'Über MQTT oder HTTP/JSON · z. B. DIYBMS, Seplos, JK',
-    kategorie: 'batterie',
-    stichworte: 'batterie speicher akku bms diybms seplos jk mqtt http json shunt',
   },
   modbus: {
     titel: 'Modbus-TCP-Gerät',
@@ -284,12 +278,13 @@ export function katalogChips(templates: ComponentTemplate[], vorlagen: SiteCompo
   const zahl = (k: KatalogKategorie) =>
     templates.filter((t) => kategorieVon(t) === k && alsModellAngeboten(t, 'alle')).length;
   const zaehler = zahl('zaehler');
+  const batterien = zahl('batterie');
   const chips: KatalogChipInfo[] = [
     { id: 'alle', label: 'Alle', anzahl: null },
     { id: 'wr', label: KATEGORIE_LABEL.wr, anzahl: zahl('wr') },
     { id: 'laden', label: KATEGORIE_LABEL.laden, anzahl: zahl('laden') + 1 },
     { id: 'schalten', label: KATEGORIE_LABEL.schalten, anzahl: zahl('schalten') },
-    { id: 'batterie', label: KATEGORIE_LABEL.batterie, anzahl: zahl('batterie') + 1 },
+    { id: 'batterie', label: KATEGORIE_LABEL.batterie, anzahl: batterien > 0 ? batterien : null },
     { id: 'zaehler', label: KATEGORIE_LABEL.zaehler, anzahl: zaehler > 0 ? zaehler : null },
     { id: 'selbst', label: KATEGORIE_LABEL.selbst, anzahl: 1 + vorlagen.length },
   ];

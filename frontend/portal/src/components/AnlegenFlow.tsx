@@ -102,8 +102,7 @@ const UDB_TYP = 'user-defined-battery';
  * Befund + Hebel + „Trotzdem fortfahren") → **Name**. Nach dem Speichern sagt
  * der Wirt, was entstanden ist, und springt darauf (`onFertig`).
  *
- * Die Wege ohne Vorlage (Ladesäule, Batterie mit eigenem BMS, Modbus-Gerät)
- * und die Bearbeitung auf der Geräteseite laufen durch dieselbe Datei.
+ * Die Wege ohne Vorlage (Ladesäule, Modbus-Gerät) und die Bearbeitung auf der Geräteseite laufen durch dieselbe Datei.
  *
  * <b>⚠ Die Anlege-SEMANTIK ist unverändert.</b> Dieselben Aufrufe mit denselben
  * Rümpfen (`testComponentConnection` → `matchComponent` → `createComponent`),
@@ -156,9 +155,10 @@ export function AnlegenFlow({
    */
   vorlage?: SiteComponentTemplate | null;
   /**
-   * Ein Weg ohne Vorlage aus dem Gerätekatalog: Ladesäule (`ladesaeule`),
-   * Batterie mit eigenem BMS (`batterie`) oder Modbus-Gerät (`eigenbau`).
-   * Keine Anlege-Semantik ändert sich dadurch.
+   * Ein Weg ohne Vorlage aus dem Gerätekatalog: Ladesäule (`ladesaeule`)
+   * oder Modbus-Gerät (`eigenbau`). Keine Anlege-Semantik ändert sich dadurch.
+   * `batterie` (selbst angebundene Batterie) bietet der Katalog nicht mehr an;
+   * der Wert bleibt nur für das Bearbeiten einer bestehenden Batterie.
    */
   initialTyp?: TypId | null;
   /** Bestehende stabile Komponente: derselbe Assistent, mit ihren Sollwerten. */
@@ -1479,7 +1479,7 @@ export function AnlegenFlow({
     );
   }
 
-  /* Die BATTERIE mit eigenem BMS (P5d): derselbe Assistent wie beim Bearbeiten, als eine Seite. */
+  /* Die BATTERIE mit eigenem BMS (P5d): derselbe Assistent, als eine Seite - nur noch für Bestand (das Anlegen bietet der Katalog nicht mehr an). */
   if (typ === 'batterie') {
     return (
       <BatterieAssistent

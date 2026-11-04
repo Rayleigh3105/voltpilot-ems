@@ -15,7 +15,7 @@ export const plantArticles: HelpArticle[] = [
         'Was die Box schon meldet, steht gestrichelt in der Tabelle und lässt sich übernehmen.',
       ] },
       { id: 'hinzufuegen', title: 'Ein Gerät hinzufügen', paragraphs: [
-        "Ohne passende Vorlage stehen Ladesäulen mit OCPP, Batterien mit eigenem BMS und Modbus-Geräte als eigene Einträge im Katalog. Eine VoltPilot-Box oder eine weitere Anlage legen Sie über das Menü neben „Gerät hinzufügen“ an.",
+        "Ohne passende Vorlage stehen Ladesäulen mit OCPP und Modbus-Geräte als eigene Einträge im Katalog. Eine VoltPilot-Box oder eine weitere Anlage legen Sie über das Menü neben „Gerät hinzufügen“ an.",
       ], steps: [
         '„Gerät hinzufügen“ öffnet den Gerätekatalog. Suchen Sie nach Marke oder Modell, so wie es auf dem Typenschild steht, oder wählen Sie über Art und Marke.',
         'Nach der Wahl öffnet die Einrichten-Seite. Tragen Sie den Anschluss ein; die Box testet dann von selbst und zeigt echte Werte.',

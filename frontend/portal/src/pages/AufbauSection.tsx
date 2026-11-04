@@ -626,7 +626,7 @@ export function AufbauSection({
   };
 
   const WEG_TYP: Record<Exclude<KatalogWeg, 'anlagensteuerung'>, TypId> = {
-    ocpp: 'ladesaeule', bms: 'batterie', modbus: 'eigenbau',
+    ocpp: 'ladesaeule', modbus: 'eigenbau',
   };
 
   /** Was im Katalog gewählt wurde, öffnet den passenden Weg - die Box reist mit. */
