@@ -11,6 +11,8 @@ const werkstattDienst = vi.fn();
 const werkstattFreigaben = vi.fn();
 const werkstattFreigeben = vi.fn();
 const werkstattFreigabeBeenden = vi.fn();
+const fernwartungBox = vi.fn();
+const fernwartung = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -19,6 +21,8 @@ vi.mock('../../admin/adminApi', () => ({
     werkstattFreigaben: () => werkstattFreigaben(),
     werkstattFreigeben: (i: unknown) => werkstattFreigeben(i),
     werkstattFreigabeBeenden: (k: string) => werkstattFreigabeBeenden(k),
+    fernwartungBox: (r: string) => fernwartungBox(r),
+    fernwartung: () => fernwartung(),
   },
 }));
 
@@ -66,6 +70,8 @@ beforeEach(() => {
   werkstattBoxen.mockResolvedValue([box('edge-5t2dcy6')]);
   werkstattFreigaben.mockResolvedValue([freigabe()]);
   werkstattDienst.mockResolvedValue(dienst({}));
+  fernwartungBox.mockRejectedValue(new ApiError(404, 'keine Box'));
+  fernwartung.mockResolvedValue({ rueckmeldungen: [] });
 });
 
 describe('Werkstatt: Übersicht am Rechner', () => {
@@ -122,6 +128,123 @@ describe('Werkstatt: Übersicht am Rechner', () => {
     expect(werkstattFreigeben.mock.calls[0][0]).toMatchObject({ boxArt: 'mango', tage: 30, obergrenze: 20,
       edgeLight: { fassung: 'edge-light-2026.11.1', programmSha256: SHA } });
     expect(await screen.findByTestId('ws-freigabe-fehler')).toHaveTextContent('openwrt.sha256');
+  });
+});
+
+describe('Werkstatt: Einrichtungs-Detailseite einer Box', () => {
+  const fwBox = {
+    id: 'b1', edgeRef: 'edge-5t2dcy6', publicKey: 'k', publicKeyKurz: 'AbCd…xyz=', adresse: '10.10.16.5', status: 'aktiv', notiz: null,
+    angelegtAm: '2026-11-02T10:00:00Z', geaendertAm: '2026-11-02T10:00:00Z', siteId: null, siteName: null, tenantId: null, tenantName: null,
+    laufendeFenster: [], rueckmeldung: null,
+  };
+
+  it('ersetzt die Liste durch die Seite der Box, „Alle Boxen“ führt zurück', async () => {
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const seite = await screen.findByTestId('ws-detail');
+    expect(screen.queryByTestId('ws-boxen')).toBeNull();
+    expect(within(seite).getByTestId('ws-stand')).toHaveTextContent('abgenommen');
+    fireEvent.click(within(seite).getByTestId('ws-zurueck'));
+    expect(await screen.findByTestId('ws-boxen')).toBeInTheDocument();
+    expect(screen.queryByTestId('ws-detail')).toBeNull();
+    expect(window.location.hash).toBe('#/werkstatt');
+  });
+
+  it('zeigt Hardware, Fassungen, Netz und Schlüssel aus Register, Abnahme und Freigabe', async () => {
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const e = await screen.findByTestId('ws-einrichtung');
+    expect(within(e).getByTestId('ws-zeile-hardware')).toHaveTextContent('GL.iNet GL-MT300N-V2');
+    expect(within(e).getByTestId('ws-zeile-edge-light')).toHaveTextContent('edge-light-2026.11.1');
+    expect(within(e).getByTestId('ws-zeile-openwrt')).toHaveTextContent('25.12.5');
+    expect(within(e).getByTestId('ws-zeile-freigabe')).toHaveTextContent('2026-11-mango-1');
+    expect(within(e).getByTestId('ws-zeile-lan')).toHaveTextContent('10.213.0.1/24');
+    expect(within(e).getByTestId('ws-zeile-tunnel')).toHaveTextContent('10.10.16.5');
+    expect(within(e).getByTestId('ws-zeile-host')).toHaveTextContent('SHA256:' + 'Q'.repeat(43));
+    // Das Root-Passwort steht nur verschlüsselt da, nie als Klartext.
+    expect(screen.getByTestId('ws-passwort-age')).toHaveTextContent('nur mit dem age-Schlüssel');
+    expect(screen.getByTestId('ws-detail')).not.toHaveTextContent(/Passwort:/);
+  });
+
+  it('Bindung: ohne Tunnel-Schlüssel steht das ehrlich da, nicht „verbunden“', async () => {
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const b = await screen.findByTestId('ws-bindung');
+    await waitFor(() => expect(b).toHaveTextContent('noch kein Tunnel-Schlüssel hinterlegt'));
+    expect(within(b).getByTestId('ws-zeile-tunnel-schluessel')).toHaveTextContent('nicht hinterlegt');
+    expect(within(b).queryByTestId('ws-verbindung')).toBeNull();
+    expect(within(b).getByRole('link', { name: 'Fernwartung dieser Box' })).toHaveAttribute('href', '#/fernwartung?box=edge-5t2dcy6');
+  });
+
+  it('Bindung: Kunde, Zugang und Verbindung kommen aus der Fernwartung; ohne Meldung des Tunnel-Dienstes „unbekannt“', async () => {
+    fernwartungBox.mockResolvedValue({ ...fwBox, siteName: 'Halle 1', tenantName: 'Muster GmbH' });
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const b = await screen.findByTestId('ws-bindung');
+    await waitFor(() => expect(within(b).getByTestId('ws-zeile-ort')).toHaveTextContent('Halle 1 · Muster GmbH'));
+    expect(within(b).getByTestId('ws-zeile-zugang')).toHaveTextContent('aktiv');
+    expect(within(b).getByTestId('ws-zeile-tunnel-schluessel')).toHaveTextContent('AbCd…xyz=');
+    expect(within(b).getByTestId('ws-verbindung')).toHaveTextContent('Verbindung unbekannt');
+  });
+
+  it('Bindung: ein Fehler der API steht da, ohne die Seite zu kippen', async () => {
+    fernwartungBox.mockRejectedValue(new ApiError(500, 'Datenbank nicht erreichbar'));
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    expect(await within(await screen.findByTestId('ws-bindung')).findByText('Datenbank nicht erreichbar')).toBeInTheDocument();
+    expect(screen.getByTestId('ws-einrichtung')).toBeInTheDocument();
+  });
+
+  it('3MF: drei Downloads mit Dateiname, als Datei ohne Kennung der Box beschriftet', async () => {
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const g = await screen.findByTestId('ws-gehaeuse');
+    expect(within(g).getByTestId('ws-gehaeuse-hinweis')).toHaveTextContent('ohne Referenz und QR-Code dieser Box');
+    for (const name of ['gehaeuse-v04.3mf', 'unterteil.3mf', 'deckel.3mf']) {
+      const a = within(within(g).getByTestId(`ws-gehaeuse-${name}`)).getByRole('link');
+      expect(a).toHaveAttribute('download', name);
+      expect(a).toHaveAttribute('href', expect.stringMatching(/\.3mf(\?.*)?$/));
+    }
+  });
+
+  it('eine Box ohne Abnahme sagt, was fehlt, statt Werte zu erfinden', async () => {
+    const b = box('edge-5t2dcy6');
+    werkstattBoxen.mockResolvedValue([{ ...b, abnahmen: [] }]);
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const e = await screen.findByTestId('ws-einrichtung');
+    expect(within(e).getByTestId('ws-zeile-edge-light')).toHaveTextContent('–');
+    expect(within(e).getByTestId('ws-zeile-host')).toHaveTextContent('–');
+    expect(e).toHaveTextContent('Ohne Abnahme gibt es keinen geprüften Stand');
+    expect(screen.getByTestId('ws-abnahme')).toHaveTextContent('Noch keine Abnahme.');
+  });
+
+  it('frühere Abnahmen stehen aufklappbar unter der neuesten', async () => {
+    const b = box('edge-5t2dcy6');
+    werkstattBoxen.mockResolvedValue([{ ...b, abnahmen: [b.abnahmen[0], { ...b.abnahmen[0], id: 'a0', fassung: 'edge-light-2026.10.6', quelle: 'hand' }] }]);
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const f = await screen.findByTestId('ws-fruehere');
+    expect(f).toHaveTextContent('Frühere Abnahmen (1)');
+    expect(f).toHaveTextContent('edge-light-2026.10.6');
+  });
+
+  it('die Docker-Box hat keine Beschriftung und keine Druckdatei', async () => {
+    const b = box('edge-5t2dcy6');
+    werkstattBoxen.mockResolvedValue([{ ...b, boxArt: 'edge-app', abnahmen: [] }]);
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    expect(await screen.findByTestId('ws-einrichtung')).toHaveTextContent('Docker-Box');
+    expect(screen.queryByTestId('ws-gehaeuse')).toBeNull();
+    expect(screen.queryByTestId('ws-beschriftung')).toBeNull();
+  });
+
+  it('eine unbekannte Referenz führt zurück zur Liste', async () => {
+    window.location.hash = '#/werkstatt?box=edge-unbekannt';
+    render(<WerkstattPage />);
+    expect(await screen.findByTestId('ws-box')).toHaveTextContent('edge-unbekannt steht nicht in der Werkstatt-Liste');
+    fireEvent.click(screen.getByRole('button', { name: 'Alle Boxen' }));
+    expect(await screen.findByTestId('ws-boxen')).toBeInTheDocument();
   });
 });
 

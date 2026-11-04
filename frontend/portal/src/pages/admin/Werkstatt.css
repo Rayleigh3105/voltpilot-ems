@@ -16,13 +16,6 @@
   overflow-wrap: anywhere;
 }
 
-.vp-ws-raster {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--vp-space-4);
-  align-items: start;
-}
-
 .vp-ws-haupt {
   display: flex;
   flex-direction: column;
@@ -220,6 +213,123 @@
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* ── Einrichtungs-Detailseite einer Box ──────────────────────────────────── */
+
+.vp-ws-seite {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-ws-seitenkopf {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--vp-space-3);
+}
+
+.vp-ws-seitentitel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-seitenstand {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--vp-space-2);
+}
+
+.vp-ws-seitenraster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--vp-space-3);
+  align-items: start;
+}
+
+.vp-ws-seitenraster > .vp-ws-karte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-ws-stapel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-ws-stapel > .vp-ws-karte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+
+.vp-ws-breit {
+  grid-column: 1 / -1;
+}
+
+.vp-ws-kartenkopf {
+  margin: 0;
+  font-size: 15px;
+}
+
+.vp-ws-fuss {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ws-dateien {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+
+.vp-ws-datei {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2) var(--vp-space-3);
+  padding-bottom: var(--vp-space-3);
+  border-bottom: 1px solid var(--vp-border);
+}
+
+.vp-ws-datei:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.vp-ws-datei > .vp-ws-spalte {
+  flex: 1 1 16rem;
+}
+
+.vp-ws-datei > .vp-btn {
+  white-space: normal;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .vp-ws-seitenraster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vp-ws-seitenkopf {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vp-ws-seitenstand {
+    justify-content: flex-start;
+  }
 }
 
 /* ── Beschriftung und Abnahme ────────────────────────────────────────────── */

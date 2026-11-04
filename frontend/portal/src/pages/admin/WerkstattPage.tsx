@@ -15,9 +15,8 @@ import { Card } from '../../../designsystem/components/core/Card';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { ApiError } from '../../api';
 import { adminApi } from '../../admin/adminApi';
-import { zeitpunkt } from '../../adminFernwartung';
 import { ErrorState, TableSkeleton } from '../../components/States';
-import { fernwartungHash, istWerkstattWerkbank, parseFernwartungBox, werkstattHash, werkstattWerkbankHash } from '../../nav';
+import { istWerkstattWerkbank, parseFernwartungBox, werkstattHash, werkstattWerkbankHash } from '../../nav';
 import { replaceCurrentNavigation } from '../../navigationBlocker';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
@@ -32,9 +31,10 @@ import {
   type WerkstattFreigabe,
 } from '../../werkstattBank';
 import { AdminPageHead } from './AdminPageHead';
-import { PhasenListe, WerkstattBank } from './WerkstattBank';
+import { WerkstattBank } from './WerkstattBank';
 import { WerkstattFreigabeDialog } from './WerkstattFreigabeDialog';
-import { AbnahmeAnzeige, BeschriftungKarte } from './WerkstattTeile';
+import { STAND_BADGE } from './WerkstattTeile';
+import { WerkstattBoxSeite } from './WerkstattBoxSeite';
 import './Fernwartung.css';
 import './Werkstatt.css';
 
@@ -125,19 +125,21 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
         <WerkstattBank dienst={dienst} freigabe={freigabe} onUebersicht={() => { window.location.hash = werkstattHash(null); }} />
       ) : (
         <>
-          <div className="vp-ws-kopfzeile">
-            <Button onClick={() => { window.location.hash = werkstattWerkbankHash(); }} data-testid="ws-zur-werkbank">
-              An der Werkbank
-            </Button>
-            <Badge variant="warn" data-testid="ws-versand-oben" title={VERSAND_SATZ}>
-              Nicht versenden: Stufe 1
-            </Badge>
-          </div>
+          {auswahl == null && (
+            <div className="vp-ws-kopfzeile">
+              <Button onClick={() => { window.location.hash = werkstattWerkbankHash(); }} data-testid="ws-zur-werkbank">
+                An der Werkbank
+              </Button>
+              <Badge variant="warn" data-testid="ws-versand-oben" title={VERSAND_SATZ}>
+                Nicht versenden: Stufe 1
+              </Badge>
+            </div>
+          )}
           <DienstZeile dienst={dienst} />
           {ladeFehler && <p className="vp-alert vp-alert-warn">{ladeFehler}</p>}
           {aktionsFehler && <p className="vp-alert vp-alert-err">{aktionsFehler}</p>}
 
-          <div className="vp-ws-raster">
+          {auswahl == null ? (
             <div className="vp-ws-haupt">
               <FreigabeKarte
                 freigabe={freigabe}
@@ -149,19 +151,14 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
               <BrueckeKarte dienst={dienst} />
               <BoxTabelle zeilen={zeilen} auswahl={auswahl} onWaehle={waehle} />
             </div>
+          ) : !gewaehlt ? (
             <div className="vp-ws-box" data-testid="ws-box">
-              {auswahl == null ? (
-                <p className="vp-muted" style={{ margin: 0 }}>Eine Box in der Liste wählen: ihr Stand, ihre Belege, ihre Beschriftung.</p>
-              ) : !gewaehlt ? (
-                <>
-                  <p style={{ marginTop: 0 }}>{auswahl} steht nicht in der Werkstatt-Liste.</p>
-                  <Button variant="outline" size="sm" onClick={() => waehle(null)}>Auswahl aufheben</Button>
-                </>
-              ) : (
-                <BoxDetail zeile={gewaehlt} jetzt={jetzt} />
-              )}
+              <p style={{ marginTop: 0 }}>{auswahl} steht nicht in der Werkstatt-Liste.</p>
+              <Button variant="outline" size="sm" onClick={() => waehle(null)}>Alle Boxen</Button>
             </div>
-          </div>
+          ) : (
+            <WerkstattBoxSeite zeile={gewaehlt} boxen={boxen} freigaben={freigaben} jetzt={jetzt} onZurueck={() => waehle(null)} />
+          )}
         </>
       )}
 
@@ -270,14 +267,6 @@ function BrueckeKarte({ dienst }: { dienst: WerkstattDienst | null }) {
   );
 }
 
-const STAND_BADGE: Record<UebersichtZeile['stand'], { variant: 'ok' | 'warn' | 'tint' | 'off'; text: string }> = {
-  abgenommen: { variant: 'ok', text: 'abgenommen' },
-  problem: { variant: 'warn', text: 'Problem' },
-  laeuft: { variant: 'tint', text: 'läuft' },
-  'fertig-ohne-abnahme': { variant: 'warn', text: 'ohne Abnahme' },
-  register: { variant: 'off', text: 'im Register' },
-};
-
 function BoxTabelle({ zeilen, auswahl, onWaehle }: { zeilen: UebersichtZeile[]; auswahl: string | null; onWaehle: (ref: string) => void }) {
   if (zeilen.length === 0) {
     return <p className="vp-muted" data-testid="ws-leer">Noch keine Box in der Werkstatt. Steckt eine Mango am orangen Kabel, erscheint sie hier.</p>;
@@ -315,44 +304,6 @@ function BoxTabelle({ zeilen, auswahl, onWaehle }: { zeilen: UebersichtZeile[]; 
           })}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function BoxDetail({ zeile, jetzt }: { zeile: UebersichtZeile; jetzt: Date }) {
-  const ref = zeile.box as string;
-  return (
-    <div className="vp-ws-detail" data-testid="ws-detail">
-      <h3 style={{ margin: 0 }}>{ref}</h3>
-      <p className="vp-muted" style={{ margin: '2px 0 12px' }}>
-        {zeile.geraet}
-        {zeile.lauf?.freigabe ? ` · Freigabe ${zeile.lauf.freigabe}` : ''}
-      </p>
-      {zeile.geraet === 'Docker-Box' && (
-        <p className="vp-alert vp-alert-warn">Für die Docker-Box gibt es noch keinen Ablauf im Dienst und keine Abnahme (kommt mit der nächsten Stufe).</p>
-      )}
-      {zeile.lauf && <PhasenListe lauf={zeile.lauf.stand} />}
-      {zeile.lauf?.grund && zeile.stand === 'problem' && (
-        <p className="vp-alert vp-alert-warn" data-testid="ws-grund">{zeile.lauf.grund}</p>
-      )}
-      {zeile.abnahme ? (
-        <details className="vp-ws-aufklapp" open data-testid="ws-belege-auf">
-          <summary>Abnahme und Belege</summary>
-          <AbnahmeAnzeige a={zeile.abnahme} jetzt={jetzt} />
-        </details>
-      ) : (
-        <p className="vp-muted">Noch keine Abnahme.</p>
-      )}
-      {zeile.geraet === 'Mango' && (
-        <details className="vp-ws-aufklapp">
-          <summary>Beschriftung des Gehäuses</summary>
-          <BeschriftungKarte edgeRef={ref} />
-        </details>
-      )}
-      <p style={{ margin: '12px 0 0' }}>
-        <a href={fernwartungHash(ref)}>Fernwartung dieser Box</a>
-        {zeile.abnahme && <> · zuletzt {zeitpunkt(zeile.abnahme.erfasstAm, jetzt)}</>}
-      </p>
     </div>
   );
 }

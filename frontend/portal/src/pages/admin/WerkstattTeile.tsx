@@ -9,6 +9,7 @@ import { zeitpunkt } from '../../adminFernwartung';
 import { Befehl } from '../../components/FernwartungSsh';
 import { qrCode, qrPfad } from '../../qrCode';
 import { beschriftung, PRUEFUNGEN, type WerkstattAbnahme } from '../../werkstatt';
+import type { UebersichtZeile } from '../../werkstattBank';
 
 /** Ein Modul des Codes auf dem Gehäuse, in Millimetern; dazu vier Module Ruhezone. */
 const MODUL_MM = 0.84;
@@ -127,3 +128,12 @@ export function AbnahmeAnzeige({ a, jetzt }: { a: WerkstattAbnahme; jetzt: Date 
     </dl>
   );
 }
+
+/** Wie der Stand einer Box als Abzeichen heißt (Übersicht und Detailseite). */
+export const STAND_BADGE: Record<UebersichtZeile['stand'], { variant: 'ok' | 'warn' | 'tint' | 'off'; text: string }> = {
+  abgenommen: { variant: 'ok', text: 'abgenommen' },
+  problem: { variant: 'warn', text: 'Problem' },
+  laeuft: { variant: 'tint', text: 'läuft' },
+  'fertig-ohne-abnahme': { variant: 'warn', text: 'ohne Abnahme' },
+  register: { variant: 'off', text: 'im Register' },
+};

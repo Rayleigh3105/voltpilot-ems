@@ -13,7 +13,8 @@ Seite zeigt, was er tut; Handschritte, Passwort-Generator und Probe-Knöpfe gibt
 | Teil | Was | Wo |
 |---|---|---|
 | Werkbank (M1–M6) | Die geführten Bildschirme für die Person an der Werkbank: Box-Art wählen (Raspberry Pi kommt mit V2), Mango anschließen, Fortschritt in sechs Phasen mit Restzeit, der eine Handgriff am Startlader, Fertig mit Referenz und QR-Code, Problem mit Grund. Kein „Weiter“-Knopf: Der Dienst merkt Handgriffe selbst. Fachwörter stehen nur unter „Details für Technik“. „Nochmal versuchen“ heißt: Kabel kurz abziehen; einen Befehlsweg vom Portal zum Dienst gibt es nicht. | `WerkstattBank.tsx`, `werkstattBank.ts` |
-| Übersicht (D1) | Freigabe („Werkstatt freigeben“, „Freigabe beenden“), Werkbank-Brücke, die Boxen mit ihrem Stand (läuft, Problem, abgenommen, nur im Register) und, für die gewählte Box, ihre Phasen, die Abnahme mit den Belegen und die Beschriftung. | `WerkstattPage.tsx` |
+| Übersicht (D1) | Freigabe („Werkstatt freigeben“, „Freigabe beenden“), Werkbank-Brücke und die Boxen mit ihrem Stand (läuft, Problem, abgenommen, nur im Register). Eine Box in der Liste öffnet ihre Detailseite. | `WerkstattPage.tsx` |
+| Einrichtungs-Detailseite (`?box=<referenz>`) | Alles zu einer Box an einem Ort, nur Anzeige: Einrichtung (Hardware, Edge-Light-Fassung, OpenWrt und Freigabe, LAN-Netz, Tunnel-Adresse, Host-Schlüssel), Bindung und Fernwartung (Tunnel-Schlüssel, Zugang, Kunde und Anlage, Verbindung laut Tunnel-Dienst; ohne Tunnel-Schlüssel steht dort „noch nicht gekoppelt“), die Phasen des Laufs, die Abnahme mit den Belegen samt früheren Abnahmen, die Beschriftung und der Download der Gehäuse-Druckdatei (3MF, siehe unten). Fehlt die Abnahme, bleiben ihre Felder leer („–“): Unbekannt ist keine Angabe. Das Root-Passwort steht nur verschlüsselt da, wie an der Abnahme. | `WerkstattBoxSeite.tsx`, `werkstattEinrichtung.ts` |
 | Stand des Dienstes | Die [Ansicht](contracts/werkstatt-ansicht-v1.md) über `GET /api/v1/admin/werkstatt/dienst`, die Seite fragt alle 5 s nach. Ist die letzte Meldung älter als 60 s, steht dort „Der Werkstatt-Dienst meldet sich nicht“ statt eines alten Stands. | – |
 | Beschriftung (Entscheid 8, geändert) | Kein Aufkleber: Referenz in Klarschrift und QR-Code mit dem Direktlink kommen aufs Gehäuse. Die Seite zeigt den Inhalt und den QR-Code, gibt eine SVG-Vorlage in echter Größe (Modul 0,84 mm) zum Probedruck auf Papier und nennt den Befehl für die Druckdatei des Gehäuses (`bauen.sh --referenz <referenz>` im Gehäuse-Programm, [Kennung](../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md)). Was gedruckt wird, ist Modul für Modul, was die Seite zeigt: beide prüfen gegen [werkstatt-beschriftung.json](contracts/werkstatt-beschriftung.json). | `BeschriftungKarte`, `qrCode.ts` |
 | Abnahme | Das Abnahmeprotokoll (das „Übergabeprotokoll“ der Werkstatt-Regel in `edge-light/docs/mango.md`): Host-Schlüssel, Fassung, die neun Prüfungen der Regel (seit K5 mit „Update-bereit“: signierte Fassung als bestätigter Stand, Vertrauens-Set geprüft, Box-Art Edge Light; ohne diesen Beleg nimmt der Dienst keine Abnahme an), beim Dienst je Prüfung sein Beleg, Tunnel-Adresse, LAN-Netz, das Fenster der Probe, wer, wann. Append-only; eine neue Abnahme ist ein neuer Eintrag. | Tabelle `werkstatt_abnahme` |
@@ -52,6 +53,19 @@ nimmt die Zertifikatsanfrage nur noch diesen Schlüssel an (409 `schluessel_fest
 dafür. Ein anderer Schlüssel braucht einen Code für einen Tausch, solange die Box ungekoppelt ist. Für eine
 gekoppelte Box gibt es keinen Code. Boxen, die nie eingelöst haben, verhalten sich wie bisher. Auf dem Weg der
 Zertifikatsanfrage prüft die API jetzt auch das Prüfzeichen einer erzeugten Kennung.
+
+## Gehäuse-Druckdatei zum Herunterladen
+
+Die Detailseite einer Mango bietet drei 3MF an: `gehaeuse-v04.3mf` (Unterteil und Deckel auf einer Platte), `unterteil.3mf` und `deckel.3mf`.
+Es sind die eingecheckten Dateien des Gehäuse-Programms (`edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/`, Stand v0.4), als Kopie in `frontend/portal/src/assets/gehaeuse/`, weil das Portal-Image nur seinen Ordner kennt.
+`werkstattEinrichtung.test.ts` vergleicht die Kopien mit `SHA256SUMS` des Gehäuses; wer die Druckdateien dort neu übernimmt (`abgleich uebernehmen`), kopiert sie auch ins Portal.
+nginx liefert sie als gehashte Assets mit `Content-Type: model/3mf` (`test/cache-smoke.sh`, Prüfung 11).
+
+**Das ist nicht die Datei dieser Box.**
+Das Unterteil mit Referenz und QR-Code der einzelnen Box baut der Werkstatt-Dienst nach der Übergabe in seine Ablage (`gehaeuse-<referenz>.3mf`, [Runbook](../services/werkstatt-dienst/docs/runbook.md#gehäuse-druckdatei)).
+Er reicht sie nur über seine Loopback-Anzeige aus (`kubectl port-forward`); an Portal und API gibt er sie nicht weiter.
+Die Seite sagt das beim Download.
+Was von den Teilen gedruckt und bestätigt ist, steht in [druck/README.md](../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/README.md), die Seite wiederholt es nur.
 
 ## Die Abnahme
 
@@ -128,6 +142,7 @@ Ansprechpartner), und bei einer Box eines anderen Kontos eine eigene Seite, die 
 
 | Was | Warum noch nicht |
 |---|---|
+| Die 3MF mit Kennung dieser Box im Portal | Sie liegt nur in der Ablage des Werkstatt-Dienstes. Soll das Portal sie anbieten, lädt der Dienst sie nach dem Bau in die API hoch (neue Dienst-Route, Tabelle, Admin-Download, Vertrag); das ändert den Dienst und ist ein eigener Auftrag. |
 | Probedruck der Kennung | Die Druckdatei je Box gibt es (`bauen.sh --referenz <referenz>`, [Kennung](../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md)); geprüft ist sie bis zum G-Code, gedruckt nicht. Ob ein Telefon den gedruckten Code liest, zeigt erst der Probedruck des Betreibers. |
 | Werkbank-Bildschirme für den Raspberry Pi | Der Dienst richtet in V1 nur die Mango ein; die Kachel „Raspberry Pi“ ist gesperrt, bis V2 den Ablauf bringt. |
 | Zweiter Faktor am Portal | Entscheid 10b: später |
