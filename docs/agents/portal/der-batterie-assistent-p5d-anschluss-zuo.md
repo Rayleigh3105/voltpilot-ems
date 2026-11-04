@@ -1,5 +1,9 @@
 # Der BATTERIE-ASSISTENT (P5d): Anschluss, Zuordnung, Kurve — und die Herkunft des Ladestands
 
+> **Stand 04.11.2026:** Der Gerätekatalog bietet „Batterie mit eigenem BMS" nicht mehr an (kein Katalogeintrag, keine Stichwörter, die Art „Batterie" zeigt nur den Hinweis zum Hybrid-Wechselrichter).
+> Der Assistent bleibt für das BEARBEITEN einer bestehenden Batterie (`typFuerZeile`); die API-Routen `/components/battery*`, die Box-Knoten und die Verträge sind unverändert.
+> Die Vollentfernung wartet auf die Bestandsfrage des Betreibers.
+
 Die Bedien-Oberfläche des BMS-unabhängigen Batterie-Anschlusses (Konzept
 `vp-deye-diybms-luecke-l5` §3.2b, Bauplan-Paket P5d). Sie setzt auf P5 (Ebene 1:
 Entitätstyp `user-defined-battery` + `vp.mqtt.read`) und P5b (Ebene 2:

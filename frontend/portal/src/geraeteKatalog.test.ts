@@ -90,7 +90,7 @@ describe('kategorieVon', () => {
 });
 
 describe('katalogChips', () => {
-  it('zählt je Art - die Wege ohne Vorlage zählen mit', () => {
+  it('zählt je Art - die Wege ohne Vorlage zählen mit, die Batterie ohne Modell trägt keine Zahl', () => {
     const chips = katalogChips(ALLE, [VORLAGE]);
     expect(chips.map((c) => `${c.label} ${c.anzahl ?? '-'}`)).toEqual([
       'Alle -',
@@ -98,7 +98,7 @@ describe('katalogChips', () => {
       'Laden 2',
       // Der Shelly-Schalter zählt nicht: als Modell steht er nicht im Katalog (VoltPilotGATE, 02.11.2026).
       'Schalten 1',
-      'Batterie 1',
+      'Batterie -',
       'Zähler -',
       'Selbst beschreiben 2',
     ]);
@@ -118,7 +118,6 @@ describe('katalogAnsicht — blättern', () => {
       'Wechselrichter: Deye, KACO',
       'Laden: go-e Charger, Ladesäule mit OCPP 1.6',
       'Schalten: Ebyte M31-AXAX8080G-U (8 Eingänge, 8 Relais)',
-      'Batterie: Batterie mit eigenem BMS',
       'Selbst beschreiben: Modbus-TCP-Gerät, Wärmepumpe Keller',
       'Weitere Geräte: Anlagensteuerung (SPS mit VoltPilot-Bild)',
     ]);
@@ -150,6 +149,7 @@ describe('katalogAnsicht — blättern', () => {
     expect(ansicht({ chip: 'laden' }).hinweis).toMatch(/meldet sich selbst bei Ihrer Box/);
     expect(ansicht({ chip: 'schalten' }).hinweis).toMatch(/jeden Ausgang einem Verbraucher/);
     expect(ansicht({ chip: 'batterie' }).hinweis).toMatch(/Fertige Batterie-Modelle gibt es im Katalog noch nicht/);
+    expect(ansicht({ chip: 'batterie' }).gruppen).toEqual([]);
   });
 
   // Ein einzelner Schaltausgang als eigenes Gerät wäre ein Messgerät ohne Rolle, das die Box nicht anwendet
@@ -192,7 +192,8 @@ describe('katalogAnsicht — Suche', () => {
 
   it('findet die Wege über ihre Stichwörter', () => {
     expect(gruppen(ansicht({ q: 'ocpp' }))).toEqual(['Laden: Ladesäule mit OCPP 1.6']);
-    expect(gruppen(ansicht({ q: 'seplos' }))).toEqual(['Batterie: Batterie mit eigenem BMS']);
+    // Die Batterie mit eigenem BMS bietet der Katalog nicht mehr an - auch nicht über ihre alten Stichwörter.
+    for (const q of ['seplos', 'diybms', 'bms']) expect(gruppen(ansicht({ q }))).not.toContain('Batterie: Batterie mit eigenem BMS');
   });
 
   it('findet eigene Vorlagen und was die Box meldet', () => {
@@ -203,11 +204,11 @@ describe('katalogAnsicht — Suche', () => {
   it('schlägt ohne Treffer die Wege vor - nie ein stiller leerer Bereich', () => {
     const a = ansicht({ q: 'keba' });
     expect(a.leer).toMatch(/Kein Eintrag passt zu „keba"/);
-    expect(gruppen(a)).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Batterie mit eigenem BMS, Modbus-TCP-Gerät, Anlagensteuerung (SPS mit VoltPilot-Bild)']);
+    expect(gruppen(a)).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Modbus-TCP-Gerät, Anlagensteuerung (SPS mit VoltPilot-Bild)']);
   });
 
   it('bleibt in der gewählten Art', () => {
-    expect(gruppen(ansicht({ q: 'go-e', chip: 'wr' }))).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Batterie mit eigenem BMS, Modbus-TCP-Gerät, Anlagensteuerung (SPS mit VoltPilot-Bild)']);
+    expect(gruppen(ansicht({ q: 'go-e', chip: 'wr' }))).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Modbus-TCP-Gerät, Anlagensteuerung (SPS mit VoltPilot-Bild)']);
     expect(gruppen(ansicht({ q: 'go-e', chip: 'laden' }))).toEqual(['Laden: go-e Charger']);
   });
 
@@ -233,7 +234,7 @@ describe('wahlFuer', () => {
     expect(wahlFuer(marke, 'alle')).toBeNull();
     expect(wahlFuer(a.gruppen[0].eintraege[0], 'alle')).toMatchObject({ art: 'fund' });
     expect(wahlFuer(a.gruppen[2].eintraege[1], 'alle')).toEqual({ art: 'weg', weg: 'ocpp' });
-    expect(wahlFuer(a.gruppen[5].eintraege[1], 'alle')).toMatchObject({ art: 'vorlage' });
+    expect(wahlFuer(a.gruppen[4].eintraege[1], 'alle')).toMatchObject({ art: 'vorlage' });
   });
 });
 

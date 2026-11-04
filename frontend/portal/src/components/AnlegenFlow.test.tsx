@@ -1398,7 +1398,7 @@ describe('AnlegenFlow · der Batterie-Weg (P5d)', () => {
     standardMocks();
   });
 
-  it('führt vom Batterie-Weg des Katalogs in den Batterie-Assistenten', async () => {
+  it('führt den Batterie-Weg (nur noch für Bestand, der Katalog bietet ihn nicht mehr an) in den Batterie-Assistenten', async () => {
     render(<AnlegenFlow siteId="s1" initialTyp="batterie" onClose={() => {}} onSaved={() => {}} />);
     expect(await screen.findByTestId('anschlussart-mqtt')).toBeVisible();
     // NICHT der Katalog-Weg: kein Anschluss einer Vorlage, sondern der des BMS.

@@ -39,11 +39,7 @@ function symbolFuer(e: KatalogEintrag, chip: KatalogChip): { kategorie: AufbauKa
     case 'vorlage':
       return { kategorie: 'navy', icon: 'file-text' };
     case 'weg':
-      return e.weg === 'ocpp'
-        ? { kategorie: 'ev', icon: 'link' }
-        : e.weg === 'bms'
-          ? KATEGORIE_SYMBOL.batterie
-          : KATEGORIE_SYMBOL.selbst;
+      return e.weg === 'ocpp' ? { kategorie: 'ev', icon: 'link' } : KATEGORIE_SYMBOL.selbst;
     case 'modell':
       return KATEGORIE_SYMBOL[kategorieVon(e.template)];
     default:
