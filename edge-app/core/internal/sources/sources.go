@@ -390,6 +390,22 @@ func (s Source) busEntry() map[string]any {
 		conn["unit_id"] = s.Connection.UnitID
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
 		conn["invert_batt_sign"] = s.Connection.InvertBattSign
+	case inverter.CommHuaweiModbus:
+		// Huawei SUN2000 (+ LUNA2000) over its own Modbus TCP server (mirrors
+		// inverter.Selection.BusPayload): the unit id (0 direct, mostly 1
+		// behind the Smart Dongle) and the two READ sign hatches - without them
+		// a second SUN2000 as an Erzeuger or Netz source would be read at unit 0
+		// with the factory signs, whatever the form said.
+		conn["unit_id"] = s.Connection.UnitID
+		conn["profile"] = s.Connection.Profile
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		conn["invert_batt_sign"] = s.Connection.InvertBattSign
+	case inverter.CommKacoSerial:
+		// Powador behind an RS485-to-Ethernet converter: the RS485 bus address
+		// (1-32) is the reader's one addressing field - without it every
+		// Powador source would be asked as "#010" (scout vp-kundenanlage-drei-
+		// geraete: the saved address never reached the bus config).
+		conn["address"] = s.Connection.Address
 	case inverter.CommFroniusSunSpec, inverter.CommSunSpecTCP:
 		// SunSpec-live over Modbus TCP (mirrors inverter.Selection.BusPayload);
 		// `sunspec_tcp` is the SAME way under a brand-neutral id (IsSunSpecTCP).

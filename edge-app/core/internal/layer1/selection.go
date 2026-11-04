@@ -8,12 +8,16 @@ import (
 	"strings"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/deyedecode"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/huaweidecode"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kacoserial"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/solarmanv5"
 )
 
 // Communication methods (inverter.Comm* - the routing key of the selection).
 const (
-	CommSolarmanV5 = "solarman_v5"
+	CommSolarmanV5   = "solarman_v5"
+	CommHuaweiModbus = "huawei_modbus"
+	CommKacoSerial   = "kaco_serial"
 )
 
 // selection is the retained edge/inverter/config payload as Layer 1 reads it
@@ -157,4 +161,78 @@ func toBlocks(in []solarmanv5.Block) []deyedecode.Block {
 		out = append(out, deyedecode.Block{Start: int(b.Start), Regs: b.Regs})
 	}
 	return out
+}
+
+// huaweiPlan is the resolved read plan for a Huawei SUN2000 (+ LUNA2000) over
+// its own Modbus TCP server - the Go twin of the router's huawei_modbus branch
+// (build-flows.js: port 502, unit_id 0, the two sign hatches) and of
+// huawei-decode.js makeHuaweiReader's target handling.
+type huaweiPlan struct {
+	IP     string
+	Port   int
+	Addr   string
+	UnitID byte
+	Reads  []huaweidecode.ReadSpec
+	Opts   huaweidecode.Options
+}
+
+func planHuawei(s *selection) (*huaweiPlan, string) {
+	conn := s.Connection
+	ip, _ := conn["ip"].(string)
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return nil, "keine IP-Adresse"
+	}
+	if !huaweidecode.Known(s.Family) {
+		return nil, "unbekannte Huawei-Familie: " + s.Family
+	}
+	port := int(num(conn["port"], huaweidecode.DefaultPort))
+	if port <= 0 || port > 65535 {
+		port = huaweidecode.DefaultPort
+	}
+	// makeHuaweiReader: an integer >= 0 is taken, anything else is the factory
+	// unit 0 (a Smart Dongle commonly answers on 1 - the form decides).
+	unit := num(conn["unit_id"], huaweidecode.DefaultUnitID)
+	if unit < 0 || unit != math.Trunc(unit) {
+		unit = huaweidecode.DefaultUnitID
+	}
+	return &huaweiPlan{
+		IP: ip, Port: port, Addr: netJoin(ip, port), UnitID: byte(int(unit) & 0xff),
+		Reads: huaweidecode.PlanReads(s.Family),
+		Opts: huaweidecode.Options{
+			InvertGridSign: truthy(conn["invert_grid_sign"]),
+			InvertBattSign: truthy(conn["invert_batt_sign"]),
+		},
+	}, ""
+}
+
+// kacoSerialPlan is the resolved read plan for a KACO Powador of the serial
+// generation behind a transparent RS485-to-Ethernet converter - the Go twin of
+// the router's kaco_serial branch (port 8899, bus address 1..32).
+type kacoSerialPlan struct {
+	IP      string
+	Port    int
+	Addr    string
+	Address int
+}
+
+func planKacoSerial(s *selection) (*kacoSerialPlan, string) {
+	conn := s.Connection
+	ip, _ := conn["ip"].(string)
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return nil, "keine IP-Adresse"
+	}
+	if !kacoserial.Known(s.Family) {
+		return nil, "unbekannte KACO-Familie: " + s.Family
+	}
+	port := int(num(conn["port"], kacoserial.DefaultPort))
+	if port <= 0 || port > 65535 {
+		port = kacoserial.DefaultPort
+	}
+	address := num(conn["address"], kacoserial.DefaultAddress)
+	if address < kacoserial.MinAddress || address > kacoserial.MaxAddress || address != math.Trunc(address) {
+		return nil, "RS485-Adresse muss zwischen 1 und 32 liegen"
+	}
+	return &kacoSerialPlan{IP: ip, Port: port, Addr: netJoin(ip, port), Address: int(address)}, ""
 }

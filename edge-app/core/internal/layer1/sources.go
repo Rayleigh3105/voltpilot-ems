@@ -2,6 +2,7 @@ package layer1
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -14,15 +15,20 @@ import (
 const TopicSourcesConfig = sources.TopicConfig
 
 // sourcePlan is one source Edge Light reads - the Go twin of a plan the
-// flow's "sources-store" node builds (build-flows.js). Only go-e today; every
+// flow's "sources-store" node builds (build-flows.js): a go-e over HTTP, a
+// Huawei SUN2000 over Modbus TCP or a Powador behind its RS485 converter. Every
 // other transport is named in the log, never silently skipped.
 type sourcePlan struct {
 	ID   string
 	Role string
+	Comm string
 	IP   string
 	Port int
-	URL  string
+	URL  string // goe_http_api: the status URL
 	Addr string // the lane key: one request at a time per device
+
+	Huawei *huaweiPlan     // huawei_modbus
+	Kaco   *kacoSerialPlan // kaco_serial
 }
 
 // sourceNote is one line of the store node's log: warn = NICHT VERDRAHTET.
@@ -32,10 +38,12 @@ type sourceNote struct {
 }
 
 // The transports the flow can read as a source. Edge Light names the ones it
-// does not read yet instead of calling them unknown.
+// does not read yet instead of calling them unknown. (kaco_serial and
+// huawei_modbus are read here; the Docker box's source executor does not know
+// them yet - build-flows.js, scout vp-kundenanlage-drei-geraete §2.5.)
 var knownSourceComms = map[string]bool{
 	"modbus_tcp": true, "fronius_sunspec": true, "sunspec_tcp": true, "kaco_http": true,
-	"kaco_modbus": true, "kaco_serial": true, "goe_http_api": true, "solarman_v5": true, "fronius_solar_api": true,
+	"kaco_modbus": true, "goe_http_api": true, "solarman_v5": true, "fronius_solar_api": true,
 }
 
 // parseSourcesConfig is vp-sources-config (structural validation) followed by
@@ -106,12 +114,30 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 		case comm == goeapi.Family:
 			port := int(num(conn["port"], 80))
 			plans = append(plans, sourcePlan{
-				ID: id, Role: role, IP: ip, Port: port,
+				ID: id, Role: role, Comm: comm, IP: ip, Port: port,
 				// The store node always writes the port into the URL.
 				URL:  "http://" + ip + ":" + strconv.Itoa(port) + goeapi.StatusPath + "?filter=" + goeapi.StatusFilter,
 				Addr: ip + ":" + strconv.Itoa(port),
 			})
 			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): goe_http_api " + ip + ":" + strconv.Itoa(port) + " -> Leseplan (go-e /api/status)"})
+		case comm == CommHuaweiModbus:
+			// The same plan as for the primary inverter (the source entry
+			// carries the same connection fields).
+			hp, why := planHuawei(&selection{Family: family, Communication: comm, Connection: conn})
+			if hp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: hp.IP, Port: hp.Port, Addr: hp.Addr, Huawei: hp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): huawei_modbus " + hp.Addr + " Unit " + strconv.Itoa(int(hp.UnitID)) + " -> Leseplan (Huawei SUN2000, 4 Bloecke)"})
+		case comm == CommKacoSerial:
+			kp, why := planKacoSerial(&selection{Family: family, Communication: comm, Connection: conn})
+			if kp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: kp.IP, Port: kp.Port, Addr: kp.Addr, Kaco: kp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): kaco_serial " + kp.Addr + " Adresse " + strconv.Itoa(kp.Address) + " -> Leseplan (Powador #" + fmt.Sprintf("%02d", kp.Address) + "0)"})
 		case knownSourceComms[comm]:
 			notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + "): Edge Light liest die Anbindung \"" + comm + "\" als Energiequelle noch nicht"})
 		default:
