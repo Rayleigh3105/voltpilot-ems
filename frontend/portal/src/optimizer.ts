@@ -186,6 +186,26 @@ export function verdict(diag: OptimizerDiagnostics, siteName: string): Verdict {
   };
 }
 
+/**
+ * The honesty line for a run that no longer covers a whole day. Runs older
+ * than the compaction window keep only the quarter hours in which they were
+ * the plan in force (api migration V20261104133000: superseded versions of
+ * older slots are deleted), so a stored run from last month typically holds
+ * two slots. Every sum on this page - and the verdict's "/Tag" - then spans
+ * only those slots; this sentence says so. Null for a run that covers a day
+ * or more (a complete 48-h horizon) and for an empty run (its own empty
+ * state speaks).
+ */
+export function verdichtungsHinweis(diag: OptimizerDiagnostics): string | null {
+  const n = diag.slots.length;
+  if (n === 0 || n * slotHours(diag.slotMinutes) >= 24) return null;
+  const viertel = diag.slotMinutes === 15;
+  const einer = viertel ? 'eine Viertelstunde' : 'ein Zeitschritt';
+  const mehrere = viertel ? 'Viertelstunden' : 'Zeitschritte';
+  const schritte = n === 1 ? einer : `${n} ${mehrere}`;
+  return `Von diesem Lauf ${n === 1 ? 'ist' : 'sind'} nur noch ${schritte} gespeichert - die, in denen er der gültige Fahrplan war. Ältere Läufe werden so verdichtet; alle Zahlen hier, auch „pro Tag“, beziehen sich nur auf diese ${mehrere}.`;
+}
+
 /** One row of the explain-a-slot breakdown. */
 export interface WaterfallRow {
   key: string;

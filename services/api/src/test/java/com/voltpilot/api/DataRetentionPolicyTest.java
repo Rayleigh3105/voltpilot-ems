@@ -92,6 +92,13 @@ class DataRetentionPolicyTest {
                 .as("weather_forecast retention policy").isTrue();
         assertThat(hasJob("policy_retention", "schedule"))
                 .as("schedule retention policy").isTrue();
+        assertThat(hasRetentionOf("schedule", 180))
+                .as("schedule retention stays exactly 180 days next to the compaction job").isTrue();
+        // Since V20261104133000 the superseded runs of older slots are compacted
+        // by an hourly job (ScheduleKompaktierungJobTest proves its behaviour);
+        // the chunk-dropping retention above stays untouched beside it.
+        assertThat(hasProcedureJob("schedule_compaction_job"))
+                .as("hourly schedule compaction job").isTrue();
 
         // ...and compression must NOT have been (attempted or) enabled on them.
         assertThat(compressionEnabled("weather_forecast"))

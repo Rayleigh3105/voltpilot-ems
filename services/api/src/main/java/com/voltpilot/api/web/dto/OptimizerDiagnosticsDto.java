@@ -37,8 +37,11 @@ import java.util.UUID;
  * requested {@code date} or the shown run's day), and
  * {@code firstRunDate}/{@code lastRunDate} carry the site's covered run-day
  * range so the UI can bound its date picker (all three null for a site
- * without any plan). The hypertable keeps every run - the former unscoped
- * newest-30 list only ever reached ~7.5 hours back at the 15-min MPC cadence.
+ * without any plan). The hypertable keeps every run; a run older than the
+ * compaction window (48 h by default, api migration V20261104133000) keeps
+ * only the slots in which it was the plan in force, typically two - the
+ * former unscoped newest-30 list only ever reached ~7.5 hours back at the
+ * 15-min MPC cadence.
  *
  * <p>{@code priceSource} echoes WHICH rule sets the site's grid-import price
  * today (report vp-nacht-bezug-e7 Stufe 2 admin echo): {@code fest} (flat

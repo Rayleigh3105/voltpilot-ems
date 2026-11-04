@@ -12,6 +12,7 @@ import {
   parseField,
   pvAnchorCard,
   slotWaterfall,
+  verdichtungsHinweis,
   verdict,
 } from './optimizer';
 import type { OptimizerDiagnostics, OptimizerSlot } from './optimizerApi';
@@ -178,6 +179,35 @@ describe('verdict', () => {
     expect(v.tone).toBe('neutral');
     expect(v.eur).toBeNull();
     expect(v.text).toContain('kein bewertbarer Plan');
+  });
+});
+
+describe('verdichtungsHinweis', () => {
+  const vollerTag = Array.from({ length: 96 }, (_, i) =>
+    slot({ time: `2026-06-12T${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}:00Z` }),
+  );
+
+  it('says nothing for a run that covers a day or more', () => {
+    expect(verdichtungsHinweis(diag(vollerTag))).toBeNull();
+    expect(verdichtungsHinweis(diag([...vollerTag, ...vollerTag]))).toBeNull();
+  });
+
+  it('says nothing for an empty run - its empty state speaks', () => {
+    expect(verdichtungsHinweis(diag([]))).toBeNull();
+  });
+
+  it('names the kept quarter hours of a compacted older run', () => {
+    const zwei = verdichtungsHinweis(diag([slot(), slot({ time: '2026-06-12T10:15:00Z' })]));
+    expect(zwei).toContain('nur noch 2 Viertelstunden gespeichert');
+    expect(zwei).toContain('pro Tag');
+    expect(verdichtungsHinweis(diag([slot()]))).toContain('ist nur noch eine Viertelstunde gespeichert');
+  });
+
+  it('counts by slot length, not by slot number', () => {
+    // 24 hour-long slots are a whole day; 23 are not.
+    const stunden = Array.from({ length: 24 }, () => slot());
+    expect(verdichtungsHinweis(diag(stunden, { slotMinutes: 60 }))).toBeNull();
+    expect(verdichtungsHinweis(diag(stunden.slice(1), { slotMinutes: 60 }))).toContain('23 Zeitschritte');
   });
 });
 
