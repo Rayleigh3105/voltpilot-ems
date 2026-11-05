@@ -62,6 +62,24 @@ cd "$(dirname "$0")/.."
 #   258,08  main 05.11.2026 (Grenze 258, rot) - viele kleine Zuwächse seit 23.10.
 #   257,73  Bestätigungsseite der Zustellweg-Mail (`ZustellwegBestaetigenScreen`) nur noch als
 #           `lazy` in `main.tsx` - sie braucht allein, wer den Link aus der Mail öffnet. Die Grenze bleibt 258.
+#   243,55  Luft-Auftrag 05.11.2026 (Grenze 258, 14,45 kB Luft) - drei Schnitte, s.u.
+#
+# WAS DER LUFT-AUFTRAG HERAUSGENOMMEN HAT (−14,45 kB gz, ohne eine Funktion zu ändern; Belege im PR-Text):
+#   Dreimal hing ein ganzes Fach-Modul im ersten Bild, weil EIN winziger Aufruf an ihm hing (die ersten beiden
+#   Zeilen), einmal ein Dialog, den nur der Anpassen-Modus öffnet (die dritte). Rollup
+#   beschneidet ein Modul mit Top-Level-Code (Tabellen, `new Set`, Objekt-Literale) nicht, auch wenn der
+#   Einstieg nur eine Zeile braucht - wie bei V-01 und dem UEMS-Schnitt gilt: die Hilfe zieht in ein
+#   eigenes Modul, das alte Modul reicht sie unverändert weiter.
+#   −7,05  `komponentenHealth.ts` (statt `komponenten.ts`) und `verlaufEntity.ts` (statt `verlauf.ts`):
+#          `livePuls.ts` brauchte von beiden genau eine Zeile (`toComponentHealth`, `V1_ENTITY`), zog aber
+#          Komponenten-Fachmodul samt Rollen, Pin-Abbildung und Messwert-Baum mit.
+#   −5,62  `strompreisGate.ts` (statt `strompreis.ts`): die Anlagen-Seite braucht nur das Tor
+#          `gateStrompreis`; dahinter hingen Film-Wortlaut, Preisfenster und Bezugspreis-Vorschau.
+#   −1,84  `EigeneAuswertungDialog` in `AnlagenPage.tsx` nur noch als `lazy`: er öffnet allein aus dem
+#          Anpassen-Modus, der das Stück beim Aufgehen vorholt (`ladeEigeneAuswertung`, EINE
+#          Aufrufstelle) - der Klick findet es schon da, kein Ladeschirm, kein Layout-Springen.
+#   Wächter im Quelltext: `src/einstiegLuft.test.ts` (die Module oben bleiben aus dem Einstieg).
+#   Die Grenze bleibt 258: die 14 kB Luft sind für die nächsten Features da, nicht für die Ratsche.
 #
 # WARUM DIE GRENZE AM 19.10.2026 VON 257 AUF 258 GEHT (vp-bundle-b8-nachladung, Belege im
 #   PR-Text): B8s EIGENES Gewicht ist vollständig draußen — `push.ts` und sein Daten-Zwilling

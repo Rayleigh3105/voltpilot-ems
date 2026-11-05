@@ -77,10 +77,14 @@ import { deviceLiveStatus } from './api';
 import { channelLabel } from './channels';
 import { deviceName } from './entityLabel';
 import { fmtNum } from './format';
+import { toComponentHealth, type ComponentHealth } from './komponentenHealth';
 import { anlagensteuerungGeraetId, komponenteGeraetId } from './geraetAdresse';
 import { EV_CHARGER } from './ladepunkte';
 import { reconcileProducerPv } from './pvReconcile';
 import { adoptableSources, suggestEntityType, type AdoptableSource } from './rollen';
+
+// Das Modul `komponentenHealth.ts` trägt die Abbildung; hier bleibt sie unter dem alten Namen erreichbar.
+export { toComponentHealth, type ComponentHealth };
 
 /** The customer-facing component role buckets. */
 export type ComponentRole = 'pv' | 'storage' | 'grid' | 'house' | 'consumer';
@@ -94,16 +98,6 @@ export const COMPONENT_ROLE_ORDER: ComponentRole[] = [
   'consumer',
 ];
 
-/**
- * Live health of a device / component. `ok` / `stale` / `never` are the v2
- * entity states; **`unknown` is the H2 fix**: before it, `toHealth(undefined)`
- * returned `ok`, so on deploy day — when NO edge sends the E1b heartbeat and
- * `observed` is null for every component — every device reported a green
- * „verbunden" while the cockpit on the same plant said „Ihr Gerät meldet sich
- * nicht". A green dot on a dead device is worse than no dot, so an absent
- * report is now its own honest, grey state ("noch keine Rückmeldung").
- */
-export type ComponentHealth = 'ok' | 'stale' | 'never' | 'unknown';
 
 /** German role labels — the customer names for the roles. */
 export const COMPONENT_ROLE_LABELS: Record<ComponentRole, string> = {
@@ -488,19 +482,6 @@ function worstHealth(items: ComponentHealth[]): ComponentHealth {
   return worst;
 }
 
-/**
- * The ONE health mapping of the customer surfaces (H2) — shared with the
- * Komponenten-Board (`livePuls.ts`) and the Verlauf rail (`verlauf.ts`) so a
- * dot can never mean two different things.
- *
- * **Only a literal `ok` is green.** Anything the backend does not (yet) report
- * — `undefined`, `null`, the honest `syncStatus: "unreported"`, an unknown
- * future word — becomes `unknown`, NOT `ok`. Fail-open on health is a lie.
- */
-export function toComponentHealth(raw: string | null | undefined): ComponentHealth {
-  if (raw === 'stale' || raw === 'never' || raw === 'ok') return raw;
-  return 'unknown';
-}
 
 /** The measured values (Messwerte) an entity reports. */
 function componentChannels(entity: SiteEntity): Messwert[] {
