@@ -1034,26 +1034,18 @@ export function AnlageSeite({
   // sample) - the same source the fleet cards render from.
   useEffect(() => {
     let active = true;
-    // „Kein Dauer-Spinner“: die Entscheidung wartet nicht mehr auf diese Antwort (Rang 4a), also trägt hier die Frist,
-    // die bis dahin `decisionTimedOut` für sie trug - eine Antwort, die nie kommt, wird zum ehrlichen Fehler.
-    const hang = setTimeout(() => {
-      if (active) setOverviewFailed(true);
-    }, ANLAGE_DECISION_TIMEOUT_MS);
     api.overview().then(
       (o) => {
-        clearTimeout(hang);
         if (!active) return;
         setOverview(o);
         setOverviewFailed(false);
       },
       () => {
-        clearTimeout(hang);
         if (active) setOverviewFailed(true);
       },
     );
     return () => {
       active = false;
-      clearTimeout(hang);
     };
     // `sites` identity changes on explicit App reloads (device claimed, site
     // edited), keeping a fresh claim's status current without the 30 s poll.
@@ -1303,14 +1295,17 @@ export function AnlageSeite({
   const decisionLoading = surfaceLoading || adaptiveLive.loading || (overviewPending && einrichtungMoeglich);
   const decisionFailed = surfaceFailed || adaptiveLive.failed || overviewFailed;
   const [decisionTimedOut, setDecisionTimedOut] = useState(false);
+  // „Kein Dauer-Spinner“: die Frist gilt weiter auch für `/overview`, obwohl die Entscheidung nicht mehr auf sie
+  // wartet (Rang 4a) - eine Antwort, die nie kommt, wird wie bisher zum ehrlichen Fehler mit „Erneut versuchen“.
+  const decisionWartet = decisionLoading || overviewPending;
   useEffect(() => {
-    if (!decisionLoading) {
+    if (!decisionWartet) {
       setDecisionTimedOut(false);
       return undefined;
     }
     const timer = setTimeout(() => setDecisionTimedOut(true), ANLAGE_DECISION_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [decisionLoading, site.id, reloadKey]);
+  }, [decisionWartet, site.id, reloadKey]);
   const decision = anlageDecision({
     loading: decisionLoading,
     failed: decisionFailed,

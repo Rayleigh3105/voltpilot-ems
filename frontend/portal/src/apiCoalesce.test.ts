@@ -5,7 +5,7 @@ vi.mock('./auth', () => ({
   AuthRedirectError: class AuthRedirectError extends Error {},
 }));
 
-import { request, setKundenbereich, setTenantOverride, STARTFENSTER_MS, vergissStartfenster } from './api';
+import { request, setKundenbereich, setTenantOverride, STARTFENSTER_MS } from './api';
 
 /** `request` wartet zuerst auf ein frisches Token - erst danach fliegt fetch. */
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -144,66 +144,67 @@ describe('request: In-flight-Bündelung', () => {
 
   /**
    * Das Startfenster der Funktionen (Rang 6): der App-Start liest `/funktionen` drei Mal, versetzt um
-   * 100-300 ms - die Antwort wird kurz über das Ende des Fluges hinaus geteilt, nur für diese Route.
+   * 100-300 ms - der Eintrag bleibt nach der Antwort kurz im Bündel, nur für diese Route.
    */
   describe('Startfenster der Funktionen', () => {
-    let jetzt: number;
     beforeEach(() => {
-      jetzt = 1_000_000;
-      vergissStartfenster();
-      vi.spyOn(Date, 'now').mockImplementation(() => jetzt);
+      // Nur der Zeitgeber des Fensters ist gefälscht; Promises laufen wie sonst.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     });
-    afterEach(() => vi.restoreAllMocks());
-
-    const antworten = async () => {
+    afterEach(async () => {
+      // Das Fenster dieses Falls abschließen, damit der nächste einen leeren Bündel-Stand sieht.
       release.forEach((r) => r());
-      await flush();
+      await vi.advanceTimersByTimeAsync(STARTFENSTER_MS);
+      vi.useRealTimers();
+    });
+
+    const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms);
+    const antworten = async () => {
+      await tick();
+      release.forEach((r) => r());
+      await tick();
     };
 
     it('teilt die Antwort auch NACH dem Flug, solange das Fenster offen ist', async () => {
       const a = request('/api/v1/funktionen');
-      await flush();
       await antworten();
       await a;
-      jetzt += 300;
+      await tick(300);
       await expect(request('/api/v1/funktionen')).resolves.toEqual({ ok: 1 });
       expect(calls).toHaveLength(1);
     });
 
     it('fragt nach Ablauf des Fensters wieder neu - die Veraltung ist begrenzt', async () => {
       const a = request('/api/v1/funktionen');
-      await flush();
       await antworten();
       await a;
-      jetzt += STARTFENSTER_MS;
+      await tick(STARTFENSTER_MS);
       void request('/api/v1/funktionen');
-      await flush();
+      await tick();
       expect(calls).toHaveLength(2);
     });
 
     it('eine Änderung leert das Fenster sofort - Lesen nach Schreiben', async () => {
       const a = request('/api/v1/funktionen');
-      await flush();
       await antworten();
       await a;
       const aenderung = request('/api/v1/sites/x', { method: 'PUT', body: '{}' });
-      await flush();
+      await tick();
       release[1]();
       await aenderung;
-      jetzt += 100;
+      await tick(100);
       void request('/api/v1/funktionen');
-      await flush();
+      await tick();
       expect(calls.filter((c) => c.includes('/funktionen'))).toHaveLength(2);
     });
 
     it('gilt nur für die Funktionen - jede andere Route holt nach dem Flug wirklich neu', async () => {
       const a = request('/api/v1/sites/x/entities');
-      await flush();
       await antworten();
       await a;
-      jetzt += 100;
+      await tick(100);
       void request('/api/v1/sites/x/entities');
-      await flush();
+      await tick();
       expect(calls).toHaveLength(2);
     });
 
@@ -217,12 +218,11 @@ describe('request: In-flight-Bündelung', () => {
 
     it('trennt nach Mandant', async () => {
       const a = request('/api/v1/funktionen');
-      await flush();
       await antworten();
       await a;
       setTenantOverride('tenant-b');
       void request('/api/v1/funktionen');
-      await flush();
+      await tick();
       expect(calls).toHaveLength(2);
     });
   });
