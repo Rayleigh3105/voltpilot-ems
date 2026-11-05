@@ -67,6 +67,8 @@ export interface GeraeteKarte {
   zustandWort?: string;
   zustandZeit?: string | null;
   ton: GeraetTon;
+  /** VoltPilot steuert das Gerät, statt es abzulesen (`PlantDevice.nurGesteuert`): kein Grund zur Aufmerksamkeit. */
+  nurGesteuert?: boolean;
   /** Die Adresse der Geräteseite; null = es gibt keine (nie ein Weg ins Leere). */
   href: string | null;
   /** Die Komponenten-Zeilen dieser Karte. */
@@ -250,7 +252,8 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
       technischerName: customerName ? d.label : null,
       untertitel: geraeteArtWort(art, rolleVon(d.id), komponenten),
       ...zustandFelder(d.state, alter(leseZeit(d.id), now)),
-      ton: HEALTH_TON[d.health],
+      ton: d.nurGesteuert ? 'ok' : HEALTH_TON[d.health],
+      nurGesteuert: d.nurGesteuert,
       href: eigeneKomponenteId
         ? komponenteHash(siteId, eigeneKomponenteId)
         : boxRef && geraetAdressierbar(d.id) ? geraetSeiteHash(siteId, boxRef, d.id) : null,
@@ -382,11 +385,26 @@ export function zentraleSatz(karten: GeraeteKarte[]): ZentraleSatz {
   if (geraete.length === 0) {
     teile.push('noch kein Gerät gemeldet');
   } else if (still.length === 0) {
-    teile.push(
-      geraete.length === 1
-        ? 'Ihr Gerät liefert Daten'
-        : `alle ${geraete.length} Geräte liefern Daten`,
-    );
+    const gesteuert = geraete.filter((g) => g.nurGesteuert).length;
+    const liefern = geraete.length - gesteuert;
+    if (gesteuert === 0) {
+      teile.push(
+        geraete.length === 1
+          ? 'Ihr Gerät liefert Daten'
+          : `alle ${geraete.length} Geräte liefern Daten`,
+      );
+    } else if (liefern === 0) {
+      teile.push(
+        gesteuert === 1
+          ? 'Ihr Gerät wird von VoltPilot gesteuert'
+          : `alle ${gesteuert} Geräte werden von VoltPilot gesteuert`,
+      );
+    } else {
+      teile.push(
+        `${liefern} ${liefern === 1 ? 'Gerät liefert' : 'Geräte liefern'} Daten, ` +
+          `${gesteuert} ${gesteuert === 1 ? 'wird' : 'werden'} von VoltPilot gesteuert`,
+      );
+    }
   } else {
     // Die Regel von `plantHeadline`: das schweigende Gerät wird BENANNT.
     teile.push(

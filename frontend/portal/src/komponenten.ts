@@ -277,6 +277,12 @@ export interface PlantDevice {
   roles: ComponentRole[];
   /** „Liefert Daten" — the device's state in one word. */
   state: string;
+  /**
+   * VoltPilot steuert dieses Gerät, statt es abzulesen: jede seiner Komponenten hat einen Schreibweg, und es
+   * hat noch nie Messwerte gemeldet (Heizstab am Shelly Pro 3, der nicht misst). Dann ist „wartet auf die
+   * ersten Daten" falsch - es schickt von sich aus nichts -, und kein Grund zur Aufmerksamkeit.
+   */
+  nurGesteuert: boolean;
   /** „Misst Netz, Speicher, Haus und eigene PV · steuert den Speicher". */
   summary: string;
 }
@@ -879,6 +885,12 @@ export function reconnectCandidates(
     }));
 }
 
+/**
+ * Der Zustand eines Geräts, das VoltPilot nur steuert. Er behauptet weder „bereit" noch „liefert Daten": was das
+ * Gerät meldet, wenn es schaltet, steht auf seiner Seite; hier steht nur, WAS es für VoltPilot ist.
+ */
+export const STEUER_ZUSTAND = 'Wird von VoltPilot gesteuert';
+
 /** The device's state in one plain word (never a Messwert count). */
 export function deviceState(health: ComponentHealth): string {
   switch (health) {
@@ -1027,8 +1039,18 @@ export function plantHeadline(devices: PlantDevice[], components: PlantComponent
       text: 'Noch kein Gerät gemeldet — sobald sich eines meldet, erscheint hier Ihre Anlage.',
     };
   }
-  const silent = devices.find((d) => d.health !== 'ok');
-  if (!silent) return { tone: 'ok', text: `${base} — alle liefern Daten.` };
+  const silent = devices.find((d) => d.health !== 'ok' && !d.nurGesteuert);
+  if (!silent) {
+    const gesteuert = devices.filter((d) => d.nurGesteuert).length;
+    return {
+      tone: 'ok',
+      text: gesteuert === 0
+        ? `${base} — alle liefern Daten.`
+        : gesteuert === devices.length
+          ? `${base} — alle von VoltPilot gesteuert.`
+          : `${base} — ${countWord(devices.length - gesteuert, 'liefert', 'liefern')} Daten, ${gesteuert} von VoltPilot gesteuert.`,
+    };
+  }
   const why =
     silent.health === 'stale'
       ? 'meldet sich gerade nicht'
@@ -1322,6 +1344,7 @@ export function plantModel(
       health: 'ok',
       roles: [],
       state: '',
+      nurGesteuert: false,
       summary: '',
     });
   };
@@ -1491,7 +1514,11 @@ export function plantModel(
       .filter((c): c is PlantComponent => c != null);
     d.health = worstHealth(comps.map((c) => c.health));
     d.roles = deviceRoles(comps);
-    d.state = deviceState(d.health);
+    // Nur `never` (nie eine Lesung): ein Gerät, das früher Werte lieferte und verstummt (`stale`), bleibt eine
+    // Störung, und ohne Rückmeldung der Box (`unknown`) wird nichts behauptet.
+    d.nurGesteuert = d.health === 'never' && comps.length > 0 &&
+      comps.every((c) => c.aspect === 'main' && c.schaltbar && !c.orphaned);
+    d.state = d.nurGesteuert ? STEUER_ZUSTAND : deviceState(d.health);
     d.summary = deviceSummary(comps);
   }
 

@@ -19,7 +19,7 @@ import {
   type AufbauEingabe,
 } from './aufbauBaum';
 import { aufbauZahlen, kastenSatz, LEERER_FILTER, tabellenZeilen, type TabellenZeile } from './aufbauTabelle';
-import { plantModel, type PlantComponent } from './komponenten';
+import { plantHeadline, plantModel, type PlantComponent } from './komponenten';
 import type { ChargePoint, SiteCharging } from './ladepunkte';
 import { zentraleListe, zentraleSatz, type GeraeteKarte } from './zentraleListe';
 
@@ -588,6 +588,57 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
       expect(hz.karte.komponenten.map((c) => [c.entityId, c.provenance])).toEqual([['e-hz', null]]);
       expect(model.devices.map((d) => d.id)).toEqual(['komp-e-hz']);
       expect(aufbauZahlen(baum, LEERER_FILTER).geraete).toBe(1);
+    });
+
+    /**
+     * Live-Fall „Zuhause“, 05.11.2026: der gebundene Heizstab (Shelly Pro 3, misst nicht) hieß „Wartet auf die
+     * ersten Daten" und löste „1 braucht Aufmerksamkeit" aus - dabei schickt er von sich aus nichts, VoltPilot
+     * steuert ihn. Ehrlich ist: „Wird von VoltPilot gesteuert", ohne Alarm. Ein Gerät, das nach Messwerten
+     * schweigt, bleibt dagegen eine Störung.
+     */
+    describe('ein Gerät, das nur gesteuert wird', () => {
+      const STAB_PIN = 'src-7q7pdrwh';
+      const STAB = ent({
+        id: 'e-hz', entityType: 'heating-rod', typeLabel: 'Heizstab', role: 'consumer', label: 'Heizstab', control: true,
+        sourceKind: 'builtin', syncStatus: 'in_sync', edgeSourceId: STAB_PIN,
+        capabilities: { measure: [{ channel: 'power_kw' }], actuate: [{ command: 'on_off' }] },
+      } as Partial<SiteEntity> & { id: string; entityType: string });
+      const STAB_QUELLE = {
+        id: STAB_PIN, kind: 'source', role: 'consumer', brand: 'shelly', model: 'shelly_http', label: 'Heizstab',
+        reportedAt: FRISCH, adoptedEntityId: null,
+      } as EntityLocalSetup;
+      const mitHealth = (health: string): SiteTopology => ({
+        schemaVersion: '1.0',
+        entities: [
+          { id: 'e-netz', entityType: 'grid-meter', typeLabel: 'Netz', label: null, category: 'meter', health: 'never', capabilities: [] },
+          { id: 'e-hz', entityType: 'heating-rod', typeLabel: 'Heizstab', label: 'Heizstab', category: 'consumer', health, capabilities: [] },
+        ],
+        topology: { schema_version: '1.0', nodes: [] },
+      } as unknown as SiteTopology);
+
+      it('sagt „Wird von VoltPilot gesteuert", zählt nicht als Aufmerksamkeit und schweigt im Satz nicht', () => {
+        const { model, karten, baum, box: b } = gore([NETZ, HAUS, STAB], [STAB_QUELLE], mitHealth('never'), []);
+        const hz = b.geraete.find((g) => g.titel === 'Heizstab')!;
+        expect(hz.zustandWort).toBe('Wird von VoltPilot gesteuert');
+        expect(hz.ton).toBe('ok');
+        expect(model.devices.find((d) => d.nurGesteuert)).toBeDefined();
+        expect(aufbauZahlen(baum, LEERER_FILTER).achtung).toBe(0);
+        expect(zentraleSatz(karten).text).toBe('Box verbunden · Ihr Gerät wird von VoltPilot gesteuert.');
+        expect(plantHeadline(model.devices, model.components).text).toContain('von VoltPilot gesteuert');
+      });
+
+      it('bleibt eine Störung, sobald das Gerät nach Messwerten schweigt (stale)', () => {
+        const { karten, baum, box: b } = gore([NETZ, HAUS, STAB], [STAB_QUELLE], mitHealth('stale'), []);
+        expect(b.geraete.find((g) => g.titel === 'Heizstab')!.zustandWort).toBe('Meldet sich gerade nicht');
+        expect(aufbauZahlen(baum, LEERER_FILTER).achtung).toBe(1);
+        expect(zentraleSatz(karten).ton).toBe('warn');
+      });
+
+      it('ein Messgerät ohne Lesung wartet weiter ehrlich auf die ersten Daten', () => {
+        const ZAEHLER = { ...STAB, entityType: 'generic-load', capabilities: { measure: [{ channel: 'power_kw' }] } } as unknown as SiteEntity;
+        const { box: b } = gore([NETZ, HAUS, ZAEHLER], [STAB_QUELLE], mitHealth('never'), []);
+        expect(b.geraete.find((g) => g.titel === 'Heizstab')!.zustandWort).toBe('Wartet auf die ersten Daten');
+      });
     });
 
     /**
