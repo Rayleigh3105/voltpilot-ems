@@ -400,6 +400,16 @@ describe('AufbauSection · der Baum', () => {
     expect(await zeile('src-1')).toHaveTextContent('21,2');
   });
 
+  it('zeigt nur Filter mit einer Wahl - eine einzige Box bekommt keinen Box-Filter', async () => {
+    stub();
+    rendere();
+    await zeile('inv');
+    const gruppe = screen.getByRole('group', { name: 'Filter' });
+    const knoepfe = within(gruppe).getAllByRole('combobox').map((k) => k.getAttribute('aria-label'));
+    expect(knoepfe).not.toContain('Nach Box filtern');
+    expect(knoepfe.length).toBeGreaterThan(0);
+  });
+
   it('findet Geräte über die Suche und filtert nach Zustand - Gruppen bleiben sichtbar', async () => {
     stub();
     rendere();

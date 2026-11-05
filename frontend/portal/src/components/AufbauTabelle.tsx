@@ -165,12 +165,17 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
   // sie immer da; der Knopf ist dort ausgeblendet (`Aufbau.css`).
   const [filterOffen, setFilterOffen] = useState(false);
   const filterId = useId();
+  // Ein Filter mit weniger als zwei Werten bietet keine Wahl (eine Box, ein Hersteller …) und
+  // steht nur, solange er gesetzt ist - sonst stünden bei einem Gerät vier leere Knöpfe da.
+  const filterSchluessel = (Object.keys(FILTER_LABEL) as FilterSchluessel[]).filter(
+    (k) => p.optionen[k].length > 1 || p.filter[k].length > 0,
+  );
 
   return (
     <>
       <Ort wurzel={p.wurzel} anlagenZahl={p.anlagenZahl} boxZahl={p.boxZahl} onAdresseNachtragen={p.onAdresseNachtragen} />
 
-      <div className={`vp-auf-werkzeug${filterOffen ? ' is-filter-offen' : ''}`}>
+      <div className={`vp-auf-werkzeug${filterOffen ? ' is-filter-offen' : ''}${filterSchluessel.length === 0 ? ' is-ohne-filter' : ''}`}>
         <label className="vp-auf-suche">
           <Icon name="search" size={16} aria-hidden="true" />
           <input
@@ -198,7 +203,7 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
               <Icon name="x" size={15} />
             </button>
           )}
-          <button
+          {filterSchluessel.length > 0 && <button
             type="button"
             className={`vp-auf-filter-auf${aktive.length > 0 ? ' is-aktiv' : ''}`}
             aria-expanded={filterOffen}
@@ -208,10 +213,10 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
           >
             <Icon name="sliders" size={16} />
             {aktive.length > 0 && <span aria-hidden="true">{aktive.length}</span>}
-          </button>
+          </button>}
         </label>
-        <div className="vp-auf-filter" id={filterId} role="group" aria-label="Filter">
-          {(Object.keys(FILTER_LABEL) as FilterSchluessel[]).map((k) => (
+        {filterSchluessel.length > 0 && <div className="vp-auf-filter" id={filterId} role="group" aria-label="Filter">
+          {filterSchluessel.map((k) => (
             <VpPicker
               key={k}
               className="vp-auf-filterfeld"
@@ -228,7 +233,7 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
               onChangeMany={(werte) => p.onFilter(mitFilter(p.filter, k, werte))}
             />
           ))}
-        </div>
+        </div>}
       </div>
       <div className="vp-auf-leiste">
         <div className="vp-auf-zahlen" aria-live="polite">

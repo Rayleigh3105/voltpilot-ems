@@ -127,6 +127,11 @@
     grid-template-columns: minmax(14rem, 1fr) auto;
     grid-template-areas: 'suche filter';
   }
+  /* Ohne Filter mit Wahl (`AufbauTabelle`) nimmt die Suche die ganze Breite - keine leere Spalte. */
+  .vp-auf-werkzeug.is-ohne-filter {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'suche';
+  }
 }
 .vp-auf-leiste {
   display: flex;
