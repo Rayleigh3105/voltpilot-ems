@@ -636,6 +636,10 @@ export const adminApi = {
 
   werkstattBoxen: () => request<WerkstattBox[]>('/api/v1/admin/werkstatt/boxen'),
 
+  /** Einen unbenutzten Eintrag wieder aus dem Register entfernen: 204; 409 mit Grund, wenn die Referenz in Gebrauch ist. */
+  werkstattBoxEntfernen: (ref: string) =>
+    request<void>(`/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}`, { method: 'DELETE' }),
+
   /** Was der Werkstatt-Dienst gerade tut (Ansicht mit Alter, Läufe), für die Werkstatt-Bildschirme. */
   werkstattDienst: () => request<WerkstattDienst>('/api/v1/admin/werkstatt/dienst'),
 

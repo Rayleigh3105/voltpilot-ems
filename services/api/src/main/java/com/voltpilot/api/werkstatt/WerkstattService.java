@@ -58,8 +58,13 @@ public class WerkstattService {
     public record SchrittStand(String am, String von) {
     }
 
-    /** Eine Box des Registers mit ihren Schritten und Abnahmen (neueste zuerst). */
-    public record Stand(Box box, Map<String, SchrittStand> schritte, List<Abnahme> abnahmen) {
+    /**
+     * Eine Box des Registers mit ihren Schritten und Abnahmen (neueste zuerst).
+     * {@code inGebrauch}: wo die Referenz schon benutzt wird, in Worten; leer =
+     * der Eintrag lässt sich wieder entfernen ({@link #entfernen}).
+     */
+    public record Stand(Box box, Map<String, SchrittStand> schritte, List<Abnahme> abnahmen,
+            List<String> inGebrauch) {
     }
 
     public record Angelegt(boolean neu, Stand stand) {
@@ -101,7 +106,8 @@ public class WerkstattService {
             jeBox.computeIfAbsent(a.boxId(), k -> new ArrayList<>()).add(a);
         }
         return repo.boxen().stream()
-                .map(b -> new Stand(b, schritte(b), jeBox.getOrDefault(b.id(), List.of())))
+                .map(b -> new Stand(b, schritte(b), jeBox.getOrDefault(b.id(), List.of()),
+                        repo.inGebrauch(b.id(), b.edgeRef())))
                 .toList();
     }
 
@@ -181,6 +187,28 @@ public class WerkstattService {
             Box b = repo.box(edgeRef).orElseThrow(() -> nichtImRegister(edgeRef));
             repo.lanNetzSetzen(b.id(), lan.text(), akteur.sub());
             return stand(repo.box(edgeRef).orElseThrow());
+        });
+    }
+
+    /**
+     * Einen Eintrag wieder aus dem Register entfernen - nur, solange er
+     * unbenutzt ist: keine Abnahme, kein Lauf des Werkstatt-Dienstes, kein
+     * Code, keine Anmeldung in der Werkstatt, kein Tunnel-Schlüssel, keine
+     * Kopplung, kein Gerät mit dieser Referenz. Sonst 409 mit dem Grund.
+     * Gelöscht wird nur die Zeile des Registers (mehr legt {@link #anlegen}
+     * nicht an); vorher hält {@code werkstatt_box_entfernt} sie mit wer und
+     * wann fest. Geprüft und gelöscht unter der Werkstatt-Sperre.
+     */
+    public void entfernen(String edgeRef, Akteur akteur) {
+        repo.schreibend(() -> {
+            Box b = repo.box(edgeRef).orElseThrow(() -> nichtImRegister(edgeRef));
+            List<String> gebraucht = repo.inGebrauch(b.id(), edgeRef);
+            if (!gebraucht.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, edgeRef
+                        + " lässt sich nicht aus dem Register entfernen: " + String.join("; ", gebraucht) + ".");
+            }
+            repo.boxEntfernen(b.id(), akteur.sub(), akteur.name());
+            return null;
         });
     }
 
@@ -400,7 +428,7 @@ public class WerkstattService {
     // ── intern ────────────────────────────────────────────────────────────
 
     private Stand stand(Box b) {
-        return new Stand(b, schritte(b), repo.abnahmen(b.id()));
+        return new Stand(b, schritte(b), repo.abnahmen(b.id()), repo.inGebrauch(b.id(), b.edgeRef()));
     }
 
     private Map<String, SchrittStand> schritte(Box b) {

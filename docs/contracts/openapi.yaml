@@ -7227,6 +7227,25 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Nicht im Register. }
+    delete:
+      tags: [werkstatt]
+      summary: Einen unbenutzten Eintrag wieder aus dem Register entfernen (204).
+      description: >
+        Nur solange die Referenz nirgends in Gebrauch ist (`inGebrauch` der Box
+        ist leer): keine Abnahme, kein Lauf des Werkstatt-Dienstes, kein Code,
+        keine Anmeldung in der Werkstatt, kein Tunnel-Schlüssel, keine
+        Kopplung, kein Gerät mit dieser Referenz. Sonst 409 mit dem Grund.
+        Gelöscht wird nur die Zeile des Registers; sie bleibt mit wer und wann
+        in `werkstatt_box_entfernt` stehen.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Entfernt. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Nicht im Register. }
+        "409": { description: Die Referenz ist schon in Gebrauch; `message` nennt den Grund. }
+        "422": { description: Falsches Prüfzeichen. }
   /api/v1/admin/werkstatt/boxen/{ref}/schritte/{schritt}:
     put:
       tags: [werkstatt]
@@ -27755,6 +27774,12 @@ components:
         angelegtVon: { type: string }
         geaendertAm: { type: string, format: date-time }
         abnahmen: { type: array, items: { $ref: "#/components/schemas/WerkstattAbnahme" } }
+        inGebrauch:
+          type: array
+          items: { type: string }
+          description: >
+            Wo die Referenz schon benutzt wird, in Worten; leer = der Eintrag
+            lässt sich mit DELETE wieder entfernen.
     FernwartungSoll:
       type: object
       required: [version, erzeugtAm, boxNetz, technikerNetz, peers, fenster]

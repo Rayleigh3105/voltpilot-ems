@@ -264,8 +264,9 @@ class WerkstattApiTest {
                 .rootCause().hasMessageContaining("append-only");
         assertThatThrownBy(() -> eigner.update("DELETE FROM werkstatt_abnahme"))
                 .rootCause().hasMessageContaining("append-only");
+        // Löschen darf die Admin-Rolle seit V20261105170000 - aber nie eine abgenommene Box.
         assertThatThrownBy(() -> adminJdbc.update("DELETE FROM werkstatt_box"))
-                .rootCause().hasMessageContaining("permission denied");
+                .rootCause().hasMessageContaining("foreign key");
     }
 
     /** Die Docker-Box kommt ins Register (Entscheid 9a), eine Abnahme gibt es für sie noch nicht. */
@@ -301,7 +302,11 @@ class WerkstattApiTest {
                     Map.of("erledigt", true)).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
             assertThat(send(HttpMethod.POST, BASE + "/boxen/" + BOX + "/abnahme", t, Map.of()).getStatusCode())
                     .isEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + DOCKER, t, null).getStatusCode())
+                    .isEqualTo(HttpStatus.FORBIDDEN);
         }
+        assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + DOCKER, null, null).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(send(HttpMethod.GET, BASE + "/boxen", null, null).getStatusCode())
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
 
@@ -311,6 +316,146 @@ class WerkstattApiTest {
             assertThatThrownBy(() -> app.queryForObject("SELECT count(*) FROM " + tabelle, Long.class))
                     .as(tabelle).rootCause().hasMessageContaining("permission denied");
         }
+    }
+
+    /**
+     * Aus dem Register entfernen: nur ein unbenutzter Eintrag, mit Spur in
+     * {@code werkstatt_box_entfernt}. Jeder Gebrauch der Referenz sperrt -
+     * die Abnahme, ein Lauf, ein Code, eine Anmeldung, ein Tunnel-Schlüssel,
+     * die Kopplung, ein Gerät.
+     */
+    @Test
+    @Order(4)
+    void nurEinUnbenutzterEintragLaesstSichEntfernen() throws Exception {
+        String admin = token("admin", "admin");
+        JdbcTemplate eigner = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(), POSTGRES.getPassword()));
+
+        // ── Erlaubt: die Docker-Box aus Order(2) hat nur LAN-Netz und Notiz.
+        JsonNode docker = getJson(BASE + "/boxen/" + DOCKER, admin);
+        assertThat(docker.get("inGebrauch")).isEmpty();
+        assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + DOCKER.toUpperCase(), admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(send(HttpMethod.GET, BASE + "/boxen/" + DOCKER, admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(werte(getJson(BASE + "/boxen", admin), "edgeRef")).doesNotContain(DOCKER);
+        Map<String, Object> spur = eigner.queryForMap("SELECT box_id::text AS box_id, box_art, lan_netz, notiz, "
+                + "angelegt_von_name, entfernt_von, entfernt_von_name FROM werkstatt_box_entfernt WHERE edge_ref = ?",
+                DOCKER);
+        assertThat(spur.get("box_id")).isEqualTo(docker.get("id").asText());
+        assertThat(spur.get("box_art")).isEqualTo("edge-app");
+        assertThat(spur.get("lan_netz")).isEqualTo("10.213.0.1/24");
+        assertThat(spur.get("notiz")).isEqualTo("Raspberry Pi 5");
+        assertThat(spur.get("entfernt_von")).isNotNull();
+        assertThat(spur.get("entfernt_von_name")).isEqualTo("admin");
+        // Die Spur ändert niemand.
+        assertThatThrownBy(() -> eigner.update("DELETE FROM werkstatt_box_entfernt"))
+                .rootCause().hasMessageContaining("append-only");
+        // Ein zweites Mal: nicht mehr im Register. Danach lässt sie sich neu aufnehmen.
+        ResponseEntity<String> nochmal = send(HttpMethod.DELETE, BASE + "/boxen/" + DOCKER, admin, null);
+        assertThat(nochmal.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(message(nochmal)).contains("nicht im Werkstatt-Register");
+        assertThat(send(HttpMethod.POST, BASE + "/boxen", admin, Map.of("edgeRef", DOCKER, "boxArt", "edge-app"))
+                .getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + DOCKER, admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(eigner.queryForObject("SELECT count(*) FROM werkstatt_box_entfernt WHERE edge_ref = ?",
+                Long.class, DOCKER)).isEqualTo(2L);
+
+        // ── Falsches Prüfzeichen: 422 wie überall in der Werkstatt.
+        assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + TIPPFEHLER, admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // ── Abgenommen (und mit Tunnel-Schlüssel): BOX aus Order(1).
+        abgelehnt(admin, BOX, "sie ist abgenommen", "Tunnel-Schlüssel");
+
+        // ── Ein Lauf des Werkstatt-Dienstes kennt die Box.
+        String lauf = aufnehmen(admin, "wrkrun");
+        eigner.update("INSERT INTO werkstatt_lauf (kennung, zustand, beginn, stand) VALUES (?, 'angehalten', now(), "
+                + "jsonb_build_object('kennung', ?::text, 'box', ?::text))", "test-" + lauf, "test-" + lauf, lauf);
+        abgelehnt(admin, lauf, "Lauf");
+
+        // ── Ein Code des Werkstatt-Dienstes ist ausgegeben (eine Einlösung hängt immer an einem Code).
+        String code = aufnehmen(admin, "wrkcde");
+        assertThat(send(HttpMethod.POST, BASE + "/freigaben", admin, freigabe()).getStatusCode())
+                .isEqualTo(HttpStatus.CREATED);
+        eigner.update("INSERT INTO werkstatt_code (freigabe_id, edge_ref, code_sha256, gueltig_bis, ausgegeben_von) "
+                + "SELECT id, ?, ?, now() + interval '10 minutes', 'test' FROM werkstatt_freigabe LIMIT 1",
+                code, "ab".repeat(32));
+        abgelehnt(admin, code, "Code");
+
+        // ── Angemeldet (Einlösung bzw. festgehaltener Geräteschlüssel), ohne Code darunter
+        //    nur über die Replikationsrolle einzutragen.
+        String anmeldung = aufnehmen(admin, "wrkanm");
+        eigner.execute("SET session_replication_role = replica; "
+                + "INSERT INTO werkstatt_geraeteschluessel (edge_ref, geraete_schluessel, geraete_schluessel_sha256, "
+                + "einloesung_id) VALUES ('" + anmeldung + "', 'x', '" + "cd".repeat(32) + "', gen_random_uuid()); "
+                + "SET session_replication_role = origin;");
+        abgelehnt(admin, anmeldung, "angemeldet");
+
+        // ── Tunnel-Schlüssel über die Fernwartung hinterlegt.
+        String tunnel = aufnehmen(admin, "wrktun");
+        assertThat(send(HttpMethod.PUT, FW + "/boxen/" + tunnel + "/schluessel", admin,
+                Map.of("publicKey", wireguardSchluessel())).getStatusCode().is2xxSuccessful()).isTrue();
+        abgelehnt(admin, tunnel, "Tunnel-Schlüssel");
+
+        // ── Kopplung: die Box hat ihre Zertifikatsanfrage geschickt.
+        String kopplung = aufnehmen(admin, "wrkkpp");
+        eigner.update("INSERT INTO device_enrollment (external_ref, csr_pem) VALUES (?, 'csr')", kopplung);
+        abgelehnt(admin, kopplung, "Kopplung");
+
+        // ── Ein Gerät (oder seine Vorab-Registrierung) nutzt die Referenz.
+        String geraet = aufnehmen(admin, "wrkgrt");
+        eigner.update("INSERT INTO provisioned_device (external_ref) VALUES (?)", geraet);
+        abgelehnt(admin, geraet, "Gerät");
+
+        // ── Nicht im Register: 404.
+        assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + ref("wrkxyz"), admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /** 409 mit Grund, der Eintrag bleibt, und die Seite liest denselben Grund in {@code inGebrauch}. */
+    private void abgelehnt(String admin, String ref, String... gruende) throws Exception {
+        ResponseEntity<String> r = send(HttpMethod.DELETE, BASE + "/boxen/" + ref, admin, null);
+        assertThat(r.getStatusCode()).as(ref).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(r)).as(ref).startsWith(ref + " lässt sich nicht aus dem Register entfernen: ")
+                .contains(gruende);
+        JsonNode box = getJson(BASE + "/boxen/" + ref, admin);
+        assertThat(String.join("; ", werte(box.get("inGebrauch")))).as(ref).contains(gruende);
+        Long spur = adminJdbc.queryForObject("SELECT count(*) FROM werkstatt_box_entfernt WHERE edge_ref = ?",
+                Long.class, ref);
+        assertThat(spur).as(ref).isZero();
+    }
+
+    private String aufnehmen(String admin, String rumpf) {
+        String ref = ref(rumpf);
+        assertThat(send(HttpMethod.POST, BASE + "/boxen", admin, Map.of("edgeRef", ref)).getStatusCode())
+                .as(ref).isEqualTo(HttpStatus.CREATED);
+        return ref;
+    }
+
+    /** Eine erfundene Referenz mit gültigem Prüfzeichen zum Rumpf aus sechs Zeichen. */
+    private static String ref(String rumpf) {
+        for (char c : "abcdefghjkmnpqrstuvwxyz23456789".toCharArray()) {
+            String ref = "edge-" + rumpf + c;
+            if (com.voltpilot.api.web.EdgeRef.isValid(ref)) {
+                return ref;
+            }
+        }
+        throw new IllegalArgumentException(rumpf);
+    }
+
+    private static Map<String, Object> freigabe() {
+        String sha = "0123456789abcdef".repeat(4);
+        Map<String, Object> a = new HashMap<>();
+        a.put("tage", 7);
+        a.put("obergrenze", 2);
+        a.put("openwrt", Map.of("fassung", "25.12.5",
+                "datei", "openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin",
+                "sha256", sha, "quelle", "https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/"));
+        a.put("edgeLight", Map.of("fassung", "edge-light-2026.11.0", "quelle", "https://git.tecmaxx.de/x/",
+                "programmSha256", sha, "skripteSha256", sha));
+        return a;
     }
 
     // ── Hilfen ────────────────────────────────────────────────────────────

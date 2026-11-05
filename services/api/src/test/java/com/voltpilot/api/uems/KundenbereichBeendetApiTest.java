@@ -124,6 +124,8 @@ class KundenbereichBeendetApiTest {
         // Werkstatt (main 024ea8c12): das Register der Boxen VOR dem Versand - `werkstatt_box` trägt keinen
         // Mandanten (Migration V20261026200000), die Box ist noch in keinem Kundenbereich.
         m.put("POST /api/v1/admin/werkstatt/boxen", "Werkstatt-Register: Box vor dem Versand, noch in keinem Kundenbereich");
+        m.put("DELETE /api/v1/admin/werkstatt/boxen/{ref}",
+                "Werkstatt-Register: unbenutzten Eintrag entfernen, Box vor dem Versand, noch in keinem Kundenbereich");
         m.put("POST /api/v1/admin/werkstatt/boxen/{ref}/abnahme",
                 "Werkstatt-Abnahme: Box vor dem Versand, noch in keinem Kundenbereich");
         m.put("PUT /api/v1/admin/werkstatt/boxen/{ref}/lan-netz",

@@ -1,8 +1,10 @@
 /**
  * Die Einrichtungs-Detailseite einer Box in der Werkstatt (`#/werkstatt?box=<referenz>`,
  * auch das Ziel des Direktlinks vom Gehäuse): alles, was die Einrichtung für
- * diese Box festhält, an einem Ort. Nur Anzeige und Download; am Ablauf
- * der Einrichtung ändert sie nichts. Nur für VoltPilot-Admins (wie die ganze
+ * diese Box festhält, an einem Ort. Anzeige und Download; am Ablauf
+ * der Einrichtung ändert sie nichts. Einzige Aktion: einen unbenutzten
+ * Eintrag (nur im Register, die API meldet ihn unbenutzt) wieder aus dem
+ * Register entfernen, mit Rückfrage auf der Seite. Nur für VoltPilot-Admins (wie die ganze
  * Werkstatt); das Root-Passwort steht, wie an der Abnahme, nur verschlüsselt da.
  */
 import { Fragment, useEffect, useState } from 'react';
@@ -13,7 +15,7 @@ import { adminApi } from '../../admin/adminApi';
 import { boxVerbindung, zeitpunkt, type FernwartungBox, type FernwartungUebersicht } from '../../adminFernwartung';
 import { ApiError } from '../../api';
 import { fernwartungHash } from '../../nav';
-import { VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
+import { entfernbar, VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
 import type { UebersichtZeile, WerkstattFreigabe } from '../../werkstattBank';
 import {
   bindung,
@@ -48,17 +50,34 @@ export function WerkstattBoxSeite({
   freigaben,
   jetzt,
   onZurueck,
+  onEntfernt,
 }: {
   zeile: UebersichtZeile;
   boxen: readonly WerkstattBox[];
   freigaben: readonly WerkstattFreigabe[];
   jetzt: Date;
   onZurueck: () => void;
+  /** Nach dem Entfernen aus dem Register: zurück zur Liste ohne diese Box. */
+  onEntfernt?: (ref: string) => void;
 }) {
   const ref = zeile.box as string;
   const box = boxen.find((b) => b.edgeRef === ref) ?? null;
   const mango = zeile.geraet === 'Mango';
   const [verb, setVerb] = useState<Bindung>({ art: 'laedt' });
+  const [entfernen, setEntfernen] = useState<'aus' | 'fragen' | 'laeuft'>('aus');
+  const [entfernFehler, setEntfernFehler] = useState<string | null>(null);
+
+  async function ausDemRegister() {
+    setEntfernen('laeuft');
+    setEntfernFehler(null);
+    try {
+      await adminApi.werkstattBoxEntfernen(ref);
+      onEntfernt?.(ref);
+    } catch (e) {
+      setEntfernen('fragen');
+      setEntfernFehler(e instanceof ApiError ? e.message : 'Der Eintrag ließ sich nicht entfernen.');
+    }
+  }
 
   useEffect(() => {
     let aktuell = true;
@@ -221,6 +240,39 @@ export function WerkstattBoxSeite({
           </Card>
         )}
       </div>
+
+      {onEntfernt && entfernbar(box, zeile.stand) && (
+        <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-entfernen">
+          <h3 className="vp-ws-kartenkopf">Aus dem Register entfernen</h3>
+          {entfernen === 'aus' ? (
+            <>
+              <p className="vp-muted" style={{ margin: 0 }}>
+                Diese Box wurde nie eingerichtet: kein Lauf, keine Abnahme, kein Tunnel-Schlüssel, keine Kopplung. Der Eintrag lässt sich wieder entfernen.
+              </p>
+              <p style={{ margin: 0 }}>
+                <Button variant="outline" size="sm" onClick={() => setEntfernen('fragen')} data-testid="ws-entfernen-start">
+                  Aus dem Register entfernen
+                </Button>
+              </p>
+            </>
+          ) : (
+            <div role="group" aria-label={`${ref} aus dem Register entfernen`} data-testid="ws-entfernen-frage">
+              <p style={{ marginTop: 0 }}>
+                <strong>{ref}</strong> aus dem Register entfernen? Die Box verschwindet aus der Liste; die Werkstatt hält fest, wer sie wann entfernt hat. Später lässt sie sich wieder aufnehmen.
+              </p>
+              {entfernFehler && <p className="vp-alert vp-alert-err" data-testid="ws-entfernen-fehler">{entfernFehler}</p>}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Button variant="primary" size="sm" disabled={entfernen === 'laeuft'} onClick={() => void ausDemRegister()} data-testid="ws-entfernen-ja">
+                  {entfernen === 'laeuft' ? 'Entfernt …' : `${ref} entfernen`}
+                </Button>
+                <Button variant="outline" size="sm" disabled={entfernen === 'laeuft'} onClick={() => { setEntfernen('aus'); setEntfernFehler(null); }} data-testid="ws-entfernen-nein">
+                  Abbrechen
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       <p className="vp-muted" style={{ margin: 0 }}>{VERSAND_SATZ}</p>
     </div>

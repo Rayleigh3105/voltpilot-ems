@@ -28,6 +28,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -83,9 +84,14 @@ public class AdminWerkstattController {
             String passwortAge) {
     }
 
-    /** Eine Box des Registers; {@code abnahmen} neueste zuerst, leer = noch nicht abgenommen. */
+    /**
+     * Eine Box des Registers; {@code abnahmen} neueste zuerst, leer = noch nicht abgenommen.
+     * {@code inGebrauch}: wo die Referenz schon benutzt wird, in Worten; leer = der Eintrag
+     * lässt sich mit {@code DELETE /boxen/{ref}} wieder entfernen.
+     */
     public record BoxDto(UUID id, String edgeRef, String boxArt, String lanNetz, Map<String, SchrittDto> schritte,
-            String notiz, Instant angelegtAm, String angelegtVon, Instant geaendertAm, List<AbnahmeDto> abnahmen) {
+            String notiz, Instant angelegtAm, String angelegtVon, Instant geaendertAm, List<AbnahmeDto> abnahmen,
+            List<String> inGebrauch) {
     }
 
     /** Was die Seite vor allem anderen braucht: die geschlossene Liste der Prüfungen und den Vorschlag fürs LAN. */
@@ -203,6 +209,17 @@ public class AdminWerkstattController {
         return ResponseEntity.status(a.neu() ? HttpStatus.CREATED : HttpStatus.OK).body(boxDto(a.stand()));
     }
 
+    /**
+     * Einen unbenutzten Eintrag wieder aus dem Register entfernen: 204; 404 nicht
+     * im Register, 409 mit dem Grund, wenn die Referenz schon in Gebrauch ist.
+     * Die Regeln stehen an {@link WerkstattService#entfernen}.
+     */
+    @DeleteMapping("/boxen/{ref}")
+    public ResponseEntity<Void> entfernen(@PathVariable String ref, @AuthenticationPrincipal Jwt caller) {
+        service.entfernen(referenz(ref), Akteur.aus(caller));
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/boxen/{ref}/schritte/{schritt}")
     public BoxDto schritt(@PathVariable String ref, @PathVariable String schritt,
             @Valid @RequestBody SchrittRequest req, @AuthenticationPrincipal Jwt caller) {
@@ -257,7 +274,7 @@ public class AdminWerkstattController {
         s.schritte().forEach((k, v) -> schritte.put(k, SchrittDto.of(v)));
         return new BoxDto(s.box().id(), s.box().edgeRef(), s.box().boxArt(), s.box().lanNetz(), schritte,
                 s.box().notiz(), s.box().angelegtAm(), name(s.box().angelegtVonName(), s.box().angelegtVon()),
-                s.box().geaendertAm(), s.abnahmen().stream().map(this::abnahmeDto).toList());
+                s.box().geaendertAm(), s.abnahmen().stream().map(this::abnahmeDto).toList(), s.inGebrauch());
     }
 
     private AbnahmeDto abnahmeDto(Abnahme a) {

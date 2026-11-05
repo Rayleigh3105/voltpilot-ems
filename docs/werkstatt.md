@@ -101,6 +101,7 @@ der Kopplung geschrieben (`edge-` klein); ein falsches Prüfzeichen ist 422.
 | `GET /grundlagen` | die Kennungen der Prüfungen und der Vorschlag fürs LAN |
 | `GET /boxen`, `GET /boxen/{ref}` | das Register mit Schritten und Abnahmen (neueste zuerst) |
 | `POST /boxen` | aufnehmen: 201 neu, 200 schon da (unverändert); `schritte` = was vorher erledigt war |
+| `DELETE /boxen/{ref}` | einen unbenutzten Eintrag entfernen: 204; 409 mit Grund, sobald die Referenz in Gebrauch ist (Abnahme, Lauf des Dienstes, Code, Anmeldung, Tunnel-Schlüssel, Kopplung, Gerät); `inGebrauch` an der Box nennt dieselben Gründe |
 | `PUT /boxen/{ref}/schritte/{schritt}` | `{"erledigt": true\|false}`, idempotent |
 | `PUT /boxen/{ref}/lan-netz` | `{"lanNetz": "10.213.0.1/24"}`; 422 mit Grund |
 | `POST /boxen/{ref}/abnahme` | das Protokoll; 201, sonst 404/409/422 mit Grund |
@@ -109,8 +110,11 @@ der Kopplung geschrieben (`edge-` klein); ein falsches Prüfzeichen ist 422.
 
 Wie die Tabellen der Fernwartung globale Betriebsdaten ohne Mandant (eine Box in der Werkstatt gehört noch
 niemandem): keine Rechte für die App-Rolle, RLS mit `FORCE` und ohne Policy als zweiter Riegel, gelesen und
-geschrieben nur über die BYPASSRLS-Rolle `voltpilot_admin` (`WerkstattRepository`). Keine Zeile wird gelöscht;
-`werkstatt_abnahme` ist append-only an der Datenbankgrenze. Migration `V20261026200000__werkstatt.sql`.
+geschrieben nur über die BYPASSRLS-Rolle `voltpilot_admin` (`WerkstattRepository`). Gelöscht wird nur ein
+unbenutzter Eintrag des Registers (`DELETE /boxen/{ref}`); er bleibt vorher in `werkstatt_box_entfernt` stehen.
+`werkstatt_abnahme` und `werkstatt_box_entfernt` sind append-only an der Datenbankgrenze, und eine abgenommene Box
+hält ihre Abnahme per Fremdschlüssel fest. Migrationen `V20261026200000__werkstatt.sql`,
+`V20261105170000__werkstatt_box_entfernen.sql`.
 
 ## Direktlink vom Gehäuse (Plan D3)
 

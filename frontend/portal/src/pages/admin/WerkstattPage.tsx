@@ -157,7 +157,18 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
               <Button variant="outline" size="sm" onClick={() => waehle(null)}>Alle Boxen</Button>
             </div>
           ) : (
-            <WerkstattBoxSeite zeile={gewaehlt} boxen={boxen} freigaben={freigaben} jetzt={jetzt} onZurueck={() => waehle(null)} />
+            <WerkstattBoxSeite
+              zeile={gewaehlt}
+              boxen={boxen}
+              freigaben={freigaben}
+              jetzt={jetzt}
+              onZurueck={() => waehle(null)}
+              onEntfernt={(ref) => {
+                setBoxen((alt) => (alt ? alt.filter((b) => b.edgeRef !== ref) : alt));
+                waehle(null);
+                void laden();
+              }}
+            />
           )}
         </>
       )}

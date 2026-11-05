@@ -112,6 +112,45 @@ public class WerkstattRepository {
                 lanNetz, akteur, id);
     }
 
+    /**
+     * Wo die Referenz schon in Gebrauch ist, in Worten (leer = nirgends). Die
+     * Reihenfolge ist die der Nachricht: was der Werkstatt am nächsten liegt
+     * zuerst. Ein Lauf zählt, sobald er die Box kennt ({@code stand.box},
+     * Vertrag werkstatt-ansicht-v1).
+     */
+    public List<String> inGebrauch(UUID boxId, String edgeRef) {
+        return jdbc.query("SELECT grund FROM ("
+                        + "SELECT 1 AS n, 'sie ist abgenommen' AS grund "
+                        + "WHERE EXISTS (SELECT 1 FROM werkstatt_abnahme WHERE box_id = ?) "
+                        + "UNION ALL SELECT 2, 'der Werkstatt-Dienst hatte einen Lauf mit ihr' "
+                        + "WHERE EXISTS (SELECT 1 FROM werkstatt_lauf WHERE stand->>'box' = ?) "
+                        + "UNION ALL SELECT 3, 'der Werkstatt-Dienst hat ihr einen Code ausgegeben' "
+                        + "WHERE EXISTS (SELECT 1 FROM werkstatt_code WHERE edge_ref = ?) "
+                        + "UNION ALL SELECT 4, 'sie hat sich in der Werkstatt angemeldet' "
+                        + "WHERE EXISTS (SELECT 1 FROM werkstatt_einloesung WHERE edge_ref = ?) "
+                        + "OR EXISTS (SELECT 1 FROM werkstatt_geraeteschluessel WHERE edge_ref = ?) "
+                        + "UNION ALL SELECT 5, 'für sie ist ein Tunnel-Schlüssel hinterlegt' "
+                        + "WHERE EXISTS (SELECT 1 FROM fernwartung_zugang WHERE art = 'box' AND edge_ref = ?) "
+                        + "UNION ALL SELECT 6, 'sie hat eine Zertifikatsanfrage geschickt (Kopplung)' "
+                        + "WHERE EXISTS (SELECT 1 FROM device_enrollment WHERE external_ref = ?) "
+                        + "UNION ALL SELECT 7, 'ein Gerät oder eine Anlage nutzt die Referenz' "
+                        + "WHERE EXISTS (SELECT 1 FROM device WHERE external_ref = ?) "
+                        + "OR EXISTS (SELECT 1 FROM provisioned_device WHERE external_ref = ?)"
+                        + ") g ORDER BY n",
+                (rs, n) -> rs.getString("grund"),
+                boxId, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef);
+    }
+
+    /** Die Zeile mit wer/wann in {@code werkstatt_box_entfernt} festhalten, dann löschen. */
+    public void boxEntfernen(UUID id, String akteur, String akteurName) {
+        jdbc.update("INSERT INTO werkstatt_box_entfernt (box_id, edge_ref, box_art, lan_netz, schritte, notiz, "
+                        + "angelegt_am, angelegt_von, angelegt_von_name, entfernt_von, entfernt_von_name) "
+                        + "SELECT id, edge_ref, box_art, lan_netz, schritte, notiz, angelegt_am, angelegt_von, "
+                        + "angelegt_von_name, ?, ? FROM werkstatt_box WHERE id = ?",
+                akteur, akteurName, id);
+        jdbc.update("DELETE FROM werkstatt_box WHERE id = ?", id);
+    }
+
     // ── Abnahme ───────────────────────────────────────────────────────────
 
     public UUID abnahmeAnlegen(UUID boxId, String edgeRef, String hostSchluessel, String fassung,

@@ -72,6 +72,20 @@ export interface WerkstattBox {
   geaendertAm: string;
   /** Neueste zuerst; leer = noch nicht abgenommen. */
   abnahmen: WerkstattAbnahme[];
+  /**
+   * Wo die Referenz schon in Gebrauch ist, in Worten (Abnahme, Lauf des Dienstes, Code, Anmeldung,
+   * Tunnel-Schlüssel, Kopplung, Gerät); leer = der Eintrag lässt sich wieder entfernen. Fehlt bei
+   * einer API vor dieser Route.
+   */
+  inGebrauch?: string[];
+}
+
+/**
+ * Ob die Seite „Aus dem Register entfernen“ anbietet: nur für einen Eintrag, der nur im Register steht
+ * (kein Lauf, keine Abnahme) und den die API selbst als unbenutzt meldet. Fehlt die Angabe, nie.
+ */
+export function entfernbar(box: WerkstattBox | null, stand: string): boolean {
+  return box != null && stand === 'register' && box.abnahmen.length === 0 && Array.isArray(box.inGebrauch) && box.inGebrauch.length === 0;
 }
 
 // ── Die Prüfungen der Werkstatt-Regel ──────────────────────────────────────
