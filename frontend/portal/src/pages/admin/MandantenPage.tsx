@@ -171,12 +171,8 @@ export function MandantenPage({
                 {tenants.map((t) => (
                   <tr key={t.id} className="clickable" onClick={() => oeffne(t)}>
                     <td data-label="Mandant">
-                      <div className="vp-cell-main">
-                        <b>{t.name}</b>
-                        <span className="vp-cell-sub vp-mono" title={t.id}>
-                          {t.id.slice(0, 8)}…
-                        </span>
-                      </div>
+                      {/* Die volle Kennung steht auf der Seite des Mandanten; acht abgeschnittene Zeichen halfen niemandem. */}
+                      <b>{t.name}</b>
                     </td>
                     <td data-label="Segment">
                       <Badge variant="tint">{segmentLabel(t.segment)}</Badge>

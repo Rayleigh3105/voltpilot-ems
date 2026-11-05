@@ -235,6 +235,17 @@ describe('Geräte: EINE Tabelle über den ganzen Lebenszyklus (P2 · E1/E4)', ()
 // ---------------------------------------------------------------------------
 
 describe('GeraeteRegistryPage · Weg in die Geräteseite', () => {
+  it('öffnet ein verbundenes Gerät auch per Tastatur: sein Name ist ein Knopf', async () => {
+    const jump = vi.fn();
+    render(<GeraeteRegistryPage onJumpToTenant={jump} />);
+    const table = await screen.findByTestId('devices');
+    const knopf = within(table).getByRole('button', { name: 'Auernheim' });
+    knopf.focus();
+    fireEvent.click(knopf);
+    await waitFor(() => expect(jump).toHaveBeenCalledTimes(1));
+    expect(jump.mock.calls[0][1]).toMatchObject({ sub: 'geraet', geraet: { ref: 'edge-k2m4pqj', geraetId: null } });
+  });
+
   it('führt ein verbundenes Gerät in die Mandanten-Ansicht seiner Anlage', async () => {
     const jump = vi.fn();
     window.location.hash = '#/geraete-registry?geraet=edge-k2m4pqj';

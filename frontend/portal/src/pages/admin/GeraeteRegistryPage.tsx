@@ -359,9 +359,8 @@ function DeviceInventory({
       <div className="vp-admin-sec-head">
         <h2>Alle Geräte</h2>
         <p>
-          Gedruckte Aufkleber-IDs und die verbundene Flotte. Eine Zeile öffnet das Gerät.
-          „Online-Status“ sagt, ob sich die Box in den letzten 5 Minuten gemeldet hat -
-          unabhängig davon, ob sie mit einem Kundenkonto verbunden ist.
+          Gedruckte Aufkleber-IDs und verbundene Boxen. Online heißt: in den letzten
+          5 Minuten gemeldet, unabhängig vom Kundenkonto.
         </p>
         {verbindung.size > 0 && (
           <OnlineZaehlung zaehlung={zaehlung} fetchedAt={fetchedAt} refreshFailed={refreshFailed} />
@@ -410,7 +409,12 @@ function DeviceInventory({
                     <td data-label="Gerät">
                       <span className="vp-cell-main">
                         <span>
-                          {connected ? r.name : <span className="vp-muted">— noch nicht verbunden —</span>}
+                          {/* Ein Knopf, damit die Zeile auch per Tastatur aufgeht. */}
+                          {connected ? (
+                            <button type="button" className="vp-linklike" onClick={(e) => { e.stopPropagation(); onOpen(r.key); }}>
+                              {r.name}
+                            </button>
+                          ) : <span className="vp-muted">noch nicht verbunden</span>}
                         </span>
                         {r.context && <span className="vp-cell-sub">{r.context}</span>}
                         {connected && <span className="vp-box-art"><BoxArtChip boxArt={d.boxArt} /></span>}
@@ -424,7 +428,8 @@ function DeviceInventory({
                       {connected ? (
                         <span className="vp-cell-main">
                           {/* Tag + Build getrennt statt Roh-Stempel. */}
-                          <span>{versionLabel(d.ist, releases)}</span>
+                          {/* Ohne gemeldeten Stand nur das Zustandswort - kein „–“ darüber. */}
+                          {versionLabel(d.ist, releases) !== '–' && <span>{versionLabel(d.ist, releases)}</span>}
                           <span className="vp-cell-sub">
                             <span className={`vp-ustate vp-ustate-${st.cls}`}>
                               <i className="vp-ustate-dot" aria-hidden="true" />
