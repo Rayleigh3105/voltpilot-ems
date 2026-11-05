@@ -22,13 +22,22 @@ export function GeraetSteuerung({
   onAktion,
   busy = false,
   zusatz,
+  nurZusatz = false,
 }: {
   view: SteuerungView;
   onAktion: (aktion: SegmentAktion) => void;
   busy?: boolean;
   /** Was darunter noch steht (Freigabe, Not-Aus-Hinweis, Hauptaktion). */
   zusatz?: ReactNode;
+  /**
+   * Nur der Zusatz: ein Gerät mit eigener Steuerung (Heizstab: Smart und ein Schalter je Phase) zeigt weder
+   * Zustandszeile noch Segmente - sie sagten dasselbe ein zweites Mal, mit anderen Worten.
+   */
+  nurZusatz?: boolean;
 }) {
+  if (nurZusatz) {
+    return <div className="vp-steuer" data-testid="geraet-steuerung">{zusatz}</div>;
+  }
   const { zeile, segmente, keinEingriff } = view;
   const wer = werEntscheidet(zeile);
   const gewaehlt = Math.max(0, segmente.findIndex((s) => s.aktiv));

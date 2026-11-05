@@ -5,13 +5,19 @@ import {
   abweichungHinweis,
   anschlussFehler,
   anschlussOffen,
-  handSatz,
   testKurz,
   ausgangsFehler,
   heizstabVerbindung,
-  hoechstensKwh,
   nachStromausfallWarnung,
-  phasen,
+  erlaubteStufen,
+  handWunsch,
+  leistungJePhase,
+  nurZusammen,
+  phaseTippen,
+  phasenAnsicht,
+  phasenFaehig,
+  phasenZeilen,
+  smartZustand,
   stufen,
   testZeilen,
   zustandsSatz,
@@ -81,12 +87,6 @@ describe('Geräteseite', () => {
     expect(zustandsSatz({ commanded: 0, confirmed: 0, confirmed_kw: 0 })).toBe('Aus');
     expect(zustandsSatz({ commanded: 1, confirmed: null })).toBe('Stufe nicht bestätigt');
     expect(zustandsSatz(null)).toBe('Noch keine Rückmeldung der Box');
-    expect(phasen(3, { commanded: 2, confirmed: 2, outputs_on: [0, 2] })).toEqual([
-      { label: 'L1', an: true }, { label: 'L2', an: false }, { label: 'L3', an: true },
-    ]);
-    expect(phasen(3, { commanded: 2, confirmed: null })).toEqual([
-      { label: 'L1', an: null }, { label: 'L2', an: null }, { label: 'L3', an: null },
-    ]);
   });
 
   it('eine Abweichung wird erst nach 3 Minuten ein Hinweis (HZ-4 B, keine Sperre)', () => {
@@ -106,13 +106,6 @@ describe('Geräteseite', () => {
     expect(weniger).toMatch(/^Seit 11:00 schaltet ein Ausgang nicht ein\. Der Stab heizt mit 2 Phasen statt 3 Phasen weiter/);
   });
 
-  it('„Jetzt heizen“ von Hand sagt, was befohlen ist - nie „heizt“', () => {
-    const stufen3 = [{ ausgaenge: 1, kw: 2 }, { ausgaenge: 2, kw: 4 }];
-    expect(handSatz('2026-11-02T12:00:00Z', 2, stufen3)).toBe('Von Hand eingeschaltet bis 13:00 (1 Phase · 2,0\u00a0kW).');
-    expect(handSatz('2026-11-02T12:00:00Z', 5, stufen3)).toBe('Von Hand eingeschaltet bis 13:00 (5,0\u00a0kW).');
-    expect(handSatz('2026-11-02T12:00:00Z', null, stufen3)).toBe('Von Hand eingeschaltet bis 13:00.');
-  });
-
   it('der Anschluss ist offen, solange er nicht „Stern mit N“ ist (Zwilling von HeizstabGeraet.anschlussOffen)', () => {
     expect(anschlussOffen({ channels: [0, 1, 2], anschluss: 'stern_mit_n' })).toBe(false);
     expect(anschlussOffen({ channels: [0, 1, 2], anschluss: 'unbekannt' })).toBe(true);
@@ -128,8 +121,86 @@ describe('Geräteseite', () => {
     expect(testKurz(null, 3)).toBe('Die Box hat den Shelly erreicht, die Ausgänge aber nicht gelesen.');
   });
 
-  it('Jetzt heizen nennt eine Obergrenze, keine Zusage', () => {
-    expect(hoechstensKwh(4, 60)).toBe('Höchstens ≈ 4,0 kWh');
-    expect(hoechstensKwh(2, 30)).toBe('Höchstens ≈ 1,0 kWh');
+});
+
+describe('Steuerung wie in Home Assistant (D1-A, D2-A, D3-A)', () => {
+  const pro3 = { channels: [0, 1, 2], output_kw: [2, 2, 2], stages: [1, 2, 3], anschluss: 'stern_mit_n' };
+  const jetzt = new Date('2026-11-05T12:00:00Z');
+  const bis = '2026-11-05T13:47:00Z';
+
+  it('je Phase das BESTÄTIGTE - nach Kanal, nicht nach Position; ohne Rückmeldung unbekannt', () => {
+    const z = phasenZeilen(pro3, { commanded: 2, confirmed: 2, outputs_on: [0, 2] }, null);
+    expect(z.map((x) => [x.label, x.kanal, x.an, x.wunsch])).toEqual([['L1', 0, true, null], ['L2', 1, false, null], ['L3', 2, true, null]]);
+    // Eine Menge aus den Ausgängen 1 und 2: L1 ist Kanal 1.
+    const zwei = phasenZeilen({ channels: [1, 2], output_kw: [2, 2] }, { commanded: 1, confirmed: 1, outputs_on: [1] }, null);
+    expect(zwei.map((x) => [x.label, x.kanal, x.an])).toEqual([['L1', 1, true], ['L2', 2, false]]);
+    const meldung = { commanded: 2, confirmed: null, at: '2026-11-05T10:02:00Z' };
+    const still = phasenZeilen(pro3, meldung, null);
+    expect(still.every((x) => x.an === null)).toBe(true);
+    expect(phasenAnsicht(still[0], meldung)).toEqual({ wort: '?', unter: 'keine Rückmeldung seit 11:02', stellung: 'unbekannt' });
+    expect(phasenAnsicht(still[1], meldung).unter).toBeNull();
+  });
+
+  it('ein angefragter Wechsel wartet sichtbar, bis der Shelly ihn bestätigt', () => {
+    const z = phasenZeilen(pro3, { commanded: 2, confirmed: 1, outputs_on: [0] }, [0, 2]);
+    expect(z.map((x) => phasenAnsicht(x, null).stellung)).toEqual(['an', 'aus', 'warte-an']);
+    expect(phasenAnsicht(z[2], null).wort).toBe('schaltet ein …');
+    const aus = phasenZeilen(pro3, { commanded: 2, confirmed: 2, outputs_on: [0, 1] }, []);
+    expect(aus.map((x) => phasenAnsicht(x, null).stellung)).toEqual(['warte-aus', 'warte-aus', 'aus']);
+  });
+
+  it('ein Tipp wechselt eine Phase, ausgehend vom Wunsch oder vom Bestätigten', () => {
+    const bestaetigt = phasenZeilen(pro3, { commanded: 1, confirmed: 1, outputs_on: [0] }, null);
+    expect(phaseTippen(pro3, bestaetigt, 2)).toEqual({ art: 'start', ausgaenge: [0, 2] });
+    expect(phaseTippen(pro3, bestaetigt, 0)).toEqual({ art: 'stop' });
+    // Läuft ein Handeingriff, zählt der Wunsch, nicht das (noch) Bestätigte.
+    const wunsch = phasenZeilen(pro3, { commanded: 2, confirmed: 1, outputs_on: [0] }, [0, 2]);
+    expect(phaseTippen(pro3, wunsch, 1)).toEqual({ art: 'start', ausgaenge: [0, 1, 2] });
+    // Ohne Rückmeldung beginnt ein Tipp bei nichts.
+    expect(phaseTippen(pro3, phasenZeilen(pro3, null, null), 1)).toEqual({ art: 'start', ausgaenge: [1] });
+  });
+
+  it('eine Zahl, die keine erlaubte Stufe ist, schickt nichts und sagt warum', () => {
+    const einsDrei = { ...pro3, stages: [1, 3] };
+    const z = phasenZeilen(einsDrei, { commanded: 1, confirmed: 1, outputs_on: [0] }, null);
+    expect(phaseTippen(einsDrei, z, 1)).toEqual({
+      art: 'fehler', satz: '2 Phasen zugleich sind bei diesem Heizstab nicht erlaubt (erlaubt: 1, 3).',
+    });
+    expect(erlaubteStufen({ channels: [0, 1, 2] })).toEqual([3]);
+  });
+
+  it('„nur alle zusammen“ ist ein Schalter für den ganzen Stab', () => {
+    expect(nurZusammen({ ...pro3, stages: [3] })).toBe(true);
+    expect(nurZusammen({ channels: [0, 1, 2], output_kw: [2, 2, 2] })).toBe(true);
+    expect(nurZusammen({ channels: [0], output_kw: [2] })).toBe(true);
+    expect(nurZusammen(pro3)).toBe(false);
+  });
+
+  it('der Wunsch kommt aus einem laufenden Handeingriff: Phasen, „Aus“ = keine, abgelaufen = keiner', () => {
+    expect(handWunsch({ kind: 'start', endsAt: bis, targetOutputs: [2, 0] }, jetzt)).toEqual([0, 2]);
+    expect(handWunsch({ kind: 'stop', endsAt: bis }, jetzt)).toEqual([]);
+    expect(handWunsch({ kind: 'start', endsAt: bis }, jetzt)).toBeNull();
+    expect(handWunsch({ kind: 'start', endsAt: '2026-11-05T11:59:00Z', targetOutputs: [0] }, jetzt)).toBeNull();
+    expect(handWunsch(null, jetzt)).toBeNull();
+  });
+
+  it('Smart: an, ruht (pausiert oder von Hand) oder nicht eingerichtet (D3-A)', () => {
+    expect(smartZustand('active', null)).toMatchObject({ titel: 'Smart', an: true, schalter: true, ruht: null });
+    expect(smartZustand('paused', null)).toMatchObject({ titel: 'Smart ruht', an: false, schalter: true });
+    expect(smartZustand('active', { kind: 'start' })).toMatchObject({ titel: 'Smart ruht', ruht: 'Von Hand geschaltet' });
+    expect(smartZustand('not_activated', null)).toMatchObject({ schalter: false });
+  });
+
+  it('die Fähigkeit heizstab_phasen entscheidet zwischen Phasen und Stufen; unbekannt bleibt Stufe', () => {
+    const v = (capabilities: string[] | null, siteId = 's1') => ({ siteId, capabilities });
+    expect(phasenFaehig([v(['heizstab_regler', 'heizstab_phasen'])], 's1')).toBe(true);
+    expect(phasenFaehig([v(['heizstab_regler'])], 's1')).toBe(false);
+    expect(phasenFaehig([v(['heizstab_phasen'], 's2')], 's1')).toBeNull();
+    expect(phasenFaehig(null, 's1')).toBeNull();
+  });
+
+  it('die Leistung je Phase in einer Zeile', () => {
+    expect(leistungJePhase(phasenZeilen(pro3, null, null))).toBe('2,0\u00a0kW je Phase');
+    expect(leistungJePhase(phasenZeilen({ channels: [0, 1], output_kw: [1, 2] }, null, null))).toBe('3,0\u00a0kW zusammen');
   });
 });

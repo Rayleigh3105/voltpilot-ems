@@ -210,13 +210,6 @@ export function zustandsSatz(s: StufeMeldung | null | undefined): string {
   return `Heizt mit ${stufeText(s.confirmed)}${kw}`;
 }
 
-/** Je Phase: an, aus oder unbekannt (aus outputs_on; ohne bestätigte Stufe unbekannt). */
-export function phasen(kanaele: number, s: StufeMeldung | null | undefined): { label: string; an: boolean | null }[] {
-  const bekannt = s?.confirmed !== null && s?.confirmed !== undefined;
-  const an = new Set(s?.outputs_on ?? []);
-  return Array.from({ length: kanaele }, (_, k) => ({ label: `L${k + 1}`, an: bekannt ? an.has(k) : null }));
-}
-
 /** Uhrzeit HH:MM in Europe/Berlin. */
 function uhr(iso: string): string {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
@@ -246,16 +239,6 @@ export function abweichungHinweis(s: StufeMeldung | null | undefined, jetzt: Dat
 }
 
 /**
- * Der Satz zu einem laufenden „Jetzt heizen“ - er sagt, was BEFOHLEN ist, nie „heizt“: ob der Stab heizt,
- * sagt erst die bestätigte Stufe im Kopf der Karte.
- */
-export function handSatz(endsAt: string, kw: number | null | undefined, stufen: { ausgaenge: number; kw: number }[]): string {
-  const stufe = kw == null ? null : stufen.find((s) => Math.abs(s.kw - kw) < 1e-6) ?? null;
-  const was = stufe ? `${stufeText(stufe.ausgaenge)} · ${kwText(stufe.kw)}` : kw != null ? kwText(kw) : null;
-  return `Von Hand eingeschaltet bis ${uhr(endsAt)}${was ? ` (${was})` : ''}.`;
-}
-
-/**
  * Ist der Anschluss offen? Dann schaltet VoltPilot den Stab nicht - weder der Regler noch „Jetzt heizen“
  * (Zwilling von `HeizstabGeraet.anschlussOffen`/`HeizstabAusgaenge.anschlussBestaetigt`).
  */
@@ -275,16 +258,171 @@ export function reglerSatz(r: ReglerMeldung | null | undefined): string | null {
   return teile.filter(Boolean).join(' ') || null;
 }
 
-/** Dauern für „Jetzt heizen“ (30 min bis 4 h, Handeingriff ≤ 4 h). */
-export const HEIZ_DAUERN: { minuten: number; text: string }[] = [
-  { minuten: 30, text: '30 Minuten' },
-  { minuten: 60, text: '1 Stunde' },
-  { minuten: 120, text: '2 Stunden' },
-  { minuten: 240, text: '4 Stunden' },
-];
+// ---------------------------------------------------------------------------
+// Steuerung wie in Home Assistant (05.11.2026, Entscheide D1-A, D2-A, D3-A): Smart zuerst, darunter ein
+// Schalter je Phase. Die Stellung eines Schalters ist, was der Shelly BESTÄTIGT hat; ein angefragter Wechsel
+// sieht anders aus, ohne Rückmeldung steht „?“ - nie „aus“.
+// ---------------------------------------------------------------------------
 
-/** „Höchstens ≈ 4,0 kWh“ - die Obergrenze, nie eine Zusage (das Thermostat kann früher abschalten). */
-export function hoechstensKwh(kw: number, minuten: number): string {
-  const kwh = Math.round(((kw * minuten) / 60) * 10) / 10;
-  return `Höchstens ≈ ${kwh.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kWh`;
+/** Die Fähigkeit der Box, genau die gewählten Phasen zu schalten (edge-supports.md). */
+export const FAEHIGKEIT_PHASEN = 'heizstab_phasen';
+
+/** Von Hand geschaltet kehrt der Stab nach zwei Stunden zu Smart zurück; jeder Tipp setzt die Frist neu (D1-A). */
+export const HAND_MINUTEN = 120;
+
+/**
+ * Ob eine Box der Anlage einzelne Phasen schaltet: true/false, null = unbekannt (noch nicht geladen oder
+ * kein Stand gemeldet) - dann bleibt die Stufenwahl, die jede Box kann.
+ */
+export function phasenFaehig(
+  versionen: readonly { siteId: string; capabilities?: string[] | null; supports?: string[] | null }[] | null,
+  siteId: string,
+): boolean | null {
+  if (!versionen) return null;
+  const boxen = versionen.filter((v) => v.siteId === siteId);
+  if (boxen.length === 0) return null;
+  return boxen.some((v) => (v.capabilities ?? v.supports ?? []).includes(FAEHIGKEIT_PHASEN));
+}
+
+/** Ein laufender Handeingriff (start oder stop, nicht abgelaufen), sonst null. */
+export function handEingriff<T extends { kind: string; endsAt: string }>(o: T | null | undefined, jetzt: Date): T | null {
+  if (!o || (o.kind !== 'start' && o.kind !== 'stop')) return null;
+  const ende = new Date(o.endsAt).getTime();
+  return Number.isFinite(ende) && ende > jetzt.getTime() ? o : null;
+}
+
+/**
+ * Was von Hand GEWÜNSCHT ist, als Kanäle: die gewählten Ausgänge eines Starts, [] bei „Aus“, null ohne
+ * Handeingriff oder bei einem Start ohne Wahl (eine Stufe: welche Phasen, entscheidet die Box).
+ */
+export function handWunsch(
+  o: { kind: string; endsAt: string; targetOutputs?: number[] | null } | null | undefined,
+  jetzt: Date,
+): number[] | null {
+  const h = handEingriff(o, jetzt);
+  if (!h) return null;
+  if (h.kind === 'stop') return [];
+  return h.targetOutputs && h.targetOutputs.length > 0 ? [...h.targetOutputs].sort((a, b) => a - b) : null;
+}
+
+/** Eine Zeile je Phase: bestätigt (an/aus/unbekannt) und, falls von Hand gewählt, der Wunsch. */
+export interface PhasenZeile {
+  label: string;
+  kanal: number;
+  kw: number | null;
+  /** Bestätigt vom Shelly; null = keine Rückmeldung. */
+  an: boolean | null;
+  /** Von Hand gewünscht; null = kein Wunsch für diese Phase. */
+  wunsch: boolean | null;
+}
+
+/** Die Phasen eines Stabs in der Reihenfolge seiner Ausgänge: L1 ist der erste Ausgang der Menge. */
+export function phasenZeilen(
+  connection: Record<string, unknown> | null | undefined,
+  s: StufeMeldung | null | undefined,
+  wunsch: number[] | null,
+): PhasenZeile[] {
+  const chs = Array.isArray(connection?.channels) ? (connection!.channels as number[]) : [];
+  const kw = Array.isArray(connection?.output_kw) ? (connection!.output_kw as number[]) : [];
+  const bekannt = s?.confirmed !== null && s?.confirmed !== undefined;
+  const an = new Set(s?.outputs_on ?? []);
+  return chs.map((ch, i) => ({
+    label: `L${i + 1}`,
+    kanal: ch,
+    kw: typeof kw[i] === 'number' ? kw[i] : null,
+    an: bekannt ? an.has(ch) : null,
+    wunsch: wunsch === null ? null : wunsch.includes(ch),
+  }));
+}
+
+/** Wie eine Phasen-Zeile aussieht: das Wort, der Zusatz darunter und die Stellung des Schalters. */
+export function phasenAnsicht(z: PhasenZeile, s: StufeMeldung | null | undefined): {
+  wort: string;
+  unter: string | null;
+  stellung: 'an' | 'aus' | 'warte-an' | 'warte-aus' | 'unbekannt';
+} {
+  if (z.wunsch !== null && z.wunsch !== z.an) {
+    return z.wunsch
+      ? { wort: 'schaltet ein …', unter: 'gesendet, noch nicht bestätigt', stellung: 'warte-an' }
+      : { wort: 'schaltet aus …', unter: 'gesendet, noch nicht bestätigt', stellung: 'warte-aus' };
+  }
+  if (z.an === null) {
+    const seit = s?.at ? `keine Rückmeldung seit ${uhr(s.at)}` : 'noch keine Rückmeldung der Box';
+    return { wort: '?', unter: z.label === 'L1' ? seit : null, stellung: 'unbekannt' };
+  }
+  return { wort: z.an ? 'an' : 'aus', unter: null, stellung: z.an ? 'an' : 'aus' };
+}
+
+/** Die erlaubten Zahlen gleichzeitiger Ausgänge (`stages`, ohne Angabe nur alle zusammen). */
+export function erlaubteStufen(connection: Record<string, unknown> | null | undefined): number[] {
+  const n = Array.isArray(connection?.channels) ? (connection!.channels as unknown[]).length : 0;
+  const st = Array.isArray(connection?.stages) ? (connection!.stages as number[]) : [];
+  return st.length > 0 ? [...st].sort((a, b) => a - b) : n > 0 ? [n] : [];
+}
+
+/** Ein Stab, der nur alle Ausgänge zusammen schaltet (eine Stufe = alle): ein Schalter für den ganzen Stab. */
+export function nurZusammen(connection: Record<string, unknown> | null | undefined): boolean {
+  const n = Array.isArray(connection?.channels) ? (connection!.channels as unknown[]).length : 0;
+  const st = erlaubteStufen(connection);
+  return n <= 1 || (st.length === 1 && st[0] === n);
+}
+
+/** Was ein Tipp auf eine Phase bewirkt. */
+export type PhasenTipp =
+  | { art: 'start'; ausgaenge: number[] }
+  | { art: 'stop' }
+  | { art: 'fehler'; satz: string };
+
+/**
+ * Der Tipp auf eine Phase: ausgehend vom Wunsch (läuft ein Handeingriff) oder vom Bestätigten wechselt diese
+ * eine Phase. Keine Phase mehr = „Aus“. Ist die neue Zahl keine erlaubte Stufe, sagt ein Satz warum - das
+ * Portal schickt nichts, was die API (`HeizstabAusgaenge.phasenFehler`) ablehnen würde.
+ */
+export function phaseTippen(
+  connection: Record<string, unknown> | null | undefined,
+  zeilen: PhasenZeile[],
+  kanal: number,
+): PhasenTipp {
+  const basis = zeilen.filter((z) => (z.wunsch ?? z.an) === true).map((z) => z.kanal);
+  const neu = basis.includes(kanal) ? basis.filter((k) => k !== kanal) : [...basis, kanal];
+  if (neu.length === 0) return { art: 'stop' };
+  const erlaubt = erlaubteStufen(connection);
+  if (!erlaubt.includes(neu.length)) {
+    return {
+      art: 'fehler',
+      satz: `${stufeText(neu.length)} zugleich sind bei diesem Heizstab nicht erlaubt (erlaubt: ${erlaubt.join(', ')}).`,
+    };
+  }
+  return { art: 'start', ausgaenge: [...neu].sort((a, b) => a - b) };
+}
+
+/** „Smart wieder ab 15:02“ - das Ende eines Handeingriffs, als Uhrzeit. */
+export function smartWiederAb(endsAt: string): string {
+  return `Smart wieder ab ${uhr(endsAt)}`;
+}
+
+/** Die Leistung je Phase als kurze Zeile: „2,0 kW je Phase“, bei ungleichen Elementen die Summe. */
+export function leistungJePhase(zeilen: PhasenZeile[]): string | null {
+  const kw = zeilen.map((z) => z.kw).filter((k): k is number => k !== null);
+  if (kw.length === 0) return null;
+  if (kw.every((k) => Math.abs(k - kw[0]) < 1e-9)) return `${kwText(kw[0])} je Phase`;
+  return `${kwText(kw.reduce((a, b) => a + b, 0))} zusammen`;
+}
+
+/**
+ * Der Smart-Block: an, ruht (pausiert oder von Hand übersteuert) oder nicht eingerichtet. Der Schalter
+ * fehlt, wenn es kein Smart gibt, das ruhen könnte.
+ */
+export function smartZustand(
+  aktivierung: 'not_activated' | 'active' | 'paused' | null | undefined,
+  hand: { kind: string } | null,
+): { titel: string; an: boolean; schalter: boolean; ruht: string | null } {
+  if (hand) {
+    return { titel: 'Smart ruht', an: false, schalter: true, ruht: 'Von Hand geschaltet' };
+  }
+  if (aktivierung === 'paused') {
+    return { titel: 'Smart ruht', an: false, schalter: true, ruht: 'Der Stab bleibt aus, bis Smart wieder an ist.' };
+  }
+  if (aktivierung === 'active') return { titel: 'Smart', an: true, schalter: true, ruht: null };
+  return { titel: 'Smart ist nicht eingerichtet', an: false, schalter: false, ruht: 'Unter „Einstellungen“ wählen, wann der Stab heizen soll.' };
 }

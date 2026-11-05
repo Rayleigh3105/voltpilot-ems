@@ -18,10 +18,6 @@
      „Phase für 1 Phase“ zu einem Wort zusammen. */
   letter-spacing: normal;
 }
-.vp-hz-kopf {
-  font-size: var(--vp-c-fs-16);
-  line-height: var(--vp-c-lh-text);
-}
 
 /* Eine kleine Wahl (Stufe, Dauer): ein sichtbares Wort davor, die Knöpfe nebeneinander und umbrechend. */
 .vp-hz-gruppe {
@@ -33,58 +29,12 @@
   color: var(--vp-c-muted-fg);
   font-size: var(--vp-c-fs-14);
 }
-.vp-hz-chips {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  /* Drei Stufen passen am Telefon (375 px) in eine Reihe, vier Dauern in zwei mal zwei bzw. am Rechner in eine. */
-  grid-template-columns: repeat(auto-fit, minmax(var(--vp-hz-chip-min, 88px), 1fr));
-  gap: var(--vp-space-2);
-  min-width: 0;
-}
-.vp-hz-chips.is-dauer {
-  --vp-hz-chip-min: 100px;
-}
-.vp-hz-chips button {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  display: grid;
-  align-content: center;
-  gap: 0;
-  padding: 6px 10px;
-  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
-  border-radius: var(--vp-radius-sm);
-  background: var(--vp-surface);
-  font: inherit;
-  font-size: var(--vp-c-fs-14);
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.vp-hz-chips button b {
-  font-weight: var(--vp-c-fw-600);
-}
-.vp-hz-chips button small {
-  color: var(--vp-c-muted-fg);
-}
-.vp-hz-chips button[aria-pressed='true'] {
-  border-color: var(--vp-action);
-  box-shadow: inset 0 0 0 1px var(--vp-action);
-  background: color-mix(in srgb, var(--vp-action) 6%, var(--vp-surface));
-}
-.vp-hz-chips button:focus-visible {
-  outline: 2px solid var(--vp-focus-ring-color);
-  outline-offset: 2px;
-}
-.vp-hz-chips button:disabled,
 .vp-hz-wahl button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-/* „Mehr zum Heizstab“: Einzelheiten, die zum Verstehen nicht nötig sind. */
+/* Eine aufklappbare Zeile („Einstellungen“ der Karte, „Mehr“ beim Anlegen): Seltenes, das zum Bedienen nicht nötig ist. */
 .vp-hz-mehr {
   border-top: 1px solid color-mix(in srgb, var(--vp-border) 55%, transparent);
   padding-top: var(--vp-space-2);
@@ -222,31 +172,6 @@
   color: var(--vp-c-warn-fg);
 }
 
-/* Die Phasen als ruhige Marken: an = gefüllt, aus = Umriss, unbekannt = gestrichelt. */
-.vp-hz-phasen {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vp-space-2);
-}
-.vp-hz-phase {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
-  font-size: var(--vp-c-fs-14);
-}
-.vp-hz-phase.is-an {
-  background: var(--vp-success-soft);
-  border-color: var(--vp-success-dark);
-  color: var(--vp-ok-ink);
-}
-.vp-hz-phase.is-unbekannt {
-  border-style: dashed;
-  color: var(--vp-c-muted-fg);
-}
 
 .vp-hz-knoepfe {
   display: flex;
@@ -298,4 +223,295 @@
 .vp-hz-ok svg {
   flex: none;
   margin-top: 3px;
+}
+
+/* ---------------------------------------------------------------------------------------------------------------
+   Steuerung wie in Home Assistant (05.11.2026): Smart zuerst, ein Schalter je Phase, Seltenes unter „Einstellungen“.
+   --------------------------------------------------------------------------------------------------------------- */
+
+/* Der Schalter: 52 x 30 wie .vp-switch, Trefferfläche ≥ 44 px. Stellung = bestätigt; wartend gestrichelt;
+   unbekannt mit „?“ statt „aus“. */
+.vp-hz-sw {
+  position: relative;
+  flex: 0 0 auto;
+  width: 52px;
+  height: 30px;
+  padding: 3px;
+  border: 1px solid var(--vp-field-border);
+  border-radius: 999px;
+  background: var(--vp-bg-light);
+  cursor: pointer;
+}
+.vp-hz-sw::before {
+  content: '';
+  position: absolute;
+  inset: -8px -4px;
+}
+.vp-hz-sw:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-hz-sw:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.vp-hz-sw-knopf {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--vp-surface);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.2);
+  color: var(--vp-text-muted);
+  font-size: 13px;
+  font-weight: var(--vp-c-fw-700);
+  line-height: 1;
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
+}
+.vp-hz-sw.is-an {
+  background: var(--vp-action);
+  border-color: var(--vp-action);
+}
+.vp-hz-sw.is-an .vp-hz-sw-knopf {
+  transform: translateX(22px);
+}
+.vp-hz-sw.is-warte {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--vp-action) 35%, var(--vp-surface));
+}
+.vp-hz-sw.is-warte:not(.is-an) {
+  background: var(--vp-bg-light);
+  border-color: var(--vp-action);
+}
+.vp-hz-sw.is-unbekannt {
+  border-style: dashed;
+}
+.vp-hz-sw.is-unbekannt .vp-hz-sw-knopf {
+  transform: translateX(11px);
+}
+
+/* Smart-Block: Symbol, zwei Zeilen Text, Schalter. Ruht er, tritt er zurück. */
+.vp-hz-smart {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--vp-primary) 45%, var(--vp-border));
+  border-radius: var(--vp-radius-md, 12px);
+  background: color-mix(in srgb, var(--vp-primary) 10%, var(--vp-surface));
+}
+.vp-hz-smart.is-ruht {
+  border-color: var(--vp-border);
+  background: var(--vp-bg-light);
+}
+.vp-hz-smart-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--vp-surface);
+  color: var(--vp-solar-end);
+}
+.vp-hz-smart.is-ruht .vp-hz-smart-ic {
+  color: var(--vp-text-muted);
+}
+.vp-hz-smart-txt {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-hz-smart-txt b {
+  font-size: var(--vp-c-fs-16);
+  overflow-wrap: anywhere;
+}
+.vp-hz-smart-txt small,
+.vp-hz-wert small {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+.vp-hz-art {
+  font-weight: var(--vp-c-fw-600, 600);
+}
+
+/* Titelzeile über den Schaltern: links das Wort, rechts die Leistung. */
+.vp-hz-titel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px var(--vp-space-2);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+}
+.vp-hz-titel span {
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-text);
+}
+.vp-hz-titel em {
+  font-style: normal;
+}
+
+/* Eine Zeile je Phase: L1 · Zustand · Schalter. */
+.vp-hz-phasen-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm);
+}
+.vp-hz-phasen-liste li {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  min-width: 0;
+  min-height: 56px;
+  padding: 8px 12px;
+}
+.vp-hz-phasen-liste li + li {
+  border-top: 1px solid var(--vp-border);
+}
+.vp-hz-ph {
+  flex: none;
+  min-width: 3.2em;
+  font-weight: var(--vp-c-fw-700);
+  white-space: nowrap;
+}
+.vp-hz-wert {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-hz-wert b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: var(--vp-c-fw-600, 600);
+}
+.vp-hz-punkt {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--vp-gray);
+}
+.vp-hz-punkt.is-an {
+  background: var(--vp-ok-ink);
+  border-color: var(--vp-ok-ink);
+}
+.vp-hz-punkt.is-warte-an,
+.vp-hz-punkt.is-warte-aus {
+  border-style: dashed;
+  border-color: var(--vp-action);
+}
+.vp-hz-punkt.is-unbekannt {
+  border-style: dashed;
+}
+
+/* Wenige Tasten nebeneinander (Stufe einer älteren Box, Zahl der Ausgänge, Phasenwahl). */
+.vp-hz-tasten {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
+}
+.vp-hz-tasten button {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  font: inherit;
+  font-weight: var(--vp-c-fw-600, 600);
+  color: inherit;
+  cursor: pointer;
+}
+.vp-hz-tasten button[aria-pressed='true'] {
+  border-color: var(--vp-action);
+  box-shadow: inset 0 0 0 1px var(--vp-action);
+  background: var(--vp-bg-light);
+}
+.vp-hz-tasten button:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-hz-tasten button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Von Hand: eine ruhige Zeile mit dem Weg zurück. */
+.vp-hz-hand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  padding: 8px 12px;
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-bg-light);
+  font-size: var(--vp-c-fs-14);
+}
+.vp-hz-hand > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* „Einstellungen“ zugeklappt: das Wort und die Werte als kurze Zeile. */
+.vp-hz-mehr > summary {
+  flex-wrap: wrap;
+  gap: 2px var(--vp-space-2);
+}
+.vp-hz-mehr > summary > small {
+  flex: 1 1 100%;
+  order: 3;
+  color: var(--vp-c-muted-fg);
+  font-weight: normal;
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+}
+.vp-hz-mehr-inhalt > .vp-hz-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-height: 44px;
+  border-bottom: 1px solid var(--vp-border);
+}
+.vp-hz-mehr-inhalt > .vp-hz-zeile > span {
+  color: var(--vp-c-muted-fg);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.vp-hz-mehr-inhalt > .vp-hz-zeile > a,
+.vp-hz-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  color: var(--vp-link);
+  font-weight: var(--vp-c-fw-600, 600);
+  text-decoration: none;
+}
+.vp-hz-technik {
+  display: grid;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-hz-technik > h4 {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  letter-spacing: normal;
 }

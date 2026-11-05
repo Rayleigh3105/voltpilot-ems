@@ -46,7 +46,7 @@ Jeden Takt (1 s) reicht der Regler seine Stufe als Wunsch an den Arbiter: `setpo
 
 Darüber behalten alle anderen ihr Wort:
 
-- ein Handeingriff wie „Jetzt heizen“ (75);
+- ein Handeingriff, z. B. ein Phasen-Schalter auf der Geräteseite (75);
 - die Schutzgrenzen und der Zyklen-Guard;
 - „Automatik pausieren“ (der Arbiter setzt Regelwünsche aus).
 

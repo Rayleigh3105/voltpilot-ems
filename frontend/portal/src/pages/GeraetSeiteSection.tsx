@@ -1420,8 +1420,9 @@ function GeraetSeiteKern({
         // sein Ziel und die Messung gehören in denselben Baustein wie sein
         // Schalter, nicht in einen zweiten daneben.
         const netzRegelung = eigenEinspeisung?.netz ? eigenEinspeisung : null;
-        // Heizstab V1: ein Heizstab über die Ausgänge eines Shelly zeigt seine BESTÄTIGTE Stufe, die Phasen,
-        // den Grund des Reglers und „Jetzt heizen“ mit Stufe - im Baustein seines Schalters.
+        // Heizstab: ein Heizstab über die Ausgänge eines Shelly hat seine eigene Steuerung (Smart zuerst, ein
+        // Schalter je Phase mit der BESTÄTIGTEN Stellung, Einstellungen zum Aufklappen) - sie ersetzt Zustandszeile
+        // und Segmente im Baustein seines Schalters.
         const heizstabZeile = eigenerVerbraucher?.type === 'heating-rod'
           ? (components?.components ?? []).find((r) => r.id === eigenerVerbraucher.id) ?? null
           : null;
@@ -1447,6 +1448,7 @@ function GeraetSeiteKern({
                 view={steuerung}
                 busy={aktionBusy}
                 onAktion={segmentAusloesen}
+                nurZusatz={heizstabKarte != null}
                 zusatz={notAus || netzRegelung || heizstabKarte ? (
                   <>
                     {heizstabKarte}

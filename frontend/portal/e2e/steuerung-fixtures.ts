@@ -13,7 +13,7 @@ import { consumersApi } from '../src/consumers/consumersApi';
 import { buildGuidedFlow } from '../src/flows/guidedBuilder';
 import { installHelpFixtures, site } from './help-fixtures';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
-import { rechteSeed, SPRUNG_FALL } from '../src/test/rollenFixtures';
+import { rechteSeed, sichtbareListe, SPRUNG_FALL } from '../src/test/rollenFixtures';
 import D from './steuerung-daten.json';
 
 /** Die Uhr der Aufnahmen: 13:10 Uhr in Berlin. */
@@ -403,6 +403,36 @@ export function installSteuerungFixtures() {
     pauseAutomation: async () => ({ applied: true, pushed: true, kind: 'pause', endsAt: null, effectivePowerKw: null, ttlRenewed: false, message: 'ok' }),
     startBatteryOverride: async () => ({ applied: true, pushed: true, kind: 'speicher_laden', endsAt: null, effectivePowerKw: 5, ttlRenewed: false, message: 'ok' }),
   });
+  // `?heizstab=shelly`: der Heizstab hängt an einem Shelly Pro 3 (drei Ausgänge als EIN Gerät) statt an einem
+  // Ausgang des I/O-Moduls - sein Blatt zeigt dann dieselbe Steuerung wie seine Geräteseite (Smart zuerst, ein
+  // Schalter je Phase, Einstellungen zum Aufklappen). Die Box meldet `heizstab_phasen`.
+  if (new URLSearchParams(location.search).get('heizstab') === 'shelly') {
+    const hs = consumers.find((c) => c.id === 'e-hs');
+    if (hs) Object.assign(hs, { ioEntityId: null, ioChannel: null, controlKind: 'stepped', ratedPowerKw: 4.5, levelsKw: [0, 1.5, 3, 4.5] });
+    const st = status.find((x) => x.entityId === 'e-hs');
+    if (st) {
+      Object.assign(st, {
+        stufe: { commanded: 2, commanded_kw: 3, confirmed: 2, confirmed_kw: 3, outputs_on: [0, 1], mismatch_since: null, at: JETZT },
+        heizstab: { stufe: 2, code: 'ueberschuss', grund: 'Heizt mit Überschuss.' },
+      });
+    }
+    const basis = api.siteComponents.bind(api);
+    Object.assign(api, {
+      siteComponents: async (siteId: string) => {
+        const b = await basis(siteId);
+        return { ...b, components: [...b.components, {
+          id: 'e-hs', role: 'consumer', entityType: 'heating-rod', label: 'Heizstab Warmwasser', brand: 'shelly',
+          model: 'shelly_http', family: 'shelly_http', communication: 'shelly_http', sourceKind: 'builtin',
+          templateRef: 'builtin:shelly:shelly_http', templateVersion: 1, definitionVersion: 1, edgeSourceId: 'src-hs',
+          syncStatus: 'in_sync',
+          connection: { ip: '192.168.178.43', port: 80, channels: [0, 1, 2], output_kw: [1.5, 1.5, 1.5], stages: [1, 2, 3], rotation: 'daily', anschluss: 'stern_mit_n' },
+        }] };
+      },
+      edgeVersions: result(sichtbareListe([{ deviceId: 'help-box', siteId: SITE, coreVersion: 'edge-2026.11.05', paletteVersion: null,
+        reportedAt: JETZT, capabilities: ['data_sources', 'heizstab_regler', 'heizstab_phasen'] }])),
+    });
+  }
+
   Object.assign(consumersApi, {
     list: result(consumers),
     status: result(status),

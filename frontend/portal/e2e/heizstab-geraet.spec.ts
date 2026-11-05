@@ -3,10 +3,9 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Die Geräteseite eines Heizstabs (Bühne `heizstab-geraet.html`, Entschlacken 04.11.2026): oben steht, was
- * BESTÄTIGT läuft und was der Kunde wissen muss (Abweichung, Handeingriff, offener Anschluss); Phasen, die
- * geschätzte Wärme und die Phase für Stufe 1 stehen unter „Mehr zum Heizstab“. Geprüft wird Geometrie und
- * Bedienung bei 375 und 1440 px, kein Pixelvergleich.
+ * Die Geräteseite eines Heizstabs (Bühne `heizstab-geraet.html`, Konzept „Phasen schalten“ 05.11.2026): Smart
+ * zuerst, darunter ein Schalter je Phase in der BESTÄTIGTEN Stellung, Seltenes unter „Einstellungen“. Geprüft
+ * werden Geometrie und Bedienung bei 375 und 1440 px, kein Pixelvergleich.
  *
  * Bilder nur auf Wunsch (`HEIZSTAB_BILDER=<Ordner>`), nie ins Repository.
  */
@@ -54,33 +53,31 @@ for (const breite of [375, 1440] as const) {
       test.skip(!passend, 'je Breite nur die passende Maschine');
     });
 
-    test('heizt: Kopf und Karte nennen die bestätigte Stufe, Einzelheiten unter „Mehr“', async ({ page }) => {
+    const gesendet = (page: Page, was: string) =>
+      page.evaluate((w) => (window as unknown as { __gesendet: Record<string, unknown> }).__gesendet[w], was);
+
+    test('heizt: Smart oben, je Phase ein Schalter in der bestätigten Stellung, Einstellungen zugeklappt', async ({ page }) => {
       const fehler = await oeffne(page, breite, 'heizt');
       const karte = page.getByTestId('heizstab-karte');
-      await expect(karte.getByText('Heizt mit 2 Phasen · 4,0 kW')).toBeVisible();
-      // Der Kopf der Seite widerspricht nicht mehr („meldet gerade keinen Wert“ neben „Heizt mit 2 Phasen“).
+      // Der Kopf der Seite widerspricht nicht („meldet gerade keinen Wert“ neben „Heizt mit 2 Phasen“).
       await expect(page.getByText('Heizt gerade.')).toBeVisible();
-      await expect(page.getByText('≈ 4,0 kW · angenommen')).toBeVisible();
       await expect(page.getByText(/meldet gerade keinen Wert|noch keine Messwerte geliefert/)).toHaveCount(0);
       await expect(page.getByText(/shelly_http/)).toHaveCount(0);
-      // Phasen und Wärme stehen zugeklappt unter „Mehr zum Heizstab“.
-      await expect(karte.getByText('L1 an')).toBeHidden();
-      await expect(karte.getByRole('group', { name: 'Stufe' })).toBeVisible();
-      await expect(karte.getByRole('group', { name: 'Dauer' })).toBeVisible();
+      // Die eigene Steuerung ersetzt Zustandszeile und Segmente („Automatik / Ein / Aus“).
+      await expect(page.getByRole('radiogroup', { name: 'Betriebsart' })).toHaveCount(0);
+      await expect(karte.getByTestId('heizstab-smart')).toContainText('Smart · Überschuss');
+      await expect(karte.getByRole('switch', { name: 'L1 ausschalten' })).toHaveAttribute('aria-checked', 'true');
+      await expect(karte.getByRole('switch', { name: 'L3 einschalten' })).toHaveAttribute('aria-checked', 'false');
+      await expect(karte.getByTestId('heizstab-einstellungen')).not.toHaveAttribute('open', '');
       await ohneUeberlauf(page);
       await bild(page, 'k-heizt', breite);
-      await karte.getByText('Mehr zum Heizstab').click();
-      await expect(karte.getByText('L1 an')).toBeVisible();
-      await expect(karte.getByText(/Wärme heute ≈\s7,2\skWh - geschätzt/)).toBeVisible();
-      await expect(karte.getByRole('button', { name: /Täglich wechselnd/ })).toHaveAttribute('aria-pressed', 'true');
+      // Ein Tipp auf L3 schaltet von Hand: L1 bis L3, zwei Stunden.
+      await karte.getByRole('switch', { name: 'L3 einschalten' }).click();
+      await expect.poll(() => gesendet(page, 'startOverride')).toEqual({ action: 'start', durationMinutes: 120, ausgaenge: [0, 1, 2] });
+      await karte.getByTestId('heizstab-einstellungen').locator('summary').click();
+      await expect(karte.getByRole('button', { name: 'Täglich wechselnd' })).toHaveAttribute('aria-pressed', 'true');
       await ohneUeberlauf(page);
-      await bild(page, 'k-heizt-mehr', breite);
-      // „Jetzt heizen“ nennt Stufe UND Dauer im Knopf.
-      await karte.getByRole('button', { name: /^2 Phasen/ }).click();
-      await karte.getByRole('button', { name: '1 Stunde' }).click();
-      await karte.getByRole('button', { name: '2 Phasen für 1 Stunde einschalten' }).click();
-      await expect.poll(() => page.evaluate(() => (window as unknown as { __gesendet: Record<string, unknown> }).__gesendet.startOverride))
-        .toEqual({ action: 'start', durationMinutes: 60, stufe: 2 });
+      await bild(page, 'k-heizt-einstellungen', breite);
       expect(fehler).toEqual([]);
     });
 
@@ -95,23 +92,61 @@ for (const breite of [375, 1440] as const) {
       expect(fehler).toEqual([]);
     });
 
-    test('Handeingriff: befohlen ist nicht bestätigt - kein „heizt von Hand“', async ({ page }) => {
+    test('von Hand: L3 angefragt wartet sichtbar, Smart ruht bis 13:47, „Zurück zu Smart“', async ({ page }) => {
       const fehler = await oeffne(page, breite, 'hand');
       const karte = page.getByTestId('heizstab-karte');
-      await expect(karte.getByText(/^Von Hand eingeschaltet bis 13:47 \(1 Phase · 2,0\skW\)\.$/)).toBeVisible();
+      await expect(karte.getByTestId('heizstab-smart')).toContainText('Smart ruht');
+      await expect(karte.getByTestId('heizstab-hand')).toContainText('Von Hand · Smart wieder ab 13:47');
+      await expect(karte.getByTestId('heizstab-phase-L3')).toContainText('schaltet ein …');
       await expect(page.getByText(/Heizt von Hand/)).toHaveCount(0);
-      await expect(karte.getByRole('button', { name: 'Automatik fortsetzen' })).toBeVisible();
       await ohneUeberlauf(page);
       await bild(page, 'k-hand', breite);
+      await karte.getByRole('button', { name: 'Zurück zu Smart' }).click();
+      await expect.poll(() => gesendet(page, 'clearOverride')).toBeTruthy();
       expect(fehler).toEqual([]);
     });
 
-    test('noch keine Rückmeldung: unbekannt bleibt unbekannt', async ({ page }) => {
+    test('noch keine Rückmeldung: „?“ statt „aus“', async ({ page }) => {
       const fehler = await oeffne(page, breite, 'still');
-      await expect(page.getByText('Die Box hat noch keine Stufe gemeldet.')).toBeVisible();
-      await expect(page.getByTestId('heizstab-karte').getByText('Noch keine Rückmeldung der Box')).toBeVisible();
+      const karte = page.getByTestId('heizstab-karte');
+      await expect(karte.getByTestId('heizstab-phase-L1')).toContainText('?');
+      await expect(karte.getByTestId('heizstab-phase-L1')).toContainText('noch keine Rückmeldung der Box');
       await ohneUeberlauf(page);
       await bild(page, 'k-still', breite);
+      expect(fehler).toEqual([]);
+    });
+
+    test('ältere Box: Stufen mit dem Hinweis auf das Update', async ({ page }) => {
+      const fehler = await oeffne(page, breite, 'alt');
+      const karte = page.getByTestId('heizstab-karte');
+      await expect(karte.getByText('Einzelne Phasen nach dem nächsten Update der Box')).toBeVisible();
+      await karte.getByRole('button', { name: '1 Phase' }).click();
+      await expect.poll(() => gesendet(page, 'startOverride')).toEqual({ action: 'start', durationMinutes: 120, stufe: 1 });
+      await ohneUeberlauf(page);
+      await bild(page, 'k-alt', breite);
+      expect(fehler).toEqual([]);
+    });
+
+    test('Smart ruht: die Phasen-Schalter gehen weiter, der Smart-Schalter setzt fort', async ({ page }) => {
+      const fehler = await oeffne(page, breite, 'ruht');
+      const karte = page.getByTestId('heizstab-karte');
+      await expect(karte.getByTestId('heizstab-smart')).toContainText('Der Stab bleibt aus, bis Smart wieder an ist.');
+      await expect(karte.getByRole('switch', { name: 'L1 einschalten' })).toBeEnabled();
+      await karte.getByRole('switch', { name: 'Smart einschalten' }).click();
+      await expect.poll(() => gesendet(page, 'resume')).toBeTruthy();
+      await ohneUeberlauf(page);
+      expect(fehler).toEqual([]);
+    });
+
+    test('Fall GATE: ein Stab mit nur Ausgang 0 bekommt unter „Technik“ drei Ausgänge', async ({ page }) => {
+      const fehler = await oeffne(page, breite, 'einrichtung');
+      const einst = page.getByTestId('heizstab-einstellungen');
+      await einst.locator('summary').click();
+      await einst.getByRole('button', { name: '3', exact: true }).click();
+      await einst.getByRole('button', { name: '3 Ausgänge prüfen und speichern' }).click();
+      await expect.poll(() => gesendet(page, 'updateComponent')).toMatchObject({ connection: { channels: [0, 1, 2], stages: [1, 2, 3] } });
+      await ohneUeberlauf(page);
+      await bild(page, 'k-einrichtung', breite);
       expect(fehler).toEqual([]);
     });
   });

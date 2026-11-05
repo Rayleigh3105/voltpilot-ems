@@ -9,6 +9,8 @@
 import { liste } from './liste';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Recht } from '../components/Recht';
+import { HeizstabKarteGeladen } from '../components/HeizstabKarte';
+import { quelleChip } from '../verbraucherZone';
 import { LADEPUNKT_MODUS, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
 import { BIS_ABSTECKEN, LADEPUNKT_ABSTECKEN_DECKEL_MIN, bisAbsteckenSatz } from '../ladepunkte';
 import { ladeQuelle } from './laden';
@@ -203,13 +205,27 @@ function laufFolge(rh: Reihen, von: number, bis: number, kw: number): { kwh: num
 // Gerät
 // ---------------------------------------------------------------------------
 
-export function GeraetBlatt({ k, id, modus }: { k: BlattKontext; id: string; modus?: 'aus' | 'an' }) {
+export function GeraetBlatt({ k, id, modus, siteId = null, einstellungenOffen = false }: {
+  k: BlattKontext;
+  id: string;
+  modus?: 'aus' | 'an';
+  /** Mit Anlage zeigt ein Heizstab seine eigene Steuerung (Smart zuerst, ein Schalter je Phase). */
+  siteId?: string | null;
+  /** Aus dem Link „Ändern“ der Geräteseite: die Einstellungen stehen offen. */
+  einstellungenOffen?: boolean;
+}) {
   const g = k.bild.geraete.find((x) => x.id === id);
   if (!g) return null;
-  return <GeraetBlattInhalt k={k} g={g} modus={modus} />;
+  return <GeraetBlattInhalt k={k} g={g} modus={modus} siteId={siteId} einstellungenOffen={einstellungenOffen} />;
 }
 
-function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; modus?: 'aus' | 'an' }) {
+function GeraetBlattInhalt({ k, g, modus, siteId, einstellungenOffen }: {
+  k: BlattKontext;
+  g: GeraetBild;
+  modus?: 'aus' | 'an';
+  siteId: string | null;
+  einstellungenOffen: boolean;
+}) {
   const { bild, a } = k;
   const r = bild.raster;
   const [entwurf, setEntwurf] = useState<SteuerartEntwurf>(() => entwurfAus(g.eintrag));
@@ -296,8 +312,11 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
     </>
   ) : null;
   const hilft = g.consumer?.allowStorageDischarge;
-  return (
-    <Blatt titel={g.name} kopf={kopf} fuss={fuss} voll onClose={k.zu}>
+  // Heizstab (D2-A, 05.11.2026): dieselbe Steuerung wie auf seiner Geräteseite, ohne Verlauf; alles Übrige
+  // liegt unter EINER aufklappbaren Zeile „Einstellungen“.
+  const heizstab = g.typ === 'heating-rod' && siteId != null;
+  const kopfJetzt = (
+    <>
       <DreiSchalter
         g={g}
         bild={bild}
@@ -344,6 +363,10 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
           </p>
         )}
       </div>
+    </>
+  );
+  const einstellungen = (
+    <>
       {lp ? (
         <div className="blk">
           <h3>Smart heißt hier</h3>
@@ -438,6 +461,40 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
           </button>
         </div>
       </details>
+    </>
+  );
+  return (
+    <Blatt titel={g.name} kopf={kopf} fuss={fuss} voll onClose={k.zu}>
+      {heizstab ? (
+        <HeizstabKarteGeladen
+          siteId={siteId!}
+          entityId={g.id}
+          gesperrt={bild.funktion.sperre}
+          sonst={<>{kopfJetzt}{einstellungen}</>}
+          danach={<>
+          {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
+          <details className="vp-hz-mehr vp-hz-einst" open={einstellungenOffen || geaendert} data-testid="heizstab-dialog-einstellungen">
+            <summary>
+              <span>Einstellungen</span>
+              <small>
+                {[
+                  quelleChip(g.eintrag.steuerart),
+                  hilft == null ? null : hilft ? 'Speicher hilft' : 'Speicher hilft nicht',
+                  platz >= 0 ? `Platz ${platz + 1}` : null,
+                  'Technik',
+                ].filter(Boolean).join(' · ')}
+              </small>
+            </summary>
+            {einstellungen}
+          </details>
+          </>}
+        />
+      ) : (
+        <>
+          {kopfJetzt}
+          {einstellungen}
+        </>
+      )}
       {folgeNeu}
     </Blatt>
   );

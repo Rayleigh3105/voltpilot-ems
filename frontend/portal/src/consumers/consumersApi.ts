@@ -139,7 +139,14 @@ export const consumersApi = {
   startOverride: (
     siteId: string,
     id: string,
-    body: { action: 'start' | 'stop'; durationMinutes?: number; setpointKw?: number; stufe?: number },
+    body: {
+      action: 'start' | 'stop';
+      durationMinutes?: number;
+      setpointKw?: number;
+      stufe?: number;
+      /** Heizstab, Handeingriff je Phase: die Kanäle der gewählten Ausgänge (heizstab-shelly.md). */
+      ausgaenge?: number[];
+    },
   ) =>
     request<ConsumerOverrideOutcome>(`${base(siteId)}/${id}/override`, {
       method: 'POST',
@@ -160,4 +167,6 @@ export interface ConsumerOverrideOutcome {
   gridImportPossible: boolean;
   ttlCapped: boolean;
   message: string;
+  /** Nur bei einer Phasen-Wahl: ob die Box genau diese Phasen schaltet (`heizstab_phasen`). */
+  phasenGenau?: boolean;
 }

@@ -52,7 +52,11 @@ export function HeizstabAnlegen({
   onClose: () => void;
   onFertig: (result: SiteComponents, titel: string) => void;
 }) {
-  const kanaele = Math.max(1, fund.kanaele ?? 1);
+  // Die Zahl der Ausgänge: gezählt von der Box oder aus dem Modell (API). Unbekannt wird gefragt, nie still 1 - so
+  // entstand am 05.11.2026 ein Heizstab mit nur Ausgang 0 an einem Pro 3 (Fall GATE).
+  const gemeldet = fund.kanaele != null && fund.kanaele > 0 ? fund.kanaele : null;
+  const [kanaeleWahl, setKanaeleWahl] = useState<number | null>(gemeldet);
+  const kanaele = kanaeleWahl ?? 1;
   const [anschluss, setAnschluss] = useState<Anschluss | null>(null);
   const [kwText_, setKwText] = useState('');
   const [mitTeilstufen, setMitTeilstufen] = useState<number[]>(() => Array.from({ length: kanaele - 1 }, (_, k) => k + 1));
@@ -67,6 +71,7 @@ export function HeizstabAnlegen({
   const [gezeigt, setGezeigt] = useState(false);
 
   const anschlussRef = useRef<HTMLButtonElement>(null);
+  const kanaeleRef = useRef<HTMLButtonElement>(null);
   const kwRef = useRef<HTMLInputElement>(null);
   const kw = zahl(kwText_);
   const teilstufenErlaubt = anschluss === 'stern_mit_n' || anschluss === 'unbekannt';
@@ -88,10 +93,11 @@ export function HeizstabAnlegen({
     stages: verbindungJetzt.stages as number[],
   });
   // Jeder Fehler steht an SEINEM Feld: der Anschluss unter der Anschluss-Wahl, die Leistung am Feld.
+  const kanaeleProblem = kanaeleWahl === null ? 'Bitte wählen Sie, wie viele Ausgänge der Shelly hat.' : null;
   const anschlussProblem = anschlussFehler(anschluss, kanaele);
   const kwProblem = kw === null ? 'Bitte geben Sie die Leistung eines Heizelements in kW an (Typenschild).' : null;
   const mengenProblem = anschlussProblem || kwProblem ? null : ausgangsFehler(verbindungJetzt);
-  const eingabeFehler = anschlussProblem ?? kwProblem ?? mengenProblem;
+  const eingabeFehler = kanaeleProblem ?? anschlussProblem ?? kwProblem ?? mengenProblem;
   const testOk = testErgebnis(test).zustand === 'bestanden';
   const warnung = nachStromausfallWarnung(ausgaenge);
 
@@ -99,7 +105,7 @@ export function HeizstabAnlegen({
     setGezeigt(true);
     if (eingabeFehler) {
       // Ungültig: Fokus auf das erste Feld mit Fehler, statt nur unten einen Satz zu zeigen.
-      (anschlussProblem ? anschlussRef.current : kwRef.current)?.focus();
+      (kanaeleProblem ? kanaeleRef.current : anschlussProblem ? anschlussRef.current : kwRef.current)?.focus();
       return;
     }
     setSchritt('test');
@@ -201,13 +207,37 @@ export function HeizstabAnlegen({
     >
       <div className="vp-hz" data-testid="heizstab-anlegen">
         <p className="vp-hz-unter">
-          {kanaele > 1
+          {kanaeleWahl !== null && kanaele > 1
             ? `${titel} schaltet den Heizstab: Ausgang 1 bis ${kanaele} sind die Phasen L1 bis L${kanaele}.`
             : `${titel} schaltet den Heizstab.`}
         </p>
 
         {schritt === 'einrichten' && (
           <>
+            {gemeldet === null && (
+              <section className="vp-hz-abschnitt" aria-labelledby="hz-ausgaenge" data-testid="heizstab-ausgaenge-frage">
+                <h4 id="hz-ausgaenge">Wie viele Ausgänge hat der Shelly?</h4>
+                <p className="vp-hz-unter">Die Box konnte sie nicht lesen. Ein Shelly Pro 3 hat drei, ein Pro 4PM vier.</p>
+                <ul className="vp-hz-tasten">
+                  {[1, 2, 3, 4].map((z) => (
+                    <li key={z}>
+                      <button
+                        ref={z === 1 ? kanaeleRef : undefined}
+                        type="button"
+                        aria-pressed={kanaeleWahl === z}
+                        onClick={() => {
+                          setKanaeleWahl(z);
+                          setMitTeilstufen(Array.from({ length: z - 1 }, (_, k) => k + 1));
+                        }}
+                      >
+                        {z}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {gezeigt && kanaeleProblem && <p className="vp-hz-fehler" role="alert">{kanaeleProblem}</p>}
+              </section>
+            )}
             <section className="vp-hz-abschnitt" aria-labelledby="hz-anschluss">
               <h4 id="hz-anschluss">Wie sind die Heizelemente angeschlossen?</h4>
               <ul className="vp-hz-wahl">

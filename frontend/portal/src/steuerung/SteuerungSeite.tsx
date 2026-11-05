@@ -154,6 +154,17 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
     if (regelnUmleiten) window.location.replace(hashForRoute(anlageRoute(site.id, regelnUmleiten)));
   }, [regelnUmleiten, site.id]);
 
+  // „Ändern“ auf der Geräteseite eines Heizstabs (`?einstellungen=<id>`): das Blatt des Geräts mit offenen
+  // Einstellungen. Der Parameter fällt danach weg - Zurück landet nicht wieder im Blatt.
+  useEffect(() => {
+    if (reiter !== 'steuerung') return;
+    const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+    const id = q.get('einstellungen');
+    if (!id || !bild.geraete.some((g) => g.id === id)) return;
+    setBlatt({ art: 'geraet', id, einstellungen: true });
+    replaceCurrentNavigation(window.location.hash.split('?')[0]);
+  }, [reiter, bild.geraete]);
+
   // Alte Regel-Lesezeichen (`?verbraucher=`, `?komponente=`, `?vorlage=`) öffnen den Baukasten.
   useEffect(() => {
     if (reiter !== 'regeln' || !daten.verbraucher) return;
@@ -797,7 +808,7 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anla
 }) {
   switch (blatt.art) {
     case 'geraet':
-      return <GeraetBlatt k={k} id={blatt.id} modus={blatt.modus} />;
+      return <GeraetBlatt k={k} id={blatt.id} modus={blatt.modus} siteId={siteId} einstellungenOffen={blatt.einstellungen === true} />;
     case 'speicher':
       return <SpeicherBlatt k={k} />;
     case 'pause':

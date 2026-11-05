@@ -33,13 +33,13 @@ const PRO3_TEST = {
   }],
 };
 
-function oeffne() {
+function oeffne(fund: typeof gsShelly = gsShelly) {
   const onFertig = vi.fn();
   render(
     <HeizstabAnlegen
       siteId="site-1"
       boxId="box-1"
-      fund={gsShelly}
+      fund={fund}
       template={GS_SHELLY}
       verbindung={{ ip: '192.168.178.43', port: 80 }}
       suchId="such-1"
@@ -107,6 +107,28 @@ describe('Heizstab über alle Ausgänge einrichten', () => {
       templateRef: GS_SHELLY.templateRef, role: 'consumer', consumerType: 'heating-rod', label: 'Heizstab',
       connection: verbindung, geraetesuche: { suchId: 'such-1', fund: gsShelly.schluessel },
     });
+  });
+
+  it('eine unbekannte Zahl der Ausgänge wird gefragt, nie still 1 (Fall GATE, 05.11.2026)', () => {
+    testComponentConnection.mockResolvedValue(PRO3_TEST);
+    oeffne({ ...gsShelly, kanaele: null });
+    expect(screen.getByTestId('heizstab-ausgaenge-frage')).toHaveTextContent('Wie viele Ausgänge hat der Shelly?');
+    fireEvent.click(screen.getByRole('button', { name: /Jede Phase mit Neutralleiter/ }));
+    fireEvent.change(screen.getByLabelText('Leistung je Heizelement (kW)'), { target: { value: '1,5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }));
+    expect(testComponentConnection).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Bitte wählen Sie, wie viele Ausgänge der Shelly hat.');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '1' }));
+    fireEvent.click(screen.getByRole('button', { name: '3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }));
+    expect(testComponentConnection.mock.calls[0][1].connection).toMatchObject({
+      channels: [0, 1, 2], output_kw: [1.5, 1.5, 1.5], stages: [1, 2, 3],
+    });
+  });
+
+  it('eine gemeldete Zahl wird nicht gefragt', () => {
+    oeffne();
+    expect(screen.queryByTestId('heizstab-ausgaenge-frage')).toBeNull();
   });
 
   it('lehnt einen Anschluss ohne N für mehrere Ausgänge vor jedem Test ab', () => {

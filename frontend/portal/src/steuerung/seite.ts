@@ -131,7 +131,7 @@ export function seitenBild(d: SteuerungDaten, now: Date, siteId = ''): SeitenBil
 
 /** Welches Blatt gerade offen ist. */
 export type BlattZustand =
-  | { art: 'geraet'; id: string; modus?: 'aus' | 'an' }
+  | { art: 'geraet'; id: string; modus?: 'aus' | 'an'; einstellungen?: boolean }
   | { art: 'speicher' }
   /** „Steuerung anhalten“: die Dauern der Pause und „Bis ich fortsetze“ (SZ-2 A). */
   | { art: 'pause' }

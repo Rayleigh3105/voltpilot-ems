@@ -23,10 +23,14 @@ import '../src/index.css';
  * dessen drei Ausgänge EIN Gerät `heating-rod` sind (2 kW je Phase, Stufen 1/2/3). Fiktive Anlage „Hof Seewiesen“.
  *
  * `?fall=` stellt den Zustand der Box:
- * - `heizt` (Standard): bestätigt 2 Phasen · 4,0 kW, der Regler heizt mit Überschuss;
+ * - `heizt` (Standard): bestätigt L1 und L2 · 4,0 kW, der Regler heizt mit Überschuss;
  * - `abweichung`: bestätigt 2 Phasen, ein Ausgang steht seit 11:00 gegen den Befehl (HZ-4 B);
- * - `hand`: „Jetzt heizen“ läuft bis 13:00, die Box hat die Stufe noch nicht bestätigt;
- * - `still`: noch keine Rückmeldung der Box.
+ * - `hand`: von Hand L1 und L3 gewählt bis 13:47, bestätigt ist erst L1;
+ * - `still`: noch keine Rückmeldung der Box;
+ * - `alt`: eine Box ohne `heizstab_phasen` - sie schaltet nur Stufen;
+ * - `zusammen`: ein Stab „nur alle zusammen“ (ein Schalter);
+ * - `ruht`: Smart ruht (Gerät pausiert), der Stab ist aus;
+ * - `einrichtung`: der Stab wurde mit nur Ausgang 0 angelegt (Fall GATE) und wird unter „Technik“ repariert.
  *
  * Die Uhr der Seite stellt die Spec (`page.clock`); belegt ist, was die Seite fragt, alles Übrige antwortet
  * „nichts da“. Die Bühne ruft nie eine Cloud.
@@ -94,7 +98,9 @@ const komponente = {
   model: 'shelly_http',
   family: 'shelly_http',
   communication: 'shelly_http',
-  connection: { ip: '192.168.178.43', port: 80, channels: [0, 1, 2], output_kw: [2, 2, 2], stages: [1, 2, 3], rotation: 'daily', anschluss: 'stern_mit_n' },
+  connection: fall === 'einrichtung'
+    ? { ip: '192.168.178.43', port: 80, channels: [0], output_kw: [2], stages: [1], rotation: 'daily', anschluss: 'stern_mit_n' }
+    : { ip: '192.168.178.43', port: 80, channels: [0, 1, 2], output_kw: [2, 2, 2], stages: fall === 'zusammen' ? [3] : [1, 2, 3], rotation: 'daily', anschluss: 'stern_mit_n' },
   sourceKind: 'builtin',
   templateRef: 'builtin:shelly:shelly_http',
   templateVersion: 1,
@@ -111,7 +117,7 @@ const verbraucher = {
   controlKind: 'stepped',
   ratedPowerKw: 6,
   minPowerKw: null,
-  levelsKw: [0, 2, 4, 6],
+  levelsKw: fall === 'einrichtung' ? [0, 2] : fall === 'zusammen' ? [0, 6] : [0, 2, 4, 6],
   resolutionKw: null,
   powerRangesKw: null,
   storageRelation: 'consumer_first',
@@ -122,24 +128,32 @@ const verbraucher = {
   version: 1,
   connection: 'connected',
   edgeSourceId: QUELLE,
-  controlActivation: 'active',
+  controlActivation: fall === 'ruht' ? 'paused' : 'active',
   hasDraftPolicy: false,
   draftPolicyVersion: null,
   confirmationChannel: 'relay_state',
 };
 
+const heizt = { commanded: 2, commanded_kw: 4, confirmed: 2, confirmed_kw: 4, outputs_on: [0, 1], mismatch_since: null, at: JETZT };
+const aus = { commanded: 0, commanded_kw: 0, confirmed: 0, confirmed_kw: 0, outputs_on: [], mismatch_since: null, at: JETZT };
 const stufe = {
-  heizt: { commanded: 2, commanded_kw: 4, confirmed: 2, confirmed_kw: 4, outputs_on: [0, 1], mismatch_since: null, at: JETZT },
+  heizt,
   abweichung: { commanded: 1, commanded_kw: 2, confirmed: 2, confirmed_kw: 4, outputs_on: [0, 1], mismatch_since: vor(52), at: JETZT },
-  hand: null,
+  hand: { commanded: 2, commanded_kw: 4, confirmed: 1, confirmed_kw: 2, outputs_on: [0], mismatch_since: null, at: vor(1) },
   still: null,
+  alt: heizt,
+  zusammen: aus,
+  ruht: aus,
+  einrichtung: aus,
 }[fall] ?? null;
 
-const regler = fall === 'still' || fall === 'hand'
+const regler = fall === 'still' || fall === 'hand' || fall === 'ruht'
   ? null
   : fall === 'abweichung'
     ? { stufe: 1, code: 'kein_ueberschuss', grund: 'Netzbezug - hält er 30 Sekunden an, folgt eine kleinere Stufe.' }
-    : { stufe: 2, code: 'ueberschuss', grund: 'Heizt mit Überschuss.' };
+    : fall === 'zusammen' || fall === 'einrichtung'
+      ? { stufe: 0, code: 'kein_ueberschuss', grund: 'Wartet auf Sonne · frei 0,8 von 6,0 kW.' }
+      : { stufe: 2, code: 'ueberschuss', grund: 'Heizt mit Überschuss.' };
 
 const status = fall === 'still'
   ? []
@@ -155,9 +169,14 @@ const status = fall === 'still'
   }];
 
 const overrides = fall === 'hand'
-  ? [{ entityId: STAB, kind: 'start', targetCommand: 'setpoint_kw', targetValue: 2, endsAt: new Date(Date.now() + 115 * 60_000).toISOString() }]
+  ? [{
+    entityId: STAB, kind: 'start', targetCommand: 'setpoint_kw', targetValue: 4, targetOutputs: [0, 2],
+    endsAt: new Date(Date.now() + 115 * 60_000).toISOString(),
+  }]
   : [];
 
+const merke: Record<string, unknown> = {};
+(window as unknown as { __gesendet: Record<string, unknown> }).__gesendet = merke;
 const ok = <T,>(wert: T) => () => Promise.resolve(structuredClone(wert));
 const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   siteEntities: ok({
@@ -177,7 +196,23 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   siteComponents: ok({ componentAuthority: 'portal', components: [komponente] }),
   controlStatus: ok(null),
   curtailmentStatus: ok(null),
-  edgeVersions: ok(sichtbareListe([{ deviceId: box.id, siteId: site.id, coreVersion: 'edge-2026.10.30', paletteVersion: '0.9.0', reportedAt: JETZT }])),
+  edgeVersions: ok(sichtbareListe([{
+    deviceId: box.id, siteId: site.id, coreVersion: fall === 'alt' ? 'edge-2026.10.30' : 'edge-2026.11.05', paletteVersion: '0.9.0', reportedAt: JETZT,
+    capabilities: fall === 'alt' ? ['data_sources', 'heizstab_regler'] : ['data_sources', 'heizstab_regler', 'heizstab_phasen'],
+  }])),
+  siteVerbraucher: ok({
+    verbraucher: [{
+      entityId: STAB, name: 'Heizstab Warmwasser', typ: 'heating-rod', typLabel: 'Heizstab', ladepunkt: false,
+      steuerart: { quelle: 'ueberschuss', herkunft: 'policy' }, regeln: 0,
+    }],
+    ladepunkte: { standard: null, standardFolger: 0, gesamt: 0, rahmen: null },
+    rangliste: [{ position: 1, art: 'verbraucher', entityId: STAB, name: 'Heizstab Warmwasser' }],
+  }),
+  testComponentConnection: (...a: unknown[]) => {
+    merke.testComponentConnection = a.at(-1);
+    return Promise.resolve({ requestId: 'r1', results: [{ id: 'verbindung', ok: true, samples: [{ channel: 'relay_on_0', raw: 0, value: 0, count: 1 }] }] });
+  },
+  updateComponent: (...a: unknown[]) => { merke.updateComponent = a.at(-1); return Promise.resolve({}); },
   siteChargers: ok({ budget: null, chargers: [] }),
   entityStrategies: ok({}),
   siteInterventions: ok({ automationPaused: false, pausedUntil: null, interventions: [] }),
@@ -193,19 +228,21 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
 };
 
 const offen = api as unknown as Record<string, unknown>;
+
 for (const [name, wert] of Object.entries(offen)) {
   if (typeof wert !== 'function') continue;
   offen[name] = belegt[name] ?? (() => Promise.reject(new Error(`E2E-Bühne: ${name} ist nicht belegt`)));
 }
-const merke: Record<string, unknown> = {};
-(window as unknown as { __gesendet: Record<string, unknown> }).__gesendet = merke;
 Object.assign(consumersApi, {
   list: ok([verbraucher]),
   overrides: ok(overrides),
   status: ok(status),
   fulfillment: () => Promise.reject(new Error('E2E-Bühne: fulfillment ist nicht belegt')),
-  startOverride: (...a: unknown[]) => { merke.startOverride = a.at(-1); return Promise.resolve({}); },
+  startOverride: (...a: unknown[]) => { merke.startOverride = a.at(-1); return Promise.resolve({ pushed: true, phasenGenau: true }); },
   clearOverride: (...a: unknown[]) => { merke.clearOverride = a; return Promise.resolve({}); },
+  pause: (...a: unknown[]) => { merke.pause = a; return Promise.resolve({ published: true, message: '' }); },
+  resume: (...a: unknown[]) => { merke.resume = a; return Promise.resolve({ activated: true, reason: null, message: '', published: true, policyVersion: 1 }); },
+  patch: (...a: unknown[]) => { merke.patch = a.at(-1); return Promise.resolve(verbraucher); },
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

@@ -1237,7 +1237,7 @@ function AusgangWahl({
           <h3 ref={titelRef} tabIndex={-1}>{alleName} ist angelegt</h3>
           <p className="vp-gs-unter">
             Der Schalter gehört jetzt dem Heizstab. Er heizt automatisch, sobald Sie in der Steuerung „Mit
-            Sonnenstrom“ wählen; von Hand geht es mit „Jetzt heizen“ auf seiner Geräteseite.
+            Sonnenstrom“ wählen; von Hand schalten Sie die Phasen auf seiner Geräteseite.
           </p>
         </header>
       ) : (
@@ -1288,7 +1288,7 @@ function AusgangWahl({
       {!alleName && (
         <p className="vp-gs-fussnote">
           Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht. Der Test schaltet nichts; der Heizstab
-          heizt erst, wenn Sie in der Steuerung „Mit Sonnenstrom“ wählen oder „Jetzt heizen“ nutzen.
+          heizt erst, wenn Sie in der Steuerung „Mit Sonnenstrom“ wählen oder eine Phase von Hand einschalten.
         </p>
       )}
     </div>

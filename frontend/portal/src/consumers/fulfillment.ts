@@ -32,6 +32,8 @@ export interface ManualOverride {
   targetCommand: string;
   targetValue?: number | null;
   endsAt: string;
+  /** Heizstab: die von Hand gewählten Ausgänge (Kanäle) - der Wunsch, nicht das Bestätigte. */
+  targetOutputs?: number[] | null;
 }
 
 /** The §9.4 ledger states → customer wording. */

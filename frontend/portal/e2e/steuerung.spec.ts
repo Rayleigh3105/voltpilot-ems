@@ -97,6 +97,31 @@ test('Geräte: das Blatt eines Geräts öffnet, hält den Fokus und gibt ihn zur
   await expect(knopf).toBeFocused();
 });
 
+test('Heizstab am Shelly: das Blatt zeigt die Steuerung der Geräteseite, die Einstellungen in EINER Zeile (D2-A)', async ({ page }) => {
+  const fehler = await oeffnen(page, '/e2e/steuerung.html?heizstab=shelly#/anlage/help-site/steuerung');
+  await page.locator('#dev-e-hs').click();
+  const blatt = page.getByRole('dialog', { name: /Heizstab Warmwasser/ });
+  await expect(blatt.getByTestId('heizstab-smart')).toContainText('Smart · Überschuss');
+  await expect(blatt.getByRole('switch', { name: 'L1 ausschalten' })).toHaveAttribute('aria-checked', 'true');
+  await expect(blatt.getByRole('switch', { name: 'L3 einschalten' })).toHaveAttribute('aria-checked', 'false');
+  // Aus · Smart · Ein, „Jetzt“ und „Heute“ sagen es nicht ein zweites Mal; die Einstellungen sind zu.
+  await expect(blatt.getByRole('group', { name: 'Aus, Smart oder Ein' })).toHaveCount(0);
+  const einst = blatt.getByTestId('heizstab-dialog-einstellungen');
+  await expect(einst).not.toHaveAttribute('open', '');
+  await expect(blatt.getByRole('link', { name: /Zur Geräteseite/ })).toBeVisible();
+  await einst.locator(':scope > summary').click();
+  await expect(einst.getByRole('group', { name: 'Womit läuft das Gerät?' })).toBeVisible();
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(fehler).toEqual([]);
+});
+
+test('„Ändern“ auf der Geräteseite öffnet das Blatt mit offenen Einstellungen', async ({ page }) => {
+  await oeffnen(page, '/e2e/steuerung.html?heizstab=shelly#/anlage/help-site/steuerung?einstellungen=e-hs');
+  const blatt = page.getByRole('dialog', { name: /Heizstab Warmwasser/ });
+  await expect(blatt.getByTestId('heizstab-dialog-einstellungen')).toHaveAttribute('open', '');
+  await expect(page).not.toHaveURL(/einstellungen=/);
+});
+
 test('Edge Light ohne Verbraucherregeln: am Heizstab alles frei, an der Schaltlast nur „Mit Sonnenstrom“ gesperrt mit Grund', async ({ page }) => {
   const fehler = await oeffnen(page, '/e2e/steuerung.html?box=light#/anlage/help-site/steuerung');
   await page.locator('#dev-e-hs').click();
