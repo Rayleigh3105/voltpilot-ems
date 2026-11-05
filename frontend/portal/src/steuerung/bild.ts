@@ -706,6 +706,19 @@ export function ladepunktPausenGrund(quelle: string | null | undefined, reasonCo
 }
 
 /** Pille und Satz eines Geräts - nur aus Gemeldetem. */
+/**
+ * Sagt der Satz der Säule nur das Zustandswort noch einmal - mit anderen Worten?
+ * „Kein Auto eingesteckt · Kein Fahrzeug angeschlossen." und „Lädt · Ladevorgang
+ * läuft." waren dieselbe Aussage zweimal (UI-Runde Kundenseiten, Befund #13). Ein
+ * Grund, der MEHR sagt (Sonnenstrom, Pause wegen Netzgrenze …), bleibt stehen.
+ */
+export function wiederholtDasWort(grund: string, kind: string): boolean {
+  const g = grund.trim().toLowerCase().replace(/[.!]+$/, '');
+  if (kind === 'frei' || kind === 'getrennt') return /^kein (auto|fahrzeug)( (eingesteckt|angeschlossen|verbunden))?$/.test(g);
+  if (kind === 'laedt' || kind === 'laedt_ohne_messung') return g === 'ladevorgang läuft' || g === 'lädt' || g === 'lädt gerade';
+  return false;
+}
+
 function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; lang: string } {
   const bis = z.eingriff?.bisMs != null ? uhrVon(z.r, z.eingriff.bisMs) : null;
   if (z.eingriff) {
@@ -727,7 +740,9 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
     // kommen aus den geteilten Vektoren („Auto pausiert · voll oder
     // Auto-Timer", Audit W-21), nie „wartet".
     const zusatz = lz.kind === 'auto_pausiert' ? lz.detail : null;
-    const kurz = [lz.word, grund && grund !== lz.word ? grund : null, zusatz].filter(Boolean).join(' · ');
+    const kurz = [lz.word, grund && grund !== lz.word && !wiederholtDasWort(grund, lz.kind) ? grund : null, zusatz]
+      .filter(Boolean)
+      .join(' · ');
     const pill: [PillArt, string] =
       lz.kind === 'laedt' || lz.kind === 'laedt_ohne_messung' || lz.kind === 'startet' ? ['on', 'lädt']
         : lz.kind === 'getrennt' || lz.kind === 'frei' ? ['off', 'kein Auto']

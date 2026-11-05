@@ -11,6 +11,7 @@ import {
   jetztWerte,
   kopfsatz,
   kurzName,
+  wiederholtDasWort,
   leiste,
   momentZeile,
   ordnen,
@@ -386,5 +387,19 @@ describe('Ladepunkt im Haushalt (Audit vp-ocpp-haushalt)', () => {
     expect(g.pill).toEqual(['wait', 'Auto pausiert']);
     expect(g.warum).toBe('Auto pausiert · voll oder Auto-Timer');
     expect(g.ladepunkt?.sperre).toBeNull();
+  });
+});
+
+describe('wiederholtDasWort (Befund #13: keine Doppelsätze an der Wallbox)', () => {
+  it('erkennt denselben Zustand mit anderen Worten', () => {
+    expect(wiederholtDasWort('Kein Fahrzeug angeschlossen.', 'frei')).toBe(true);
+    expect(wiederholtDasWort('kein Auto', 'frei')).toBe(true);
+    expect(wiederholtDasWort('Ladevorgang läuft.', 'laedt_ohne_messung')).toBe(true);
+    expect(wiederholtDasWort('Ladevorgang läuft.', 'laedt')).toBe(true);
+  });
+  it('lässt einen Grund stehen, der mehr sagt', () => {
+    expect(wiederholtDasWort('Sonnenstrom', 'laedt')).toBe(false);
+    expect(wiederholtDasWort('Pause wegen Netzgrenze', 'wartet')).toBe(false);
+    expect(wiederholtDasWort('Kein Fahrzeug angeschlossen.', 'stoerung')).toBe(false);
   });
 });
