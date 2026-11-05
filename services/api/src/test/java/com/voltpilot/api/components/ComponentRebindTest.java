@@ -2,8 +2,15 @@ package com.voltpilot.api.components;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -262,5 +269,53 @@ class ComponentRebindTest {
         assertThat(ComponentRebind.decide(
                 List.of(pinned(WR1, "src-alt1", CONN_UNIT_1, "Fronius WR1")), List.of(), MAPPER))
                 .isEmpty();
+    }
+
+    /**
+     * Das MUSTER hinter dem Heizstab-Fall: jedes Verbindungsfeld, das die Cloud speichern kann, ist
+     * entweder ein Feld, das die Box in ihrer Quellen-Verbindung auch meldet (dann zählt es zum
+     * Fingerabdruck), oder ein reines Cloud-Feld (dann muss es ignoriert werden) - nie keins von
+     * beidem. Ein neues Schema-Feld, das die Box nicht trägt, ließ sonst jede Erstbindung und jeden
+     * Re-Pin still scheitern, und die gemeldete Quelle stand als „Neues Gerät gefunden" neben der
+     * eigenen Komponente (Heizstab „Zuhause", 04.11.2026).
+     */
+    @Test
+    @DisplayName("Jedes Verbindungsfeld ist entweder auf der Box zu Hause oder wird ignoriert")
+    void everyConnectionFieldIsEitherReportedByTheBoxOrIgnored() throws Exception {
+        Set<String> boxFields = new LinkedHashSet<>();
+        String go = Files.readString(Path.of("../../edge-app/core/internal/inverter/inverter.go"));
+        int start = go.indexOf("type Connection struct");
+        assertThat(start).as("inverter.Connection im Go-Code").isGreaterThan(0);
+        String struct = go.substring(start, go.indexOf("\n}\n", start));
+        Matcher tag = Pattern.compile("json:\"([a-z_0-9]+)").matcher(struct);
+        while (tag.find()) {
+            boxFields.add(tag.group(1));
+        }
+        assertThat(boxFields).as("die Box kennt mindestens Adresse und Ausgangsmenge")
+                .contains("ip", "port", "channels");
+
+        // Was die Cloud speichern kann: jedes Feld der Vorlagen ...
+        Set<String> cloudFields = new LinkedHashSet<>();
+        JsonNode templates = MAPPER.readTree(Files.readString(
+                Path.of("src/main/resources/componenttemplates/builtin.json"))).path("templates");
+        for (JsonNode t : templates) {
+            for (JsonNode f : t.path("transport_schema")) {
+                cloudFields.add(f.path("key").asText());
+            }
+        }
+        // ... und die Felder der Heizstab-Ausgangsmenge (HeizstabAusgaenge), die kein Schema führt.
+        cloudFields.addAll(List.of("channels", "channel", "output_kw", "stages", "rotation",
+                "anschluss", "on_timer_s", "interval_s"));
+
+        String ohne = ComponentRebind.fingerprint("consumer", "x", "{\"ip\":\"10.0.0.1\"}", MAPPER);
+        for (String key : cloudFields) {
+            String mit = ComponentRebind.fingerprint("consumer", "x",
+                    "{\"ip\":\"10.0.0.1\",\"" + key + "\":\"1\"}", MAPPER);
+            boolean ignoriert = ohne.equals(mit);
+            assertThat(ignoriert).as("Feld \"%s\": %s", key, boxFields.contains(key)
+                    ? "die Box meldet es, also muss der Fingerabdruck es vergleichen"
+                    : "die Box meldet es nie, also muss der Fingerabdruck es ignorieren")
+                    .isEqualTo(!boxFields.contains(key) && !"ip".equals(key));
+        }
     }
 }

@@ -26,6 +26,10 @@ Die Box lehnt eine ungültige Menge mit einem deutschen Satz ab und schaltet dan
 Für den Lesepfad (Quelle der Box) zählt nur `channels`. Die Quelle eines Stabs bekommt eine eigene Identität (`set:0,1,2`) und teilt sie nie mit einem einzelnen Ausgang desselben Geräts.
 
 Die Box meldet die Quelle in `local_setup` nur mit `ip`, `port` und `channels`. Die Cloud bindet einen Stab daran (Erstbindung) und erkennt ihn nach einem Kennungswechsel wieder (`ComponentRebind`). Dabei zählen Rolle, Kommunikationsart, `ip`, `port` und `channels` in Phasenfolge. `anschluss`, `output_kw`, `stages`, `rotation` und `on_timer_s` gehören nicht zur Identität. Bis zum 04.11.2026 verglich die Cloud ihre Kopie mit diesen Feldern: Ein Stab wurde nie gebunden und blieb nach einem Kennungswechsel „nicht mehr verbunden“.
+Jedes Verbindungsfeld, das nur die Cloud trägt, steht in `IGNORED_CONNECTION_FIELDS`; `ComponentRebindTest` bindet das an die Felder von `inverter.Connection` (Box) und an die Vorlagen-Schemata, ein neues Cloud-Feld ohne Eintrag macht ihn rot.
+Ein Stab, der vor dieser Änderung angelegt wurde und noch ungebunden wartet, heilt sich selbst: Der Takt der Bestands-Übernahme (`ComponentAdoptionRunner.heal()`) bindet ihn an die gemeldete Quelle, solange sie frei ist.
+Hat jemand diese Quelle inzwischen als „Neues Gerät gefunden“ übernommen, trägt sie eine zweite Komponente; dann ist sie nicht frei, der Stab bleibt ungebunden und die zweite Komponente muss von Hand entfernt werden (danach bindet der nächste Takt).
+Eine Bestandsreparatur per Migration gibt es dafür nicht und braucht einen eigenen Entscheid.
 
 ## Entitätsbeschreibung (Registry-Push → Box)
 
