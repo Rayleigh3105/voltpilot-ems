@@ -865,7 +865,21 @@ voltpilot:
 # SecurityConfig permits exactly this one path (MetricsEndpointSecurityTest
 # guards both halves). It is not publicly reachable: the frontend nginx proxies
 # only /api/ and /auth/, so it exists only on the pod/compose network.
+#
+# Serverzeit je Route (Scout vp-anlagen-cockpit-perf, Rang 7): Spring Boot zeichnet
+# `http.server.requests` je Routen-VORLAGE auf (`uri="/api/v1/overview"`, nie die
+# aufgelöste Adresse mit Kennungen), aber nur als Zähler/Summe/Maximum - daraus
+# lässt sich kein "wie viele Aufrufe dauerten länger als eine Sekunde" lesen. Die
+# festen Obergrenzen unten machen daraus ein Histogramm
+# (`http_server_requests_seconds_bucket`): neun Reihen je Route statt der rund
+# siebzig eines vollen Perzentil-Histogramms, und der Kundennutzen steht in den
+# Grenzen selbst (50 ms = flüssig, 500 ms = spürbar, 5 s = Aussetzer). Keine
+# Kunden-, Mandanten- oder Anlagenkennung als Etikett.
 management:
+  metrics:
+    distribution:
+      slo:
+        http.server.requests: 50ms,100ms,250ms,500ms,1s,2500ms,5s,10s
   endpoints:
     web:
       base-path: /
