@@ -264,15 +264,26 @@ export interface KatalogChipInfo {
  * als Messgerät ohne Rolle, das die Box nicht anwendet (VoltPilotGATE, 02.11.2026), und die API lehnt ihn ab. Er entsteht
  * nur über „Geräte suchen“ als Heizstab. Über „Zähler" bleibt er wählbar: dort ist er das Gerät, über das gemessen wird,
  * und hat damit eine Rolle.
+ *
+ * Dasselbe gilt für die HTTP-Schnittstelle einer Wallbox (`deviceType: wallbox`, heute go-e): nur lesend, ohne Rolle für
+ * die Box, von der API abgelehnt. Eine Wallbox kommt über OCPP.
  */
 export function alsModellAngeboten(t: ComponentTemplate, chip: KatalogChip): boolean {
-  return chip === 'zaehler' || (t.deviceType ?? '').trim() !== 'switch';
+  const typ = (t.deviceType ?? '').trim();
+  if (typ === 'wallbox') return false;
+  return chip === 'zaehler' || typ !== 'switch';
 }
 
 /** Der Satz, der sagt, wo ein Schalter stattdessen entsteht. */
 export const SCHALTER_HINWEIS =
   'Einen Shelly-Schalter übernehmen Sie über „Geräte suchen“ als Heizstab. Einen einzelnen Schaltausgang als eigenes '
   + 'Gerät kann die Box keiner Rolle zuordnen.';
+
+/** Der Satz, der sagt, wie eine Wallbox stattdessen angebunden wird. */
+export const WALLBOX_HINWEIS =
+  'Eine Wallbox binden Sie über „Ladesäule mit OCPP 1.6“ an: Sie tragen die angezeigte Adresse in der Wallbox als '
+  + 'OCPP-Server ein, sie meldet sich dann bei Ihrer Box. Über ihre HTTP-Schnittstelle allein kann die Box sie keiner Rolle '
+  + 'zuordnen.';
 
 export function katalogChips(templates: ComponentTemplate[], vorlagen: SiteComponentTemplate[]): KatalogChipInfo[] {
   const zahl = (k: KatalogKategorie) =>
@@ -322,7 +333,9 @@ function leereAnsicht(): KatalogAnsicht {
 export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
   const out = leereAnsicht();
   const templates = e.templates.filter((t) => alsModellAngeboten(t, e.chip));
-  const schalter = e.templates.filter((t) => !alsModellAngeboten(t, e.chip));
+  const nichtAngeboten = e.templates.filter((t) => !alsModellAngeboten(t, e.chip));
+  const schalter = nichtAngeboten.filter((t) => (t.deviceType ?? '').trim() !== 'wallbox');
+  const wallboxen = nichtAngeboten.filter((t) => (t.deviceType ?? '').trim() === 'wallbox');
   const begriffe = suchBegriffe(e.q);
   const inArt = (k: KatalogKategorie) => e.chip === 'alle' || e.chip === k;
   const zaehlerVorlagen = templates.filter((t) => kategorieVon(t) === 'zaehler');
@@ -357,8 +370,12 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
         ? templates
         : templates.filter((t) => kategorieVon(t) === e.chip);
     const suche = modellSuche(suchraum, e.q);
-    if ((e.chip === 'alle' || e.chip === 'schalten') && modellSuche(schalter, e.q).treffer.length > 0) {
-      out.hinweis = SCHALTER_HINWEIS;
+    const sucheHinweise = [
+      (e.chip === 'alle' || e.chip === 'schalten') && modellSuche(schalter, e.q).treffer.length > 0 ? SCHALTER_HINWEIS : null,
+      (e.chip === 'alle' || e.chip === 'laden') && modellSuche(wallboxen, e.q).treffer.length > 0 ? WALLBOX_HINWEIS : null,
+    ].filter(Boolean);
+    if (sucheHinweise.length > 0) {
+      out.hinweis = sucheHinweise.join(' ');
     }
     const wegTreffer = (Object.keys(WEGE) as KatalogWeg[]).filter(
       (w) => inArt(WEGE[w].kategorie) && passt(normalisiereSuche(`${WEGE[w].titel} ${WEGE[w].zusatz} ${WEGE[w].stichworte}`), begriffe),
@@ -435,9 +452,7 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
       return out;
     case 'laden':
       out.gruppen.push(...gruppe('laden', KATEGORIE_LABEL.laden, modelleUndWege('laden')));
-      out.hinweis =
-        'Eine Wallbox mit Vorlage liest VoltPilot über ihre Schnittstelle. Eine Ladesäule mit OCPP meldet '
-        + 'sich selbst bei Ihrer Box; Sie geben sie nur frei.';
+      out.hinweis = WALLBOX_HINWEIS;
       return out;
     case 'schalten':
       out.gruppen.push(...gruppe('schalten', KATEGORIE_LABEL.schalten, modelleUndWege('schalten')));

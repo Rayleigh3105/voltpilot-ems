@@ -102,9 +102,11 @@ describe('GeraeteKatalog', () => {
     const suche = await screen.findByRole('searchbox', { name: 'Katalog durchsuchen' });
     await screen.findByRole('region', { name: 'Wechselrichter' });
     fireEvent.change(suche, { target: { value: 'go-e' } });
-    expect(await screen.findByRole('region', { name: 'Laden' })).toHaveTextContent('go-e Charger');
+    // Die go-e steht nicht als Modell da (nur lesend, keine Rolle für die Box): die Suche nennt den Weg über OCPP.
+    expect(await screen.findByText(/Eine Wallbox binden Sie über „Ladesäule mit OCPP 1\.6“ an/)).toBeInTheDocument();
+    expect(screen.queryByText('go-e Charger')).not.toBeInTheDocument();
     // Unter jedem Suchergebnis steht der Weg für ein Gerät, das nicht im Katalog ist.
-    fireEvent.click(screen.getByRole('button', { name: 'Modbus-Gerät selbst beschreiben' }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Passende Wege' })).getByRole('button', { name: /Modbus-TCP-Gerät/ }));
     expect(onWahl).toHaveBeenCalledWith({ art: 'weg', weg: 'modbus' });
 
     fireEvent.change(suche, { target: { value: 'gibtsnicht' } });

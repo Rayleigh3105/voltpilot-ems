@@ -11,6 +11,7 @@ import {
   fundAktion,
   fundAdresse,
   fundHinweis,
+  WALLBOX_OCPP_HINWEIS,
   fundTitel,
   fundZeile,
   istUebernommen,
@@ -156,7 +157,11 @@ describe('Gerätesuche · was ein Fund anbietet', () => {
     expect(fundHinweis(fund({ hindernis: 'geschuetzt' }))).toContain('VoltPilot meldet sich nie an');
     expect(fundHinweis(fund({ hindernis: 'lokale_api_aus' }))).toContain('HTTP API v2');
     expect(fundAktion(fund({ anbindung: 'nicht_mit_dieser_box' }), 'nicht_anbindbar', true)).toEqual({ art: 'keine' });
-    expect(fundHinweis(fund({ anbindung: 'kein_leseweg' }))).toBe('Erkannt, aber VoltPilot kann es noch nicht lesen.');
+    expect(fundHinweis(fund({ art: 'zaehler', anbindung: 'kein_leseweg' }))).toBe('Erkannt, aber VoltPilot kann es noch nicht lesen.');
+    // Die go-e: die Cloud meldet sie als „kein_leseweg“; der Hinweis nennt den Weg über OCPP - auch dann, wenn die lokale
+    // Schnittstelle aus ist (sie anzuschalten würde nichts ändern).
+    expect(fundHinweis(fund({ art: 'wallbox', anbindung: 'kein_leseweg' }))).toBe(WALLBOX_OCPP_HINWEIS);
+    expect(fundHinweis(fund({ art: 'wallbox', anbindung: 'kein_leseweg', hindernis: 'lokale_api_aus' }))).toBe(WALLBOX_OCPP_HINWEIS);
     expect(fundAktion(gsGoe, 'schon_eingerichtet', true)).toEqual({ art: 'keine' });
     // Live-Fall „Zuhause“ (04.11.2026): wartet die Komponente auf ihr Gerät, führt der Fund ins Zuordnen.
     const k = { id: 'stab', name: 'Heizstab' };

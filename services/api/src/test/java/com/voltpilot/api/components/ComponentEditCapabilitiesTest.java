@@ -151,7 +151,7 @@ class ComponentEditCapabilitiesTest {
         ArgumentCaptor<String> caps = ArgumentCaptor.forClass(String.class);
         org.mockito.Mockito.verify(definitions).applyEditDefinition(eq(SITE), eq(ENTITY), anyInt(),
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                caps.capture(), any());
+                org.mockito.ArgumentMatchers.anyBoolean(), caps.capture(), any());
         return caps.getValue();
     }
 
@@ -188,7 +188,8 @@ class ComponentEditCapabilitiesTest {
                 .thenReturn(Optional.of(template()));
         when(receipts.has(eq(SITE), anyString(), anyInt(), any())).thenReturn(true);
         when(definitions.applyEditDefinition(any(), any(), anyInt(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyBoolean(), any(), any()))
                 .thenReturn(new ComponentDefinitionRepository.Applied(5, "Alt"));
     }
 

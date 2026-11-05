@@ -247,8 +247,8 @@ public class EntityRegistryRepository {
 
     /**
      * Die Steuerbar-Marke einer Zeile. Seit E1b folgt sie dem Typkatalog ({@code controllable}); der
-     * revisionierte Bearbeitungsweg ({@code applyEditDefinition}) setzt sie für jeden Nicht-Speicher
-     * zurück - ein Gerät, das durch seine Anlage ein geschaltetes ist (Heizstab V1), hält sie hiermit.
+     * revisionierte Bearbeitungsweg ({@code applyEditDefinition}) bekommt sie vom Aufrufer; hier setzt
+     * sie, wer sie ohne Bearbeitung nachtragen muss (Heizstab-Nachtrag).
      */
     public void setControl(UUID pointId, boolean control) {
         jdbc.update("UPDATE measurement_point SET control = ? WHERE id = ?", control, pointId);

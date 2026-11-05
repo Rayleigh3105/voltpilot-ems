@@ -4,6 +4,7 @@ import { keineVorlageHinweis } from './anlegenFlow';
 import type { AufbauBaum } from './aufbauBaum';
 import {
   SCHALTER_HINWEIS,
+  WALLBOX_HINWEIS,
   WEGE,
   alsModellAngeboten,
   einrichtenUnterzeile,
@@ -95,7 +96,7 @@ describe('katalogChips', () => {
     expect(chips.map((c) => `${c.label} ${c.anzahl ?? '-'}`)).toEqual([
       'Alle -',
       'Wechselrichter 5',
-      'Laden 2',
+      'Laden 1',
       // Der Shelly-Schalter zählt nicht: als Modell steht er nicht im Katalog (VoltPilotGATE, 02.11.2026).
       'Schalten 1',
       'Batterie -',
@@ -116,7 +117,7 @@ describe('katalogAnsicht — blättern', () => {
     expect(gruppen(a)).toEqual([
       'Von Ihrer Box gemeldet: Fronius gefunden',
       'Wechselrichter: Deye, KACO',
-      'Laden: go-e Charger, Ladesäule mit OCPP 1.6',
+      'Laden: Ladesäule mit OCPP 1.6',
       'Schalten: Ebyte M31-AXAX8080G-U (8 Eingänge, 8 Relais)',
       'Selbst beschreiben: Modbus-TCP-Gerät, Wärmepumpe Keller',
       'Weitere Geräte: Anlagensteuerung (SPS mit VoltPilot-Bild)',
@@ -142,11 +143,11 @@ describe('katalogAnsicht — blättern', () => {
     const a = ansicht({ chip: 'zaehler' });
     expect(a.hinweis).toBe(keineVorlageHinweis('zaehler'));
     expect(a.gruppen[0].titel).toBe('Gerät wählen, über das gemessen wird');
-    expect(a.gruppen[0].eintraege.map((e) => e.titel)).toEqual(['Deye', 'Ebyte', 'go-e', 'KACO', 'Shelly']);
+    expect(a.gruppen[0].eintraege.map((e) => e.titel)).toEqual(['Deye', 'Ebyte', 'KACO', 'Shelly']);
   });
 
   it('erklärt Laden, das I/O-Modul und die fehlenden Batterie-Modelle', () => {
-    expect(ansicht({ chip: 'laden' }).hinweis).toMatch(/meldet sich selbst bei Ihrer Box/);
+    expect(ansicht({ chip: 'laden' }).hinweis).toBe(WALLBOX_HINWEIS);
     expect(ansicht({ chip: 'schalten' }).hinweis).toMatch(/jeden Ausgang einem Verbraucher/);
     expect(ansicht({ chip: 'batterie' }).hinweis).toMatch(/Fertige Batterie-Modelle gibt es im Katalog noch nicht/);
     expect(ansicht({ chip: 'batterie' }).gruppen).toEqual([]);
@@ -209,7 +210,14 @@ describe('katalogAnsicht — Suche', () => {
 
   it('bleibt in der gewählten Art', () => {
     expect(gruppen(ansicht({ q: 'go-e', chip: 'wr' }))).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Modbus-TCP-Gerät, Anlagensteuerung (SPS mit VoltPilot-Bild)']);
-    expect(gruppen(ansicht({ q: 'go-e', chip: 'laden' }))).toEqual(['Laden: go-e Charger']);
+    // Die HTTP-Schnittstelle der go-e steht nicht als Modell da (nur lesend, die Box ordnet ihr keine Rolle zu);
+    // wer sie sucht, bekommt den Weg über OCPP gesagt.
+    const laden = ansicht({ q: 'go-e', chip: 'laden' });
+    expect(laden.gruppen.flatMap((g) => g.eintraege.map((e) => e.titel))).not.toContain('go-e Charger');
+    expect(laden.hinweis).toBe(WALLBOX_HINWEIS);
+    expect(ansicht({ q: 'go-e' }).hinweis).toBe(WALLBOX_HINWEIS);
+    expect(alsModellAngeboten(GOE, 'alle')).toBe(false);
+    expect(alsModellAngeboten(GOE, 'laden')).toBe(false);
   });
 
   it('verschweigt den Deckel nie', () => {
@@ -233,7 +241,7 @@ describe('wahlFuer', () => {
     const marke = a.gruppen[1].eintraege[0];
     expect(wahlFuer(marke, 'alle')).toBeNull();
     expect(wahlFuer(a.gruppen[0].eintraege[0], 'alle')).toMatchObject({ art: 'fund' });
-    expect(wahlFuer(a.gruppen[2].eintraege[1], 'alle')).toEqual({ art: 'weg', weg: 'ocpp' });
+    expect(wahlFuer(a.gruppen[2].eintraege[0], 'alle')).toEqual({ art: 'weg', weg: 'ocpp' });
     expect(wahlFuer(a.gruppen[4].eintraege[1], 'alle')).toMatchObject({ art: 'vorlage' });
   });
 });

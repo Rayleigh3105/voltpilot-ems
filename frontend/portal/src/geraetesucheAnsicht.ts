@@ -271,6 +271,14 @@ export function fundAktion(
   return { art: 'keine' };
 }
 
+/**
+ * Eine Wallbox über ihre HTTP-Schnittstelle: nur lesend, die Box kann ihr keine Rolle zuordnen, die API legt sie nicht an.
+ * Die Cloud meldet sie deshalb als `kein_leseweg`; angebunden wird sie über OCPP.
+ */
+export const WALLBOX_OCPP_HINWEIS =
+  'Eine Wallbox binden Sie über „Gerät hinzufügen“ → „Ladesäule mit OCPP 1.6“ an: Tragen Sie die dort angezeigte Adresse '
+  + 'in der Wallbox als OCPP-Server ein.';
+
 /** Der eine Satz, warum ein Fund Hilfe braucht oder nicht anbindbar ist; null = keiner nötig. */
 export function fundHinweis(f: GeraetesucheFund): string | null {
   if (f.abgleich === 'adresse_geaendert') {
@@ -286,6 +294,7 @@ export function fundHinweis(f: GeraetesucheFund): string | null {
       ? `An dieser Adresse ist „${f.komponente.name}“ eingerichtet; ob es dasselbe Gerät ist, lässt sich ohne Seriennummer nicht belegen.`
       : 'An dieser Adresse ist schon ein Gerät eingerichtet.';
   }
+  if (f.art === 'wallbox' && f.anbindung === 'kein_leseweg') return WALLBOX_OCPP_HINWEIS;
   if (f.hindernis === 'geschuetzt') {
     return 'Passwortschutz ist an. Schalten Sie ihn in der App des Geräts aus und suchen Sie erneut – VoltPilot meldet sich nie an.';
   }

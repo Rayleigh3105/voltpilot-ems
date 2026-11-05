@@ -193,6 +193,12 @@ export const gsGoe = fund({
   vorlagen: [GS_GOE.templateRef],
 });
 
+/**
+ * Wie die Cloud die go-e dem Portal meldet: die Box sagt „uebernehmen“, die Cloud macht „kein_leseweg“ daraus (nur über
+ * OCPP). `gsGoe` bleibt die Meldung der Box; die Tests der Übernahme-Mechanik nutzen sie als gewöhnlich übernehmbares Gerät.
+ */
+export const gsGoeNurOcpp = fund({ ...gsGoe, anbindung: 'kein_leseweg' });
+
 const gsRouter = fund({
   schluessel: 'netztechnik:192.168.178.1:80',
   erkenner: 'netztechnik',

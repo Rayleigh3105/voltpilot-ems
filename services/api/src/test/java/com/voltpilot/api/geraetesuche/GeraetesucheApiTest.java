@@ -386,6 +386,9 @@ class GeraetesucheApiTest {
         assertThat(fund(fertig, "goe:204117").path("abgleich").asText())
                 .isEqualTo("anderes_geraet_an_bekannter_adresse");
         assertThat(fund(fertig, "goe:204117").path("komponente").path("id").asText()).isEqualTo(wallbox.toString());
+        // Die HTTP-Schnittstelle der go-e ist nur lesend und der Anlege-Weg lehnt sie ab; die Box meldet
+        // "uebernehmen", das Portal bekommt "kein_leseweg" (die Wallbox kommt über OCPP).
+        assertThat(fund(fertig, "goe:204117").path("anbindung").asText()).isEqualTo("kein_leseweg");
         assertThat(fund(fertig, "shelly:192.168.178.50:80").path("abgleich").asText())
                 .isEqualTo("adresse_bekannt_kennung_offen");
         assertThat(gruppe(fertig, "schon_eingerichtet")).hasSize(1);
