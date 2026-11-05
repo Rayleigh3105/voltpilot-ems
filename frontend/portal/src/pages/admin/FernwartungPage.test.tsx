@@ -360,6 +360,9 @@ describe('FernwartungPage', () => {
       // Die Seite verspricht nicht, dass jede Box den Schlüssel holt.
       expect(screen.getByTestId('fw-ssh-stand')).toHaveTextContent(/Das tun nur Boxen, deren Wartungstunnel mit dem aktuellen Skript/);
       expect(screen.getByTestId('fw-ssh-stand')).toHaveTextContent(/An jeder anderen Box gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt/);
+      // Sichtbar ist nur, was passiert; die Bedingungen stehen eingeklappt darunter.
+      expect(screen.getByTestId('fw-ssh-stand').querySelector('details')).not.toHaveAttribute('open');
+      expect(screen.getByTestId('fw-ssh-stand').querySelector('p')).toHaveTextContent(/^Das Portal gibt den SSH-Schlüssel eines Zugangs an den Wartungsserver weiter\.$/);
     });
 
     it('zur Zeile eines offenen Fensters stehen die fertigen Befehle für SSH und die Web-App', async () => {

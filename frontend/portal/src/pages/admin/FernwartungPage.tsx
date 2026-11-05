@@ -66,6 +66,11 @@ type Sperrziel =
   | { art: 'box'; box: FernwartungBox }
   | { art: 'techniker'; techniker: FernwartungTechniker };
 
+/** Der Satz zum SSH-Stand in zwei Teilen: was passiert (immer sichtbar) und wann es klappt (aufklappbar). */
+const SSH_STAND_TEILUNG = SSH_STAND_SATZ.indexOf('. ') + 1;
+const SSH_STAND_KURZ = SSH_STAND_SATZ.slice(0, SSH_STAND_TEILUNG);
+const SSH_STAND_REST = SSH_STAND_SATZ.slice(SSH_STAND_TEILUNG).trim();
+
 export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
   const [uebersicht, setUebersicht] = useState<FernwartungUebersicht | null>(null);
   const [boxen, setBoxen] = useState<FernwartungBox[] | null>(null);
@@ -279,7 +284,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                               )}
                             </td>
                             <td data-label="Aktionen">
-                              <div className="vp-fw-aktionen">
+                              <div className="vp-fw-aktionen vp-fw-aktionen-box">
                                 <Button
                                   variant="primary"
                                   size="sm"
@@ -290,6 +295,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                   Fenster öffnen
                                 </Button>
                                 {sperre && <span className="vp-cell-sub vp-fw-sperre">{sperre}</span>}
+                                <span className="vp-fw-aktionen-neben">
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -312,6 +318,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 >
                                   {b.edgeRef === boxFilter ? 'Alle Einträge' : 'Protokoll'}
                                 </Button>
+                                </span>
                               </div>
                             </td>
                           </tr>
@@ -346,9 +353,14 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                 Zugang anlegen
               </Button>
             </div>
-            <p className="vp-note" style={{ margin: 0 }} data-testid="fw-ssh-stand">
-              {SSH_STAND_SATZ}
-            </p>
+            {/* Der erste Satz sagt, was passiert; die Bedingungen stehen aufklappbar darunter. */}
+            <div className="vp-note vp-fw-ssh-stand" data-testid="fw-ssh-stand">
+              <p style={{ margin: 0 }}>{SSH_STAND_KURZ}</p>
+              <details>
+                <summary>Wann eine Box den Schlüssel bekommt</summary>
+                <p style={{ margin: '4px 0 0' }}>{SSH_STAND_REST}</p>
+              </details>
+            </div>
             {techniker.length === 0 ? (
               <Card padding="lg" radius="lg">
                 <EmptyState
@@ -410,7 +422,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                               </Badge>
                             </td>
                             <td data-label="Aktionen">
-                              <div className="vp-fw-aktionen">
+                              <div className="vp-fw-aktionen vp-fw-aktionen-raster">
                                 <Button variant="ghost" size="sm" onClick={() => setKonfigFuer(t)}>
                                   Konfiguration
                                 </Button>
@@ -436,6 +448,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                   <Button
                                     variant="ghost"
                                     size="sm"
+                                    className="vp-btn-danger"
                                     disabled={busy}
                                     onClick={() => setLoeschziel(t)}
                                   >

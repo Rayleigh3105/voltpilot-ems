@@ -351,3 +351,28 @@ tr.vp-fw-gewaehlt > td {
     text-align: left;
   }
 }
+
+/* UI-Runde Admin: Aktionen ordentlich statt zufällig umgebrochen. */
+/* Box-Zeile: oben „Fenster öffnen“, darunter Sperren und Protokoll nebeneinander, zuletzt der Grund,
+   warum das Fenster nicht geht - statt zufällig umgebrochener Knöpfe mit dem Grund dazwischen. */
+.vp-fw-aktionen.vp-fw-aktionen-box { flex-direction: column; align-items: flex-end; }
+.vp-fw-aktionen-neben { display: flex; flex-wrap: nowrap; gap: 0.35rem; justify-content: flex-end; white-space: nowrap; }
+.vp-fw-aktionen-box .vp-fw-sperre { order: 10; max-width: 18rem; }
+@media (max-width: 720px) {
+  .vp-fw-aktionen.vp-fw-aktionen-box { align-items: flex-start; }
+  .vp-fw-aktionen-neben { justify-content: flex-start; flex-wrap: wrap; }
+}
+/* Techniker-Zeile: die bis zu vier Aktionen als ruhiges 2 × 2-Raster, rechtsbündig. */
+.vp-fw-aktionen.vp-fw-aktionen-raster {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  justify-content: end;
+  justify-items: end;
+}
+/* Am Telefon (Etikett/Wert-Karten) wieder die umbrechende Reihe: das Raster wäre breiter als die Karte. */
+@media (max-width: 720px) {
+  .vp-fw-aktionen.vp-fw-aktionen-raster { display: flex; }
+}
+.vp-fw-ssh-stand { display: block; }
+.vp-fw-ssh-stand details summary { cursor: pointer; width: fit-content; margin-top: 4px; border-radius: var(--vp-radius-sm); }
+.vp-fw-ssh-stand details summary:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
