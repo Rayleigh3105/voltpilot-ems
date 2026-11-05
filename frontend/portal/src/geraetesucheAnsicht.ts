@@ -389,6 +389,9 @@ export function uebernahmeSchluessel(f: Pick<GeraetesucheFund, 'schluessel'>, ka
 
 /** Die Ausgänge eines Schalters, die noch niemand übernommen hat (0-basiert, wie `channel`). */
 export function offeneAusgaenge(f: GeraetesucheFund, uebernommen: ReadonlySet<string>): number[] {
+  // „Alle Ausgänge zusammen“ (ein Heizstab über den ganzen Schalter) nimmt jeden Ausgang mit: der Fund selbst steht
+  // unter seinem Schlüssel in der Liste, nicht jeder Ausgang unter `#k`.
+  if (uebernommen.has(f.schluessel)) return [];
   const n = f.kanaele ?? 1;
   return Array.from({ length: n }, (_, k) => k).filter((k) => !uebernommen.has(uebernahmeSchluessel(f, k)));
 }

@@ -1076,7 +1076,7 @@ export function AufbauSection({
             setHeizstabAus(null);
             setComponents(result);
             reload();
-            setErfolg(`${titel} ist angelegt. Automatisch heizt er, sobald Sie die Steuerart „Solar-Überschuss“ wählen.`);
+            setErfolg(`${titel} ist angelegt. Automatisch heizt er, sobald Sie in der Steuerung „Mit Sonnenstrom“ wählen.`);
             // Zurück zur Liste der Suche: der Schalter ist übernommen, seine Ausgänge gehören dem Heizstab.
             setUebernommen((m) => new Map(m).set(schluessel, titel));
             setSucheZuletzt((z) => ({ titel, n: (z?.n ?? 0) + 1 }));
