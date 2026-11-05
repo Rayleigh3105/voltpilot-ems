@@ -69,6 +69,8 @@ export const entities = definitions.map((d) => ({
   syncStatus: 'in_sync', observed: { health: 'ok', lastTelemetryAt: NOW, reportedAt: NOW,
     channels: d.measures.map((m) => m.channel), appliedType: d.entityType }, edgeSourceId: null,
 }));
+const wallboxEntity = { ...entities[1], id: 'help-wallbox', entityType: 'ev-charger', typeLabel: 'Ladepunkt', role: 'consumer',
+  category: 'consumer', label: 'Wallbox Garage', control: true };
 const localSetup = [{ id: 'inverter', kind: 'inverter', role: 'storage', brand: 'deye', model: 'SUN-12K-SG04LP3-EU',
   family: 'deye-sg04lp3', label: 'Speicher Scheune', reportedAt: NOW, adoptedEntityId: 'help-battery',
   communication: 'solarman_v5', host: '192.0.2.10', port: 8899, serial: '1234567890' }];
@@ -202,6 +204,8 @@ export function installHelpFixtures() {
     ? { savedEur: geldFall === 'minus' ? -0.4 : 0.4, savedSteuerungEur: geldFall === 'minus' ? -0.4 : 0.4, savedSpeicherEur: 0, steuerungSplitReason: null, steuerungPlannedEur: geldFall === 'minus' ? -3.25 : 3.25 }
     : {};
   const lang = params.get('lang') === '1';
+  // Eine Wallbox an der Anlage (`ev-charger`): schaltet in der Fahrplan-Seite die Wallbox-Hinweiszeile frei.
+  const wallbox = params.get('wallbox') === '1';
   if (lang) {
     Object.assign(sites[0], { name: 'Sandgrabener Straße 10a' });
     // Das lange Kundenwort aus dem Betrieb: ein einziges Wort breiter als eine Rollen-Karte.
@@ -266,7 +270,7 @@ export function installHelpFixtures() {
     schedule: erzFall ? async () => { throw new Error('Diese Anlage hat keinen Fahrplan'); } : result(plan),
     // Jeder Abruf eine frische Lesung (sonst altert die Bühne nach zwei Minuten in „veraltet“).
     erzeugerJetzt: async () => (erzFall ? erzeugerBeispiel(erzFall, new Date()) : null), siteAssets: result([asset, { ...asset, id: 'help-pv', type: 'pv', capacityKwh: null, pvCapacityKwp: 10, moduleCount: 25 }]),
-    siteEntities: result({ registry: { revision: '1', composedAt: NOW, deviceId: 'help-box', reportedRevision: '1', reportedAt: NOW }, entities: erzFall ? entities.filter((e) => e.id === 'help-grid') : entities, localSetup, staleOnDevice: [] }),
+    siteEntities: result({ registry: { revision: '1', composedAt: NOW, deviceId: 'help-box', reportedRevision: '1', reportedAt: NOW }, entities: erzFall ? entities.filter((e) => e.id === 'help-grid') : wallbox ? [...entities, wallboxEntity] : entities, localSetup, staleOnDevice: [] }),
     topology: result(topology), usageProfile: result({ usageProfile: 'private', derivedProfile: 'private', override: null,
       emphasis: { money: 'prominent', peak: 'visible', flow: 'prominent', devices: 'prominent' },
       signals: erzFall

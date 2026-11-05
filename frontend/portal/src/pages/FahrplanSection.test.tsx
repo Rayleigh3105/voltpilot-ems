@@ -1012,3 +1012,56 @@ describe('FahrplanSection · der Tagesschalter (E2 = A)', () => {
     );
   });
 });
+
+/**
+ * „Ihr Sonnenstrom heute" · die Wallbox-Hinweiszeile hängt am Ladepunkt der
+ * Anlage (`ladepunktAnzahl` aus den Entities der Schale): mit Ladepunkt und
+ * Überschuss steht sie, ohne Ladepunkt - und solange die Zahl unbekannt ist -
+ * nie.
+ */
+describe('FahrplanSection · Wallbox-Hinweis in „Ihr Sonnenstrom heute"', () => {
+  const HINWEIS = /ein Auto an der Wallbox könnte sie nutzen/;
+
+  /** Ein ganzer Tag mit Überschuss: Sonne 6 kW, Haus 1 kW, Speicher still. */
+  function ueberschussPlan(): SchedulePlan {
+    const heute = new Date();
+    const slots = [];
+    for (let h = 0; h < 24; h++) {
+      for (let q = 0; q < 4; q++) {
+        slots.push(
+          slot({
+            start: new Date(heute.getFullYear(), heute.getMonth(), heute.getDate(), h, q * 15).toISOString(),
+            pvKw: 6,
+            loadKw: 1,
+            batteryKw: 0,
+          }),
+        );
+      }
+    }
+    return { ...plan(), slots };
+  }
+
+  async function zeigeSonnenstrom(ladepunktAnzahl: number | null) {
+    schedule.mockResolvedValue(ueberschussPlan());
+    const { container } = render(<FahrplanSection site={SITE} ladepunkte={ladepunktAnzahl} />);
+    await screen.findByRole('button', { name: 'Ihr Sonnenstrom heute' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ihr Sonnenstrom heute' }));
+    expect(container.textContent).toContain('Ihre Sonne:');
+    return container;
+  }
+
+  it('nennt den Überschuss bei einer Anlage mit Ladepunkt', async () => {
+    const container = await zeigeSonnenstrom(1);
+    expect(container.textContent).toMatch(HINWEIS);
+  });
+
+  it('schweigt bei einer Anlage ohne Ladepunkt', async () => {
+    const container = await zeigeSonnenstrom(0);
+    expect(container.textContent).not.toMatch(HINWEIS);
+  });
+
+  it('schweigt, solange die Zahl der Ladepunkte unbekannt ist', async () => {
+    const container = await zeigeSonnenstrom(null);
+    expect(container.textContent).not.toMatch(HINWEIS);
+  });
+});

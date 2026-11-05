@@ -745,7 +745,7 @@ function AnlagenSubPage({
         />
       )}
       <LazyBoundary>
-        {sub === 'fahrplan' && <FahrplanSection site={site} />}
+        {sub === 'fahrplan' && <FahrplanSection site={site} ladepunkte={ladepunktAnzahl} />}
         {sub === 'messwerte' && (
           <MesswerteSection
             site={site}
