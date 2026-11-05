@@ -4,16 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.components.ComponentConnectionReceipts;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BoxFaehigkeiten;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -64,9 +60,7 @@ class ComponentBearbeitenControlApiTest {
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String TENANT_A = "00000000-0000-0000-0000-000000000001";
-    private static final String DEYE = "builtin:deye:sun-30k-sg01hp3";
     private static final String SHELLY = "builtin:shelly:shelly_http";
-    private static final Path VEKTOREN = Path.of("../../docs/contracts/v2/heizstab-push-vectors.json");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -117,29 +111,7 @@ class ComponentBearbeitenControlApiTest {
     @Autowired
     BoxFaehigkeiten faehigkeiten;
 
-    @Autowired
-    com.voltpilot.api.consumers.HeizstabFaehigkeitenNachtrag nachtrag;
-
     private final ObjectMapper json = new ObjectMapper();
-
-    /** Zeichnet jeden Registry-Push auf - die Bytes, die wirklich auf den Draht gingen. */
-    @org.springframework.boot.test.context.TestConfiguration
-    static class RecordingPublisherConfig {
-        static final List<byte[]> PUSHES = new java.util.concurrent.CopyOnWriteArrayList<>();
-
-        @org.springframework.context.annotation.Bean
-        com.voltpilot.api.entities.EntityRegistryPublisher entityRegistryPublisher() {
-            var pub = org.mockito.Mockito.mock(
-                    com.voltpilot.api.entities.EntityRegistryPublisher.class);
-            org.mockito.Mockito.when(pub.publishRegistry(org.mockito.Mockito.any(),
-                    org.mockito.Mockito.any(), org.mockito.Mockito.any(),
-                    org.mockito.Mockito.any())).thenAnswer(inv -> {
-                        PUSHES.add(inv.getArgument(3));
-                        return true;
-                    });
-            return pub;
-        }
-    }
 
     private static Map<String, Object> shelly() {
         Map<String, Object> c = new LinkedHashMap<>();
