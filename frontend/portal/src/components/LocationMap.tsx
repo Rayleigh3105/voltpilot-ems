@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
+import { api, type OrtTreffer } from '../api';
 import { fmtCoords } from '../format';
 import {
   coordFieldValue,
@@ -48,6 +49,8 @@ export function LocationMap({
   onChange,
   readonly = false,
   fokus = 0,
+  ortAufloesen = false,
+  onOrtAufgeloest,
 }: {
   lat: number | null;
   lon: number | null;
@@ -64,6 +67,15 @@ export function LocationMap({
    * interactive editor for the three site forms.
    */
   readonly?: boolean;
+  /**
+   * Task vp-anlage-adresse-ux: ein Klick oder gezogener Pin löst sich zusätzlich in eine lesbare
+   * Adresse auf (`GET /api/v1/orte/rueckwaerts`), wenn erreichbar - sonst bleibt nur der Punkt
+   * stehen, ehrlich ohne Adresstext. Default aus, damit die anderen Verwender dieser gemeinsamen
+   * Karte (Drawer, Standort-Bearbeiten) unverändert bleiben.
+   */
+  ortAufloesen?: boolean;
+  /** Die aufgelöste Adresse - NIE ihren Punkt übernehmen, der Pin bleibt exakt, wo er gesetzt wurde. */
+  onOrtAufgeloest?: (treffer: OrtTreffer) => void;
 }) {
   const mapEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -86,8 +98,40 @@ export function LocationMap({
 
   const hasPin = lat != null && lon != null;
 
+  // Rückwärts-Auflösung eines geklickten/gezogenen Pins (nie eines Sprungs aus der Suche - der
+  // kennt die Adresse schon). Ehrlich: ein Fehlschlag lässt den Pin stehen und zeigt nur nichts.
+  const [aufloesung, setAufloesung] = useState<{ laedt: boolean; text: string | null; ausfall: boolean }>({
+    laedt: false,
+    text: null,
+    ausfall: false,
+  });
+  const aufloesungRunde = useRef(0);
+  const onOrtAufgeloestRef = useRef(onOrtAufgeloest);
+  onOrtAufgeloestRef.current = onOrtAufgeloest;
+
   function place(nextLat: number, nextLon: number) {
-    onChangeRef.current(roundCoord(nextLat), roundCoord(nextLon));
+    const rLat = roundCoord(nextLat);
+    const rLon = roundCoord(nextLon);
+    onChangeRef.current(rLat, rLon);
+    if (!ortAufloesen) return;
+    const meine = ++aufloesungRunde.current;
+    setAufloesung({ laedt: true, text: null, ausfall: false });
+    api.orteRueckwaerts(rLat, rLon).then(
+      (a) => {
+        if (meine !== aufloesungRunde.current) return;
+        const t = a.treffer[0];
+        if (t) {
+          setAufloesung({ laedt: false, text: t.text, ausfall: false });
+          onOrtAufgeloestRef.current?.(t);
+        } else {
+          setAufloesung({ laedt: false, text: null, ausfall: false });
+        }
+      },
+      () => {
+        if (meine !== aufloesungRunde.current) return;
+        setAufloesung({ laedt: false, text: null, ausfall: true });
+      },
+    );
   }
 
   // Init the map once.
@@ -170,10 +214,14 @@ export function LocationMap({
     }
   }, [lat, lon]);
 
-  // Eine gewählte Adresse: aufs Haus, nicht nur auf den Ort.
+  // Eine gewählte Adresse: aufs Haus, nicht nur auf den Ort. Eine stehende Klick-Auflösung gehört
+  // dann nicht mehr zum neuen Punkt - ehrlich löschen statt stehen lassen.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !fokus || lat == null || lon == null) return;
+    if (!fokus) return;
+    aufloesungRunde.current++;
+    setAufloesung({ laedt: false, text: null, ausfall: false });
+    if (!map || lat == null || lon == null) return;
     map.setView(L.latLng(lat, lon), HAUS_ZOOM);
     // Nur der Anstoß zählt, nicht jeder gezogene Pin.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -236,13 +284,26 @@ export function LocationMap({
           <button
             type="button"
             className="vp-linklike"
-            onClick={() => onChange(null, null)}
+            onClick={() => {
+              aufloesungRunde.current++;
+              setAufloesung({ laedt: false, text: null, ausfall: false });
+              onChange(null, null);
+            }}
             style={{ marginLeft: 'auto' }}
           >
             Entfernen
           </button>
         )}
       </div>
+      {ortAufloesen && hasPin && (aufloesung.laedt || aufloesung.text || aufloesung.ausfall) && (
+        <p className="vp-map-aufloesung" aria-live="polite">
+          {aufloesung.laedt && <span className="vp-muted">Adresse zu diesem Punkt wird ermittelt …</span>}
+          {!aufloesung.laedt && aufloesung.text && <span>{aufloesung.text}</span>}
+          {!aufloesung.laedt && aufloesung.ausfall && (
+            <span className="vp-muted">Adresse zu diesem Punkt gerade nicht ermittelbar - der Punkt bleibt gesetzt.</span>
+          )}
+        </p>
+      )}
       {!readonly && (
         <button
           type="button"

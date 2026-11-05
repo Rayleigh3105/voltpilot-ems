@@ -144,6 +144,9 @@ export function AnlageStep({
   const [adresse, setAdresse] = useState<AdressWahl | null>(entwurf?.adresse ?? null);
   const [lat, setLat] = useState<number | null>(entwurf?.lat ?? null);
   const [lon, setLon] = useState<number | null>(entwurf?.lon ?? null);
+  // Befund vp-anlage-adresse-ux (Geister-Pin): ein Punkt aus der Suche gehört nur, solange der
+  // Text noch zur gewählten Adresse passt - sonst ehrlich leer statt eines alten, irreführenden Pins.
+  const [pinVonSuche, setPinVonSuche] = useState(false);
   // Bestand ohne Standort-Objekt: „Gleicher Standort wie …“ übernimmt Kartenpunkt und Gebotszone einer Anlage.
   const [zoneDerAnlage, setZoneDerAnlage] = useState<string | null>(null);
   // Jede gewählte Adresse holt die Karte aufs Haus (LocationMap `fokus`) - auch die aus dem Entwurf.
@@ -231,6 +234,12 @@ export function AnlageStep({
       setLat(w.punkt.breitengrad);
       setLon(w.punkt.laengengrad);
       setKartenFokus((n) => n + 1);
+      setPinVonSuche(true);
+    } else if (pinVonSuche) {
+      // Die Eingabe wurde geändert, ohne neu zu wählen: der alte Pin gehörte zur VORIGEN Suche.
+      setLat(null);
+      setLon(null);
+      setPinVonSuche(false);
     }
   }
 
@@ -394,6 +403,9 @@ export function AnlageStep({
           : 'Ein Name, unter dem Sie sie wiederfinden - und wo sie steht.'}
       </p>
       <div className="vp-anlage-ort-felder">
+        {/* Volle Breite im Assistenten (Task vp-anlage-adresse-ux): die Karte bekommt eine eigene
+            Spalte rechts (`vp-onboarding` scoped CSS) - alles andere bleibt links beisammen. */}
+        <div className="vp-anlage-ort-haupt">
         {modus === 'wahl' && (
           <fieldset className="vp-ort-wahl" aria-describedby={fehler.ort ? 'flow-ort-fehler' : undefined}>
             <legend className="vp-ort-wahl-titel">Ort</legend>
@@ -498,6 +510,7 @@ export function AnlageStep({
                       setSuche('');
                       setLat(x.latitude);
                       setLon(x.longitude);
+                      setPinVonSuche(false);
                       setZoneDerAnlage(x.biddingZone);
                     }}
                   >
@@ -528,15 +541,6 @@ export function AnlageStep({
                 {hinweis}
               </p>
             )}
-            <LocationMap
-              lat={lat}
-              lon={lon}
-              fokus={kartenFokus}
-              onChange={(la, lo) => {
-                setLat(la);
-                setLon(lo);
-              }}
-            />
           </>
         )}
 
@@ -572,18 +576,42 @@ export function AnlageStep({
             fehler={fehler}
           />
         )}
+        </div>
+        {mitAdresse && (
+          <LocationMap
+            lat={lat}
+            lon={lon}
+            fokus={kartenFokus}
+            ortAufloesen
+            onChange={(la, lo) => {
+              setLat(la);
+              setLon(lo);
+              setPinVonSuche(false);
+            }}
+            onOrtAufgeloest={(t) => {
+              const ad = adresseAusTreffer(t);
+              if (!ad) return;
+              setSuche(adresseText(ad));
+              setAdresse({ adresse: ad, punkt: null });
+              setFehler((f) => ({ ...f, adresse: undefined }));
+              setPinVonSuche(true);
+            }}
+          />
+        )}
       </div>
-      <Recht aktion="anlage.verwalten">
-        <Button variant="primary" size="lg" fullWidth onClick={submit} disabled={busy} style={{ marginTop: 20 }}>
-          {busy ? 'Lege Anlage an…' : 'Weiter'}
-        </Button>
-      </Recht>
-      {modus === 'nur_lage' && lat == null && (
-        <p className="vp-note" style={{ marginTop: 8 }}>
-          Ohne Standort geht es auch - dann allerdings ohne Wetterprognose.
-        </p>
-      )}
-      {err && <div className="vp-alert vp-alert-err">{err}</div>}
+      <div className="vp-anlage-ort-aktion">
+        <Recht aktion="anlage.verwalten">
+          <Button variant="primary" size="lg" fullWidth onClick={submit} disabled={busy} style={{ marginTop: 20 }}>
+            {busy ? 'Lege Anlage an…' : 'Weiter'}
+          </Button>
+        </Recht>
+        {modus === 'nur_lage' && lat == null && (
+          <p className="vp-note" style={{ marginTop: 8 }}>
+            Ohne Standort geht es auch - dann allerdings ohne Wetterprognose.
+          </p>
+        )}
+        {err && <div className="vp-alert vp-alert-err">{err}</div>}
+      </div>
 
       {dialog && (
         <StandortDialog

@@ -4,6 +4,30 @@
   grid-template-columns: minmax(0, 1fr);
   gap: var(--vp-space-4);
 }
+.vp-anlage-ort-haupt {
+  display: grid;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+/* Der „Weiter"-Knopf gehört zu den Eingaben links, nicht über die ganze (jetzt mit Karte breite)
+   Zeile - sonst wäre er auf einem großen Bildschirm unverhältnismäßig breit. */
+.vp-anlage-ort-aktion {
+  max-width: 460px;
+}
+/* Volle Seite im Einrichtungs-Assistenten (Task vp-anlage-adresse-ux): die Karte bekommt ab
+   Tablet-Breite eine eigene, große Spalte rechts - Eingaben links. Scoped auf `.vp-onboarding`,
+   damit der Dialog „Anlage anlegen“ (derselbe AnlageFlow, aber als schmaler Drawer) unverändert bleibt. */
+@media (min-width: 860px) {
+  .vp-onboarding .vp-anlage-ort-felder {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 460px);
+    align-items: start;
+    gap: var(--vp-space-6);
+  }
+  .vp-onboarding .vp-map-field {
+    position: sticky;
+    top: var(--vp-space-4);
+  }
+}
 .vp-ort-wahl {
   display: grid;
   gap: var(--vp-space-2);

@@ -39,8 +39,8 @@ class OrteSucheTest {
     private final List<URI> abrufe = new ArrayList<>();
     private Instant jetzt = Instant.parse("2026-10-23T08:00:00Z");
 
-    private OrteSuche suche(OrteSuche.Abruf abruf) {
-        Clock uhr = new Clock() {
+    private Clock uhr() {
+        return new Clock() {
             @Override
             public ZoneId getZone() {
                 return ZoneId.of("UTC");
@@ -56,13 +56,30 @@ class OrteSucheTest {
                 return jetzt;
             }
         };
-        return new OrteSuche(URI.create("http://photon.test/api"), abruf, JSON, uhr);
+    }
+
+    private OrteSuche suche(OrteSuche.Abruf abruf) {
+        return new OrteSuche(URI.create("http://photon.test/api"), abruf, JSON, uhr());
+    }
+
+    /** Wie {@link #suche(OrteSuche.Abruf)}, aber mit verdrahtetem Nominatim-Rückfall. */
+    private OrteSuche mitAusweich(OrteSuche.Abruf primaer, OrteSuche.Abruf ausweich) {
+        return new OrteSuche(URI.create("http://photon.test/api"), primaer, URI.create("http://photon.test/reverse"),
+                URI.create("http://nominatim.test/search"), ausweich, URI.create("http://nominatim.test/reverse"),
+                JSON, uhr());
     }
 
     private OrteSuche.Abruf antwortet(int status, String koerper) {
         return uri -> {
             abrufe.add(uri);
             return new OrteSuche.Ergebnis(status, koerper);
+        };
+    }
+
+    private OrteSuche.Abruf nichtErreichbar() {
+        return uri -> {
+            abrufe.add(uri);
+            throw new IOException("Zeitüberschreitung");
         };
     }
 
@@ -145,5 +162,66 @@ class OrteSucheTest {
         assertThat(r.getStatusCode().value()).isEqualTo(503);
         assertThat(r.getBody()).containsEntry("code", "adresssuche_nicht_erreichbar");
         assertThat(r.getBody().get("message")).contains("Punkt auf der Karte selbst setzen");
+    }
+
+    /** Nominatim-Antwort (jsonv2, {@code addressdetails=1}) für eine Hausadresse in Gunzenhausen. */
+    private static final String NOMINATIM_HAUS = """
+            [{"lat":"49.1159","lon":"10.7155","addresstype":"house",
+              "address":{"house_number":"12","road":"Hauptstraße","postcode":"91710","city":"Gunzenhausen",
+                          "country_code":"de"}}]""";
+
+    /** Befund vp-anlage-adresse-ux: Photon antwortet real oft nicht fristgerecht - der Rückfall
+     * übernimmt dann, ohne dass das Portal je einen Fehler sieht. */
+    @Test
+    void photonNichtFristgerechtNominatimUebernimmt() {
+        OrteSuche s = mitAusweich(nichtErreichbar(), antwortet(200, NOMINATIM_HAUS));
+        OrteSuche.Antwort a = s.suchen("Hauptstr 12 Gunzenhausen");
+        assertThat(a.quelle()).isEqualTo("© OpenStreetMap-Mitwirkende");
+        assertThat(a.treffer()).extracting(OrteSuche.Treffer::text).containsExactly(
+                "Hauptstraße 12, 91710 Gunzenhausen");
+        OrteSuche.Treffer haus = a.treffer().get(0);
+        assertThat(haus.genau()).isEqualTo("haus");
+        assertThat(haus.land()).isEqualTo("DE");
+        assertThat(haus.breitengrad()).isEqualTo(49.1159);
+        assertThat(haus.laengengrad()).isEqualTo(10.7155);
+        // der Rückfall trägt die Adresse als Query, nicht als Pfad - beide Aufrufe sind belegt.
+        assertThat(abrufe).hasSize(2);
+        assertThat(abrufe.get(1).toString()).startsWith("http://nominatim.test/search?q=");
+    }
+
+    @Test
+    void beideWegeAusFallenDannBleibtEhrlicherFehler() {
+        OrteSuche s = mitAusweich(nichtErreichbar(), antwortet(503, ""));
+        assertThatThrownBy(() -> s.suchen("Gunzenhausen")).isInstanceOf(OrteSuche.NichtErreichbar.class);
+        assertThat(abrufe).hasSize(2);
+    }
+
+    @Test
+    void rueckwaertsLoestKartenpunktUeberPhotonAuf() {
+        String photonReverse = """
+                {"features":[{"geometry":{"coordinates":[10.910757,48.9552905]},
+                 "properties":{"countrycode":"DE","type":"district","city":"Treuchtlingen","postcode":"91757"}}]}""";
+        OrteSuche s = mitAusweich(antwortet(200, photonReverse), nichtErreichbar());
+        OrteSuche.Antwort a = s.rueckwaerts(48.9552905, 10.910757);
+        assertThat(a.treffer()).extracting(OrteSuche.Treffer::text).containsExactly("91757 Treuchtlingen");
+        assertThat(abrufe).hasSize(1);
+    }
+
+    @Test
+    void rueckwaertsPhotonAusNominatimUebernimmt() {
+        String nominatimReverse = """
+                {"lat":"48.9552528","lon":"10.9107420","addresstype":"amenity",
+                 "address":{"road":"Hauptstraße","town":"Treuchtlingen","postcode":"91757","country_code":"de"}}""";
+        OrteSuche s = mitAusweich(nichtErreichbar(), antwortet(200, nominatimReverse));
+        OrteSuche.Antwort a = s.rueckwaerts(48.9552528, 10.9107420);
+        assertThat(a.treffer()).extracting(OrteSuche.Treffer::text).containsExactly("Hauptstraße, 91757 Treuchtlingen");
+        assertThat(abrufe).hasSize(2);
+    }
+
+    @Test
+    void rueckwaertsOhneRueckfallKonfigurationBleibtLeer() {
+        OrteSuche s = suche(antwortet(200, "{}"));
+        assertThat(s.rueckwaerts(48.0, 10.0).treffer()).isEmpty();
+        assertThat(abrufe).isEmpty();
     }
 }

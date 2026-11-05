@@ -147,6 +147,29 @@ describe('Erste Anlage eines Privatkunden: „Wo steht Ihre Anlage?"', () => {
     await waitFor(() => expect(standortAnlegen).toHaveBeenCalledTimes(1));
   });
 
+  it('Befund vp-anlage-adresse-ux: eine neue Eingabe nach einer gewählten Adresse löscht den alten Pin (kein Geister-Pin)', async () => {
+    vi.spyOn(api, 'orteSuche').mockResolvedValue({ treffer: [HAUS], quelle: '© OpenStreetMap-Mitwirkende' });
+    render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);
+    await tippe(await screen.findByLabelText('Adresse'), 'Hauptstr 12 gun');
+    fireEvent.mouseDown(screen.getByRole('option', { name: HAUS.text }));
+    expect(screen.getByText('Adresse gefunden - den Punkt auf der Karte können Sie aufs Dach ziehen.')).toBeInTheDocument();
+
+    // Die Eingabe ändert sich OHNE neu zu wählen - der alte Pin gehört zur vorigen Suche, nicht zu dieser.
+    fireEvent.change(screen.getByLabelText('Adresse'), { target: { value: 'Ganz woanders' } });
+    expect(screen.queryByText('Adresse gefunden - den Punkt auf der Karte können Sie aufs Dach ziehen.')).toBeNull();
+    expect(screen.getByText('Noch kein Standort gesetzt (optional)')).toBeInTheDocument();
+  });
+
+  it('Enter ohne Auswahl übernimmt sofort den ersten Treffer - wie „Weiter“, aber ohne den Knopf', async () => {
+    vi.spyOn(api, 'orteSuche').mockResolvedValue({ treffer: [HAUS, ORT], quelle: '© OpenStreetMap-Mitwirkende' });
+    render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);
+    const feld = await screen.findByLabelText('Adresse');
+    fireEvent.change(feld, { target: { value: 'Hauptstr 12 gun' } });
+    fireEvent.keyDown(feld, { key: 'Enter' });
+    expect(await screen.findByDisplayValue(HAUS.text)).toBeInTheDocument();
+    expect(await screen.findByText('Adresse gefunden - den Punkt auf der Karte können Sie aufs Dach ziehen.')).toBeInTheDocument();
+  });
+
   it('ohne Adresse: der Satz am Feld, nichts wird angelegt', async () => {
     const standortAnlegen = vi.spyOn(api, 'standortAnlegen');
     render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);

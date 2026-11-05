@@ -13,9 +13,10 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * {@code GET /api/v1/orte/suche?q=…} - die Adressvorschläge beim Anlegen (Anlage-Flow a1, D4 = A):
  * Straße und Hausnummer genügen, Treffer nur in Deutschland, Österreich und der Schweiz
- * ({@link OrteSuche}). Jedes angemeldete Konto darf suchen; es liest keine Daten eines
- * Kundenbereichs. Fehlt die Datenquelle, antwortet die Route 503 mit einem Satz, der den Weg nennt
- * (den Punkt auf der Karte selbst setzen).
+ * ({@link OrteSuche}). {@code GET /api/v1/orte/rueckwaerts?lat=&lon=} löst einen Kartenpunkt in
+ * eine Adresse auf (Task vp-anlage-adresse-ux: Klick/Verschieben des Pins). Jedes angemeldete
+ * Konto darf suchen; es liest keine Daten eines Kundenbereichs. Fehlt die Datenquelle, antwortet
+ * die Route 503 mit einem Satz, der den Weg nennt (den Punkt auf der Karte selbst setzen).
  */
 // Recht: keines - eine Suche in öffentlichen Adressdaten, kein Lesen und Schreiben im Kundenbereich.
 @RestController
@@ -31,6 +32,12 @@ public class OrteSucheController {
     @GetMapping("/suche")
     public ResponseEntity<OrteSuche.Antwort> suche(@RequestParam(name = "q", required = false) String q) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(suche.suchen(q));
+    }
+
+    @GetMapping("/rueckwaerts")
+    public ResponseEntity<OrteSuche.Antwort> rueckwaerts(@RequestParam("lat") double lat,
+            @RequestParam("lon") double lon) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(suche.rueckwaerts(lat, lon));
     }
 
     @ExceptionHandler(OrteSuche.NichtErreichbar.class)
