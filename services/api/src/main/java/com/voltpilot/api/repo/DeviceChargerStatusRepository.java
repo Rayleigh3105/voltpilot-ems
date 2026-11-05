@@ -113,34 +113,65 @@ public class DeviceChargerStatusRepository {
         }, siteId);
     }
 
-    /** Ersetzt den ganzen gemeldeten Satz eines Geräts durch die Sicht EINES Herzschlags. */
+    private static final String BUDGET_COLUMNS = "device_id, tenant_id, site_id, enabled, "
+            + "control_enabled, control_note, grid_limit_kw, margin_pct, min_power_kw, "
+            + "budget_kw, allocated_kw, reserved_kw, measured_kw, site_load_kw, "
+            + "site_grid_kw, budget_mode, budget_note, budget_blind, eff_limit_kw, "
+            + "safe_default_kw, safe_default_note, safe_default_holds, "
+            + "safe_worst_case_kw, max_house_load_kw, connector_count, "
+            + "surplus_policy, storage_priority, surplus_active, surplus_kw, "
+            + "surplus_mode, surplus_note, surplus_blind, surplus_total_kw, "
+            + "surplus_battery_kw, source_allocated_kw, ocpp_port, ocpp_url_path, "
+            + "reported_at, storage_release_active, storage_release_kw, "
+            + "storage_release_floor_soc_pct, storage_release_soc_pct, "
+            + "storage_release_mode, storage_release_note";
+
+    /**
+     * Upsert des Budgets: jede Spalte außer dem Schlüssel wird überschrieben, und
+     * {@code ocpp_control_status} wird auf NULL gesetzt - wie das frühere DELETE+INSERT
+     * (der OCPP-Zuhörer schreibt den Stand nach jedem Herzschlag neu). {@code RETURNING}
+     * liefert nur dann eine Zeile, wenn dieser Bericht nicht älter ist als der gespeicherte.
+     */
+    private static final String BUDGET_UPSERT;
+
+    static {
+        String[] cols = BUDGET_COLUMNS.split(", ");
+        StringBuilder set = new StringBuilder();
+        for (int i = 1; i < cols.length; i++) {
+            set.append(cols[i]).append(" = EXCLUDED.").append(cols[i]).append(", ");
+        }
+        BUDGET_UPSERT = "INSERT INTO device_charging_budget (" + BUDGET_COLUMNS + ") VALUES ("
+                + "?, ".repeat(cols.length - 1) + "?) ON CONFLICT (device_id) DO UPDATE SET "
+                + set + "ocpp_control_status = NULL "
+                + "WHERE device_charging_budget.reported_at <= EXCLUDED.reported_at "
+                + "RETURNING device_id";
+    }
+
+    /**
+     * Ersetzt den ganzen gemeldeten Satz eines Geräts durch die Sicht EINES Herzschlags.
+     *
+     * <p><b>Gleichzeitige Schreiber: der jüngste Bericht gewinnt.</b> Zwei Herzschläge
+     * derselben Box können gleichzeitig ankommen (zweite API-Instanz am selben Topic,
+     * Wiederzustellung). Das frühere {@code DELETE} + {@code INSERT} verlor das Rennen: das
+     * DELETE sieht die nicht eingecheckten Zeilen der anderen Transaktion nicht, das INSERT
+     * scheitert nach deren Commit am Primärschlüssel. Jetzt ist jede Zeile ein
+     * {@code ON CONFLICT}-Upsert, der nur eine Zeile überschreibt, die nicht JÜNGER ist als
+     * dieser Bericht ({@code reported_at}, die Berichtszeit der Box). Die Budget-Zeile (eine je
+     * Gerät) wird zuerst geschrieben und ist der Serialisierungspunkt: der zweite Schreiber
+     * wartet dort, prüft nach dem Commit des ersten die Zeitgrenze neu und kehrt bei einem
+     * älteren Bericht ohne weitere Schreibvorgänge zurück. Säulen und Anschlüsse folgen in
+     * fester Reihenfolge (Kennung, Anschluss), verschwundene Zeilen gehen über dieselbe Grenze.
+     */
     @Transactional
     public void replaceForDevice(UUID deviceId, UUID tenantId, UUID siteId, Instant reportedAt,
             BudgetRow budget, List<ChargePointRow> chargers) {
-        jdbc.update("DELETE FROM device_charge_connector WHERE device_id = ?", deviceId);
         // ⚠ Die Komponenten-Bindung überlebt das Ersetzen: sie ist eine
-        // Zuordnung der PLATTFORM, keine Meldung des Geräts. Sie erst zu lesen
-        // und dann wieder einzusetzen hält den Zuhörer frei davon, die
-        // Komponente bei jedem Herzschlag neu erfinden zu müssen.
+        // Zuordnung der PLATTFORM, keine Meldung des Geräts. Das Upsert lässt
+        // entity_id unberührt; neue Säulen bekommen die gelesene Bindung (falls
+        // vorhanden), so muss der Zuhörer die Komponente nicht bei jedem
+        // Herzschlag neu erfinden.
         Map<String, UUID> entityIds = entityIdsByChargePoint(deviceId);
-        jdbc.update("DELETE FROM device_charge_point WHERE device_id = ?", deviceId);
-        jdbc.update("DELETE FROM device_charging_budget WHERE device_id = ?", deviceId);
-        jdbc.update(
-                "INSERT INTO device_charging_budget (device_id, tenant_id, site_id, enabled, "
-                        + "control_enabled, control_note, grid_limit_kw, margin_pct, min_power_kw, "
-                        + "budget_kw, allocated_kw, reserved_kw, measured_kw, site_load_kw, "
-                        + "site_grid_kw, budget_mode, budget_note, budget_blind, eff_limit_kw, "
-                        + "safe_default_kw, safe_default_note, safe_default_holds, "
-                        + "safe_worst_case_kw, max_house_load_kw, connector_count, "
-                        + "surplus_policy, storage_priority, surplus_active, surplus_kw, "
-                        + "surplus_mode, surplus_note, surplus_blind, surplus_total_kw, "
-                        + "surplus_battery_kw, source_allocated_kw, ocpp_port, ocpp_url_path, "
-                        + "reported_at, storage_release_active, storage_release_kw, "
-                        + "storage_release_floor_soc_pct, storage_release_soc_pct, "
-                        + "storage_release_mode, storage_release_note) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                        + "?, ?, ?, ?, ?, ?)",
+        List<UUID> written = jdbc.queryForList(BUDGET_UPSERT, UUID.class,
                 deviceId, tenantId, siteId, budget.enabled(), budget.controlEnabled(),
                 budget.controlNote(), budget.gridLimitKw(), budget.marginPct(), budget.minPowerKw(),
                 budget.budgetKw(), budget.allocatedKw(), budget.reservedKw(), budget.measuredKw(),
@@ -159,21 +190,47 @@ public class DeviceChargerStatusRepository {
                 budget.storageRelease() == null ? null : budget.storageRelease().socPct(),
                 budget.storageRelease() == null ? null : budget.storageRelease().mode(),
                 budget.storageRelease() == null ? null : budget.storageRelease().note());
-        for (ChargePointRow c : chargers) {
+        if (written.isEmpty()) {
+            return; // ein jüngerer Bericht ist schon gespeichert: dieser ist überholt
+        }
+        Timestamp reported = Timestamp.from(reportedAt);
+        List<ChargePointRow> orderedChargers = chargers.stream()
+                .sorted(java.util.Comparator.comparing(ChargePointRow::chargePointId)).toList();
+        List<String> keptPoints = new java.util.ArrayList<>();
+        List<String> keptConnectorPoints = new java.util.ArrayList<>();
+        List<Integer> keptConnectorIds = new java.util.ArrayList<>();
+        for (ChargePointRow c : orderedChargers) {
+            keptPoints.add(c.chargePointId());
             jdbc.update(
                     "INSERT INTO device_charge_point (device_id, charge_point_id, tenant_id, "
                             + "site_id, label, priority, connected, vendor, model, firmware, "
                             + "ready, note, last_seen, connection, entity_id, reported_at, "
                             + "applied_source, applied_min_kw, applied_storage_release) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                            + "ON CONFLICT (device_id, charge_point_id) DO UPDATE SET "
+                            + "tenant_id = EXCLUDED.tenant_id, site_id = EXCLUDED.site_id, "
+                            + "label = EXCLUDED.label, priority = EXCLUDED.priority, "
+                            + "connected = EXCLUDED.connected, vendor = EXCLUDED.vendor, "
+                            + "model = EXCLUDED.model, firmware = EXCLUDED.firmware, "
+                            + "ready = EXCLUDED.ready, note = EXCLUDED.note, "
+                            + "last_seen = EXCLUDED.last_seen, connection = EXCLUDED.connection, "
+                            + "reported_at = EXCLUDED.reported_at, "
+                            + "applied_source = EXCLUDED.applied_source, "
+                            + "applied_min_kw = EXCLUDED.applied_min_kw, "
+                            + "applied_storage_release = EXCLUDED.applied_storage_release "
+                            + "WHERE device_charge_point.reported_at <= EXCLUDED.reported_at",
                     deviceId, c.chargePointId(), tenantId, siteId, c.label(), c.priority(),
                     c.connected(), c.vendor(), c.model(), c.firmware(), c.ready(), c.note(),
                     ts(c.lastSeen()), c.connection(), entityIds.get(c.chargePointId()),
-                    Timestamp.from(reportedAt),
+                    reported,
                     c.quelle() == null ? null : c.quelle().source(),
                     c.quelle() == null ? null : c.quelle().minKw(),
                     c.quelle() == null ? null : c.quelle().storageRelease());
-            for (ConnectorRow con : c.connectors()) {
+            List<ConnectorRow> orderedConnectors = c.connectors().stream()
+                    .sorted(java.util.Comparator.comparingInt(ConnectorRow::connectorId)).toList();
+            for (ConnectorRow con : orderedConnectors) {
+                keptConnectorPoints.add(c.chargePointId());
+                keptConnectorIds.add(con.connectorId());
                 jdbc.update(
                         "INSERT INTO device_charge_connector (device_id, charge_point_id, "
                                 + "connector_id, tenant_id, site_id, status, charging, "
@@ -182,15 +239,52 @@ public class DeviceChargerStatusRepository {
                                 + "session_since, session_kwh, metered_at, boost, tag_ref, "
                                 + "reported_at) "
                                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                                + "?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                + "?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                                + "ON CONFLICT (device_id, charge_point_id, connector_id) "
+                                + "DO UPDATE SET tenant_id = EXCLUDED.tenant_id, "
+                                + "site_id = EXCLUDED.site_id, status = EXCLUDED.status, "
+                                + "charging = EXCLUDED.charging, "
+                                + "allocated_kw = EXCLUDED.allocated_kw, reason = EXCLUDED.reason, "
+                                + "reason_text = EXCLUDED.reason_text, "
+                                + "next_turn = EXCLUDED.next_turn, power_kw = EXCLUDED.power_kw, "
+                                + "energy_kwh = EXCLUDED.energy_kwh, soc_pct = EXCLUDED.soc_pct, "
+                                + "command_status = EXCLUDED.command_status, "
+                                + "readback = EXCLUDED.readback, "
+                                + "readback_note = EXCLUDED.readback_note, "
+                                + "session_since = EXCLUDED.session_since, "
+                                + "session_kwh = EXCLUDED.session_kwh, "
+                                + "metered_at = EXCLUDED.metered_at, boost = EXCLUDED.boost, "
+                                + "tag_ref = EXCLUDED.tag_ref, reported_at = EXCLUDED.reported_at "
+                                + "WHERE device_charge_connector.reported_at <= EXCLUDED.reported_at",
                         deviceId, c.chargePointId(), con.connectorId(), tenantId, siteId,
                         con.status(), con.charging(), con.allocatedKw(), con.reason(),
                         con.reasonText(), ts(con.nextTurn()), con.powerKw(), con.energyKwh(),
                         con.socPct(), con.commandStatus(), con.readback(), con.readbackNote(),
                         ts(con.sessionSince()), con.sessionKwh(), ts(con.meteredAt()),
-                        con.boost(), con.tagRef(), Timestamp.from(reportedAt));
+                        con.boost(), con.tagRef(), reported);
             }
         }
+        // Was der Bericht nicht (mehr) nennt, verschwindet - aber nur, was nicht jünger ist.
+        jdbc.update(con -> {
+            java.sql.PreparedStatement ps = con.prepareStatement(
+                    "DELETE FROM device_charge_connector WHERE device_id = ? AND reported_at <= ? "
+                            + "AND NOT EXISTS (SELECT 1 FROM unnest(?::text[], ?::int[]) "
+                            + "AS k(cp, c) WHERE k.cp = charge_point_id AND k.c = connector_id)");
+            ps.setObject(1, deviceId);
+            ps.setTimestamp(2, reported);
+            ps.setArray(3, con.createArrayOf("text", keptConnectorPoints.toArray()));
+            ps.setArray(4, con.createArrayOf("int4", keptConnectorIds.toArray()));
+            return ps;
+        });
+        jdbc.update(con -> {
+            java.sql.PreparedStatement ps = con.prepareStatement(
+                    "DELETE FROM device_charge_point WHERE device_id = ? AND reported_at <= ? "
+                            + "AND NOT (charge_point_id = ANY (?))");
+            ps.setObject(1, deviceId);
+            ps.setTimestamp(2, reported);
+            ps.setArray(3, con.createArrayOf("text", keptPoints.toArray()));
+            return ps;
+        });
     }
 
     /** Die Komponenten-Bindungen eines Geräts (charge_point_id -> entity_id). */
