@@ -42,8 +42,8 @@ Byte für Byte stimmen.
 Die Dateien sind die des Standes v0.4 vom 11.10.2026, so wie sie zum Drucken bereitlagen. Ihre
 Prüfsummen stehen in `SHA256SUMS` (prüfen mit `sha256sum -c SHA256SUMS`).
 
-Das Portal bietet `gehaeuse-v04.3mf`, `unterteil.3mf` und `deckel.3mf` auf der Werkstatt-Seite jeder Box zum Herunterladen an, aus Kopien in `frontend/portal/src/assets/gehaeuse/`; `werkstattEinrichtung.test.ts` vergleicht sie mit `SHA256SUMS`.
+Das Portal bietet nur `gehaeuse-v04.3mf` (Gehäuse komplett) auf der Werkstatt-Seite jeder Box zum Herunterladen an, aus einer Kopie in `frontend/portal/src/assets/gehaeuse/`; `werkstattEinrichtung.test.ts` vergleicht sie mit `SHA256SUMS`.
 
 Nach einer gewollten Änderung am Modell: `.venv/bin/python -m gehaeuse.abgleich uebernehmen` (ersetzt
-die geänderten 3MF und schreibt die Prüfsummen neu), dann die drei Dateien auch nach `frontend/portal/src/assets/gehaeuse/` kopieren, dann in der Tabelle oben eintragen, was vom neuen
+die geänderten 3MF und schreibt die Prüfsummen neu), dann `gehaeuse-v04.3mf` auch nach `frontend/portal/src/assets/gehaeuse/` kopieren, dann in der Tabelle oben eintragen, was vom neuen
 Stand gedruckt ist. Ein geändertes Teil ist bis zum nächsten Druck **nicht** bestätigt.

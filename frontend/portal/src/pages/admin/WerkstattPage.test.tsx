@@ -197,16 +197,19 @@ describe('Werkstatt: Einrichtungs-Detailseite einer Box', () => {
     expect(screen.getByTestId('ws-einrichtung')).toBeInTheDocument();
   });
 
-  it('3MF: drei Downloads mit Dateiname, als Datei ohne Kennung der Box beschriftet', async () => {
+  it('3MF: nur das komplette Gehäuse als Download mit Dateiname, als Datei ohne Kennung der Box beschriftet', async () => {
     window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
     render(<WerkstattPage />);
     const g = await screen.findByTestId('ws-gehaeuse');
     expect(within(g).getByTestId('ws-gehaeuse-hinweis')).toHaveTextContent('ohne Referenz und QR-Code dieser Box');
-    for (const name of ['gehaeuse-v04.3mf', 'unterteil.3mf', 'deckel.3mf']) {
-      const a = within(within(g).getByTestId(`ws-gehaeuse-${name}`)).getByRole('link');
-      expect(a).toHaveAttribute('download', name);
-      expect(a).toHaveAttribute('href', expect.stringMatching(/\.3mf(\?.*)?$/));
-    }
+    const a = within(within(g).getByTestId('ws-gehaeuse-gehaeuse-v04.3mf')).getByRole('link');
+    expect(a).toHaveAttribute('download', 'gehaeuse-v04.3mf');
+    expect(a).toHaveAttribute('href', expect.stringMatching(/\.3mf(\?.*)?$/));
+    expect(within(g).getAllByRole('link')).toHaveLength(1);
+    expect(within(g).queryByTestId('ws-gehaeuse-unterteil.3mf')).toBeNull();
+    expect(within(g).queryByTestId('ws-gehaeuse-deckel.3mf')).toBeNull();
+    // Oben: die Druckdatei ist die erste Karte der Seite, vor der Einrichtung.
+    expect(g.compareDocumentPosition(screen.getByTestId('ws-einrichtung')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('eine Box ohne Abnahme sagt, was fehlt, statt Werte zu erfinden', async () => {

@@ -56,9 +56,9 @@ Zertifikatsanfrage prüft die API jetzt auch das Prüfzeichen einer erzeugten Ke
 
 ## Gehäuse-Druckdatei zum Herunterladen
 
-Die Detailseite einer Mango bietet drei 3MF an: `gehaeuse-v04.3mf` (Unterteil und Deckel auf einer Platte), `unterteil.3mf` und `deckel.3mf`.
-Es sind die eingecheckten Dateien des Gehäuse-Programms (`edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/`, Stand v0.4), als Kopie in `frontend/portal/src/assets/gehaeuse/`, weil das Portal-Image nur seinen Ordner kennt.
-`werkstattEinrichtung.test.ts` vergleicht die Kopien mit `SHA256SUMS` des Gehäuses; wer die Druckdateien dort neu übernimmt (`abgleich uebernehmen`), kopiert sie auch ins Portal.
+Die Detailseite einer Mango bietet eine 3MF an: `gehaeuse-v04.3mf` (Gehäuse komplett, Unterteil und Deckel auf einer Platte).
+Es ist die eingecheckte Datei des Gehäuse-Programms (`edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/`, Stand v0.4), als Kopie in `frontend/portal/src/assets/gehaeuse/`, weil das Portal-Image nur seinen Ordner kennt.
+`werkstattEinrichtung.test.ts` vergleicht die Kopie mit `SHA256SUMS` des Gehäuses; wer die Druckdateien dort neu übernimmt (`abgleich uebernehmen`), kopiert `gehaeuse-v04.3mf` auch ins Portal.
 nginx liefert sie als gehashte Assets mit `Content-Type: model/3mf` (`test/cache-smoke.sh`, Prüfung 11).
 
 **Das ist nicht die Datei dieser Box.**

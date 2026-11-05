@@ -1,20 +1,18 @@
 /**
  * Die Einrichtungs-Detailseite einer Box in der Werkstatt (`#/werkstatt?box=<referenz>`):
  * die reine Schicht dahinter. Sie sagt, was zur Box gehört (Hardware, Fassungen,
- * Netz, Bindung) und welche Gehäuse-Druckdateien das Portal anbietet.
+ * Netz, Bindung) und welche Gehäuse-Druckdatei das Portal anbietet.
  *
- * Die Druckdateien sind die eingecheckten des Gehäuse-Programms (v0.4,
+ * Die Druckdatei (Gehäuse komplett) ist die eingecheckte des Gehäuse-Programms (v0.4,
  * `edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/`), als Kopie im Portal, weil
  * das Portal-Image nur diesen Ordner kennt; `werkstattEinrichtung.test.ts`
- * vergleicht die Kopien mit `SHA256SUMS` des Gehäuses. Das Gehäuse MIT Referenz
+ * vergleicht die Kopie mit `SHA256SUMS` des Gehäuses. Das Gehäuse MIT Referenz
  * und QR-Code dieser Box baut der Werkstatt-Dienst nach der Übergabe in seine
  * Ablage; ans Portal reicht es noch nicht.
  *
  * Reines Modul: kein React, kein Netzwerk.
  */
-import deckelUrl from './assets/gehaeuse/deckel.3mf?url';
 import gehaeuseUrl from './assets/gehaeuse/gehaeuse-v04.3mf?url';
-import unterteilUrl from './assets/gehaeuse/unterteil.3mf?url';
 import { boxOrt, type FernwartungBox } from './adminFernwartung';
 import type { WerkstattAbnahme, WerkstattBox } from './werkstatt';
 import type { WerkstattFreigabe } from './werkstattBank';
@@ -34,28 +32,14 @@ export interface GehaeuseDatei {
   druckStand: string;
 }
 
-/** Die generischen Druckdateien v0.4, ohne Kennung und QR-Code einer Box. */
+/** Die generische Druckdatei v0.4 (Gehäuse komplett), ohne Kennung und QR-Code einer Box. */
 export const GEHAEUSE_DATEIEN: readonly GehaeuseDatei[] = [
   {
     name: 'gehaeuse-v04.3mf',
     url: gehaeuseUrl,
     titel: 'Gehäuse komplett',
     inhalt: 'Unterteil und Deckel auf einer Platte, ein Drucklauf; Filament 1 weiß, 2 schwarz, 3 hellblau.',
-    druckStand: 'Bestätigt ist, was die beiden Einzelteile unten sagen.',
-  },
-  {
-    name: 'unterteil.3mf',
-    url: unterteilUrl,
-    titel: 'Unterteil',
-    inhalt: 'Wanne, Sockel mit Schlüssellöchern, vier Schraubsäulen; weiß.',
-    druckStand: 'Gedruckt und bestätigt am 11.10.2026: „sitzt perfekt“.',
-  },
-  {
-    name: 'deckel.3mf',
-    url: deckelUrl,
-    titel: 'Deckel',
-    inhalt: 'Deckel mit Logo, Lichtschacht und Beschriftung in 3,8 mm; weiß, schwarz, hellblau.',
-    druckStand: 'Körper gedruckt und bestätigt am 11.10.2026; die Beschriftung wurde nach dem Druck gewählt (12.10.2026).',
+    druckStand: 'Unterteil gedruckt und bestätigt am 11.10.2026 („sitzt perfekt“), Deckel-Körper ebenso; die Deckel-Beschriftung wurde nach dem Druck gewählt (12.10.2026).',
   },
 ];
 

@@ -140,14 +140,15 @@ for (const breite of [1440, 375]) {
   }
 }
 
-test('Einrichtungs-Detailseite: die 3MF-Downloads liefern die Dateien des Gehäuses', async ({ page }) => {
+test('Einrichtungs-Detailseite: der 3MF-Download liefert die Datei des Gehäuses (nur komplett)', async ({ page }) => {
   const fehler = wache(page);
   await page.goto('/e2e/werkstatt.html#/werkstatt?box=edge-5t2dcy6');
   const summen = new Map(
     readFileSync(resolve(process.cwd(), '../../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/SHA256SUMS'), 'utf8')
       .trim().split('\n').map((z) => z.split(/\s+/) as [string, string]).map(([sha, name]) => [name, sha]),
   );
-  for (const name of ['gehaeuse-v04.3mf', 'unterteil.3mf', 'deckel.3mf']) {
+  await expect(page.getByTestId('ws-gehaeuse').getByRole('link')).toHaveCount(1);
+  for (const name of ['gehaeuse-v04.3mf']) {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByTestId(`ws-gehaeuse-${name}`).getByRole('link').click(),
