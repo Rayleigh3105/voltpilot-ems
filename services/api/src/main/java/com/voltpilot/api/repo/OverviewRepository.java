@@ -387,13 +387,81 @@ public class OverviewRepository {
      * chart): the same latest-run-per-slot de-duplication, then day buckets.
      * Days without any plan are absent.
      *
+     * <p><b>Vergangene Tage kommen aus {@code schedule_savings_1d}</b> (Migration
+     * {@code V20261105090000}, Bericht vp-anlagen-cockpit-perf Rang 4b): ein
+     * abgeschlossener Tag ändert sich nie mehr, wurde aber bei jedem Aufruf (im
+     * Cockpit alle 10 s) neu aus {@code schedule} gelesen - 259.046 Buffer, 180-420 ms
+     * nach vier Monaten. Der Job schreibt je Anlage und Tag genau die Summe, die
+     * {@link #dailySavingsLive} bildet, und führt in {@code schedule_savings_1d_state}
+     * mit, für welche Tage die Tabelle ALLE Anlagen deckt. Aus der Tabelle kommen nur
+     * Tage innerhalb dieses Stands; der Rest (heute, der eben beendete Tag, eine
+     * Lücke, eine frische Datenbank) wird wie bisher live gerechnet - nie eine Lücke,
+     * nie eine Doppelzählung (die Teilfenster sind überschneidungsfrei).
+     *
+     * <p>Die Tabelle gilt nur für ein Fenster, das auf Berliner Tagesgrenzen beginnt
+     * und endet (so ruft der Controller); jedes andere Fenster rechnet live, damit die
+     * Bytegleichheit zur Live-Form nie von einer Rundung der Grenze abhängt.
+     */
+    public List<DailySavings> dailySavings(Instant from, Instant to) {
+        LocalDate fromDay = berlinDayStart(from);
+        LocalDate toDay = berlinDayStart(to);
+        if (fromDay == null || toDay == null) {
+            return dailySavingsLive(from, to);
+        }
+        List<LocalDate[]> stand = jdbc.query(
+                "SELECT von, bis FROM schedule_savings_1d_state",
+                (rs, i) -> new LocalDate[] {
+                        rs.getObject("von", LocalDate.class), rs.getObject("bis", LocalDate.class)});
+        if (stand.isEmpty()) {
+            return dailySavingsLive(from, to);
+        }
+        // Aus der Tabelle: [tableFrom, tableTo) - die Tage des Fensters, die der Stand deckt (bis ist einschließlich).
+        LocalDate tableFrom = fromDay.isAfter(stand.get(0)[0]) ? fromDay : stand.get(0)[0];
+        LocalDate coveredTo = stand.get(0)[1].plusDays(1);
+        LocalDate tableTo = toDay.isBefore(coveredTo) ? toDay : coveredTo;
+        if (!tableFrom.isBefore(tableTo)) {
+            return dailySavingsLive(from, to);
+        }
+        List<DailySavings> days = new ArrayList<>();
+        if (fromDay.isBefore(tableFrom)) {
+            days.addAll(dailySavingsLive(from, tableFrom.atStartOfDay(ZONE).toInstant()));
+        }
+        jdbc.query(
+                "SELECT d.day, sum(d.savings_eur) AS savings "
+                        + "FROM site s "
+                        + "JOIN schedule_savings_1d d ON d.site_id = s.id "
+                        + "WHERE d.day >= ? AND d.day < ? AND d.savings_eur IS NOT NULL "
+                        + "GROUP BY d.day ORDER BY d.day",
+                rs -> {
+                    BigDecimal value = rs.getBigDecimal("savings");
+                    if (value != null) {
+                        days.add(new DailySavings(rs.getObject("day", LocalDate.class), value));
+                    }
+                },
+                tableFrom, tableTo);
+        if (tableTo.isBefore(toDay)) {
+            days.addAll(dailySavingsLive(tableTo.atStartOfDay(ZONE).toInstant(), to));
+        }
+        return days;
+    }
+
+    /** The Berlin calendar day an instant opens, or {@code null} when it is not a Berlin midnight. */
+    private static LocalDate berlinDayStart(Instant instant) {
+        LocalDate day = instant.atZone(ZONE).toLocalDate();
+        return day.atStartOfDay(ZONE).toInstant().equals(instant) ? day : null;
+    }
+
+    /**
+     * The live form: de-duplicated straight from {@code schedule}. The Job
+     * ({@code refresh_schedule_savings_1d}) writes exactly this per Anlage and day.
+     *
      * <p>Per-site LATERAL for the same SkipScan reason as {@link
      * #savingsPerSite} (finding B4): each Anlage's newest run per slot is
      * skip-scanned, then all sites' slots are bucketed by Berlin day and summed
      * across the fleet - byte-identical to the previous fleet-wide DISTINCT ON.
      * Measured 474 ms -> 17 ms.
      */
-    public List<DailySavings> dailySavings(Instant from, Instant to) {
+    List<DailySavings> dailySavingsLive(Instant from, Instant to) {
         List<DailySavings> days = new ArrayList<>();
         jdbc.query(
                 "SELECT time_bucket('1 day', x.time, 'Europe/Berlin') AS day,"
