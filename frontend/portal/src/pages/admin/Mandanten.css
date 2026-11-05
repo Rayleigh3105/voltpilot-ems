@@ -19,3 +19,10 @@
 .vp-mandant-stamm dd { margin: 0; overflow-wrap: anywhere; }
 .vp-mandant-stamm dd.vp-mono { font-size: 0.8125rem; }
 .vp-mandant-seite .vp-danger-zone, .vp-mandant-seite > .vp-alert { margin: 0; }
+
+/* Die Zählung über der Liste: am Telefon kompakt nebeneinander statt drei volle Kacheln untereinander. */
+@media (max-width: 720px) {
+  .vp-kpis.vp-mandanten-pulse { grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); }
+  /* `!important` nur gegen die Inline-Größe der Symbolkachel. */
+  .vp-mandanten-pulse .vp-kpi > :first-child:not(:only-child) { display: none !important; }
+}

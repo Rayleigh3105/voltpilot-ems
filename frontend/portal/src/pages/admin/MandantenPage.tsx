@@ -129,7 +129,7 @@ export function MandantenPage({
         icon="building"
         category="industry"
         title="Mandanten"
-        description="Mandanten plattformweit verwalten. Zeile öffnen für Benutzer, Anlagen und Unterstützung - oder oben über den Mandanten-Umschalter in die Ansicht eines Mandanten springen."
+        description="Eine Zeile öffnet Benutzer, Anlagen und Unterstützung - oder oben über den Mandanten-Umschalter in die Ansicht eines Mandanten springen."
         actions={addButton}
       />
 
@@ -220,7 +220,7 @@ export function MandantenPage({
 function MandantenPulse({ tenants }: { tenants: Tenant[] }) {
   const p = tenantPulse(tenants);
   return (
-    <div className="vp-kpis vp-admin-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
+    <div className="vp-kpis vp-admin-pulse vp-mandanten-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
       <KpiCard
         icon={<Icon name="building" size={20} />}
         category="primary"
@@ -317,8 +317,8 @@ function CreateTenantDrawer({
           id="tenant-segment"
           label="Segment"
           options={[
-            { value: 'CI', label: 'CI (Gewerbe/Industrie)' },
-            { value: 'B2C', label: 'B2C (Privat)' },
+            { value: 'CI', label: segmentLabel('CI') },
+            { value: 'B2C', label: segmentLabel('B2C') },
           ]}
           value={segment}
           onChange={setSegment}
@@ -793,8 +793,8 @@ function TenantEditForm({
           id="edit-tenant-segment"
           label="Segment"
           options={[
-            { value: 'CI', label: 'CI (Gewerbe/Industrie)' },
-            { value: 'B2C', label: 'B2C (Privat)' },
+            { value: 'CI', label: segmentLabel('CI') },
+            { value: 'B2C', label: segmentLabel('B2C') },
           ]}
           value={segment}
           onChange={setSegment}
