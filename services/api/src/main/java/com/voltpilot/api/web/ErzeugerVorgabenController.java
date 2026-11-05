@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Die Vorgaben einer Erzeugeranlage (UEMS EZ-7, Konzept vp-erzeuger-wago-konzept §4.6, EW-8 A, EW-12 A): wer wann wie
+ * Die Vorgaben einer Erzeugeranlage (Erzeuger-Reihe EZ-7, Konzept vp-erzeuger-wago-konzept §4.6, EW-8 A, EW-12 A): wer wann wie
  * lange die Anlage begrenzt oder gesteuert hat — Grundlage des Protokolls im Verlauf (EZ-9) und der Kachel „Wer hat
  * heute geregelt?“. Nur lesend; abgeleitet hat sie der {@code VorgabenLaeufer}. Recht: {@code messwerte.ansehen}
  * (Standort-Zaun); eine fremde oder umzäunte Anlage ist 404, nie 403.
