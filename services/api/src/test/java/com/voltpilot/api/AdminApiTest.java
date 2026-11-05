@@ -3368,6 +3368,13 @@ class AdminApiTest {
         assertThat(c.get("update")).as("nie gemeldet heißt unbekannt, nicht veraltet").isNull();
         assertThat(c.get("edge")).isNull();
 
+        // Geräte & Updates S0: jede Anlage trägt die Linie ihrer Box - der
+        // Maßstab der Oberfläche. Ein Stempel ohne Backend ist eine Docker-Box,
+        // eine stumme Box hat keine Linie (nie still Docker).
+        assertThat(a.get("boxArt")).isEqualTo("docker");
+        assertThat(b.get("boxArt")).isEqualTo("docker");
+        assertThat(c.get("boxArt")).isNull();
+
         // (4) Register anlegen: die Sequenz setzt sich von selbst fort.
         Map<String, Object> r1 = createRelease(admin,
                 Map.of("version", "edge-2026.07.2", "targetCommit", "665d59b8"));
@@ -3403,6 +3410,8 @@ class AdminApiTest {
         assertThat(register.get(0)).containsEntry("version", "edge-2026.08.0");
         assertThat(register).extracting(x -> x.get("version"))
                 .contains("edge-2026.07.2", "edge-2026.08.0");
+        // S0: jeder Eintrag nennt seine Linie - ohne Kennzeichnung eine Docker-Box.
+        assertThat(register.get(0)).containsEntry("boxArt", "docker");
 
         // (7) Die Rollen-Grenze der Registerroute.
         String customer = token("demo", "demo");

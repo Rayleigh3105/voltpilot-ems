@@ -424,6 +424,42 @@ describe('edgeStand', () => {
     // Die Palette-Version reist weiter im flows-Block.
     expect(stand.paletteVersion).toBe('0.3.0');
   });
+
+  // Geräte & Updates S0: der Stand vom 05.11. - das jüngste Release ist Edge Light.
+  const GEMISCHT = [
+    { releaseSeq: 60, version: 'edge-light-2026.11.4', boxArt: 'light' as const },
+    { releaseSeq: 58, version: 'edge-2026.10.7', boxArt: 'docker' as const },
+    { releaseSeq: 57, version: 'edge-2026.10.5', boxArt: 'docker' as const },
+  ];
+
+  it('measures a Docker box against the newest DOCKER release, never against Edge Light (S0)', () => {
+    const stand = edgeStand(null, update('edge-2026.10.7-c39b18d9c2a4'), GEMISCHT, 'docker');
+    expect(stand.status).toBe('aktuell');
+    expect(stand.text).toBe('edge-2026.10.7 ✓');
+    const alt = edgeStand(null, update('edge-2026.10.5'), GEMISCHT, 'docker');
+    expect(alt.text).toBe('edge-2026.10.5 → edge-2026.10.7');
+  });
+
+  it('measures an Edge Light box against its own line; a hand build stays not registered', () => {
+    expect(edgeStand(null, update('edge-light-2026.11.4'), GEMISCHT, 'light').status).toBe('aktuell');
+    const hand = edgeStand(null, update('edge-light-g2ccd99197'), GEMISCHT, 'light');
+    expect(hand.status).toBe('nicht_registriert');
+    expect(hand.outdated).toBe(false);
+    expect(hand.title).toContain('Soll: edge-light-2026.11.4');
+  });
+
+  it('without box art the line comes from the release the stamp carries', () => {
+    expect(edgeStand(null, update('edge-2026.10.7'), GEMISCHT).status).toBe('aktuell');
+    expect(sollRelease(GEMISCHT, 'docker')?.version).toBe('edge-2026.10.7');
+    expect(sollRelease(GEMISCHT)?.version).toBe('edge-light-2026.11.4');
+  });
+
+  it('a line without any release has no yardstick - never the other line', () => {
+    const stand = edgeStand(null, update('edge-light-2026.11.0'), REGISTER, 'light');
+    expect(stand.status).toBe('kein_massstab');
+    expect(stand.outdated).toBe(false);
+    expect(stand.title).toContain('Für Edge Light ist noch kein Release registriert');
+  });
 });
 
 describe('controlMatrixInputs', () => {

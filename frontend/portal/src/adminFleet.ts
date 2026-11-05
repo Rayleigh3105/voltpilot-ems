@@ -195,16 +195,26 @@ export function sourceHealth(counts: AdminFleetSources | null): SourceHealth | n
   };
 }
 
+/** Die Linie eines Register-Eintrags; ohne Angabe (älterer Server) Docker wie dort. */
+function releaseLinie(r: AdminFleetRelease): 'docker' | 'light' {
+  return r.boxArt === 'light' ? 'light' : 'docker';
+}
+
 /**
- * Der SOLL-Stand der Flotte: der neueste Eintrag des Release-Registers, oder
- * `null` bei leerem Register. Der Endpunkt liefert das Register schon nach
- * `releaseSeq` absteigend - hier steht die Regel trotzdem EINMAL explizit, denn
- * sie ist die ganze Ordnung: `releaseSeq` ist eine monotone Ganzzahl, nie ein
- * String- oder SHA-Vergleich.
+ * Der SOLL-Stand: der neueste Eintrag des Release-Registers - mit `linie` der
+ * neueste DIESER Linie (Geräte & Updates S0: eine Docker-Box wird nie am
+ * Edge-Light-Release gemessen) - oder `null`. Der Endpunkt liefert das Register
+ * schon nach `releaseSeq` absteigend - hier steht die Regel trotzdem EINMAL
+ * explizit, denn sie ist die ganze Ordnung: `releaseSeq` ist eine monotone
+ * Ganzzahl, nie ein String- oder SHA-Vergleich.
  */
-export function sollRelease(releases: AdminFleetRelease[]): AdminFleetRelease | null {
+export function sollRelease(
+  releases: AdminFleetRelease[],
+  linie?: 'docker' | 'light',
+): AdminFleetRelease | null {
   let newest: AdminFleetRelease | null = null;
   for (const r of releases) {
+    if (linie && releaseLinie(r) !== linie) continue;
     if (newest == null || r.releaseSeq > newest.releaseSeq) newest = r;
   }
   return newest;
@@ -252,6 +262,12 @@ export function releaseIsRunning(release: string, stamped: string): boolean {
  *    Gleichheit hätte jedes erfolgreich angewandte Tag-Release als „nicht
  *    registriert" gelesen.
  *
+ * 4. **Gemessen wird an der eigenen Linie** (Geräte & Updates S0): der Soll
+ *    ist das neueste Release der Box-Art der Box (`boxArt` aus der API), sonst
+ *    der Linie des Releases, das ihr Stempel trägt. Eine Docker-Box am
+ *    neuesten Edge-Light-Release zu messen hieß „veraltet" für eine Box, die
+ *    dieses Release nie bekommen kann.
+ *
  * Der IST-Stand kommt bevorzugt aus dem OTA-Block (er reist top-level im
  * Herzschlag und deckt auch Geräte ohne Flow-Deployment ab) und fällt sonst auf
  * den flows-getragenen `coreVersion` zurück - so bleibt eine ältere Edge
@@ -261,6 +277,7 @@ export function edgeStand(
   edge: AdminFleetEdge | null,
   update: AdminFleetUpdate | null,
   releases: AdminFleetRelease[],
+  boxArt?: string | null,
 ): EdgeStand {
   const ist = update?.version ?? edge?.coreVersion ?? null;
   const paletteVersion = edge?.paletteVersion ?? null;
@@ -275,8 +292,7 @@ export function edgeStand(
       title: 'Das Gerät hat noch keinen Software-Stand gemeldet.',
     };
   }
-  const soll = sollRelease(releases);
-  if (!soll) {
+  if (releases.length === 0) {
     return {
       coreVersion: ist,
       paletteVersion,
@@ -287,7 +303,38 @@ export function edgeStand(
       title: 'Kein Release im Register - ohne Maßstab wird kein Stand als veraltet bewertet.',
     };
   }
-  const entry = releases.find((r) => releaseIsRunning(r.version, ist));
+  // Gemessen wird an der EIGENEN Linie (S0): die Box-Art der Box, sonst die
+  // Linie des Releases, das ihr Stempel trägt (dieselbe Regel wie
+  // `EdgeStandVerdict` in der API).
+  const art = boxArt === 'docker' || boxArt === 'light' ? boxArt : null;
+  const getragen = releases.find((r) => releaseIsRunning(r.version, ist));
+  const linie = art ?? (getragen ? releaseLinie(getragen) : null);
+  if (!linie) {
+    return {
+      coreVersion: ist,
+      paletteVersion,
+      status: 'nicht_registriert',
+      text: `${ist} · nicht registriert`,
+      tone: 'off',
+      outdated: false,
+      title: 'Dieser Stand steht nicht im Release-Register. Ob er älter oder neuer ist, '
+        + 'lässt sich daraus nicht sagen.',
+    };
+  }
+  const soll = sollRelease(releases, linie);
+  if (!soll) {
+    return {
+      coreVersion: ist,
+      paletteVersion,
+      status: 'kein_massstab',
+      text: ist,
+      tone: 'off',
+      outdated: false,
+      title: `Für ${linie === 'light' ? 'Edge Light' : 'die Docker-Box'} ist noch kein Release `
+        + 'registriert - ohne Maßstab wird kein Stand als veraltet bewertet.',
+    };
+  }
+  const entry = releases.find((r) => releaseLinie(r) === linie && releaseIsRunning(r.version, ist));
   if (!entry) {
     return {
       coreVersion: ist,
@@ -347,7 +394,7 @@ export function fleetRows(
 ): FleetRow[] {
   const rows: FleetRow[] = sites.map((site) => {
     const sources = sourceHealth(site.sources);
-    const edge = edgeStand(site.edge, site.update, releases);
+    const edge = edgeStand(site.edge, site.update, releases, site.boxArt);
     const live = liveCell(site, now);
     const plan = planCell(site.lastPlanGeneratedAt, now);
     const devices = deviceCell(site);
@@ -434,7 +481,7 @@ function fleetBoxRow(
     connectionText: verbindung.text,
     connectionTone: verbindung.tone,
     lastSeenText: verbindung.lastSeenText,
-    software: edgeStand(box.edge, box.update, releases),
+    software: edgeStand(box.edge, box.update, releases, box.boxArt),
     capabilities: capabilityResult.faehigkeiten.map((capability, index) => ({
       code: capability.code,
       name: BOX_FAEHIGKEITEN[index].name,

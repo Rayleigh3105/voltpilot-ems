@@ -174,7 +174,7 @@ export function PlattformUebersichtPage({
               <KpiCard
                 icon={<Icon name="refresh-cw" size={20} />}
                 category={kpiTone(updates.kpi) === 'warn' ? 'industry' : 'primary'}
-                value={kpiText(updates.kpi)}
+                value={kpiText(updates.kpi, updates.lines)}
                 label="Edge-Updates"
               />
             </button>

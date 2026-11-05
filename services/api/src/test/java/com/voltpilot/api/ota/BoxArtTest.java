@@ -90,22 +90,47 @@ class BoxArtTest {
     @DisplayName("Zuweisung: gesperrt wird nur, was belegt nicht passt - Edge Light verlangt den Beleg")
     void assignmentRule() {
         // Passt.
-        assertThat(BoxArt.sperrgrund(BoxArt.DOCKER, BoxArt.DOCKER)).isNull();
-        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.LIGHT)).isNull();
-        assertThat(BoxArt.sperrgrund(null, BoxArt.DOCKER))
+        assertThat(BoxArt.sperrgrund(BoxArt.DOCKER, BoxArt.DOCKER, true)).isNull();
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.LIGHT, true)).isNull();
+        assertThat(BoxArt.sperrgrund(null, BoxArt.DOCKER, false))
                 .as("eine Box, die sich noch nie gemeldet hat, holt Docker wie bisher ab")
+                .isNull();
+        assertThat(BoxArt.sperrgrund(BoxArt.DOCKER, BoxArt.DOCKER, false))
+                .as("Stufe 1 ist eine Edge-Light-Regel; die Docker-Box hat ihren eigenen Crossover")
                 .isNull();
 
         // Passt nicht - mit dem Satz, den auch das Portal zeigt.
-        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.DOCKER)).isEqualTo(
-                "Release für die Docker-Box – diese Box ist eine Edge Light. Updates von Hand "
-                        + "(Edge Light, Stufe 1): Aktualisierung über den Wartungstunnel.");
-        assertThat(BoxArt.sperrgrund(BoxArt.DOCKER, BoxArt.LIGHT))
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.DOCKER, true))
+                .isEqualTo("Release für die Docker-Box – diese Box ist eine Edge Light.");
+        assertThat(BoxArt.sperrgrund(BoxArt.DOCKER, BoxArt.LIGHT, true))
                 .isEqualTo("Release für Edge Light – diese Box ist eine Docker-Box.");
-        assertThat(BoxArt.sperrgrund(null, BoxArt.LIGHT)).isEqualTo(
+        assertThat(BoxArt.sperrgrund(null, BoxArt.LIGHT, true)).isEqualTo(
                 "Release für Edge Light – die Box-Art dieses Geräts ist unbekannt. Ein "
                         + "Edge-Light-Release geht nur an eine Box, die sich als Edge Light "
                         + "gemeldet hat.");
+    }
+
+    @Test
+    @DisplayName("S0: eine Edge-Light-Box mit Stufe 1 bekommt kein Edge-Light-Release")
+    void stufe1Sperre() {
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.LIGHT, false)).isEqualTo(
+                "Release für Edge Light – diese Box hat Stufe 1 und nimmt keine Updates aus dem "
+                        + "Portal an (kein geprüftes Vertrauens-Set). Einmal über den Wartungstunnel "
+                        + "nachrüsten, danach kommt jede Fassung über das Portal.");
+        // Ein Docker-Release bleibt eine Frage der Bauart, nicht der Stufe.
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.DOCKER, false))
+                .isEqualTo(BoxArt.GRUND_DOCKER_AUF_LIGHT);
+    }
+
+    @Test
+    @DisplayName("Vertrauen gekreuzt = Wurzel UND geprüftes Vertrauens-Set gemeldet (Zwilling von crossoverState)")
+    void vertrauenGekreuzt() {
+        assertThat(BoxArt.vertrauenGekreuzt("root-2026-a", "rel-2026-a,rel-2026-b")).isTrue();
+        assertThat(BoxArt.vertrauenGekreuzt("root-2026-a", "")).as("Stufe 1: kein Vertrauens-Set").isFalse();
+        assertThat(BoxArt.vertrauenGekreuzt("root-2026-a", null)).isFalse();
+        assertThat(BoxArt.vertrauenGekreuzt("", "rel-2026-a")).as("ohne Wurzel").isFalse();
+        assertThat(BoxArt.vertrauenGekreuzt(null, null)).as("nicht gemeldet").isFalse();
+        assertThat(BoxArt.vertrauenGekreuzt(" , ", "rel-2026-a")).isFalse();
     }
 
     @Test

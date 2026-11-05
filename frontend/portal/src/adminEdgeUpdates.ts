@@ -160,12 +160,36 @@ export interface EdgeUpdatesKpi {
   newestRelease: string | null;
 }
 
+/**
+ * Eine Software-Linie (Geräte & Updates S0, `EdgeUpdatesDto.LineDto`):
+ * Docker-Box (`edge-JJJJ.MM.N`) oder Edge Light (`edge-light-JJJJ.MM.N`).
+ *
+ * `newestRelease` ist das neueste Release DIESER Linie (`null` = noch keines),
+ * `devices` die Boxen der Linie (eine Box unbekannter Art zählt in keiner),
+ * `known` davon die mit gemeldetem Stand, `upToDate` die auf dem neuesten
+ * Release der Linie - dieselbe Regel wie auf der Kunden-Box-Seite.
+ */
+export interface EdgeUpdatesLine {
+  boxArt: BoxArt;
+  newestRelease: string | null;
+  newestReleaseSeq: number | null;
+  devices: number;
+  known: number;
+  upToDate: number;
+}
+
 export interface EdgeUpdates {
   releases: EdgeUpdatesRelease[];
   rollouts: Rollout[];
   fleet: FleetRow[];
   journal: JournalEntry[];
+  /**
+   * ⚠ `kpi.upToDate`/`kpi.newestRelease` messen am neuesten Release über BEIDE
+   * Linien (für ältere Portale unverändert). Das Urteil je Linie steht in
+   * `lines` - fehlt das Feld (älterer Server), leitet `linienSicht` es ab.
+   */
   kpi: EdgeUpdatesKpi;
+  lines?: EdgeUpdatesLine[];
 }
 
 /** Beschriftung + Ton + Klasse eines Geräte-Zustands (§7.2, §5-Grammatik). */
@@ -287,8 +311,12 @@ export function loudBanner(fleet: FleetRow[]): string | null {
  * das nie gemeldet hat, ist nichts bekannt, und es in den Nenner zu nehmen
  * machte aus einer Wissenslücke eine schlechte Quote.
  */
-export function kpiText(kpi: EdgeUpdatesKpi): string {
-  const parts = [`${kpi.upToDate}/${kpi.known} aktuell`];
+export function kpiText(kpi: EdgeUpdatesKpi, lines?: EdgeUpdatesLine[] | null): string {
+  // Je Linie gemessen (S0): „aktuell" heißt auf dem neuesten Release der
+  // EIGENEN Linie. Ohne `lines` (älterer Server) bleibt es bei der alten Zahl.
+  const aktuell = lines ? lines.reduce((n, l) => n + l.upToDate, 0) : kpi.upToDate;
+  const bekannt = lines ? lines.reduce((n, l) => n + l.known, 0) : kpi.known;
+  const parts = [`${aktuell}/${bekannt} aktuell`];
   if (kpi.inRollout > 0) parts.push(`${kpi.inRollout} im Rollout`);
   if (kpi.failed > 0) parts.push(`${kpi.failed} fehlgeschlagen`);
   return parts.join(' · ');
@@ -352,6 +380,16 @@ export const VON_HAND_DETAIL =
  * Edge-Light-Box ein geprüftes Set meldet, gilt dieselbe Regel wie für die
  * Docker-Box („gekreuzt ✓").
  */
+/**
+ * Hat das Gerät sein Vertrauen GEKREUZT - Wurzel UND geprüftes Vertrauens-Set
+ * gemeldet? Zwilling von `BoxArt.vertrauenGekreuzt` in der API: ohne das ist
+ * eine Edge-Light-Box Stufe 1 und bekommt kein Release (`releaseSperre`).
+ */
+export function vertrauenGekreuzt(trust: DeviceTrust | null | undefined): boolean {
+  return !!trust && Array.isArray(trust.rootKeyIds) && trust.rootKeyIds.length > 0
+    && Array.isArray(trust.trustSetKeyIds) && trust.trustSetKeyIds.length > 0;
+}
+
 export function crossoverState(
   trust: DeviceTrust | null | undefined,
   boxArt?: string | null,
@@ -361,9 +399,7 @@ export function crossoverState(
   tone: UpdateTone;
   detail: string | null;
 } {
-  const crossed = !!trust && Array.isArray(trust.rootKeyIds) && trust.rootKeyIds.length > 0
-    && Array.isArray(trust.trustSetKeyIds) && trust.trustSetKeyIds.length > 0;
-  if (deviceBoxArt(boxArt) === 'light' && !crossed) {
+  if (deviceBoxArt(boxArt) === 'light' && !vertrauenGekreuzt(trust)) {
     return { state: 'von_hand', label: VON_HAND_LABEL, tone: 'off', detail: VON_HAND_DETAIL };
   }
   if (!trust || !Array.isArray(trust.rootKeyIds)) {
@@ -459,7 +495,7 @@ export function releaseBoxArt(release: Pick<EdgeUpdatesRelease, 'boxArt'>): BoxA
   return release.boxArt === 'light' ? 'light' : 'docker';
 }
 
-const BOX_ART_LABELS: Record<BoxArt, string> = {
+export const BOX_ART_LABELS: Record<BoxArt, string> = {
   docker: 'Docker-Box',
   light: 'Edge Light',
 };
@@ -488,13 +524,16 @@ export function boxArtLabel(boxArt: string | null | undefined): {
 }
 
 /** Die Sätze der Zuweisungs-Sperre - wortgleich mit `ota.BoxArt` in der API. */
-export const GRUND_DOCKER_AUF_LIGHT =
-  'Release für die Docker-Box – diese Box ist eine Edge Light. Updates von Hand '
-  + '(Edge Light, Stufe 1): Aktualisierung über den Wartungstunnel.';
+export const GRUND_DOCKER_AUF_LIGHT = 'Release für die Docker-Box – diese Box ist eine Edge Light.';
 export const GRUND_LIGHT_AUF_DOCKER = 'Release für Edge Light – diese Box ist eine Docker-Box.';
 export const GRUND_LIGHT_AUF_UNBEKANNT =
   'Release für Edge Light – die Box-Art dieses Geräts ist unbekannt. Ein Edge-Light-Release '
   + 'geht nur an eine Box, die sich als Edge Light gemeldet hat.';
+/** Edge-Light-Release an eine Edge-Light-Box mit Stufe 1 (Geräte & Updates S0). */
+export const GRUND_LIGHT_STUFE_1 =
+  'Release für Edge Light – diese Box hat Stufe 1 und nimmt keine Updates aus dem Portal an '
+  + '(kein geprüftes Vertrauens-Set). Einmal über den Wartungstunnel nachrüsten, danach kommt '
+  + 'jede Fassung über das Portal.';
 
 /**
  * Warum dieses Release diesem Gerät NICHT zugewiesen werden kann - oder
@@ -504,14 +543,19 @@ export const GRUND_LIGHT_AUF_UNBEKANNT =
  * ablehnt. Das Portal zeigt den Grund VOR dem Klick, statt eine Zuweisung
  * anzubieten, die der Server verweigert (E10: ausgegraut mit Grund, nie still
  * weggelassen).
+ *
+ * `trust` ist Pflicht (auch `null`): eine Edge-Light-Box ohne gekreuztes
+ * Vertrauen hat Stufe 1 und nimmt kein Release aus dem Portal an - ein
+ * vergessener Wert würde sonst still jede Edge-Light-Box sperren.
  */
 export function releaseSperre(
   release: Pick<EdgeUpdatesRelease, 'boxArt'>,
   boxArt: string | null | undefined,
+  trust: DeviceTrust | null | undefined,
 ): string | null {
   const geraet = deviceBoxArt(boxArt);
   if (releaseBoxArt(release) === 'light') {
-    if (geraet === 'light') return null;
+    if (geraet === 'light') return vertrauenGekreuzt(trust) ? null : GRUND_LIGHT_STUFE_1;
     return geraet == null ? GRUND_LIGHT_AUF_UNBEKANNT : GRUND_LIGHT_AUF_DOCKER;
   }
   return geraet === 'light' ? GRUND_DOCKER_AUF_LIGHT : null;
@@ -529,23 +573,25 @@ export interface ZuweisbareReleases {
 /**
  * Die Releases, die EINEM Gerät angeboten werden: signiert und passend. Was
  * nicht passt, wird gezählt und mit Grund GENANNT, damit die Auswahl nicht
- * kommentarlos schrumpft (E10). Für eine Edge-Light-Box ohne eigenes Release
- * ist das heute der ehrliche Satz „Updates von Hand (Edge Light, Stufe 1)".
+ * kommentarlos schrumpft (E10). Für eine Edge-Light-Box mit Stufe 1 ist das der
+ * Satz zum Nachrüsten (`GRUND_LIGHT_STUFE_1`), auch wenn andere Gründe dazukommen.
  */
 export function zuweisbareReleases(
   releases: EdgeUpdatesRelease[],
   boxArt: string | null | undefined,
+  trust: DeviceTrust | null | undefined,
 ): ZuweisbareReleases {
   const signed = releases.filter((r) => r.signed);
   const passend: EdgeUpdatesRelease[] = [];
   let gesperrt = 0;
   let grund: string | null = null;
   for (const r of signed) {
-    const g = releaseSperre(r, boxArt);
+    const g = releaseSperre(r, boxArt, trust);
     if (g == null) passend.push(r);
     else {
       gesperrt += 1;
-      grund ??= g;
+      // Stufe 1 ist der Grund, der zählt: er sagt, was zu tun ist (nachrüsten).
+      grund = g === GRUND_LIGHT_STUFE_1 ? g : grund ?? g;
     }
   }
   let hinweis: string | null = null;
@@ -829,7 +875,14 @@ export function restingLine(data: EdgeUpdates | null): string | null {
     return 'Es ist kein Gerät verbunden. Gerade wird nichts aktualisiert.';
   }
   const parts: string[] = [];
-  if (kpi.newestRelease) {
+  if (data.lines && data.lines.length > 0) {
+    // Je Linie (S0): eine Docker-Box wird nie am Edge-Light-Release gemessen.
+    for (const l of data.lines) {
+      parts.push(l.newestRelease
+        ? `${BOX_ART_LABELS[l.boxArt]}: ${l.upToDate}/${l.known} auf ${l.newestRelease} ✓`
+        : `${BOX_ART_LABELS[l.boxArt]}: noch kein Release`);
+    }
+  } else if (kpi.newestRelease) {
     parts.push(`${kpi.upToDate}/${kpi.known} Geräte auf ${kpi.newestRelease} ✓`);
   } else {
     parts.push('Kein Release im Register - ohne Maßstab wird kein Stand bewertet');
@@ -893,8 +946,9 @@ export interface CandidateView {
  * Gängelung in neuer Form.
  *
  * Die eine Sperre ist die BAUART: ein Release passt nur auf Boxen seiner
- * Box-Art (`releaseSperre`). Solche Geräte stehen ausgegraut mit Grund am Ende
- * der Liste, statt still zu fehlen.
+ * Box-Art, und eine Edge-Light-Box mit Stufe 1 nimmt keines an
+ * (`releaseSperre`). Solche Geräte stehen ausgegraut mit Grund am Ende der
+ * Liste, statt still zu fehlen.
  */
 export function candidates(
   fleet: FleetRow[],
@@ -919,7 +973,7 @@ export function candidates(
       cls: st.cls,
       caveat,
       boxArt: deviceBoxArt(row.boxArt),
-      sperre: release ? releaseSperre(release, row.boxArt) : null,
+      sperre: release ? releaseSperre(release, row.boxArt, row.trust) : null,
     };
   });
   // Stabil: die passenden zuerst, in der Warn-first-Ordnung von `sortFleet`.

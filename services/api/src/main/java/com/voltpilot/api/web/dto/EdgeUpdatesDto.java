@@ -13,9 +13,34 @@ import java.util.UUID;
  * aggregiert (keine Client-Schleife), und <b>was niemand gemessen hat, ist
  * {@code null} und trägt seinen Grund</b> - nie eine erfundene Null, nie ein
  * geratener Zustand.
+ *
+ * <p>{@code lines} (Geräte &amp; Updates S0, additiv) trägt das neueste Release
+ * und die Zählung JE LINIE - Docker-Box und Edge Light getrennt. Die
+ * {@link KpiDto}-Felder bleiben unverändert für ältere Portale (dort gilt das
+ * neueste Release über beide Linien).
  */
 public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollouts,
-        List<FleetRowDto> fleet, List<EventDto> journal, KpiDto kpi) {
+        List<FleetRowDto> fleet, List<EventDto> journal, KpiDto kpi, List<LineDto> lines) {
+
+    /**
+     * Eine Software-Linie: Docker-Box ({@code docker}, Releases
+     * {@code edge-JJJJ.MM.N}) oder Edge Light ({@code light},
+     * {@code edge-light-JJJJ.MM.N}).
+     *
+     * <p>{@code newestRelease}/{@code newestReleaseSeq} sind das neueste Release
+     * DIESER Linie ({@code null} = die Linie hat noch keines). {@code devices}
+     * zählt die Boxen der Linie ({@code ota.BoxArt}; eine Box unbekannter Art
+     * zählt in keiner Linie, nie still als Docker-Box), {@code known} davon die,
+     * die überhaupt einen Stand gemeldet haben, und {@code upToDate} die, die das
+     * neueste Release der Linie melden ({@code ota.EdgeStandVerdict}, dieselbe
+     * Regel wie auf der Kunden-Box-Seite).
+     *
+     * <p>Eine Linie steht nur in der Liste, wenn sie ein Release oder eine Box
+     * hat; die Reihenfolge ist fest (Docker-Box, dann Edge Light).
+     */
+    public record LineDto(String boxArt, String newestRelease, Long newestReleaseSeq,
+            int devices, int known, int upToDate) {
+    }
 
     /**
      * Ein Eintrag des Release-Registers, neueste zuerst.
@@ -126,6 +151,10 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
      * <p>Ein „Sie sind dran"-Zähler existiert bewusst NICHT mehr: seit der
      * Vereinfachung vom 26.08.2026 wartet nach dem Klick auf „Aktualisieren"
      * niemand mehr auf einen Menschen.
+     *
+     * <p>⚠ {@code upToDate} und {@code newestRelease} messen am neuesten
+     * Release über BEIDE Linien - so lesen es ältere Portale, und dabei bleibt
+     * es. Das Urteil je Linie trägt {@link LineDto} (Geräte &amp; Updates S0).
      */
     public record KpiDto(int known, int upToDate, int unknown, int inRollout, int failed,
             String newestRelease) {

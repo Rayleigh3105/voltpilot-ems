@@ -493,8 +493,7 @@ class OtaRolloutApiTest {
         assertThat(single.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat((String) single.getBody().get("message"))
                 .contains("edge-2026.10.0")
-                .contains("diese Box ist eine Edge Light")
-                .contains("Updates von Hand (Edge Light, Stufe 1)");
+                .contains("diese Box ist eine Edge Light");
 
         // ── Rollout mit einem unpassenden Gerät: 409, NICHTS zugewiesen ───
         int rolloutsBefore = readModel(admin).get("rollouts").size();
@@ -521,6 +520,22 @@ class OtaRolloutApiTest {
         assertThat(lightOnUnknown.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat((String) lightOnUnknown.getBody().get("message"))
                 .contains("Box-Art dieses Geräts ist unbekannt");
+
+        // ── Stufe 1 (Geräte & Updates S0): ohne gekreuztes Vertrauen nimmt die
+        // Edge-Light-Box nichts aus dem Portal an - gesperrt VOR dem Senden, auf
+        // beiden Schreibwegen, statt als „fehlgeschlagen ⚠" auf der Box zu enden.
+        ResponseEntity<Map<String, Object>> stufe1 = post(
+                "/api/v1/admin/devices/" + light + "/update-target", admin, Map.of("releaseSeq", 41));
+        assertThat(stufe1.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) stufe1.getBody().get("message"))
+                .contains("diese Box hat Stufe 1").contains("nachrüsten");
+        ResponseEntity<Map<String, Object>> stufe1Auftrag = post("/api/v1/admin/rollouts", admin,
+                Map.of("releaseSeq", 41, "devices", List.of(light.toString())));
+        assertThat(stufe1Auftrag.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) stufe1Auftrag.getBody().get("message")).contains("diese Box hat Stufe 1");
+        assertThat(sollOf(readModel(admin), light)).isNull();
+        // Nachgerüstet: Wurzel und geprüftes Vertrauens-Set gemeldet (Stufe 2).
+        kreuzeVertrauen(light);
 
         // ── Edge Light: erst verteilbar, wenn die Programme im Portal liegen ─
         ResponseEntity<Map<String, Object>> ohneProgramm = post(
@@ -582,6 +597,60 @@ class OtaRolloutApiTest {
         assertThat(sollOf(page, docker)).isEqualTo("edge-2026.10.0");
         assertThat(sollOf(page, silent)).isEqualTo("edge-2026.10.0");
         assertThat(sollOf(page, light)).isEqualTo("edge-light-2026.10.1");
+
+        // ── Geräte & Updates S0: jede Box wird an IHRER Linie gemessen ──────
+        // Das neueste Release über beide Linien ist edge-light-2026.10.1 (41);
+        // eine Docker-Box auf edge-2026.10.0 (40) ist trotzdem aktuell, und der
+        // Kunde liest nie „neuerer Stand edge-light-…".
+        reportBox(docker, "compose", "edge-2026.10.0-3bf8c038a1b2");
+        reportBox(light, "compose", "edge-light-2026.10.1-9b37439a02c1");
+        List<Map<String, Object>> kunde = SichtbareListenTestLeser.lesen(rest,
+                url("/api/v1/edge-versions"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody();
+        Map<String, Object> dockerStand = kundenStand(kunde, docker);
+        assertThat(dockerStand.get("newestRelease")).isEqualTo("edge-2026.10.0");
+        assertThat(dockerStand.get("upToDate")).isEqualTo(Boolean.TRUE);
+        Map<String, Object> lightStand = kundenStand(kunde, light);
+        assertThat(lightStand.get("newestRelease")).isEqualTo("edge-light-2026.10.1");
+        assertThat(lightStand.get("upToDate")).isEqualTo(Boolean.TRUE);
+
+        // Die Betreiber-Seite trägt dieselbe Sicht je Linie (additiv: die KPI
+        // älterer Portale bleibt das neueste Release über beide Linien).
+        page = readModel(admin);
+        JsonNode dockerLinie = linie(page, "docker");
+        assertThat(dockerLinie.get("newestRelease").asText()).isEqualTo("edge-2026.10.0");
+        assertThat(dockerLinie.get("newestReleaseSeq").asLong()).isEqualTo(40);
+        assertThat(dockerLinie.get("upToDate").asInt()).isPositive();
+        assertThat(dockerLinie.get("devices").asInt()).isGreaterThanOrEqualTo(dockerLinie.get("upToDate").asInt());
+        JsonNode lightLinie = linie(page, "light");
+        assertThat(lightLinie.get("newestRelease").asText()).isEqualTo("edge-light-2026.10.1");
+        assertThat(lightLinie.get("devices").asInt()).isEqualTo(1);
+        assertThat(lightLinie.get("known").asInt()).isEqualTo(1);
+        assertThat(lightLinie.get("upToDate").asInt()).isEqualTo(1);
+        assertThat(page.get("lines").get(0).get("boxArt").asText()).isEqualTo("docker");
+        assertThat(page.get("kpi").get("newestRelease").asText()).isEqualTo("edge-light-2026.10.1");
+    }
+
+    private static Map<String, Object> kundenStand(List<Map<String, Object>> stande, UUID deviceId) {
+        return stande.stream().filter(r -> deviceId.toString().equals(r.get("deviceId")))
+                .findFirst().orElseThrow(() -> new AssertionError("Gerät " + deviceId + " fehlt"));
+    }
+
+    private static JsonNode linie(JsonNode page, String boxArt) {
+        for (JsonNode l : page.get("lines")) {
+            if (boxArt.equals(l.get("boxArt").asText())) {
+                return l;
+            }
+        }
+        throw new AssertionError("Linie " + boxArt + " fehlt");
+    }
+
+    /** Wurzel und geprüftes Vertrauens-Set setzen, ohne den gemeldeten Stand zu berühren. */
+    private void kreuzeVertrauen(UUID deviceId) throws Exception {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("UPDATE device_update_status SET root_key_ids = 'root-2026-a', "
+                    + "trust_set_key_ids = 'rel-2026-a' WHERE device_id = '" + deviceId + "'");
+        }
     }
 
     /** Backend und Stempel einer Box direkt setzen (Ingest: UpdateStatusListenerTest). */

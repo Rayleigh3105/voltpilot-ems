@@ -330,7 +330,7 @@ function software(
     hebel,
     grund: device.reason ?? null,
     verbunden,
-    releases: zuweisbareReleases(releases, device.boxArt),
+    releases: zuweisbareReleases(releases, device.boxArt, device.trust),
     boxArt: boxArtLabel(device.boxArt),
   };
 }

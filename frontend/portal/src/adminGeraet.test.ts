@@ -258,7 +258,7 @@ describe('geraetView - die sieben Sektionen aus vier Reads', () => {
     expect(v.software.boxArt.art).toBe('light');
     expect(v.software.boxArt.label).toBe('Edge Light');
     expect(v.software.releases.passend).toEqual([]);
-    expect(v.software.releases.hinweis).toContain('Updates von Hand (Edge Light, Stufe 1)');
+    expect(v.software.releases.hinweis).toContain('diese Box ist eine Edge Light');
     expect(v.vertrauen.state).toBe('von_hand');
     expect(v.vertrauen.tone).toBe('off');
     expect(v.vertrauen.label).toBe('Updates von Hand (Edge Light, Stufe 1)');

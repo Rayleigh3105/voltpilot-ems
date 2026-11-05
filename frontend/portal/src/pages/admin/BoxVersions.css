@@ -91,3 +91,13 @@
   .vp-edge-updates .vp-admin-head .actions .vp-row-gap { flex-wrap: nowrap; gap: var(--vp-space-2); justify-content: space-between; width: 100%; }
   .vp-edge-updates .vp-admin-head [data-testid="freshness"] { font-size: .75rem; }
 }
+
+/* Je Software-Linie eine Karte (Geräte & Updates S0): nebeneinander, sobald zwei
+   Karten je mindestens 380 px haben; sonst untereinander. In der schmalen Karte
+   steht der Knopf unter dem Namen statt daneben. */
+.vp-box-linien { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--vp-space-4); margin-bottom: var(--vp-space-5); }
+.vp-box-linien .vp-box-release { margin-bottom: 0; grid-template-columns: minmax(0, 1fr); gap: var(--vp-space-4); align-content: space-between; }
+.vp-box-linien .vp-box-release-action { text-align: left; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--vp-space-3); }
+.vp-box-linien .vp-box-release-action p { margin: 0; min-width: 0; }
+.vp-box-linien .vp-box-eyebrow { display: inline-flex; align-items: center; gap: var(--vp-space-1); }
+.vp-box-linie-hand { display: flex; align-items: center; gap: var(--vp-space-1); margin-top: var(--vp-space-1); color: var(--vp-text-muted); font-size: .8rem; }

@@ -137,12 +137,19 @@ Zuweisung desselben Release versucht wieder).
   unpassender Box-Art mit **409** und deutschem Grund; ein Rollout mit einem
   unpassenden Gerät schreibt NICHTS. Ein Edge-Light-Release verlangt den Beleg
   „Edge Light" (Docker-Kerne vor dem Edge-Light-Update-Vertrag lehnen `light`
-  als Prüffehler ab; neuere stellen zurück, Sperre `backend`), ein
+  als Prüffehler ab; neuere stellen zurück, Sperre `backend`) und gekreuztes
+  Vertrauen: eine Edge-Light-Box ohne Wurzel UND geprüftes Vertrauens-Set hat
+  Stufe 1 und bekommt es nicht (`GRUND_LIGHT_STUFE_1`, sonst endete es als
+  „fehlgeschlagen ⚠"); ein
   Docker-Release bleibt einer Box unbekannter Art zuweisbar. Das ist kein
   Zustands-Tor, sondern der Cloud-Zwilling von `compat.backends`. `boxArt`
   reist auf `ReleaseDto`, `FleetRowDto` und `DeviceRowDto`; der Portal-Zwilling
   `releaseSperre` (`adminEdgeUpdates.ts`) trägt wortgleiche Sätze — **beide
-  zusammen ändern.**
+  zusammen ändern.** „Neueste Version" und „aktuell" gelten JE LINIE
+  (`EdgeUpdatesDto.lines`, Kunden-Urteil `EdgeStandVerdict`, Flotte `edgeStand`
+  mit `boxArt`): eine Docker-Box wird nie am neuesten Edge-Light-Release
+  gemessen; `kpi.newestRelease`/`upToDate` bleiben für ältere Portale die
+  Sicht über beide Linien.
 
 ### Portal
 
@@ -157,8 +164,11 @@ offline/unbekannt stehen DANEBEN, nie im Nenner) und einer Zeile je Gerät
 `FleetRow.rolloutId` + `sollSeq` mit der Karte: der Live-Zustand einer neueren
 Zuweisung erscheint NIE unter dem Release-Kopf eines älteren Rollouts; dessen
 Mitgliedschaft bleibt ausschließlich im Journal. Der geteilte `GeraeteDrawer` weist ein
-Einzelgerät zu (`onAssign(releaseSeq)` — kein Kanal, kein Pin). Angeboten werden
-nur zur Box-Art passende Releases (`zuweisbareReleases`); unpassende Geräte stehen
+Einzelgerät zu (`onAssign(releaseSeq)` — kein Kanal, kein Pin). Über der Tabelle
+steht je Linie eine Karte (Docker-Box, Edge Light) mit ihrem neuesten Release und
+ihrem eigenen „Update verteilen". Angeboten werden
+nur zur Box-Art passende Releases, einer Edge-Light-Box mit Stufe 1 keines
+(`zuweisbareReleases`, `releaseSperre` braucht `trust`); unpassende Geräte stehen
 im Rollout-Dialog ausgegraut MIT Grund (E10), „Alle passenden Geräte" wählt sie
 nicht mit. Edge Light ohne geprüftes Vertrauens-Set heißt ruhig „Updates von Hand
 (Edge Light, Stufe 1)" (`crossoverState` → `von_hand`), nie „ohne Vertrauens-Set". Es gibt

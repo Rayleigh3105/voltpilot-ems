@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.repo.EdgeReleaseRepository;
+import com.voltpilot.api.repo.EdgeVersionRepository;
 import com.voltpilot.api.repo.RolloutRepository;
 import com.voltpilot.api.web.dto.AdminDevicesDto;
 import com.voltpilot.api.web.dto.EdgeReleaseDto;
@@ -126,7 +127,8 @@ public class RolloutService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "kundenbereich_beendet");
         }
         EdgeReleaseDto release = signedRelease(releaseSeq);
-        String grund = BoxArt.sperrgrund(boxArt(device), releaseBoxArt(release));
+        String grund = BoxArt.sperrgrund(boxArt(device), releaseBoxArt(release),
+                vertrauenGekreuzt(device));
         if (grund != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Release '" + release.version() + "' ist diesem Gerät nicht zuweisbar: "
@@ -238,7 +240,7 @@ public class RolloutService {
         Map<String, List<String>> gesperrt = new LinkedHashMap<>();
         for (UUID d : unique) {
             RolloutRepository.FleetDeviceRow row = fleet.get(d);
-            String grund = BoxArt.sperrgrund(boxArt(row), releaseArt);
+            String grund = BoxArt.sperrgrund(boxArt(row), releaseArt, vertrauenGekreuzt(row));
             if (grund != null) {
                 gesperrt.computeIfAbsent(grund, g -> new ArrayList<>())
                         .add(label(row) + " (" + row.siteName() + ")");
@@ -414,11 +416,30 @@ public class RolloutService {
         int upToDate = 0;
         int unknown = 0;
         int failed = 0;
+        // ⚠ Über BEIDE Linien - nur noch für die KPI älterer Portale (EdgeUpdatesDto.KpiDto).
         String newest = releaseDtos.isEmpty() ? null : releaseDtos.get(0).version();
+        // Je Linie (Geräte & Updates S0): gemessen am neuesten Release der EIGENEN
+        // Linie, mit derselben Regel wie die Kunden-Box-Seite (EdgeStandVerdict).
+        List<EdgeVersionRepository.RegisterEntry> register = releaseDtos.stream()
+                .map(r -> new EdgeVersionRepository.RegisterEntry(r.version(), r.releaseSeq(),
+                        r.boxArt()))
+                .toList();
+        Map<String, int[]> perLine = new HashMap<>();
         for (RolloutRepository.FleetDeviceRow d : fleet) {
             RolloutRepository.TargetRow t = targets.get(d.deviceId());
             String assigned = t == null ? null : t.releaseVersion();
             RolloutStates.Verdict v = deviceVerdict(d, assigned, now);
+            EdgeStandVerdict.Verdict stand = EdgeStandVerdict.of(reportedRunning(d), boxArt(d), register);
+            if (stand.linie() != null) {
+                int[] c = perLine.computeIfAbsent(stand.linie(), k -> new int[3]);
+                c[0]++;
+                if (!RolloutStates.UNBEKANNT.equals(v.state())) {
+                    c[1]++;
+                }
+                if (Boolean.TRUE.equals(stand.upToDate())) {
+                    c[2]++;
+                }
+            }
             RolloutRepository.RolloutDeviceRow rd = inRollout.get(d.deviceId());
             rows.add(new EdgeUpdatesDto.FleetRowDto(d.deviceId(), label(d), d.externalRef(),
                     d.siteId(), d.siteName(), d.tenantId(), d.tenantName(), reportedRunning(d),
@@ -453,7 +474,27 @@ public class RolloutService {
         }
         return new EdgeUpdatesDto(releaseDtos, rolloutDtos, rows, journal,
                 new EdgeUpdatesDto.KpiDto(known, upToDate, unknown, inRollout.size(), failed,
-                        newest));
+                        newest), lines(releaseDtos, perLine));
+    }
+
+    /**
+     * Die Linien in fester Reihenfolge (Docker-Box, Edge Light); eine Linie ohne
+     * Release und ohne Box fehlt. {@code releases} kommt neueste-zuerst.
+     */
+    private static List<EdgeUpdatesDto.LineDto> lines(List<EdgeUpdatesDto.ReleaseDto> releases,
+            Map<String, int[]> perLine) {
+        List<EdgeUpdatesDto.LineDto> lines = new ArrayList<>();
+        for (String art : List.of(BoxArt.DOCKER, BoxArt.LIGHT)) {
+            EdgeUpdatesDto.ReleaseDto neuestes = releases.stream()
+                    .filter(r -> art.equals(r.boxArt())).findFirst().orElse(null);
+            int[] c = perLine.getOrDefault(art, new int[3]);
+            if (neuestes == null && c[0] == 0) {
+                continue;
+            }
+            lines.add(new EdgeUpdatesDto.LineDto(art, neuestes == null ? null : neuestes.version(),
+                    neuestes == null ? null : neuestes.releaseSeq(), c[0], c[1], c[2]));
+        }
+        return lines;
     }
 
     /**
@@ -597,6 +638,11 @@ public class RolloutService {
     /** Die Box-Art aus der letzten Meldung - die Regel steht in {@link BoxArt}. */
     private static String boxArt(RolloutRepository.FleetDeviceRow d) {
         return BoxArt.ofDevice(d.reportedBackend(), d.reportedVersion(), d.reportedCurrent());
+    }
+
+    /** Wurzel und geprüftes Vertrauens-Set gemeldet? Die Regel steht in {@link BoxArt}. */
+    private static boolean vertrauenGekreuzt(RolloutRepository.FleetDeviceRow d) {
+        return BoxArt.vertrauenGekreuzt(d.rootKeyIds(), d.trustSetKeyIds());
     }
 
     private static String releaseBoxArt(EdgeReleaseDto release) {

@@ -26,6 +26,7 @@ import {
   startSummary,
   stateLabel,
   trustSetSpread,
+  vertrauenGekreuzt,
   visibleJournal,
   zuweisbareReleases,
   type DeviceTrust,
@@ -213,6 +214,11 @@ describe('Puls-Kennzahl', () => {
     expect(kpiText(kpi)).toBe('3/4 aktuell · 2 im Rollout');
     expect(kpiText({ ...kpi, inRollout: 0, failed: 0 })).toBe('3/4 aktuell');
     expect(kpiText({ ...kpi, failed: 1 })).toContain('1 fehlgeschlagen');
+    // Je Linie (S0): aktuell heißt auf dem neuesten Release der EIGENEN Linie.
+    expect(kpiText({ ...kpi, inRollout: 0, failed: 0 }, [
+      { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 58, devices: 3, known: 3, upToDate: 3 },
+      { boxArt: 'light', newestRelease: 'edge-light-2026.11.4', newestReleaseSeq: 60, devices: 3, known: 2, upToDate: 1 },
+    ])).toBe('4/5 aktuell');
   });
 
   it('tönt rot vor gelb vor ruhig', () => {
@@ -510,6 +516,20 @@ describe('Ruhezustand + Bezugszeit', () => {
     expect(line).toContain('Gerade wird nichts aktualisiert');
   });
 
+  it('sagt den Stand JE LINIE, sobald der Server sie liefert (S0)', () => {
+    const line = restingLine(updates({
+      kpi: { known: 6, upToDate: 1, unknown: 0, inRollout: 0, failed: 0,
+        newestRelease: 'edge-light-2026.11.4' },
+      lines: [
+        { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 58, devices: 3, known: 3, upToDate: 3 },
+        { boxArt: 'light', newestRelease: 'edge-light-2026.11.4', newestReleaseSeq: 60, devices: 3, known: 3, upToDate: 1 },
+      ],
+    }))!;
+    expect(line).toContain('Docker-Box: 3/3 auf edge-2026.10.7 ✓');
+    expect(line).toContain('Edge Light: 1/3 auf edge-light-2026.11.4 ✓');
+    expect(line).not.toContain('1/6');
+  });
+
   it('behauptet ohne Register keinen Maßstab', () => {
     const line = restingLine(updates({
       kpi: { known: 2, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
@@ -583,6 +603,11 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
     rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
     trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.',
   };
+  /** Nachgerüstet: Wurzel UND geprüftes Vertrauens-Set (Stufe 2). */
+  const stufe2Trust: DeviceTrust = {
+    rootKeyIds: ['root-2026-a'], trustSetKeyIds: ['rel-2026-a'],
+    trustSetGeneratedAt: '2026-11-04T10:00:00Z', trustSetError: null,
+  };
   const rel = (over: Partial<EdgeUpdatesRelease>): EdgeUpdatesRelease => ({
     releaseSeq: 40, version: 'edge-2026.10.0', targetCommit: null, notes: null, signed: true,
     signingKeyId: 'rel-2026-a', createdAt: '2026-10-01T08:00:00Z', runningOnDevices: 0, ...over,
@@ -604,17 +629,29 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
 
   it('sperrt mit denselben Sätzen wie BoxArt.sperrgrund in der API', () => {
     // Wortgleich mit BoxArtTest.assignmentRule - die beiden laufen nicht auseinander.
-    expect(releaseSperre(rel({}), 'light')).toBe(
-      'Release für die Docker-Box – diese Box ist eine Edge Light. Updates von Hand '
-      + '(Edge Light, Stufe 1): Aktualisierung über den Wartungstunnel.');
-    expect(releaseSperre(rel({ boxArt: 'light' }), 'docker'))
+    expect(releaseSperre(rel({}), 'light', stufe2Trust)).toBe(
+      'Release für die Docker-Box – diese Box ist eine Edge Light.');
+    expect(releaseSperre(rel({ boxArt: 'light' }), 'docker', stufe2Trust))
       .toBe('Release für Edge Light – diese Box ist eine Docker-Box.');
-    expect(releaseSperre(rel({ boxArt: 'light' }), null)).toBe(
+    expect(releaseSperre(rel({ boxArt: 'light' }), null, stufe2Trust)).toBe(
       'Release für Edge Light – die Box-Art dieses Geräts ist unbekannt. Ein '
       + 'Edge-Light-Release geht nur an eine Box, die sich als Edge Light gemeldet hat.');
-    expect(releaseSperre(rel({}), 'docker')).toBeNull();
-    expect(releaseSperre(rel({}), null)).toBeNull();
-    expect(releaseSperre(rel({ boxArt: 'light' }), 'light')).toBeNull();
+    expect(releaseSperre(rel({}), 'docker', stufe2Trust)).toBeNull();
+    expect(releaseSperre(rel({}), null, null)).toBeNull();
+    expect(releaseSperre(rel({ boxArt: 'light' }), 'light', stufe2Trust)).toBeNull();
+  });
+
+  it('sperrt ein Edge-Light-Release für eine Box mit Stufe 1 (S0, wie BoxArtTest.stufe1Sperre)', () => {
+    const satz = 'Release für Edge Light – diese Box hat Stufe 1 und nimmt keine Updates aus dem '
+      + 'Portal an (kein geprüftes Vertrauens-Set). Einmal über den Wartungstunnel nachrüsten, '
+      + 'danach kommt jede Fassung über das Portal.';
+    expect(releaseSperre(rel({ boxArt: 'light' }), 'light', pilotTrust)).toBe(satz);
+    expect(releaseSperre(rel({ boxArt: 'light' }), 'light', null)).toBe(satz);
+    // Die Docker-Box hat ihren eigenen Crossover; Stufe 1 ist eine Edge-Light-Regel.
+    expect(releaseSperre(rel({}), 'docker', pilotTrust)).toBeNull();
+    expect(vertrauenGekreuzt(stufe2Trust)).toBe(true);
+    expect(vertrauenGekreuzt(pilotTrust)).toBe(false);
+    expect(vertrauenGekreuzt(undefined)).toBe(false);
   });
 
   it('zeigt Edge Light ohne Vertrauens-Set RUHIG als „Updates von Hand", nie als Fehler', () => {
@@ -647,21 +684,36 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
     const light = rel({ releaseSeq: 41, version: 'edge-2026.10.1', boxArt: 'light' });
     const unsigned = rel({ releaseSeq: 39, signed: false });
 
-    const mango = zuweisbareReleases([docker, unsigned], 'light');
+    const mango = zuweisbareReleases([docker, unsigned], 'light', stufe2Trust);
     expect(mango.passend).toEqual([]);
     expect(mango.signiert).toBe(1);
     expect(mango.hinweis).toBe('Das signierte Release passt nicht zu dieser Box. '
-      + 'Release für die Docker-Box – diese Box ist eine Edge Light. Updates von Hand '
-      + '(Edge Light, Stufe 1): Aktualisierung über den Wartungstunnel.');
+      + 'Release für die Docker-Box – diese Box ist eine Edge Light.');
 
-    const box = zuweisbareReleases([light, docker], 'docker');
+    const box = zuweisbareReleases([light, docker], 'docker', null);
     expect(box.passend.map((r) => r.releaseSeq)).toEqual([40]);
     expect(box.hinweis).toBe('1 weiteres signiertes Release ist hier nicht zuweisbar: '
       + 'Release für Edge Light – diese Box ist eine Docker-Box.');
 
-    expect(zuweisbareReleases([docker], null).hinweis).toBeNull();
-    expect(zuweisbareReleases([light, docker], null).passend.map((r) => r.releaseSeq))
+    expect(zuweisbareReleases([docker], null, null).hinweis).toBeNull();
+    expect(zuweisbareReleases([light, docker], null, null).passend.map((r) => r.releaseSeq))
       .toEqual([40]);
+
+    // Nachgerüstet bekommt die Mango ihr Edge-Light-Release angeboten.
+    expect(zuweisbareReleases([light, docker], 'light', stufe2Trust).passend
+      .map((r) => r.releaseSeq)).toEqual([41]);
+  });
+
+  it('nennt bei einer Box mit Stufe 1 den Weg zum Nachrüsten, auch neben anderen Gründen', () => {
+    const docker = rel({ releaseSeq: 42, version: 'edge-2026.11.0' });
+    const light = rel({ releaseSeq: 41, version: 'edge-light-2026.11.4', boxArt: 'light' });
+    // Das jüngere Docker-Release steht vorn - der Satz zur Stufe 1 gewinnt trotzdem.
+    const zuhause = zuweisbareReleases([docker, light], 'light', pilotTrust);
+    expect(zuhause.passend).toEqual([]);
+    expect(zuhause.hinweis).toBe('Keines der 2 signierten Releases passt zu dieser Box. '
+      + 'Release für Edge Light – diese Box hat Stufe 1 und nimmt keine Updates aus dem Portal '
+      + 'an (kein geprüftes Vertrauens-Set). Einmal über den Wartungstunnel nachrüsten, danach '
+      + 'kommt jede Fassung über das Portal.');
   });
 
   it('graut im Rollout-Dialog unpassende Geräte aus - mit Grund, am Ende der Liste', () => {
@@ -676,5 +728,16 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
     expect(c[1].boxArt).toBe('light');
     // Ohne Release-Bezug gibt es keine Sperre (und die alte Ordnung bleibt).
     expect(candidates(fleet).map((x) => x.sperre)).toEqual([null, null]);
+  });
+
+  it('graut im Rollout-Dialog eines Edge-Light-Releases die Boxen mit Stufe 1 aus (S0)', () => {
+    const fleet = [
+      row({ deviceId: 'zuhause', siteName: 'Zuhause', boxArt: 'light', trust: pilotTrust }),
+      row({ deviceId: 'gate', siteName: 'VoltPilotGATE', boxArt: 'light', trust: stufe2Trust }),
+    ];
+    const c = candidates(fleet, rel({ releaseSeq: 41, version: 'edge-light-2026.11.4', boxArt: 'light' }));
+    expect(c.map((x) => x.deviceId)).toEqual(['gate', 'zuhause']);
+    expect(c[0].sperre).toBeNull();
+    expect(c[1].sperre).toContain('diese Box hat Stufe 1');
   });
 });

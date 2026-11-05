@@ -128,13 +128,73 @@ describe('EdgeUpdatesPage', () => {
     expect(screen.getByRole('searchbox')).toHaveValue('');
   });
 
+  // Geräte & Updates S0: der Stand vom 05.11. - das jüngste Release ist Edge Light.
+  const stand0511 = (): EdgeUpdates => {
+    const d = data({ rollouts: [] });
+    d.releases = [
+      { releaseSeq: 60, version: 'edge-light-2026.11.4', targetCommit: 'e4a3b957', notes: null,
+        signed: true, signingKeyId: 'rel-2026-a', createdAt: '2026-11-05T15:43:00Z',
+        runningOnDevices: 1, boxArt: 'light' },
+      { releaseSeq: 58, version: 'edge-2026.10.7', targetCommit: 'c39b18d9', notes: null,
+        signed: true, signingKeyId: 'rel-2026-a', createdAt: '2026-10-28T11:00:00Z',
+        runningOnDevices: 1, boxArt: 'docker' },
+    ];
+    d.fleet = [
+      { ...d.fleet[0], ist: 'edge-2026.10.7-c39b18d9c2a4', soll: null, sollSeq: null, state: 'aktuell',
+        rolloutId: null, boxArt: 'docker' },
+      { deviceId: 'gate', label: 'VoltPilotGATE', externalRef: 'edge-h5atkys', siteId: 's4',
+        siteName: 'Heizstab-Pilot', tenantId: 't2', tenantName: 'Kunde C', ist: 'edge-light-2026.11.4',
+        soll: null, sollSeq: null, state: 'aktuell', reason: null, since: null,
+        reportedAt: '2026-11-05T16:02:00Z', rolloutId: null, boxArt: 'light',
+        trust: { rootKeyIds: ['root-2026-a'], trustSetKeyIds: ['rel-2026-a'],
+          trustSetGeneratedAt: '2026-11-04T10:00:00Z', trustSetError: null } },
+      { deviceId: 'zuhause', label: 'Zuhause', externalRef: 'edge-tgjn9gd', siteId: 's5',
+        siteName: 'Zuhause', tenantId: 't3', tenantName: 'Werner Schramm', ist: 'edge-light-2026.11.0',
+        soll: null, sollSeq: null, state: 'aktuell', reason: null, since: null,
+        reportedAt: '2026-11-05T16:40:00Z', rolloutId: null, boxArt: 'light',
+        trust: { rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
+          trustSetError: 'Auf diesem Geraet liegt kein root-signiertes Vertrauens-Set.' } },
+    ];
+    d.kpi = { known: 3, upToDate: 1, unknown: 0, inRollout: 0, failed: 0, newestRelease: 'edge-light-2026.11.4' };
+    d.lines = [
+      { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 58, devices: 1, known: 1, upToDate: 1 },
+      { boxArt: 'light', newestRelease: 'edge-light-2026.11.4', newestReleaseSeq: 60, devices: 2, known: 2, upToDate: 1 },
+    ];
+    return d;
+  };
+
+  it('zeigt je Linie eine Karte - das Docker-Release verschwindet nicht hinter Edge Light (S0)', async () => {
+    edgeUpdates.mockResolvedValue(stand0511());
+    render(<EdgeUpdatesPage />);
+    const docker = await screen.findByRole('region', { name: 'Neueste Version · Docker-Box' });
+    expect(docker).toHaveTextContent('edge-2026.10.7');
+    expect(docker).toHaveTextContent('1 von 1 Docker-Box meldet diese Version');
+    const light = screen.getByRole('region', { name: 'Neueste Version · Edge Light' });
+    expect(light).toHaveTextContent('edge-light-2026.11.4');
+    expect(light).toHaveTextContent('1 von 2 Edge-Light-Boxen meldet diese Version');
+    expect(within(light).getByTestId('linie-stufe1'))
+      .toHaveTextContent('1 davon nimmt keine Updates aus dem Portal an (Stufe 1, nur von Hand)');
+    expect(screen.getByTestId('resting-line')).toHaveTextContent('Docker-Box: 1/1 auf edge-2026.10.7 ✓');
+    expect(screen.getByTestId('resting-line')).toHaveTextContent('Edge Light: 1/2 auf edge-light-2026.11.4 ✓');
+
+    // Der Knopf der Edge-Light-Karte verteilt SEIN Release; Zuhause (Stufe 1) ist ausgegraut.
+    fireEvent.click(within(light).getByRole('button', { name: 'Update verteilen' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(drawer).toHaveTextContent('Aktualisieren auf edge-light-2026.11.4');
+    const gesperrt = within(drawer).getAllByTestId('candidate-gesperrt');
+    const zuhause = gesperrt.find((c) => c.textContent?.includes('Zuhause'))!;
+    expect(zuhause).toHaveTextContent('diese Box hat Stufe 1');
+    expect(zuhause.querySelector('input')).toBeDisabled();
+    expect(within(drawer).getByTestId('choose-all')).toHaveTextContent('Alle passenden Geräte (1)');
+  });
+
   it('ordnet Releases nach Sequenz und bietet ein unsigniertes neuestes Release nicht an', async () => {
     const d = data();
     d.releases[1].releaseSeq = 20;
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
     await screen.findByTestId('box-versions');
-    const newest = screen.getByRole('region', { name: 'Neueste Version' });
+    const newest = screen.getByRole('region', { name: 'Neueste Version · Docker-Box' });
     expect(newest).toHaveTextContent('edge-2026.07.2');
     expect(within(newest).getByRole('button', { name: 'Update verteilen' })).toBeDisabled();
   });
@@ -455,7 +515,7 @@ describe('EdgeUpdatesPage', () => {
       const drawer = await screen.findByRole('dialog');
       expect(within(drawer).getByTestId('box-art')).toHaveTextContent('Edge Light');
       expect(within(drawer).getByTestId('drawer-keine-passenden'))
-        .toHaveTextContent('Updates von Hand (Edge Light, Stufe 1)');
+        .toHaveTextContent('diese Box ist eine Edge Light');
       expect(within(drawer).queryByRole('combobox', { name: 'Release' })).toBeNull();
       expect(within(drawer).queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
       expect(drawer).toHaveTextContent('Diese Box prüft Updates noch nicht gegen die Signaturkette');

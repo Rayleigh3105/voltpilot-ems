@@ -107,8 +107,16 @@ public class AdminFleetRepository {
             Instant reportedAt) {
     }
 
-    /** Ein Eintrag des Release-Registers - {@code releaseSeq} ist DIE Ordnung. */
-    public record EdgeReleaseRow(long releaseSeq, String version) {
+    /**
+     * Ein Eintrag des Release-Registers - {@code releaseSeq} ist DIE Ordnung,
+     * {@code boxArt} die Linie ({@code ota.BoxArt}: {@code docker} oder
+     * {@code light}). Ein Stand wird nur an der eigenen Linie gemessen
+     * (Geräte &amp; Updates S0).
+     */
+    public record EdgeReleaseRow(long releaseSeq, String version, String boxArt) {
+        public EdgeReleaseRow(long releaseSeq, String version) {
+            this(releaseSeq, version, com.voltpilot.api.ota.BoxArt.ofRelease(version, null));
+        }
     }
 
     /** Die vom Gerät gemeldete Quellen-Gesundheit, gezählt. */
@@ -436,8 +444,10 @@ public class AdminFleetRepository {
      */
     public List<EdgeReleaseRow> releases() {
         return jdbc.query(
-                "SELECT release_seq, version FROM edge_release ORDER BY release_seq DESC",
-                (rs, i) -> new EdgeReleaseRow(rs.getLong("release_seq"), rs.getString("version")));
+                "SELECT release_seq, version, manifest FROM edge_release ORDER BY release_seq DESC",
+                (rs, i) -> new EdgeReleaseRow(rs.getLong("release_seq"), rs.getString("version"),
+                        com.voltpilot.api.ota.BoxArt.ofRelease(rs.getString("version"),
+                                rs.getString("manifest"))));
     }
 
     /**

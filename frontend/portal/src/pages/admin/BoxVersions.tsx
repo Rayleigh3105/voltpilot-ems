@@ -10,7 +10,7 @@ import { crossoverState, stateLabel,
   type EdgeUpdates, type EdgeUpdatesRelease } from '../../adminEdgeUpdates';
 import { versionDisplay } from '../../edgeVersionLabel';
 import { fmtRelative } from '../../format';
-import { boxVersionOverview, filterBoxVersions } from '../../boxVersions';
+import { boxenDerLinie, boxVersionOverview, filterBoxVersions } from '../../boxVersions';
 import { verbindungZaehlung, type BoxVerbindung } from '../../adminFleet';
 import { BoxArtChip } from './BoxArtChip';
 import {
@@ -46,7 +46,7 @@ export function BoxVersions({ data, busy, onUpdate, onOpen, online = null, onlin
   const [filter, setFilter] = useState('all');
   const [version, setVersion] = useState('all');
   const [boxArt, setBoxArt] = useState('all');
-  const { releases, latest, sorted, versions, runningLatest, filters, boxArten } = useMemo(
+  const { releases, linien, sorted, versions, filters, boxArten } = useMemo(
     () => boxVersionOverview(data), [data],
   );
   const [onlineFilter, setOnlineFilter] = useState<OnlineFilter>('alle');
@@ -64,28 +64,57 @@ export function BoxVersions({ data, busy, onUpdate, onOpen, online = null, onlin
 
   return (
     <div className="vp-box-versions">
-      <section className="vp-box-release" aria-label="Neueste Version">
-        <div className="vp-box-release-main">
-          <span className="vp-box-eyebrow">Neueste Version</span>
-          <h2>{latest?.version ?? 'Noch kein Release'}</h2>
-          {latest ? <>
-            <div className="vp-box-release-meta">
-              <Badge variant={latest.signed ? 'ok' : 'off'} dot>
-                {latest.signed ? 'Signiert · bereit zum Verteilen' : 'Nicht signiert · nicht verteilbar'}
-              </Badge>
+      {/* Je Software-Linie eine Karte (Geräte & Updates S0): Docker-Box und Edge
+          Light haben eigene Releases. Eine Karte für alle nahm das neueste über
+          BEIDE Linien - seit dem ersten Edge-Light-Release stand dort nur noch
+          Edge Light, und die Docker-Releases waren aus dem Blick. */}
+      <div className="vp-box-linien" data-testid="box-linien">
+        {linien.length === 0 ? (
+          <section className="vp-box-release" aria-label="Neueste Version">
+            <div className="vp-box-release-main">
+              <span className="vp-box-eyebrow">Neueste Version</span>
+              <h2>Noch kein Release</h2>
+              <p>Die Boxen zeigen ihren gemeldeten Stand. Updates sind verfügbar, sobald ein signiertes Release registriert ist.</p>
             </div>
-          </> : <p>Die Boxen zeigen ihren gemeldeten Stand. Updates sind verfügbar, sobald ein signiertes Release registriert ist.</p>}
-        </div>
-        <div className="vp-box-release-action">
-          {latest && <>
-            <p><strong>{runningLatest} von {sorted.length}</strong> Boxen melden diese Version</p>
-            <Button variant="primary" iconLeft={<Icon name="refresh-cw" size={18} />}
-              disabled={busy || !latest.signed || sorted.length === 0} onClick={() => onUpdate(latest)}>
-              Update verteilen
-            </Button>
-          </>}
-        </div>
-      </section>
+          </section>
+        ) : linien.map((l) => (
+          <section key={l.boxArt} className="vp-box-release" aria-label={`Neueste Version · ${l.label}`}
+            data-testid={`linie-${l.boxArt}`}>
+            <div className="vp-box-release-main">
+              <span className="vp-box-eyebrow">
+                <Icon name={l.boxArt === 'light' ? 'cpu' : 'layers'} size={14} /> {l.label} · neueste Version
+              </span>
+              <h2>{l.release?.version ?? 'Noch kein Release'}</h2>
+              {l.release ? (
+                <div className="vp-box-release-meta">
+                  <Badge variant={l.release.signed ? 'ok' : 'off'} dot>
+                    {l.release.signed ? 'Signiert · bereit zum Verteilen' : 'Nicht signiert · nicht verteilbar'}
+                  </Badge>
+                </div>
+              ) : <p>Für diese Linie ist noch kein Release registriert.</p>}
+            </div>
+            <div className="vp-box-release-action">
+              <p>
+                {l.release ? <>
+                  <strong>{l.upToDate} von {boxenDerLinie(l.boxArt, l.devices)}</strong>{' '}
+                  {l.upToDate === 1 ? 'meldet' : 'melden'} diese Version
+                </> : <strong>{boxenDerLinie(l.boxArt, l.devices)}</strong>}
+                {l.stufe1 > 0 && <span className="vp-box-linie-hand" data-testid="linie-stufe1">
+                  <Icon name="hand" size={14} /> {l.stufe1 === 1 ? '1 davon nimmt' : `${l.stufe1} davon nehmen`} keine
+                  Updates aus dem Portal an (Stufe 1, nur von Hand)
+                </span>}
+              </p>
+              {l.release && (
+                <Button variant="primary" iconLeft={<Icon name="refresh-cw" size={18} />}
+                  disabled={busy || !l.release.signed || l.zuweisbar === 0}
+                  onClick={() => l.release && onUpdate(l.release)}>
+                  Update verteilen
+                </Button>
+              )}
+            </div>
+          </section>
+        ))}
+      </div>
 
       <Card className="vp-box-fleet" style={{ padding: 0 }}>
         <div className="vp-box-fleet-head">

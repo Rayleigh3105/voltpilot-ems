@@ -52,6 +52,16 @@ import java.util.Set;
  * Docker-Release bleibt einer Box unbekannter Art zuweisbar wie bisher (eine
  * Box, die sich noch nie gemeldet hat, holt ihre Zuweisung retained ab).
  *
+ * <p><b>Stufe 1 (Geräte &amp; Updates S0):</b> Eine Edge-Light-Box ohne
+ * gekreuztes Vertrauen (Wurzel UND geprüftes Vertrauens-Set gemeldet) hat
+ * Stufe 1: ihr Loader startet immer die Fassung aus dem Flash, und ohne
+ * Vertrauens-Set lehnt sie jedes Release ab („Das Vertrauens-Set oder seine
+ * Signatur fehlt", {@code otaverify.Verify}) - im Portal stand das als
+ * „fehlgeschlagen ⚠". Ein Edge-Light-Release an sie wird deshalb vor dem Senden
+ * gesperrt; der Weg ist das einmalige Nachrüsten
+ * ({@code edge-light/docs/nachruesten.md}). Dieselbe Regel nennt das Portal
+ * „Updates von Hand (Edge Light, Stufe 1)" ({@code crossoverState}).
+ *
  * <p>Der Zwilling im Portal ist {@code releaseSperre} in
  * {@code frontend/portal/src/adminEdgeUpdates.ts}; die Sätze dort und hier
  * dürfen nicht auseinanderlaufen (die Tests beider Seiten nageln sie fest).
@@ -76,10 +86,18 @@ public final class BoxArt {
      */
     public static final String LIGHT_STAMP_PREFIX = "edge-light-";
 
-    /** Docker-Release an eine Edge-Light-Box. */
+    /**
+     * Docker-Release an eine Edge-Light-Box. Seit Edge Light eigene Releases hat
+     * (edge-light-JJJJ.MM.N), nennt der Satz nur noch die Bauart; ob die Box
+     * Updates über das Portal annimmt, sagt {@link #GRUND_LIGHT_STUFE_1}.
+     */
     public static final String GRUND_DOCKER_AUF_LIGHT =
-            "Release für die Docker-Box – diese Box ist eine Edge Light. Updates von Hand "
-                    + "(Edge Light, Stufe 1): Aktualisierung über den Wartungstunnel.";
+            "Release für die Docker-Box – diese Box ist eine Edge Light.";
+    /** Edge-Light-Release an eine Edge-Light-Box mit Stufe 1 (kein gekreuztes Vertrauen). */
+    public static final String GRUND_LIGHT_STUFE_1 =
+            "Release für Edge Light – diese Box hat Stufe 1 und nimmt keine Updates aus dem "
+                    + "Portal an (kein geprüftes Vertrauens-Set). Einmal über den Wartungstunnel "
+                    + "nachrüsten, danach kommt jede Fassung über das Portal.";
     /** Edge-Light-Release an eine Docker-Box. */
     public static final String GRUND_LIGHT_AUF_DOCKER =
             "Release für Edge Light – diese Box ist eine Docker-Box.";
@@ -153,16 +171,44 @@ public final class BoxArt {
     }
 
     /**
+     * Hat das Gerät sein Vertrauen GEKREUZT - Wurzel und geprüftes
+     * Vertrauens-Set gemeldet? Zwilling von {@code crossoverState} im Portal
+     * (beide Listen nicht leer).
+     *
+     * @param rootKeyIds     {@code root_key_ids}, kommagetrennt wie gespeichert
+     *                       ({@code null} = nicht gemeldet)
+     * @param trustSetKeyIds {@code trust_set_key_ids}, ebenso
+     */
+    public static boolean vertrauenGekreuzt(String rootKeyIds, String trustSetKeyIds) {
+        return hatSchluessel(rootKeyIds) && hatSchluessel(trustSetKeyIds);
+    }
+
+    private static boolean hatSchluessel(String kommagetrennt) {
+        if (kommagetrennt == null) {
+            return false;
+        }
+        for (String k : kommagetrennt.split(",")) {
+            if (!k.isBlank()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Warum dieses Release diesem Gerät NICHT zugewiesen werden darf.
      *
-     * @param geraet  die Box-Art des Geräts ({@code null} = unbekannt)
-     * @param release die Box-Art des Releases
+     * @param geraet            die Box-Art des Geräts ({@code null} = unbekannt)
+     * @param release           die Box-Art des Releases
+     * @param vertrauenGekreuzt ob das Gerät Wurzel und geprüftes Vertrauens-Set
+     *                          gemeldet hat ({@link #vertrauenGekreuzt(String, String)});
+     *                          zählt nur für Edge Light (Stufe 1)
      * @return {@code null}, wenn die Zuweisung passt, sonst der deutsche Grund
      */
-    public static String sperrgrund(String geraet, String release) {
+    public static String sperrgrund(String geraet, String release, boolean vertrauenGekreuzt) {
         if (LIGHT.equals(release)) {
             if (LIGHT.equals(geraet)) {
-                return null;
+                return vertrauenGekreuzt ? null : GRUND_LIGHT_STUFE_1;
             }
             return geraet == null ? GRUND_LIGHT_AUF_UNBEKANNT : GRUND_LIGHT_AUF_DOCKER;
         }

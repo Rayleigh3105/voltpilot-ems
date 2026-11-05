@@ -6533,9 +6533,18 @@ paths:
         Edge Light; a fleet row with nothing to go by is `null` (unknown, never
         silently Docker). A release is Docker unless its signed manifest lists
         `light` in `compat.backends` or its name starts `edge-light-`.
+        LINES (Geräte & Updates S0, additive): `lines` carries, per software
+        line (`docker` first, then `light`; a line without release and without
+        box is left out), `newestRelease`/`newestReleaseSeq` of THAT line and
+        `devices`/`known`/`upToDate` counted with the customer judgement
+        (`ota.EdgeStandVerdict`) - a Docker box is never measured against an
+        Edge Light release. The `kpi` fields keep their old meaning (newest
+        release over both lines) for older portals. An Edge Light release is
+        refused (409) for an Edge Light box without crossed trust (root AND
+        verified trust set reported, Stufe 1).
       responses:
         "200":
-          description: Releases, the recent updates, the fleet matrix, the journal and the KPI.
+          description: Releases, the recent updates, the fleet matrix, the journal, the KPI and the lines.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/devices:
@@ -26056,6 +26065,15 @@ components:
             them, it does not re-derive them). Empty = nothing open; "not
             checked" is never an item, it is the reason inside kwp/forecast.
           items: { $ref: "#/components/schemas/AdminFleetPflege" }
+        boxArt:
+          type: string
+          nullable: true
+          enum: [docker, light, null]
+          description: >
+            The line of the box behind `edge`/`update` (`ota.BoxArt`, additive
+            since Geräte & Updates S0; null = unknown, never silently Docker).
+            The software stand is judged against the newest release of this
+            line. Each entry of `boxes` carries the same field for its own box.
     AdminFleetSources:
       type: object
       properties:
@@ -26115,7 +26133,13 @@ components:
         monotonic integer, never a string or SHA comparison (decision D5).
       properties:
         releaseSeq: { type: integer, format: int64 }
-        version: { type: string, description: "The release tag edge-YYYY.MM.N." }
+        version: { type: string, description: "The release tag edge-YYYY.MM.N or edge-light-YYYY.MM.N." }
+        boxArt:
+          type: string
+          enum: [docker, light]
+          description: >
+            The line of the release (`ota.BoxArt`, additive since Geräte &
+            Updates S0). A box is measured against the newest release of ITS line.
     AdminFleetKwp:
       type: object
       description: >
@@ -26187,10 +26211,11 @@ components:
           type: string
           nullable: true
           description: >
-            The release register's newest entry - the SOLL this device should
-            run (Geräteseiten Stufe 1 R2a). null = the register is empty, i.e.
-            there is no yardstick at all. Only the judgement travels; the
-            register itself stays behind /api/v1/admin/**.
+            The newest register entry of the device's LINE (Docker box or Edge
+            Light, since Geräte & Updates S0) - the SOLL this device should run
+            (Geräteseiten Stufe 1 R2a). null = no yardstick: the register is
+            empty, the line is unknown or has no release yet. Only the judgement
+            travels; the register itself stays behind /api/v1/admin/**.
         upToDate:
           type: boolean
           nullable: true

@@ -98,8 +98,9 @@ export function GeraeteDrawer({
    */
   onOpenGeraetseite?: () => void;
 }) {
-  // Nur, was signiert ist UND zur Box-Art passt; der Rest wird benannt.
-  const zuweisbar = zuweisbareReleases(releases, device.boxArt);
+  // Nur, was signiert ist UND zur Box-Art passt (und bei Edge Light: Stufe 2);
+  // der Rest wird benannt.
+  const zuweisbar = zuweisbareReleases(releases, device.boxArt, device.trust);
   const passend = zuweisbar.passend;
   const [seq, setSeq] = useState<number | null>(
     passend.find((r) => r.releaseSeq === device.sollSeq)?.releaseSeq

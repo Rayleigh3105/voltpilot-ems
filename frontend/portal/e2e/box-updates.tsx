@@ -48,12 +48,22 @@ const fleet: FleetRow[] = [
 const data: EdgeUpdates = {
   fleet, rollouts: [], journal: [],
   releases: [
+    // Das jüngste Release ist eines für Edge Light (wie am 05.11.2026): es darf
+    // das Docker-Release nicht aus dem Blick drängen (Geräte & Updates S0).
+    { releaseSeq: 43, version: 'edge-light-2026.09.12', targetCommit: 'c0ffee12', signed: true, boxArt: 'light',
+      signingKeyId: 'release', createdAt: now, runningOnDevices: 0, notes: 'Edge Light: Leser für weitere Wechselrichter.' },
     { releaseSeq: 42, version: 'edge-2026.09.10', targetCommit: 'a18b472e', signed: true, boxArt: 'docker',
       signingKeyId: 'release', createdAt: now, runningOnDevices: 1, notes: 'Verbesserte Verbindungsstabilität und zuverlässigere Updates.' },
     { releaseSeq: 41, version: 'edge-2026.09.02', targetCommit: '73486bab', signed: true, boxArt: 'docker',
       signingKeyId: 'release', createdAt: '2026-09-02T12:00:00Z', runningOnDevices: 3, notes: null },
   ],
-  kpi: { known: 5, upToDate: 1, unknown: 1, inRollout: 1, failed: 0, newestRelease: 'edge-2026.09.10' },
+  // Die KPI älterer Portale misst am neuesten Release über BEIDE Linien; die
+  // Linien tragen das Urteil je Box-Art (so liefert es die API seit S0).
+  kpi: { known: 5, upToDate: 0, unknown: 1, inRollout: 1, failed: 0, newestRelease: 'edge-light-2026.09.12' },
+  lines: [
+    { boxArt: 'docker', newestRelease: 'edge-2026.09.10', newestReleaseSeq: 42, devices: 4, known: 4, upToDate: 1 },
+    { boxArt: 'light', newestRelease: 'edge-light-2026.09.12', newestReleaseSeq: 43, devices: 1, known: 1, upToDate: 0 },
+  ],
 };
 const LETZTE_MELDUNG: Record<string, string | null> = {
   d4: new Date(Date.now() - 4 * 3600_000).toISOString(),
