@@ -46,6 +46,10 @@ func attrappe(t *testing.T, gesehen map[string]string) *httptest.Server {
 		case "POST /api/v1/werkstatt-dienst/abnahmen/edge-k7m2xq3":
 			w.WriteHeader(201)
 			_, _ = w.Write([]byte(`{"id":"a-1","edgeRef":"edge-k7m2xq3","freigabeId":"f","einloesungId":"e","lanNetz":"10.213.0.1/24","tunnelAdresse":"10.10.16.7","erfasstAm":"2026-11-02T10:40:00Z"}`))
+		case "GET /api/v1/werkstatt-dienst/einloesungen/edge-k7m2xq3":
+			_, _ = w.Write([]byte(`{"edgeRef":"edge-k7m2xq3","festgehalten":null,"einloesungen":[],"abgenommen":false,"gekoppelt":true}`))
+		case "GET /api/v1/werkstatt-dienst/einloesungen/edge-alt2345":
+			_, _ = w.Write([]byte(`{"edgeRef":"edge-alt2345","festgehalten":null,"einloesungen":[]}`))
 		default:
 			w.WriteHeader(409)
 			_, _ = w.Write([]byte(`{"message":"Die Werkstatt ist nicht freigegeben."}`))
@@ -102,5 +106,20 @@ func TestClient(t *testing.T) {
 	}
 	if _, err := (Client{URL: srv.URL, Token: festesToken("falsch")}).CodeHolen(ctx, "edge-k7m2xq3", false); !errors.As(err, &ab) || ab.Status != 401 {
 		t.Fatalf("falsches Token: %v", err)
+	}
+}
+
+// Der Stand einer Referenz: abgenommen und gekoppelt; eine API ohne die Felder
+// ist ein Fehler, kein „nein“.
+func TestBoxStandLesen(t *testing.T) {
+	srv := attrappe(t, map[string]string{})
+	defer srv.Close()
+	c := Client{URL: srv.URL, Token: festesToken("tok")}
+	st, err := c.BoxStandLesen(context.Background(), "edge-k7m2xq3")
+	if err != nil || st.Abgenommen || !st.Gekoppelt {
+		t.Fatalf("%+v %v", st, err)
+	}
+	if _, err := c.BoxStandLesen(context.Background(), "edge-alt2345"); err == nil || !strings.Contains(err.Error(), "nicht, ob") {
+		t.Fatalf("alte API ohne Felder: %v", err)
 	}
 }

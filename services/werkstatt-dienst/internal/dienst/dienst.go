@@ -4,19 +4,25 @@
 //
 // Steckt am Werkstatt-Anschluss genau eine Mango ab Werk (192.168.8.1) oder
 // mit frischem OpenWrt (192.168.1.1) und läuft eine Freigabe, beginnt ihr
-// Lauf (internal/mango). Eine Box, deren Lauf zu Ende ist (fertig oder
-// angehalten), fasst der Dienst nicht noch einmal an, bis sie abgezogen war.
-// Eine Box unter dem LAN-Netz ist eingerichtet und wird nie angefasst.
+// Lauf (internal/mango), sobald sie fertig gestartet ist. Eine Box, deren
+// Lauf zu Ende ist (fertig oder angehalten), fasst der Dienst nicht noch
+// einmal an, bis ihre MAC einen Takt lang weg war. Eine Box unter dem
+// LAN-Netz ist eingerichtet und wird nie angefasst; nur wenn ein unfertiger
+// Lauf dieser Werkstatt ihre MAC kennt, prüft ein Lauf ohne Anmeldung, ob sie
+// zurückgesetzt werden darf (mango.HalbImLan).
 package dienst
 
 import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/netip"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
@@ -42,8 +48,12 @@ type Ansicht struct {
 	Werkbank WerkbankAnsicht `json:"werkbank"`
 	Freigabe FreigabeAnsicht `json:"freigabe"`
 	// Anschluss sagt in Alltagsworten, was am Werkstatt-Anschluss steckt.
-	Anschluss string      `json:"anschluss,omitempty"`
-	Lauf      *lauf.Stand `json:"lauf,omitempty"`
+	Anschluss string `json:"anschluss,omitempty"`
+	// AnschlussFall ist der Code dazu (internal/faelle), solange kein Lauf
+	// arbeitet; AnschlussLoesung, was zu tun ist.
+	AnschlussFall    string          `json:"anschluss_fall,omitempty"`
+	AnschlussLoesung *faelle.Loesung `json:"anschluss_loesung,omitempty"`
+	Lauf             *lauf.Stand     `json:"lauf,omitempty"`
 }
 
 // WerkbankAnsicht ist der Stand der Brücke.
@@ -93,10 +103,12 @@ type Dienst struct {
 	Melder       Melder
 	melderFehler string
 
-	ctx      context.Context
-	aktiv    *aktiverLauf
-	letzter  *lauf.Lauf
-	gesperrt map[string]bool // MACs, deren Lauf zu Ende ist, bis sie abgezogen waren
+	ctx           context.Context
+	aktiv         *aktiverLauf
+	letzter       *lauf.Lauf
+	gesperrt      map[string]bool // MACs, deren Lauf zu Ende ist, bis sie abgezogen waren
+	kandidat      *kandidat       // die Box im letzten Takt, solange ihr Lauf noch nicht begann
+	unterspannung bool            // die Brücke meldet Unterspannung (Takt)
 
 	mu                           sync.Mutex
 	ansicht                      Ansicht
@@ -192,8 +204,8 @@ func (d *Dienst) SchliesseOffene() {
 		return
 	}
 	for _, k := range offen {
-		_ = d.Ablage.Schreibe(protokoll.Eintrag{Lauf: k, Art: protokoll.LaufBeendet, Zustand: string(lauf.Angehalten),
-			Grund: "Der Dienst wurde neu gestartet; dieser Lauf ist unterbrochen. Die Box abziehen und zur Seite legen: ihr Stand ist unbekannt (ein gesetztes Passwort steht verschlüsselt im Beleg passwort_age)."})
+		_ = d.Ablage.Schreibe(protokoll.Eintrag{Lauf: k, Art: protokoll.LaufBeendet, Zustand: string(lauf.Angehalten), Angaben: map[string]string{"fall": faelle.DienstNeuGestartet},
+			Grund: "Der Dienst wurde neu gestartet; dieser Lauf ist unterbrochen. Das Kabel kurz abziehen und wieder einstecken: Der Dienst erkennt, wie weit sie war (ohne Passwort beginnt ein neuer Lauf; mit einem Passwort dieser Werkstatt nennt er den Reset-Knopf)."})
 		d.Log.Warn("Lauf durch Neustart des Dienstes unterbrochen", "request_id", k)
 	}
 }
@@ -222,7 +234,7 @@ func (d *Dienst) Runde(ctx context.Context) {
 	jetzt := d.Jetzt()
 	d.runeWerkbank(ctx, jetzt)
 	d.runeFreigabe(jetzt)
-	d.runeAnschluss(jetzt)
+	d.runeAnschluss(ctx, jetzt)
 	d.mu.Lock()
 	d.ansicht.Zeit = jetzt.UTC()
 	wartet := d.aktiv != nil && d.aktiv.l.Stand().Zustand == lauf.Wartet
@@ -254,22 +266,74 @@ func (d *Dienst) melde(ctx context.Context) {
 	}
 }
 
+// StartFrist: So lange wartet der Dienst nach dem ersten Erkennen einer Box
+// darauf, dass sie SSH annimmt, bevor er ihren Lauf trotzdem beginnt (der
+// nennt dann den Grund und den Handgriff).
+const StartFrist = 5 * time.Minute
+
+// kandidat ist die Box, die im letzten Takt am Anschluss stand.
+type kandidat struct {
+	mac     string
+	adresse netip.Addr
+	seit    time.Time
+}
+
 // runeAnschluss sieht nach, was am Werkstatt-Anschluss steckt, und beginnt
-// gegebenenfalls einen Lauf.
-func (d *Dienst) runeAnschluss(jetzt time.Time) {
+// gegebenenfalls einen Lauf. Eine Box gilt erst als da, wenn sie in zwei
+// Takten hintereinander mit derselben MAC unter derselben Adresse antwortet
+// und SSH annimmt: Beim Start zeigt jede OpenWrt-Firmware für ein paar
+// Sekunden 192.168.1.1 (Preinit), und Dropbear kommt nach dem Netz (Läufe
+// 113810-d74e, 115040-8287). Bis dahin beginnt kein Lauf und nichts wird gesperrt.
+func (d *Dienst) runeAnschluss(ctx context.Context, jetzt time.Time) {
+	d.mu.Lock()
+	k, einstieg, ok := d.anschlussKandidat(jetzt)
+	d.mu.Unlock()
+	if !ok {
+		return
+	}
+	// Nimmt die Box SSH an? Außerhalb der Sperre: Das kann dauern.
+	pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	conn, err := d.Mango.Werkbank.Dial(pctx, netip.AddrPortFrom(k.adresse, 22))
+	cancel()
+	if err == nil {
+		_ = conn.Close()
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.aktiv != nil || d.kandidat == nil || *d.kandidat != k {
+		return
+	}
+	if err != nil && strings.HasPrefix(err.Error(), "Brücke ") && strings.Contains(err.Error(), "nicht erreichbar") {
+		// Der Weg zur Brücke ist weg, nicht die Box (Lauf 114050-9ef8): kein
+		// Lauf, und die Startfrist beginnt neu, sobald die Brücke wieder antwortet.
+		d.kandidat.seit = jetzt
+		d.amAnschluss(faelle.BrueckeNichtBereit, "Die Brücke antwortet gerade nicht ("+geheim.Schwaerze(err.Error())+"). Am Raspberry Pi Strom und WLAN prüfen.")
+		return
+	}
+	if err != nil && jetzt.Sub(k.seit) < StartFrist {
+		d.amAnschluss(faelle.Startet, "Mango erkannt unter "+k.adresse.String()+"; sie startet noch ("+geheim.Schwaerze(err.Error())+"). Nicht abziehen.")
+		return
+	}
+	d.beginneLauf(jetzt, k, einstieg)
+}
+
+// anschlussKandidat entscheidet unter der Sperre, ob am Anschluss eine Box
+// steht, deren Lauf beginnen darf (ok), und mit welchem Einstieg.
+func (d *Dienst) anschlussKandidat(jetzt time.Time) (kandidat, mango.Einstieg, bool) {
 	if d.Mango == nil || d.Laeufer == nil {
-		return
+		return kandidat{}, "", false
 	}
+	d.unterspannung = d.ansicht.Werkbank.Status != nil && d.ansicht.Werkbank.Status.Unterspannung()
 	if d.aktiv != nil {
-		d.ansicht.Anschluss = "Ein Lauf arbeitet an der Box. Nicht abziehen."
-		return
+		d.amAnschluss("", "Ein Lauf arbeitet an der Box. Nicht abziehen.")
+		return kandidat{}, "", false
 	}
+	vorher := d.kandidat
+	d.kandidat = nil
 	w := d.ansicht.Werkbank
 	if !w.Bereit || w.Status == nil {
-		d.ansicht.Anschluss = "Die Brücke ist nicht bereit."
-		return
+		d.amAnschluss(faelle.BrueckeNichtBereit, "Die Brücke ist nicht bereit.")
+		return kandidat{}, "", false
 	}
 	s := *w.Status
 	da := map[string]bool{}
@@ -280,25 +344,25 @@ func (d *Dienst) runeAnschluss(jetzt time.Time) {
 	}
 	for m := range d.gesperrt {
 		if !da[m] {
-			delete(d.gesperrt, m) // abgezogen: beim nächsten Einstecken ist sie neu
+			delete(d.gesperrt, m) // abgezogen oder neu gestartet: dann ist sie neu
 		}
 	}
 	if !s.Werkstatt.Kabel {
-		d.ansicht.Anschluss = "Kein Kabel am Werkstatt-Anschluss."
-		return
+		d.amAnschluss(faelle.KeinKabel, "Kein Kabel am Werkstatt-Anschluss.")
+		return kandidat{}, "", false
 	}
 	if len(s.Antworten) == 0 {
-		d.ansicht.Anschluss = "Am orangen Kabel steckt keine Box (oder sie startet noch)."
-		return
+		d.amAnschluss(faelle.KeineBox, "Am orangen Kabel steckt keine Box (oder sie startet noch).")
+		return kandidat{}, "", false
 	}
 	e, err := mango.Einzeln(s)
 	if err != nil {
-		d.ansicht.Anschluss = geheim.Schwaerze(err.Error())
-		return
+		d.amAnschluss(faelle.ZweiGeraete, geheim.Schwaerze(err.Error()))
+		return kandidat{}, "", false
 	}
 	if d.gesperrt[e.MAC] {
-		d.ansicht.Anschluss = "Die Box " + e.MAC + " hatte schon ihren Lauf. Abziehen; dann die nächste Box einstecken."
-		return
+		d.amAnschluss(faelle.Gesperrt, "Die Box "+e.MAC+" hatte schon ihren Lauf. Abziehen; dann die nächste Box einstecken.")
+		return kandidat{}, "", false
 	}
 	var einstieg mango.Einstieg
 	switch e.Adresse {
@@ -307,34 +371,71 @@ func (d *Dienst) runeAnschluss(jetzt time.Time) {
 	case mango.OpenWrtAdresse:
 		einstieg = mango.AbOpenWrt
 	default:
-		d.ansicht.Anschluss = "Unter " + e.Adresse.String() + " steckt eine eingerichtete Box. Der Dienst fasst sie nicht an: abziehen."
-		return
+		// Unter dem LAN-Netz ist eine Box eingerichtet. Nur wenn ein Lauf
+		// dieser Werkstatt ihr ein Passwort gesetzt und sie nicht übergeben
+		// hat, prüft ein Lauf (ohne Anmeldung), ob sie zurückgesetzt werden darf.
+		if e.Adresse != d.Mango.LanNetz.Addr() || d.Ablage == nil {
+			d.amAnschluss(faelle.Eingerichtet, "Unter "+e.Adresse.String()+" steckt eine eingerichtete Box. Der Dienst fasst sie nicht an: abziehen.")
+			return kandidat{}, "", false
+		}
+		sp, ok, err := d.Ablage.SpurDerMAC(e.MAC, "")
+		if err != nil || !ok || sp.Fertig() {
+			d.amAnschluss(faelle.Eingerichtet, "Unter "+e.Adresse.String()+" steckt eine eingerichtete Box. Der Dienst fasst sie nicht an: abziehen.")
+			return kandidat{}, "", false
+		}
+		einstieg = mango.HalbImLan
 	}
 	f := d.ansicht.Freigabe
 	if !f.Laufend || f.Freigabe == nil {
-		d.ansicht.Anschluss = "Mango erkannt, aber die Werkstatt ist nicht freigegeben: " + f.Grund
-		return
+		d.amAnschluss(faelle.NichtFreigegeben, "Mango erkannt, aber die Werkstatt ist nicht freigegeben: "+f.Grund)
+		return kandidat{}, "", false
 	}
+	k := kandidat{mac: e.MAC, adresse: e.Adresse, seit: jetzt}
+	if vorher != nil && vorher.mac == k.mac && vorher.adresse == k.adresse {
+		k.seit = vorher.seit
+		d.kandidat = &k
+		return k, einstieg, true
+	}
+	d.kandidat = &k
+	d.amAnschluss(faelle.Startet, "Mango erkannt unter "+e.Adresse.String()+"; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen.")
+	return kandidat{}, "", false
+}
+
+// amAnschluss setzt Satz und Fall am Anschluss. Meldet die Brücke
+// Unterspannung, während der Dienst auf eine Box wartet, ist das der Fall:
+// Eine Mango am USB des Pi kann sie dann nicht hochbringen.
+func (d *Dienst) amAnschluss(fall, text string) {
+	if d.unterspannung && (fall == faelle.KeineBox || fall == faelle.Startet || fall == faelle.BrueckeNichtBereit) {
+		fall = faelle.BrueckeUnterspannung
+		text += " Die Brücke meldet Unterspannung: die Mango an ein eigenes USB-Netzteil."
+	}
+	d.ansicht.Anschluss, d.ansicht.AnschlussFall, d.ansicht.AnschlussLoesung = text, fall, faelle.Zu(fall)
+}
+
+// beginneLauf beginnt den Lauf einer Box (unter der Sperre).
+func (d *Dienst) beginneLauf(jetzt time.Time, k kandidat, einstieg mango.Einstieg) {
+	d.kandidat = nil
+	f := d.ansicht.Freigabe
 	l := lauf.Neu(jetzt, f.Freigabe.Kennung, freigabe.Mango)
 	ml, err := mango.NeuerLauf(*d.Mango, *f.Freigabe, l.Kennung())
 	if err != nil {
-		d.ansicht.Anschluss = "Lauf nicht begonnen: " + geheim.Schwaerze(err.Error())
+		d.amAnschluss(faelle.SchrittGescheitert, "Lauf nicht begonnen: "+geheim.Schwaerze(err.Error()))
 		d.Log.Error("Lauf nicht begonnen", "fehler", err)
 		return
 	}
 	fr := f.Freigabe
 	angaben := map[string]string{
 		"einstieg":   string(einstieg),
-		"mac":        e.MAC,
-		"adresse":    e.Adresse.String(),
+		"mac":        k.mac,
+		"adresse":    k.adresse.String(),
 		"openwrt":    fr.OpenWrt.Fassung + " " + fr.OpenWrt.Datei + " sha256 " + fr.OpenWrt.Sha256,
 		"edge_light": fr.EdgeLight.Fassung + ", Programm sha256 " + fr.EdgeLight.ProgrammSha256 + ", Skripte sha256 " + fr.EdgeLight.SkripteSha256,
 		"lan_netz":   d.Mango.LanNetz.String(),
 		"bauart":     d.Mango.Bauart,
 	}
 	d.aktiv = &aktiverLauf{l: l, m: ml}
-	d.gesperrt[e.MAC] = true
-	d.ansicht.Anschluss = "Ein Lauf arbeitet an der Box. Nicht abziehen."
+	d.gesperrt[k.mac] = true
+	d.amAnschluss("", "Ein Lauf arbeitet an der Box. Nicht abziehen.")
 	ctx := d.ctx
 	if ctx == nil {
 		ctx = context.Background()

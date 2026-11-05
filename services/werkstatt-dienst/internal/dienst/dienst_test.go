@@ -205,6 +205,10 @@ func TestLaufAmAnschluss(t *testing.T) {
 		t.Fatal("der Test darf nicht ins Internet")
 	}
 	_ = os.WriteFile(frei, []byte(ohneNetz), 0o644)
+	d.Runde(ctx) // erkannt: wartet, bis sie im nächsten Takt noch da ist
+	if a := d.Ansicht(); a.Lauf != nil || !strings.Contains(a.Anschluss, "wartet, bis sie fertig gestartet ist") {
+		t.Fatalf("Lauf schon im ersten Takt: %+v", a)
+	}
 	d.Runde(ctx)
 	a := d.Ansicht()
 	if a.Lauf == nil || !strings.Contains(a.Anschluss, "Nicht abziehen") {

@@ -102,6 +102,33 @@ func (c Client) FensterSchliessen(ctx context.Context, fensterID string) (schonZ
 	return false, err
 }
 
+// BoxStand ist, was das Portal über eine Referenz sagt (GET /einloesungen/{ref}):
+// abgenommen (eine Abnahme gibt es) und gekoppelt (Zertifikatsanfrage, Gerät
+// oder vorbereitete Anlage).
+type BoxStand struct {
+	EdgeRef    string
+	Abgenommen bool
+	Gekoppelt  bool
+}
+
+// BoxStandLesen liest den Stand einer Referenz. Nennt die API die Felder
+// abgenommen und gekoppelt nicht (eine ältere API), ist das ein Fehler: Unbekannt
+// ist nicht nein.
+func (c Client) BoxStandLesen(ctx context.Context, edgeRef string) (BoxStand, error) {
+	var out struct {
+		EdgeRef    string `json:"edgeRef"`
+		Abgenommen *bool  `json:"abgenommen"`
+		Gekoppelt  *bool  `json:"gekoppelt"`
+	}
+	if err := c.rufe(ctx, http.MethodGet, "/einloesungen/"+url.PathEscape(edgeRef), nil, http.StatusOK, &out); err != nil {
+		return BoxStand{}, err
+	}
+	if out.EdgeRef != edgeRef || out.Abgenommen == nil || out.Gekoppelt == nil {
+		return BoxStand{}, errors.New("Portal: die Antwort nennt nicht, ob " + edgeRef + " abgenommen oder gekoppelt ist")
+	}
+	return BoxStand{EdgeRef: out.EdgeRef, Abgenommen: *out.Abgenommen, Gekoppelt: *out.Gekoppelt}, nil
+}
+
 // AnsichtMelden meldet die Ansicht des Dienstes (PUT /ansicht,
 // docs/contracts/werkstatt-ansicht-v1.md); die Werkstatt-Bildschirme lesen sie.
 func (c Client) AnsichtMelden(ctx context.Context, ansicht any) error {

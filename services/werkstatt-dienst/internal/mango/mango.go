@@ -29,12 +29,14 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/box"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/durchreiche"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/gehaeuse"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/portal"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/wartung"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/werkbank"
 )
@@ -99,8 +101,18 @@ type Konfig struct {
 	// Gehäuses an (internal/gehaeuse, P10). nil: das Gehäuse baut der
 	// Betreiber selbst (bauen.sh --referenz).
 	Gehaeuse Gehaeuse
-	Zeiten   Zeiten
-	Log      *slog.Logger
+	// Spuren sind die Protokolle dieses Dienstes (protokoll.Ablage): Mit ihnen
+	// erkennt er eine Box mit Passwort als eine, die diese Werkstatt begonnen
+	// und nicht fertig gemacht hat (HalbEigene). nil: jede Box mit Passwort
+	// ist fremd.
+	Spuren Spuren
+	Zeiten Zeiten
+	Log    *slog.Logger
+}
+
+// Spuren sucht in den Protokollen des Dienstes (protokoll.Ablage).
+type Spuren interface {
+	SpurDerMAC(mac, ausser string) (protokoll.Spur, bool, error)
 }
 
 // Gehaeuse ist die Schlange der Druckdateien (gehaeuse.Werkstatt).
@@ -120,6 +132,7 @@ type Portal interface {
 	CodeHolen(ctx context.Context, edgeRef string, tausch bool) (portal.Code, error)
 	FensterSchliessen(ctx context.Context, fensterID string) (schonZu bool, err error)
 	AbnahmeSchreiben(ctx context.Context, edgeRef string, a portal.Abnahme) (portal.Angenommen, error)
+	BoxStandLesen(ctx context.Context, edgeRef string) (portal.BoxStand, error)
 }
 
 // NotfallFingerabdruck gibt den Fingerabdruck des Notfall-Schlüssels.
@@ -137,6 +150,11 @@ type Einstieg string
 const (
 	AbWerk    Einstieg = "werk"    // GL-Werksfirmware unter 192.168.8.1
 	AbOpenWrt Einstieg = "openwrt" // frisches OpenWrt unter 192.168.1.1
+	// HalbImLan: eine Box unter dem LAN-Netz, die laut Protokoll ein Lauf
+	// dieser Werkstatt begonnen und nicht fertig gemacht hat. Ihr Lauf hat nur
+	// den Schritt erkennen: Er prüft, ob sie es wirklich ist, und nennt dann
+	// den Handgriff Zurücksetzen. Angemeldet wird nie.
+	HalbImLan Einstieg = "lan"
 )
 
 // Lauf ist der Zustand einer Box während ihres Laufs. Das Passwort lebt nur
@@ -144,6 +162,7 @@ const (
 type Lauf struct {
 	k        Konfig
 	freigabe freigabe.Freigabe
+	kennung  string
 	dir      string
 	log      *slog.Logger
 
@@ -185,7 +204,7 @@ func NeuerLauf(k Konfig, f freigabe.Freigabe, kennung string) (*Lauf, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	return &Lauf{k: k, freigabe: f, dir: dir, log: k.Log.With("request_id", kennung), notfallFP: fp, belege: map[string]string{}}, nil
+	return &Lauf{k: k, freigabe: f, kennung: kennung, dir: dir, log: k.Log.With("request_id", kennung), notfallFP: fp, belege: map[string]string{}}, nil
 }
 
 // Schliesse räumt auf: Verbindung, Durchreiche, Arbeitsverzeichnis; das
@@ -205,6 +224,9 @@ func (l *Lauf) MAC() string { return l.mac }
 // Schritte gibt die Folge für einen Einstieg zurück.
 func (l *Lauf) Schritte(e Einstieg) []lauf.Schritt {
 	var s []lauf.Schritt
+	if e == HalbImLan {
+		return []lauf.Schritt{{Kennung: "erkennen", Titel: "Halb eingerichtete Mango erkennen", Frist: time.Minute, Tun: l.erkennenHalbImLan}}
+	}
 	if e == AbWerk {
 		s = append(s,
 			lauf.Schritt{Kennung: "erkennen", Titel: "Mango erkennen", Frist: time.Minute, Tun: l.erkennenWerk},
@@ -274,7 +296,7 @@ func Einzeln(s werkbank.Status) (Einzig, error) {
 		for _, x := range e {
 			t = append(t, x.MAC+" unter "+x.Adresse.String())
 		}
-		return Einzig{}, lauf.Handgriff{Was: "Nur eine Mango an das orange Kabel WERKSTATT stecken, die übrigen abziehen.", Grund: "Am Werkstatt-Anschluss antworten mehrere Geräte: " + strings.Join(t, ", ")}
+		return Einzig{}, lauf.Handgriff{Was: "Nur eine Mango an das orange Kabel WERKSTATT stecken, die übrigen abziehen.", Fall: faelle.ZweiGeraete, Grund: "Am Werkstatt-Anschluss antworten mehrere Geräte: " + strings.Join(t, ", ")}
 	}
 	return e[0], nil
 }

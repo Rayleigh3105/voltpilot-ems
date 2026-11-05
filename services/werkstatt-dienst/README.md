@@ -37,7 +37,7 @@ eine Freigabe, beginnt ihr Lauf von selbst. Jeder Schritt endet mit einem Beleg;
 
 | Schritt | Was | Beleg |
 |---|---|---|
-| `erkennen` | genau ein Gerät mit einer MAC; SSH als root ohne Passwort; Board `glinet,gl-mt300n-v2`; GL-Firmware (`/etc/glversion`); root hat kein Passwort (nicht eingerichtet) | MAC, Board, GL-Fassung, Host-Schlüssel ab Werk, Antwort der GL-Schnittstelle (nur festgehalten, PS-1) |
+| `erkennen` | genau ein Gerät mit einer MAC; SSH als root ohne Passwort (bis die Box SSH annimmt, wartet der Lauf); Board `glinet,gl-mt300n-v2`; GL-Firmware (`/etc/glversion`); root hat kein Passwort (nicht eingerichtet). Verlangt sie ein Passwort: Handgriff Zurücksetzen (Fall `gl_passwort`) | MAC, Board, GL-Fassung, Host-Schlüssel ab Werk, Antwort der GL-Schnittstelle (nur festgehalten, PS-1) |
 | `fassungen` | OpenWrt-Abbild, Programm, Skriptstand der Freigabe bereitlegen, je sha256 geprüft – bevor die Box angefasst wird | Prüfsummen, Herkunft |
 | `openwrt` | Abbild nach `/tmp`, sha256 auf der Box, `sysupgrade -T`, dann `sysupgrade -n` (nie `-F`) | sha256 vorher und auf der Box, Ausgaben |
 | `wiedererkennen` | bis frisches OpenWrt unter 192.168.1.1 antwortet: Fassung der Freigabe, root ohne Passwort; ab jetzt gilt sein Host-Schlüssel | `openwrt_release`, Board, Host-Schlüssel |
@@ -58,9 +58,15 @@ eine Freigabe, beginnt ihr Lauf von selbst. Jeder Schritt endet mit einem Beleg;
 Bei dir bleiben in V1a: die Tunnel-Adresse aus dem Portal eintragen, die Probe im Fenster der Fernwartung (der
 Lauf wartet darauf, bevor er den Weg über die Brücke entfernt: ohne ihn steht der Tunnel in der Werkstatt nicht
 mehr), das Fenster schließen und die Abnahme im Portal mit diesen Belegen ([Runbook](docs/runbook.md#eine-box-einrichten)).
-Hält ein Lauf an, nennt die Werkstatt-Anzeige den Grund und – wo nötig – den Handgriff (Box zur Seite legen,
-Startlader). Eine Box, deren Lauf zu Ende ist, fasst der Dienst erst wieder an, wenn sie abgezogen war; eine Box
-unter dem LAN-Netz nie.
+Ein Lauf beginnt erst, wenn die Box fertig gestartet ist (dieselbe MAC zwei Takte unter derselben Adresse, SSH nimmt
+an). Hält ein Lauf an, nennt die Ansicht den Fall (`lauf.fall`) und die Lösung (`lauf.loesung`: Titel, Schritte, ob
+der Dienst danach von selbst weitermacht, ob die Box zur Seite kommt); ohne Lauf dasselbe am Anschluss
+(`anschluss_fall`, `anschluss_loesung`). Codes: [Vertrag](../../docs/contracts/werkstatt-ansicht-v1.md#fälle),
+`internal/faelle`. Eine Box, deren Lauf zu Ende ist, fasst der Dienst erst wieder an, wenn ihre MAC einen Takt lang
+weg war (abgezogen oder neu gestartet). Eine Box mit Passwort lässt er nur zurücksetzen (ein Handgriff am
+Reset-Knopf, Entscheid NA-1 B), wenn sie unter 192.168.8.1 steht (GL-Firmware) oder nachweislich eine ist, die
+diese Werkstatt begonnen und nicht fertig gemacht hat (Protokoll, Host-Schlüssel, im Portal nicht abgenommen und nicht
+gekoppelt; [Runbook](docs/runbook.md#eine-box-einrichten)). Eine eingerichtete Box unter dem LAN-Netz fasst er nie an.
 
 Release-Anhänge einer Edge-Light-Fassung (unter `edge_light.quelle` der Freigabe; `edge-light/scripts/release.sh`
 baut sie, dazu `sha256sums` und `freigabe-edge-light.json`, den fertigen Block `edge_light` für die Mango):
@@ -74,7 +80,8 @@ baut sie, dazu `sha256sums` und `freigabe-edge-light.json`, den fertigen Block `
 
 - das Netz absuchen: Die Brücke fragt nur nach den festen Box-Adressen ihres Werkstatt-Anschlusses (192.168.8.1,
   192.168.1.1, das LAN-Netz), je zwei ARP-Anfragen;
-- Passwörter raten, ein eingerichtetes Gerät anfassen, zwei Geräte am Werkstatt-Anschluss bedienen;
+- Passwörter raten, sich an einer Box mit Passwort anmelden, ein eingerichtetes Gerät anfassen, zwei Geräte am
+  Werkstatt-Anschluss bedienen;
 - ohne Freigabe oder ohne den Beleg des vorigen Schritts weitermachen;
 - ein Root-Passwort an eine Route geben oder in einen Beleg schreiben (Entscheid WI-6 A: nur verschlüsselt für den
   age-Schlüssel „Box-Passwörter“, ab P5).

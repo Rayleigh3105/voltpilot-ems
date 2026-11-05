@@ -292,6 +292,12 @@ export function WerkstattBank({
               ]}
             />
           </div>
+          {s.fall && (
+            <div className={`vp-wsb-karte${s.fall.loesung.selbst ? '' : ' vp-wsb-warn'}`} data-testid="wsb-anschluss-fall" data-fall={s.fall.code}>
+              <h5>{s.fall.loesung.titel}</h5>
+              <Schritte eintraege={s.fall.loesung.schritte} />
+            </div>
+          )}
           <p className="vp-wsb-sub">Bis zu einer Minute nach dem Einstecken.</p>
         </>
       )}
@@ -340,6 +346,32 @@ export function WerkstattBank({
         </>
       )}
 
+      {s.art === 'zuruecksetzen' && (
+        <>
+          <p className="vp-wsb-hinweis vp-wsb-warn">
+            <strong>Einmal kurz du</strong>
+          </p>
+          <h4 className="vp-wsb-h">Reset-Knopf drücken</h4>
+          <p className="vp-wsb-sub" data-testid="wsb-zuruecksetzen-titel">{s.lauf.loesung?.titel ?? 'Diese Mango muss zurückgesetzt werden.'}</p>
+          <div className="vp-wsb-karte vp-wsb-bildkarte">
+            <MangoBild reset titel="Reset-Knopf der Mango, oranges Kabel bleibt in LAN" />
+          </div>
+          <Schritte
+            eintraege={s.lauf.loesung?.schritte ?? [
+              'Den Reset-Knopf der Mango mit einem Stift 10 Sekunden gedrückt halten, bis die Leuchte schnell blinkt. Dann loslassen.',
+              'Kabel und Strom bleiben stecken. Die Mango startet neu; das dauert ein paar Minuten.',
+            ]}
+          />
+          <p className="vp-wsb-hinweis vp-wsb-ok">Danach macht der Dienst von selbst weiter.</p>
+          <TechnikDetails lauf={s.lauf} />
+          <div className="vp-wsb-fuss">
+            <button type="button" className="vp-wsb-leise" onClick={() => weg(s.lauf.kennung)}>
+              Box zur Seite legen
+            </button>
+          </div>
+        </>
+      )}
+
       {s.art === 'fertig' && <Fertig lauf={s.lauf} onNaechste={() => weg(s.lauf.kennung)} />}
 
       {s.art === 'problem' && (
@@ -347,18 +379,19 @@ export function WerkstattBank({
           <p className="vp-wsb-hinweis vp-wsb-fehl" data-testid="wsb-problem">
             <strong>Hier hat etwas nicht geklappt.</strong>
           </p>
-          <h4 className="vp-wsb-h">{aktuellePhase(s.lauf)?.titel ?? 'Angehalten'}</h4>
+          <h4 className="vp-wsb-h">{s.lauf.loesung?.titel ?? aktuellePhase(s.lauf)?.titel ?? 'Angehalten'}</h4>
           <p className="vp-wsb-sub">Die Box ist nicht fertig und geht nicht ins Lager.</p>
-          <div className="vp-wsb-karte">
+          <div className="vp-wsb-karte" data-testid="wsb-loesung" data-fall={s.lauf.fall ?? ''}>
             <h5>Was du tun kannst</h5>
             <Schritte
-              eintraege={[
+              eintraege={s.lauf.loesung?.schritte ?? [
                 <>
                   Das orange Kabel kurz abziehen und wieder einstecken: der Dienst <strong>versucht es noch einmal</strong>.
                 </>,
                 'Klappt es wieder nicht: zur Seite legen, Zettel „Problem“ drauf. Der Grund bleibt hier für die Technik stehen.',
               ]}
             />
+            {s.lauf.loesung?.selbst && <p className="vp-wsb-hinweis vp-wsb-ok">Danach macht der Dienst von selbst weiter.</p>}
           </div>
           <div className="vp-wsb-fuss">
             <Button variant="outline" onClick={() => weg(s.lauf.kennung)} data-testid="wsb-zur-seite">

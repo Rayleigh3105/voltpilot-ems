@@ -28,6 +28,17 @@ export interface LaufStand {
   handgriff?: string;
   wartet_auf?: string;
   hinweis?: string;
+  /** Code, warum der Lauf anhielt (Vertrag werkstatt-ansicht-v1, „Fälle eines Laufs“); nur bei angehalten. */
+  fall?: string;
+  loesung?: Loesung | null;
+}
+
+/** Was der Mensch tun kann (Vertrag werkstatt-ansicht-v1): `selbst` = danach macht der Dienst von selbst weiter. */
+export interface Loesung {
+  titel: string;
+  schritte: string[];
+  selbst: boolean;
+  zur_seite: boolean;
 }
 
 export interface FreigabeDatei {
@@ -52,11 +63,15 @@ export interface WerkstattAnsicht {
       fassung?: string;
       werkstatt?: { kabel: boolean };
       antworten?: { adresse: string; macs: string[] | null }[] | null;
+      strom?: { unterspannung_jetzt?: boolean; unterspannung_seit_start?: boolean; quelle: string } | null;
     } | null;
     status_zeit?: string;
   };
   freigabe: { laufend: boolean; grund?: string; freigabe?: FreigabeDatei | null; boxen: number };
   anschluss?: string;
+  /** Code des Zustands am Anschluss, solange kein Lauf arbeitet (Vertrag, „Fälle am Anschluss“). */
+  anschluss_fall?: string;
+  anschluss_loesung?: Loesung | null;
   lauf?: LaufStand | null;
 }
 
@@ -200,9 +215,18 @@ export function fortschritt(s: LaufStand): { restMinuten: number; anteil: number
 export type Bildschirm =
   | { art: 'kein-dienst'; alterSekunden: number | null }
   | { art: 'start' }
-  | { art: 'anschliessen'; kabel: boolean | null; meldetSich: boolean; freigegeben: boolean; grund: string | null }
+  | {
+      art: 'anschliessen';
+      kabel: boolean | null;
+      meldetSich: boolean;
+      freigegeben: boolean;
+      grund: string | null;
+      /** Lösung zum Fall am Anschluss, wenn er mehr ist als „Kabel/Strom anstecken und warten“. */
+      fall: { code: string; loesung: Loesung } | null;
+    }
   | { art: 'laeuft'; lauf: LaufStand }
   | { art: 'startlader'; lauf: LaufStand }
+  | { art: 'zuruecksetzen'; lauf: LaufStand }
   | { art: 'du'; lauf: LaufStand }
   | { art: 'fertig'; lauf: LaufStand }
   | { art: 'problem'; lauf: LaufStand };
@@ -235,7 +259,7 @@ export function bildschirm(e: BildschirmEingabe): Bildschirm {
         return { art: 'du', lauf };
       case 'angehalten':
         if (kabel !== false) {
-          return (lauf.handgriff ?? '').startsWith('Startlader') ? { art: 'startlader', lauf } : { art: 'problem', lauf };
+          return { art: angehaltenArt(lauf), lauf };
         }
         break;
       case 'fertig':
@@ -249,7 +273,25 @@ export function bildschirm(e: BildschirmEingabe): Bildschirm {
     meldetSich: (a.werkbank.status?.antworten ?? []).some((x) => (x.macs ?? []).length > 0),
     freigegeben: a.freigabe.laufend,
     grund: a.freigabe.laufend ? null : a.freigabe.grund ?? 'Die Werkstatt ist nicht freigegeben.',
+    fall: a.anschluss_fall && a.anschluss_loesung && !SCHON_GEZEIGT.has(a.anschluss_fall)
+      ? { code: a.anschluss_fall, loesung: a.anschluss_loesung } : null,
   };
+}
+
+/** Fälle am Anschluss, die der Bildschirm „Mango anschließen“ schon mit seiner Liste und dem Freigabe-Hinweis zeigt. */
+const SCHON_GEZEIGT = new Set(['kein_kabel', 'keine_box', 'nicht_freigegeben']);
+
+/** Ein Handgriff am Reset-Knopf, danach macht der Dienst von selbst weiter (Fälle gl_passwort, halb_eigene). */
+const ZURUECKSETZEN = new Set(['gl_passwort', 'halb_eigene']);
+/** Der Startlader (M4). */
+const STARTLADER = new Set(['ssh_zu', 'abbild_abgelehnt', 'openwrt_fassung']);
+
+/** Welcher Bildschirm einen angehaltenen Lauf zeigt: nach `fall`, für ältere Stände nach dem Anfang von `handgriff`. */
+export function angehaltenArt(lauf: LaufStand): 'startlader' | 'zuruecksetzen' | 'problem' {
+  const h = lauf.handgriff ?? '';
+  if ((lauf.fall && ZURUECKSETZEN.has(lauf.fall)) || h.startsWith('Zurücksetzen')) return 'zuruecksetzen';
+  if ((lauf.fall && STARTLADER.has(lauf.fall)) || h.startsWith('Startlader')) return 'startlader';
+  return 'problem';
 }
 
 // ── Freigabe, Heute, Übersicht ─────────────────────────────────────────────

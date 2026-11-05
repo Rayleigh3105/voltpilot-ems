@@ -28,6 +28,18 @@ type falschesPortal struct {
 	geschlossen []string
 	abnahmen    []portal.Abnahme
 	codeFehler  error
+	// stand je Referenz für BoxStandLesen; fehlt sie: Fehler.
+	stand map[string]portal.BoxStand
+}
+
+func (p *falschesPortal) BoxStandLesen(_ context.Context, ref string) (portal.BoxStand, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	st, ok := p.stand[ref]
+	if !ok {
+		return portal.BoxStand{}, errors.New("Portal nicht erreicht")
+	}
+	return st, nil
 }
 
 func (p *falschesPortal) CodeHolen(_ context.Context, ref string, tausch bool) (portal.Code, error) {

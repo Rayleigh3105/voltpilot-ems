@@ -69,6 +69,12 @@ describe('Werkstatt-Bildschirme aus der Ansicht des Dienstes', () => {
     expect(bildschirm({ dienst: dienst(mit({ zustand: 'wartet', wartet_auf: 'probe' })), gewaehlt: true, erledigt: leer }).art).toBe('du');
     expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', handgriff: 'Startlader (Handgriff M4): …' })), gewaehlt: true, erledigt: leer }).art).toBe('startlader');
     expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', grund: 'kein Handshake' })), gewaehlt: true, erledigt: leer }).art).toBe('problem');
+    // Nach dem Fall, für ältere Stände ohne fall nach dem Anfang des Handgriffs.
+    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', fall: 'gl_passwort' })), gewaehlt: true, erledigt: leer }).art).toBe('zuruecksetzen');
+    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', fall: 'halb_eigene' })), gewaehlt: true, erledigt: leer }).art).toBe('zuruecksetzen');
+    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', handgriff: 'Zurücksetzen: Reset-Knopf …' })), gewaehlt: true, erledigt: leer }).art).toBe('zuruecksetzen');
+    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', fall: 'ssh_zu' })), gewaehlt: true, erledigt: leer }).art).toBe('startlader');
+    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', fall: 'passwort_fremd' })), gewaehlt: true, erledigt: leer }).art).toBe('problem');
     expect(bildschirm({ dienst: dienst(mit({ zustand: 'fertig' })), gewaehlt: true, erledigt: leer }).art).toBe('fertig');
     // Abgezogen nach dem Ende, oder an der Werkbank weggeklickt: die nächste Box anschließen.
     expect(bildschirm({ dienst: dienst(mit({ zustand: 'fertig' }, false)), gewaehlt: true, erledigt: leer }).art).toBe('anschliessen');

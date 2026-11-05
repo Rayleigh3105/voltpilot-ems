@@ -94,6 +94,26 @@ type Status struct {
 		Firewall  bool `json:"firewall"`
 	} `json:"durchleitung"`
 	Antworten []Antwort `json:"antworten"`
+	// Strom: Unterspannung des Raspberry Pi (vcgencmd get_throttled). Fehlt bei
+	// einer Brücke vor dieser Fassung; Felder nil, wenn sie es nicht lesen kann.
+	Strom *Strom `json:"strom,omitempty"`
+}
+
+// Strom ist die Versorgung der Brücke. Eine Mango am USB des Pi zieht beim
+// Start Strom; ein Pi mit Unterspannung verliert dann WLAN (Lauf 114050-9ef8).
+type Strom struct {
+	UnterspannungJetzt     *bool  `json:"unterspannung_jetzt,omitempty"`
+	UnterspannungSeitStart *bool  `json:"unterspannung_seit_start,omitempty"`
+	Quelle                 string `json:"quelle"`
+}
+
+// Unterspannung sagt, ob die Brücke jetzt oder seit ihrem Start zu wenig Strom hatte.
+func (s Status) Unterspannung() bool {
+	if s.Strom == nil {
+		return false
+	}
+	return (s.Strom.UnterspannungJetzt != nil && *s.Strom.UnterspannungJetzt) ||
+		(s.Strom.UnterspannungSeitStart != nil && *s.Strom.UnterspannungSeitStart)
 }
 
 // Antwort: wer an einer Box-Adresse des Werkstatt-Anschlusses antwortet.

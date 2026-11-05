@@ -39,6 +39,7 @@ type Mango struct {
 	WgPub                   string
 	Neustartdauer           time.Duration
 	Zweite                  bool // ein zweites Gerät mit eigener MAC unter derselben Adresse
+
 	// BestaetigterStand ist, was /health meldet (ota_update.current_seq);
 	// 0 = keiner. OhneVertrauensSet: /health meldet kein geprüftes Set.
 	BestaetigterStand int64
@@ -49,6 +50,8 @@ type Mango struct {
 	Anmelden func(code, wireguard, host string) (aus string, rc int)
 
 	mu           sync.Mutex
+	startet      bool   // SetzeStartet
+	sshZu        bool   // SetzeSSHZu
 	phase        string // werk | openwrt
 	adresse      string
 	offline      bool
@@ -122,6 +125,9 @@ func (m *Mango) Antworten() []map[string]any {
 	if m.Zweite {
 		macs = append(macs, "94:83:c4:ab:cd:ef")
 	}
+	if m.startet {
+		return []map[string]any{{"adresse": "192.168.1.1", "macs": macs}}
+	}
 	return []map[string]any{{"adresse": m.adresse, "macs": macs}}
 }
 
@@ -129,11 +135,14 @@ func (m *Mango) Antworten() []map[string]any {
 func (m *Mango) Ziel(ziel string) (string, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.offline {
+	if m.offline || m.startet {
 		return "", false
 	}
 	switch ziel {
 	case m.adresse + ":22":
+		if m.sshZu {
+			return "127.0.0.1:1", true // niemand lauscht: Connection refused
+		}
 		return m.sshLn.Addr().String(), true
 	case m.adresse + ":80":
 		if m.phase == "werk" {
@@ -466,3 +475,49 @@ func (m *Mango) Einstecken() { m.mu.Lock(); m.offline = false; m.mu.Unlock() }
 
 // SetzeAdresse stellt die Mango unter eine andere Adresse (eingerichtete Box).
 func (m *Mango) SetzeAdresse(a string) { m.mu.Lock(); m.adresse = a; m.mu.Unlock() }
+
+// HalbEingerichtet stellt die Mango so, wie ein abgebrochener Lauf sie
+// hinterlässt: OpenWrt mit dem Passwort pw, Edge Light, unter adresse
+// (192.168.1.1 oder dem LAN-Netz).
+func (m *Mango) HalbEingerichtet(adresse, pw string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.phase, m.adresse, m.passwort, m.edge, m.laeuft = "openwrt", adresse, pw, true, true
+	if adresse != "192.168.1.1" {
+		m.lan = adresse + "/24"
+	}
+}
+
+// HostOpenWrt ist der Fingerabdruck des Host-Schlüssels unter OpenWrt.
+func (m *Mango) HostOpenWrt() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return ssh.FingerprintSHA256(m.hostOW.PublicKey())
+}
+
+// Zuruecksetzen ist der Reset-Knopf (10 s): unter OpenWrt frisch unter
+// 192.168.1.1 mit neuem Host-Schlüssel, unter der GL-Firmware wieder ab Werk.
+// Die Mango ist danach vom Netz, bis Einstecken sie zurückbringt (Neustart).
+func (m *Mango) Zuruecksetzen(t testing.TB) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.offline = true
+	m.passwort, m.edge, m.laeuft, m.lan, m.gateway, m.dns, m.tunnel = "", false, false, "", "", nil, ""
+	m.RootPasswortAbWerk = false
+	m.dateien = map[string][]byte{}
+	if m.phase == "openwrt" {
+		m.adresse = "192.168.1.1"
+		m.hostOW = rsaSchluessel(t)
+	} else {
+		m.adresse = "192.168.8.1"
+	}
+}
+
+// SetzeStartet: Die Mango bootet gerade. Im Preinit-Fenster antwortet jede
+// OpenWrt-Firmware kurz auf ARP unter 192.168.1.1; eine Verbindung dorthin
+// findet die Box danach nicht mehr (die Brücke: No route to host).
+func (m *Mango) SetzeStartet(ja bool) { m.mu.Lock(); m.startet = ja; m.mu.Unlock() }
+
+// SetzeSSHZu: Die Box antwortet auf ARP, Dropbear läuft aber noch nicht
+// (Connection refused), etwa beim ersten Start nach einem Reset.
+func (m *Mango) SetzeSSHZu(ja bool) { m.mu.Lock(); m.sshZu = ja; m.mu.Unlock() }

@@ -440,6 +440,7 @@ function erwarteterBildschirm(name: string): string {
   if (name.startsWith('laeuft_')) return 'laeuft';
   if (name.startsWith('wartet_')) return 'du';
   if (name === 'angehalten_startlader') return 'startlader';
+  if (name === 'angehalten_gl_passwort' || name === 'angehalten_halb_eigene') return 'zuruecksetzen';
   if (name.startsWith('angehalten_')) return 'problem';
   if (name === 'fertig') return 'fertig';
   return 'anschliessen';
@@ -458,6 +459,7 @@ describe('Werkstatt: Ansichten des Dienstes vom 04.11.2026', () => {
     expect(ABLAUF.map(([n]) => n)).toEqual(expect.arrayContaining([
       'ohne_kabel', 'mit_kabel', 'angehalten_beim_erkennen', 'laeuft_erkennen', 'laeuft_wiedererkennen', 'wartet_tunnel_adresse',
       'wartet_probe', 'angehalten_beim_neustart', 'angehalten_startlader', 'fertig',
+      'startet', 'unterspannung', 'angehalten_gl_passwort', 'angehalten_halb_eigene', 'angehalten_passwort_fremd',
     ]));
     // jeder Schritt des echten Laufs ab Werk; ohne Portal-API kommt die Tunnel-Adresse aus dem Portal statt einloesen
     expect(ABLAUF.filter(([n]) => n.startsWith('laeuft_')).map(([n]) => n.slice('laeuft_'.length)).sort())
@@ -474,6 +476,31 @@ describe('Werkstatt: Ansichten des Dienstes vom 04.11.2026', () => {
     expect(screen.getByTestId('wsb')).toHaveAttribute('data-bildschirm', art);
     expect(fehler).not.toHaveBeenCalled();
     fehler.mockRestore();
+  });
+
+  it.each([
+    ['angehalten_gl_passwort', 'Diese Mango hat schon jemand eingerichtet.', 'Reset-Knopf der Mango'],
+    ['angehalten_halb_eigene', 'Diese Mango ist nur halb eingerichtet.', 'Reset-Knopf der Mango'],
+    ['angehalten_passwort_fremd', 'Diese Mango gehört nicht zur Werkstatt.', 'Nicht zurücksetzen.'],
+    ['angehalten_beim_erkennen', 'Die Brücke war während des Laufs weg.', 'Raspberry Pi'],
+  ])('Lösung aus dem Dienst: %s zeigt „%s“', async (name, titel, schritt) => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    werkstattDienst.mockResolvedValue(ausZustand(name, laeufeZu(name)));
+    render(<Fehlergrenze><WerkstattPage /></Fehlergrenze>);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    expect(screen.getByText(titel)).toBeInTheDocument();
+    expect(screen.getAllByText(new RegExp(schritt)).length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['startet', 'Die Mango startet noch.'],
+    ['unterspannung', 'Die Brücke hat zu wenig Strom.'],
+  ])('Fall am Anschluss: %s zeigt „%s“', async (name, titel) => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    werkstattDienst.mockResolvedValue(ausZustand(name, laeufeZu(name)));
+    render(<Fehlergrenze><WerkstattPage /></Fehlergrenze>);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    expect(screen.getByTestId('wsb-anschluss-fall')).toHaveTextContent(titel);
   });
 
   /** So meldete der Dienst bis 724ebdde9 einen Lauf ohne erledigten Schritt; die API hält solche Stände je Lauf fest. */

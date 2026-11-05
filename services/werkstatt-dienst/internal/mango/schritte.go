@@ -21,6 +21,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/box"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/durchreiche"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/fassungen"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
@@ -59,10 +60,18 @@ func (l *Lauf) erkennenWerk(ctx context.Context, k *lauf.Kontext) (protokoll.Bel
 	}
 	l.mac = e.MAC
 	b := protokoll.Beleg{}.Mit("mac", e.MAC).Mit("mac_hinweis", macHinweis(e.MAC))
-	v, err := box.Verbinde(ctx, l.k.Werkbank, netip.AddrPortFrom(WerksAdresse, 22), geheim.Geheim{}, nil, l.k.Zeiten.Verbinden)
+	// Nach dem Einstecken oder einem Reset startet die Werksfirmware noch:
+	// Dropbear kommt nach dem Netz (Lauf 8287: Connection refused).
+	v, err := l.pruefeVerbinden(ctx, netip.AddrPortFrom(WerksAdresse, 22), 2*l.k.Zeiten.Verbinden)
 	var ab box.Abgewiesen
 	if errors.As(err, &ab) {
-		return b, lauf.Handgriff{Was: zurSeite, Grund: "Die Mango verlangt ein Passwort: Sie ist schon eingerichtet, oder ihre Firmware lässt SSH ohne Passwort nicht zu (Prüfstein PS-1). Der Dienst rät keine Passwörter."}
+		// Unter 192.168.8.1 steht nur GL-Firmware, nie eine Box dieser Werkstatt
+		// (die hat OpenWrt unter 192.168.1.1 oder dem LAN-Netz): Zurücksetzen
+		// nimmt niemandem etwas weg.
+		return b.Mit("host_schluessel_werk", orNone(ab.Host)), lauf.Handgriff{Was: Zuruecksetzen, Fall: faelle.GLPasswort, Grund: "Die Mango verlangt ein Passwort: Jemand hat ihre Werksfirmware schon eingerichtet (gebraucht gekauft oder angefangen). Der Dienst rät keine Passwörter; zurückgesetzt ist sie wieder ab Werk."}
+	}
+	if startetNoch(err) {
+		return b, lauf.Handgriff{Was: l.startlader(), Fall: faelle.SSHZu, Grund: "Die Werksfirmware lässt kein SSH zu (" + geheim.Schwaerze(err.Error()) + "; Prüfstein PS-1). Über den Startlader kommt OpenWrt trotzdem auf die Mango."}
 	}
 	if err != nil {
 		return b, err
@@ -76,13 +85,13 @@ func (l *Lauf) erkennenWerk(ctx context.Context, k *lauf.Kontext) (protokoll.Bel
 	b = b.Mit("board", w["board"]).Mit("modell", w["modell"]).Mit("gl_firmware", w["gl"]).Mit("basis", "OpenWrt "+w["basis"]).Mit("root_passwort", w["rootpw"])
 	switch {
 	case !boardPasst(w["board"]):
-		return b, lauf.Handgriff{Was: zurSeite, Grund: fmt.Sprintf("Das Gerät ist keine GL-MT300N-V2 (board %q).", w["board"])}
+		return b, lauf.Handgriff{Was: zurSeite, Fall: faelle.FalschesGeraet, Grund: fmt.Sprintf("Das Gerät ist keine GL-MT300N-V2 (board %q).", w["board"])}
 	case w["gl"] == "":
-		return b, lauf.Handgriff{Was: zurSeite, Grund: "Unter 192.168.8.1 antwortet keine GL-Werksfirmware (/etc/glversion fehlt)."}
+		return b, lauf.Handgriff{Was: zurSeite, Fall: faelle.FalschesGeraet, Grund: "Unter 192.168.8.1 antwortet keine GL-Werksfirmware (/etc/glversion fehlt)."}
 	case w["rootpw"] != "leer":
-		return b, lauf.Handgriff{Was: zurSeite, Grund: "root hat ein Passwort: Die Mango ist schon eingerichtet. Der Dienst fasst eingerichtete Geräte nicht an."}
+		return b, lauf.Handgriff{Was: Zuruecksetzen, Fall: faelle.GLPasswort, Grund: "root hat ein Passwort: Jemand hat ihre Werksfirmware schon eingerichtet. Zurückgesetzt ist sie wieder ab Werk."}
 	case w["edge"] == "ja":
-		return b, lauf.Handgriff{Was: zurSeite, Grund: "Auf dem Gerät ist schon Edge Light: keine Mango ab Werk."}
+		return b, lauf.Handgriff{Was: zurSeite, Fall: faelle.SchonEdgeLight, Grund: "Auf dem Gerät ist schon Edge Light: keine Mango ab Werk."}
 	}
 	l.tmpFrei, _ = strconv.ParseInt(w["tmp_frei_kb"], 10, 64)
 	b = b.Mit("gl_schnittstelle", l.glSchnittstelle(ctx))
@@ -130,10 +139,15 @@ echo "dropbear=$(dropbear -V 2>&1 | head -n1)"`
 // für den Lauf fest und prüft Fassung und Werkszustand.
 func (l *Lauf) openwrtPruefen(ctx context.Context, b protokoll.Beleg) (protokoll.Beleg, error) {
 	ziel := netip.AddrPortFrom(OpenWrtAdresse, 22)
-	v, err := box.Verbinde(ctx, l.k.Werkbank, ziel, geheim.Geheim{}, nil, l.k.Zeiten.Verbinden)
+	v, err := l.pruefeVerbinden(ctx, ziel, 2*l.k.Zeiten.Verbinden)
 	var ab box.Abgewiesen
 	if errors.As(err, &ab) {
-		return b, lauf.Handgriff{Was: zurSeite, Grund: "Das Gerät unter 192.168.1.1 verlangt ein Passwort: kein frisches OpenWrt. Der Dienst fasst eingerichtete Geräte nicht an."}
+		b = b.Mit("host_schluessel", orNone(ab.Host))
+		sp, nein, fall := l.k.HalbEigene(ctx, l.mac, ab.Host, l.kennung)
+		if nein == "" {
+			return b.Mit("lauf_vorher", sp.Lauf).Mit("zuruecksetzen", "ja"), lauf.Handgriff{Was: Zuruecksetzen, Fall: faelle.HalbEigene, Grund: halbGrund(sp)}
+		}
+		return b.Mit("zuruecksetzen", "nein - "+nein), lauf.Handgriff{Was: zurSeite, Fall: fall, Grund: "Das Gerät unter 192.168.1.1 verlangt ein Passwort: kein frisches OpenWrt. Der Dienst fasst eingerichtete Geräte nicht an (" + nein + ")."}
 	}
 	if err != nil {
 		return b, err
@@ -145,22 +159,22 @@ func (l *Lauf) openwrtPruefen(ctx context.Context, b protokoll.Beleg) (protokoll
 	}
 	b = b.Mit("openwrt", w["release"]+" "+w["target"]).Mit("board", w["board"]).Mit("dropbear", w["dropbear"]).Mit("root_passwort", w["rootpw"]).
 		Mit("host_schluessel", v.HostArt()+" "+v.HostFingerabdruck())
-	grund := ""
+	h := lauf.Handgriff{Was: zurSeite}
 	switch {
 	case w["release"] != l.freigabe.OpenWrt.Fassung:
-		grund = fmt.Sprintf("OpenWrt %q statt %s aus der Freigabe.", w["release"], l.freigabe.OpenWrt.Fassung)
+		h.Was, h.Fall, h.Grund = l.startlader(), faelle.OpenWrtFassung, fmt.Sprintf("OpenWrt %q statt %s aus der Freigabe.", w["release"], l.freigabe.OpenWrt.Fassung)
 	case !boardPasst(w["board"]):
-		grund = fmt.Sprintf("Das Gerät ist keine GL-MT300N-V2 (board %q).", w["board"])
+		h.Fall, h.Grund = faelle.FalschesGeraet, fmt.Sprintf("Das Gerät ist keine GL-MT300N-V2 (board %q).", w["board"])
 	case w["gl"] == "ja":
-		grund = "Unter 192.168.1.1 läuft noch GL-Firmware."
+		h.Was, h.Fall, h.Grund = l.startlader(), faelle.OpenWrtFassung, "Unter 192.168.1.1 läuft noch GL-Firmware."
 	case w["rootpw"] != "leer":
-		grund = "root hat ein Passwort: kein frisches OpenWrt."
+		h.Fall, h.Grund = faelle.NichtNachweisbar, "root hat ein Passwort: kein frisches OpenWrt."
 	case w["edge"] == "ja":
-		grund = "Auf dem Gerät ist schon Edge Light: kein frisches OpenWrt."
+		h.Fall, h.Grund = faelle.SchonEdgeLight, "Auf dem Gerät ist schon Edge Light: kein frisches OpenWrt."
 	}
-	if grund != "" {
+	if h.Grund != "" {
 		v.Schliesse()
-		return b, lauf.Handgriff{Was: zurSeite, Grund: grund}
+		return b, h
 	}
 	l.v, l.ziel = v, ziel
 	l.host, l.hostArt = v.HostFingerabdruck(), v.HostArt()
@@ -293,10 +307,8 @@ func (l *Lauf) openwrtAufspielen(ctx context.Context, _ *lauf.Kontext) (protokol
 	}
 	b = b.Mit("sysupgrade_test", "Ausgang "+strconv.Itoa(erg.Code)+" "+kurz(erg.Text(), 300))
 	if erg.Code != 0 {
-		return b, lauf.Handgriff{
-			Was:   "Startlader (Handgriff M4): Mango vom Strom, Reset-Knopf halten und Strom stecken, bis die Leuchte fünfmal blinkt; am Rechner 192.168.1.2 einstellen, http://192.168.1.1 öffnen und " + l.freigabe.OpenWrt.Datei + " hochladen. Danach steckt die Mango mit frischem OpenWrt am orangen Kabel, und der Dienst macht weiter.",
-			Grund: "Die Werksfirmware nimmt das Abbild nicht an (sysupgrade -T): " + letzte(erg.Text(), 3),
-		}
+		return b, lauf.Handgriff{Was: l.startlader(), Fall: faelle.AbbildAbgelehnt,
+			Grund: "Die Werksfirmware nimmt das Abbild nicht an (sysupgrade -T): " + letzte(erg.Text(), 3)}
 	}
 	// -n: GL-Einstellungen passen nicht zu OpenWrt. Nie -F.
 	erg, err = v.Fuehre(ctx, "sysupgrade -n "+abbildAufBox, nil)
@@ -337,7 +349,7 @@ func (l *Lauf) wiedererkennen(ctx context.Context, _ *lauf.Kontext) (protokoll.B
 		if err != nil {
 			var ab box.Abgewiesen
 			if errors.As(err, &ab) {
-				return lauf.Handgriff{Was: zurSeite, Grund: "Nach dem Aufspielen verlangt die Box ein Passwort: kein frisches OpenWrt."}
+				return lauf.Handgriff{Was: zurSeite, Fall: faelle.NichtNachweisbar, Grund: "Nach dem Aufspielen verlangt die Box ein Passwort: kein frisches OpenWrt."}
 			}
 			return err
 		}

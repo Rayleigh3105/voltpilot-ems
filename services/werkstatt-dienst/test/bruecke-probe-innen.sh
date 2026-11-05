@@ -177,6 +177,14 @@ case "$w" in *"(werkstatt)"*) ok "6 Notfall-Schlüssel: Shell als werkstatt" ;; 
 als cluster notfall werkstatt 'sudo -n id' >/dev/null 2>&1 && nein "6 werkstatt darf beliebiges sudo" || ok "6 sudo nur für die zwei Befehle"
 w=$(als cluster notfall werkstatt 'sudo -n /usr/local/sbin/vp-werkbank-status' 2>&1)
 case "$w" in '{"schema"'*) ok "6 sudo für den Status" ;; *) nein "6 sudo Status: $w" ;; esac
+case "$w" in *'"strom":{"quelle":"keine"}'*) ok "6 Status ohne vcgencmd: Strom unbekannt" ;; *) nein "6 Strom ohne vcgencmd: $w" ;; esac
+printf '#!/bin/sh\necho throttled=0x50005\n' > /usr/local/bin/vcgencmd && chmod 755 /usr/local/bin/vcgencmd
+w=$(als cluster notfall werkstatt 'sudo -n /usr/local/sbin/vp-werkbank-status' 2>&1)
+case "$w" in *'"strom":{"unterspannung_jetzt":true,"unterspannung_seit_start":true,"quelle":"vcgencmd"}'*) ok "6 Unterspannung des Pi im Status" ;; *) nein "6 Unterspannung: $w" ;; esac
+printf '#!/bin/sh\necho throttled=0x0\n' > /usr/local/bin/vcgencmd
+w=$(als cluster notfall werkstatt 'sudo -n /usr/local/sbin/vp-werkbank-status' 2>&1)
+case "$w" in *'"unterspannung_jetzt":false,"unterspannung_seit_start":false'*) ok "6 ohne Unterspannung" ;; *) nein "6 ohne Unterspannung: $w" ;; esac
+mv /usr/local/bin/vcgencmd /usr/local/bin/vcgencmd.aus
 
 # ------------------------------------------------------- 7 SSH-Quellen ---
 als fremd notfall werkstatt true 2>/dev/null && nein "7 SSH aus dem Büronetz" || ok "7 SSH aus dem Büronetz abgewiesen"

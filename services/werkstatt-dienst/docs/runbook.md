@@ -157,21 +157,49 @@ Je Mango (die Werkstatt ist freigegeben, die Brücke bereit):
 
 Steckt eine Mango schon mit frischem OpenWrt am Kabel (192.168.1.1, root ohne Passwort), beginnt der Lauf dort.
 
-**Handgriffe, wenn ein Lauf anhält** (die Anzeige nennt Grund und Handgriff):
+**Bevor ein Lauf beginnt**, wartet der Dienst, bis die Box fertig gestartet ist: dieselbe MAC zwei Takte hintereinander
+unter derselben Adresse, und Port 22 nimmt an. Beim Start zeigt jede OpenWrt-Firmware ein paar Sekunden 192.168.1.1
+(Preinit), und Dropbear kommt nach dem Netz (Läufe 113810-d74e und 115040-8287 am 05.11.). Bis dahin steht in der
+Ansicht `startet`, es beginnt kein Lauf und nichts wird gesperrt; nach 5 Minuten (`StartFrist`) beginnt er trotzdem und
+nennt den Grund.
 
-| Grund | Handgriff |
-|---|---|
-| mehrere Geräte am Werkstatt-Anschluss | nur eine Mango an das orange Kabel |
-| die Mango verlangt ein Passwort / root hat ein Passwort / schon Edge Light | abziehen, zur Seite legen; neu aus dem Karton: Reset-Knopf 10 s halten, erneut einstecken |
-| kein GL-MT300N-V2, keine GL-Firmware | abziehen, zur Seite legen |
-| die Werksfirmware nimmt das Abbild nicht an (`sysupgrade -T`) | Startlader (M4): Reset halten und Strom stecken, bis die Leuchte fünfmal blinkt; am Rechner 192.168.1.2, http://192.168.1.1, Abbild der Freigabe hochladen; danach mit frischem OpenWrt an das orange Kabel |
-| kein Internet über die Brücke (PS-12) | WLAN und Router der Brücke prüfen, dann abziehen und neu einstecken |
-| `einloesen`: das Portal hat abgewiesen, `schluessel_festgehalten` | die Box wurde neu aufgespielt oder ist eine andere unter derselben Kennung: abziehen, zur Seite legen; einen Tausch gibt es nur ausdrücklich und solange sie ungekoppelt ist |
-| `einloesen`: nicht freigegeben, Obergrenze, gekoppelt | Freigabe prüfen bzw. neu erteilen; eine gekoppelte Box bekommt keinen Code |
-| der Dienst wurde mitten im Lauf neu gestartet | abziehen, zur Seite legen: der Stand der Box ist unbekannt; ein gesetztes Passwort steht in `passwort_age` |
+**Wenn ein Lauf anhält**, nennt die Ansicht den Fall (`lauf.fall`) und die Lösung in Alltagsworten (`lauf.loesung`);
+die Werkstatt-Seite zeigt sie. Alle Codes: [Vertrag](../../../docs/contracts/werkstatt-ansicht-v1.md#fälle).
 
-Nach jedem Ende (fertig oder angehalten) fasst der Dienst dieselbe Box erst wieder an, wenn sie abgezogen war. Eine
-Box unter dem LAN-Netz (10.213.0.1) ist eingerichtet und wird nie angefasst.
+| Fall | Handgriff | dann |
+|---|---|---|
+| `gl_passwort`: 192.168.8.1 verlangt ein Passwort (gebraucht gekauft, GL-Assistent schon durchlaufen) | **Reset-Knopf 10 s** halten, bis die Leuchte schnell blinkt; Kabel und Strom bleiben | der Dienst beginnt von selbst einen neuen Lauf ab Werk |
+| `halb_eigene`: eine Box, die diese Werkstatt begonnen und nicht fertig gemacht hat (Passwort unter 192.168.1.1 oder Box im LAN-Netz) | **Reset-Knopf 10 s** | frisch unter 192.168.1.1, neuer Lauf, neue Referenz |
+| `passwort_fremd`, `box_in_gebrauch`, `nicht_nachweisbar` | keiner: zur Seite legen, die Technik sieht sie an | – |
+| `ssh_zu` (Werksfirmware lässt kein SSH zu, PS-1), `abbild_abgelehnt` (`sysupgrade -T`), `openwrt_fassung` | Startlader (M4): Reset halten und Strom stecken, bis die Leuchte fünfmal blinkt; am Rechner 192.168.1.2, http://192.168.1.1, Abbild der Freigabe hochladen | mit frischem OpenWrt am Kabel macht der Dienst weiter |
+| `falsches_geraet`, `schon_edge_light` | zur Seite legen | – |
+| `kein_internet` (PS-12) | WLAN und Router der Brücke prüfen, dann Kabel kurz abziehen | neuer Lauf |
+| `bruecke_weg`, `box_weg`, `uebertragung`, `schritt_gescheitert` | Kabel kurz abziehen; beim zweiten Mal zur Seite | neuer Lauf; hatte die Box schon das Passwort, ist es `halb_eigene` |
+| `einloesen_abgewiesen` (`schluessel_festgehalten`, nicht freigegeben, Obergrenze, gekoppelt) | zur Seite; Freigabe prüfen bzw. neu erteilen; einen Tausch gibt es nur ausdrücklich und solange sie ungekoppelt ist | – |
+| `dienst_neu_gestartet` (der Dienst startete mitten im Lauf neu) | Kabel kurz abziehen | ohne Passwort neuer Lauf, mit Passwort dieser Werkstatt `halb_eigene` |
+
+**Wann der Dienst den Reset nennt (Sicherheitslinie, Entscheid NA-1 B).** Der Dienst kommt in keine Box mit Passwort
+und löscht selbst nichts; er nennt den Reset-Knopf nur, wenn niemandem etwas verloren geht:
+
+- unter 192.168.8.1 (dort steht nur GL-Firmware, nie eine Box dieser Werkstatt), oder
+- `halb_eigene`, alle vier: ein Lauf dieses Dienstes hat dieser MAC ein Passwort gesetzt (Schritt `passwort` belegt);
+  dieser Lauf hat sie nicht übergeben (nicht fertig, `uebergabe` nicht belegt); die Box zeigt beim SSH-Handshake
+  denselben Host-Schlüssel wie in jenem Lauf (angemeldet wird nicht); hat sie schon eine Referenz, sagt das Portal
+  `abgenommen: false` und `gekoppelt: false` (`GET /api/v1/werkstatt-dienst/einloesungen/{ref}`). Antwortet das Portal
+  nicht oder fehlt es: kein Reset.
+
+Eine Box unter dem LAN-Netz (10.213.0.1) ohne unfertigen Lauf dieser Werkstatt ist eingerichtet und wird nie angefasst
+(keine Verbindung). Nach einem Reset bekommt die Box eine neue Referenz; der alte Eintrag im Register bleibt als
+Verlauf stehen (er ist „in Gebrauch“: Lauf, Code, Einlösung).
+
+Nach jedem Ende (fertig oder angehalten) fasst der Dienst dieselbe Box erst wieder an, wenn ihre MAC einen Takt lang
+weg war: abgezogen, oder neu gestartet (auch durch den Reset).
+
+**Strom der Brücke.** Hängt die Mango am USB des Raspberry Pi, zieht sie beim Start Strom; ein Pi mit Unterspannung
+verliert WLAN, der Dienst erreicht die Brücke dann nicht (Lauf 114050-9ef8: „Brücke … nicht erreichbar: i/o
+timeout“). Die Brücke meldet `strom.unterspannung_jetzt` und `…_seit_start` (`vcgencmd get_throttled`); wartet der
+Dienst dabei auf eine Box, zeigt die Seite `bruecke_unterspannung`. Abhilfe: die Mango an ein eigenes USB-Netzteil,
+für den Pi das passende Netzteil (Pi 4: 5,1 V / 3 A).
 
 ## Fassungen der Freigabe
 
@@ -319,7 +347,7 @@ Die Proben (`test/bruecke-probe.sh`) ersetzen keinen echten Pi und keine echte M
 | PS-11 | Erreicht ein Pod die Brücke? | Nach dem Sync: Log „Brücke bereit“. Steht die Brücke in 192.168.0.x und das Cluster in 192.168.178.x, braucht es eine Route zwischen den Netzen; sonst die Brücke ins Netz des Clusters. |
 | PS-12 | Internet für die Mango über die Brücke | Ohne Mango schon messbar: einen Rechner per Kabel an die Buchse der Brücke, feste Adresse 192.168.8.10/24, Gateway 192.168.8.2, DNS 9.9.9.9. `curl -sI https://downloads.openwrt.org` antwortet; der Router (`192.168.0.1`) und andere Geräte im Netz antworten nicht. |
 | PS-13 | WLAN der Brücke hält | In der Anzeige „Energiesparen aus“. Router kurz neu starten: die Anzeige geht auf „nicht erreichbar“ und nach dem WLAN von selbst wieder auf „Brücke bereit“. |
-| PS-1 | Mango ab Werk: SSH als root ohne Passwort (Firmware 3.216 und 4.3.x), Board, `/etc/glversion`, root ohne Passwort | erster echter Lauf: Schritt `erkennen`; vorher mit dem Mac messbar (Mango per Kabel an den Mac, `ssh root@192.168.8.1`). Der Beleg `gl_schnittstelle` hält die Antwort der GL-Schnittstelle fest: ihre Felder sind nicht nachgemessen, entschieden wird darüber noch nichts |
+| PS-1 | Mango ab Werk: SSH als root ohne Passwort (Firmware 3.216 und 4.3.x), Board, `/etc/glversion`, root ohne Passwort | erster echter Lauf: Schritt `erkennen`; vorher mit dem Mac messbar (Mango per Kabel an den Mac, `ssh root@192.168.8.1`). Der Beleg `gl_schnittstelle` hält die Antwort der GL-Schnittstelle fest: ihre Felder sind nicht nachgemessen, entschieden wird darüber noch nichts. Stand 05.11.2026 an einer Mango ab Werk noch nicht gemessen (die Läufe dieses Tages waren eine gebrauchte GL-Mango mit Passwort und eine halb eingerichtete Box). Hält PS-1 nicht, endet der Lauf mit `ssh_zu` und dem Startlader |
 | PS-2 | `sysupgrade -T` und `-n` mit dem 25.12.5-Abbild aus beiden GL-Linien, ohne `-F` | Schritte `openwrt` und `wiedererkennen` an je einer Mango mit 3.216 und 4.3.x |
 | PS-3 | Dauer je Schritt | Metrik `vp_werkstatt_schritt_letzte_dauer_seconds`, Beleg `dauer_bis_openwrt`, `dauer_bis_antwort`; Fristen in `mango.VorgabeZeiten` danach stellen |
 | PS-4 | Startlader-Hochladen | nur Rückfall (Handgriff M4); ein Hochladen durch den Dienst gibt es noch nicht |

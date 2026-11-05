@@ -315,17 +315,18 @@ func TestAbbruchregeln(t *testing.T) {
 		schritt   string
 		grund     string
 		handgriff bool
+		fall      string
 	}{
-		{"schon eingerichtet", mango.AbWerk, func(a *aufbau) { a.m.RootPasswortAbWerk = true }, "erkennen", "verlangt ein Passwort", true},
-		{"anderes Gerät", mango.AbWerk, func(a *aufbau) { a.m.Board = "glinet,gl-ar300m" }, "erkennen", "keine GL-MT300N-V2", true},
-		{"keine GL-Firmware", mango.AbWerk, func(a *aufbau) { a.m.GL = "" }, "erkennen", "keine GL-Werksfirmware", true},
-		{"zwei Geräte", mango.AbWerk, func(a *aufbau) { a.m.Zweite = true }, "erkennen", "mehrere Geräte", true},
-		{"Abbild abgelehnt", mango.AbWerk, func(a *aufbau) { a.m.SysupgradeTestScheitert = true }, "openwrt", "nimmt das Abbild nicht an", true},
-		{"Prüfsumme auf der Box", mango.AbWerk, func(a *aufbau) { a.m.AbbildVerfaelschen = true }, "openwrt", "Prüfsumme auf der Box", false},
-		{"falsche OpenWrt-Fassung", mango.AbWerk, func(a *aufbau) { a.m.OpenWrt = "24.10.4" }, "wiedererkennen", "statt 25.12.5", true},
-		{"Freigabe-Prüfsumme", mango.AbWerk, func(a *aufbau) { a.f.OpenWrt.Sha256 = strings.Repeat("0", 64) }, "fassungen", "nicht benutzt", false},
-		{"falsche Programm-Fassung", mango.AbOpenWrt, func(a *aufbau) { a.m.Version = "edge-light-gabc1234" }, "programm", "die Freigabe nennt", false},
-		{"Referenz ohne Prüfzeichen", mango.AbOpenWrt, func(a *aufbau) { a.m.Ref = "edge-k7m2xqz" }, "programm", "Prüfzeichen", false},
+		{"schon eingerichtet", mango.AbWerk, func(a *aufbau) { a.m.RootPasswortAbWerk = true }, "erkennen", "verlangt ein Passwort", true, "gl_passwort"},
+		{"anderes Gerät", mango.AbWerk, func(a *aufbau) { a.m.Board = "glinet,gl-ar300m" }, "erkennen", "keine GL-MT300N-V2", true, "falsches_geraet"},
+		{"keine GL-Firmware", mango.AbWerk, func(a *aufbau) { a.m.GL = "" }, "erkennen", "keine GL-Werksfirmware", true, "falsches_geraet"},
+		{"zwei Geräte", mango.AbWerk, func(a *aufbau) { a.m.Zweite = true }, "erkennen", "mehrere Geräte", true, "zwei_geraete"},
+		{"Abbild abgelehnt", mango.AbWerk, func(a *aufbau) { a.m.SysupgradeTestScheitert = true }, "openwrt", "nimmt das Abbild nicht an", true, "abbild_abgelehnt"},
+		{"Prüfsumme auf der Box", mango.AbWerk, func(a *aufbau) { a.m.AbbildVerfaelschen = true }, "openwrt", "Prüfsumme auf der Box", false, "uebertragung"},
+		{"falsche OpenWrt-Fassung", mango.AbWerk, func(a *aufbau) { a.m.OpenWrt = "24.10.4" }, "wiedererkennen", "statt 25.12.5", true, "openwrt_fassung"},
+		{"Freigabe-Prüfsumme", mango.AbWerk, func(a *aufbau) { a.f.OpenWrt.Sha256 = strings.Repeat("0", 64) }, "fassungen", "nicht benutzt", false, "fassung_nicht_bereit"},
+		{"falsche Programm-Fassung", mango.AbOpenWrt, func(a *aufbau) { a.m.Version = "edge-light-gabc1234" }, "programm", "die Freigabe nennt", false, "schritt_gescheitert"},
+		{"Referenz ohne Prüfzeichen", mango.AbOpenWrt, func(a *aufbau) { a.m.Ref = "edge-k7m2xqz" }, "programm", "Prüfzeichen", false, "schritt_gescheitert"},
 	}
 	for _, f := range faelle {
 		t.Run(f.name, func(t *testing.T) {
@@ -333,7 +334,8 @@ func TestAbbruchregeln(t *testing.T) {
 			f.richte(a)
 			l, z := a.fahre(t, f.einstieg)
 			s := l.Stand()
-			if z != lauf.Angehalten || s.Schritt != f.schritt || !strings.Contains(s.Grund, f.grund) || (s.Handgriff != "") != f.handgriff {
+			if z != lauf.Angehalten || s.Schritt != f.schritt || !strings.Contains(s.Grund, f.grund) || (s.Handgriff != "") != f.handgriff ||
+				s.Fall != f.fall || s.Loesung == nil || s.Loesung.Titel == "" {
 				t.Fatalf("Zustand %s, Stand %+v", z, s)
 			}
 			if f.name == "Freigabe-Prüfsumme" && len(a.m.Befehle()) > 1 {

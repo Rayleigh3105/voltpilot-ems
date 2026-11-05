@@ -117,6 +117,15 @@ public class WerkstattService {
         return stand(b);
     }
 
+    /** Ist die Referenz abgenommen, ist sie gekoppelt? (für den Werkstatt-Dienst, {@code GET …/einloesungen/{ref}}) */
+    public record Gebrauch(boolean abgenommen, boolean gekoppelt) {
+    }
+
+    public Gebrauch gebrauch(String edgeRef) {
+        boolean[] g = repo.abgenommenGekoppelt(edgeRef);
+        return new Gebrauch(g[0], g[1]);
+    }
+
     /** Für Referenzen ohne Prüfzeichen: kennt die Plattform sie schon? */
     public boolean referenzBekannt(String edgeRef) {
         return fernwartung.referenzBekannt(edgeRef) || fernwartung.box(edgeRef).isPresent();

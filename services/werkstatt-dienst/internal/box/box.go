@@ -51,8 +51,14 @@ type Verbindung struct {
 	mu   sync.Mutex
 }
 
-// Abgewiesen: Die Box hat die Anmeldung nicht angenommen.
-type Abgewiesen struct{ Ziel netip.AddrPort }
+// Abgewiesen: Die Box hat die Anmeldung nicht angenommen. Host ist der
+// Fingerabdruck ihres Host-Schlüssels aus dem Handshake davor (leer, wenn die
+// Regel des Laufs ihn schon verworfen hat): Damit lässt sich eine Box
+// wiedererkennen, ohne dass man hineinkommt.
+type Abgewiesen struct {
+	Ziel netip.AddrPort
+	Host string
+}
 
 func (a Abgewiesen) Error() string { return fmt.Sprintf("%s nimmt die Anmeldung nicht an", a.Ziel) }
 
@@ -87,7 +93,11 @@ func Verbinde(ctx context.Context, weg Weg, ziel netip.AddrPort, pw geheim.Gehei
 	if err != nil {
 		_ = conn.Close()
 		if strings.Contains(err.Error(), "unable to authenticate") {
-			return nil, Abgewiesen{Ziel: ziel}
+			ab := Abgewiesen{Ziel: ziel}
+			if host != nil {
+				ab.Host = ssh.FingerprintSHA256(host)
+			}
+			return nil, ab
 		}
 		return nil, fmt.Errorf("SSH zu %s: %s", ziel, geheim.Schwaerze(err.Error()))
 	}

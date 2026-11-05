@@ -296,6 +296,9 @@ class WerkstattEinloesenApiTest {
                 .isEqualTo(e.get("geraeteSchluessel").get("sha256").asText());
         assertThat(stand.get("einloesungen")).hasSize(1);
         assertThat(stand.get("einloesungen").get(0).get("hostSchluessel").asText()).isEqualTo(box.host());
+        // Gekoppelt, nicht abgenommen: der Dienst ließe sie nie zurücksetzen.
+        assertThat(stand.get("gekoppelt").asBoolean()).isTrue();
+        assertThat(stand.get("abgenommen").asBoolean()).isFalse();
         assertThat(stand.get("einloesungen").get(0).get("fensterId").asText()).isEqualTo(fensterId);
         assertThat(send(HttpMethod.POST, DIENST + "/fenster/" + UUID.randomUUID() + "/schliessen", dienst, null)
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -406,6 +409,8 @@ class WerkstattEinloesenApiTest {
         JsonNode stand = json.readTree(send(HttpMethod.GET, DIENST + "/einloesungen/" + BOX2, dienst, null).getBody());
         String fensterId = stand.get("einloesungen").get(0).get("fensterId").asText();
         String abnahme = DIENST + "/abnahmen/" + BOX2;
+        assertThat(stand.get("abgenommen").asBoolean()).isFalse();
+        assertThat(stand.get("gekoppelt").asBoolean()).isFalse();
 
         // Probe-Fenster noch offen: 409 (Werkstatt-Regel 6).
         ResponseEntity<String> offen = send(HttpMethod.POST, abnahme, dienst, abnahmeAntrag(box, Map.of()));
@@ -450,6 +455,9 @@ class WerkstattEinloesenApiTest {
         assertThat(a.get("lanNetz").asText()).isEqualTo("10.213.0.1/24");
         assertThat(a.has("passwortAge")).isFalse();
         assertThat(a.get("einloesungId").asText()).isEqualTo(stand.get("einloesungen").get(0).get("id").asText());
+        JsonNode danach = json.readTree(send(HttpMethod.GET, DIENST + "/einloesungen/" + BOX2, dienst, null).getBody());
+        assertThat(danach.get("abgenommen").asBoolean()).isTrue();
+        assertThat(danach.get("gekoppelt").asBoolean()).isFalse();
 
         // Im Register: Quelle dienst, jede Prüfung mit ihrem Beleg, Freigabe, Einlösung, verschlüsseltes Passwort.
         JsonNode reg = json.readTree(send(HttpMethod.GET, "/api/v1/admin/werkstatt/boxen/" + BOX2, admin, null).getBody());

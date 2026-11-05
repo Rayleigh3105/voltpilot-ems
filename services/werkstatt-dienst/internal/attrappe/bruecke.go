@@ -463,3 +463,8 @@ func SchluesselPEM(t testing.TB) ([]byte, ssh.PublicKey) {
 	_ = pemEncode(&buf, blk.Type, blk.Bytes)
 	return buf.Bytes(), pk
 }
+
+// NeueAbweisen schließt den Lauscher: Bestehende Verbindungen tragen weiter,
+// neue scheitern (wie am 05.11.2026, Lauf 114050-9ef8: der Status kam über die
+// offene Sitzung, eine neue Verbindung zur Brücke nicht).
+func (b *Bruecke) NeueAbweisen() { _ = b.ln.Close() }

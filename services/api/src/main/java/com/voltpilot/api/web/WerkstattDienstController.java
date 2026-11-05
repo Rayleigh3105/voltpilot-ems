@@ -107,9 +107,14 @@ public class WerkstattDienstController {
     public record FestgehaltenDto(String sha256, Instant festgehaltenAm, UUID einloesungId) {
     }
 
-    /** Der Stand einer Box beim Einlösen: festgehalten oder nicht, und die Einlösungen, neueste zuerst. */
+    /**
+     * Der Stand einer Box beim Einlösen: festgehalten oder nicht, und die Einlösungen, neueste zuerst. Dazu, ob sie
+     * abgenommen oder gekoppelt ist: Nur wenn beides nein ist, lässt der Dienst eine halb eingerichtete Box
+     * zurücksetzen.
+     */
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    public record BoxStandDto(String edgeRef, FestgehaltenDto festgehalten, List<EinloesungDto> einloesungen) {
+    public record BoxStandDto(String edgeRef, FestgehaltenDto festgehalten, List<EinloesungDto> einloesungen,
+            boolean abgenommen, boolean gekoppelt) {
     }
 
     /** Ein geschlossenes Probe-Fenster. */
@@ -172,7 +177,9 @@ public class WerkstattDienstController {
         FestgehaltenDto fest = einloesung.festgehalten(edgeRef)
                 .map(f -> new FestgehaltenDto(f.geraeteSchluesselSha256(), f.festgehaltenAm(), f.einloesungId()))
                 .orElse(null);
-        return new BoxStandDto(edgeRef, fest, einloesung.einloesungen(edgeRef).stream().map(EinloesungDto::of).toList());
+        WerkstattService.Gebrauch g = werkstatt.gebrauch(edgeRef);
+        return new BoxStandDto(edgeRef, fest, einloesung.einloesungen(edgeRef).stream().map(EinloesungDto::of).toList(),
+                g.abgenommen(), g.gekoppelt());
     }
 
     /** Das Probe-Fenster einer Einlösung schließen: 200; 404 für jedes andere Fenster; 409 schon zu. */

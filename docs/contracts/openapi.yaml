@@ -7489,7 +7489,10 @@ paths:
     get:
       tags: [werkstatt-dienst]
       summary: Was eine Box beim Einlösen gemeldet hat.
-      description: Der festgehaltene Geräteschlüssel (sha256) und die Einlösungen, neueste zuerst; leer, solange sie nicht eingelöst hat.
+      description: >-
+        Der festgehaltene Geräteschlüssel (sha256) und die Einlösungen, neueste zuerst; leer, solange sie nicht eingelöst hat.
+        Dazu `abgenommen` (es gibt eine Abnahme der Referenz) und `gekoppelt` (ausgestelltes Zertifikat, Gerät oder
+        vorbereitete Anlage; die offene Zertifikatsanfrage der Einlösung allein zählt nicht): Nur wenn beides false ist, lässt der Dienst eine halb eingerichtete Box zurücksetzen.
       parameters:
         - { name: edgeRef, in: path, required: true, schema: { type: string } }
       responses:
@@ -7524,6 +7527,8 @@ paths:
                         fensterId: { type: string, format: uuid }
                         tausch: { type: boolean }
                         eingeloestAm: { type: string, format: date-time }
+                  abgenommen: { type: boolean }
+                  gekoppelt: { type: boolean }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/werkstatt-dienst/fenster/{id}/schliessen:

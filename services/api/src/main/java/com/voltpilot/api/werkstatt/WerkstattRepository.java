@@ -159,6 +159,22 @@ public class WerkstattRepository {
     public record Kunde(String mandant, String anlage, Instant seit) {
     }
 
+    /**
+     * Für den Werkstatt-Dienst, bevor er eine halb eingerichtete Box zurücksetzen lässt: ist die Referenz
+     * abgenommen (eine Abnahme, auch ohne Eintrag im Register), und ist sie gekoppelt (ausgestelltes Zertifikat,
+     * Gerät - auch ausgebaut - oder vorbereitete Anlage)? Wie {@code EinloesungService.boxFrei}: Die offene
+     * Zertifikatsanfrage legt schon die Einlösung an, sie allein ist keine Kopplung.
+     */
+    public boolean[] abgenommenGekoppelt(String edgeRef) {
+        return jdbc.queryForObject("SELECT "
+                        + "EXISTS (SELECT 1 FROM werkstatt_abnahme WHERE edge_ref = ?) AS abgenommen, "
+                        + "(EXISTS (SELECT 1 FROM device_enrollment WHERE external_ref = ? AND cert_pem IS NOT NULL) "
+                        + "OR EXISTS (SELECT 1 FROM device WHERE external_ref = ?) "
+                        + "OR EXISTS (SELECT 1 FROM provisioned_device WHERE external_ref = ?)) AS gekoppelt",
+                (rs, n) -> new boolean[] {rs.getBoolean("abgenommen"), rs.getBoolean("gekoppelt")},
+                edgeRef, edgeRef, edgeRef, edgeRef);
+    }
+
     /** Die Zeile mit wer/wann in {@code werkstatt_box_entfernt} festhalten, dann löschen. */
     public void boxEntfernen(UUID id, String akteur, String akteurName) {
         jdbc.update("INSERT INTO werkstatt_box_entfernt (box_id, edge_ref, box_art, lan_netz, schritte, notiz, "

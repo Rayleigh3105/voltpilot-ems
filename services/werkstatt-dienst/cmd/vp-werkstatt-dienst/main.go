@@ -250,6 +250,7 @@ func dienstLaufen(log *slog.Logger) error {
 	mk := &mango.Konfig{
 		Probe:      probe,
 		Portal:     ptl,
+		Spuren:     ablage,
 		Werkbank:   wb,
 		Fassungen:  &fassungen.Ablage{Dir: filepath.Join(k.Daten, "fassungen"), Token: k.DownloadToken, TokenHost: "git.tecmaxx.de"},
 		Arbeit:     k.Arbeit,

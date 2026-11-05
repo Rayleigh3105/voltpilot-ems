@@ -18,7 +18,7 @@ Auf der Brücke läuft **kein eigenes Programm**, nur Konfiguration. Alles Denke
 | Netz | `wlan0` ins Netz, wie vom Imager eingerichtet, Energiesparen aus (PS-13). `eth0` mit festen Adressen 192.168.8.2, 192.168.1.2 und 10.213.0.2 (je /24), kein DHCP, kein Standardweg, kein IPv6 | `netz/vp-werkstatt.nmconnection`, `netz/90-werkbank.conf`, `sysctl/90-werkbank.conf` |
 | Firewall und Durchleitung | Von `eth0` nur ins Internet (NAT über `wlan0`), nie in private Netze; auf die Brücke nur SSH aus dem Cluster; vom Werkstatt-Anschluss nichts | `nftables/werkbank.nft`, `systemd/vp-werkbank-firewall.service` |
 | SSH | nur der Benutzer `werkstatt`, nur mit Schlüssel, Weiterleitung nur zu den Werkstatt-Adressen der Box; die Schlüssel root-eigen in `/etc/ssh/vp-werkbank/werkstatt` | `ssh/10-werkbank.conf` |
-| Status | `vp-werkbank-status`: Kabel, Adressen, WLAN, Durchleitung, Firewall und wer an den Box-Adressen antwortet (je zwei ARP-Anfragen, kein Absuchen), als eine JSON-Zeile | `sbin/vp-werkbank-status` |
+| Status | `vp-werkbank-status`: Kabel, Adressen, WLAN, Durchleitung, Firewall, wer an den Box-Adressen antwortet (je zwei ARP-Anfragen, kein Absuchen) und Unterspannung des Pi (`vcgencmd get_throttled`), als eine JSON-Zeile | `sbin/vp-werkbank-status` |
 | Pflege | `vp-werkbank-pflege` / `vp-werkbank-einrichten`: ein Paket mit genannter Prüfsumme einspielen | `bin/`, `sbin/` |
 | sudo | `werkstatt` darf als root genau Status und Einrichten | `sudoers/vp-werkbank` |
 | Einrichten, Prüfen | `einrichten.sh` (wiederholbar), `pruefen.sh` (als `vp-werkbank-pruefen`: Durchleitung, Sperren, kein DHCP, SSH, sudo) | `einrichten.sh`, `pruefen.sh` |
@@ -39,7 +39,8 @@ die Mango ins Netz der Werkbank, kein Geheimnis außer dem eigenen Host-Schlüss
 ## Einmal aufstellen
 
 Du brauchst: einen Raspberry Pi 3B+, 4 oder 5 mit WLAN, eine SD-Karte, ein Netzteil, das orange Kabel WERKSTATT
-und ein USB-Netzteil für die Mango. Keinen USB-Netzwerkadapter, keinen Switch.
+und ein eigenes USB-Netzteil für die Mango (nicht den USB des Pi: Beim Start der Mango bekommt der Pi sonst
+Unterspannung und verliert WLAN). Keinen USB-Netzwerkadapter, keinen Switch.
 
 1. **Karte schreiben** mit dem Raspberry Pi Imager ab 2.0 (ein älterer überspringt die Einstellungen bei Trixie
    still, PS-7):

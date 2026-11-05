@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/attrappe"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/logs"
@@ -184,6 +185,20 @@ func TestAnsichtZustaende(t *testing.T) {
 	b.Kabel, b.Antworten = true, []map[string]any{{"adresse": "192.168.8.1", "macs": []string{"94:83:c4:17:47:e3"}}}
 	d.Runde(ctx)
 	halte("mit_kabel", "")
+	// Am Anschluss, ohne Lauf: die Mango startet noch; die Brücke meldet Unterspannung.
+	d.mu.Lock()
+	d.amAnschluss(faelle.Startet, "Mango erkannt unter 192.168.8.1; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen.")
+	d.mu.Unlock()
+	halte("startet", "")
+	d.mu.Lock()
+	d.unterspannung = true
+	d.amAnschluss(faelle.Startet, "Mango erkannt unter 192.168.8.1; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen.")
+	d.unterspannung = false
+	d.mu.Unlock()
+	halte("unterspannung", "")
+	d.mu.Lock()
+	d.amAnschluss("", "")
+	d.mu.Unlock()
 	// 10:28:08Z: erkennen scheitert nach seiner Frist, der Lauf hält an (nichts erledigt).
 	zeige("angehalten_beim_erkennen", "2026-11-04-102805-cf8d", fahre(bis(0, func(context.Context, *lauf.Kontext) (protokoll.Beleg, error) {
 		return nil, errors.New("Brücke 192.168.0.157:22 nicht erreichbar: dial tcp 192.168.0.157:22: i/o timeout")
@@ -207,8 +222,20 @@ func TestAnsichtZustaende(t *testing.T) {
 	}), zustand(lauf.Angehalten, "")), false)
 	zeige("angehalten_startlader", "2026-11-04-102855-049e", fahre(bis(index("openwrt"), func(context.Context, *lauf.Kontext) (protokoll.Beleg, error) {
 		return nil, lauf.Handgriff{Was: "Startlader (Handgriff M4): Mango vom Strom, Reset-Knopf halten und Strom stecken, bis die Leuchte fünfmal blinkt.",
-			Grund: "Die Mango nimmt das Abbild nicht an."}
+			Grund: "Die Mango nimmt das Abbild nicht an.", Fall: faelle.AbbildAbgelehnt}
 	}), zustand(lauf.Angehalten, "")), false)
+	// Zurücksetzen: eine gebrauchte GL-Mango und eine halb eingerichtete Box
+	// dieser Werkstatt; zur Seite: ein fremdes Passwort.
+	for name, h := range map[string]lauf.Handgriff{
+		"angehalten_gl_passwort": {Was: mango.Zuruecksetzen, Fall: faelle.GLPasswort, Grund: "Die Mango verlangt ein Passwort: Jemand hat ihre Werksfirmware schon eingerichtet."},
+		"angehalten_halb_eigene": {Was: mango.Zuruecksetzen, Fall: faelle.HalbEigene, Grund: "Diese Mango hat der Lauf 2026-11-04-162800-ab12 begonnen und nicht fertig gemacht."},
+		"angehalten_passwort_fremd": {Was: "Mango abziehen und zur Seite legen; den Grund im Portal oder beim Betreiber melden.", Fall: faelle.PasswortFremd,
+			Grund: "Das Gerät unter 192.168.1.1 verlangt ein Passwort: kein frisches OpenWrt."},
+	} {
+		zeige(name, "2026-11-04-102855-049e", fahre(bis(0, func(context.Context, *lauf.Kontext) (protokoll.Beleg, error) {
+			return nil, h
+		}), zustand(lauf.Angehalten, "")), false)
+	}
 	zeige("fertig", "2026-11-04-102855-049e", fahre(bis(len(echte), nil), zustand(lauf.Fertig, "")), false)
 
 	for name, a := range zustaende {

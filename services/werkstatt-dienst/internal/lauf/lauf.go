@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/metriken"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
@@ -48,6 +49,7 @@ type Schritt struct {
 type Handgriff struct {
 	Was   string // was der Mensch tun soll
 	Grund string // was passiert ist
+	Fall  string // Code aus internal/faelle; leer: aus Schritt und Grund eingeordnet
 }
 
 func (h Handgriff) Error() string { return h.Grund + " – " + h.Was }
@@ -69,6 +71,10 @@ type Stand struct {
 	Handgriff string    `json:"handgriff,omitempty"`
 	WartetAuf string    `json:"wartet_auf,omitempty"`
 	Hinweis   string    `json:"hinweis,omitempty"`
+	// Fall und Loesung nur bei angehalten: der Code aus internal/faelle und
+	// was der Mensch tun kann (docs/contracts/werkstatt-ansicht-v1.md).
+	Fall    string          `json:"fall,omitempty"`
+	Loesung *faelle.Loesung `json:"loesung,omitempty"`
 }
 
 // Lauf ist der Lauf einer Box.
@@ -105,6 +111,11 @@ func (l *Lauf) Stand() Stand {
 	// Nie nil: eine nil-Liste ginge als null ans Portal, der Vertrag sagt Liste
 	// (werkstatt-ansicht-v1, Werkbank-Absturz vom 04.11.2026).
 	s.Erledigt = append([]string{}, l.stand.Erledigt...)
+	if s.Loesung != nil {
+		c := *s.Loesung
+		c.Schritte = append([]string{}, c.Schritte...)
+		s.Loesung = &c
+	}
 	return s
 }
 
@@ -262,10 +273,12 @@ func (r *Laeufer) schritt(ctx context.Context, l *Lauf, log *slog.Logger, st Sch
 	}
 	if err != nil {
 		var h Handgriff
+		fall := ""
 		switch {
 		case errors.As(err, &h):
 			handgriff = h.Was
 			grund = h.Grund
+			fall = h.Fall
 		case ctx.Err() != nil:
 			grund = "Der Dienst wurde beendet, der Lauf hält an."
 		case errors.Is(err, context.DeadlineExceeded) || sctx.Err() != nil:
@@ -273,9 +286,14 @@ func (r *Laeufer) schritt(ctx context.Context, l *Lauf, log *slog.Logger, st Sch
 		default:
 			grund = err.Error()
 		}
-		e := protokoll.Eintrag{Zeit: r.Jetzt().UTC(), Lauf: l.Kennung(), Art: protokoll.SchrittGescheitert, Schritt: st.Kennung, Grund: grund, Beleg: beleg, DauerSek: dauer.Seconds()}
+		if fall == "" || faelle.Zu(fall) == nil {
+			fall = faelle.Einordnen(st.Kennung, grund)
+		}
+		l.aendere(func(s *Stand) { s.Fall, s.Loesung = fall, faelle.Zu(fall) })
+		e := protokoll.Eintrag{Zeit: r.Jetzt().UTC(), Lauf: l.Kennung(), Art: protokoll.SchrittGescheitert, Schritt: st.Kennung, Grund: grund, Beleg: beleg, DauerSek: dauer.Seconds(),
+			Angaben: map[string]string{"fall": fall}}
 		if handgriff != "" {
-			e.Angaben = map[string]string{"handgriff": handgriff}
+			e.Angaben["handgriff"] = handgriff
 		}
 		if werr := r.Ablage.Schreibe(e); werr != nil {
 			log.Error("Protokoll nicht schreibbar", "fehler", werr)
@@ -308,6 +326,9 @@ func (r *Laeufer) beende(l *Lauf, log *slog.Logger, z Zustand, schritt, grund, h
 		s.Zustand, s.Grund, s.Handgriff, s.Ende = z, grund, handgriff, ende
 		if z == Fertig {
 			s.Schritt, s.Titel = "", ""
+		}
+		if z == Angehalten && s.Fall == "" {
+			s.Fall, s.Loesung = faelle.SchrittGescheitert, faelle.Zu(faelle.SchrittGescheitert)
 		}
 	})
 	if err := r.Ablage.Schreibe(protokoll.Eintrag{Zeit: ende, Lauf: l.Kennung(), Art: protokoll.LaufBeendet, Schritt: schritt, Zustand: string(z), Grund: grund}); err != nil {
