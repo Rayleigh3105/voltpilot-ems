@@ -2215,10 +2215,12 @@ export function AnlageSeite({
   // Der Zustand nennt nur, was nicht schon an seinem eigenen Ort steht: die
   // Steuerung steht in der Steuerzeile, der Plan in der Fahrplan-Kachel.
   // Eine Erzeugeranlage, die VoltPilot nur liest, hat keinen Fahrplan - „noch keiner erstellt“ wäre kein Befund.
+  // Ein BEFUND (warn/off) bleibt trotzdem stehen: das Kopf-Abzeichen zählt ihn und springt hierher
+  // (`#zustand`) - fiele er weg, sagte die Zeile „Alles in Ordnung“ unter einer „Warnung“ im Kopf.
   const healthOhneDoppel = health.filter(
     (h) =>
-      !(h.key === 'control' && steuerzeileSichtbar) &&
-      !(h.key === 'plan' && ((zeigt('fahrplan') && fahrplanVerfuegbar) || erzZeile != null)),
+      !(h.key === 'control' && steuerzeileSichtbar && h.state === 'ok') &&
+      !(h.key === 'plan' && ((zeigt('fahrplan') && fahrplanVerfuegbar && h.state === 'ok') || erzZeile != null)),
   );
 
   const bausteinNodes: Partial<Record<BausteinId, ReactNode>> = {

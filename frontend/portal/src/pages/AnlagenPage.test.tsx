@@ -1035,6 +1035,34 @@ describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', ()
     expect(container.querySelector('.vp-stack-foot')).toBeNull();
   });
 
+  it('ein Fahrplan-Befund bleibt in der Zeile, auch wenn die Fahrplan-Kachel steht - nie „Alles in Ordnung" unter einer Warnung', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(PRIVAT);
+    stubApi();
+    // Nur ein Plan von gestern: der Kopf sagt „Warnung · Fahrplan: kein aktueller Plan".
+    const gestern = new Date(Date.now() - 26 * 3600_000).toISOString();
+    vi.spyOn(api, 'schedule').mockResolvedValue({
+      planId: 'p0',
+      deviceId: null,
+      generatedAt: gestern,
+      slotMinutes: 15,
+      savingsEur: null,
+      bankedValueEur: null,
+      socStartPct: null,
+      socEndPct: null,
+      peakTargetKw: null,
+      slots: [{ start: gestern, batteryKw: 0, gridKw: null, socPct: null, priceEurMwh: null, costEur: null, baselineCostEur: null }],
+    } as never);
+    const { container } = renderSeite();
+    await waitFor(() => {
+      expect(container.querySelector('.vp-cockpit-health .vp-zustand')).not.toBeNull();
+    });
+    await waitFor(() => expect(container.querySelector('[data-kachel="fahrplan"]')).not.toBeNull(), { timeout: 5000 });
+    const card = container.querySelector('.vp-cockpit-health');
+    expect(card?.textContent).toContain('Fahrplan: kein aktueller Plan');
+    expect(card?.textContent).not.toContain('Alles in Ordnung');
+  });
+
   it('meldet die selbst gemessenen Fakten (Fahrplan/Steuerung/Speicher) nach oben', async () => {
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
