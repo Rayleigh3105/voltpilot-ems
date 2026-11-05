@@ -1,0 +1,12 @@
+-- Geräte & Updates G4: „Was ist neu" je Release.
+--
+-- Bisher trug das Register außer der Notiz kein Feld für Änderungen. Der
+-- Release-Lauf der CI schreibt jetzt die Box-Änderungen seit dem letzten Tag
+-- DERSELBEN Linie mit (eine Zeile je Commit, `git log` über die Box-Pfade):
+-- Docker-Box seit dem vorigen edge-JJJJ.MM.N, Edge Light seit dem vorigen
+-- edge-light-JJJJ.MM.N. NULL = keine Angabe (ältere Einträge, Handpfad).
+--
+-- Bewusst NICHT Teil des signierten Manifests: die Liste ist Anzeige für den
+-- Betreiber, keine Aussage, die eine Box prüft. Deshalb darf sie als jsonb
+-- liegen (das Manifest selbst bleibt TEXT, seine Bytes sind signiert).
+ALTER TABLE edge_release ADD COLUMN IF NOT EXISTS aenderungen JSONB;

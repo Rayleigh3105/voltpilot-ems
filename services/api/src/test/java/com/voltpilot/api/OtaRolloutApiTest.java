@@ -734,6 +734,100 @@ class OtaRolloutApiTest {
         assertThat(rolloutDeviceState(r, b)).isEqualTo("zurueckgezogen");
         assertThat(rolloutDeviceState(r, a)).isEqualTo("bestaetigt");
         assertThat(rowOf(page, b).get("fakten").isNull()).as("keine Anfrage mehr").isTrue();
+
+        // ── Verlauf je Box (G3): Portal-Handlungen und Box-Meldungen, neueste zuerst.
+        // Den Box-Teil hat der Trigger auf device_update_status beim ECHTEN Ingest
+        // (App-Rolle, RLS) angehängt.
+        JsonNode verlaufA = getJson(admin, "/api/v1/admin/devices/" + a + "/verlauf").get("eintraege");
+        assertThat(arten(verlaufA)).containsExactly("box:stand", "box:angenommen", "portal:angefragt",
+                "box:stand");
+        assertThat(verlaufA.get(0).get("release").asText()).isEqualTo("edge-2026.10.2-9b37439a02c1");
+        assertThat(verlaufA.get(0).get("vorher").asText()).isEqualTo("edge-2026.10.0-3bf8c038a1b2");
+        assertThat(verlaufA.get(1).get("release").asText()).isEqualTo("edge-2026.10.2");
+        assertThat(verlaufA.get(2).get("release").asText()).isEqualTo("edge-2026.10.2");
+        assertThat(verlaufA.get(2).get("von").asText()).isNotBlank();
+        assertThat(verlaufA.get(3).get("vorher").isNull()).as("erste Meldung").isTrue();
+        JsonNode verlaufB = getJson(admin, "/api/v1/admin/devices/" + b + "/verlauf").get("eintraege");
+        assertThat(arten(verlaufB)).containsExactly("portal:zurueckgezogen", "portal:angefragt", "box:stand");
+        assertThat(getJson(admin, "/api/v1/admin/devices/" + a + "/verlauf?limit=1").get("eintraege").size())
+                .isEqualTo(1);
+        assertThat(rest.exchange(url("/api/v1/admin/devices/" + UUID.randomUUID() + "/verlauf"),
+                HttpMethod.GET, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url("/api/v1/admin/devices/" + a + "/verlauf"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    /**
+     * Geräte &amp; Updates G4: „Was ist neu" reist mit dem Register-Eintrag (CI) und
+     * lässt sich durch einen wiederholten Tag-Lauf NACHTRAGEN, nie überschreiben;
+     * die Release-Seite zeigt Inhalt aus dem Manifest, Programme im Portal, wo es
+     * läuft und die Änderungen.
+     */
+    @Test
+    @Order(8)
+    void releaseSeiteUndWasIstNeu() throws Exception {
+        String admin = token("admin", "admin");
+        String manifest43 = MANIFEST.replace("edge-2026.08.0", "edge-2026.10.3").replace(":12", ":43");
+        ResponseEntity<Map<String, Object>> neu = post("/api/v1/admin/edge-releases", admin, Map.of(
+                "version", "edge-2026.10.3", "releaseSeq", 43, "manifest", manifest43,
+                "signature", SIGNATURE, "aenderungen", List.of("Core: Heizstab je Phase (#1693) (ef19aec51)",
+                        "  ", "Node-RED: Fronius-Block (#1690) (abc1234)")));
+        assertThat(neu.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(neu.getBody().get("aenderungen")).as("getrimmt, leere Zeilen fallen weg")
+                .isEqualTo(List.of("Core: Heizstab je Phase (#1693) (ef19aec51)",
+                        "Node-RED: Fronius-Block (#1690) (abc1234)"));
+
+        JsonNode seite = getJson(admin, "/api/v1/admin/edge-updates/releases/43");
+        assertThat(seite.get("version").asText()).isEqualTo("edge-2026.10.3");
+        assertThat(seite.get("boxArt").asText()).isEqualTo("docker");
+        assertThat(seite.get("signed").asBoolean()).isTrue();
+        assertThat(seite.get("aenderungen").size()).isEqualTo(2);
+        assertThat(seite.get("boxenDerLinie").asInt()).isPositive();
+        assertThat(seite.get("erlaubtRueckschritt").asBoolean()).isFalse();
+
+        // Ein wiederholter Tag-Lauf (bytegleich) trägt nach, wo keine Angabe steht:
+        // die LEERE Liste ist die Aussage „keine Änderung an der Box".
+        String manifest42 = MANIFEST.replace("edge-2026.08.0", "edge-2026.10.2").replace(":12", ":42");
+        ResponseEntity<Map<String, Object>> nachtrag = post("/api/v1/admin/edge-releases", admin, Map.of(
+                "version", "edge-2026.10.2", "releaseSeq", 42, "manifest", manifest42,
+                "signature", SIGNATURE, "aenderungen", List.of()));
+        assertThat(nachtrag.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(nachtrag.getBody().get("aenderungen")).isEqualTo(List.of());
+        ResponseEntity<Map<String, Object>> ueber = post("/api/v1/admin/edge-releases", admin, Map.of(
+                "version", "edge-2026.10.2", "releaseSeq", 42, "manifest", manifest42,
+                "signature", SIGNATURE, "aenderungen", List.of("anders")));
+        assertThat(ueber.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(ueber.getBody().get("aenderungen")).as("nie überschrieben").isEqualTo(List.of());
+
+        // Edge Light (Fall 6): Inhalt aus dem Manifest, Programme fertig im Portal,
+        // läuft auf der Edge-Light-Box; vor G4 registriert = keine Angabe.
+        JsonNode light = getJson(admin, "/api/v1/admin/edge-updates/releases/41");
+        assertThat(light.get("boxArt").asText()).isEqualTo("light");
+        JsonNode teil = light.get("inhalt").get(0);
+        assertThat(teil.get("typ").asText()).isEqualTo("binary");
+        assertThat(teil.get("arch").asText()).isEqualTo("linux/mipsle");
+        assertThat(teil.get("gzGroesse").asLong()).isEqualTo(LIGHT_GZ.length);
+        JsonNode programm = light.get("programme").get(0);
+        assertThat(programm.get("arch").asText()).isEqualTo("linux/mipsle");
+        assertThat(programm.get("fertig").asBoolean()).isTrue();
+        assertThat(programm.get("empfangen").asLong()).isEqualTo(LIGHT_GZ.length);
+        assertThat(light.get("laeuftAuf").size()).isPositive();
+        assertThat(light.get("aenderungen").isNull()).isTrue();
+
+        assertThat(rest.exchange(url("/api/v1/admin/edge-updates/releases/9999"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /** „quelle:art" je Verlauf-Eintrag, in der gelieferten Reihenfolge. */
+    private static List<String> arten(JsonNode eintraege) {
+        List<String> out = new java.util.ArrayList<>();
+        for (JsonNode e : eintraege) {
+            out.add(e.get("quelle").asText() + ":" + e.get("art").asText());
+        }
+        return out;
     }
 
     /** Ein Status-Herzschlag mit Update-Block durch den ECHTEN Ingest. */

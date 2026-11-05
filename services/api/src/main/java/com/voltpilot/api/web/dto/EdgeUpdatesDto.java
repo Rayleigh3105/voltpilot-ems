@@ -90,6 +90,51 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
     }
 
     /**
+     * Der Verlauf EINER Box, neueste zuerst (Geräte &amp; Updates G3,
+     * {@code GET /api/v1/admin/devices/{deviceId}/verlauf}).
+     */
+    public record VerlaufDto(UUID deviceId, List<VerlaufEintragDto> eintraege) {
+    }
+
+    /**
+     * Ein Eintrag ({@code ota.BoxVerlauf}): {@code quelle} {@code portal}
+     * ({@code art} angefragt, zurueckgezogen, erneut_gesendet, entfernt; {@code von}
+     * = Akteur) oder {@code box} ({@code art} stand mit {@code vorher} - {@code null}
+     * = erste Meldung -, angenommen, abgelehnt, zurueckgestellt, fehlgeschlagen,
+     * zurueckgenommen, mit dem Grund der Box). Zeitpunkte sind Serverzeit.
+     */
+    public record VerlaufEintragDto(Instant am, String quelle, String art, String release,
+            String vorher, String grund, String von, UUID rolloutId) {
+    }
+
+    /**
+     * Die Release-Seite (Geräte &amp; Updates G4,
+     * {@code GET /api/v1/admin/edge-updates/releases/{releaseSeq}}): was drin ist
+     * (aus dem signierten Manifest), was neu ist ({@code aenderungen}, CI; {@code null}
+     * = keine Angabe), wer signiert hat, wo es läuft und wann es verteilt wurde.
+     * {@code programme} nur bei Edge Light: was davon fertig im Portal liegt.
+     */
+    public record ReleaseSeiteDto(long releaseSeq, String version, String boxArt, boolean signed,
+            String signingKeyId, Instant createdAt, String targetCommit, String notes,
+            List<String> aenderungen, boolean erlaubtRueckschritt, Long minFromSeq,
+            List<ReleaseTeilDto> inhalt, List<ReleaseProgrammDto> programme, List<UUID> laeuftAuf,
+            int boxenDerLinie, List<VerteiltDto> verteilt) {
+    }
+
+    /** Ein Bestandteil laut Manifest: {@code typ} image oder binary; Größen nur bei binary. */
+    public record ReleaseTeilDto(String typ, String name, String arch, Long groesse, Long gzGroesse) {
+    }
+
+    /** Ein Edge-Light-Programm im Portal: Größe laut Manifest, empfangen, fertig geprüft. */
+    public record ReleaseProgrammDto(String arch, long groesse, long empfangen, boolean fertig) {
+    }
+
+    /** Eine Verteilung dieses Releases (Lauf), mit ihrer Zählung von heute. */
+    public record VerteiltDto(UUID rolloutId, String state, String createdBy, Instant createdAt,
+            int total, int confirmed, int failed) {
+    }
+
+    /**
      * Eine Box im Verteil-Dialog: {@code gruppe} ist {@code bereit},
      * {@code wartet}, {@code aktuell} oder {@code kann_nicht} ({@code ota.UpdateEignung}),
      * {@code grund} der deutsche Satz dazu.

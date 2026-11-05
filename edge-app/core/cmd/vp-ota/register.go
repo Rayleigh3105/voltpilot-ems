@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 )
@@ -28,6 +29,37 @@ type registerBody struct {
 	Manifest     string `json:"manifest"`
 	Signature    string `json:"signature"`
 	SigningKeyID string `json:"signingKeyId"`
+	// Aenderungen ist „Was ist neu" (Geraete & Updates G4): die Box-Aenderungen
+	// seit dem letzten Tag DERSELBEN Linie, eine Zeile je Commit. Bewusst NICHT
+	// im signierten Manifest - es ist Anzeige fuer den Betreiber, keine Aussage,
+	// die eine Box prueft. nil = keine Angabe (Feld fehlt); eine LEERE Liste ist
+	// eine Aussage („keine Aenderung an der Box") und reist als [].
+	Aenderungen *[]string `json:"aenderungen,omitempty"`
+}
+
+// envAenderungen nennt die Datei mit „Was ist neu" (eine Zeile je Commit), die
+// der Release-Lauf vor dem Signieren schreibt. Der Handpfad nimmt --aenderungen.
+const envAenderungen = "VP_OTA_AENDERUNGEN"
+
+// leseAenderungen liest die Aenderungsdatei: Zeilen getrimmt, leere fallen weg.
+// Kein Pfad = keine Angabe (nil). Eine unlesbare Datei ist ebenfalls keine
+// Angabe - mit Warnung, denn die Liste ist Anzeige und haelt kein Release auf.
+func leseAenderungen(pfad string) *[]string {
+	if pfad == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(pfad)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warnung: Aenderungsdatei %s nicht lesbar (%v) - Register ohne „Was ist neu\".\n", pfad, err)
+		return nil
+	}
+	zeilen := []string{}
+	for _, z := range strings.Split(string(raw), "\n") {
+		if z = strings.TrimSpace(z); z != "" {
+			zeilen = append(zeilen, z)
+		}
+	}
+	return &zeilen
 }
 
 func cmdRegister(args []string) error {
@@ -36,6 +68,8 @@ func cmdRegister(args []string) error {
 	sig := fs.String("sig", "", "die Signaturdatei (Vorgabe: <manifest>.sig)")
 	portal := fs.String("portal", defaultPortal, "Portal-Basis-URL")
 	out := fs.String("out", "", "Zieldatei fuer den Rumpf (Vorgabe: <manifest-verzeichnis>/register.json)")
+	aenderungen := fs.String("aenderungen", os.Getenv(envAenderungen),
+		"Datei mit „Was ist neu\" (eine Zeile je Commit seit dem letzten Tag der Linie; Vorgabe: $"+envAenderungen+")")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `vp-ota register - Register-Eintrag fuer das Portal vorbereiten
 
@@ -74,16 +108,18 @@ kein Wirkpfad auf ihn warten.
 	if outPath == "" {
 		outPath = filepath.Join(filepath.Dir(*manifest), "register.json")
 	}
-	return writeRegister(m, doc, sigRaw, outPath, *portal)
+	return writeRegister(m, doc, sigRaw, outPath, *portal, leseAenderungen(*aenderungen))
 }
 
 // emitRegister ist der Anschluss aus `vp-ota sign`: unmittelbar nach dem
-// Signieren liegt der Register-Eintrag bereit.
+// Signieren liegt der Register-Eintrag bereit. „Was ist neu" kommt aus
+// $VP_OTA_AENDERUNGEN, wenn der Release-Lauf die Datei geschrieben hat.
 func emitRegister(m *otaverify.Manifest, doc, sigRaw []byte, manifestPath, portal string) error {
-	return writeRegister(m, doc, sigRaw, filepath.Join(filepath.Dir(manifestPath), "register.json"), portal)
+	return writeRegister(m, doc, sigRaw, filepath.Join(filepath.Dir(manifestPath), "register.json"), portal,
+		leseAenderungen(os.Getenv(envAenderungen)))
 }
 
-func writeRegister(m *otaverify.Manifest, doc, sigRaw []byte, outPath, portal string) error {
+func writeRegister(m *otaverify.Manifest, doc, sigRaw []byte, outPath, portal string, aenderungen *[]string) error {
 	if len(doc) == 0 || len(sigRaw) == 0 {
 		return errors.New("Manifest oder Signatur ist leer")
 	}
@@ -105,6 +141,7 @@ func writeRegister(m *otaverify.Manifest, doc, sigRaw []byte, outPath, portal st
 		Manifest:     string(doc),
 		Signature:    string(sigRaw),
 		SigningKeyID: m.SigningKeyID,
+		Aenderungen:  aenderungen,
 	}
 	raw, err := json.MarshalIndent(body, "", "  ")
 	if err != nil {

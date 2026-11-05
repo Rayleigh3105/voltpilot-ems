@@ -323,6 +323,58 @@ func TestManifestRefusesATagInsteadOfADigest(t *testing.T) {
 	}
 }
 
+// TestRegisterBodyCarriesWhatIsNew: „Was ist neu" (Geraete & Updates G4) reist
+// NEBEN den signierten Bytes - aus der Datei des Release-Laufs, Zeilen getrimmt.
+// Eine leere Datei ist die Aussage „keine Aenderung an der Box" ([]), keine
+// Datei ist keine Angabe (Feld fehlt).
+func TestRegisterBodyCarriesWhatIsNew(t *testing.T) {
+	dir := ceremony(t)
+	p := func(n string) string { return filepath.Join(dir, n) }
+	lese := func() map[string]any {
+		t.Helper()
+		raw, err := os.ReadFile(p("register.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	if err := os.WriteFile(p("aenderungen.txt"),
+		[]byte("Heizstab: Handeingriff je Phase im Box-Core (#1693)\n\n  Edge Light: Leser Huawei (#1690)  \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	must(t, cmdRegister([]string{"--manifest", p("release.json"), "--out", p("register.json"),
+		"--aenderungen", p("aenderungen.txt")}))
+	got, _ := lese()["aenderungen"].([]any)
+	if len(got) != 2 || got[0] != "Heizstab: Handeingriff je Phase im Box-Core (#1693)" ||
+		got[1] != "Edge Light: Leser Huawei (#1690)" {
+		t.Fatalf("aenderungen = %v", lese()["aenderungen"])
+	}
+	// Die signierten Bytes bleiben unberuehrt.
+	manifestBytes, _ := os.ReadFile(p("release.json"))
+	if lese()["manifest"] != string(manifestBytes) {
+		t.Error("„Was ist neu\" hat die Manifest-Bytes veraendert")
+	}
+
+	if err := os.WriteFile(p("leer.txt"), []byte("\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(envAenderungen, p("leer.txt"))
+	must(t, cmdRegister([]string{"--manifest", p("release.json"), "--out", p("register.json")}))
+	if leer, ok := lese()["aenderungen"].([]any); !ok || len(leer) != 0 {
+		t.Fatalf("eine leere Datei muss [] ergeben, war %v", lese()["aenderungen"])
+	}
+
+	t.Setenv(envAenderungen, "")
+	must(t, cmdRegister([]string{"--manifest", p("release.json"), "--out", p("register.json")}))
+	if _, da := lese()["aenderungen"]; da {
+		t.Fatal("ohne Datei darf das Feld nicht erscheinen (keine Angabe)")
+	}
+}
+
 func TestRegisterBodyCarriesTheExactSignedBytes(t *testing.T) {
 	dir := ceremony(t)
 	p := func(n string) string { return filepath.Join(dir, n) }

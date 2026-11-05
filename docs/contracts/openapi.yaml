@@ -6563,6 +6563,66 @@ paths:
           description: Releases, the recent updates, the fleet matrix, the journal, the KPI and the lines.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/edge-updates/releases/{releaseSeq}:
+    get:
+      tags: [admin]
+      summary: The release page - content, what is new, where it runs (Geräte & Updates G4).
+      description: >
+        Read-only. `inhalt` lists the parts named by the SIGNED manifest
+        (`typ` image | binary; sizes for binaries), `programme` (Edge Light
+        only) what of them lies finished in the portal (the K2 upload),
+        `aenderungen` the box changes since the last tag of the same line
+        (CI; null = no statement), `laeuftAuf` the device ids reporting it,
+        `boxenDerLinie` the boxes of its line, `verteilt` its rollouts with
+        today's counts, plus `erlaubtRueckschritt` (signed allow_downgrade) and
+        `minFromSeq`. Platform-admin only.
+      parameters:
+        - name: releaseSeq
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: >
+            `{releaseSeq, version, boxArt, signed, signingKeyId, createdAt,
+            targetCommit, notes, aenderungen, erlaubtRueckschritt, minFromSeq,
+            inhalt: [{typ, name, arch, groesse, gzGroesse}], programme: [{arch,
+            groesse, empfangen, fertig}], laeuftAuf: [uuid], boxenDerLinie,
+            verteilt: [{rolloutId, state, createdBy, createdAt, total, confirmed,
+            failed}]}`.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: The release is not registered. }
+  /api/v1/admin/devices/{deviceId}/verlauf:
+    get:
+      tags: [admin]
+      summary: The history of ONE box, newest first (Geräte & Updates G3).
+      description: >
+        Read-only. Merges what the PORTAL did (rollout_event, now indexed per
+        device: angefragt, zurueckgezogen, erneut_gesendet, entfernt - with the
+        actor in `von`) with what the BOX reported (box_update_verlauf, appended
+        by a trigger on device_update_status whenever a value CHANGES: `stand`
+        = a new running stamp with `vorher` (null = first report), angenommen /
+        abgelehnt / zurueckgestellt = its verdict on a target, fehlgeschlagen /
+        zurueckgenommen with the box's reason). Times are server time. The
+        derived rollout state is not part of it. Platform-admin only.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200":
+          description: >
+            `{deviceId, eintraege: [{am, quelle (portal | box), art, release,
+            vorher, grund, von, rolloutId}]}`.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: The device does not exist. }
   /api/v1/admin/edge-updates/eignung:
     get:
       tags: [admin]
@@ -27559,6 +27619,16 @@ components:
           type: string
           nullable: true
           description: The release key that signed the manifest, e.g. rel-2026-a.
+        aenderungen:
+          type: array
+          nullable: true
+          items: { type: string }
+          description: >
+            "Was ist neu" (Geräte & Updates G4): the box changes since the last
+            tag of the SAME line, one line per commit ("<subject> (<shortsha>)"),
+            written by the release run (tools/ota/release-publish.sh
+            ota_aenderungen). null = no statement; an EMPTY list states "no box
+            change since the last tag". Not part of the signed manifest.
     EdgeTrustSet:
       type: object
       description: The current trust-set plus the operator metadata (admin view).
@@ -27626,6 +27696,18 @@ components:
           description: >
             Optional cross-check; must equal the key named by the manifest and
             by the signature file.
+        aenderungen:
+          type: array
+          nullable: true
+          maxItems: 200
+          items: { type: string, maxLength: 300 }
+          description: >
+            Optional "Was ist neu" (Geräte & Updates G4): one line per box
+            commit since the last tag of the same line; lines are trimmed and
+            blank ones dropped, an empty list is the statement "no box change".
+            Not part of the signed manifest and NOT part of the byte-identical
+            repeat check: a repeated tag run may FILL it where the register has
+            no statement yet, never overwrite an existing list.
     FernwartungServer:
       type: object
       properties:

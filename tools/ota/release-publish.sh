@@ -221,6 +221,41 @@ ota_register() {
 	esac
 }
 
+# ota_aenderungen <tag> <ausgabe>
+#
+# „Was ist neu" (Geraete & Updates G4): die Box-Aenderungen seit dem letzten Tag
+# DERSELBEN Linie, eine Zeile je Commit („<Betreff> (<kurzsha>)"), neueste
+# zuerst, Merge-Commits nicht. Docker-Box: Tags edge-JJJJ.MM.N, Pfade edge-app;
+# Edge Light: Tags edge-light-JJJJ.MM.N, Pfade edge-light und edge-app/core.
+# Ein Commit, der dort nur Tests oder Markdown aendert, aendert die Box nicht.
+#
+# Ohne Vorgaenger-Tag (erstes Release der Linie) entsteht KEINE Datei - das ist
+# „keine Angabe", nicht „nichts geaendert". Eine leere Datei dagegen ist die
+# Aussage „seit dem letzten Tag keine Aenderung an der Box". `vp-ota sign` liest
+# die Datei ueber $VP_OTA_AENDERUNGEN in den Register-Rumpf - NEBEN das signierte
+# Manifest, nie hinein.
+ota_aenderungen() {
+	local tag="$1" out="$2" muster prev
+	local -a pfade
+	case "$tag" in
+	"$OTA_LIGHT_RELEASE_PREFIX"*)
+		muster="${OTA_LIGHT_RELEASE_PREFIX}[0-9]*"
+		pfade=(edge-light edge-app/core)
+		;;
+	*)
+		muster='edge-[0-9]*'
+		pfade=(edge-app)
+		;;
+	esac
+	prev="$(git tag -l "$muster" --sort=-v:refname | awk -v t="$tag" 'f { print; exit } $0 == t { f = 1 }')"
+	if [ -z "$prev" ]; then
+		rm -f "$out"
+		return 0
+	fi
+	git log --no-merges --format='%s (%h)' "$prev..$tag" -- "${pfade[@]}" \
+		':(exclude,glob)**/*_test.go' ':(exclude,glob)**/*.test.js' ':(exclude,glob)**/*.md' >"$out"
+}
+
 # ota_light_upload <portal-basis> <token> <version> <GOOS/GOARCH> <datei.gz>
 #
 # Laedt die gepackte Lieferung eines Edge-Light-Programms ins Portal (K2) - in
@@ -569,6 +604,7 @@ release-publish.sh - ein signiertes Edge-Release veroeffentlichen
                                                   Edge-Light-Programm ins Portal (in Teilen)
   token        <token-url> <client-id> <secret>   client_credentials-Token
   next-release <JJJJ.MM>                          naechster freier Tag-Name (Tags auf STDIN)
+  aenderungen  <tag> <ausgabe>                    Box-Aenderungen seit dem letzten Tag der Linie
   tag-release  <release> <commit> [annotation]    annotierten Tag anlegen + pushen
 
 Umgebung (publish): VP_OTA_PORTAL, VP_OTA_PORTAL_TOKEN, VP_OTA_FORGEJO_BASE,
@@ -654,6 +690,7 @@ ota_main() {
 	token) ota_token "$@" ;;
 	state-schema) ota_state_schema "$@" ;;
 	next-release) ota_next_release "$@" ;;
+	aenderungen) ota_aenderungen "$@" ;;
 	tag-release) ota_tag_release "$@" ;;
 	-h | --help | help | '') ota_usage; return 2 ;;
 	*)

@@ -77,6 +77,27 @@ public class AdminEdgeUpdateController {
     }
 
     /**
+     * Die Release-Seite: Inhalt aus dem signierten Manifest, „Was ist neu",
+     * Programme im Portal (Edge Light), wo es läuft und wann es verteilt wurde
+     * (Geräte &amp; Updates G4). Rein lesend; 404 für ein unbekanntes Release.
+     */
+    @GetMapping("/edge-updates/releases/{releaseSeq}")
+    public EdgeUpdatesDto.ReleaseSeiteDto releaseSeite(@PathVariable long releaseSeq) {
+        return rollouts.releaseSeite(releaseSeq, Instant.now());
+    }
+
+    /**
+     * Der Verlauf EINER Box, neueste zuerst: was das Portal angefragt hat und
+     * was die Box gemeldet hat (Geräte &amp; Updates G3). Rein lesend; 404, wenn
+     * es das Gerät nicht gibt. {@code limit} 1..500, Vorgabe 100.
+     */
+    @GetMapping("/devices/{deviceId}/verlauf")
+    public EdgeUpdatesDto.VerlaufDto verlauf(@PathVariable UUID deviceId,
+            @RequestParam(defaultValue = "100") int limit) {
+        return rollouts.verlauf(deviceId, limit);
+    }
+
+    /**
      * Das INVENTAR aller Geräte - der EINE additive Read hinter der Seite
      * „Geräte" (UX-Konzept {@code vp-admin-geraete-ux-k2} §4/§6).
      *

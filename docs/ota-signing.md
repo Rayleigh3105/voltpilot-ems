@@ -80,6 +80,8 @@ vp-ota verify --root baked --trust-set trust-set.json --manifest release.json
 
 Zum Veröffentlichen den vorhandenen Helper `tools/ota/release-publish.sh` nutzen; dessen Hilfe nennt Eingaben und Authentifizierung. Manifest und Signatur unverändert als Assets und API-Registerinhalt transportieren. Das passende `vp-ota`-Binary muss die tatsächlich verwendete Root-Wurzel enthalten.
 
+„Was ist neu“ (Geräte & Updates G4): Vor dem Signieren schreibt der Release-Lauf die Box-Änderungen seit dem letzten Tag derselben Linie in eine Datei (`release-publish.sh aenderungen <tag> <datei>`; Docker-Box über `edge-app`, Edge Light über `edge-light` und `edge-app/core`, ohne reine Test- und Markdown-Commits). `vp-ota sign` liest sie über `$VP_OTA_AENDERUNGEN` (Handpfad: `vp-ota register --aenderungen <datei>`) in `register.json` – neben das signierte Manifest, nie hinein. Ohne Vorgänger-Tag entsteht keine Datei (keine Angabe); eine leere Datei heißt „keine Änderung an der Box“. Ein bytegleich wiederholter Tag-Lauf trägt die Liste im Register nach, wo noch keine steht, und überschreibt nie.
+
 ## Trust-Set auf Geräte bringen
 
 Die API liefert die Rohdateien über `/api/v1/edge/trust-set/trust-set.json` und `.sig`. Der Installer lädt sie beim Einrichten; Bestandsboxen können sie gezielt mit `./install.sh --refresh-trust` übernehmen.

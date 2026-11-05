@@ -90,6 +90,14 @@ public class RolloutService {
     }
 
     /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private com.voltpilot.api.repo.BoxVerlaufRepository verlauf;
+
+    /** Ohne Repository (Testaufbau) bleibt der Verlauf leer. */
+    @Autowired(required = false)
+    void setVerlauf(com.voltpilot.api.repo.BoxVerlaufRepository verlauf) {
+        this.verlauf = verlauf;
+    }
+
     private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
 
     @Autowired(required = false)
@@ -660,6 +668,119 @@ public class RolloutService {
         }
         return new EdgeUpdatesDto.EignungDto(release.releaseSeq(), release.version(), art,
                 List.copyOf(boxen), andereLinie);
+    }
+
+    /**
+     * Die Release-Seite (Geräte &amp; Updates G4): Inhalt aus dem signierten
+     * Manifest, „Was ist neu" aus dem Register, die Programme im Portal (Edge
+     * Light), wo es läuft und wann es verteilt wurde. Rein lesend.
+     *
+     * @throws ResponseStatusException 404 für ein unbekanntes Release
+     */
+    public EdgeUpdatesDto.ReleaseSeiteDto releaseSeite(long releaseSeq, Instant now) {
+        List<EdgeReleaseDto> alle = releases.findAll();
+        EdgeReleaseDto release = alle.stream().filter(r -> r.releaseSeq() == releaseSeq)
+                .findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Release mit der Sequenz " + releaseSeq + " ist nicht registriert."));
+        String art = releaseBoxArt(release);
+        boolean signiert = release.manifest() != null && release.signature() != null;
+
+        List<EdgeUpdatesDto.ReleaseTeilDto> inhalt = new ArrayList<>();
+        List<EdgeUpdatesDto.ReleaseProgrammDto> programme = new ArrayList<>();
+        if (signiert) {
+            try {
+                ReleaseManifest m = ReleaseManifest.read(release.manifest());
+                for (ReleaseManifest.Artifact a : m.artifacts()) {
+                    ReleaseManifest.Program p = a.arch() == null ? null : m.program(a.arch()).orElse(null);
+                    inhalt.add(new EdgeUpdatesDto.ReleaseTeilDto(a.type(), a.name(), a.arch(),
+                            p == null ? null : p.size(), p == null ? null : p.gzSize()));
+                }
+                if (BoxArt.LIGHT.equals(art) && lightProgramme != null) {
+                    Map<String, com.voltpilot.api.repo.EdgeLightProgrammRepository.Stand> da = new HashMap<>();
+                    lightProgramme.alle(release.releaseSeq()).forEach(st -> da.put(st.arch(), st));
+                    for (ReleaseManifest.Program p : m.programs()) {
+                        var st = da.get(p.arch());
+                        programme.add(new EdgeUpdatesDto.ReleaseProgrammDto(p.arch(), p.gzSize(),
+                                st == null ? 0L : st.laenge(), st != null && st.fertig()));
+                    }
+                }
+            } catch (IllegalArgumentException e) {
+                // Ein Manifest, das der Leser nicht kennt, nennt keinen Inhalt -
+                // die Box prüft es ohnehin selbst.
+                log.debug("Release {}: Manifest-Inhalt nicht lesbar: {}", release.version(), e.getMessage());
+            }
+        }
+
+        List<RolloutRepository.FleetDeviceRow> fleet = rollouts.fleetDevices();
+        List<EdgeVersionRepository.RegisterEntry> register = alle.stream()
+                .map(r -> new EdgeVersionRepository.RegisterEntry(r.version(), r.releaseSeq(),
+                        releaseBoxArt(r)))
+                .toList();
+        List<UUID> laeuftAuf = new ArrayList<>();
+        int boxenDerLinie = 0;
+        for (RolloutRepository.FleetDeviceRow d : fleet) {
+            String running = reportedRunning(d);
+            if (art.equals(EdgeStandVerdict.of(running, boxArt(d), register).linie())) {
+                boxenDerLinie++;
+            }
+            if (RolloutStates.releaseIsRunning(release.version(), running)) {
+                laeuftAuf.add(d.deviceId());
+            }
+        }
+
+        Map<UUID, RolloutRepository.TargetRow> targets = targetsById();
+        List<EdgeUpdatesDto.VerteiltDto> verteilt = new ArrayList<>();
+        for (RolloutRepository.RolloutRow r : rollouts.allRollouts()) {
+            if (r.releaseSeq() != releaseSeq) {
+                continue;
+            }
+            EdgeUpdatesDto.RolloutDto dto = rolloutDto(r, fleet, targets, now);
+            verteilt.add(new EdgeUpdatesDto.VerteiltDto(r.id(), r.state(), r.createdBy(),
+                    r.createdAt(), dto.total(), dto.confirmed(), dto.failed()));
+        }
+
+        return new EdgeUpdatesDto.ReleaseSeiteDto(release.releaseSeq(), release.version(), art,
+                signiert, release.signingKeyId(), release.createdAt(), release.targetCommit(),
+                release.notes(), release.aenderungen(),
+                UpdateEignung.erlaubtRueckschritt(release.manifest()), minFromSeq(release.manifest()),
+                List.copyOf(inhalt), List.copyOf(programme), List.copyOf(laeuftAuf), boxenDerLinie,
+                List.copyOf(verteilt));
+    }
+
+    /** {@code min_from_seq} des signierten Manifests, sonst {@code null}. */
+    private Long minFromSeq(String manifest) {
+        if (manifest == null || manifest.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode n = json.readTree(manifest).path("min_from_seq");
+            return n.canConvertToLong() ? n.asLong() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Der Verlauf EINER Box (Geräte &amp; Updates G3): Portal-Handlungen und
+     * Box-Meldungen, neueste zuerst ({@link BoxVerlauf}).
+     *
+     * @throws ResponseStatusException 404, wenn es das Gerät nicht gibt
+     */
+    public EdgeUpdatesDto.VerlaufDto verlauf(UUID deviceId, int limit) {
+        rollouts.fleetDevice(deviceId).orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND, "Gerät nicht gefunden."));
+        List<EdgeUpdatesDto.VerlaufEintragDto> eintraege = new ArrayList<>();
+        if (verlauf != null) {
+            for (com.voltpilot.api.repo.BoxVerlaufRepository.Zeile z
+                    : verlauf.verlauf(deviceId, Math.max(1, Math.min(limit, 500)))) {
+                BoxVerlauf.Eintrag e = BoxVerlauf.of(z);
+                if (e != null) {
+                    eintraege.add(new EdgeUpdatesDto.VerlaufEintragDto(e.am(), e.quelle(), e.art(),
+                            e.release(), e.vorher(), e.grund(), e.von(), e.rolloutId()));
+                }
+            }
+        }
+        return new EdgeUpdatesDto.VerlaufDto(deviceId, List.copyOf(eintraege));
     }
 
     /**

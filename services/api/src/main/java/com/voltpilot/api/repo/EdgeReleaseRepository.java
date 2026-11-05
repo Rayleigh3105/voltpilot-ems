@@ -26,7 +26,10 @@ public class EdgeReleaseRepository {
 
     private static final String COLUMNS =
             "release_seq, version, target_commit, notes, created_at, created_by, "
-                    + "manifest, signature, signing_key_id";
+                    + "manifest, signature, signing_key_id, aenderungen";
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     private static final String SELECT = "SELECT " + COLUMNS + " FROM edge_release ";
 
@@ -80,12 +83,59 @@ public class EdgeReleaseRepository {
     public EdgeReleaseDto insert(long releaseSeq, String version, String targetCommit,
             String notes, String createdBy, String manifest, String signature,
             String signingKeyId) {
+        return insert(releaseSeq, version, targetCommit, notes, createdBy, manifest, signature,
+                signingKeyId, null);
+    }
+
+    /**
+     * Wie oben, mit „Was ist neu" (Geräte &amp; Updates G4): {@code aenderungen}
+     * ist {@code null} = keine Angabe; die Liste ist Anzeige, nicht signiert.
+     */
+    public EdgeReleaseDto insert(long releaseSeq, String version, String targetCommit,
+            String notes, String createdBy, String manifest, String signature,
+            String signingKeyId, java.util.List<String> aenderungen) {
         return jdbc.queryForObject(
                 "INSERT INTO edge_release (release_seq, version, target_commit, notes, created_by, "
-                        + "manifest, signature, signing_key_id) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING " + COLUMNS,
+                        + "manifest, signature, signing_key_id, aenderungen) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb) RETURNING " + COLUMNS,
                 EdgeReleaseRepository::map, releaseSeq, version, targetCommit, notes, createdBy,
-                manifest, signature, signingKeyId);
+                manifest, signature, signingKeyId, json(aenderungen));
+    }
+
+    /**
+     * „Was ist neu" für einen schon registrierten Eintrag nachtragen - nur, solange
+     * dort keine Angabe steht (ein wiederholter Tag-Lauf nach G4). Eine vorhandene
+     * Liste wird nie überschrieben.
+     *
+     * @return {@code true}, wenn nachgetragen wurde
+     */
+    public boolean aenderungenNachtragen(String version, java.util.List<String> aenderungen) {
+        return jdbc.update("UPDATE edge_release SET aenderungen = ?::jsonb "
+                + "WHERE version = ? AND aenderungen IS NULL", json(aenderungen), version) == 1;
+    }
+
+    private static String json(java.util.List<String> aenderungen) {
+        if (aenderungen == null) {
+            return null;
+        }
+        try {
+            return JSON.writeValueAsString(aenderungen);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalArgumentException(e);
+        }
+    }
+
+    private static java.util.List<String> liste(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return java.util.Arrays.stream(JSON.readValue(raw, String[].class))
+                    .filter(java.util.Objects::nonNull).toList();
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            // Eine unlesbare Liste ist keine Angabe - nie eine erfundene.
+            return null;
+        }
     }
 
     private static EdgeReleaseDto map(java.sql.ResultSet rs, int rowNum)
@@ -99,6 +149,7 @@ public class EdgeReleaseRepository {
                 rs.getString("created_by"),
                 rs.getString("manifest"),
                 rs.getString("signature"),
-                rs.getString("signing_key_id"));
+                rs.getString("signing_key_id"),
+                liste(rs.getString("aenderungen")));
     }
 }

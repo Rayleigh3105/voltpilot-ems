@@ -161,6 +161,17 @@ Zuweisung desselben Release versucht wieder).
   `GET /admin/edge-updates/eignung` (`ota.UpdateEignung`, dieselben Sperren wie
   die Schreibwege plus Rückschritt). Eine zurückgezogene oder abgelöste Anfrage
   heißt im Lauf `zurueckgezogen` und hält ihn nicht mehr offen.
+- **Verlauf je Box und Release-Seite (Geräte & Updates G3/G4):** Was die Box
+  meldet, hängt ein Trigger auf `device_update_status` NUR BEI EINEM WECHSEL an
+  `box_update_verlauf` (stand · urteil · zustand; unter der Zeilensperre, also
+  ohne Doppel bei zwei Pods); `GET /admin/devices/{id}/verlauf` mischt das mit
+  den Portal-Ereignissen aus `rollout_event` (Geräte-Index). „Was ist neu"
+  schreibt der Release-Lauf (`ota_aenderungen`, `$VP_OTA_AENDERUNGEN` →
+  `vp-ota sign` → `register.json`), NEBEN das signierte Manifest; ein
+  bytegleich wiederholter Tag-Lauf trägt es nach, überschreibt nie. Leere Liste
+  = „keine Box-Änderung", `null` = keine Angabe. `GET
+  /admin/edge-updates/releases/{seq}` zeigt Inhalt, Programme, Läuft-auf,
+  Verteilungen.
 
 ### Portal
 

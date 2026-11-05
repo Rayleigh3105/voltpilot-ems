@@ -170,6 +170,13 @@ public class AdminEdgeReleaseController {
             // ‚ist schon da' würde einen ABWEICHENDEN Commit verschlucken")
             // gilt unverändert - bytegleich verschluckt per Definition nichts.
             if (signed != null && isIdenticalRepeat(existing.get(), req)) {
+                // Geräte & Updates G4: ein wiederholter Tag-Lauf darf „Was ist neu"
+                // NACHTRAGEN, wo noch keine Angabe steht - nie eine Liste ersetzen.
+                List<String> aenderungen = aenderungen(req);
+                if (aenderungen != null && existing.get().aenderungen() == null
+                        && releases.aenderungenNachtragen(version, aenderungen)) {
+                    return ResponseEntity.ok(releases.findByVersion(version).orElseThrow());
+                }
                 return ResponseEntity.ok(existing.get());
             }
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -200,7 +207,8 @@ public class AdminEdgeReleaseController {
                 caller == null ? null : caller.getSubject(),
                 signed == null ? null : req.manifest(),
                 signed == null ? null : req.signature(),
-                signed == null ? null : signed.signingKeyId());
+                signed == null ? null : signed.signingKeyId(),
+                aenderungen(req));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -218,6 +226,22 @@ public class AdminEdgeReleaseController {
      * dem Manifest stammt. Ein gespeicherter UNSIGNIERTER Eintrag ist nie eine
      * Wiederholung: dort gäbe es nichts, woran Gleichheit festzumachen wäre.
      */
+    /**
+     * „Was ist neu" aus der Anfrage: getrimmt, leere Zeilen fallen weg.
+     * {@code null} = keine Angabe; eine LEERE Liste ist dagegen eine Aussage
+     * („seit dem letzten Tag der Linie keine Änderung an der Box").
+     */
+    static List<String> aenderungen(CreateEdgeReleaseRequest req) {
+        if (req.aenderungen() == null) {
+            return null;
+        }
+        return req.aenderungen().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(z -> !z.isEmpty())
+                .toList();
+    }
+
     private static boolean isIdenticalRepeat(EdgeReleaseDto stored, CreateEdgeReleaseRequest req) {
         return stored.manifest() != null
                 && stored.manifest().equals(req.manifest())

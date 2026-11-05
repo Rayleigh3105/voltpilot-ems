@@ -612,6 +612,44 @@ else
 	bad "eine fehlgeschlagene Gegenpruefung bricht ab" "ota_die" "fehlt"
 fi
 
+# --- „Was ist neu" (Geraete & Updates G4) -----------------------------------
+# Ein Wegwerf-Repo mit beiden Linien: Box-Commits, Nicht-Box-Commits, ein Commit,
+# der nur einen Test aendert, und je zwei Tags.
+AENDWS="$TMP/aenderungen"
+mkdir -p "$AENDWS"
+(
+	cd "$AENDWS"
+	export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+	export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+	git init -q .
+	mkdir -p edge-app/core edge-app/nodered edge-light frontend
+	commit() { printf '%s\n' "$2" >>"$1"; git add -A; git commit -q -m "$3"; }
+	commit edge-app/core/a.go 1 "Basis"
+	git tag edge-2026.10.6
+	git tag edge-light-2026.11.3
+	commit frontend/x.ts 1 "Portal: nur das Portal"
+	commit edge-app/core/a.go 2 "Core: Heizstab je Phase"
+	commit edge-app/nodered/f.js 1 "Node-RED: Fronius-Block"
+	commit edge-light/l.sh 1 "Edge Light: Loader-Satz"
+	commit edge-app/core/a_test.go 1 "Core: nur ein Test"
+	git tag edge-2026.10.7
+	git tag edge-light-2026.11.4
+) >/dev/null
+aend() { (cd "$AENDWS" && GIT_CONFIG_GLOBAL=/dev/null ota_aenderungen "$1" "$2"); }
+aend edge-2026.10.7 "$TMP/docker.txt"
+eq "Docker-Box: Box-Aenderungen seit dem letzten edge-Tag, neueste zuerst - ohne Portal, Edge Light und reine Tests" \
+	"Node-RED: Fronius-Block|Core: Heizstab je Phase" \
+	"$(sed -E 's/ \([0-9a-f]+\)$//' "$TMP/docker.txt" | paste -sd'|' -)"
+aend edge-light-2026.11.4 "$TMP/light.txt"
+eq "Edge Light: nur edge-light und der geteilte Core, Node-RED gehoert nicht dazu" \
+	"Edge Light: Loader-Satz|Core: Heizstab je Phase" \
+	"$(sed -E 's/ \([0-9a-f]+\)$//' "$TMP/light.txt" | paste -sd'|' -)"
+eq "jede Zeile traegt den Kurz-SHA" "2" "$(grep -cE ' \([0-9a-f]{7,}\)$' "$TMP/docker.txt" || true)"
+rm -f "$TMP/erst.txt"
+aend edge-2026.10.6 "$TMP/erst.txt"
+eq "erstes Release der Linie: KEINE Datei (keine Angabe, nicht „nichts geaendert\")" "fehlt" \
+	"$([ -e "$TMP/erst.txt" ] && echo da || echo fehlt)"
+
 echo
 printf '%d bestanden, %d fehlgeschlagen\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
