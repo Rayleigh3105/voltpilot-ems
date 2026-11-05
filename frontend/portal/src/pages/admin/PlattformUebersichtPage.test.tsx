@@ -91,6 +91,11 @@ describe('PlattformUebersichtPage', () => {
     expect(table).toHaveTextContent('Weitere Box');
     expect(table).toHaveTextContent('edge-2026.09.0');
     expect(table).toHaveTextContent('Rückmeldung je Datenquelle: fehlt');
+    // UI-Runde Admin: eine fehlende Fähigkeit ist grau, keine Störung; ohne Unterstützung keine Zeile dazu.
+    const faehigkeit = screen.getAllByText(/Rückmeldung je Datenquelle: fehlt/)[0].closest('span') as HTMLElement;
+    expect(faehigkeit.style.background).toBe('var(--vp-bg-light)');
+    expect(table).not.toHaveTextContent('Keine aktive Unterstützung');
+    expect(table).not.toHaveTextContent('Unterstützung nicht verfügbar');
 
     fireEvent.click(screen.getByRole('button', { name: 'Box Halle 2' }));
     expect(jump).toHaveBeenCalledWith('t1', {
@@ -269,5 +274,23 @@ describe('PlattformUebersichtPage', () => {
     render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
     expect(await screen.findByText('edge-2026.07.2')).toBeInTheDocument();
     expect(screen.queryByText('Edge veraltet')).toBeNull();
+  });
+});
+
+describe('PlattformUebersichtPage - Box-Referenz nicht doppelt', () => {
+  it('zeigt die Referenz unter dem Namen nur, wenn die Box einen eigenen Namen hat', async () => {
+    fleet.mockResolvedValue({
+      releases: [],
+      sites: [site('s1', 'Werk Ahrenberg', {
+        boxes: [
+          { deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box Leitstand', fuehrtAnlage: true, lastSeenAt: null, edge: null, update: null },
+          { deviceId: 'd2', externalRef: 'VP-BOX-0002', name: null, fuehrtAnlage: false, lastSeenAt: null, edge: null, update: null },
+        ],
+      })],
+    });
+    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
+    await screen.findByTestId('admin-fleet');
+    expect(screen.getAllByText('VP-BOX-0001')).toHaveLength(1);
+    expect(screen.getAllByText('VP-BOX-0002')).toHaveLength(1);
   });
 });

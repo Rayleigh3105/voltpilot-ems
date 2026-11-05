@@ -24,6 +24,7 @@ import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { anlageRoute, pageRoute, type Route } from '../../nav';
 import { AdminPageHead } from './AdminPageHead';
+import './PlattformUebersicht.css';
 // LIST: eine Verwaltungs-Übersicht bewegt sich nicht sekündlich.
 import { LIST_POLL_MS } from '../../pollCadence';
 
@@ -130,7 +131,7 @@ export function PlattformUebersichtPage({
       {loadError && rows != null && <div className="vp-alert vp-alert-warn">{loadError}</div>}
 
       {pulse && (
-        <div className="vp-kpis vp-admin-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
+        <div className="vp-kpis vp-admin-pulse vp-fleet-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
           <KpiCard
             icon={<Icon name="sun" size={20} />}
             category="primary"
@@ -248,11 +249,10 @@ function FleetSiteGroup({
 }) {
   const { site, boxes } = group;
   const openSite = () => onOpen(site.tenantId, anlageRoute(site.siteId));
-  const support = unterstuetzungBis === undefined
-    ? 'Unterstützung nicht verfügbar'
-    : unterstuetzungBis === null
-      ? 'Keine aktive Unterstützung'
-      : `Unterstützung bis ${new Date(unterstuetzungBis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`;
+  // Nur eine laufende Unterstützung ist eine Nachricht; „keine“ stünde sonst an jeder Anlage.
+  const support = unterstuetzungBis
+    ? `Unterstützung bis ${new Date(unterstuetzungBis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`
+    : null;
   return (
     <tbody className="vp-fleet-group">
       <tr className="vp-fleet-group-head">
@@ -268,7 +268,7 @@ function FleetSiteGroup({
             <span>{site.tenantName}</span>
           </div>
           <div className="vp-fleet-group-facts">
-            <span>{support}</span>
+            {support && <span>{support}</span>}
             <Badge variant={site.deviceTone} dot>{site.deviceText}</Badge>
             <span>Plan {site.planText}</span>
             <span>Quellen {site.sources?.text ?? '—'}</span>
@@ -299,7 +299,8 @@ function FleetSiteGroup({
                   event.stopPropagation();
                   openBox();
                 }}>{box.name}</button>
-                <span className="vp-cell-sub vp-mono">{box.externalRef}</span>
+                {/* Die Referenz nur, wenn die Box einen eigenen Namen hat - sonst stünde sie doppelt. */}
+                {box.name !== box.externalRef && <span className="vp-cell-sub vp-mono">{box.externalRef}</span>}
               </div>
             </td>
             <td data-label="Rolle">{box.roleText}</td>
@@ -313,7 +314,8 @@ function FleetSiteGroup({
             <td data-label="Fähigkeiten">
               <div className="vp-fleet-capabilities">
                 {box.capabilities.map((capability) => (
-                  <Badge key={capability.code} variant={capability.status === 'vorhanden' ? 'ok' : 'warn'} dot>
+                  // Eine fehlende Fähigkeit ist keine Störung: grau statt orange.
+                  <Badge key={capability.code} variant={capability.status === 'vorhanden' ? 'ok' : 'off'} dot>
                     {capability.name}: {capability.status === 'vorhanden' ? 'vorhanden' : 'fehlt'}
                   </Badge>
                 ))}

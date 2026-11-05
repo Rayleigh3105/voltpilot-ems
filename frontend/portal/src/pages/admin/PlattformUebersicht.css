@@ -1,0 +1,13 @@
+/* Plattform-Übersicht: die sechs Kennzahlen stehen am Rechner als ruhiges 3 × 2-Raster
+   (statt 5 + 1) und am Telefon kompakt zu zweit nebeneinander statt untereinander. */
+@media (min-width: 900px) {
+  .vp-kpis.vp-fleet-pulse { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.vp-fleet-pulse > .vp-kpi-link { min-width: 0; display: block; }
+.vp-fleet-pulse > .vp-kpi-link > .vp-kpi { height: 100%; }
+@media (max-width: 720px) {
+  .vp-kpis.vp-fleet-pulse { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Das Symbol trägt am Telefon keine eigene Aussage; Zahl und Wort reichen. */
+  /* `!important` nur gegen die Inline-Größe der Symbolkachel. */
+  .vp-fleet-pulse .vp-kpi > :first-child:not(:only-child) { display: none !important; }
+}
