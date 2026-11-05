@@ -54,6 +54,16 @@ public class EntityStatusListener extends Rueckmeldeweg {
     @org.springframework.beans.factory.annotation.Autowired
     void uebergaben(com.voltpilot.api.uems.UebergabeRepository repo) { this.uebergaben = repo; }
 
+    /**
+     * Die Erstbindung im Herzschlag: eine im Portal angelegte Komponente hängt an der Quelle, die die Box
+     * daraufhin meldet - sofort, nicht erst im Takt der Bestands-Übernahme (5 min). Ohne Spring (Tests) fehlt
+     * sie; dann bleibt es beim Takt.
+     */
+    private com.voltpilot.api.components.ComponentRebindService erstbindung;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void erstbindung(com.voltpilot.api.components.ComponentRebindService rebind) { this.erstbindung = rebind; }
+
     private static final String STATUS_FILTER = "ems/+/+/+/status";
 
     private final String brokerUrl;
@@ -219,6 +229,14 @@ public class EntityStatusListener extends Rueckmeldeweg {
             observed.replaceForDevice(deviceId, tenantId, siteId, reportedAt, rows);
             ingestComponentApply(entities.get("component_apply"), deviceId, tenantId, siteId,
                     reportedAt);
+            if (erstbindung != null && localSetup != null && localSetup.isArray() && !localSetup.isEmpty()) {
+                try {
+                    erstbindung.erstbindung(siteId);
+                } catch (RuntimeException e) {
+                    // Die Bindung ist eine Selbstheilung: scheitert sie, holt der Takt sie nach.
+                    log.warn("Erstbindung für Anlage {} nicht möglich: {}", siteId, e.toString());
+                }
+            }
             if (uebergaben != null) {
                 try {
                     uebergaben.herzschlag(tenantId, deviceId, revision, reportedAt);
