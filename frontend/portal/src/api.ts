@@ -8188,6 +8188,28 @@ export function setTenantOverride(tenantId: string | null): void {
  */
 const inFlight = new Map<string, Promise<unknown>>();
 
+/**
+ * Das STARTFENSTER der Funktionen (Scout `vp-anlagen-cockpit-perf`, Rang 6).
+ *
+ * Der App-Start liest `/funktionen` strukturell drei Mal: die Schale für die Startebene, die Übersicht für den
+ * Anlege-Entscheid, die Anlagen-Seite für ihr Lese-Modell - zeitlich um 100-300 ms versetzt, also weit
+ * jenseits dessen, was die In-flight-Bündelung noch teilt. Jede Kopie ist eine Server-Abfrage, ein
+ * Verbindungsplatz und ein JSON-Parse VOR dem ersten Bild.
+ *
+ * Darum teilt `/funktionen` (und NUR diese Route, ein Konfigurations-Stand ohne Takt) seine Antwort kurz über
+ * das Ende des Fluges hinaus. Die Veraltung ist doppelt begrenzt: höchstens {@link STARTFENSTER_MS} nach dem
+ * START der Anfrage, und jede Änderung (Mutation) leert das Fenster sofort - wer nach einem Schreiben liest,
+ * liest neu. Eine Ablehnung wird nie geteilt. Der Takt-Grundsatz oben bleibt: ein 30-s-Takt holt wirklich neu.
+ */
+export const STARTFENSTER_MS = 2_000;
+const STARTFENSTER_PFADE = new Set(['/api/v1/funktionen']);
+const startfenster = new Map<string, { seit: number; antwort: Promise<unknown> }>();
+
+/** Leert das Startfenster der Funktionen (Tests). */
+export function vergissStartfenster(): void {
+  startfenster.clear();
+}
+
 function coalesceKey(path: string, init: RequestInit): string | null {
   const method = (init.method ?? 'GET').toUpperCase();
   if (method !== 'GET') return null;
@@ -8200,18 +8222,30 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   if (key != null) {
     const running = inFlight.get(key);
     if (running) return running as Promise<T>;
+    const jetzt = Date.now();
+    const offen = startfenster.get(key);
+    if (offen && jetzt - offen.seit < STARTFENSTER_MS) return offen.antwort as Promise<T>;
     const p: Promise<T> = requestUncoalesced<T>(path, init).finally(() => {
       // Nach einer Änderung kann unter dem Schlüssel schon eine neuere Anfrage stehen - nur die eigene austragen.
       if (inFlight.get(key) === p) inFlight.delete(key);
     });
     inFlight.set(key, p);
+    if (STARTFENSTER_PFADE.has(path)) {
+      startfenster.set(key, { seit: jetzt, antwort: p });
+      p.catch(() => {
+        if (startfenster.get(key)?.antwort === p) startfenster.delete(key);
+      });
+    }
     return p;
   }
   const antwort = requestUncoalesced<T>(path, init);
   if ((init.method ?? 'GET').toUpperCase() === 'GET') return antwort;
   // Eine Änderung hat geantwortet (oder ist gescheitert - ob sie schrieb, weiß nur der Server): wer jetzt liest, fragt
   // neu. Wer schon wartet, behält seine Antwort.
-  return antwort.finally(() => inFlight.clear());
+  return antwort.finally(() => {
+    inFlight.clear();
+    startfenster.clear();
+  });
 }
 
 /**
