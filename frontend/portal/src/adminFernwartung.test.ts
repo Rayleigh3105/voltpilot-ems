@@ -533,6 +533,21 @@ describe('Protokoll', () => {
     ).toBe('10.10.32.2 · FY4LLXFa…BI8/Y= · bleiben vergeben');
     expect(protokollDetail({ ...base, aktion: 'techniker_geloescht', details: {} }, JETZT)).toBe('');
   });
+
+  it('nennt bei der in der Werkstatt gelöschten Box, was vergeben bleibt, und warum ihr Fenster schloss', () => {
+    expect(aktionLabel('box_geloescht')).toBe('Box gelöscht');
+    const base = { id: 'p', zeit: JETZT.toISOString(), akteur: 'admin', edgeRef: 'edge-pmzasg2', technikerId: null, technikerName: null, fensterId: null };
+    expect(
+      protokollDetail(
+        { ...base, aktion: 'box_geloescht', details: { edgeRef: 'edge-pmzasg2', adresse: '10.10.16.3', publicKey: 'jUg9DePF…HiEM=', grund: 'In der Werkstatt gelöscht' } },
+        JETZT,
+      ),
+    ).toBe('10.10.16.3 · jUg9DePF…HiEM= · bleiben vergeben · In der Werkstatt gelöscht');
+    expect(protokollDetail({ ...base, aktion: 'box_geloescht', details: {} }, JETZT)).toBe('');
+    expect(protokollDetail({ ...base, aktion: 'fenster_geschlossen', details: { anlass: 'box_geloescht' } }, JETZT)).toBe(
+      'weil die Box gelöscht wurde',
+    );
+  });
 });
 
 describe('Techniker-Zugang löschen', () => {

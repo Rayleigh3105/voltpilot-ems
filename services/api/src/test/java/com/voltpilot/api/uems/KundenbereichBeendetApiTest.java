@@ -125,7 +125,7 @@ class KundenbereichBeendetApiTest {
         // Mandanten (Migration V20261026200000), die Box ist noch in keinem Kundenbereich.
         m.put("POST /api/v1/admin/werkstatt/boxen", "Werkstatt-Register: Box vor dem Versand, noch in keinem Kundenbereich");
         m.put("DELETE /api/v1/admin/werkstatt/boxen/{ref}",
-                "Werkstatt-Register: unbenutzten Eintrag entfernen, Box vor dem Versand, noch in keinem Kundenbereich");
+                "Werkstatt: Box löschen (Fehlversuch, weder abgenommen noch gekoppelt), noch in keinem Kundenbereich");
         m.put("POST /api/v1/admin/werkstatt/boxen/{ref}/abnahme",
                 "Werkstatt-Abnahme: Box vor dem Versand, noch in keinem Kundenbereich");
         m.put("PUT /api/v1/admin/werkstatt/boxen/{ref}/lan-netz",
@@ -138,6 +138,12 @@ class KundenbereichBeendetApiTest {
                 "Werkstatt freigeben: gilt für Boxen vor dem Versand, kein Kundenbereich");
         m.put("POST /api/v1/admin/werkstatt/freigaben/{kennung}/ende",
                 "Freigabe beenden: gilt für Boxen vor dem Versand, kein Kundenbereich");
+        // Werkstatt: Lauf-Seite (V20261105200000, main 2b355ef2d) - Aufträge an den Werkstatt-Dienst und
+        // „zur Seite gelegt“ nennen einen Lauf der Werkstatt, keinen Mandanten.
+        m.put("POST /api/v1/admin/werkstatt/dienst/nochmal",
+                "Werkstatt: Nochmal versuchen, Auftrag an den Werkstatt-Dienst, Box vor dem Versand, kein Kundenbereich");
+        m.put("POST /api/v1/admin/werkstatt/zur-seite",
+                "Werkstatt: Box zur Seite legen, Lauf der Werkstatt, Box vor dem Versand, kein Kundenbereich");
         return m;
     }
 

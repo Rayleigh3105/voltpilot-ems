@@ -152,8 +152,13 @@ public class FernwartungRepository {
                 FernwartungRepository::zugang);
     }
 
+    /**
+     * Der Box-Zugang einer Referenz, ohne gelöschten: ein gelöschter (ein
+     * Fehlversuch der Werkstatt, V20261106080000) hält seine Referenz nicht
+     * mehr fest, kommt sie wieder, bekommt sie einen neuen Zugang.
+     */
     public Optional<Zugang> box(String edgeRef) {
-        return jdbc.query(ZUGANG_SELECT + "WHERE z.art = 'box' AND z.edge_ref = ?",
+        return jdbc.query(ZUGANG_SELECT + "WHERE z.art = 'box' AND z.edge_ref = ? AND z.status <> 'geloescht'",
                 FernwartungRepository::zugang, edgeRef).stream().findFirst();
     }
 

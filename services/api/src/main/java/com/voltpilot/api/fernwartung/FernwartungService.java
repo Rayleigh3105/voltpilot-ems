@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -226,6 +227,49 @@ public class FernwartungService {
 
     public Zugang boxEntsperren(String edgeRef, Akteur akteur) {
         return entsperren(boxOder404(edgeRef), akteur, "box_entsperrt");
+    }
+
+    /** Was {@link #boxLoeschen} getan hat: der Zugang vor dem Löschen und die dabei geschlossenen Fenster. */
+    public record BoxGeloescht(Zugang zugang, List<Fenster> geschlosseneFenster) {
+    }
+
+    /**
+     * Den Tunnel-Zugang einer Box löschen - nur für die Werkstatt, wenn sie
+     * einen Fehlversuch löscht ({@code WerkstattService#loeschen}); die
+     * Werkstatt prüft vorher, dass die Box weder abgenommen noch gekoppelt ist.
+     *
+     * <p>Wie beim Sperren schließen offene und geplante Fenster der Box, dann
+     * wird der Zugang {@code geloescht}: Er fehlt im Soll-Stand, der
+     * Tunnel-Dienst nimmt den Peer mit dem nächsten Abruf heraus. Die Zeile
+     * bleibt (Adresse und Schlüssel werden nie wieder vergeben, Fenster und
+     * Protokoll nennen sie weiter); die Referenz ist frei für einen neuen
+     * Zugang. Ohne Box-Zugang: leer.
+     */
+    public Optional<BoxGeloescht> boxLoeschen(String edgeRef, String grund, Akteur akteur) {
+        return repo.schreibend(() -> {
+            Optional<Zugang> vorhanden = repo.box(edgeRef);
+            if (vorhanden.isEmpty()) {
+                return Optional.<BoxGeloescht>empty();
+            }
+            Zugang box = vorhanden.get();
+            Instant jetzt = jetzt();
+            List<Fenster> geschlossen = new ArrayList<>();
+            for (Fenster f : repo.offeneUndGeplanteFenster(jetzt)) {
+                if (f.boxId().equals(box.id())) {
+                    schliesse(f, jetzt, akteur, "box_geloescht");
+                    geschlossen.add(f);
+                }
+            }
+            // Die Löschregel der Datenbank (V20261008213500): nur aus „gesperrt“.
+            if (box.aktiv()) {
+                repo.statusSetzen(box.id(), GESPERRT, akteur.sub());
+            }
+            repo.statusSetzen(box.id(), GELOESCHT, akteur.sub());
+            repo.protokollieren(akteur.sub(), akteur.name(), "box_geloescht", box.id(), null, null,
+                    details("edgeRef", edgeRef, "publicKey", WireguardSchluessel.kurz(box.publicKey()),
+                            "adresse", box.adresse(), "grund", leerZuNull(grund)));
+            return Optional.of(new BoxGeloescht(box, geschlossen));
+        });
     }
 
     // ── Techniker ─────────────────────────────────────────────────────────
@@ -543,6 +587,10 @@ public class FernwartungService {
      * statt auf einen Zugang zu zeigen, den das Portal nicht mehr listet.
      */
     private static String schluesselVergeben(Zugang z) {
+        if (z.geloescht() && ART_BOX.equals(z.art())) {
+            return "Dieser Schlüssel gehörte der gelöschten Box " + z.edgeRef() + " und wird nicht wieder "
+                    + "vergeben. Die Box braucht ein neues Schlüsselpaar: erst zurücksetzen, dann neu einrichten.";
+        }
         if (z.geloescht()) {
             return "Dieser Schlüssel gehörte dem gelöschten Zugang „" + z.name() + "\" und wird nicht wieder "
                     + "vergeben. Bitte auf dem Gerät ein neues Schlüsselpaar erzeugen.";

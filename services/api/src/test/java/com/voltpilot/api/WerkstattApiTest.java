@@ -319,95 +319,165 @@ class WerkstattApiTest {
     }
 
     /**
-     * Aus dem Register entfernen: nur ein unbenutzter Eintrag, mit Spur in
-     * {@code werkstatt_box_entfernt}. Jeder Gebrauch der Referenz sperrt -
-     * die Abnahme, ein Lauf, ein Code, eine Anmeldung, ein Tunnel-Schlüssel,
-     * die Kopplung, ein Gerät.
+     * Löschen (Wunsch des Kapitäns: „nenn es wirklich löschen“): jede Box, die weder abgenommen noch gekoppelt
+     * ist. Ein Fehlversuch nimmt seinen Tunnel-Schlüssel, offene Fenster, nicht eingelöste Codes, den
+     * festgehaltenen Geräteschlüssel und die offene Zertifikatsanfrage mit; Läufe und Einlösungen bleiben. Die
+     * ganze Lage steht in {@code werkstatt_box_entfernt}. Abnahme, Zertifikat, Kunde und Vorab-Registrierung
+     * sperren.
      */
     @Test
     @Order(4)
-    void nurEinUnbenutzterEintragLaesstSichEntfernen() throws Exception {
+    void einFehlversuchLaesstSichLoeschen() throws Exception {
         String admin = token("admin", "admin");
         JdbcTemplate eigner = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),
                 POSTGRES.getUsername(), POSTGRES.getPassword()));
 
-        // ── Erlaubt: die Docker-Box aus Order(2) hat nur LAN-Netz und Notiz.
+        // ── Unbenutzt: die Docker-Box aus Order(2) hat nur LAN-Netz und Notiz, nichts geht mit.
         JsonNode docker = getJson(BASE + "/boxen/" + DOCKER, admin);
         assertThat(docker.get("inGebrauch")).isEmpty();
+        assertThat(docker.get("loeschtMit")).isEmpty();
         assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + DOCKER.toUpperCase(), admin, null).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
         assertThat(send(HttpMethod.GET, BASE + "/boxen/" + DOCKER, admin, null).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(werte(getJson(BASE + "/boxen", admin), "edgeRef")).doesNotContain(DOCKER);
         Map<String, Object> spur = eigner.queryForMap("SELECT box_id::text AS box_id, box_art, lan_netz, notiz, "
-                + "angelegt_von_name, entfernt_von, entfernt_von_name FROM werkstatt_box_entfernt WHERE edge_ref = ?",
-                DOCKER);
+                + "angelegt_von_name, entfernt_von, entfernt_von_name, mitgeloescht::text AS mit "
+                + "FROM werkstatt_box_entfernt WHERE edge_ref = ?", DOCKER);
         assertThat(spur.get("box_id")).isEqualTo(docker.get("id").asText());
         assertThat(spur.get("box_art")).isEqualTo("edge-app");
         assertThat(spur.get("lan_netz")).isEqualTo("10.213.0.1/24");
         assertThat(spur.get("notiz")).isEqualTo("Raspberry Pi 5");
         assertThat(spur.get("entfernt_von")).isNotNull();
         assertThat(spur.get("entfernt_von_name")).isEqualTo("admin");
+        JsonNode nichts = json.readTree((String) spur.get("mit"));
+        assertThat(nichts.get("tunnelZugang").isNull()).isTrue();
+        assertThat(nichts.get("codes")).isEmpty();
+        assertThat(nichts.get("geraeteschluessel").isNull()).isTrue();
+        assertThat(nichts.get("zertifikatsanfrage").isNull()).isTrue();
         // Die Spur ändert niemand.
         assertThatThrownBy(() -> eigner.update("DELETE FROM werkstatt_box_entfernt"))
                 .rootCause().hasMessageContaining("append-only");
-        // Ein zweites Mal: nicht mehr im Register. Danach lässt sie sich neu aufnehmen.
         ResponseEntity<String> nochmal = send(HttpMethod.DELETE, BASE + "/boxen/" + DOCKER, admin, null);
         assertThat(nochmal.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(message(nochmal)).contains("nicht im Werkstatt-Register");
-        assertThat(send(HttpMethod.POST, BASE + "/boxen", admin, Map.of("edgeRef", DOCKER, "boxArt", "edge-app"))
-                .getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + DOCKER, admin, null).getStatusCode())
-                .isEqualTo(HttpStatus.NO_CONTENT);
-        assertThat(eigner.queryForObject("SELECT count(*) FROM werkstatt_box_entfernt WHERE edge_ref = ?",
-                Long.class, DOCKER)).isEqualTo(2L);
 
         // ── Falsches Prüfzeichen: 422 wie überall in der Werkstatt.
         assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + TIPPFEHLER, admin, null).getStatusCode())
                 .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
 
-        // ── Abgenommen (und mit Tunnel-Schlüssel): BOX aus Order(1).
-        abgelehnt(admin, BOX, "sie ist abgenommen", "Tunnel-Schlüssel");
-
-        // ── Ein Lauf des Werkstatt-Dienstes kennt die Box.
-        String lauf = aufnehmen(admin, "wrkrun");
-        eigner.update("INSERT INTO werkstatt_lauf (kennung, zustand, beginn, stand) VALUES (?, 'angehalten', now(), "
-                + "jsonb_build_object('kennung', ?::text, 'box', ?::text))", "test-" + lauf, "test-" + lauf, lauf);
-        abgelehnt(admin, lauf, "Lauf");
-
-        // ── Ein Code des Werkstatt-Dienstes ist ausgegeben (eine Einlösung hängt immer an einem Code).
-        String code = aufnehmen(admin, "wrkcde");
+        // ── Der Fehlversuch: eingelöst, Tunnel-Schlüssel, offenes Probe-Fenster, ein Lauf, ein offener Code,
+        //    festgehaltener Geräteschlüssel, offene Zertifikatsanfrage - aber nie abgenommen, nie gekoppelt.
+        String fehl = aufnehmen(admin, "wrkfeh");
+        String alterSchluessel = wireguardSchluessel();
+        ResponseEntity<String> hinterlegt = send(HttpMethod.PUT, FW + "/boxen/" + fehl + "/schluessel", admin,
+                Map.of("publicKey", alterSchluessel));
+        assertThat(hinterlegt.getStatusCode().is2xxSuccessful()).isTrue();
+        String adresse = json.readTree(hinterlegt.getBody()).get("box").get("adresse").asText();
+        String technikerId = json.readTree(send(HttpMethod.POST, FW + "/techniker", admin,
+                Map.of("name", "Werkstatt-Dienst (Fehlversuch)", "publicKey", wireguardSchluessel())).getBody())
+                .get("techniker").get("id").asText();
+        ResponseEntity<String> geoeffnet = send(HttpMethod.POST, FW + "/fenster", admin, Map.of("edgeRef", fehl,
+                "technikerId", technikerId, "grund", "Werkstatt-Probe", "dauerMinuten", 30));
+        assertThat(geoeffnet.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String fensterId = json.readTree(geoeffnet.getBody()).get("id").asText();
         assertThat(send(HttpMethod.POST, BASE + "/freigaben", admin, freigabe()).getStatusCode())
                 .isEqualTo(HttpStatus.CREATED);
+        UUID freigabe = eigner.queryForObject("SELECT id FROM werkstatt_freigabe LIMIT 1", UUID.class);
+        UUID eingeloesterCode = eigner.queryForObject("INSERT INTO werkstatt_code (freigabe_id, edge_ref, "
+                + "code_sha256, gueltig_bis, ausgegeben_von, eingeloest_am) VALUES (?, ?, ?, "
+                + "now() + interval '10 minutes', 'test', now()) RETURNING id", UUID.class, freigabe, fehl,
+                "ab".repeat(32));
+        UUID einloesung = eigner.queryForObject("INSERT INTO werkstatt_einloesung (code_id, freigabe_id, edge_ref, "
+                + "fassung, geraete_schluessel, geraete_schluessel_sha256, wireguard_schluessel, host_schluessel, "
+                + "tunnel_adresse, fenster_id, tausch) VALUES (?, ?, ?, 'edge-light-2026.11.0', 'geraet', ?, ?, ?, ?, "
+                + "?::uuid, false) RETURNING id", UUID.class, eingeloesterCode, freigabe, fehl, "ef".repeat(32),
+                alterSchluessel, HOST, adresse, fensterId);
+        eigner.update("INSERT INTO werkstatt_geraeteschluessel (edge_ref, geraete_schluessel, "
+                + "geraete_schluessel_sha256, einloesung_id) VALUES (?, 'geraet', ?, ?)", fehl, "ef".repeat(32),
+                einloesung);
         eigner.update("INSERT INTO werkstatt_code (freigabe_id, edge_ref, code_sha256, gueltig_bis, ausgegeben_von) "
-                + "SELECT id, ?, ?, now() + interval '10 minutes', 'test' FROM werkstatt_freigabe LIMIT 1",
-                code, "ab".repeat(32));
-        abgelehnt(admin, code, "Code");
+                + "VALUES (?, ?, ?, now() + interval '10 minutes', 'test')", freigabe, fehl, "cd".repeat(32));
+        eigner.update("INSERT INTO device_enrollment (external_ref, csr_pem) VALUES (?, 'csr')", fehl);
+        eigner.update("INSERT INTO werkstatt_lauf (kennung, zustand, beginn, stand) VALUES (?, 'angehalten', now(), "
+                + "jsonb_build_object('kennung', ?::text, 'box', ?::text))", "test-" + fehl, "test-" + fehl, fehl);
 
-        // ── Angemeldet (Einlösung bzw. festgehaltener Geräteschlüssel), ohne Code darunter
-        //    nur über die Replikationsrolle einzutragen.
-        String anmeldung = aufnehmen(admin, "wrkanm");
-        eigner.execute("SET session_replication_role = replica; "
-                + "INSERT INTO werkstatt_geraeteschluessel (edge_ref, geraete_schluessel, geraete_schluessel_sha256, "
-                + "einloesung_id) VALUES ('" + anmeldung + "', 'x', '" + "cd".repeat(32) + "', gen_random_uuid()); "
-                + "SET session_replication_role = origin;");
-        abgelehnt(admin, anmeldung, "angemeldet");
+        JsonNode vorher = getJson(BASE + "/boxen/" + fehl, admin);
+        assertThat(vorher.get("inGebrauch")).isEmpty();
+        assertThat(werte(vorher.get("loeschtMit"))).containsExactly("der Tunnel-Schlüssel (Adresse " + adresse + ")",
+                "1 offenes Fernwartungs-Fenster", "1 Code des Werkstatt-Dienstes", "der festgehaltene Geräteschlüssel",
+                "die offene Zertifikatsanfrage");
 
-        // ── Tunnel-Schlüssel über die Fernwartung hinterlegt.
-        String tunnel = aufnehmen(admin, "wrktun");
-        assertThat(send(HttpMethod.PUT, FW + "/boxen/" + tunnel + "/schluessel", admin,
-                Map.of("publicKey", wireguardSchluessel())).getStatusCode().is2xxSuccessful()).isTrue();
-        abgelehnt(admin, tunnel, "Tunnel-Schlüssel");
+        assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + fehl, admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
 
-        // ── Kopplung: die Box hat ihre Zertifikatsanfrage geschickt.
-        String kopplung = aufnehmen(admin, "wrkkpp");
-        eigner.update("INSERT INTO device_enrollment (external_ref, csr_pem) VALUES (?, 'csr')", kopplung);
-        abgelehnt(admin, kopplung, "Kopplung");
+        // Weg aus dem Register und aus der Fernwartung; der Zugang bleibt als „geloescht“ (Adresse vergeben).
+        assertThat(send(HttpMethod.GET, BASE + "/boxen/" + fehl, admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(send(HttpMethod.GET, FW + "/boxen/" + fehl, admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(eigner.queryForObject("SELECT status FROM fernwartung_zugang WHERE edge_ref = ?", String.class,
+                fehl)).isEqualTo("geloescht");
+        assertThat(eigner.queryForObject("SELECT geschlossen_am IS NOT NULL FROM fernwartung_fenster WHERE id = ?::uuid",
+                Boolean.class, fensterId)).isTrue();
+        assertThat(eigner.queryForList("SELECT p.aktion || coalesce(':' || (p.details->>'anlass'), '') "
+                + "FROM fernwartung_protokoll p JOIN fernwartung_zugang z ON z.id = p.box_id WHERE z.edge_ref = ? "
+                + "ORDER BY p.zeit", String.class, fehl))
+                .containsSubsequence("fenster_geschlossen:box_geloescht", "box_geloescht");
+        // Mitgegangen: offener Code, Geräteschlüssel, Zertifikatsanfrage. Geblieben: Lauf, Einlösung, ihr Code.
+        assertThat(eigner.queryForList("SELECT code_sha256 FROM werkstatt_code WHERE edge_ref = ?", String.class,
+                fehl)).containsExactly("ab".repeat(32));
+        assertThat(eigner.queryForObject("SELECT count(*) FROM werkstatt_einloesung WHERE edge_ref = ?", Long.class,
+                fehl)).isEqualTo(1L);
+        assertThat(eigner.queryForObject("SELECT count(*) FROM werkstatt_lauf WHERE stand->>'box' = ?", Long.class,
+                fehl)).isEqualTo(1L);
+        assertThat(eigner.queryForObject("SELECT count(*) FROM werkstatt_geraeteschluessel WHERE edge_ref = ?",
+                Long.class, fehl)).isZero();
+        assertThat(eigner.queryForObject("SELECT count(*) FROM device_enrollment WHERE external_ref = ?", Long.class,
+                fehl)).isZero();
+        // Die Spur trägt die ganze gelöschte Lage.
+        JsonNode mit = json.readTree(eigner.queryForObject("SELECT mitgeloescht::text FROM werkstatt_box_entfernt "
+                + "WHERE edge_ref = ?", String.class, fehl));
+        assertThat(mit.get("tunnelZugang").get("adresse").asText()).isEqualTo(adresse);
+        assertThat(mit.get("tunnelZugang").get("publicKey").asText()).isEqualTo(alterSchluessel);
+        assertThat(mit.get("tunnelZugang").get("statusVorher").asText()).isEqualTo("aktiv");
+        assertThat(werte(mit.get("tunnelZugang").get("geschlosseneFenster"))).containsExactly(fensterId);
+        assertThat(werte(mit.get("codes"), "code_sha256")).containsExactly("cd".repeat(32));
+        assertThat(mit.get("geraeteschluessel").get("einloesung_id").asText()).isEqualTo(einloesung.toString());
+        assertThat(mit.get("zertifikatsanfrage").get("csr_pem").asText()).isEqualTo("csr");
 
-        // ── Ein Gerät (oder seine Vorab-Registrierung) nutzt die Referenz.
-        String geraet = aufnehmen(admin, "wrkgrt");
-        eigner.update("INSERT INTO provisioned_device (external_ref) VALUES (?)", geraet);
-        abgelehnt(admin, geraet, "Gerät");
+        // Dieselbe Referenz kann wieder kommen: neuer Zugang, neue Adresse; der alte Schlüssel bleibt vergeben.
+        assertThat(send(HttpMethod.POST, BASE + "/boxen", admin, Map.of("edgeRef", fehl)).getStatusCode())
+                .isEqualTo(HttpStatus.CREATED);
+        ResponseEntity<String> alt = send(HttpMethod.PUT, FW + "/boxen/" + fehl + "/schluessel", admin,
+                Map.of("publicKey", alterSchluessel));
+        assertThat(alt.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(alt)).contains("gelöschten Box " + fehl, "zurücksetzen");
+        ResponseEntity<String> neu = send(HttpMethod.PUT, FW + "/boxen/" + fehl + "/schluessel", admin,
+                Map.of("publicKey", wireguardSchluessel()));
+        assertThat(neu.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(json.readTree(neu.getBody()).get("box").get("adresse").asText()).isNotEqualTo(adresse);
+
+        // ── Gesperrt: abgenommen (BOX aus Order(1)), Zertifikat ausgestellt, beim Kunden, vorab registriert.
+        abgelehnt(admin, BOX, "sie ist abgenommen");
+
+        String zertifikat = aufnehmen(admin, "wrkzrt");
+        eigner.update("INSERT INTO device_enrollment (external_ref, csr_pem, cert_pem) VALUES (?, 'csr', 'cert')",
+                zertifikat);
+        abgelehnt(admin, zertifikat, "Zertifikat");
+
+        String kunde = aufnehmen(admin, "wrkkdb");
+        UUID tenant = UUID.randomUUID();
+        UUID site = UUID.randomUUID();
+        eigner.update("INSERT INTO tenant (id, name) VALUES (?, 'Kunde Löschen')", tenant);
+        eigner.update("INSERT INTO site (id, tenant_id, name) VALUES (?, ?, 'Halle')", site, tenant);
+        eigner.update("INSERT INTO device (tenant_id, site_id, external_ref, kind, status) VALUES (?,?,?,?,?)",
+                tenant, site, kunde, "gateway", "claimed");
+        abgelehnt(admin, kunde, "Kunde");
+
+        String vorab = aufnehmen(admin, "wrkgrt");
+        eigner.update("INSERT INTO provisioned_device (external_ref) VALUES (?)", vorab);
+        abgelehnt(admin, vorab, "Vorab-Registrierung");
 
         // ── Nicht im Register: 404.
         assertThat(send(HttpMethod.DELETE, BASE + "/boxen/" + ref("wrkxyz"), admin, null).getStatusCode())
@@ -449,11 +519,11 @@ class WerkstattApiTest {
         assertThat(inListe.get("kunde").get("mandant").asText()).isEqualTo("Kunde Werkstatt");
     }
 
-    /** 409 mit Grund, der Eintrag bleibt, und die Seite liest denselben Grund in {@code inGebrauch}. */
+    /** 409 mit Grund, die Box bleibt, und die Seite liest denselben Grund in {@code inGebrauch}. */
     private void abgelehnt(String admin, String ref, String... gruende) throws Exception {
         ResponseEntity<String> r = send(HttpMethod.DELETE, BASE + "/boxen/" + ref, admin, null);
         assertThat(r.getStatusCode()).as(ref).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(message(r)).as(ref).startsWith(ref + " lässt sich nicht aus dem Register entfernen: ")
+        assertThat(message(r)).as(ref).startsWith(ref + " lässt sich nicht löschen: ")
                 .contains(gruende);
         JsonNode box = getJson(BASE + "/boxen/" + ref, admin);
         assertThat(String.join("; ", werte(box.get("inGebrauch")))).as(ref).contains(gruende);

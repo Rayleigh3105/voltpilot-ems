@@ -60,12 +60,13 @@ public class WerkstattService {
 
     /**
      * Eine Box des Registers mit ihren Schritten und Abnahmen (neueste zuerst).
-     * {@code inGebrauch}: wo die Referenz schon benutzt wird, in Worten; leer =
-     * der Eintrag lässt sich wieder entfernen ({@link #entfernen}). {@code kunde}: wer die Box
-     * eingerichtet hat (Claim), null = noch kein Kunde.
+     * {@code inGebrauch}: was das Löschen sperrt (Abnahme, Kopplung), in Worten; leer =
+     * die Box lässt sich löschen ({@link #loeschen}). {@code loeschtMit}: was dabei mitgeht
+     * (Tunnel-Schlüssel, Fenster, Codes, Geräteschlüssel, Zertifikatsanfrage), in Worten.
+     * {@code kunde}: wer die Box eingerichtet hat (Claim), null = noch kein Kunde.
      */
     public record Stand(Box box, Map<String, SchrittStand> schritte, List<Abnahme> abnahmen,
-            List<String> inGebrauch, WerkstattRepository.Kunde kunde) {
+            List<String> inGebrauch, List<String> loeschtMit, WerkstattRepository.Kunde kunde) {
     }
 
     public record Angelegt(boolean neu, Stand stand) {
@@ -108,7 +109,8 @@ public class WerkstattService {
         }
         return repo.boxen().stream()
                 .map(b -> new Stand(b, schritte(b), jeBox.getOrDefault(b.id(), List.of()),
-                        repo.inGebrauch(b.id(), b.edgeRef()), repo.kunde(b.edgeRef()).orElse(null)))
+                        repo.inGebrauch(b.id(), b.edgeRef()), loeschtMit(repo.mitgeloescht(b.edgeRef())),
+                        repo.kunde(b.edgeRef()).orElse(null)))
                 .toList();
     }
 
@@ -201,25 +203,66 @@ public class WerkstattService {
     }
 
     /**
-     * Einen Eintrag wieder aus dem Register entfernen - nur, solange er
-     * unbenutzt ist: keine Abnahme, kein Lauf des Werkstatt-Dienstes, kein
-     * Code, keine Anmeldung in der Werkstatt, kein Tunnel-Schlüssel, keine
-     * Kopplung, kein Gerät mit dieser Referenz. Sonst 409 mit dem Grund.
-     * Gelöscht wird nur die Zeile des Registers (mehr legt {@link #anlegen}
-     * nicht an); vorher hält {@code werkstatt_box_entfernt} sie mit wer und
-     * wann fest. Geprüft und gelöscht unter der Werkstatt-Sperre.
+     * Eine Box löschen, etwa einen Fehlversuch (Wunsch des Kapitäns 05.11.2026: „nenn es wirklich löschen“).
+     * Erlaubt, solange sie weder abgenommen noch gekoppelt ist ({@link WerkstattRepository#inGebrauch}: kein
+     * ausgestelltes Zertifikat, kein Gerät eines Kunden, keine vorbereitete Anlage); sonst 409 mit dem Grund.
+     *
+     * <p>Mit ihr geht, was nur ihr gehört: ihr Tunnel-Zugang ({@link FernwartungService#boxLoeschen}: offene
+     * Fenster schließen, der Peer fällt aus dem Soll-Stand), die nicht eingelösten Codes, der festgehaltene
+     * Geräteschlüssel und eine offene Zertifikatsanfrage. Läufe des Werkstatt-Dienstes und Einlösungen bleiben
+     * als Verlauf. Die ganze Lage steht vorher mit wer und wann in {@code werkstatt_box_entfernt}. Alles unter der
+     * Werkstatt-Sperre in EINER Transaktion; die Fernwartung nimmt ihre Sperre darin (immer in dieser Reihenfolge).
      */
-    public void entfernen(String edgeRef, Akteur akteur) {
+    public void loeschen(String edgeRef, Akteur akteur) {
         repo.schreibend(() -> {
             Box b = repo.box(edgeRef).orElseThrow(() -> nichtImRegister(edgeRef));
-            List<String> gebraucht = repo.inGebrauch(b.id(), edgeRef);
-            if (!gebraucht.isEmpty()) {
+            List<String> gesperrt = repo.inGebrauch(b.id(), edgeRef);
+            if (!gesperrt.isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, edgeRef
-                        + " lässt sich nicht aus dem Register entfernen: " + String.join("; ", gebraucht) + ".");
+                        + " lässt sich nicht löschen: " + String.join("; ", gesperrt) + ".");
             }
-            repo.boxEntfernen(b.id(), akteur.sub(), akteur.name());
+            Optional<FernwartungService.BoxGeloescht> tunnel = fernwartung.boxLoeschen(edgeRef,
+                    "In der Werkstatt gelöscht", akteur);
+            repo.fehlversuchLoeschen(b.id(), edgeRef, tunnel.map(this::tunnelJson).orElse(null), akteur.sub(),
+                    akteur.name());
             return null;
         });
+    }
+
+    private String tunnelJson(FernwartungService.BoxGeloescht g) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", g.zugang().id().toString());
+        m.put("adresse", g.zugang().adresse());
+        m.put("publicKey", g.zugang().publicKey());
+        m.put("statusVorher", g.zugang().status());
+        m.put("angelegtAm", g.zugang().angelegtAm().toString());
+        m.put("geschlosseneFenster", g.geschlosseneFenster().stream().map(f -> f.id().toString()).toList());
+        try {
+            return json.writeValueAsString(m);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** {@link WerkstattRepository.Mitgeloescht} in Worten, für die Bestätigung im Portal. */
+    static List<String> loeschtMit(WerkstattRepository.Mitgeloescht m) {
+        List<String> w = new ArrayList<>();
+        if (m.tunnelAdresse() != null) {
+            w.add("der Tunnel-Schlüssel (Adresse " + m.tunnelAdresse() + ")");
+        }
+        if (m.fenster() > 0) {
+            w.add(m.fenster() == 1 ? "1 offenes Fernwartungs-Fenster" : m.fenster() + " offene Fernwartungs-Fenster");
+        }
+        if (m.codes() > 0) {
+            w.add(m.codes() == 1 ? "1 Code des Werkstatt-Dienstes" : m.codes() + " Codes des Werkstatt-Dienstes");
+        }
+        if (m.geraeteschluessel()) {
+            w.add("der festgehaltene Geräteschlüssel");
+        }
+        if (m.zertifikatsanfrage()) {
+            w.add("die offene Zertifikatsanfrage");
+        }
+        return w;
     }
 
     // ── Abnahme ───────────────────────────────────────────────────────────
@@ -439,7 +482,7 @@ public class WerkstattService {
 
     private Stand stand(Box b) {
         return new Stand(b, schritte(b), repo.abnahmen(b.id()), repo.inGebrauch(b.id(), b.edgeRef()),
-                repo.kunde(b.edgeRef()).orElse(null));
+                loeschtMit(repo.mitgeloescht(b.edgeRef())), repo.kunde(b.edgeRef()).orElse(null));
     }
 
     private Map<String, SchrittStand> schritte(Box b) {

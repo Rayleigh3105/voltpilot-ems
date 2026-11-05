@@ -102,7 +102,7 @@ der Kopplung geschrieben (`edge-` klein); ein falsches Prüfzeichen ist 422.
 | `GET /grundlagen` | die Kennungen der Prüfungen und der Vorschlag fürs LAN |
 | `GET /boxen`, `GET /boxen/{ref}` | das Register mit Schritten und Abnahmen (neueste zuerst) |
 | `POST /boxen` | aufnehmen: 201 neu, 200 schon da (unverändert); `schritte` = was vorher erledigt war |
-| `DELETE /boxen/{ref}` | einen unbenutzten Eintrag entfernen: 204; 409 mit Grund, sobald die Referenz in Gebrauch ist (Abnahme, Lauf des Dienstes, Code, Anmeldung, Tunnel-Schlüssel, Kopplung, Gerät); `inGebrauch` an der Box nennt dieselben Gründe |
+| `DELETE /boxen/{ref}` | eine Box löschen, etwa einen Fehlversuch (Portal: „Löschen“): 204; 409 mit Grund, solange sie abgenommen oder gekoppelt ist (Zertifikat, Gerät eines Kunden, Vorab-Registrierung), `inGebrauch` an der Box nennt dieselben Gründe. Mit ihr gehen Tunnel-Zugang (Zustand `geloescht`, offene Fenster schließen), nicht eingelöste Codes, festgehaltener Geräteschlüssel und offene Zertifikatsanfrage; `loeschtMit` an der Box nennt sie. Läufe und Einlösungen bleiben |
 | `PUT /boxen/{ref}/schritte/{schritt}` | `{"erledigt": true\|false}`, idempotent |
 | `PUT /boxen/{ref}/lan-netz` | `{"lanNetz": "10.213.0.1/24"}`; 422 mit Grund |
 | `POST /boxen/{ref}/abnahme` | das Protokoll; 201, sonst 404/409/422 mit Grund |
@@ -113,11 +113,18 @@ der Kopplung geschrieben (`edge-` klein); ein falsches Prüfzeichen ist 422.
 
 Wie die Tabellen der Fernwartung globale Betriebsdaten ohne Mandant (eine Box in der Werkstatt gehört noch
 niemandem): keine Rechte für die App-Rolle, RLS mit `FORCE` und ohne Policy als zweiter Riegel, gelesen und
-geschrieben nur über die BYPASSRLS-Rolle `voltpilot_admin` (`WerkstattRepository`). Gelöscht wird nur ein
-unbenutzter Eintrag des Registers (`DELETE /boxen/{ref}`); er bleibt vorher in `werkstatt_box_entfernt` stehen.
+geschrieben nur über die BYPASSRLS-Rolle `voltpilot_admin` (`WerkstattRepository`). Gelöscht wird nur eine Box,
+die weder abgenommen noch gekoppelt ist (`DELETE /boxen/{ref}`), unter der Werkstatt-Sperre in einer Transaktion
+(die Fernwartung nimmt ihre Sperre darin): Register-Zeile, nicht eingelöste `werkstatt_code`,
+`werkstatt_geraeteschluessel` und eine `device_enrollment` ohne Zertifikat; der Box-Zugang der Fernwartung wird
+`geloescht` (Adresse und Schlüssel bleiben vergeben, dieselbe Referenz bekommt später einen neuen Zugang).
+Vorher steht alles mit wer und wann in `werkstatt_box_entfernt` (`mitgeloescht`: Tunnel-Zugang mit geschlossenen
+Fenstern, Codes, Geräteschlüssel, Zertifikatsanfrage). `werkstatt_lauf` und die append-only `werkstatt_einloesung`
+(mit ihrem Code) bleiben als Verlauf; die Einlösung zählt weiter zur Obergrenze ihrer Freigabe.
 `werkstatt_abnahme` und `werkstatt_box_entfernt` sind append-only an der Datenbankgrenze, und eine abgenommene Box
 hält ihre Abnahme per Fremdschlüssel fest. Migrationen `V20261026200000__werkstatt.sql`,
-`V20261105170000__werkstatt_box_entfernen.sql`, `V20261105200000__werkstatt_auftrag_zur_seite.sql` (`werkstatt_auftrag`:
+`V20261105170000__werkstatt_box_entfernen.sql`, `V20261106080000__werkstatt_fehlversuch_loeschen.sql`,
+`V20261105200000__werkstatt_auftrag_zur_seite.sql` (`werkstatt_auftrag`:
 Aufträge an den Dienst, nur `abgeholt_am` ändert sich; `werkstatt_zur_seite`: append-only).
 
 **Aufträge an den Dienst.** Eine eingehende Verbindung zum Werkstatt-Dienst gibt es nicht. Er holt offene Aufträge mit

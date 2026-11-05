@@ -208,7 +208,7 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
               freigaben={freigaben}
               jetzt={jetzt}
               onZurueck={() => waehle(null)}
-              onEntfernt={(ref) => {
+              onGeloescht={(ref) => {
                 setBoxen((alt) => (alt ? alt.filter((b) => b.edgeRef !== ref) : alt));
                 waehle(null);
                 void laden();

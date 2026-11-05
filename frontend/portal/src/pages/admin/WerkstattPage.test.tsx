@@ -13,7 +13,7 @@ const werkstattFreigeben = vi.fn();
 const werkstattFreigabeBeenden = vi.fn();
 const fernwartungBox = vi.fn();
 const fernwartung = vi.fn();
-const werkstattBoxEntfernen = vi.fn();
+const werkstattBoxLoeschen = vi.fn();
 const werkstattNochmal = vi.fn();
 const werkstattZurSeite = vi.fn();
 const edgeUpdates = vi.fn();
@@ -27,7 +27,7 @@ vi.mock('../../admin/adminApi', () => ({
     werkstattFreigabeBeenden: (k: string) => werkstattFreigabeBeenden(k),
     fernwartungBox: (r: string) => fernwartungBox(r),
     fernwartung: () => fernwartung(),
-    werkstattBoxEntfernen: (r: string) => werkstattBoxEntfernen(r),
+    werkstattBoxLoeschen: (r: string) => werkstattBoxLoeschen(r),
     werkstattNochmal: (l: string) => werkstattNochmal(l),
     werkstattZurSeite: (l: string) => werkstattZurSeite(l),
     edgeUpdates: () => edgeUpdates(),
@@ -296,25 +296,37 @@ describe('Werkstatt: Einrichtungs-Detailseite einer Box', () => {
   });
 });
 
-describe('Werkstatt: einen unbenutzten Eintrag aus dem Register entfernen', () => {
+describe('Werkstatt: eine Box löschen (Fehlversuch)', () => {
   const REF = 'edge-pmzasg2';
-  const nurRegister = () => ({ ...box(REF), lanNetz: null, abnahmen: [], inGebrauch: [] as string[] });
+  const MIT = ['der Tunnel-Schlüssel (Adresse 10.10.16.3)', '1 Code des Werkstatt-Dienstes', 'der festgehaltene Geräteschlüssel'];
+  const fehlversuch = () => ({ ...box(REF), lanNetz: null, abnahmen: [], inGebrauch: [] as string[], loeschtMit: MIT });
+  const angehalten = () => ({ kennung: 'l1', freigabe: '2026-11-mango-1', boxArt: 'mango', zustand: 'angehalten' as const, schritt: 'probe',
+    titel: 'Probe', grund: 'box_weg', beginn: '2026-11-04T16:00:00Z', ende: '2026-11-04T16:20:00Z', aktualisiertAm: '2026-11-04T16:20:00Z',
+    stand: { ...(vektor.lauf as LaufStand), box: REF } });
 
-  it('nur im Register und unbenutzt: Rückfrage auf der Seite nennt die Referenz, danach die Liste ohne die Box', async () => {
-    werkstattBoxen.mockResolvedValueOnce([box('edge-5t2dcy6'), nurRegister()]).mockResolvedValue([box('edge-5t2dcy6')]);
-    werkstattBoxEntfernen.mockResolvedValue(undefined);
+  it('angehaltener Fehlversuch: „Löschen“, die Rückfrage nennt Referenz und was mitgeht, danach die Liste ohne die Box', async () => {
+    werkstattBoxen.mockResolvedValueOnce([box('edge-5t2dcy6'), fehlversuch()]).mockResolvedValue([box('edge-5t2dcy6')]);
+    werkstattDienst.mockResolvedValue(dienst({}, { laeufe: [angehalten()] as unknown as WerkstattDienst['laeufe'] }));
+    werkstattBoxLoeschen.mockResolvedValue(undefined);
     window.location.hash = `#/werkstatt?box=${REF}`;
     render(<WerkstattPage />);
-    const karte = await screen.findByTestId('ws-entfernen');
-    expect(screen.getByTestId('ws-stand')).toHaveTextContent('im Register');
-    expect(within(karte).queryByTestId('ws-entfernen-frage')).toBeNull();
-    fireEvent.click(within(karte).getByTestId('ws-entfernen-start'));
-    const frage = within(karte).getByTestId('ws-entfernen-frage');
-    expect(frage).toHaveTextContent(`${REF} aus dem Register entfernen?`);
-    expect(within(frage).getByTestId('ws-entfernen-ja')).toHaveTextContent(`${REF} entfernen`);
-    expect(werkstattBoxEntfernen).not.toHaveBeenCalled();
-    fireEvent.click(within(frage).getByTestId('ws-entfernen-ja'));
-    await waitFor(() => expect(werkstattBoxEntfernen).toHaveBeenCalledWith(REF));
+    const karte = await screen.findByTestId('ws-loeschen');
+    expect(within(karte).getByRole('heading')).toHaveTextContent('Löschen');
+    expect(within(karte).getByTestId('ws-loeschen-start')).toHaveTextContent(/^Löschen$/);
+    expect(screen.queryByText(/Aus dem Register entfernen/)).toBeNull();
+    expect(within(karte).queryByTestId('ws-loeschen-frage')).toBeNull();
+    fireEvent.click(within(karte).getByTestId('ws-loeschen-start'));
+    const frage = within(karte).getByTestId('ws-loeschen-frage');
+    expect(frage).toHaveTextContent(`${REF} wirklich löschen?`);
+    const mit = within(frage).getByTestId('ws-loeschen-mit');
+    expect(within(mit).getAllByRole('listitem').map((li) => li.textContent)).toEqual(MIT);
+    expect(frage).toHaveTextContent('Läufe und Einlösungen bleiben als Verlauf');
+    expect(frage).toHaveTextContent('erst zurücksetzen');
+    expect(frage).not.toHaveTextContent('arbeitet gerade mit ihr');
+    expect(within(frage).getByTestId('ws-loeschen-ja')).toHaveTextContent(`${REF} löschen`);
+    expect(werkstattBoxLoeschen).not.toHaveBeenCalled();
+    fireEvent.click(within(frage).getByTestId('ws-loeschen-ja'));
+    await waitFor(() => expect(werkstattBoxLoeschen).toHaveBeenCalledWith(REF));
     const liste = await screen.findByTestId('ws-boxen');
     expect(screen.queryByTestId('ws-detail')).toBeNull();
     expect(window.location.hash).toBe('#/werkstatt');
@@ -322,44 +334,48 @@ describe('Werkstatt: einen unbenutzten Eintrag aus dem Register entfernen', () =
     expect(within(liste).getByText('edge-5t2dcy6')).toBeInTheDocument();
   });
 
-  it('Abbrechen ruft nichts auf; ein 409 der API steht in der Rückfrage, die Seite bleibt', async () => {
-    werkstattBoxen.mockResolvedValue([nurRegister()]);
-    werkstattBoxEntfernen.mockRejectedValue(new ApiError(409, `${REF} lässt sich nicht aus dem Register entfernen: der Werkstatt-Dienst hat ihr einen Code ausgegeben.`));
+  it('nur im Register: die Rückfrage sagt, dass nur der Eintrag geht; ein laufender Lauf wird genannt', async () => {
+    werkstattBoxen.mockResolvedValue([{ ...fehlversuch(), loeschtMit: [] }]);
+    werkstattDienst.mockResolvedValue(dienst({}, { laeufe: [{ ...angehalten(), zustand: 'laeuft', ende: null }] as unknown as WerkstattDienst['laeufe'] }));
     window.location.hash = `#/werkstatt?box=${REF}`;
     render(<WerkstattPage />);
-    fireEvent.click(await screen.findByTestId('ws-entfernen-start'));
-    fireEvent.click(screen.getByTestId('ws-entfernen-nein'));
-    expect(screen.queryByTestId('ws-entfernen-frage')).toBeNull();
-    expect(werkstattBoxEntfernen).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('ws-entfernen-start'));
-    fireEvent.click(screen.getByTestId('ws-entfernen-ja'));
-    expect(await screen.findByTestId('ws-entfernen-fehler')).toHaveTextContent('Code ausgegeben');
+    fireEvent.click(await screen.findByTestId('ws-loeschen-start'));
+    const frage = screen.getByTestId('ws-loeschen-frage');
+    expect(within(frage).getByTestId('ws-loeschen-mit')).toHaveTextContent('Mit ihr geht nur der Eintrag im Register.');
+    expect(frage).toHaveTextContent('arbeitet gerade mit ihr');
+    expect(frage).not.toHaveTextContent('erst zurücksetzen');
+  });
+
+  it('Abbrechen ruft nichts auf; ein 409 der API steht in der Rückfrage, die Seite bleibt', async () => {
+    werkstattBoxen.mockResolvedValue([fehlversuch()]);
+    werkstattBoxLoeschen.mockRejectedValue(new ApiError(409, `${REF} lässt sich nicht löschen: ein Kunde hat sie eingerichtet (Gerät).`));
+    window.location.hash = `#/werkstatt?box=${REF}`;
+    render(<WerkstattPage />);
+    fireEvent.click(await screen.findByTestId('ws-loeschen-start'));
+    fireEvent.click(screen.getByTestId('ws-loeschen-nein'));
+    expect(screen.queryByTestId('ws-loeschen-frage')).toBeNull();
+    expect(werkstattBoxLoeschen).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('ws-loeschen-start'));
+    fireEvent.click(screen.getByTestId('ws-loeschen-ja'));
+    expect(await screen.findByTestId('ws-loeschen-fehler')).toHaveTextContent('ein Kunde hat sie eingerichtet');
     expect(screen.getByTestId('ws-detail')).toBeInTheDocument();
   });
 
-  it('keine Aktion, sobald die Box in Gebrauch, abgenommen oder in einem Lauf ist oder die API nichts dazu sagt', async () => {
+  it('keine Aktion, sobald die Box abgenommen oder gekoppelt ist oder die API nichts dazu sagt', async () => {
     const faelle = [
-      { ...nurRegister(), inGebrauch: ['für sie ist ein Tunnel-Schlüssel hinterlegt'] },
-      { ...nurRegister(), inGebrauch: undefined },
-      { ...box(REF), inGebrauch: [] },
+      { ...fehlversuch(), inGebrauch: ['für sie ist ein Zertifikat ausgestellt (Kopplung)'] },
+      { ...fehlversuch(), inGebrauch: ['ein Kunde hat sie eingerichtet (Gerät)'] },
+      { ...fehlversuch(), inGebrauch: undefined },
+      { ...box(REF), inGebrauch: [], loeschtMit: [] },
     ];
     for (const b of faelle) {
       werkstattBoxen.mockResolvedValue([b]);
       window.location.hash = `#/werkstatt?box=${REF}`;
       const { unmount } = render(<WerkstattPage />);
       await screen.findByTestId('ws-detail');
-      expect(screen.queryByTestId('ws-entfernen')).toBeNull();
+      expect(screen.queryByTestId('ws-loeschen')).toBeNull();
       unmount();
     }
-    // Ein Lauf des Dienstes kennt die Box: Stand „läuft“, keine Aktion.
-    werkstattBoxen.mockResolvedValue([nurRegister()]);
-    const lauf = { kennung: 'l1', freigabe: '2026-11-mango-1', boxArt: 'mango', zustand: 'laeuft' as const, schritt: 'programm', titel: 'x', grund: null,
-      beginn: '2026-11-04T16:00:00Z', ende: null, aktualisiertAm: '2026-11-04T16:01:00Z', stand: { ...(vektor.lauf as LaufStand), box: REF } };
-    werkstattDienst.mockResolvedValue(dienst({}, { laeufe: [lauf] as unknown as WerkstattDienst['laeufe'] }));
-    window.location.hash = `#/werkstatt?box=${REF}`;
-    render(<WerkstattPage />);
-    await screen.findByTestId('ws-detail');
-    expect(screen.queryByTestId('ws-entfernen')).toBeNull();
   });
 });
 

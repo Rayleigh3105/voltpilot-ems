@@ -645,8 +645,11 @@ export const adminApi = {
 
   werkstattBoxen: () => request<WerkstattBox[]>('/api/v1/admin/werkstatt/boxen'),
 
-  /** Einen unbenutzten Eintrag wieder aus dem Register entfernen: 204; 409 mit Grund, wenn die Referenz in Gebrauch ist. */
-  werkstattBoxEntfernen: (ref: string) =>
+  /**
+   * Eine Box löschen (etwa einen Fehlversuch) samt Tunnel-Schlüssel, Codes und Geräteschlüssel: 204;
+   * 409 mit Grund, wenn sie abgenommen oder gekoppelt ist.
+   */
+  werkstattBoxLoeschen: (ref: string) =>
     request<void>(`/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}`, { method: 'DELETE' }),
 
   /** Was der Werkstatt-Dienst gerade tut (Ansicht mit Alter, Läufe), für die Werkstatt-Bildschirme. */

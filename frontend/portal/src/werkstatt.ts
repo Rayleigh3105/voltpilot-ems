@@ -73,11 +73,16 @@ export interface WerkstattBox {
   /** Neueste zuerst; leer = noch nicht abgenommen. */
   abnahmen: WerkstattAbnahme[];
   /**
-   * Wo die Referenz schon in Gebrauch ist, in Worten (Abnahme, Lauf des Dienstes, Code, Anmeldung,
-   * Tunnel-Schlüssel, Kopplung, Gerät); leer = der Eintrag lässt sich wieder entfernen. Fehlt bei
-   * einer API vor dieser Route.
+   * Was das Löschen sperrt, in Worten (Abnahme, Zertifikat, Kunde, Vorab-Registrierung); leer = die
+   * Box lässt sich löschen. Fehlt bei einer API vor dieser Route.
    */
   inGebrauch?: string[];
+  /**
+   * Was beim Löschen mitgeht, in Worten (Tunnel-Schlüssel mit Adresse, offene Fenster, Codes,
+   * Geräteschlüssel, Zertifikatsanfrage); leer = nur der Eintrag im Register. Fehlt bei einer API vor
+   * diesem Feld.
+   */
+  loeschtMit?: string[];
   /**
    * Wer die Box über den QR-Einstieg eingerichtet hat (Claim); null = noch kein Kunde. Fehlt bei
    * einer API vor diesem Feld: dann ist es unbekannt, nicht „kein Kunde“.
@@ -93,11 +98,16 @@ export interface WerkstattKunde {
 }
 
 /**
- * Ob die Seite „Aus dem Register entfernen“ anbietet: nur für einen Eintrag, der nur im Register steht
- * (kein Lauf, keine Abnahme) und den die API selbst als unbenutzt meldet. Fehlt die Angabe, nie.
+ * Ob die Seite „Löschen“ anbietet: für jede Box, die die API löschen lässt - keine Abnahme und
+ * `inGebrauch` leer (nicht gekoppelt, kein Kunde). Fehlt die Angabe, nie.
  */
-export function entfernbar(box: WerkstattBox | null, stand: string): boolean {
-  return box != null && stand === 'register' && box.abnahmen.length === 0 && Array.isArray(box.inGebrauch) && box.inGebrauch.length === 0;
+export function loeschbar(box: WerkstattBox | null): boolean {
+  return box != null && box.abnahmen.length === 0 && Array.isArray(box.inGebrauch) && box.inGebrauch.length === 0;
+}
+
+/** Ob mit der Box ein Tunnel-Schlüssel geht (die API nennt ihn in `loeschtMit`). */
+export function loeschtTunnelSchluessel(box: WerkstattBox): boolean {
+  return (box.loeschtMit ?? []).some((w) => w.includes('Tunnel-Schlüssel'));
 }
 
 // ── Die Prüfungen der Werkstatt-Regel ──────────────────────────────────────

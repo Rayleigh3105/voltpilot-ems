@@ -87,13 +87,14 @@ public class AdminWerkstattController {
 
     /**
      * Eine Box des Registers; {@code abnahmen} neueste zuerst, leer = noch nicht abgenommen.
-     * {@code inGebrauch}: wo die Referenz schon benutzt wird, in Worten; leer = der Eintrag
-     * lässt sich mit {@code DELETE /boxen/{ref}} wieder entfernen. {@code kunde}: wer die Box über
+     * {@code inGebrauch}: was das Löschen sperrt (Abnahme, Kopplung), in Worten; leer = die Box
+     * lässt sich mit {@code DELETE /boxen/{ref}} löschen. {@code loeschtMit}: was dabei mitgeht
+     * (Tunnel-Schlüssel, Fenster, Codes, Geräteschlüssel, Zertifikatsanfrage). {@code kunde}: wer die Box über
      * den QR-Einstieg eingerichtet hat (Claim); null = noch kein Kunde.
      */
     public record BoxDto(UUID id, String edgeRef, String boxArt, String lanNetz, Map<String, SchrittDto> schritte,
             String notiz, Instant angelegtAm, String angelegtVon, Instant geaendertAm, List<AbnahmeDto> abnahmen,
-            List<String> inGebrauch, KundeDto kunde) {
+            List<String> inGebrauch, List<String> loeschtMit, KundeDto kunde) {
     }
 
     /** Der Kunde einer Box: Mandant, Anlage (null = ohne Anlage) und seit wann sie zu ihm gehört. */
@@ -262,13 +263,13 @@ public class AdminWerkstattController {
     }
 
     /**
-     * Einen unbenutzten Eintrag wieder aus dem Register entfernen: 204; 404 nicht
-     * im Register, 409 mit dem Grund, wenn die Referenz schon in Gebrauch ist.
-     * Die Regeln stehen an {@link WerkstattService#entfernen}.
+     * Eine Box löschen (etwa einen Fehlversuch) samt Tunnel-Schlüssel, Codes und
+     * Geräteschlüssel: 204; 404 nicht im Register, 409 mit dem Grund, wenn sie
+     * abgenommen oder gekoppelt ist. Die Regeln stehen an {@link WerkstattService#loeschen}.
      */
     @DeleteMapping("/boxen/{ref}")
-    public ResponseEntity<Void> entfernen(@PathVariable String ref, @AuthenticationPrincipal Jwt caller) {
-        service.entfernen(referenz(ref), Akteur.aus(caller));
+    public ResponseEntity<Void> loeschen(@PathVariable String ref, @AuthenticationPrincipal Jwt caller) {
+        service.loeschen(referenz(ref), Akteur.aus(caller));
         return ResponseEntity.noContent().build();
     }
 
@@ -326,7 +327,7 @@ public class AdminWerkstattController {
         s.schritte().forEach((k, v) -> schritte.put(k, SchrittDto.of(v)));
         return new BoxDto(s.box().id(), s.box().edgeRef(), s.box().boxArt(), s.box().lanNetz(), schritte,
                 s.box().notiz(), s.box().angelegtAm(), name(s.box().angelegtVonName(), s.box().angelegtVon()),
-                s.box().geaendertAm(), s.abnahmen().stream().map(this::abnahmeDto).toList(), s.inGebrauch(),
+                s.box().geaendertAm(), s.abnahmen().stream().map(this::abnahmeDto).toList(), s.inGebrauch(), s.loeschtMit(),
                 s.kunde() == null ? null : new KundeDto(s.kunde().mandant(), s.kunde().anlage(), s.kunde().seit()));
     }
 

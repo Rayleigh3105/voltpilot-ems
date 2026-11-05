@@ -2,9 +2,10 @@
  * Die Einrichtungs-Detailseite einer Box in der Werkstatt (`#/werkstatt?box=<referenz>`,
  * auch das Ziel des Direktlinks vom Gehäuse): alles, was die Einrichtung für
  * diese Box festhält, an einem Ort. Anzeige und Download; am Ablauf
- * der Einrichtung ändert sie nichts. Einzige Aktion: einen unbenutzten
- * Eintrag (nur im Register, die API meldet ihn unbenutzt) wieder aus dem
- * Register entfernen, mit Rückfrage auf der Seite. Nur für VoltPilot-Admins (wie die ganze
+ * der Einrichtung ändert sie nichts. Einzige Aktion: eine Box löschen, die
+ * weder abgenommen noch gekoppelt ist (etwa einen Fehlversuch), samt dem, was
+ * nur ihr gehört (Tunnel-Schlüssel, Codes), mit Rückfrage auf der Seite, die
+ * Referenz und Mitgehendes nennt. Nur für VoltPilot-Admins (wie die ganze
  * Werkstatt); das Root-Passwort steht, wie an der Abnahme, nur verschlüsselt da.
  */
 import { Fragment, useEffect, useState } from 'react';
@@ -16,7 +17,7 @@ import { boxVerbindung, zeitpunkt, type FernwartungBox, type FernwartungUebersic
 import { ApiError } from '../../api';
 import { Befehl } from '../../components/FernwartungSsh';
 import { fernwartungHash } from '../../nav';
-import { entfernbar, VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
+import { loeschbar, loeschtTunnelSchluessel, VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
 import type { UebersichtZeile, WerkstattFreigabe } from '../../werkstattBank';
 import {
   bindung,
@@ -52,32 +53,32 @@ export function WerkstattBoxSeite({
   freigaben,
   jetzt,
   onZurueck,
-  onEntfernt,
+  onGeloescht,
 }: {
   zeile: UebersichtZeile;
   boxen: readonly WerkstattBox[];
   freigaben: readonly WerkstattFreigabe[];
   jetzt: Date;
   onZurueck: () => void;
-  /** Nach dem Entfernen aus dem Register: zurück zur Liste ohne diese Box. */
-  onEntfernt?: (ref: string) => void;
+  /** Nach dem Löschen: zurück zur Liste ohne diese Box. */
+  onGeloescht?: (ref: string) => void;
 }) {
   const ref = zeile.box as string;
   const box = boxen.find((b) => b.edgeRef === ref) ?? null;
   const mango = zeile.geraet === 'Mango';
   const [verb, setVerb] = useState<Bindung>({ art: 'laedt' });
-  const [entfernen, setEntfernen] = useState<'aus' | 'fragen' | 'laeuft'>('aus');
-  const [entfernFehler, setEntfernFehler] = useState<string | null>(null);
+  const [loeschen, setLoeschen] = useState<'aus' | 'fragen' | 'laeuft'>('aus');
+  const [loeschFehler, setLoeschFehler] = useState<string | null>(null);
 
-  async function ausDemRegister() {
-    setEntfernen('laeuft');
-    setEntfernFehler(null);
+  async function wirklichLoeschen() {
+    setLoeschen('laeuft');
+    setLoeschFehler(null);
     try {
-      await adminApi.werkstattBoxEntfernen(ref);
-      onEntfernt?.(ref);
+      await adminApi.werkstattBoxLoeschen(ref);
+      onGeloescht?.(ref);
     } catch (e) {
-      setEntfernen('fragen');
-      setEntfernFehler(e instanceof ApiError ? e.message : 'Der Eintrag ließ sich nicht entfernen.');
+      setLoeschen('fragen');
+      setLoeschFehler(e instanceof ApiError ? e.message : 'Die Box ließ sich nicht löschen.');
     }
   }
 
@@ -265,31 +266,46 @@ export function WerkstattBoxSeite({
         )}
       </div>
 
-      {onEntfernt && entfernbar(box, zeile.stand) && (
-        <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-entfernen">
-          <h3 className="vp-ws-kartenkopf">Aus dem Register entfernen</h3>
-          {entfernen === 'aus' ? (
+      {onGeloescht && box && loeschbar(box) && (
+        <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-loeschen">
+          <h3 className="vp-ws-kartenkopf">Löschen</h3>
+          {loeschen === 'aus' ? (
             <>
               <p className="vp-muted" style={{ margin: 0 }}>
-                Diese Box wurde nie eingerichtet: kein Lauf, keine Abnahme, kein Tunnel-Schlüssel, keine Kopplung. Der Eintrag lässt sich wieder entfernen.
+                Diese Box ist weder abgenommen noch gekoppelt, etwa ein Fehlversuch. Sie lässt sich löschen.
               </p>
               <p style={{ margin: 0 }}>
-                <Button variant="outline" size="sm" onClick={() => setEntfernen('fragen')} data-testid="ws-entfernen-start">
-                  Aus dem Register entfernen
+                <Button variant="outline" size="sm" onClick={() => setLoeschen('fragen')} data-testid="ws-loeschen-start">
+                  Löschen
                 </Button>
               </p>
             </>
           ) : (
-            <div role="group" aria-label={`${ref} aus dem Register entfernen`} data-testid="ws-entfernen-frage">
+            <div role="group" aria-label={`${ref} löschen`} data-testid="ws-loeschen-frage">
               <p style={{ marginTop: 0 }}>
-                <strong>{ref}</strong> aus dem Register entfernen? Die Box verschwindet aus der Liste; die Werkstatt hält fest, wer sie wann entfernt hat. Später lässt sie sich wieder aufnehmen.
+                <strong>{ref}</strong> wirklich löschen?
               </p>
-              {entfernFehler && <p className="vp-alert vp-alert-err" data-testid="ws-entfernen-fehler">{entfernFehler}</p>}
+              {(box.loeschtMit ?? []).length > 0 ? (
+                <>
+                  <p style={{ margin: 0 }}>Mit ihr geht:</p>
+                  <ul data-testid="ws-loeschen-mit" style={{ marginTop: 4 }}>
+                    {(box.loeschtMit ?? []).map((w) => <li key={w}>{w}</li>)}
+                  </ul>
+                </>
+              ) : (
+                <p style={{ margin: 0 }} data-testid="ws-loeschen-mit">Mit ihr geht nur der Eintrag im Register.</p>
+              )}
+              <p className="vp-muted">
+                Läufe und Einlösungen bleiben als Verlauf; die Werkstatt hält fest, wer die Box wann gelöscht hat.
+                {zeile.stand === 'laeuft' && ' Der Werkstatt-Dienst arbeitet gerade mit ihr; sein Lauf hält dann mit einem Fall an.'}
+                {loeschtTunnelSchluessel(box) && ' Ihr Tunnel-Schlüssel wird nie wieder vergeben: Soll dieselbe Box noch einmal eingerichtet werden, erst zurücksetzen.'}
+              </p>
+              {loeschFehler && <p className="vp-alert vp-alert-err" data-testid="ws-loeschen-fehler">{loeschFehler}</p>}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <Button variant="primary" size="sm" disabled={entfernen === 'laeuft'} onClick={() => void ausDemRegister()} data-testid="ws-entfernen-ja">
-                  {entfernen === 'laeuft' ? 'Entfernt …' : `${ref} entfernen`}
+                <Button variant="primary" size="sm" disabled={loeschen === 'laeuft'} onClick={() => void wirklichLoeschen()} data-testid="ws-loeschen-ja">
+                  {loeschen === 'laeuft' ? 'Löscht …' : `${ref} löschen`}
                 </Button>
-                <Button variant="outline" size="sm" disabled={entfernen === 'laeuft'} onClick={() => { setEntfernen('aus'); setEntfernFehler(null); }} data-testid="ws-entfernen-nein">
+                <Button variant="outline" size="sm" disabled={loeschen === 'laeuft'} onClick={() => { setLoeschen('aus'); setLoeschFehler(null); }} data-testid="ws-loeschen-nein">
                   Abbrechen
                 </Button>
               </div>

@@ -46,7 +46,7 @@ Migrationen `V20261007163700__fernwartung.sql`, `V20261008213500__fernwartung_zu
 
 | Tabelle | Inhalt |
 |---|---|
-| `fernwartung_zugang` | ein WireGuard-Peer: `art` `box` (mit `edge_ref`) oder `techniker` (mit `name`); öffentlicher Schlüssel und `/32`-Adresse, beide über **beide Arten** eindeutig; `status` `aktiv`/`gesperrt`, für Techniker-Zugänge zusätzlich `geloescht`; für Techniker-Zugänge wahlweise `ssh_public_key`, nicht eindeutig |
+| `fernwartung_zugang` | ein WireGuard-Peer: `art` `box` (mit `edge_ref`) oder `techniker` (mit `name`); öffentlicher Schlüssel und `/32`-Adresse, beide über **beide Arten** eindeutig; `status` `aktiv`/`gesperrt`/`geloescht`; `edge_ref` eindeutig unter den nicht gelöschten Box-Zugängen; für Techniker-Zugänge wahlweise `ssh_public_key`, nicht eindeutig |
 | `fernwartung_fenster` | Box, Techniker, Grund, Beginn, Ende, wer geöffnet und wer geschlossen hat; zusammengesetzte Fremdschlüssel erzwingen „Box“ und „Techniker“ |
 | `fernwartung_protokoll` | jede Änderung, append-only per Trigger und ohne `UPDATE`/`DELETE`-Recht |
 | `fernwartung_dienst_abruf` | wann welcher Tunnel-Dienst den Soll-Stand zuletzt abgeholt hat |
@@ -55,7 +55,7 @@ Migrationen `V20261007163700__fernwartung.sql`, `V20261008213500__fernwartung_zu
 - **O3 an der Datenbankgrenze:** Die App-Rolle hat auf keine dieser Tabellen ein Recht; RLS ohne Policy ist der zweite Riegel. Geschrieben und gelesen wird nur über `voltpilot_admin`.
 - **Die Tabellen der Rückmeldung stehen für sich.** Sie verweisen auf Box und Fenster, aber weder der Soll-Stand noch eine Regel der Fernwartung liest sie ([Rückmeldung](#rückmeldung-des-tunnel-dienstes)).
 - **Keine Zeile wird entfernt, keine Adresse neu vergeben.** Eine Adresse und ein Schlüssel bleiben ihrem Zugang, gesperrt wie gelöscht. Eine wiedervergebene Adresse ließe einen Techniker bei einem fremden Gerät landen. Die Admin-Rolle hat auf keiner Tabelle ein `DELETE`-Recht.
-- **„Löschen“ ist ein Zustand, kein `DELETE`.** Ein gelöschter Techniker-Zugang trägt `status = 'geloescht'`; seine Zeile hält Adresse und Schlüssel über die `UNIQUE`-Constraints fest, und Fenster wie Protokoll verweisen weiter auf sie. Ein Trigger macht den Zustand endgültig: gelöscht wird nur aus `gesperrt`, und eine gelöschte Zeile ändert sich nie wieder. Eine Box kann den Zustand nicht annehmen (`CHECK`).
+- **„Löschen“ ist ein Zustand, kein `DELETE`.** Ein gelöschter Techniker-Zugang trägt `status = 'geloescht'`; seine Zeile hält Adresse und Schlüssel über die `UNIQUE`-Constraints fest, und Fenster wie Protokoll verweisen weiter auf sie. Ein Trigger macht den Zustand endgültig: gelöscht wird nur aus `gesperrt`, und eine gelöschte Zeile ändert sich nie wieder. Seit `V20261106080000` gilt das auch für eine Box, gelöscht nur von der Werkstatt (siehe unten).
 
 ## Routen und Rollen
 
@@ -85,7 +85,7 @@ Das Dienstkonto ist der Keycloak-Client `voltpilot-tunnel-dienst` (nur `client_c
   - Seine Adresse und sein Schlüssel bleiben dauerhaft vergeben. Wer denselben Schlüssel noch einmal einträgt, bekommt 409 mit dem Hinweis, auf dem Gerät ein neues Schlüsselpaar zu erzeugen.
   - Das Protokoll bekommt den Eintrag `techniker_geloescht` mit Zeit und Akteur. Frühere Fenster- und Protokolleinträge bleiben lesbar und nennen den Zugang weiter beim Namen.
   - Für den Tunnel-Dienst ändert sich nichts: Schon der gesperrte Zugang stand nicht mehr im Soll-Stand.
-  - Boxen lassen sich nicht löschen.
+  - Eine Box löscht nur die Werkstatt, mit ihrem Fehlversuch (`DELETE /api/v1/admin/werkstatt/boxen/{ref}`, [Werkstatt](werkstatt.md)): offene und geplante Fenster schließen (Anlass `box_geloescht`), der Zugang wird über `gesperrt` zu `geloescht`, das Protokoll bekommt `box_geloescht`. Der Tunnel-Dienst entfernt den Peer beim nächsten Abruf wie bei einer gesperrten Box (`Peer entfernt`, kein Alarm). Adresse und Schlüssel bleiben vergeben; dieselbe Referenz bekommt später einen neuen Zugang mit neuer Adresse, ihr alter Schlüssel 409 (die Box erst zurücksetzen).
 
 ## Anmeldung an der Box (Fenster-Schlüssel)
 

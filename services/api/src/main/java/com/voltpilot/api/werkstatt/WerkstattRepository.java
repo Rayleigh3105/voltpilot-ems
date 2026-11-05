@@ -113,33 +113,54 @@ public class WerkstattRepository {
     }
 
     /**
-     * Wo die Referenz schon in Gebrauch ist, in Worten (leer = nirgends). Die
-     * Reihenfolge ist die der Nachricht: was der Werkstatt am nächsten liegt
-     * zuerst. Ein Lauf zählt, sobald er die Box kennt ({@code stand.box},
-     * Vertrag werkstatt-ansicht-v1).
+     * Was das Löschen sperrt, in Worten (leer = die Box lässt sich löschen): die Abnahme oder eine Kopplung -
+     * ausgestelltes Zertifikat, Gerät eines Kunden (auch ausgebaut) oder vorbereitete Anlage. Dieselbe Grenze wie
+     * {@link #abgenommenGekoppelt}: Die offene Zertifikatsanfrage legt schon die Einlösung an, sie allein ist keine
+     * Kopplung. Läufe, Codes, Einlösung und Tunnel-Schlüssel sperren nicht; sie gehen mit oder bleiben als Verlauf
+     * ({@link #mitgeloescht}).
      */
     public List<String> inGebrauch(UUID boxId, String edgeRef) {
         return jdbc.query("SELECT grund FROM ("
                         + "SELECT 1 AS n, 'sie ist abgenommen' AS grund "
-                        + "WHERE EXISTS (SELECT 1 FROM werkstatt_abnahme WHERE box_id = ?) "
-                        + "UNION ALL SELECT 2, 'der Werkstatt-Dienst hatte einen Lauf mit ihr' "
-                        + "WHERE EXISTS (SELECT 1 FROM werkstatt_lauf WHERE stand->>'box' = ?) "
-                        + "UNION ALL SELECT 3, 'der Werkstatt-Dienst hat ihr einen Code ausgegeben' "
-                        + "WHERE EXISTS (SELECT 1 FROM werkstatt_code WHERE edge_ref = ?) "
-                        + "UNION ALL SELECT 4, 'sie hat sich in der Werkstatt angemeldet' "
-                        + "WHERE EXISTS (SELECT 1 FROM werkstatt_einloesung WHERE edge_ref = ?) "
-                        + "OR EXISTS (SELECT 1 FROM werkstatt_geraeteschluessel WHERE edge_ref = ?) "
-                        + "UNION ALL SELECT 5, 'für sie ist ein Tunnel-Schlüssel hinterlegt' "
-                        + "WHERE EXISTS (SELECT 1 FROM fernwartung_zugang WHERE art = 'box' AND edge_ref = ?) "
-                        + "UNION ALL SELECT 6, 'sie hat eine Zertifikatsanfrage geschickt (Kopplung)' "
-                        + "WHERE EXISTS (SELECT 1 FROM device_enrollment WHERE external_ref = ?) "
-                        + "UNION ALL SELECT 7, 'ein Gerät oder eine Anlage nutzt die Referenz' "
+                        + "WHERE EXISTS (SELECT 1 FROM werkstatt_abnahme WHERE box_id = ? OR edge_ref = ?) "
+                        + "UNION ALL SELECT 2, 'für sie ist ein Zertifikat ausgestellt (Kopplung)' "
+                        + "WHERE EXISTS (SELECT 1 FROM device_enrollment WHERE external_ref = ? AND cert_pem IS NOT NULL) "
+                        + "UNION ALL SELECT 3, 'ein Kunde hat sie eingerichtet (Gerät)' "
                         + "WHERE EXISTS (SELECT 1 FROM device WHERE external_ref = ?) "
-                        + "OR EXISTS (SELECT 1 FROM provisioned_device WHERE external_ref = ?)"
+                        + "UNION ALL SELECT 4, 'sie ist für eine Anlage vorbereitet (Vorab-Registrierung)' "
+                        + "WHERE EXISTS (SELECT 1 FROM provisioned_device WHERE external_ref = ?)"
                         + ") g ORDER BY n",
                 (rs, n) -> rs.getString("grund"),
-                boxId, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef);
+                boxId, edgeRef, edgeRef, edgeRef, edgeRef);
     }
+
+    /**
+     * Was beim Löschen mit der Box geht: ihr Tunnel-Zugang (Adresse, null = keiner), dessen offene oder geplante
+     * Fenster, die nicht eingelösten Codes des Werkstatt-Dienstes, der festgehaltene Geräteschlüssel und eine
+     * offene Zertifikatsanfrage ohne Zertifikat.
+     */
+    public record Mitgeloescht(String tunnelAdresse, int fenster, int codes, boolean geraeteschluessel,
+            boolean zertifikatsanfrage) {
+    }
+
+    public Mitgeloescht mitgeloescht(String edgeRef) {
+        return jdbc.queryForObject("SELECT "
+                        + "(SELECT host(z.tunnel_adresse) FROM fernwartung_zugang z WHERE z.art = 'box' "
+                        + "AND z.edge_ref = ? AND z.status <> 'geloescht') AS adresse, "
+                        + "(SELECT count(*) FROM fernwartung_fenster f JOIN fernwartung_zugang z ON z.id = f.box_id "
+                        + "WHERE z.art = 'box' AND z.edge_ref = ? AND z.status <> 'geloescht' "
+                        + "AND f.geschlossen_am IS NULL AND f.ende > now()) AS fenster, "
+                        + "(SELECT count(*) FROM werkstatt_code c WHERE c.edge_ref = ? " + NICHT_EINGELOEST + ") AS codes, "
+                        + "EXISTS (SELECT 1 FROM werkstatt_geraeteschluessel WHERE edge_ref = ?) AS schluessel, "
+                        + "EXISTS (SELECT 1 FROM device_enrollment WHERE external_ref = ? AND cert_pem IS NULL) AS csr",
+                (rs, n) -> new Mitgeloescht(rs.getString("adresse"), rs.getInt("fenster"), rs.getInt("codes"),
+                        rs.getBoolean("schluessel"), rs.getBoolean("csr")),
+                edgeRef, edgeRef, edgeRef, edgeRef, edgeRef);
+    }
+
+    /** Ein Code, auf den keine Einlösung verweist (eine eingelöste hält ihren Code per Fremdschlüssel). */
+    private static final String NICHT_EINGELOEST =
+            "AND NOT EXISTS (SELECT 1 FROM werkstatt_einloesung e WHERE e.code_id = c.id)";
 
     /**
      * Ob ein Kunde die Box schon eingerichtet hat: der Claim über den QR-Einstieg legt die Zeile in
@@ -175,13 +196,30 @@ public class WerkstattRepository {
                 edgeRef, edgeRef, edgeRef, edgeRef);
     }
 
-    /** Die Zeile mit wer/wann in {@code werkstatt_box_entfernt} festhalten, dann löschen. */
-    public void boxEntfernen(UUID id, String akteur, String akteurName) {
+    /**
+     * Einen Fehlversuch löschen: erst die ganze Lage mit wer/wann in {@code werkstatt_box_entfernt} festhalten
+     * ({@code mitgeloescht}: der schon gelöschte Tunnel-Zugang als {@code tunnelJson}, dazu die nicht eingelösten
+     * Codes, der festgehaltene Geräteschlüssel und die offene Zertifikatsanfrage, je als ganze Zeile), dann diese
+     * Zeilen und die des Registers löschen. Läufe und Einlösungen (mit ihren Codes) bleiben als Verlauf. Nur
+     * unter der Werkstatt-Sperre; der {@link WerkstattService} hat vorher geprüft, dass nichts sperrt.
+     */
+    public void fehlversuchLoeschen(UUID id, String edgeRef, String tunnelJson, String akteur, String akteurName) {
         jdbc.update("INSERT INTO werkstatt_box_entfernt (box_id, edge_ref, box_art, lan_netz, schritte, notiz, "
-                        + "angelegt_am, angelegt_von, angelegt_von_name, entfernt_von, entfernt_von_name) "
+                        + "angelegt_am, angelegt_von, angelegt_von_name, entfernt_von, entfernt_von_name, mitgeloescht) "
                         + "SELECT id, edge_ref, box_art, lan_netz, schritte, notiz, angelegt_am, angelegt_von, "
-                        + "angelegt_von_name, ?, ? FROM werkstatt_box WHERE id = ?",
-                akteur, akteurName, id);
+                        + "angelegt_von_name, ?, ?, jsonb_build_object("
+                        + "'tunnelZugang', ?::jsonb, "
+                        + "'codes', coalesce((SELECT jsonb_agg(to_jsonb(c) ORDER BY c.ausgegeben_am) "
+                        + "FROM werkstatt_code c WHERE c.edge_ref = ? " + NICHT_EINGELOEST + "), '[]'::jsonb), "
+                        + "'geraeteschluessel', (SELECT to_jsonb(g) FROM werkstatt_geraeteschluessel g "
+                        + "WHERE g.edge_ref = ?), "
+                        + "'zertifikatsanfrage', (SELECT to_jsonb(e) FROM device_enrollment e "
+                        + "WHERE e.external_ref = ? AND e.cert_pem IS NULL)) "
+                        + "FROM werkstatt_box WHERE id = ?",
+                akteur, akteurName, tunnelJson, edgeRef, edgeRef, edgeRef, id);
+        jdbc.update("DELETE FROM werkstatt_code c WHERE c.edge_ref = ? " + NICHT_EINGELOEST, edgeRef);
+        jdbc.update("DELETE FROM werkstatt_geraeteschluessel WHERE edge_ref = ?", edgeRef);
+        jdbc.update("DELETE FROM device_enrollment WHERE external_ref = ? AND cert_pem IS NULL", edgeRef);
         jdbc.update("DELETE FROM werkstatt_box WHERE id = ?", id);
     }
 

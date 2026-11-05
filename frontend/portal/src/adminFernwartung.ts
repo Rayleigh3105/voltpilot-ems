@@ -172,6 +172,7 @@ export type ProtokollAktion =
   | 'box_schluessel_getauscht'
   | 'box_gesperrt'
   | 'box_entsperrt'
+  | 'box_geloescht'
   | 'techniker_angelegt'
   | 'techniker_gesperrt'
   | 'techniker_entsperrt'
@@ -1098,6 +1099,7 @@ const AKTION: Record<ProtokollAktion, string> = {
   box_schluessel_getauscht: 'Box-Schlüssel getauscht',
   box_gesperrt: 'Box gesperrt',
   box_entsperrt: 'Box entsperrt',
+  box_geloescht: 'Box gelöscht',
   techniker_angelegt: 'Techniker-Zugang angelegt',
   techniker_gesperrt: 'Techniker-Zugang gesperrt',
   techniker_entsperrt: 'Techniker-Zugang entsperrt',
@@ -1116,6 +1118,7 @@ const ANLASS: Record<string, string> = {
   vorzeitig: 'vorzeitig',
   abgesagt: 'abgesagt',
   box_gesperrt: 'weil die Box gesperrt wurde',
+  box_geloescht: 'weil die Box gelöscht wurde',
   techniker_gesperrt: 'weil der Zugang gesperrt wurde',
 };
 
@@ -1154,6 +1157,10 @@ export function protokollDetail(e: FernwartungProtokollEintrag, jetzt: Date): st
     case 'box_gesperrt':
     case 'techniker_gesperrt':
       return d.grund ? `Grund: ${d.grund}` : '';
+    case 'box_geloescht': {
+      const vergeben = [d.adresse, d.publicKey].filter(Boolean).join(' · ');
+      return [vergeben ? `${vergeben} · bleiben vergeben` : null, d.grund ?? null].filter(Boolean).join(' · ');
+    }
     case 'techniker_geloescht': {
       const vergeben = [d.adresse, d.publicKey].filter(Boolean).join(' · ');
       return vergeben ? `${vergeben} · bleiben vergeben` : '';

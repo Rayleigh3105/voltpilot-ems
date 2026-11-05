@@ -26,7 +26,8 @@ import org.yaml.snakeyaml.Yaml;
  * <p>Die Wortlisten gelten in ihrer JÜNGSTEN Fassung: V20261008213500 hat die
  * CHECKs aus V20261007163700 erweitert (Zustand {@code geloescht}, Aktion
  * {@code techniker_geloescht}), V20261009074500 die Aktionen noch einmal (SSH-
- * Schlüssel gesetzt und entfernt).
+ * Schlüssel gesetzt und entfernt), V20261106080000 um {@code box_geloescht}
+ * (Fehlversuch der Werkstatt gelöscht).
  */
 class FernwartungVertragTest {
 
@@ -34,12 +35,14 @@ class FernwartungVertragTest {
     private static final String ANLAGE = "/db/migration/V20261007163700__fernwartung.sql";
     private static final String MIGRATION = "/db/migration/V20261008213500__fernwartung_zugang_loeschen.sql";
     private static final String SSH = "/db/migration/V20261009074500__fernwartung_ssh_schluessel.sql";
+    private static final String FEHLVERSUCH = "/db/migration/V20261106080000__werkstatt_fehlversuch_loeschen.sql";
 
     private static Map<String, Object> schemas;
     private static Map<String, Object> paths;
     private static String anlage;
     private static String migration;
     private static String ssh;
+    private static String fehlversuch;
 
     @BeforeAll
     @SuppressWarnings("unchecked")
@@ -52,6 +55,7 @@ class FernwartungVertragTest {
         anlage = lies(ANLAGE);
         migration = lies(MIGRATION);
         ssh = lies(SSH);
+        fehlversuch = lies(FEHLVERSUCH);
     }
 
     private static String lies(String pfad) throws IOException {
@@ -168,14 +172,15 @@ class FernwartungVertragTest {
 
     @Test
     void dieProtokollAktionenSindInMigrationUndVertragDieselben() {
-        List<String> ausMigration = woerter(ssh, "aktion IN");
+        List<String> ausMigration = woerter(fehlversuch, "aktion IN");
         Map<String, Object> aktion = map(map(schema("FernwartungProtokollEintrag"), "properties"), "aktion");
         assertThat(aktion.get("enum")).asList().containsExactlyInAnyOrderElementsOf(ausMigration);
         // Erweitert, nichts weggenommen: jeder ältere Protokolleintrag bleibt gültig.
         assertThat(woerter(migration, "aktion IN")).containsAll(woerter(anlage, "aktion IN"))
                 .contains("techniker_geloescht");
-        assertThat(ausMigration).containsAll(woerter(migration, "aktion IN"))
+        assertThat(woerter(ssh, "aktion IN")).containsAll(woerter(migration, "aktion IN"))
                 .contains("techniker_ssh_schluessel_gesetzt", "techniker_ssh_schluessel_entfernt");
+        assertThat(ausMigration).containsAll(woerter(ssh, "aktion IN")).contains("box_geloescht");
     }
 
     /**
