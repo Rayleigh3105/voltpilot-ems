@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.voltpilot.api.fernwartung.Akteur;
 import com.voltpilot.api.werkstatt.DienstAnsichtService;
+import com.voltpilot.api.werkstatt.LaufSeiteService;
 import com.voltpilot.api.werkstatt.EinloesungRepository;
 import com.voltpilot.api.werkstatt.EinloesungService;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Freigabe;
@@ -136,23 +137,40 @@ public class WerkstattDienstController {
     private final EinloesungService einloesung;
     private final WerkstattService werkstatt;
     private final DienstAnsichtService ansichten;
+    private final LaufSeiteService laufSeite;
 
     public WerkstattDienstController(FreigabeService freigaben, EinloesungService einloesung,
-            WerkstattService werkstatt, DienstAnsichtService ansichten) {
+            WerkstattService werkstatt, DienstAnsichtService ansichten, LaufSeiteService laufSeite) {
         this.freigaben = freigaben;
         this.einloesung = einloesung;
         this.werkstatt = werkstatt;
         this.ansichten = ansichten;
+        this.laufSeite = laufSeite;
+    }
+
+    /** Ein Auftrag des Portals, wie der Dienst ihn abholt. */
+    public record AuftragDto(UUID id, String art, String lauf) {
+    }
+
+    public record AuftraegeDto(List<AuftragDto> auftraege) {
     }
 
     /**
      * Die Ansicht des Dienstes melden (jeden Takt, docs/contracts/werkstatt-ansicht-v1.md):
      * 204; 422 mit Grund, wenn die Form nicht stimmt oder Schlüsselmaterial darin steht.
+     * Mit {@code ?auftraege=1} (ein Dienst, der Aufträge kennt): 200 mit den offenen
+     * Aufträgen des Portals, jeder genau einmal ({@link LaufSeiteService#abholen}).
+     * Ohne den Parameter bleibt es 204, wie ein älterer Dienst es erwartet.
      */
     @PutMapping(value = "/ansicht", consumes = "application/json")
-    public ResponseEntity<Void> ansicht(@RequestBody String roh, @AuthenticationPrincipal Jwt caller) {
+    public ResponseEntity<AuftraegeDto> ansicht(@RequestBody String roh,
+            @RequestParam(name = "auftraege", defaultValue = "0") String auftraege, @AuthenticationPrincipal Jwt caller) {
         ansichten.melden(roh, Akteur.aus(caller));
-        return ResponseEntity.noContent().build();
+        if (!"1".equals(auftraege)) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new AuftraegeDto(laufSeite.abholen().stream()
+                .map(a -> new AuftragDto(a.id(), a.art(), a.lauf())).toList()));
     }
 
     /** Die laufende Freigabe einer Box-Art (Vorgabe mango); 404, wenn keine läuft. */

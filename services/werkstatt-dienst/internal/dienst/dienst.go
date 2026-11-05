@@ -28,6 +28,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/mango"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/metriken"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/portal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/werkbank"
 )
@@ -106,6 +107,7 @@ type Dienst struct {
 	ctx           context.Context
 	aktiv         *aktiverLauf
 	letzter       *lauf.Lauf
+	letzterMAC    string          // die MAC der Box des letzten Laufs (für „Nochmal versuchen“)
 	gesperrt      map[string]bool // MACs, deren Lauf zu Ende ist, bis sie abgezogen waren
 	kandidat      *kandidat       // die Box im letzten Takt, solange ihr Lauf noch nicht begann
 	unterspannung bool            // die Brücke meldet Unterspannung (Takt)
@@ -152,9 +154,10 @@ func Neu(d *Dienst, reg *metriken.Register) *Dienst {
 // Bereit sagt, ob die Schleife läuft (Readiness).
 func (d *Dienst) Bereit() bool { return d.laeuft.Load() && !d.beendet.Load() }
 
-// Melder nimmt die Ansicht entgegen (portal.Client).
+// Melder nimmt die Ansicht entgegen (portal.Client) und gibt die Aufträge
+// des Portals zurück, die seit der letzten Meldung kamen.
 type Melder interface {
-	AnsichtMelden(ctx context.Context, ansicht any) error
+	AnsichtMelden(ctx context.Context, ansicht any) ([]portal.Auftrag, error)
 }
 
 // Ansicht gibt eine Kopie des Stands.
@@ -251,7 +254,10 @@ func (d *Dienst) melde(ctx context.Context) {
 	}
 	mctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	err := d.Melder.AnsichtMelden(mctx, d.Ansicht())
+	auftraege, err := d.Melder.AnsichtMelden(mctx, d.Ansicht())
+	for _, a := range auftraege {
+		d.auftrag(a)
+	}
 	text := ""
 	if err != nil {
 		text = geheim.Schwaerze(err.Error())
@@ -264,6 +270,35 @@ func (d *Dienst) melde(ctx context.Context) {
 		}
 		d.melderFehler = text
 	}
+}
+
+// auftrag führt einen Auftrag des Portals aus. "nochmal" (Entscheid E1 A der
+// Lauf-Seite) tut dasselbe wie das orange Kabel kurz abzuziehen: Ist genau
+// dieser Lauf der letzte, angehalten mit einem Fall ohne Handgriff an der Box
+// (faelle.Nochmal), gibt der Dienst die Sperre seiner Box frei; steckt sie
+// noch, beginnt ihr neuer Lauf nach der üblichen Startprüfung. Nichts an der
+// Box wird gelöscht. Ins Protokoll des beendeten Laufs schreibt der Auftrag
+// nichts (sonst gälte er als offen); er steht im Log und als nochmal_seit im
+// Stand. Jeder andere Auftrag steht nur im Log.
+func (d *Dienst) auftrag(a portal.Auftrag) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	log := d.Log.With("auftrag", a.ID, "art", a.Art, "request_id", a.Lauf)
+	if a.Art != "nochmal" {
+		log.Warn("Auftrag des Portals unbekannt, nicht ausgeführt")
+		return
+	}
+	if d.aktiv != nil || d.letzter == nil || d.letzter.Kennung() != a.Lauf {
+		log.Warn("Nochmal versuchen: nicht der letzte angehaltene Lauf, nichts getan")
+		return
+	}
+	if !d.letzter.Nochmal(d.Jetzt()) {
+		log.Warn("Nochmal versuchen: dieser Lauf darf nicht neu angestoßen werden", "fall", d.letzter.Stand().Fall)
+		return
+	}
+	delete(d.gesperrt, d.letzterMAC)
+	d.kandidat = nil
+	log.Info("Nochmal versuchen: Sperre der Box frei, der Dienst beginnt neu", "mac", d.letzterMAC)
 }
 
 // StartFrist: So lange wartet der Dienst nach dem ersten Erkennen einer Box
@@ -444,11 +479,12 @@ func (d *Dienst) beginneLauf(jetzt time.Time, k kandidat, einstieg mango.Einstie
 		d.Laeufer.Fahre(ctx, l, angaben, ml.Schritte(einstieg))
 		mac := ml.MAC()
 		ml.Schliesse()
-		d.mu.Lock()
-		d.aktiv, d.letzter = nil, l
-		if mac != "" {
-			d.gesperrt[mac] = true
+		if mac == "" {
+			mac = k.mac
 		}
+		d.mu.Lock()
+		d.aktiv, d.letzter, d.letzterMAC = nil, l, mac
+		d.gesperrt[mac] = true
 		d.mu.Unlock()
 	}()
 }

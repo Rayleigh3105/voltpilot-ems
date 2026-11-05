@@ -20,7 +20,7 @@ import type {
   FernwartungUebersicht,
 } from '../adminFernwartung';
 import type { WerkstattBox } from '../werkstatt';
-import type { WerkstattDienst, WerkstattFreigabe } from '../werkstattBank';
+import type { WerkstattDienst, WerkstattFreigabe, ZurSeite } from '../werkstattBank';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -644,6 +644,19 @@ export const adminApi = {
   werkstattDienst: () => request<WerkstattDienst>('/api/v1/admin/werkstatt/dienst'),
 
   werkstattFreigaben: () => request<WerkstattFreigabe[]>('/api/v1/admin/werkstatt/freigaben'),
+
+  /**
+   * „Nochmal versuchen“ (Lauf-Seite E1 A): ein Auftrag an den Werkstatt-Dienst, den angehaltenen Lauf neu
+   * anzustoßen; er holt ihn mit seiner nächsten Meldung ab. 201/200; 409 mit Grund (kein Nochmal für diesen Fall).
+   */
+  werkstattNochmal: (lauf: string) =>
+    request<{ id: string; art: string; lauf: string; erteiltAm: string }>('/api/v1/admin/werkstatt/dienst/nochmal', {
+      method: 'POST', body: JSON.stringify({ lauf }),
+    }),
+
+  /** „Box zur Seite legen“ (E2 A): mit Fall, Lösung und Zeit festhalten. 201/200; 404/409 mit Grund. */
+  werkstattZurSeite: (lauf: string) =>
+    request<ZurSeite>('/api/v1/admin/werkstatt/zur-seite', { method: 'POST', body: JSON.stringify({ lauf }) }),
 
   /** Werkstatt freigeben (WI-4 A): 201; 409, wenn für die Box-Art schon eine läuft; 422 mit Grund. */
   werkstattFreigeben: (input: {

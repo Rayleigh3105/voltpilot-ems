@@ -29,9 +29,12 @@ import {
   type UebersichtZeile,
   type WerkstattDienst,
   type WerkstattFreigabe,
+  type ZurSeite,
 } from '../../werkstattBank';
 import { AdminPageHead } from './AdminPageHead';
 import { WerkstattBank } from './WerkstattBank';
+import { neueresRelease } from '../../werkstattLauf';
+import type { EdgeUpdatesRelease } from '../../adminEdgeUpdates';
 import { WerkstattFreigabeDialog } from './WerkstattFreigabeDialog';
 import { STAND_BADGE } from './WerkstattTeile';
 import { WerkstattBoxSeite } from './WerkstattBoxSeite';
@@ -82,6 +85,25 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
   useFreshnessPoll(() => void laden(), TAKT_MS);
 
   const freigabe = useMemo(() => laufendeFreigabe(freigaben ?? []), [freigaben]);
+  // Ein neueres signiertes Edge-Light-Release als die Freigabe: nur ein Hinweis an der Werkbank, einmal gefragt.
+  const [releases, setReleases] = useState<EdgeUpdatesRelease[]>([]);
+  useEffect(() => {
+    if (!werkbank) return;
+    let aus = false;
+    (async () => {
+      try {
+        const u = await adminApi.edgeUpdates();
+        if (!aus) setReleases(u.releases ?? []);
+      } catch {
+        // ohne Liste kein Hinweis
+      }
+    })();
+    return () => { aus = true; };
+  }, [werkbank]);
+  const neuerEdgeLight = useMemo(() => {
+    const f = dienst?.ansicht?.freigabe.freigabe;
+    return f ? neueresRelease(f.edge_light.fassung, releases) : null;
+  }, [dienst, releases]);
   const zeilen = useMemo(() => uebersicht(boxen ?? [], dienst?.laeufe ?? []), [boxen, dienst]);
   const gewaehlt = auswahl ? zeilen.find((z) => z.box === auswahl) ?? null : null;
   const geladen = boxen && dienst && freigaben;
@@ -122,7 +144,29 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
           <TableSkeleton rows={4} cols={4} />
         </Card>
       ) : werkbank ? (
-        <WerkstattBank dienst={dienst} freigabe={freigabe} onUebersicht={() => { window.location.hash = werkstattHash(null); }} />
+        <WerkstattBank
+          dienst={dienst}
+          freigabe={freigabe}
+          neuerEdgeLight={neuerEdgeLight}
+          onUebersicht={() => { window.location.hash = werkstattHash(null); }}
+          onBox={(ref) => { window.location.hash = werkstattHash(ref); }}
+          onNochmal={async (lauf) => {
+            try {
+              await adminApi.werkstattNochmal(lauf);
+            } catch (e) {
+              throw new Error(fehlerText(e, '„Nochmal versuchen“ ließ sich nicht senden.'));
+            }
+            await laden();
+          }}
+          onZurSeite={async (lauf) => {
+            try {
+              await adminApi.werkstattZurSeite(lauf);
+            } catch (e) {
+              throw new Error(fehlerText(e, 'Die Box ließ sich nicht als „zur Seite gelegt“ speichern.'));
+            }
+            await laden();
+          }}
+        />
       ) : (
         <>
           {auswahl == null && (
@@ -150,6 +194,7 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
               />
               <BrueckeKarte dienst={dienst} />
               <BoxTabelle zeilen={zeilen} auswahl={auswahl} onWaehle={waehle} />
+              {dienst?.zurSeite && <ZurSeiteKarte liste={dienst.zurSeite} onWaehle={waehle} />}
             </div>
           ) : !gewaehlt ? (
             <div className="vp-ws-box" data-testid="ws-box">
@@ -316,5 +361,38 @@ function BoxTabelle({ zeilen, auswahl, onWaehle }: { zeilen: UebersichtZeile[]; 
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** Die zur Seite gelegten Boxen (E2 A): mit Fall, Lösung, Grund und Zeit, neueste zuerst. */
+function ZurSeiteKarte({ liste, onWaehle }: { liste: ZurSeite[]; onWaehle: (ref: string) => void }) {
+  return (
+    <Card padding="md" radius="lg" className="vp-ws-karte vp-ws-zurseite" data-testid="ws-zur-seite">
+      <strong>Zur Seite gelegt</strong>
+      {liste.length === 0 ? (
+        <p className="vp-muted" style={{ margin: '2px 0 0' }}>Noch keine Box zur Seite gelegt.</p>
+      ) : (
+        <ul>
+          {liste.map((z) => (
+            <li key={z.id} data-lauf={z.lauf}>
+              <div className="vp-ws-zurseite-kopf">
+                {z.box ? (
+                  <button type="button" className="vp-wsb-leise" onClick={() => onWaehle(z.box!)}>{z.box}</button>
+                ) : (
+                  <span>Mango ohne Referenz</span>
+                )}
+                <span className="vp-muted">{new Date(z.gelegtAm).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+              <strong>{z.loesungTitel ?? 'Ohne Lösung des Dienstes'}</strong>
+              <small>
+                {z.fall && <code>{z.fall}</code>}
+                {z.schritt && <> · Schritt {z.schritt}</>}
+                {z.grund && <> · {z.grund}</>}
+              </small>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }

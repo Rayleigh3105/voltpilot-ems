@@ -39,7 +39,16 @@ func TestAnsichtVektor(t *testing.T) {
 		Anschluss: "eine Mango mit frischem OpenWrt",
 		Lauf: &lauf.Stand{Kennung: "2026-11-02T10-05-00-mango", Freigabe: "2026-11-mango-1", BoxArt: "mango", Box: "edge-k7m2xq3",
 			Beginn: zeit.Add(-7 * time.Minute), Zustand: lauf.Laeuft, Schritt: "programm", Titel: "Edge Light einspielen",
-			Erledigt: []string{"erkennen", "fassungen", "internet", "passwort", "notfall"}},
+			Erledigt:    []string{"erkennen", "fassungen", "internet", "passwort", "notfall"},
+			SchrittSeit: zeit.Add(-42 * time.Second), SchrittFristS: 600,
+			Belege: []lauf.SchrittBeleg{
+				{Schritt: "erkennen", DauerS: 12.4, Zeile: "GL.iNet GL-MT300N-V2 · OpenWrt 25.12.5 ramips/mt76x8 · root-Passwort: leer"},
+				{Schritt: "fassungen", DauerS: 3.8, Zeile: "Freigabe 2026-11-mango-1 · Prüfsummen = Freigabe · Manifest signiert"},
+				{Schritt: "internet", DauerS: 6.1, Zeile: "downloads.openwrt.org erreichbar (befristet)"},
+				{Schritt: "passwort", DauerS: 9.0, Zeile: "gesetzt, nur verschlüsselt abgelegt · ohne Passwort abgewiesen"},
+				{Schritt: "notfall", DauerS: 2.2, Zeile: "1 Notfall-Schlüssel auf der Box"},
+			},
+			Vorher: &lauf.Vorher{System: "OpenWrt 25.12.5", EdgeLight: "kein VoltPilot"}},
 	}
 	b, err := json.MarshalIndent(a, "", "  ")
 	if err != nil {

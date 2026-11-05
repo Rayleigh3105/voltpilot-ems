@@ -325,6 +325,8 @@ const EXCLUDED = [
   '/werkstattBank.ts',
   // Die Einrichtungs-Detailseite einer Box (`pages/admin/WerkstattBoxSeite`): dieselbe Admin-Seite, dasselbe Vokabular.
   '/werkstattEinrichtung.ts',
+  // Die Lauf-Seite der Werkbank (Fall-Seiten, Schritte mit Belegen, Software): dieselbe Admin-Seite, dasselbe Vokabular.
+  '/werkstattLauf.ts',
   // Die reine Schicht der Admin-Seite „Geräte & Updates" (`pages/admin/BoxVersions`,
   // einziger Importeur) — sie spricht legitim Betreiber-Vokabular (Release, Version).
   '/boxVersions.ts',
@@ -868,6 +870,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'werkstattBank',
       // Die Einrichtungs-Detailseite einer Box.
       'werkstattEinrichtung',
+      // Die Lauf-Seite der Werkbank.
+      'werkstattLauf',
     ];
     // PR 1f (Anlagen-Zentrale Stufe 1): die Plattform-Sicht wohnt seither
     // ADDITIV auf der KUNDEN-Geräteseite - hinter dem EINEN Rollen-Tor

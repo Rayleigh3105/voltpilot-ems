@@ -319,6 +319,114 @@ class WerkstattFreigabeApiTest {
         }
     }
 
+    /**
+     * Lauf-Seite (E1 A, E2 A): „Nochmal versuchen“ ist ein Auftrag, den der Dienst mit
+     * {@code PUT /ansicht?auftraege=1} abholt, genau einmal. Angenommen nur für den
+     * zuletzt gemeldeten, angehaltenen Lauf mit {@code nochmal_moeglich} (ein älterer
+     * Dienst meldet das nicht: 409). Ohne Parameter bleibt die Meldung 204.
+     * „Zur Seite“ hält Fall, Lösung und Grund fest, append-only.
+     */
+    @Test
+    @Order(6)
+    void laufSeite_nochmalUndZurSeite() throws Exception {
+        String admin = token("admin", "admin");
+        String dienst = serviceToken("voltpilot-werkstatt-dienst", "voltpilot-werkstatt-dienst-dev-secret");
+        String vektor = java.nio.file.Files.readString(
+                java.nio.file.Path.of("..", "..", "docs", "contracts", "werkstatt-ansicht-v1.example.json"));
+        String kennung = json.readTree(vektor).get("lauf").get("kennung").asText();
+        Map<String, String> nochmal = Map.of("lauf", kennung);
+
+        // Ein Dienst, der Aufträge kennt: 200 mit Liste; ein älterer: 204 wie bisher.
+        ResponseEntity<String> r = roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht?auftraege=1", dienst, vektor);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(json.readTree(r.getBody()).get("auftraege")).isEmpty();
+        // Läuft: kein Nochmal.
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/dienst/nochmal", admin, nochmal).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+
+        // Angehalten, aber ohne nochmal_moeglich (älterer Dienst oder Handgriff an der Box): 409.
+        com.fasterxml.jackson.databind.node.ObjectNode a = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(vektor);
+        com.fasterxml.jackson.databind.node.ObjectNode l = (com.fasterxml.jackson.databind.node.ObjectNode) a.get("lauf");
+        l.put("zustand", "angehalten").put("fall", "box_weg").put("grund", "dial tcp 192.168.1.1:22: i/o timeout");
+        l.putObject("loesung").put("titel", "Die Mango war während des Laufs weg.").put("selbst", true).put("zur_seite", false)
+                .putArray("schritte").add("Strom und Kabel der Mango prüfen.");
+        assertThat(roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", dienst, a.toString()).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        r = send(HttpMethod.POST, "/api/v1/admin/werkstatt/dienst/nochmal", admin, nochmal);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(r)).contains("Handgriff");
+
+        // Der Dienst bietet es an: 201, ein zweites Mal 200 mit demselben Auftrag.
+        l.put("nochmal_moeglich", true);
+        assertThat(roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", dienst, a.toString()).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        r = send(HttpMethod.POST, "/api/v1/admin/werkstatt/dienst/nochmal", admin, nochmal);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String id = json.readTree(r.getBody()).get("id").asText();
+        r = send(HttpMethod.POST, "/api/v1/admin/werkstatt/dienst/nochmal", admin, nochmal);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(json.readTree(r.getBody()).get("id").asText()).isEqualTo(id);
+        // Form, anderer Lauf, falsche Rolle.
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/dienst/nochmal", admin, Map.of("lauf", "a b")).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/dienst/nochmal", admin, Map.of("lauf", "2026-11-01-000000-abcd"))
+                .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        for (String t : List.of(dienst, token("demo", "demo"))) {
+            assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/dienst/nochmal", t, nochmal).getStatusCode())
+                    .isEqualTo(HttpStatus.FORBIDDEN);
+        }
+
+        // Der Dienst holt ihn mit der Meldung ab, genau einmal.
+        r = roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht?auftraege=1", dienst, a.toString());
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode auftraege = json.readTree(r.getBody()).get("auftraege");
+        assertThat(auftraege).hasSize(1);
+        assertThat(auftraege.get(0).get("id").asText()).isEqualTo(id);
+        assertThat(auftraege.get(0).get("art").asText()).isEqualTo("nochmal");
+        assertThat(auftraege.get(0).get("lauf").asText()).isEqualTo(kennung);
+        r = roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht?auftraege=1", dienst, a.toString());
+        assertThat(json.readTree(r.getBody()).get("auftraege")).isEmpty();
+        // Hat der Dienst angenommen (nochmal_seit), gibt es keinen zweiten.
+        l.put("nochmal_seit", "2026-11-02T10:13:00Z");
+        roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", dienst, a.toString());
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/dienst/nochmal", admin, nochmal).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+
+        // Zur Seite: 201 mit Fall, Lösung, Grund; ein zweites Mal 200; in der Ansicht der Bildschirme.
+        r = send(HttpMethod.POST, "/api/v1/admin/werkstatt/zur-seite", admin, nochmal);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        JsonNode z = json.readTree(r.getBody());
+        assertThat(z.get("fall").asText()).isEqualTo("box_weg");
+        assertThat(z.get("loesungTitel").asText()).isEqualTo("Die Mango war während des Laufs weg.");
+        assertThat(z.get("grund").asText()).contains("i/o timeout");
+        assertThat(z.get("box").asText()).isEqualTo("edge-k7m2xq3");
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/zur-seite", admin, nochmal).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        JsonNode d = json.readTree(send(HttpMethod.GET, "/api/v1/admin/werkstatt/dienst", admin, null).getBody());
+        assertThat(d.get("zurSeite")).hasSize(1);
+        assertThat(d.get("zurSeite").get(0).get("lauf").asText()).isEqualTo(kennung);
+        // Unbekannter Lauf 404, laufender 409, nur Admins.
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/zur-seite", admin, Map.of("lauf", "2026-11-01-000000-abcd"))
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        String zweiter = vektor.replace(kennung, "2026-11-02T10-09-00-mango");
+        roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", dienst, zweiter);
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/zur-seite", admin, Map.of("lauf", "2026-11-02T10-09-00-mango"))
+                .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/zur-seite", dienst, nochmal).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        // Die App-Rolle liest nichts; zur Seite ist append-only auch für die Admin-Rolle.
+        JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
+        for (String tabelle : List.of("werkstatt_auftrag", "werkstatt_zur_seite")) {
+            assertThatThrownBy(() -> app.queryForObject("SELECT count(*) FROM " + tabelle, Long.class)).as(tabelle)
+                    .rootCause().hasMessageContaining("permission denied");
+        }
+        assertThatThrownBy(() -> adminJdbc.update("UPDATE werkstatt_zur_seite SET grund = 'x'"))
+                .rootCause().hasMessageContaining("permission denied");
+        assertThatThrownBy(() -> adminJdbc.update("DELETE FROM werkstatt_auftrag"))
+                .rootCause().hasMessageContaining("permission denied");
+    }
+
     private ResponseEntity<String> roh(HttpMethod method, String pfad, String token, String body) {
         HttpHeaders h = new HttpHeaders();
         if (token != null) {

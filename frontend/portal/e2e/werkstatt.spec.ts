@@ -55,6 +55,8 @@ for (const breite of [1440, 375]) {
     await expect(liste.locator('tr[data-stand="laeuft"]')).toContainText('edge-k7m2xq3');
     await expect(liste.locator('tr[data-stand="problem"]')).toContainText('edge-p3n8rv4');
     await expect(liste).toContainText('Docker-Box');
+    await expect(page.getByTestId('ws-zur-seite')).toContainText('edge-p3n8rv4');
+    await expect(page.getByTestId('ws-zur-seite')).toContainText('kein Handshake an wg_wartung');
     await passt(page);
     await page.screenshot({ path: test.info().outputPath(`werkstatt-uebersicht-${breite}.png`), fullPage: true });
 
@@ -90,8 +92,17 @@ for (const breite of [1440, 375]) {
     await page.screenshot({ path: test.info().outputPath(`werkstatt-m1-${breite}.png`), fullPage: true });
     await page.getByTestId('wsb-mango').click();
     await expect(page.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'laeuft');
-    await expect(page.getByTestId('wsb-phasen').getByRole('listitem')).toHaveCount(6);
+    await expect(page.getByTestId('wsb-schritte').locator('[data-phase]')).toHaveCount(6);
     await expect(page.getByTestId('wsb-restzeit')).toContainText(/Noch ca\. \d+ Minuten/);
+    await expect(page.getByTestId('wsb-jetzt')).toContainText('Schritt 10 von 16');
+    await expect(page.getByTestId('wsb-schritte').locator('[data-schritt="openwrt"]')).toContainText('Prüfsumme auf der Box = Freigabe');
+    if (breite > 760) {
+      await expect(page.getByTestId('wsb-software')).toContainText('vorher: GL-Firmware 4.3.17');
+      await expect(page.getByTestId('wsb-software-zeile')).toBeHidden();
+    } else {
+      await expect(page.getByTestId('wsb-software-zeile')).toContainText(/Kommt drauf:\s*OpenWrt 25\.12\.5\s*Edge Light 2026\.11\.1/);
+      await expect(page.getByTestId('wsb-software')).toBeHidden();
+    }
     await expect(page.getByRole('button', { name: /Weiter/ })).toHaveCount(0);
     await passt(page);
     await page.screenshot({ path: test.info().outputPath(`werkstatt-m3-${breite}.png`), fullPage: true });
@@ -107,12 +118,30 @@ for (const breite of [1440, 375]) {
       await expect(page.getByTestId('wsb-qr')).toBeVisible();
       await expect(page.getByTestId('wsb')).toContainText('Nicht versenden.');
     } },
-    { lauf: 'problem', art: 'problem', name: 'm6', pruefe: async (page) => {
-      await expect(page.getByTestId('wsb-problem')).toContainText('Hier hat etwas nicht geklappt.');
+    { lauf: 'problem', art: 'fall', name: 'm6-alter-dienst', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-fall-titel')).toContainText('Hier hat etwas nicht geklappt.');
+      await expect(page.getByTestId('wsb-knopf-nochmal')).toHaveCount(0);
       await expect(page.getByTestId('wsb-details')).not.toHaveAttribute('open', '');
     } },
-    { lauf: 'startlader', art: 'startlader', name: 'm4', pruefe: async (page) => {
-      await expect(page.getByRole('heading', { name: 'Reset-Knopf drücken' })).toBeVisible();
+    { lauf: 'startlader', art: 'fall', name: 'm4-alter-dienst', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-bild')).toHaveAttribute('data-bild', 'startlader');
+      await expect(page.getByTestId('wsb-knopf-abbild')).toContainText('OpenWrt-Abbild 25.12.5 herunterladen');
+    } },
+    { lauf: 'gl_passwort', art: 'fall', name: 'fall-gl-passwort', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-fall-banner')).toContainText('Einmal kurz du.');
+      await expect(page.getByTestId('wsb-fall-titel')).toHaveText('Diese Mango hat schon jemand eingerichtet.');
+      await expect(page.getByTestId('wsb-bild')).toHaveAttribute('data-bild', 'reset');
+      await expect(page.getByTestId('wsb-live')).toContainText('Warten auf den Reset');
+      await expect(page.getByTestId('wsb-knopf-nochmal')).toHaveCount(0);
+    } },
+    { lauf: 'passwort_fremd', art: 'fall', name: 'fall-passwort-fremd', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-fall-banner')).toContainText('Zur Seite legen.');
+      await expect(page.getByTestId('wsb-selbst')).toHaveAttribute('data-selbst', 'nein');
+      await expect(page.getByTestId('wsb-bild')).toHaveCount(0);
+    } },
+    { lauf: 'startet', art: 'fall', name: 'fall-startet', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-fall-banner')).toContainText('Der Dienst wartet.');
+      await expect(page.getByTestId('wsb-knoepfe')).toHaveCount(0);
     } },
     { lauf: 'wartet', art: 'du', name: 'wartet-auf-eingabe', pruefe: async (page) => {
       await expect(page.getByTestId('wsb-du-hinweis')).toContainText('Tunnel-Adresse');
@@ -158,6 +187,30 @@ test('Einrichtungs-Detailseite: der 3MF-Download liefert die Datei des Gehäuses
     expect(bytes.subarray(0, 2).toString('latin1')).toBe('PK');
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(summen.get(name));
   }
+  expect(fehler).toEqual([]);
+});
+
+test('Werkbank: „Nochmal versuchen“ bei bruecke_weg, dann „Der Dienst versucht es noch einmal“', async ({ page }) => {
+  const fehler = wache(page);
+  await page.goto('/e2e/werkstatt.html?lauf=bruecke_weg#/werkstatt?werkbank=1');
+  await page.getByTestId('wsb-mango').click();
+  await expect(page.getByTestId('wsb')).toHaveAttribute('data-fall', 'bruecke_weg');
+  await expect(page.getByTestId('wsb-bild')).toHaveAttribute('data-bild', 'pi');
+  await page.getByTestId('wsb-knopf-nochmal').click();
+  await expect(page.getByTestId('wsb-nochmal-laeuft')).toContainText('Der Dienst versucht es noch einmal.');
+  await expect(page.getByTestId('wsb-knopf-nochmal')).toHaveCount(0);
+  expect(fehler).toEqual([]);
+});
+
+test('Werkbank: „Box zur Seite legen“ steht danach in der Übersicht', async ({ page }) => {
+  const fehler = wache(page);
+  await page.goto('/e2e/werkstatt.html?lauf=passwort_fremd#/werkstatt?werkbank=1');
+  await page.getByTestId('wsb-mango').click();
+  await page.getByTestId('wsb-knopf-zur-seite').click();
+  await expect(page.getByTestId('wsb')).not.toHaveAttribute('data-fall', 'passwort_fremd');
+  await page.getByTestId('wsb-uebersicht').click();
+  await expect(page.getByTestId('ws-zur-seite')).toContainText('Diese Mango gehört nicht zur Werkstatt.');
+  await expect(page.getByTestId('ws-zur-seite')).toContainText('passwort_fremd');
   expect(fehler).toEqual([]);
 });
 

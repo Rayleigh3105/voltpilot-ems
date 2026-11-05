@@ -138,3 +138,23 @@ func Einordnen(schritt, grund string) string {
 	}
 	return SchrittGescheitert
 }
+
+// nochmal sind die Fälle eines Laufs, die das Portal mit „Nochmal versuchen“
+// neu anstoßen darf (Entscheid E1 A der Lauf-Seite): kein Handgriff an der
+// Box, nichts wird gelöscht. Der Auftrag tut dasselbe wie das orange Kabel
+// kurz abzuziehen: Der Dienst gibt die Sperre der Box frei und beginnt neu.
+// Reset, Startlader und „zur Seite“ stehen nie darin.
+var nochmal = map[string]bool{
+	KeinInternet:       true,
+	Uebertragung:       true,
+	BrueckeWeg:         true,
+	BoxWeg:             true,
+	ZweiGeraete:        true,
+	DienstNeuGestartet: true,
+	SchrittGescheitert: true,
+	NichtNachweisbar:   true,
+}
+
+// Nochmal sagt, ob ein angehaltener Lauf mit diesem Fall aus dem Portal neu
+// angestoßen werden darf.
+func Nochmal(code string) bool { return nochmal[code] }

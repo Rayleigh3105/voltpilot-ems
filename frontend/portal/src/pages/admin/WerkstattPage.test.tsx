@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api';
 import { FEHLER_IM_BEREICH, Fehlergrenze } from '../../components/Fehlergrenze';
@@ -14,6 +14,9 @@ const werkstattFreigabeBeenden = vi.fn();
 const fernwartungBox = vi.fn();
 const fernwartung = vi.fn();
 const werkstattBoxEntfernen = vi.fn();
+const werkstattNochmal = vi.fn();
+const werkstattZurSeite = vi.fn();
+const edgeUpdates = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -25,6 +28,9 @@ vi.mock('../../admin/adminApi', () => ({
     fernwartungBox: (r: string) => fernwartungBox(r),
     fernwartung: () => fernwartung(),
     werkstattBoxEntfernen: (r: string) => werkstattBoxEntfernen(r),
+    werkstattNochmal: (l: string) => werkstattNochmal(l),
+    werkstattZurSeite: (l: string) => werkstattZurSeite(l),
+    edgeUpdates: () => edgeUpdates(),
   },
 }));
 
@@ -74,6 +80,7 @@ beforeEach(() => {
   werkstattDienst.mockResolvedValue(dienst({}));
   fernwartungBox.mockRejectedValue(new ApiError(404, 'keine Box'));
   fernwartung.mockResolvedValue({ rueckmeldungen: [] });
+  edgeUpdates.mockRejectedValue(new ApiError(503, 'nicht da'));
 });
 
 describe('Werkstatt: Übersicht am Rechner', () => {
@@ -357,14 +364,35 @@ describe('Werkstatt: einen unbenutzten Eintrag aus dem Register entfernen', () =
 });
 
 describe('Werkstatt: Bildschirme an der Werkbank', () => {
-  it('Start → Mango → Läuft mit sechs Phasen und Restzeit; kein „Weiter“-Knopf', async () => {
+  it('Start → Mango → Läuft: Jetzt-Karte, sechs Phasen mit Belegen, Software; kein „Weiter“-Knopf', async () => {
     window.location.hash = '#/werkstatt?werkbank=1';
     render(<WerkstattPage />);
     expect(await screen.findByTestId('wsb')).toHaveAttribute('data-bildschirm', 'start');
     fireEvent.click(screen.getByTestId('wsb-mango'));
     expect(screen.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'laeuft');
     expect(screen.getByTestId('wsb-restzeit')).toHaveTextContent(/Noch ca\. \d+ Minuten/);
-    expect(within(screen.getByTestId('wsb-phasen')).getAllByRole('listitem')).toHaveLength(6);
+    const schritte = screen.getByTestId('wsb-schritte');
+    expect(schritte.querySelectorAll('[data-phase]')).toHaveLength(6);
+    // E3: jeder erledigte Schritt mit einer Zeile Beleg und seiner Dauer
+    const erkennen = schritte.querySelector('[data-schritt="erkennen"]')!;
+    expect(erkennen).toHaveAttribute('data-zustand', 'ok');
+    expect(erkennen).toHaveTextContent('GL.iNet GL-MT300N-V2 · OpenWrt 25.12.5 ramips/mt76x8 · root-Passwort: leer');
+    expect(erkennen).toHaveTextContent('0:12');
+    expect(schritte.querySelector('[data-schritt="programm"]')).toHaveAttribute('data-zustand', 'lauf');
+    const jetzt = screen.getByTestId('wsb-jetzt');
+    expect(jetzt).toHaveTextContent('Edge Light einspielen');
+    expect(jetzt).toHaveTextContent(/Schritt \d+ von 16/);
+    expect(jetzt).toHaveTextContent('Frist 10 Min');
+    expect(jetzt).toHaveTextContent('Danach: Tunnel-Schlüssel erzeugen');
+    // Software: Freigabe, OpenWrt mit Prüfsumme, Edge Light, vorher
+    const sw = screen.getByTestId('wsb-software');
+    expect(sw).toHaveTextContent('Freigabe 2026-11-mango-1');
+    expect(within(sw).getByTestId('wsb-soft-openwrt')).toHaveTextContent('OpenWrt 25.12.5');
+    expect(within(sw).getByTestId('wsb-soft-openwrt')).toHaveTextContent('sha256 0123…cdef');
+    expect(within(sw).getByTestId('wsb-soft-openwrt')).toHaveTextContent('vorher: OpenWrt 25.12.5');
+    expect(within(sw).getByTestId('wsb-soft-edge-light')).toHaveTextContent('Edge Light 2026.11.1');
+    expect(within(sw).getByTestId('wsb-soft-edge-light')).toHaveTextContent('wird eingespielt');
+    expect(within(sw).getByTestId('wsb-soft-edge-light')).toHaveTextContent('vorher: kein VoltPilot');
     expect(screen.queryByRole('button', { name: /Weiter/ })).toBeNull();
   });
 
@@ -385,8 +413,11 @@ describe('Werkstatt: Bildschirme an der Werkbank', () => {
     werkstattDienst.mockResolvedValue(dienst({ zustand: 'angehalten', schritt: 'probe', grund: 'kein Handshake an wg_wartung' }));
     render(<WerkstattPage />);
     fireEvent.click(await screen.findByTestId('wsb-mango'));
-    expect(screen.getByTestId('wsb-problem')).toHaveTextContent('Hier hat etwas nicht geklappt.');
-    expect(screen.getByRole('heading', { name: 'Probe über den Wartungstunnel' })).toBeInTheDocument();
+    // Ein älterer Dienst ohne fall: die Seite bleibt bei „Hier hat etwas nicht geklappt“ und bietet kein „Nochmal“.
+    expect(screen.getByTestId('wsb')).toHaveAttribute('data-fall', 'schritt_gescheitert');
+    expect(screen.getByTestId('wsb-fall-titel')).toHaveTextContent('Hier hat etwas nicht geklappt.');
+    expect(screen.queryByTestId('wsb-knopf-nochmal')).toBeNull();
+    expect(screen.getByTestId('wsb-knopf-zur-seite')).toBeInTheDocument();
     const details = screen.getByTestId('wsb-details');
     expect(details.tagName).toBe('DETAILS');
     expect(details).not.toHaveAttribute('open');
@@ -398,8 +429,9 @@ describe('Werkstatt: Bildschirme an der Werkbank', () => {
     werkstattDienst.mockResolvedValue(dienst({ zustand: 'angehalten', schritt: 'openwrt', handgriff: 'Startlader (Handgriff M4): Mango vom Strom …' }));
     render(<WerkstattPage />);
     fireEvent.click(await screen.findByTestId('wsb-mango'));
-    expect(screen.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'startlader');
-    expect(screen.getByRole('heading', { name: 'Reset-Knopf drücken' })).toBeInTheDocument();
+    expect(screen.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'fall');
+    expect(screen.getByTestId('wsb-bild')).toHaveAttribute('data-bild', 'startlader');
+    expect(screen.getByTestId('wsb-knopf-abbild')).toHaveAttribute('href', 'https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt76x8/openwrt-25.12.5-ramips-mt76x8-glinet_gl-mt300n-v2-squashfs-sysupgrade.bin');
   });
 
   it('ohne Meldung des Dienstes: kein alter Stand, sondern was zu tun ist', async () => {
@@ -441,9 +473,7 @@ function ausZustand(name: string, laeufeAus: readonly string[]): WerkstattDienst
 function erwarteterBildschirm(name: string): string {
   if (name.startsWith('laeuft_')) return 'laeuft';
   if (name.startsWith('wartet_')) return 'du';
-  if (name === 'angehalten_startlader') return 'startlader';
-  if (name === 'angehalten_gl_passwort' || name === 'angehalten_halb_eigene') return 'zuruecksetzen';
-  if (name.startsWith('angehalten_')) return 'problem';
+  if (name.startsWith('angehalten_') || name === 'startet' || name === 'unterspannung') return 'fall';
   if (name === 'fertig') return 'fertig';
   return 'anschliessen';
 }
@@ -502,7 +532,7 @@ describe('Werkstatt: Ansichten des Dienstes vom 04.11.2026', () => {
     werkstattDienst.mockResolvedValue(ausZustand(name, laeufeZu(name)));
     render(<Fehlergrenze><WerkstattPage /></Fehlergrenze>);
     fireEvent.click(await screen.findByTestId('wsb-mango'));
-    expect(screen.getByTestId('wsb-anschluss-fall')).toHaveTextContent(titel);
+    expect(screen.getByTestId('wsb-fall-titel')).toHaveTextContent(titel);
   });
 
   /** So meldete der Dienst bis 724ebdde9 einen Lauf ohne erledigten Schritt; die API hält solche Stände je Lauf fest. */
@@ -513,7 +543,7 @@ describe('Werkstatt: Ansichten des Dienstes vom 04.11.2026', () => {
   }
 
   it.each([
-    ['angehalten_beim_erkennen', 'problem'],
+    ['angehalten_beim_erkennen', 'fall'],
     ['laeuft_erkennen', 'laeuft'],
   ])('ein gespeicherter Stand mit erledigt: null (Dienst bis 724ebdde9): %s zeichnet %s', async (name, art) => {
     window.location.hash = '#/werkstatt?werkbank=1';
@@ -536,5 +566,172 @@ describe('Werkstatt: Ansichten des Dienstes vom 04.11.2026', () => {
     expect(screen.queryByText(FEHLER_IM_BEREICH)).toBeNull();
     expect(fehler).not.toHaveBeenCalled();
     fehler.mockRestore();
+  });
+});
+
+/**
+ * Die Fälle aus dem Vertrag (docs/contracts/werkstatt-ansicht-v1.md, „Fälle“): je Code eine Seite mit Titel und
+ * Schritten aus `loesung`, der Art (warten / einmal kurz du / zur Seite) und genau den Knöpfen des Konzepts. Kein
+ * Knopf löscht etwas an einer Box; den Reset nennt die Seite nur bei gl_passwort und halb_eigene.
+ */
+const vertrag = readFileSync(resolve(__dirname, '../../../../../docs/contracts/werkstatt-ansicht-v1.md'), 'utf8');
+function vertragsFaelle(ueberschrift: string): { code: string; selbst: boolean; zurSeite: boolean }[] {
+  const teil = vertrag.slice(vertrag.indexOf(ueberschrift));
+  const tabelle = teil.slice(teil.indexOf('| Code'), teil.indexOf('\n\n', teil.indexOf('| Code')));
+  return tabelle.split('\n').filter((z) => z.startsWith('| `')).map((z) => {
+    const sp = z.split('|').map((x) => x.trim());
+    const code = sp[1].replace(/`/g, '');
+    return ueberschrift.startsWith('**Fälle am')
+      ? { code, selbst: sp[3] === 'ja', zurSeite: false }
+      : { code, selbst: sp[4] === 'ja', zurSeite: sp[5] === 'ja' };
+  });
+}
+const AM_ANSCHLUSS = vertragsFaelle('**Fälle am Anschluss**');
+const IM_LAUF = vertragsFaelle('**Fälle eines Laufs**');
+/** Die Fälle, für die der Dienst „Nochmal“ anbietet (services/werkstatt-dienst/internal/faelle, Nochmal). */
+const NOCHMAL = new Set(['kein_internet', 'uebertragung', 'bruecke_weg', 'box_weg', 'zwei_geraete', 'dienst_neu_gestartet', 'schritt_gescheitert', 'nicht_nachweisbar']);
+const LAUF_KNOEPFE: Record<string, string[]> = {
+  gl_passwort: ['zur-seite'], halb_eigene: ['zur-seite'],
+  ssh_zu: ['abbild', 'zur-seite'], abbild_abgelehnt: ['abbild', 'zur-seite'], openwrt_fassung: ['abbild', 'zur-seite'],
+  passwort_fremd: ['zur-seite'], falsches_geraet: ['zur-seite'], schon_edge_light: ['zur-seite'], nicht_update_bereit: ['zur-seite'],
+  box_in_gebrauch: ['zur-seite', 'box-oeffnen'], fassung_nicht_bereit: ['freigabe-ansehen', 'zur-seite'],
+  einloesen_abgewiesen: ['freigabe-ansehen', 'zur-seite'], nicht_nachweisbar: ['nochmal', 'zur-seite'],
+};
+const ANSCHLUSS_KNOEPFE: Record<string, string[]> = { nicht_freigegeben: ['freigeben'], eingerichtet: ['register'] };
+
+function knoepfeAufDerSeite(): string[] {
+  const k = screen.queryByTestId('wsb-knoepfe');
+  return k ? [...k.querySelectorAll('[data-testid^="wsb-knopf-"]')].map((e) => e.getAttribute('data-testid')!.replace('wsb-knopf-', '')) : [];
+}
+
+describe('Werkstatt: eine Seite je Fall-Code', () => {
+  it('der Vertrag nennt 29 Fälle (zwei_geraete an beiden Stellen)', () => {
+    expect(AM_ANSCHLUSS.length + IM_LAUF.length).toBe(29);
+  });
+
+  it.each(IM_LAUF)('Lauf hält mit $code: Titel, Schritte, Art und Knöpfe', async ({ code, selbst, zurSeite }) => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    const loesung = { titel: `Titel ${code}.`, schritte: [`Erster Handgriff ${code}.`, `Zweiter Handgriff ${code}.`], selbst, zur_seite: zurSeite };
+    werkstattDienst.mockResolvedValue(dienst({ zustand: 'angehalten', schritt: 'erkennen', erledigt: [], fall: code, loesung,
+      grund: `Grund ${code}`, nochmal_moeglich: NOCHMAL.has(code) }));
+    render(<WerkstattPage />);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    expect(screen.getByTestId('wsb')).toHaveAttribute('data-fall', code);
+    expect(screen.getByTestId('wsb-fall-titel')).toHaveTextContent(`Titel ${code}.`);
+    expect(screen.getByTestId('wsb-fall-was').textContent!.length).toBeGreaterThan(20);
+    expect(screen.getByTestId('wsb-loesung')).toHaveTextContent(`Erster Handgriff ${code}.`);
+    expect(screen.getByTestId('wsb-loesung')).toHaveTextContent(`Zweiter Handgriff ${code}.`);
+    expect(screen.getByTestId('wsb-fall-banner')).toHaveAttribute('data-art', zurSeite ? 'seite' : 'hand');
+    expect(screen.getByTestId('wsb-selbst')).toHaveAttribute('data-selbst', selbst ? 'ja' : 'nein');
+    expect(screen.getByTestId('wsb-fall-code')).toHaveTextContent(code);
+    expect(knoepfeAufDerSeite()).toEqual(LAUF_KNOEPFE[code] ?? ['nochmal', 'zur-seite']);
+    const bild = screen.queryByTestId('wsb-bild')?.getAttribute('data-bild') ?? null;
+    expect(bild === 'reset').toBe(code === 'gl_passwort' || code === 'halb_eigene');
+    expect(screen.getByTestId('wsb-knoepfe')).not.toHaveTextContent(/lösch|zurücksetz|Reset/i);
+  });
+
+  it.each(AM_ANSCHLUSS)('am Anschluss $code: Titel, Schritte, Art und Knöpfe', async ({ code, selbst }) => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    const loesung = { titel: `Titel ${code}.`, schritte: [`Handgriff ${code}.`], selbst, zur_seite: false };
+    werkstattDienst.mockResolvedValue({ ...dienst(null), ansicht: { ...vektor, lauf: null, anschluss_fall: code, anschluss_loesung: loesung } });
+    render(<WerkstattPage />);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    if (code === 'kein_kabel' || code === 'keine_box') {
+      // Diese beiden zeigt „Mango anschließen“ mit seiner Liste und dem Bild.
+      expect(screen.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'anschliessen');
+      return;
+    }
+    expect(screen.getByTestId('wsb')).toHaveAttribute('data-fall', code);
+    expect(screen.getByTestId('wsb-fall-titel')).toHaveTextContent(`Titel ${code}.`);
+    expect(screen.getByTestId('wsb-loesung')).toHaveTextContent(`Handgriff ${code}.`);
+    expect(screen.getByTestId('wsb-fall-banner')).toHaveAttribute('data-art', code === 'startet' ? 'warten' : code === 'eingerichtet' ? 'seite' : 'hand');
+    expect(knoepfeAufDerSeite()).toEqual(ANSCHLUSS_KNOEPFE[code] ?? []);
+    expect(screen.queryByTestId('wsb-bild')?.getAttribute('data-bild') ?? null).not.toBe('reset');
+  });
+});
+
+describe('Werkstatt: Nochmal versuchen und zur Seite legen', () => {
+  const angehalten = () => dienst({ zustand: 'angehalten', schritt: 'openwrt', erledigt: ['erkennen', 'fassungen'], fall: 'box_weg',
+    loesung: { titel: 'Die Mango war während des Laufs weg.', schritte: ['Strom und Kabel der Mango prüfen.'], selbst: true, zur_seite: false },
+    nochmal_moeglich: true, grund: 'dial tcp 192.168.1.1:22: i/o timeout' });
+
+  it('„Nochmal versuchen“ sendet den Auftrag für genau diesen Lauf und sagt, wann der Dienst ihn abholt', async () => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    werkstattDienst.mockResolvedValue(angehalten());
+    werkstattNochmal.mockResolvedValue({ id: 'a1', art: 'nochmal', lauf: vektor.lauf!.kennung, erteiltAm: vektor.zeit });
+    render(<WerkstattPage />);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    fireEvent.click(screen.getByTestId('wsb-knopf-nochmal'));
+    expect(await screen.findByTestId('wsb-nochmal-gesendet')).toHaveTextContent('nächsten Meldung');
+    expect(werkstattNochmal).toHaveBeenCalledWith(vektor.lauf!.kennung);
+  });
+
+  it('nimmt der Dienst den Auftrag an (nochmal_seit), steht das da statt des Knopfs; ein 409 steht an den Knöpfen', async () => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    werkstattDienst.mockResolvedValue(angehalten());
+    werkstattNochmal.mockRejectedValue(new ApiError(409, 'Dieser Lauf ist nicht mehr der letzte des Dienstes.'));
+    render(<WerkstattPage />);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    fireEvent.click(screen.getByTestId('wsb-knopf-nochmal'));
+    expect(await screen.findByTestId('wsb-knopf-fehler')).toHaveTextContent('nicht mehr der letzte');
+    const d = angehalten();
+    werkstattDienst.mockResolvedValue({ ...d, ansicht: { ...d.ansicht!, lauf: { ...d.ansicht!.lauf!, nochmal_seit: vektor.zeit } } });
+    cleanup();
+    render(<WerkstattPage />);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    expect(screen.getByTestId('wsb-nochmal-laeuft')).toHaveTextContent('Der Dienst versucht es noch einmal.');
+    expect(screen.queryByTestId('wsb-knopf-nochmal')).toBeNull();
+  });
+
+  it('„Box zur Seite legen“ speichert in der API; die Übersicht listet die Box mit Fall, Lösung und Grund', async () => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    werkstattDienst.mockResolvedValue({ ...angehalten(), zurSeite: [] });
+    werkstattZurSeite.mockResolvedValue({});
+    render(<WerkstattPage />);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    fireEvent.click(screen.getByTestId('wsb-knopf-zur-seite'));
+    await waitFor(() => expect(screen.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'anschliessen'));
+    expect(werkstattZurSeite).toHaveBeenCalledWith(vektor.lauf!.kennung);
+
+    cleanup();
+    window.location.hash = '#/werkstatt';
+    werkstattDienst.mockResolvedValue({ ...dienst({}), zurSeite: [{ id: 'z1', lauf: 'l1', box: 'edge-k7m2xq3', fall: 'box_weg',
+      loesungTitel: 'Die Mango war während des Laufs weg.', schritt: 'openwrt', grund: 'i/o timeout', gelegtAm: vektor.zeit, gelegtVon: 'alex' }] });
+    render(<WerkstattPage />);
+    const liste = await screen.findByTestId('ws-zur-seite');
+    expect(liste).toHaveTextContent('edge-k7m2xq3');
+    expect(liste).toHaveTextContent('Die Mango war während des Laufs weg.');
+    expect(liste).toHaveTextContent('box_weg');
+    expect(liste).toHaveTextContent('i/o timeout');
+  });
+
+  it('eine API vor der Lauf-Seite (kein zurSeite): keine Liste; scheitert das Speichern, liegt die Box trotzdem weg', async () => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    werkstattDienst.mockResolvedValue(angehalten());
+    werkstattZurSeite.mockRejectedValue(new ApiError(404, 'Not Found'));
+    render(<WerkstattPage />);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    fireEvent.click(screen.getByTestId('wsb-knopf-zur-seite'));
+    expect(await screen.findByTestId('wsb-hinweis')).toHaveTextContent('nicht gespeichert');
+    expect(screen.getByTestId('wsb')).toHaveAttribute('data-bildschirm', 'anschliessen');
+    cleanup();
+    window.location.hash = '#/werkstatt';
+    render(<WerkstattPage />);
+    await screen.findByTestId('ws-bruecke');
+    expect(screen.queryByTestId('ws-zur-seite')).toBeNull();
+  });
+
+  it('Fertig nennt neun Prüfungen und zeigt, was jetzt auf der Box ist; ein neueres Release nur als Hinweis', async () => {
+    window.location.hash = '#/werkstatt?werkbank=1';
+    werkstattDienst.mockResolvedValue(dienst({ zustand: 'fertig', ende: '2026-11-02T10:22:00Z' }));
+    edgeUpdates.mockResolvedValue({ releases: [{ releaseSeq: 9, version: '2026.11.3', signed: true, boxArt: 'edge-light' },
+      { releaseSeq: 10, version: '2026.12.0', signed: false, boxArt: 'edge-light' }] });
+    render(<WerkstattPage />);
+    fireEvent.click(await screen.findByTestId('wsb-mango'));
+    expect(screen.getByTestId('wsb-fertig')).toHaveTextContent('Alle neun Prüfungen bestanden · 17 Min');
+    const sw = screen.getByTestId('wsb-software');
+    expect(sw).toHaveTextContent('Auf dieser Box');
+    expect(within(sw).getByTestId('wsb-soft-edge-light')).toHaveTextContent('✓ update-bereit');
+    expect(await within(sw).findByTestId('wsb-soft-neuer')).toHaveTextContent('Neuer erschienen: Edge Light 2026.11.3');
   });
 });

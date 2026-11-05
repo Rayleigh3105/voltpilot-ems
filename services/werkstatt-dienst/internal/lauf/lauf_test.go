@@ -76,6 +76,13 @@ func TestSchritteNacheinanderMitBelegen(t *testing.T) {
 	if s.Zustand != lauf.Fertig || len(s.Erledigt) != 3 || s.Ende.IsZero() {
 		t.Fatalf("Stand %+v", s)
 	}
+	// E3 A: je erledigtem Schritt Dauer und eine Belegzeile, in der Reihenfolge.
+	if len(s.Belege) != 3 || s.Belege[0].Schritt != "erkennen" || s.Belege[2].Schritt != "passwort" || s.Belege[1].Zeile == "" {
+		t.Fatalf("Belege %+v", s.Belege)
+	}
+	if !s.SchrittSeit.IsZero() || s.SchrittFristS != 0 || s.NochmalMoeglich {
+		t.Fatalf("fertig mit Schritt-Zeit oder Nochmal: %+v", s)
+	}
 	var m bytes.Buffer
 	_ = reg.Schreibe(&m)
 	for _, w := range []string{`vp_werkstatt_laeufe_total{ergebnis="fertig"} 1`, `vp_werkstatt_laeufe_total{ergebnis="angehalten"} 0`, `vp_werkstatt_schritt_letzte_dauer_seconds{schritt="openwrt"}`, "vp_werkstatt_lauf_aktiv 0"} {

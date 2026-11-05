@@ -12,7 +12,8 @@ Seite zeigt, was er tut; Handschritte, Passwort-Generator und Probe-Knöpfe gibt
 
 | Teil | Was | Wo |
 |---|---|---|
-| Werkbank (M1–M6) | Die geführten Bildschirme für die Person an der Werkbank: Box-Art wählen (Raspberry Pi kommt mit V2), Mango anschließen, Fortschritt in sechs Phasen mit Restzeit, der eine Handgriff am Startlader oder am Reset-Knopf (Zurücksetzen einer gebrauchten oder halb eingerichteten Mango), Fertig mit Referenz und QR-Code, Problem mit Fall und Lösung aus dem Dienst (`lauf.fall`, `lauf.loesung`; am Anschluss `anschluss_fall`, [Vertrag](contracts/werkstatt-ansicht-v1.md#fälle)). Kein „Weiter“-Knopf: Der Dienst merkt Handgriffe selbst. Fachwörter stehen nur unter „Details für Technik“. „Nochmal versuchen“ heißt: Kabel kurz abziehen; einen Befehlsweg vom Portal zum Dienst gibt es nicht. | `WerkstattBank.tsx`, `werkstattBank.ts` |
+| Werkbank (M1–M6) | Die geführten Bildschirme für die Person an der Werkbank: Box-Art wählen (Raspberry Pi kommt mit V2), Mango anschließen, Fertig mit Referenz und QR-Code. Kein „Weiter“-Knopf: Der Dienst merkt Handgriffe selbst. Fachwörter stehen nur unter „Details für Technik“. | `WerkstattBank.tsx`, `werkstattBank.ts` |
+| Lauf-Seite (Konzept `vp-werkstatt-lauf-seite`, E1–E4 A, 05.11.2026) | Während des Laufs: „Jetzt“ (Schritt, seit wann, wie lange er meist dauert – Median der gemessenen Dauern der letzten Läufe –, Frist, was danach kommt), alle Schritte nach Phasen mit einer Zeile Beleg und Dauer (`lauf.belege`, E3) und die Software-Karte „Kommt auf diese Box“ (Freigabe, OpenWrt mit Prüfsumme, Edge Light, je „vorher“ aus `lauf.vorher`, ein neueres signiertes Release nur als Hinweis). Am Rechner zwei Spalten, am Telefon eine (E4). Hält der Lauf an oder steht am Anschluss ein Fall, zeigt sie eine Seite je Code (`lauf.fall`/`anschluss_fall`, [Vertrag](contracts/werkstatt-ansicht-v1.md#fälle)) in drei Arten: „Der Dienst wartet“, „Einmal kurz du“, „Zur Seite legen“; Titel und Schritte aus `loesung`, ob der Dienst von selbst weitermacht, ein Bild bei Reset, Startlader, Kabel oder Pi. Den Reset nennt sie nur bei `gl_passwort` und `halb_eigene`. „Nochmal versuchen“ (E1) ist ein Auftrag an den Dienst, nur wenn er den Lauf als `nochmal_moeglich` meldet (kein Handgriff an der Box); er tut, was das Abziehen des Kabels täte. „Box zur Seite legen“ (E2) hält Fall, Lösung und Zeit in der API fest; die Übersicht listet sie. Kein Knopf löscht etwas an einer Box. Ein Dienst ohne diese Felder: keine Belegzeilen, kein „Nochmal“, der Fall aus `handgriff` wie bisher. | `WerkstattBank.tsx`, `werkstattLauf.ts` |
 | Übersicht (D1) | Freigabe („Werkstatt freigeben“, „Freigabe beenden“), Werkbank-Brücke und die Boxen mit ihrem Stand (läuft, Problem, abgenommen, nur im Register). Eine Box in der Liste öffnet ihre Detailseite. | `WerkstattPage.tsx` |
 | Einrichtungs-Detailseite (`?box=<referenz>`) | Alles zu einer Box an einem Ort, nur Anzeige. Oben steht, ob ein Kunde die Box schon eingerichtet hat (`kunde` der Box: Claim über den QR-Einstieg, Zeile in `device`; die Vorab-Registrierung zählt nicht; fehlt das Feld, „nicht bekannt“); wenn nicht, stehen dort der Direktlink des Gehäuse-QR-Codes (`https://portal.voltpilot.de/k/<referenz>`, siehe unten) mit „Link kopieren“ und derselbe QR-Code: Der Kunde richtet die Box darüber ein, ein Admin öffnet ihn in einem privaten Fenster (angemeldet führt er zurück in die Werkstatt). Dann Einrichtung (Hardware, Edge-Light-Fassung, OpenWrt und Freigabe, LAN-Netz, Tunnel-Adresse, Host-Schlüssel), Bindung und Fernwartung (Tunnel-Schlüssel, Zugang, Kunde und Anlage, Verbindung laut Tunnel-Dienst; ohne Tunnel-Schlüssel steht dort „noch nicht gekoppelt“), die Phasen des Laufs, die Abnahme mit den Belegen samt früheren Abnahmen, die Beschriftung und der Download der Gehäuse-Druckdatei (3MF, siehe unten). Fehlt die Abnahme, bleiben ihre Felder leer („–“): Unbekannt ist keine Angabe. Das Root-Passwort steht nur verschlüsselt da, wie an der Abnahme. | `WerkstattBoxSeite.tsx`, `werkstattEinrichtung.ts` |
 | Stand des Dienstes | Die [Ansicht](contracts/werkstatt-ansicht-v1.md) über `GET /api/v1/admin/werkstatt/dienst`, die Seite fragt alle 5 s nach. Ist die letzte Meldung älter als 60 s, steht dort „Der Werkstatt-Dienst meldet sich nicht“ statt eines alten Stands. | – |
@@ -105,6 +106,8 @@ der Kopplung geschrieben (`edge-` klein); ein falsches Prüfzeichen ist 422.
 | `PUT /boxen/{ref}/schritte/{schritt}` | `{"erledigt": true\|false}`, idempotent |
 | `PUT /boxen/{ref}/lan-netz` | `{"lanNetz": "10.213.0.1/24"}`; 422 mit Grund |
 | `POST /boxen/{ref}/abnahme` | das Protokoll; 201, sonst 404/409/422 mit Grund |
+| `POST /dienst/nochmal` | `{"lauf": "<kennung>"}`: Auftrag „Nochmal versuchen“ an den Dienst (E1 A); 201 neu, 200 schon offen; 409, wenn der Dienst sich nicht meldet, der Lauf nicht mehr der letzte ist oder der Dienst ihn nicht als `nochmal_moeglich` meldet |
+| `POST /zur-seite` | `{"lauf": "<kennung>"}`: einen angehaltenen Lauf zur Seite legen (E2 A); 201 neu, 200 schon da; 404 unbekannt, 409 nicht angehalten. `GET /dienst` trägt die Liste als `zurSeite` |
 
 ## Daten
 
@@ -114,7 +117,15 @@ geschrieben nur über die BYPASSRLS-Rolle `voltpilot_admin` (`WerkstattRepositor
 unbenutzter Eintrag des Registers (`DELETE /boxen/{ref}`); er bleibt vorher in `werkstatt_box_entfernt` stehen.
 `werkstatt_abnahme` und `werkstatt_box_entfernt` sind append-only an der Datenbankgrenze, und eine abgenommene Box
 hält ihre Abnahme per Fremdschlüssel fest. Migrationen `V20261026200000__werkstatt.sql`,
-`V20261105170000__werkstatt_box_entfernen.sql`.
+`V20261105170000__werkstatt_box_entfernen.sql`, `V20261105200000__werkstatt_auftrag_zur_seite.sql` (`werkstatt_auftrag`:
+Aufträge an den Dienst, nur `abgeholt_am` ändert sich; `werkstatt_zur_seite`: append-only).
+
+**Aufträge an den Dienst.** Eine eingehende Verbindung zum Werkstatt-Dienst gibt es nicht. Er holt offene Aufträge mit
+seiner Meldung der Ansicht ab (`PUT /api/v1/werkstatt-dienst/ansicht?auftraege=1`: 200 mit `auftraege`, jeder genau
+einmal, verfallen nach 10 Minuten); ohne den Parameter bleibt die Antwort 204 wie für einen älteren Dienst. Der Dienst
+führt „nochmal“ nur für seinen letzten, angehaltenen Lauf mit einem Fall ohne Handgriff an der Box aus
+(`faelle.Nochmal`): Er gibt die Sperre der Box frei, wie beim Abziehen des Kabels; ins Protokoll des beendeten Laufs
+schreibt er nichts.
 
 ## Direktlink vom Gehäuse (Plan D3)
 

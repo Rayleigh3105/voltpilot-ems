@@ -7355,8 +7355,54 @@ paths:
                         ende: { type: string, format: date-time, nullable: true }
                         aktualisiertAm: { type: string, format: date-time }
                         stand: { type: object, additionalProperties: true }
+                  zurSeite:
+                    type: array
+                    description: Die zur Seite gelegten Boxen (Lauf-Seite E2 A), neueste zuerst, höchstens 50.
+                    items: { $ref: "#/components/schemas/WerkstattZurSeite" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/werkstatt/dienst/nochmal:
+    post:
+      tags: [werkstatt]
+      summary: „Nochmal versuchen“ – Auftrag an den Werkstatt-Dienst (Lauf-Seite E1 A).
+      description: >
+        Der Dienst holt den Auftrag mit seiner nächsten Meldung ab und tut, was das
+        Abziehen des orangen Kabels täte: Er gibt die Sperre der Box frei und beginnt
+        neu. Angenommen nur, wenn die gemeldete Ansicht aktuell ist, genau diesen
+        angehaltenen Lauf zeigt und der Dienst ihn als `nochmal_moeglich` meldet (nur
+        Fälle ohne Handgriff an der Box). An keiner Box wird etwas gelöscht.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WerkstattLaufRequest" }
+      responses:
+        "201": { description: Auftrag erteilt., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattAuftrag" } } } }
+        "200": { description: Schon ein offener Auftrag für diesen Lauf., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattAuftrag" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Dienst meldet sich nicht, anderer Lauf, kein Nochmal für diesen Fall oder schon angenommen. }
+        "422": { description: Laufkennung fehlt oder hat nicht die Form. }
+  /api/v1/admin/werkstatt/zur-seite:
+    post:
+      tags: [werkstatt]
+      summary: Eine angehaltene Box zur Seite legen (Lauf-Seite E2 A).
+      description: >
+        Hält Fall, Lösung, Schritt und Grund des angehaltenen Laufs mit Zeit und Person
+        fest (append-only, ein Lauf höchstens einmal). An der Box ändert sich nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WerkstattLaufRequest" }
+      responses:
+        "201": { description: Zur Seite gelegt., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattZurSeite" } } } }
+        "200": { description: Schon zur Seite gelegt., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattZurSeite" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Lauf unbekannt. }
+        "409": { description: Der Lauf ist nicht angehalten. }
+        "422": { description: Laufkennung fehlt oder hat nicht die Form. }
   /api/v1/admin/werkstatt/freigaben:
     get:
       tags: [werkstatt]
@@ -7614,12 +7660,35 @@ paths:
         Die API prüft nur die Form (Schema, Zeit, Werkbank, Freigabe, Lauf mit
         Kennung und Zustand), höchstens 64 KB, kein Schlüsselmaterial, und hält
         die letzte Ansicht und je Lauf seinen letzten Stand. Anzeige, kein Beweis.
+        Mit `auftraege=1` (ein Dienst, der Aufträge kennt) kommen die offenen
+        Aufträge des Portals zurück, jeder genau einmal (Lauf-Seite E1 A,
+        „Nochmal versuchen“); ohne bleibt es 204 wie für einen älteren Dienst.
+      parameters:
+        - name: auftraege
+          in: query
+          required: false
+          schema: { type: string, enum: ["0", "1"], default: "0" }
       requestBody:
         required: true
         content:
           application/json:
             schema: { type: object, additionalProperties: true }
       responses:
+        "200":
+          description: Angenommen (mit `auftraege=1`), dazu die offenen Aufträge.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auftraege:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        art: { type: string, enum: [nochmal] }
+                        lauf: { type: string }
         "204": { description: Angenommen. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -27688,6 +27757,30 @@ components:
         technikerName: { type: string, nullable: true }
         fensterId: { type: string, format: uuid, nullable: true }
         details: { type: object, additionalProperties: true }
+    WerkstattLaufRequest:
+      type: object
+      required: [lauf]
+      properties:
+        lauf: { type: string, description: Kennung des angehaltenen Laufs. }
+    WerkstattAuftrag:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [nochmal] }
+        lauf: { type: string }
+        erteiltAm: { type: string, format: date-time }
+    WerkstattZurSeite:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        lauf: { type: string }
+        box: { type: string, nullable: true }
+        fall: { type: string, nullable: true }
+        loesungTitel: { type: string, nullable: true }
+        schritt: { type: string, nullable: true }
+        grund: { type: string, nullable: true }
+        gelegtAm: { type: string, format: date-time }
+        gelegtVon: { type: string }
     WerkstattFreigabeAbbild:
       type: object
       required: [fassung, datei, sha256, quelle]

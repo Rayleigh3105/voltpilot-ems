@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -129,10 +130,29 @@ func (c Client) BoxStandLesen(ctx context.Context, edgeRef string) (BoxStand, er
 	return BoxStand{EdgeRef: out.EdgeRef, Abgenommen: *out.Abgenommen, Gekoppelt: *out.Gekoppelt}, nil
 }
 
+// Auftrag ist ein Auftrag aus dem Portal an den Dienst, abgeholt mit der
+// Meldung der Ansicht (Entscheid E1 A der Lauf-Seite): eine neue eingehende
+// Verbindung zum Dienst gibt es nicht. Art "nochmal": den angehaltenen Lauf
+// Lauf neu anstoßen.
+type Auftrag struct {
+	ID   string `json:"id"`
+	Art  string `json:"art"`
+	Lauf string `json:"lauf"`
+}
+
 // AnsichtMelden meldet die Ansicht des Dienstes (PUT /ansicht,
 // docs/contracts/werkstatt-ansicht-v1.md); die Werkstatt-Bildschirme lesen sie.
-func (c Client) AnsichtMelden(ctx context.Context, ansicht any) error {
-	return c.rufe(ctx, http.MethodPut, "/ansicht", ansicht, http.StatusNoContent, nil)
+// Mit ?auftraege=1 gibt eine API, die Aufträge kennt, 200 mit den offenen
+// Aufträgen zurück; eine ältere antwortet wie bisher 204 (keine Aufträge).
+func (c Client) AnsichtMelden(ctx context.Context, ansicht any) ([]Auftrag, error) {
+	var raus struct {
+		Auftraege []Auftrag `json:"auftraege"`
+	}
+	status, err := c.rufeMit(ctx, http.MethodPut, "/ansicht?auftraege=1", ansicht, &raus, http.StatusOK, http.StatusNoContent)
+	if err != nil || status == http.StatusNoContent {
+		return nil, err
+	}
+	return raus.Auftraege, nil
 }
 
 // AbnahmeSchreiben schreibt die Abnahme mit Belegen (POST /abnahmen/{ref}).
@@ -143,21 +163,28 @@ func (c Client) AbnahmeSchreiben(ctx context.Context, edgeRef string, a Abnahme)
 }
 
 func (c Client) rufe(ctx context.Context, methode, pfad string, rein any, erwartet int, raus any) error {
+	_, err := c.rufeMit(ctx, methode, pfad, rein, raus, erwartet)
+	return err
+}
+
+// rufeMit ruft die API und nimmt jeden der erwarteten Status an; den Körper
+// liest es nur bei einer Antwort mit Inhalt.
+func (c Client) rufeMit(ctx context.Context, methode, pfad string, rein any, raus any, erwartet ...int) (int, error) {
 	tok, err := c.Token.Token(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	var body io.Reader
 	if rein != nil {
 		b, err := json.Marshal(rein)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		body = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(ctx, methode, strings.TrimRight(c.URL, "/")+"/api/v1/werkstatt-dienst"+pfad, body)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Accept", "application/json")
@@ -170,11 +197,11 @@ func (c Client) rufe(ctx context.Context, methode, pfad string, rein any, erwart
 	}
 	resp, err := cl.Do(req)
 	if err != nil {
-		return fmt.Errorf("Portal nicht erreicht: %s", geheim.Schwaerze(err.Error()))
+		return 0, fmt.Errorf("Portal nicht erreicht: %s", geheim.Schwaerze(err.Error()))
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
-	if resp.StatusCode != erwartet {
+	if !slices.Contains(erwartet, resp.StatusCode) {
 		var m struct {
 			Message string `json:"message"`
 		}
@@ -182,12 +209,12 @@ func (c Client) rufe(ctx context.Context, methode, pfad string, rein any, erwart
 		if m.Message == "" {
 			m.Message = http.StatusText(resp.StatusCode)
 		}
-		return Abgelehnt{Status: resp.StatusCode, Message: geheim.Schwaerze(m.Message)}
+		return resp.StatusCode, Abgelehnt{Status: resp.StatusCode, Message: geheim.Schwaerze(m.Message)}
 	}
-	if raus != nil {
+	if raus != nil && resp.StatusCode != http.StatusNoContent {
 		if err := json.Unmarshal(raw, raus); err != nil {
-			return fmt.Errorf("Portal: Antwort kein JSON: %v", err)
+			return resp.StatusCode, fmt.Errorf("Portal: Antwort kein JSON: %v", err)
 		}
 	}
-	return nil
+	return resp.StatusCode, nil
 }

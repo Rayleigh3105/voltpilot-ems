@@ -157,6 +157,18 @@ public class DienstAnsichtService {
                 Math.max(1, Math.min(limit, 200)));
     }
 
+    /** Der letzte Stand eines Laufs. */
+    public Optional<Lauf> lauf(String kennung) {
+        return jdbc.query("SELECT kennung, freigabe, box_art, zustand, schritt, titel, grund, beginn, ende, "
+                        + "stand::text AS stand, aktualisiert_am FROM werkstatt_lauf WHERE kennung = ?",
+                (rs, n) -> new Lauf(rs.getString("kennung"), rs.getString("freigabe"), rs.getString("box_art"),
+                        rs.getString("zustand"), rs.getString("schritt"), rs.getString("titel"), rs.getString("grund"),
+                        rs.getTimestamp("beginn").toInstant(),
+                        rs.getTimestamp("ende") == null ? null : rs.getTimestamp("ende").toInstant(),
+                        lies(rs.getString("stand")), rs.getTimestamp("aktualisiert_am").toInstant()),
+                kennung).stream().findFirst();
+    }
+
     private JsonNode lies(String text) {
         try {
             return json.readTree(text);

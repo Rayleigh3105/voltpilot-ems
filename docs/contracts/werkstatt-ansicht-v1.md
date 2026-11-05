@@ -18,9 +18,21 @@ Vektor: [`werkstatt-ansicht-v1.example.json`](werkstatt-ansicht-v1.example.json)
 | `lauf` | der laufende oder zuletzt beendete Lauf: `kennung`, `freigabe`, `box_art`, `box` (Kennung der Box, sobald sie feststeht), `beginn`, `ende`, `zustand` (`laeuft`, `wartet`, `fertig`, `angehalten`), `schritt`, `titel`, `erledigt` (Kennungen der erledigten Schritte; immer eine Liste, `[]` solange nichts erledigt ist), `grund`, `handgriff`, `wartet_auf`, `hinweis`, `fall` und `loesung` (nur bei `angehalten`) |
 | `lauf.fall` | Code, warum der Lauf anhielt (Tabelle „Fälle eines Laufs“) |
 | `lauf.loesung` | `titel` (ein Satz), `schritte` (Liste, je ein Handgriff in Alltagsworten), `selbst` (true: nach den Schritten macht der Dienst von selbst weiter, ohne Knopf), `zur_seite` (true: die Box kommt zur Seite, die Technik sieht sie an) |
+| `lauf.schritt_seit`, `lauf.schritt_frist_s` | seit wann der laufende Schritt läuft und seine Frist in Sekunden (nur solange er läuft) |
+| `lauf.belege` | je erledigtem Schritt `schritt`, `dauer_s` und `zeile`: eine Zeile Beleg aus einer festen Liste je Schritt (`internal/lauf/zeile.go`), nie ein Geheimnis, nie rohe Ausgabe; mit Schlüsselmaterial darin steht nur „belegt“. Der ganze Beleg bleibt im Protokoll und an der Abnahme |
+| `lauf.vorher` | was vor dem Lauf auf der Box war (aus `erkennen`, auch einem gescheiterten): `system`, `edge_light`, `ersetzt` (eine halb eingerichtete Box dieser Werkstatt: ihre alte Referenz geht nach dem Reset nicht weiter) |
+| `lauf.nochmal_moeglich` | der angehaltene Lauf darf aus dem Portal neu angestoßen werden („Nochmal versuchen“): nur Fälle ohne Handgriff an der Box (`faelle.Nochmal`) |
+| `lauf.nochmal_seit` | seit wann der Dienst den Auftrag „nochmal“ ausführt (er hat die Sperre der Box freigegeben) |
 | `werkbank.status.strom` | Versorgung der Brücke (`vp-werkbank-status.v1`, additiv): `unterspannung_jetzt`, `unterspannung_seit_start` (fehlen, wenn der Pi es nicht meldet), `quelle` (`vcgencmd` oder `keine`) |
 
 Fehlt `lauf`, gab es seit dem Start des Dienstes keinen.
+
+Die Felder `schritt_seit` bis `nochmal_seit` kamen mit der Lauf-Seite dazu (additiv). Ein Dienst ohne sie: Die Seite
+zeigt keine Belegzeilen und kein „Nochmal versuchen“ und liest den Fall wie bisher.
+
+**Aufträge.** Mit `PUT …/ansicht?auftraege=1` antwortet die API 200 mit `{"auftraege":[{"id","art","lauf"}]}` (Art
+`nochmal`, jeder Auftrag genau einmal); ohne den Parameter 204 wie bisher. Was der Dienst daraus macht, steht danach in
+`lauf.nochmal_seit`.
 
 ## Regeln
 
@@ -69,6 +81,7 @@ Technik.
 | `uebertragung` | Prüfsumme des Abbilds auf der Box weicht ab | Kabel kurz ab | ja | nein |
 | `bruecke_weg` | die Brücke war im Lauf nicht erreichbar | Pi prüfen, Kabel kurz ab | ja | nein |
 | `box_weg` | die Box antwortete im Lauf nicht mehr | Strom/Kabel prüfen | ja | nein |
+| `zwei_geraete` | mitten im Lauf antworten mehrere Geräte am orangen Kabel | nur eine Mango ans Kabel | ja | nein |
 | `einloesen_abgewiesen` | das Portal nahm die Einlösung nicht an | – | nein | ja |
 | `nicht_update_bereit` | Entscheid 5c: keine Abnahme | – | nein | ja |
 | `dienst_neu_gestartet` | der Dienst startete mitten im Lauf neu (nur im Protokoll, `SchliesseOffene`) | Kabel kurz ab | ja | nein |

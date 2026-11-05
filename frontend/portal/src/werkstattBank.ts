@@ -9,6 +9,7 @@
  * passiert ist und was zu tun ist, Fachwörter nur unter „Details für Technik“.
  */
 import type { WerkstattAbnahme, WerkstattBox } from './werkstatt';
+import { fallSeite, type FallSeite } from './werkstattLauf';
 
 export type LaufZustand = 'laeuft' | 'wartet' | 'fertig' | 'angehalten';
 
@@ -31,6 +32,42 @@ export interface LaufStand {
   /** Code, warum der Lauf anhielt (Vertrag werkstatt-ansicht-v1, „Fälle eines Laufs“); nur bei angehalten. */
   fall?: string;
   loesung?: Loesung | null;
+  /** Seit wann der laufende Schritt läuft und seine Frist (Lauf-Seite, additiv). */
+  schritt_seit?: string;
+  schritt_frist_s?: number;
+  /** Je erledigtem Schritt Dauer und eine Belegzeile aus einer festen Liste, nie ein Geheimnis (E3 A). */
+  belege?: SchrittBeleg[];
+  /** Was vorher auf der Box war (Schritt erkennen). */
+  vorher?: Vorher | null;
+  /** Der Dienst erlaubt „Nochmal versuchen“ aus dem Portal (E1 A; nur ohne Handgriff an der Box). */
+  nochmal_moeglich?: boolean;
+  /** Seit wann der Dienst den Auftrag „Nochmal“ ausführt. */
+  nochmal_seit?: string;
+}
+
+export interface SchrittBeleg {
+  schritt: string;
+  dauer_s: number;
+  zeile: string;
+}
+
+export interface Vorher {
+  system: string;
+  edge_light: string;
+  ersetzt?: boolean;
+}
+
+/** Eine zur Seite gelegte Box (E2 A, `GET /api/v1/admin/werkstatt/dienst` → `zurSeite`). */
+export interface ZurSeite {
+  id: string;
+  lauf: string;
+  box: string | null;
+  fall: string | null;
+  loesungTitel: string | null;
+  schritt: string | null;
+  grund: string | null;
+  gelegtAm: string;
+  gelegtVon: string;
 }
 
 /** Was der Mensch tun kann (Vertrag werkstatt-ansicht-v1): `selbst` = danach macht der Dienst von selbst weiter. */
@@ -45,8 +82,8 @@ export interface FreigabeDatei {
   kennung: string;
   box_art: string;
   gueltig_bis: string;
-  openwrt: { fassung: string };
-  edge_light: { fassung: string };
+  openwrt: { fassung: string; datei?: string; sha256?: string; quelle?: string };
+  edge_light: { fassung: string; quelle?: string };
 }
 
 /** Die Ansicht des Dienstes (vp-werkstatt-ansicht.v1). */
@@ -97,6 +134,8 @@ export interface WerkstattDienst {
   alterSekunden: number | null;
   aktuell: boolean;
   laeufe: WerkstattLauf[];
+  /** Fehlt bei einer API vor der Lauf-Seite: dann gibt es keine Liste. */
+  zurSeite?: ZurSeite[];
 }
 
 /** Eine Freigabe der Werkstatt (`/api/v1/admin/werkstatt/freigaben`). */
@@ -143,14 +182,14 @@ export const PHASEN = [
   { id: 'einrichten', titel: 'Einrichten', klein: 'Passwort, Notfall-Schlüssel, Programm', schritte: ['internet', 'passwort', 'notfall', 'programm'] },
   { id: 'anmelden', titel: 'Bei VoltPilot anmelden', klein: 'Geräteschlüssel und Wartungstunnel', schritte: ['tunnel_schluessel', 'einloesen', 'tunnel_adresse', 'tunnel'] },
   { id: 'probe', titel: 'Probe über den Wartungstunnel', klein: 'Netz der Box, Neustart, Anmeldung über den Tunnel', schritte: ['lan', 'neustart', 'probe'] },
-  { id: 'abnahme', titel: 'Abnahme', klein: 'Alle acht Prüfungen mit Beleg', schritte: ['internet_weg', 'uebergabe'] },
+  { id: 'abnahme', titel: 'Abnahme', klein: 'Alle neun Prüfungen mit Beleg', schritte: ['internet_weg', 'uebergabe'] },
 ] as const;
 
 /** Die Schritte des Dienstes in ihrer Reihenfolge. */
 export const SCHRITTE: readonly string[] = PHASEN.flatMap((p) => p.schritte);
 
-/** Ungefähre Dauer je Schritt in Minuten an der Mango (PS-3 misst nach). */
-const MINUTEN: Record<string, number> = {
+/** Ungefähre Dauer je Schritt in Minuten an der Mango (PS-3 misst nach); die Lauf-Seite nimmt gemessene Dauern, wenn es sie gibt. */
+export const MINUTEN: Record<string, number> = {
   erkennen: 0.5, fassungen: 1, openwrt: 2, wiedererkennen: 4, internet: 0.5, passwort: 0.5, notfall: 0.3,
   programm: 2, tunnel_schluessel: 0.3, einloesen: 0.3, tunnel_adresse: 0.3, tunnel: 1, lan: 0.5, neustart: 3,
   probe: 1.5, internet_weg: 0.3, uebergabe: 0.2,
@@ -165,7 +204,7 @@ function stelle(s: LaufStand): number {
 }
 
 /** Einlösen (mit API) und die Eingabe der Tunnel-Adresse (ohne) sind zwei Wege für dasselbe; nur einer zählt. */
-function zaehlt(s: LaufStand, schritt: string): boolean {
+export function zaehlt(s: LaufStand, schritt: string): boolean {
   const vonHand = s.schritt === 'tunnel_adresse' || s.erledigt.includes('tunnel_adresse');
   return schritt === 'tunnel_adresse' ? vonHand : schritt === 'einloesen' ? !vonHand : true;
 }
@@ -222,20 +261,18 @@ export type Bildschirm =
       freigegeben: boolean;
       grund: string | null;
       /** Lösung zum Fall am Anschluss, wenn er mehr ist als „Kabel/Strom anstecken und warten“. */
-      fall: { code: string; loesung: Loesung } | null;
     }
   | { art: 'laeuft'; lauf: LaufStand }
-  | { art: 'startlader'; lauf: LaufStand }
-  | { art: 'zuruecksetzen'; lauf: LaufStand }
   | { art: 'du'; lauf: LaufStand }
   | { art: 'fertig'; lauf: LaufStand }
-  | { art: 'problem'; lauf: LaufStand };
+  /** Ein angehaltener Lauf oder ein Fall am Anschluss: eine Seite je Fall-Code (`werkstattLauf.fallSeite`). */
+  | { art: 'fall'; lauf: LaufStand | null; seite: FallSeite };
 
 export interface BildschirmEingabe {
   dienst: WerkstattDienst | null;
   /** Hat jemand an der Werkbank sein Gerät gewählt (M1 → M2)? */
   gewaehlt: boolean;
-  /** Läufe, die an der Werkbank schon weggeklickt sind („Nächste Box“, „Box zur Seite legen“). */
+  /** Läufe, die an der Werkbank schon weggeklickt sind („Nächste Box“) oder zur Seite liegen (E2, auch aus der API). */
   erledigt: ReadonlySet<string>;
 }
 
@@ -250,7 +287,8 @@ export function bildschirm(e: BildschirmEingabe): Bildschirm {
   if (!e.gewaehlt) return { art: 'start' };
   const a = d.ansicht;
   const kabel = a.werkbank.status?.werkstatt?.kabel ?? null;
-  const lauf = a.lauf && !e.erledigt.has(a.lauf.kennung) ? a.lauf : null;
+  const weg = new Set([...e.erledigt, ...(d.zurSeite ?? []).map((z) => z.lauf)]);
+  const lauf = a.lauf && !weg.has(a.lauf.kennung) ? a.lauf : null;
   if (lauf) {
     switch (lauf.zustand) {
       case 'laeuft':
@@ -259,7 +297,7 @@ export function bildschirm(e: BildschirmEingabe): Bildschirm {
         return { art: 'du', lauf };
       case 'angehalten':
         if (kabel !== false) {
-          return { art: angehaltenArt(lauf), lauf };
+          return { art: 'fall', lauf, seite: fallSeite({ code: lauf.fall, loesung: lauf.loesung, wo: 'lauf', ansicht: a, lauf }) };
         }
         break;
       case 'fertig':
@@ -267,32 +305,20 @@ export function bildschirm(e: BildschirmEingabe): Bildschirm {
         break;
     }
   }
+  if (a.anschluss_fall && a.anschluss_loesung && !SCHON_GEZEIGT.has(a.anschluss_fall)) {
+    return { art: 'fall', lauf: null, seite: fallSeite({ code: a.anschluss_fall, loesung: a.anschluss_loesung, wo: 'anschluss', ansicht: a, lauf: null }) };
+  }
   return {
     art: 'anschliessen',
     kabel,
     meldetSich: (a.werkbank.status?.antworten ?? []).some((x) => (x.macs ?? []).length > 0),
     freigegeben: a.freigabe.laufend,
     grund: a.freigabe.laufend ? null : a.freigabe.grund ?? 'Die Werkstatt ist nicht freigegeben.',
-    fall: a.anschluss_fall && a.anschluss_loesung && !SCHON_GEZEIGT.has(a.anschluss_fall)
-      ? { code: a.anschluss_fall, loesung: a.anschluss_loesung } : null,
   };
 }
 
-/** Fälle am Anschluss, die der Bildschirm „Mango anschließen“ schon mit seiner Liste und dem Freigabe-Hinweis zeigt. */
-const SCHON_GEZEIGT = new Set(['kein_kabel', 'keine_box', 'nicht_freigegeben']);
-
-/** Ein Handgriff am Reset-Knopf, danach macht der Dienst von selbst weiter (Fälle gl_passwort, halb_eigene). */
-const ZURUECKSETZEN = new Set(['gl_passwort', 'halb_eigene']);
-/** Der Startlader (M4). */
-const STARTLADER = new Set(['ssh_zu', 'abbild_abgelehnt', 'openwrt_fassung']);
-
-/** Welcher Bildschirm einen angehaltenen Lauf zeigt: nach `fall`, für ältere Stände nach dem Anfang von `handgriff`. */
-export function angehaltenArt(lauf: LaufStand): 'startlader' | 'zuruecksetzen' | 'problem' {
-  const h = lauf.handgriff ?? '';
-  if ((lauf.fall && ZURUECKSETZEN.has(lauf.fall)) || h.startsWith('Zurücksetzen')) return 'zuruecksetzen';
-  if ((lauf.fall && STARTLADER.has(lauf.fall)) || h.startsWith('Startlader')) return 'startlader';
-  return 'problem';
-}
+/** Fälle am Anschluss, die der Bildschirm „Mango anschließen“ mit seiner Liste schon zeigt; jeder andere bekommt seine Fall-Seite. */
+const SCHON_GEZEIGT = new Set(['kein_kabel', 'keine_box']);
 
 // ── Freigabe, Heute, Übersicht ─────────────────────────────────────────────
 

@@ -19,6 +19,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/logs"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/mango"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/metriken"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/portal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/protokoll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/werkbank"
 
@@ -275,13 +276,16 @@ func TestOffeneLaeufeNachNeustart(t *testing.T) {
 
 // melderAttrappe nimmt die Ansicht an oder scheitert.
 type melderAttrappe struct {
-	gesehen []dienst.Ansicht
-	fehler  error
+	gesehen   []dienst.Ansicht
+	fehler    error
+	auftraege []portal.Auftrag
 }
 
-func (m *melderAttrappe) AnsichtMelden(_ context.Context, a any) error {
+func (m *melderAttrappe) AnsichtMelden(_ context.Context, a any) ([]portal.Auftrag, error) {
 	m.gesehen = append(m.gesehen, a.(dienst.Ansicht))
-	return m.fehler
+	auftraege := m.auftraege
+	m.auftraege = nil
+	return auftraege, m.fehler
 }
 
 func TestAnsichtGehtJedenTaktAnsPortal(t *testing.T) {

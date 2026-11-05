@@ -762,3 +762,93 @@
 .vp-ws-kunde-offen code {
   overflow-wrap: anywhere;
 }
+
+/* ── Lauf-Seite (Konzept vp-werkstatt-lauf-seite, E1–E4 A): zwei Spalten am Rechner, eine am Telefon ── */
+
+.vp-wsl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
+  grid-template-areas: 'kopf kopf' 'haupt seite' 'fuss fuss';
+  gap: var(--vp-space-3) var(--vp-space-4);
+  align-items: start;
+  max-width: 60rem;
+  margin: 0 auto;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.vp-wsl-kopf { grid-area: kopf; min-width: 0; }
+.vp-wsl-haupt { grid-area: haupt; max-width: none; margin: 0; min-width: 0; }
+.vp-wsl-seite { grid-area: seite; min-width: 0; display: flex; flex-direction: column; gap: var(--vp-space-3); }
+.vp-wsl-fuss { grid-area: fuss; min-width: 0; }
+
+/* Jetzt-Karte */
+.vp-wsl-jetzt { padding: var(--vp-space-3); border-radius: 16px; background: var(--vp-surface); border: 2px solid var(--vp-action); min-width: 0; }
+.vp-wsl-jetzt .ueber { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--vp-action); display: flex; gap: 6px; align-items: center; }
+.vp-wsl-jetzt .ueber::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--vp-action); }
+.vp-wsl-jetzt h4 { margin: 4px 0 2px; font-size: 18px; overflow-wrap: anywhere; }
+.vp-wsl-jetzt p { margin: 0; color: var(--vp-text-muted); font-size: 13px; overflow-wrap: anywhere; }
+.vp-wsl-jetzt .vp-wsl-zeiten { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; color: var(--vp-text); }
+.vp-wsl-zeiten b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.vp-wsl-jetzt .vp-wsl-danach { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--vp-border); }
+
+/* Software-Karte */
+.vp-wsl-soft { padding: var(--vp-space-3); border-radius: 16px; background: var(--vp-surface); border: 1px solid var(--vp-border); min-width: 0; }
+.vp-wsl-soft h5 { margin: 0; font-size: 13px; font-weight: 600; color: var(--vp-text-muted); }
+.vp-wsl-soft .frg { margin: 2px 0 10px; font-size: 13px; overflow-wrap: anywhere; }
+.vp-wsl-soft .frg b { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.vp-wsl-paket { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 8px 0; border-top: 1px solid var(--vp-border); }
+.vp-wsl-paket strong { font-size: 15px; overflow-wrap: anywhere; }
+.vp-wsl-paket .vorher { grid-column: 1 / -1; font-size: 12px; color: var(--vp-text-muted); overflow-wrap: anywhere; }
+.vp-wsl-pruef { font-size: 12px; color: var(--vp-ok-ink); font-weight: 600; white-space: nowrap; }
+.vp-wsl-pruef.offen { color: var(--vp-text-muted); font-weight: 400; }
+.vp-wsl-soft .neuer { margin: 6px 0 0; font-size: 12px; color: var(--vp-text-muted); }
+.vp-wsl-soft-zeile { display: none; border-radius: 12px; background: var(--vp-surface); border: 1px solid var(--vp-border); font-size: 13px; min-width: 0; }
+.vp-wsl-soft-zeile > summary { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 10px 12px; cursor: pointer; }
+.vp-wsl-soft-zeile > summary b { font-weight: 600; }
+.vp-wsl-soft-zeile > .vp-wsl-soft { border: 0; border-top: 1px solid var(--vp-border); border-radius: 0 0 12px 12px; }
+
+/* Schritte mit Belegen */
+.vp-wsl-phase { border-bottom: 1px solid var(--vp-border); padding: 8px 0; }
+.vp-wsl-phase:last-child { border-bottom: 0; }
+.vp-wsl-phase > .ph { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-weight: 600; }
+.vp-wsl-phase > .ph small { font-weight: 400; color: var(--vp-text-muted); font-size: 12px; }
+.vp-wsl-phasenpunkt { display: block; border: 0; padding: 0; background: none; }
+.vp-wsl-schritte { list-style: none; margin: 4px 0 0 30px; padding: 0; }
+.vp-wsl-s { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; padding: 4px 0; align-items: start; font-size: 13px; }
+.vp-wsl-s .m { width: 16px; height: 16px; border-radius: 50%; margin-top: 2px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; box-sizing: border-box; }
+.vp-wsl-s.ok .m { background: #e8f5e9; color: var(--vp-ok-ink); }
+.vp-wsl-s.lauf .m { border: 2px solid var(--vp-action); }
+.vp-wsl-s.lauf { font-weight: 600; }
+.vp-wsl-s.offen { color: var(--vp-text-muted); }
+.vp-wsl-s.offen .m { border: 1px solid #ced4da; }
+.vp-wsl-s.warn .m { background: #fdecea; color: #c62828; }
+.vp-wsl-s small { display: block; font-weight: 400; color: var(--vp-text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.vp-wsl-s .d { font-size: 12px; color: var(--vp-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Box-Steckbrief */
+.vp-wsl-box { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 0; font-size: 13px; }
+.vp-wsl-box dt { color: var(--vp-text-muted); }
+.vp-wsl-box dd { margin: 0; overflow-wrap: anywhere; }
+
+/* Fall-Seite: Knöpfe und „macht von selbst weiter“ */
+.vp-wsl-knoepfe { display: flex; flex-direction: column; gap: 8px; }
+.vp-wsl-knoepfe .vp-btn { width: 100%; justify-content: center; text-align: center; box-sizing: border-box; }
+.vp-wsl-selbst { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; font-size: 13px; }
+.vp-wsl-selbst.ja { background: #e8f5e9; color: #1b5e20; }
+.vp-wsl-selbst.nein { background: #f1f3f5; color: #495057; }
+.vp-wsl-nach { margin: 0; }
+
+/* Übersicht: zur Seite gelegt (E2 A) */
+.vp-ws-zurseite ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.vp-ws-zurseite li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid var(--vp-border); min-width: 0; }
+.vp-ws-zurseite li small { color: var(--vp-text-muted); overflow-wrap: anywhere; }
+.vp-ws-zurseite-kopf { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
+
+@media (max-width: 760px) {
+  .vp-wsl { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'kopf' 'haupt' 'seite' 'fuss'; }
+  .vp-wsl-nur-breit, .vp-wsl-boxkarte { display: none; }
+  .vp-wsl-soft-zeile { display: block; }
+  /* erledigte Phasen eingeklappt: ✓ und Zahl reichen */
+  .vp-wsl-phase.ok > .vp-wsl-schritte { display: none; }
+}

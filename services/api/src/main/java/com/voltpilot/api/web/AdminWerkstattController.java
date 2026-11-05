@@ -7,6 +7,7 @@ import com.voltpilot.api.werkstatt.LanNetz;
 import com.voltpilot.api.werkstatt.WerkstattPruefungen;
 import com.voltpilot.api.werkstatt.WerkstattRepository.Abnahme;
 import com.voltpilot.api.werkstatt.DienstAnsichtService;
+import com.voltpilot.api.werkstatt.LaufSeiteService;
 import com.voltpilot.api.werkstatt.FreigabeRepository;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Abbild;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Programm;
@@ -135,7 +136,24 @@ public class AdminWerkstattController {
      * dann null). Dazu die letzten Läufe.
      */
     public record DienstDto(JsonNode ansicht, Instant gemeldetAm, Instant dienstZeit, Long alterSekunden,
-            boolean aktuell, List<LaufDto> laeufe) {
+            boolean aktuell, List<LaufDto> laeufe, List<ZurSeiteDto> zurSeite) {
+    }
+
+    /** Eine zur Seite gelegte Box (E2 A der Lauf-Seite): Fall, Lösung, Grund, wann, wer. */
+    public record ZurSeiteDto(UUID id, String lauf, String box, String fall, String loesungTitel, String schritt,
+            String grund, Instant gelegtAm, String gelegtVon) {
+        static ZurSeiteDto of(LaufSeiteService.ZurSeite z) {
+            return new ZurSeiteDto(z.id(), z.lauf(), z.box(), z.fall(), z.loesungTitel(), z.schritt(), z.grund(),
+                    z.gelegtAm(), z.gelegtVon());
+        }
+    }
+
+    /** Ein Auftrag an den Werkstatt-Dienst; er holt ihn mit seiner nächsten Meldung ab. */
+    public record AuftragDto(UUID id, String art, String lauf, Instant erteiltAm) {
+    }
+
+    /** {@code lauf}: die Kennung des angehaltenen Laufs. */
+    public record LaufRequest(@NotBlank String lauf) {
     }
 
     // ── Anfragen ──────────────────────────────────────────────────────────
@@ -163,13 +181,15 @@ public class AdminWerkstattController {
     private final WerkstattService service;
     private final FreigabeService freigaben;
     private final DienstAnsichtService ansichten;
+    private final LaufSeiteService laufSeite;
     private final ObjectMapper json;
 
     public AdminWerkstattController(WerkstattService service, FreigabeService freigaben,
-            DienstAnsichtService ansichten, ObjectMapper json) {
+            DienstAnsichtService ansichten, LaufSeiteService laufSeite, ObjectMapper json) {
         this.service = service;
         this.freigaben = freigaben;
         this.ansichten = ansichten;
+        this.laufSeite = laufSeite;
         this.json = json;
     }
 
@@ -177,11 +197,38 @@ public class AdminWerkstattController {
     @GetMapping("/dienst")
     public DienstDto dienst() {
         List<LaufDto> laeufe = ansichten.laeufe(30).stream().map(LaufDto::of).toList();
+        List<ZurSeiteDto> zurSeite = laufSeite.zurSeite(50).stream().map(ZurSeiteDto::of).toList();
         return ansichten.gemeldet().map(g -> {
             long alter = Math.max(0, java.time.Duration.between(g.gemeldetAm(), ansichten.jetzt()).toSeconds());
             return new DienstDto(g.ansicht(), g.gemeldetAm(), g.dienstZeit(), alter,
-                    alter <= DienstAnsichtService.AKTUELL.toSeconds(), laeufe);
-        }).orElse(new DienstDto(null, null, null, null, false, laeufe));
+                    alter <= DienstAnsichtService.AKTUELL.toSeconds(), laeufe, zurSeite);
+        }).orElse(new DienstDto(null, null, null, null, false, laeufe, zurSeite));
+    }
+
+    /**
+     * „Nochmal versuchen“ (E1 A der Lauf-Seite): ein Auftrag an den Werkstatt-Dienst,
+     * den angehaltenen Lauf neu anzustoßen. 201 neu, 200 schon offen; 409, wenn der
+     * Dienst sich nicht meldet, der Lauf nicht mehr der letzte ist oder der Dienst
+     * ihn nicht als {@code nochmal_moeglich} meldet; 422 Form. Der Dienst löscht nie
+     * etwas an einer Box; er tut, was das Abziehen des Kabels täte.
+     */
+    @PostMapping("/dienst/nochmal")
+    public ResponseEntity<AuftragDto> nochmal(@Valid @RequestBody LaufRequest req, @AuthenticationPrincipal Jwt caller) {
+        LaufSeiteService.Angelegt<LaufSeiteService.Auftrag> a = laufSeite.nochmal(req.lauf(), Akteur.aus(caller));
+        LaufSeiteService.Auftrag x = a.wert();
+        return ResponseEntity.status(a.neu() ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(new AuftragDto(x.id(), x.art(), x.lauf(), x.erteiltAm()));
+    }
+
+    /**
+     * „Box zur Seite legen“ (E2 A): hält die Box mit Fall, Lösung, Grund und Zeit fest.
+     * 201 neu, 200 schon zur Seite; 404 Lauf unbekannt; 409 nicht angehalten; 422 Form.
+     * An der Box ändert sich nichts.
+     */
+    @PostMapping("/zur-seite")
+    public ResponseEntity<ZurSeiteDto> zurSeite(@Valid @RequestBody LaufRequest req, @AuthenticationPrincipal Jwt caller) {
+        LaufSeiteService.Angelegt<LaufSeiteService.ZurSeite> z = laufSeite.zurSeiteLegen(req.lauf(), Akteur.aus(caller));
+        return ResponseEntity.status(z.neu() ? HttpStatus.CREATED : HttpStatus.OK).body(ZurSeiteDto.of(z.wert()));
     }
 
     @GetMapping("/grundlagen")

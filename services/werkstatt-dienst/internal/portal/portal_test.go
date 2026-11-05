@@ -123,3 +123,35 @@ func TestBoxStandLesen(t *testing.T) {
 		t.Fatalf("alte API ohne Felder: %v", err)
 	}
 }
+
+// Die Meldung der Ansicht holt die Aufträge des Portals ab (E1 A der
+// Lauf-Seite). Eine API vor den Aufträgen antwortet 204: keine Aufträge, kein
+// Fehler. Jede andere Antwort bleibt ein Fehler.
+func TestAnsichtMeldenHoltAuftraege(t *testing.T) {
+	ctx := context.Background()
+	for _, f := range []struct {
+		status int
+		body   string
+		will   int
+		fehler bool
+	}{
+		{http.StatusOK, `{"auftraege":[{"id":"a1","art":"nochmal","lauf":"2026-11-05-114050-9ef8"}]}`, 1, false},
+		{http.StatusNoContent, ``, 0, false},
+		{http.StatusUnprocessableEntity, `{"message":"Ansicht ungültig"}`, 0, true},
+	} {
+		var pfad string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			pfad = r.Method + " " + r.URL.RequestURI()
+			w.WriteHeader(f.status)
+			_, _ = w.Write([]byte(f.body))
+		}))
+		a, err := Client{URL: srv.URL, Token: festesToken("tok")}.AnsichtMelden(ctx, map[string]string{"schema": "x"})
+		srv.Close()
+		if (err != nil) != f.fehler || len(a) != f.will || pfad != "PUT /api/v1/werkstatt-dienst/ansicht?auftraege=1" {
+			t.Fatalf("%d: %v %+v %s", f.status, err, a, pfad)
+		}
+		if f.will == 1 && (a[0].Art != "nochmal" || a[0].Lauf != "2026-11-05-114050-9ef8") {
+			t.Fatalf("%+v", a)
+		}
+	}
+}

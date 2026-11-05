@@ -67,14 +67,27 @@ describe('Werkstatt-Bildschirme aus der Ansicht des Dienstes', () => {
     expect(bildschirm({ dienst: dienst(vektor), gewaehlt: false, erledigt: leer }).art).toBe('start');
     expect(bildschirm({ dienst: dienst(vektor), gewaehlt: true, erledigt: leer }).art).toBe('laeuft');
     expect(bildschirm({ dienst: dienst(mit({ zustand: 'wartet', wartet_auf: 'probe' })), gewaehlt: true, erledigt: leer }).art).toBe('du');
-    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', handgriff: 'Startlader (Handgriff M4): …' })), gewaehlt: true, erledigt: leer }).art).toBe('startlader');
-    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', grund: 'kein Handshake' })), gewaehlt: true, erledigt: leer }).art).toBe('problem');
-    // Nach dem Fall, für ältere Stände ohne fall nach dem Anfang des Handgriffs.
-    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', fall: 'gl_passwort' })), gewaehlt: true, erledigt: leer }).art).toBe('zuruecksetzen');
-    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', fall: 'halb_eigene' })), gewaehlt: true, erledigt: leer }).art).toBe('zuruecksetzen');
-    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', handgriff: 'Zurücksetzen: Reset-Knopf …' })), gewaehlt: true, erledigt: leer }).art).toBe('zuruecksetzen');
-    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', fall: 'ssh_zu' })), gewaehlt: true, erledigt: leer }).art).toBe('startlader');
-    expect(bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', fall: 'passwort_fremd' })), gewaehlt: true, erledigt: leer }).art).toBe('problem');
+    // Ein angehaltener Lauf: eine Fall-Seite je Code; ältere Stände ohne fall nach dem Anfang des Handgriffs.
+    const fall = (l: Partial<LaufStand>) => {
+      const x = bildschirm({ dienst: dienst(mit({ zustand: 'angehalten', ...l })), gewaehlt: true, erledigt: leer });
+      return x.art === 'fall' ? { code: x.seite.code, art: x.seite.art, bild: x.seite.bild } : { code: x.art };
+    };
+    expect(fall({ handgriff: 'Startlader (Handgriff M4): …' })).toEqual({ code: 'ssh_zu', art: 'hand', bild: 'startlader' });
+    expect(fall({ grund: 'kein Handshake' })).toEqual({ code: 'schritt_gescheitert', art: 'hand', bild: null });
+    expect(fall({ handgriff: 'Zurücksetzen: Reset-Knopf …' })).toEqual({ code: 'gl_passwort', art: 'hand', bild: 'reset' });
+    expect(fall({ fall: 'gl_passwort' })).toMatchObject({ code: 'gl_passwort', bild: 'reset' });
+    expect(fall({ fall: 'halb_eigene' })).toMatchObject({ code: 'halb_eigene', bild: 'reset' });
+    expect(fall({ fall: 'ssh_zu' })).toMatchObject({ code: 'ssh_zu', bild: 'startlader' });
+    expect(fall({ fall: 'passwort_fremd', loesung: { titel: 'x', schritte: ['y'], selbst: false, zur_seite: true } }))
+      .toEqual({ code: 'passwort_fremd', art: 'seite', bild: null });
+    // Zur Seite gelegt (E2, aus der API): der Lauf steht an der Werkbank nicht mehr.
+    const k = (vektor.lauf as LaufStand).kennung;
+    const gelegt = bildschirm({ dienst: { ...dienst(mit({ zustand: 'angehalten', fall: 'box_weg' })), zurSeite: [{ id: 'z', lauf: k, box: null, fall: 'box_weg',
+      loesungTitel: null, schritt: null, grund: null, gelegtAm: vektor.zeit, gelegtVon: 'a' }] }, gewaehlt: true, erledigt: leer });
+    expect(gelegt.art).toBe('anschliessen');
+    // Ein Fall am Anschluss, den „Mango anschließen“ nicht schon zeigt, hat seine eigene Seite.
+    const startet = bildschirm({ dienst: dienst({ ...mit(null), anschluss_fall: 'startet', anschluss_loesung: { titel: 'Die Mango startet noch.', schritte: ['Nichts tun.'], selbst: true, zur_seite: false } }), gewaehlt: true, erledigt: leer });
+    expect(startet).toMatchObject({ art: 'fall', seite: { code: 'startet', art: 'warten', wo: 'anschluss' } });
     expect(bildschirm({ dienst: dienst(mit({ zustand: 'fertig' })), gewaehlt: true, erledigt: leer }).art).toBe('fertig');
     // Abgezogen nach dem Ende, oder an der Werkbank weggeklickt: die nächste Box anschließen.
     expect(bildschirm({ dienst: dienst(mit({ zustand: 'fertig' }, false)), gewaehlt: true, erledigt: leer }).art).toBe('anschliessen');

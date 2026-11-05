@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sync"
 	"time"
 
@@ -75,6 +76,16 @@ type Stand struct {
 	// was der Mensch tun kann (docs/contracts/werkstatt-ansicht-v1.md).
 	Fall    string          `json:"fall,omitempty"`
 	Loesung *faelle.Loesung `json:"loesung,omitempty"`
+	// Für die Lauf-Seite (additiv in werkstatt-ansicht-v1): seit wann der
+	// laufende Schritt läuft und seine Frist, je erledigtem Schritt Dauer und
+	// eine Belegzeile (E3), was vorher auf der Box war, und ob das Portal den
+	// angehaltenen Lauf neu anstoßen darf (E1) und seit wann es das tat.
+	SchrittSeit     time.Time      `json:"schritt_seit,omitzero"`
+	SchrittFristS   int            `json:"schritt_frist_s,omitempty"`
+	Belege          []SchrittBeleg `json:"belege,omitempty"`
+	Vorher          *Vorher        `json:"vorher,omitempty"`
+	NochmalMoeglich bool           `json:"nochmal_moeglich,omitempty"`
+	NochmalSeit     time.Time      `json:"nochmal_seit,omitzero"`
 }
 
 // Lauf ist der Lauf einer Box.
@@ -116,7 +127,27 @@ func (l *Lauf) Stand() Stand {
 		c.Schritte = append([]string{}, c.Schritte...)
 		s.Loesung = &c
 	}
+	if s.Belege != nil {
+		s.Belege = append([]SchrittBeleg{}, l.stand.Belege...)
+	}
+	if s.Vorher != nil {
+		v := *s.Vorher
+		s.Vorher = &v
+	}
 	return s
+}
+
+// Nochmal hält fest, dass das Portal den angehaltenen Lauf neu angestoßen hat
+// (Entscheid E1 A). Nur, wenn der Lauf angehalten ist und sein Fall es
+// erlaubt; sonst false.
+func (l *Lauf) Nochmal(jetzt time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.stand.Zustand != Angehalten || !l.stand.NochmalMoeglich || !l.stand.NochmalSeit.IsZero() {
+		return false
+	}
+	l.stand.NochmalSeit = jetzt.UTC()
+	return true
 }
 
 func (l *Lauf) aendere(f func(*Stand)) {
@@ -254,16 +285,18 @@ func (r *Laeufer) Fahre(ctx context.Context, l *Lauf, angaben map[string]string,
 
 func (r *Laeufer) schritt(ctx context.Context, l *Lauf, log *slog.Logger, st Schritt) (zustand Zustand, grund, handgriff string) {
 	log = log.With("schritt", st.Kennung)
-	l.aendere(func(s *Stand) { s.Schritt, s.Titel = st.Kennung, st.Titel })
-	beginn := r.Jetzt()
-	if err := r.Ablage.Schreibe(protokoll.Eintrag{Zeit: beginn.UTC(), Lauf: l.Kennung(), Art: protokoll.SchrittBegonnen, Schritt: st.Kennung}); err != nil {
-		return Angehalten, fmt.Sprintf("Protokoll nicht schreibbar: %v", err), ""
-	}
-	log.Info("Schritt begonnen", "titel", st.Titel)
 	frist := st.Frist
 	if frist <= 0 {
 		frist = VorgabeFrist
 	}
+	beginn := r.Jetzt()
+	l.aendere(func(s *Stand) {
+		s.Schritt, s.Titel, s.SchrittSeit, s.SchrittFristS = st.Kennung, st.Titel, beginn.UTC(), int(frist.Seconds())
+	})
+	if err := r.Ablage.Schreibe(protokoll.Eintrag{Zeit: beginn.UTC(), Lauf: l.Kennung(), Art: protokoll.SchrittBegonnen, Schritt: st.Kennung}); err != nil {
+		return Angehalten, fmt.Sprintf("Protokoll nicht schreibbar: %v", err), ""
+	}
+	log.Info("Schritt begonnen", "titel", st.Titel)
 	sctx, cancel := context.WithTimeout(ctx, frist)
 	defer cancel()
 	beleg, err := tue(sctx, st, &Kontext{Lauf: l, Log: log, ablage: r.Ablage, schritt: st.Kennung})
@@ -289,7 +322,12 @@ func (r *Laeufer) schritt(ctx context.Context, l *Lauf, log *slog.Logger, st Sch
 		if fall == "" || faelle.Zu(fall) == nil {
 			fall = faelle.Einordnen(st.Kennung, grund)
 		}
-		l.aendere(func(s *Stand) { s.Fall, s.Loesung = fall, faelle.Zu(fall) })
+		l.aendere(func(s *Stand) {
+			s.Fall, s.Loesung = fall, faelle.Zu(fall)
+			if st.Kennung == "erkennen" {
+				s.Vorher = vorherAus(beleg, fall)
+			}
+		})
 		e := protokoll.Eintrag{Zeit: r.Jetzt().UTC(), Lauf: l.Kennung(), Art: protokoll.SchrittGescheitert, Schritt: st.Kennung, Grund: grund, Beleg: beleg, DauerSek: dauer.Seconds(),
 			Angaben: map[string]string{"fall": fall}}
 		if handgriff != "" {
@@ -305,7 +343,13 @@ func (r *Laeufer) schritt(ctx context.Context, l *Lauf, log *slog.Logger, st Sch
 		return Angehalten, fmt.Sprintf("Protokoll nicht schreibbar: %v", err), ""
 	}
 	r.dauer.Setze(dauer.Seconds(), st.Kennung)
-	l.aendere(func(s *Stand) { s.Erledigt = append(s.Erledigt, st.Kennung) })
+	l.aendere(func(s *Stand) {
+		s.Erledigt = append(s.Erledigt, st.Kennung)
+		s.Belege = append(s.Belege, SchrittBeleg{Schritt: st.Kennung, DauerS: math.Round(dauer.Seconds()*10) / 10, Zeile: Zeile(st.Kennung, beleg)})
+		if st.Kennung == "erkennen" {
+			s.Vorher = vorherAus(beleg, "")
+		}
+	})
 	log.Info("Schritt belegt", "dauer_s", fmt.Sprintf("%.1f", dauer.Seconds()))
 	return Laeuft, "", ""
 }
@@ -324,12 +368,14 @@ func (r *Laeufer) beende(l *Lauf, log *slog.Logger, z Zustand, schritt, grund, h
 	ende := r.Jetzt().UTC()
 	l.aendere(func(s *Stand) {
 		s.Zustand, s.Grund, s.Handgriff, s.Ende = z, grund, handgriff, ende
+		s.SchrittSeit, s.SchrittFristS = time.Time{}, 0
 		if z == Fertig {
 			s.Schritt, s.Titel = "", ""
 		}
 		if z == Angehalten && s.Fall == "" {
 			s.Fall, s.Loesung = faelle.SchrittGescheitert, faelle.Zu(faelle.SchrittGescheitert)
 		}
+		s.NochmalMoeglich = z == Angehalten && faelle.Nochmal(s.Fall)
 	})
 	if err := r.Ablage.Schreibe(protokoll.Eintrag{Zeit: ende, Lauf: l.Kennung(), Art: protokoll.LaufBeendet, Schritt: schritt, Zustand: string(z), Grund: grund}); err != nil {
 		log.Error("Protokoll nicht schreibbar", "fehler", err)

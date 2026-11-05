@@ -94,7 +94,8 @@
         ],
         "selbst": true,
         "zur_seite": false
-      }
+      },
+      "nochmal_moeglich": true
     }
   },
   "angehalten_beim_neustart": {
@@ -206,7 +207,70 @@
         ],
         "selbst": true,
         "zur_seite": false
-      }
+      },
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ],
+      "nochmal_moeglich": true
     }
   },
   "angehalten_gl_passwort": {
@@ -305,6 +369,10 @@
         ],
         "selbst": true,
         "zur_seite": false
+      },
+      "vorher": {
+        "system": "GL-Firmware, Fassung unbekannt (Passwort)",
+        "edge_light": "unbekannt"
       }
     }
   },
@@ -503,6 +571,10 @@
         ],
         "selbst": false,
         "zur_seite": true
+      },
+      "vorher": {
+        "system": "OpenWrt mit Passwort",
+        "edge_light": "unbekannt"
       }
     }
   },
@@ -605,7 +677,19 @@
         ],
         "selbst": true,
         "zur_seite": false
-      }
+      },
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        }
+      ]
     }
   },
   "fertig": {
@@ -708,6 +792,88 @@
         "probe",
         "internet_weg",
         "uebergabe"
+      ],
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        },
+        {
+          "schritt": "probe",
+          "dauer_s": 0,
+          "zeile": "vom Betreiber im Portal erledigt"
+        },
+        {
+          "schritt": "internet_weg",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "uebergabe",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
       ]
     }
   },
@@ -794,7 +960,9 @@
       "zustand": "laeuft",
       "schritt": "erkennen",
       "titel": "Mango erkennen",
-      "erledigt": []
+      "erledigt": [],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600
     }
   },
   "laeuft_fassungen": {
@@ -882,6 +1050,15 @@
       "titel": "Fassungen der Freigabe bereitlegen",
       "erledigt": [
         "erkennen"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
       ]
     }
   },
@@ -973,6 +1150,30 @@
         "fassungen",
         "openwrt",
         "wiedererkennen"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
       ]
     }
   },
@@ -1075,6 +1276,80 @@
         "lan",
         "neustart",
         "probe"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        },
+        {
+          "schritt": "probe",
+          "dauer_s": 0,
+          "zeile": "vom Betreiber im Portal erledigt"
+        }
       ]
     }
   },
@@ -1174,6 +1449,65 @@
         "tunnel_schluessel",
         "tunnel_adresse",
         "tunnel"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        }
       ]
     }
   },
@@ -1274,6 +1608,70 @@
         "tunnel_adresse",
         "tunnel",
         "lan"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
       ]
     }
   },
@@ -1367,6 +1765,40 @@
         "wiedererkennen",
         "internet",
         "passwort"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
       ]
     }
   },
@@ -1456,6 +1888,20 @@
       "erledigt": [
         "erkennen",
         "fassungen"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        }
       ]
     }
   },
@@ -1548,6 +1994,35 @@
         "openwrt",
         "wiedererkennen",
         "internet"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
       ]
     }
   },
@@ -1649,6 +2124,75 @@
         "tunnel",
         "lan",
         "neustart"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        }
       ]
     }
   },
@@ -1743,6 +2287,45 @@
         "internet",
         "passwort",
         "notfall"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
       ]
     }
   },
@@ -1841,6 +2424,60 @@
         "programm",
         "tunnel_schluessel",
         "tunnel_adresse"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        }
       ]
     }
   },
@@ -1938,6 +2575,55 @@
         "notfall",
         "programm",
         "tunnel_schluessel"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
       ]
     }
   },
@@ -2034,6 +2720,50 @@
         "passwort",
         "notfall",
         "programm"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
       ]
     }
   },
@@ -2137,6 +2867,85 @@
         "neustart",
         "probe",
         "internet_weg"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        },
+        {
+          "schritt": "probe",
+          "dauer_s": 0,
+          "zeile": "vom Betreiber im Portal erledigt"
+        },
+        {
+          "schritt": "internet_weg",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
       ]
     }
   },
@@ -2227,6 +3036,25 @@
         "erkennen",
         "fassungen",
         "openwrt"
+      ],
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        }
       ]
     }
   },
@@ -2648,7 +3476,76 @@
         "neustart"
       ],
       "wartet_auf": "probe",
-      "hinweis": "Im Portal unter Geräte › Werkstatt bei edge-5t2dcy6: Fenster „Werkstatt-Probe“ öffnen, dich durch den Tunnel anmelden, den Host-Schlüssel lesen (hier im LAN gelesen: SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc), das Fenster schließen und den abgewiesenen Versuch machen. Dann: kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst eingabe probe erledigt"
+      "hinweis": "Im Portal unter Geräte › Werkstatt bei edge-5t2dcy6: Fenster „Werkstatt-Probe“ öffnen, dich durch den Tunnel anmelden, den Host-Schlüssel lesen (hier im LAN gelesen: SHA256:QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQc), das Fenster schließen und den abgewiesenen Versuch machen. Dann: kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst eingabe probe erledigt",
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_adresse",
+          "dauer_s": 0,
+          "zeile": "Tunnel-Adresse belegt"
+        },
+        {
+          "schritt": "tunnel",
+          "dauer_s": 0,
+          "zeile": "Wartungstunnel eingerichtet · SSH nur im Tunnel"
+        },
+        {
+          "schritt": "lan",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "neustart",
+          "dauer_s": 0,
+          "zeile": "Host-Schlüssel unverändert"
+        }
+      ]
     }
   },
   "wartet_tunnel_adresse": {
@@ -2747,7 +3644,56 @@
         "tunnel_schluessel"
       ],
       "wartet_auf": "tunnel_adresse",
-      "hinweis": "Im Portal unter Geräte › Fernwartung „Tunnel-Schlüssel hinterlegen“: Referenz edge-5t2dcy6, Schlüssel QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ=. Dann die zugeteilte Adresse eintragen: kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst eingabe tunnel_adresse \u003cadresse\u003e"
+      "hinweis": "Im Portal unter Geräte › Fernwartung „Tunnel-Schlüssel hinterlegen“: Referenz edge-5t2dcy6, Schlüssel QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ=. Dann die zugeteilte Adresse eintragen: kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst eingabe tunnel_adresse \u003cadresse\u003e",
+      "schritt_seit": "2026-11-04T10:29:00Z",
+      "schritt_frist_s": 3600,
+      "belege": [
+        {
+          "schritt": "erkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "fassungen",
+          "dauer_s": 0,
+          "zeile": "Prüfsummen = Freigabe"
+        },
+        {
+          "schritt": "openwrt",
+          "dauer_s": 0,
+          "zeile": "aufgespielt"
+        },
+        {
+          "schritt": "wiedererkennen",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "internet",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "passwort",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "notfall",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "programm",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        },
+        {
+          "schritt": "tunnel_schluessel",
+          "dauer_s": 0,
+          "zeile": "belegt"
+        }
+      ]
     }
   }
 }

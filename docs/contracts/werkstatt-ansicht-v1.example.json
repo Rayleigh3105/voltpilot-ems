@@ -83,6 +83,39 @@
       "internet",
       "passwort",
       "notfall"
-    ]
+    ],
+    "schritt_seit": "2026-11-02T10:11:18Z",
+    "schritt_frist_s": 600,
+    "belege": [
+      {
+        "schritt": "erkennen",
+        "dauer_s": 12.4,
+        "zeile": "GL.iNet GL-MT300N-V2 · OpenWrt 25.12.5 ramips/mt76x8 · root-Passwort: leer"
+      },
+      {
+        "schritt": "fassungen",
+        "dauer_s": 3.8,
+        "zeile": "Freigabe 2026-11-mango-1 · Prüfsummen = Freigabe · Manifest signiert"
+      },
+      {
+        "schritt": "internet",
+        "dauer_s": 6.1,
+        "zeile": "downloads.openwrt.org erreichbar (befristet)"
+      },
+      {
+        "schritt": "passwort",
+        "dauer_s": 9,
+        "zeile": "gesetzt, nur verschlüsselt abgelegt · ohne Passwort abgewiesen"
+      },
+      {
+        "schritt": "notfall",
+        "dauer_s": 2.2,
+        "zeile": "1 Notfall-Schlüssel auf der Box"
+      }
+    ],
+    "vorher": {
+      "system": "OpenWrt 25.12.5",
+      "edge_light": "kein VoltPilot"
+    }
   }
 }
