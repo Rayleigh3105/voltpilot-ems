@@ -754,3 +754,13 @@ describe('Werkstatt: Nochmal versuchen und zur Seite legen', () => {
     expect(await within(sw).findByTestId('wsb-soft-neuer')).toHaveTextContent('Neuer erschienen: Edge Light 2026.11.3');
   });
 });
+
+/** UI-Runde Admin: die Spalte „Seit“ nennt den Tag, sobald es nicht heute ist. */
+describe('Werkstatt-Boxen: „Seit“ mit Tag', () => {
+  it('zeigt heute die Uhrzeit und für einen früheren Tag Tag und Uhrzeit', async () => {
+    const { zeitpunkt } = await import('../../adminFernwartung');
+    const jetzt = new Date('2026-11-06T00:30:00+01:00');
+    expect(zeitpunkt('2026-11-06T00:10:00+01:00', jetzt)).toBe('00:10');
+    expect(zeitpunkt('2026-11-05T05:06:00+01:00', jetzt)).toBe('05.11., 05:06');
+  });
+});

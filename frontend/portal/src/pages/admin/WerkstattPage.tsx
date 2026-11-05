@@ -25,12 +25,12 @@ import {
   liesDienst,
   laufendeFreigabe,
   uebersicht,
-  uhrzeit,
   type UebersichtZeile,
   type WerkstattDienst,
   type WerkstattFreigabe,
   type ZurSeite,
 } from '../../werkstattBank';
+import { zeitpunkt } from '../../adminFernwartung';
 import { AdminPageHead } from './AdminPageHead';
 import { WerkstattBank } from './WerkstattBank';
 import { neueresRelease, schrittTitel } from '../../werkstattLauf';
@@ -336,7 +336,7 @@ function BoxTabelle({ zeilen, auswahl, onWaehle }: { zeilen: UebersichtZeile[]; 
             <th>Box</th>
             <th>Gerät</th>
             <th>Stand</th>
-            <th>seit</th>
+            <th>Seit</th>
           </tr>
         </thead>
         <tbody>
@@ -355,7 +355,8 @@ function BoxTabelle({ zeilen, auswahl, onWaehle }: { zeilen: UebersichtZeile[]; 
                 <td>
                   <Badge variant={b.variant}>{b.text}</Badge> {z.text !== b.text && <span className="vp-muted">{z.text}</span>}
                 </td>
-                <td>{uhrzeit(z.seit)}</td>
+                {/* Heute nur die Uhrzeit, sonst mit Tag: „05:06“ von gestern sähe sonst aus wie heute. */}
+                <td>{zeitpunkt(z.seit, new Date())}</td>
               </tr>
             );
           })}
