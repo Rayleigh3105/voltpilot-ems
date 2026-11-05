@@ -63,6 +63,8 @@ for (const [breite, breit] of [[1440, true], [375, false]] as const) {
 }
 
 test('1440 px: der Rückweg in die Betreiber-Sicht bleibt - Mandanten-Umschalter, ADMIN-Zeichen, Gruppe „Plattform“', async ({ page }) => {
+  // Die Seitenleiste mit der Gruppe „Plattform“ gibt es nur am Rechner; das Telefon-Projekt bringt sonst 393 px mit.
+  await page.setViewportSize({ width: 1440, height: 900 });
   await springe(page, MIT);
   await expect(page).toHaveURL(new RegExp(`#/anlage/${ANLAGE}$`));
   await expect(page.locator('.vp-usermenu .n')).toContainText('ADMIN');

@@ -275,9 +275,17 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await fassung(page, 'vorläufig');
     await expect(page.getByTestId('werte-fassung')).toHaveAttribute('data-fassung', 'vorlaeufig');
     // Die Fassung steht im Kopf neben dem Titel, in einer Zeile mit ihm.
-    const titel = (await page.locator('.vp-wk-titel').boundingBox())!;
-    const abzeichen = (await page.getByTestId('werte-fassung').boundingBox())!;
-    expect(Math.abs(titel.y + titel.height / 2 - (abzeichen.y + abzeichen.height / 2))).toBeLessThan(4);
+    // Erst wenn das Modal stillsteht, und beide Kästen in EINEM Zug: zwei getrennte boundingBox() unter Last
+    // maßen mitten im Einblenden (Versatz ~21 px, 1 von 20 Läufen).
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+    const versatz = await page.evaluate(() => {
+      const mitte = (sel: string) => {
+        const r = document.querySelector(sel)!.getBoundingClientRect();
+        return r.y + r.height / 2;
+      };
+      return Math.abs(mitte('.vp-wk-titel') - mitte('[data-testid="werte-fassung"]'));
+    });
+    expect(versatz).toBeLessThan(4);
     await keinQuerlauf(page);
     await bilder(page, '7-vorlaeufiger-tag');
     await page.getByRole('group', { name: 'Zeitraum' }).getByLabel('Vorheriger Zeitraum').click();
