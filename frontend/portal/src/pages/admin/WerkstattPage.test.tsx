@@ -202,6 +202,8 @@ describe('Werkstatt: Einrichtungs-Detailseite einer Box', () => {
     render(<WerkstattPage />);
     const g = await screen.findByTestId('ws-gehaeuse');
     expect(within(g).getByTestId('ws-gehaeuse-hinweis')).toHaveTextContent('ohne Referenz und QR-Code dieser Box');
+    expect(within(g).queryByText(/Bambu Studio/)).toBeNull();
+    expect(within(g).queryByText(/sitzt perfekt/)).toBeNull();
     const a = within(within(g).getByTestId('ws-gehaeuse-gehaeuse-v04.3mf')).getByRole('link');
     expect(a).toHaveAttribute('download', 'gehaeuse-v04.3mf');
     expect(a).toHaveAttribute('href', expect.stringMatching(/\.3mf(\?.*)?$/));

@@ -25,11 +25,6 @@ export interface GehaeuseDatei {
   name: string;
   /** Adresse im Bündel (Vite hasht sie). */
   url: string;
-  titel: string;
-  /** Was drin ist. */
-  inhalt: string;
-  /** Was vom Druck bestätigt ist (Stand `druck/README.md`, v0.4); nichts darüber hinaus behaupten. */
-  druckStand: string;
 }
 
 /** Die generische Druckdatei v0.4 (Gehäuse komplett), ohne Kennung und QR-Code einer Box. */
@@ -37,15 +32,11 @@ export const GEHAEUSE_DATEIEN: readonly GehaeuseDatei[] = [
   {
     name: 'gehaeuse-v04.3mf',
     url: gehaeuseUrl,
-    titel: 'Gehäuse komplett',
-    inhalt: 'Unterteil und Deckel auf einer Platte, ein Drucklauf; Filament 1 weiß, 2 schwarz, 3 hellblau.',
-    druckStand: 'Unterteil gedruckt und bestätigt am 11.10.2026 („sitzt perfekt“), Deckel-Körper ebenso; die Deckel-Beschriftung wurde nach dem Druck gewählt (12.10.2026).',
   },
 ];
 
 /** Der Satz über die Dateien: Sie sind nicht die Datei dieser Box. */
-export const GEHAEUSE_OHNE_KENNUNG =
-  'Allgemeine Gehäuse-Druckdatei (Stand v0.4), ohne Referenz und QR-Code dieser Box. Das Unterteil mit der Kennung dieser Box baut der Werkstatt-Dienst nach der Übergabe in seine Ablage; es liegt dort, nicht im Portal.';
+export const GEHAEUSE_OHNE_KENNUNG = 'Allgemeine Datei, ohne Referenz und QR-Code dieser Box.';
 
 export interface EinrichtungZeile {
   /** Stabiler Schlüssel, auch für Tests. */
