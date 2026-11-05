@@ -33,6 +33,13 @@ public class UpdateStatusRepository {
     /**
      * Den gemeldeten Stand eines Geräts festhalten (Upsert je Gerät).
      *
+     * <p><b>Zwei Zeitpunkte entstehen hier</b> (Geräte &amp; Updates G2):
+     * {@code target_verdict_at} (seit wann das gemeldete Prüfurteil zum gemeldeten
+     * Ziel gilt - „angenommen") und {@code current_since} (seit wann der laufende
+     * Stempel gilt - „bestätigt"). Beide setzt nur ein beobachteter WECHSEL, mit
+     * der Serveruhr; die erste Meldung einer Box lässt sie leer, denn sie sagt
+     * nicht, seit wann.
+     *
      * <p>Jedes Feld außer {@code reportedAt} darf {@code null} sein: in Stufe 0
      * kennt das Gerät weder Register noch Ziel, und was es nicht weiß, meldet es
      * GAR NICHT - hier bleibt es dann leer, nie eine geratene Version oder eine
@@ -68,6 +75,20 @@ public class UpdateStatusRepository {
                         + "trust_set_generated_at = EXCLUDED.trust_set_generated_at, "
                         + "trust_set_signed_by = EXCLUDED.trust_set_signed_by, "
                         + "trust_set_error = EXCLUDED.trust_set_error, "
+                        // Geräte & Updates G2 (V20261105210000): die Zeitpunkte
+                        // „angenommen" und „läuft seit" entstehen beim WECHSEL,
+                        // mit der Serveruhr (eine Uhr für die ganze Seite). Bleibt
+                        // der Wert gleich, bleibt der Zeitpunkt; ohne beobachteten
+                        // Wechsel bleibt er unbekannt (NULL) statt erfunden.
+                        + "target_verdict_at = CASE WHEN EXCLUDED.target_verdict IS NULL THEN NULL "
+                        + "WHEN device_update_status.target_verdict IS DISTINCT FROM EXCLUDED.target_verdict "
+                        + "OR device_update_status.target_version IS DISTINCT FROM EXCLUDED.target_version "
+                        + "THEN now() ELSE device_update_status.target_verdict_at END, "
+                        + "current_since = CASE WHEN COALESCE(EXCLUDED.current_version, EXCLUDED.version) "
+                        + "IS NOT NULL AND COALESCE(EXCLUDED.current_version, EXCLUDED.version) "
+                        + "IS DISTINCT FROM COALESCE(device_update_status.current_version, "
+                        + "device_update_status.version) THEN now() "
+                        + "ELSE device_update_status.current_since END, "
                         + "reported_at = EXCLUDED.reported_at, updated_at = now()",
                 deviceId, siteId, version, backend, currentVersion, currentSeq, targetVersion,
                 targetSeq, state, reason, lastKnownGood, targetVerdict, blocker,

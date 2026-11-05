@@ -140,6 +140,45 @@ export interface FleetRow {
    * `null`/fehlend heißt „unbekannt" - nie still „Docker-Box".
    */
   boxArt?: string | null;
+  // ── Geräte & Updates G1/G2 (additiv; fehlen bei einem älteren Server) ──
+  /** Das letzte Lebenszeichen - die EINE Uhr für „online" (Herzschlag, Serverzeit). */
+  lastSeenAt?: string | null;
+  /** Die Linie, an der gemessen wird (`docker`/`light`); `null` = unbekannt. */
+  linie?: BoxArt | null;
+  /** Wo die Box in ihrer Linie steht (`ota.LinienStand`). */
+  stand?: LinienStand;
+  /** Edge Light ohne gekreuztes Vertrauen: nimmt keine Updates aus dem Portal an. */
+  stufe1?: boolean;
+  /** Das Register-Release, das die Box fährt; `null` = nicht registriert. */
+  istRelease?: string | null;
+  /** Wie viele Releases der Linie neuer sind; `null` = unbekannt. */
+  releasesDahinter?: number | null;
+  /** Seit wann der laufende Stand läuft (Serverzeit); `null` = unbekannt. */
+  istSeit?: string | null;
+  /** Angefragt · angenommen · bestätigt der aktuellen Anfrage; `null` = keine Anfrage. */
+  fakten?: UpdateFakten | null;
+}
+
+/**
+ * Der Linien-Stand einer Box (`ota.LinienStand`, Geräte & Updates G1). Ein
+ * Wort, das dieser Portal-Stand nicht kennt, bleibt ein `string` und wird wie
+ * `unbekannt` behandelt.
+ */
+export type LinienStand =
+  | 'hand' | 'fehler' | 'offline' | 'laeuft' | 'gehalten' | 'aktuell' | 'aelter' | 'unbekannt'
+  | (string & {});
+
+/** Die drei Fakten einer Anfrage (`ota.UpdateFakten`, Geräte & Updates G2). */
+export interface UpdateFakten {
+  /** Angefragt (Portal): Release, Zeitpunkt, Person (JWT-Subjekt oder `system`). */
+  angefragt: { release: string; releaseSeq: number; am: string | null; von: string | null };
+  /** Angenommen (Box): `ja`, `offen`, `wartet`, `abgelehnt`, `zurueckgestellt`. */
+  angenommen: { stand: string; am: string | null; grund: string | null };
+  /**
+   * Bestätigt (Box): `ja`, `offen`, `laeuft` (mit `schritt` `laedt`/`wendet_an`/
+   * `selbsttest`), `fehlgeschlagen`, `zurueckgenommen`, `verstummt`.
+   */
+  bestaetigt: { stand: string; am: string | null; schritt: string | null; grund: string | null };
 }
 export interface JournalEntry {
   id: number;
@@ -176,6 +215,16 @@ export interface EdgeUpdatesLine {
   devices: number;
   known: number;
   upToDate: number;
+  // ── Geräte & Updates G1 (additiv) ──
+  /** Wie viele Releases die Linie im Register hat. */
+  releases?: number;
+  /** Boxen je Linien-Stand (`ota.LinienStand`, feste Reihenfolge, jede Gruppe genau einmal). */
+  stand?: Record<string, number>;
+  /**
+   * Die Versionsleiter: je Release (oder nicht registriertem Stand,
+   * `releaseSeq: null`) die Boxen, die es melden; registrierte neueste zuerst.
+   */
+  versions?: { version: string; releaseSeq: number | null; devices: string[] }[];
 }
 
 export interface EdgeUpdates {
@@ -207,6 +256,9 @@ const STATE_LABELS: Record<string, { label: string; tone: UpdateTone; cls: State
   im_update_verstummt: { label: 'im Update verstummt ⚠', tone: 'warn', cls: 'incident' },
   zurueckgerollt: { label: 'zurückgerollt ⚠', tone: 'warn', cls: 'incident' },
   fehlgeschlagen: { label: 'fehlgeschlagen ⚠', tone: 'warn', cls: 'incident' },
+  // Nur in einer Verteilung (Geräte & Updates G2): ihre Anfrage gilt nicht mehr -
+  // zurückgezogen oder durch eine neuere abgelöst. Ruhig: das war eine Entscheidung.
+  zurueckgezogen: { label: 'zurückgezogen', tone: 'off', cls: 'calm' },
 };
 
 /**

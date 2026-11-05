@@ -21,8 +21,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -63,6 +63,17 @@ public class AdminEdgeUpdateController {
     @GetMapping("/edge-updates")
     public EdgeUpdatesDto edgeUpdates() {
         return rollouts.readModel(Instant.now());
+    }
+
+    /**
+     * Die Eignung jeder Box für EIN signiertes Release - bereit, wartet,
+     * aktuell oder kann nicht, mit Grund (Geräte &amp; Updates G1, der
+     * Verteil-Dialog). Rein lesend; 404 für ein unbekanntes, 409 für ein nicht
+     * signiertes Release.
+     */
+    @GetMapping("/edge-updates/eignung")
+    public EdgeUpdatesDto.EignungDto eignung(@RequestParam long releaseSeq) {
+        return rollouts.eignung(releaseSeq, Instant.now());
     }
 
     /**

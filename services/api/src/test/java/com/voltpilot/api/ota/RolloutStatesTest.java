@@ -209,4 +209,27 @@ class RolloutStatesTest {
         assertThat(RolloutStates.releaseIsRunning(TARGET, null)).isFalse();
         assertThat(RolloutStates.releaseIsRunning(null, TARGET)).isFalse();
     }
+
+    @Test
+    @DisplayName("EINE Uhr: offline misst am Herzschlag (Serverzeit), nicht am Zeitstempel der Box")
+    void eineUhrFuerOnline() {
+        // Box-Uhr drei Stunden zurück, Herzschlag vor 8 s: erreichbar, kein
+        // „offline - holt nach" neben einem „online" in der Online-Spalte.
+        var vorgehend = new RolloutStates.Reported("edge-2026.07.2", "edge-2026.07.2", TARGET, "idle",
+                "ok", null, NOW.minus(Duration.ofHours(3)), NOW.minus(Duration.ofSeconds(8)));
+        assertThat(RolloutStates.derive(TARGET, vorgehend, NOW).state())
+                .isEqualTo(RolloutStates.AUSSTEHEND);
+        // Frischer Update-Block, aber seit zwei Stunden kein Herzschlag: offline.
+        var stumm = new RolloutStates.Reported("edge-2026.07.2", "edge-2026.07.2", TARGET, "idle",
+                "ok", null, NOW, NOW.minus(Duration.ofHours(2)));
+        assertThat(RolloutStates.derive(TARGET, stumm, NOW).state())
+                .isEqualTo(RolloutStates.OFFLINE_HOLT_NACH);
+        // Ohne Herzschlag bleibt der Update-Block der Anker.
+        var ohne = new RolloutStates.Reported("edge-2026.07.2", "edge-2026.07.2", TARGET, "idle",
+                "ok", null, NOW.minus(Duration.ofHours(2)), null);
+        assertThat(RolloutStates.derive(TARGET, ohne, NOW).state())
+                .isEqualTo(RolloutStates.OFFLINE_HOLT_NACH);
+        assertThat(RolloutStates.lebenszeichen(vorgehend)).isEqualTo(NOW.minus(Duration.ofSeconds(8)));
+        assertThat(RolloutStates.offline(null, NOW)).as("nie gemeldet ist nicht offline").isFalse();
+    }
 }

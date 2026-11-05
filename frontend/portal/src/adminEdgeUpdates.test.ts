@@ -62,10 +62,13 @@ describe('Zustands-Vokabular', () => {
     for (const s of [
       'aktuell', 'ausstehend', 'laedt', 'wendet_an', 'selbsttest', 'bestaetigt',
       'zurueckgerollt', 'offline_holt_nach', 'im_update_verstummt', 'fehlgeschlagen',
-      'zurueckgestellt', 'unbekannt',
+      'zurueckgestellt', 'unbekannt', 'zurueckgezogen',
     ]) {
       expect(stateLabel(s).label).not.toBe('unbekannt: ' + s);
     }
+    // Geräte & Updates G2: eine zurückgezogene Anfrage ist ruhig und hält nichts offen.
+    expect(stateLabel('zurueckgezogen')).toEqual({ label: 'zurückgezogen', tone: 'off', cls: 'calm' });
+    expect(isLoud('zurueckgezogen')).toBe(false);
     expect(stateLabel('bestaetigt').tone).toBe('ok');
     expect(stateLabel('fehlgeschlagen').tone).toBe('warn');
     // „offline" ist NIE ein Warnton - hinter NAT ist es der Normalfall.

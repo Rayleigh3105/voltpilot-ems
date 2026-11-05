@@ -6542,11 +6542,55 @@ paths:
         release over both lines) for older portals. An Edge Light release is
         refused (409) for an Edge Light box without crossed trust (root AND
         verified trust set reported, Stufe 1).
+        LINE VIEW AND THREE FACTS (Geräte & Updates G1/G2, additive): each line
+        also carries `releases` (count), `stand` (boxes per `ota.LinienStand`
+        word: aktuell, laeuft, gehalten, aelter, fehler, offline, hand,
+        unbekannt - each exactly once, fixed order) and `versions` (the ladder:
+        per registered release, newest first, then unregistered stamps, the
+        device ids reporting it). Each fleet row also carries `lastSeenAt` (THE
+        one clock for "online": server time of the last heartbeat; the derived
+        `state` now measures "offline" on it too), `linie`, `stand`, `stufe1`,
+        `istRelease`, `releasesDahinter`, `istSeit` and `fakten` - the request
+        split into angefragt (portal: release, am, von), angenommen (box: ja |
+        offen | wartet | abgelehnt | zurueckgestellt, am, grund) and bestaetigt
+        (box: ja | offen | laeuft + schritt laedt/wendet_an/selbsttest |
+        fehlgeschlagen | zurueckgenommen | verstummt, am, grund); null without a
+        request. Times are server time of the observed change; null = unknown,
+        never invented. A rollout row whose request was withdrawn or replaced
+        reads `zurueckgezogen` and no longer holds the rollout open.
       responses:
         "200":
           description: Releases, the recent updates, the fleet matrix, the journal, the KPI and the lines.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/edge-updates/eignung:
+    get:
+      tags: [admin]
+      summary: Which box can receive ONE signed release - and why not (Geräte & Updates G1).
+      description: >
+        The distribution dialog's read: every box of the release's line (plus
+        boxes of unknown kind) in exactly one group - `bereit`, `wartet`
+        (offline; it picks the request up retained once it reports), `aktuell`
+        (already runs it) or `kann_nicht` with the German reason (other kind or
+        Stufe 1 - the same sentences the write routes answer with 409 -, customer
+        area ended, or a newer release of the line already runs and the signed
+        manifest allows no downgrade). `andereLinie` counts the boxes of the
+        other kind, which never qualify. Read-only; "bereit" is no promise -
+        the portal asks, the box decides. Platform-admin only.
+      parameters:
+        - name: releaseSeq
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: >
+            `{releaseSeq, version, boxArt, boxen: [{deviceId, label, externalRef,
+            siteName, tenantName, ist, gruppe, grund, lastSeenAt}], andereLinie}`.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: The release is not registered. }
+        "409": { description: The release is not signed - it can never be distributed. }
   /api/v1/admin/devices:
     get:
       tags: [admin]

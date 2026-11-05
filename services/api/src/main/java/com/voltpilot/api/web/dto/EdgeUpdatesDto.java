@@ -39,7 +39,63 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
      * hat; die Reihenfolge ist fest (Docker-Box, dann Edge Light).
      */
     public record LineDto(String boxArt, String newestRelease, Long newestReleaseSeq,
-            int devices, int known, int upToDate) {
+            int devices, int known, int upToDate,
+            // Geräte & Updates G1 (additiv): die Linien-Sicht der Seite.
+            int releases, java.util.Map<String, Integer> stand, List<LineVersionDto> versions) {
+    }
+
+    /**
+     * Eine Sprosse der Versionsleiter einer Linie: ein Release (oder ein Stand,
+     * den das Register nicht führt - {@code releaseSeq == null}) und die Boxen,
+     * die ihn melden. Registrierte Releases neueste zuerst, danach die übrigen.
+     */
+    public record LineVersionDto(String version, Long releaseSeq, List<UUID> devices) {
+    }
+
+    /**
+     * Die drei Fakten einer Anfrage (Geräte &amp; Updates G2, {@code ota.UpdateFakten}):
+     * angefragt (Portal), angenommen (Box), bestätigt (Box), je mit Zeitpunkt
+     * ({@code null} = unbekannt).
+     */
+    public record FaktenDto(AngefragtDto angefragt, AngenommenDto angenommen,
+            BestaetigtDto bestaetigt) {
+    }
+
+    /** Angefragt: Release, Zeitpunkt und Person (bzw. {@code system}). */
+    public record AngefragtDto(String release, long releaseSeq, Instant am, String von) {
+    }
+
+    /**
+     * Angenommen: {@code ja}, {@code offen}, {@code wartet} (Box offline),
+     * {@code abgelehnt}, {@code zurueckgestellt} - mit dem Grund der Box.
+     */
+    public record AngenommenDto(String stand, Instant am, String grund) {
+    }
+
+    /**
+     * Bestätigt: {@code ja}, {@code offen}, {@code laeuft} (mit {@code schritt}
+     * {@code laedt}/{@code wendet_an}/{@code selbsttest}), {@code fehlgeschlagen},
+     * {@code zurueckgenommen}, {@code verstummt}.
+     */
+    public record BestaetigtDto(String stand, Instant am, String schritt, String grund) {
+    }
+
+    /**
+     * Die Eignung aller Boxen der Linie eines Releases (Geräte &amp; Updates G1,
+     * {@code GET /api/v1/admin/edge-updates/eignung}). {@code andereLinie} zählt
+     * die Boxen der anderen Box-Art, die hier bewusst nicht stehen.
+     */
+    public record EignungDto(long releaseSeq, String version, String boxArt,
+            List<EignungBoxDto> boxen, int andereLinie) {
+    }
+
+    /**
+     * Eine Box im Verteil-Dialog: {@code gruppe} ist {@code bereit},
+     * {@code wartet}, {@code aktuell} oder {@code kann_nicht} ({@code ota.UpdateEignung}),
+     * {@code grund} der deutsche Satz dazu.
+     */
+    public record EignungBoxDto(UUID deviceId, String label, String externalRef, String siteName,
+            String tenantName, String ist, String gruppe, String grund, Instant lastSeenAt) {
     }
 
     /**
@@ -115,7 +171,19 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
             UUID tenantId, String tenantName, String ist, String soll, Long sollSeq,
             String state, String reason, String blocker,
             Instant since, Instant reportedAt, UUID rolloutId, TrustDto trust,
-            String boxArt) {
+            String boxArt,
+            // Geräte & Updates G1/G2 (additiv):
+            // lastSeenAt  - die EINE Uhr für „online" (Herzschlag, Serverzeit);
+            // linie       - die Linie, an der gemessen wird (null = unbekannt);
+            // stand       - ota.LinienStand (hand, fehler, offline, laeuft, gehalten,
+            //               aktuell, aelter, unbekannt);
+            // stufe1      - Edge Light ohne gekreuztes Vertrauen;
+            // istRelease  - das Register-Release, das die Box fährt (null = nicht registriert);
+            // releasesDahinter - wie viele Releases der Linie neuer sind (null = unbekannt);
+            // istSeit     - seit wann der laufende Stand läuft (null = unbekannt);
+            // fakten      - angefragt/angenommen/bestätigt der aktuellen Anfrage (null = keine).
+            Instant lastSeenAt, String linie, String stand, boolean stufe1, String istRelease,
+            Integer releasesDahinter, Instant istSeit, FaktenDto fakten) {
     }
 
     /**

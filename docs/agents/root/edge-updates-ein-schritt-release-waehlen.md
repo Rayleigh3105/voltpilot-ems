@@ -150,6 +150,17 @@ Zuweisung desselben Release versucht wieder).
   mit `boxArt`): eine Docker-Box wird nie am neuesten Edge-Light-Release
   gemessen; `kpi.newestRelease`/`upToDate` bleiben für ältere Portale die
   Sicht über beide Linien.
+- **Drei Fakten, eine Uhr (Geräte & Updates G1/G2):** Jede Flotten-Zeile trägt
+  `fakten` (`ota.UpdateFakten`): angefragt (Portal) · angenommen (Box-Urteil
+  zum GLEICHEN Ziel, `target_verdict_at`) · bestätigt (läuft das Ziel,
+  `current_since`); beide Zeitpunkte setzt nur der Ingest bei einem beobachteten
+  Wechsel (Serverzeit, sonst `null` = unbekannt). „Offline" misst überall am
+  Herzschlag (`lastSeenAt`, `RolloutStates.lebenszeichen`), nicht am Zeitstempel
+  des Update-Blocks. `stand` (`ota.LinienStand`) ist das eine Wort je Box für
+  Balken und Liste; die Eignung je Box und Release liefert
+  `GET /admin/edge-updates/eignung` (`ota.UpdateEignung`, dieselben Sperren wie
+  die Schreibwege plus Rückschritt). Eine zurückgezogene oder abgelöste Anfrage
+  heißt im Lauf `zurueckgezogen` und hält ihn nicht mehr offen.
 
 ### Portal
 

@@ -296,11 +296,12 @@ public class RolloutService {
     public void reconcile(Instant now) {
         Map<UUID, RolloutRepository.FleetDeviceRow> fleet = fleetById();
 
+        Map<UUID, RolloutRepository.TargetRow> targets = targetsById();
         for (RolloutRepository.RolloutRow r : rollouts.activeRollouts()) {
             boolean allDone = true;
             for (RolloutRepository.RolloutDeviceRow rd : rollouts.devicesOf(r.id())) {
-                RolloutStates.Verdict v = deviceVerdict(fleet.get(rd.deviceId()),
-                        r.releaseVersion(), now);
+                RolloutStates.Verdict v = rolloutDeviceVerdict(r, fleet.get(rd.deviceId()),
+                        targets.get(rd.deviceId()), now);
                 if (!v.state().equals(rd.state())) {
                     rollouts.updateRolloutDeviceState(r.id(), rd.deviceId(), v.state(),
                             v.reason());
@@ -310,7 +311,8 @@ public class RolloutService {
                 // „Fertig" heißt: kein Gerät ist mehr unterwegs. Ein Gerät, das
                 // fehlgeschlagen ist, hält die Aktualisierung nicht offen - es
                 // wird gemeldet, nicht gewartet.
-                if (!RolloutStates.isConfirmed(v.state()) && !isTerminalFailure(v.state())) {
+                if (!RolloutStates.isConfirmed(v.state()) && !isTerminalFailure(v.state())
+                        && !RolloutStates.ZURUECKGEZOGEN.equals(v.state())) {
                     allDone = false;
                 }
             }
@@ -324,7 +326,7 @@ public class RolloutService {
         // wird nach-veröffentlicht. Offline-Geräte holen retained ohnehin nach -
         // dieser Pfad deckt die Fälle, in denen die retained Nachricht selbst
         // fehlt (Broker-Ausfall beim Zuweisen, gelöschter Broker-Zustand).
-        for (RolloutRepository.TargetRow t : rollouts.allTargets()) {
+        for (RolloutRepository.TargetRow t : targets.values()) {
             RolloutRepository.FleetDeviceRow d = fleet.get(t.deviceId());
             if (d == null || beendete.beendet(t.tenantId())) {
                 continue; // unbekannt, oder Kundenbereich beendet: nichts nachveröffentlichen
@@ -424,21 +426,14 @@ public class RolloutService {
                 .map(r -> new EdgeVersionRepository.RegisterEntry(r.version(), r.releaseSeq(),
                         r.boxArt()))
                 .toList();
-        Map<String, int[]> perLine = new HashMap<>();
+        Map<String, Linie> perLine = new HashMap<>();
         for (RolloutRepository.FleetDeviceRow d : fleet) {
             RolloutRepository.TargetRow t = targets.get(d.deviceId());
             String assigned = t == null ? null : t.releaseVersion();
             RolloutStates.Verdict v = deviceVerdict(d, assigned, now);
-            EdgeStandVerdict.Verdict stand = EdgeStandVerdict.of(reportedRunning(d), boxArt(d), register);
-            if (stand.linie() != null) {
-                int[] c = perLine.computeIfAbsent(stand.linie(), k -> new int[3]);
-                c[0]++;
-                if (!RolloutStates.UNBEKANNT.equals(v.state())) {
-                    c[1]++;
-                }
-                if (Boolean.TRUE.equals(stand.upToDate())) {
-                    c[2]++;
-                }
+            BoxSicht b = boxSicht(d, v, register, now);
+            if (b.linie() != null) {
+                perLine.computeIfAbsent(b.linie(), k -> new Linie()).add(d, v, b);
             }
             RolloutRepository.RolloutDeviceRow rd = inRollout.get(d.deviceId());
             rows.add(new EdgeUpdatesDto.FleetRowDto(d.deviceId(), label(d), d.externalRef(),
@@ -446,7 +441,10 @@ public class RolloutService {
                     assigned, t == null ? null : t.releaseSeq(),
                     v.state(), v.reason(), d.reportedBlocker(),
                     rd == null ? null : rd.since(), d.reportedAt(),
-                    rd == null ? null : rd.rolloutId(), trustDto(d), boxArt(d)));
+                    rd == null ? null : rd.rolloutId(), trustDto(d), boxArt(d),
+                    b.lebenszeichen(), b.linie(), b.stand(), b.stufe1(),
+                    b.ist() == null ? null : b.ist().version(), b.dahinter(), d.currentSince(),
+                    fakten(t, d, now)));
 
             if (RolloutStates.UNBEKANNT.equals(v.state())) {
                 unknown++;
@@ -465,7 +463,7 @@ public class RolloutService {
 
         List<EdgeUpdatesDto.RolloutDto> rolloutDtos = new ArrayList<>();
         for (RolloutRepository.RolloutRow r : recent) {
-            rolloutDtos.add(rolloutDto(r, fleet, now));
+            rolloutDtos.add(rolloutDto(r, fleet, targets, now));
         }
         List<EdgeUpdatesDto.EventDto> journal = new ArrayList<>();
         for (RolloutRepository.EventRow e : rollouts.recentEvents(200)) {
@@ -482,19 +480,186 @@ public class RolloutService {
      * Release und ohne Box fehlt. {@code releases} kommt neueste-zuerst.
      */
     private static List<EdgeUpdatesDto.LineDto> lines(List<EdgeUpdatesDto.ReleaseDto> releases,
-            Map<String, int[]> perLine) {
+            Map<String, Linie> perLine) {
         List<EdgeUpdatesDto.LineDto> lines = new ArrayList<>();
         for (String art : List.of(BoxArt.DOCKER, BoxArt.LIGHT)) {
-            EdgeUpdatesDto.ReleaseDto neuestes = releases.stream()
-                    .filter(r -> art.equals(r.boxArt())).findFirst().orElse(null);
-            int[] c = perLine.getOrDefault(art, new int[3]);
-            if (neuestes == null && c[0] == 0) {
+            List<EdgeUpdatesDto.ReleaseDto> derLinie = releases.stream()
+                    .filter(r -> art.equals(r.boxArt())).toList();
+            EdgeUpdatesDto.ReleaseDto neuestes = derLinie.isEmpty() ? null : derLinie.get(0);
+            Linie l = perLine.getOrDefault(art, new Linie());
+            if (neuestes == null && l.devices == 0) {
                 continue;
             }
             lines.add(new EdgeUpdatesDto.LineDto(art, neuestes == null ? null : neuestes.version(),
-                    neuestes == null ? null : neuestes.releaseSeq(), c[0], c[1], c[2]));
+                    neuestes == null ? null : neuestes.releaseSeq(), l.devices, l.known, l.upToDate,
+                    derLinie.size(), l.stand(), l.versions()));
         }
         return lines;
+    }
+
+    /**
+     * Was die Seite je Box über ihre Linie sagt (Geräte &amp; Updates G1): die
+     * Linie, das letzte Lebenszeichen (die EINE Uhr), Stufe 1, das Register-Release,
+     * das sie fährt, wie viele Releases der Linie neuer sind, und ihr Linien-Stand.
+     */
+    private record BoxSicht(String linie, Instant lebenszeichen, boolean stufe1,
+            EdgeVersionRepository.RegisterEntry ist, Integer dahinter, Boolean upToDate,
+            String stand) {
+    }
+
+    private static BoxSicht boxSicht(RolloutRepository.FleetDeviceRow d, RolloutStates.Verdict v,
+            List<EdgeVersionRepository.RegisterEntry> register, Instant now) {
+        String running = reportedRunning(d);
+        EdgeStandVerdict.Verdict urteil = EdgeStandVerdict.of(running, boxArt(d), register);
+        String linie = urteil.linie();
+        Instant lebenszeichen = lebenszeichen(d);
+        boolean stufe1 = BoxArt.LIGHT.equals(linie) && !vertrauenGekreuzt(d);
+        EdgeVersionRepository.RegisterEntry ist = linie == null || running == null ? null
+                : register.stream().filter(r -> linie.equals(r.boxArt()))
+                        .filter(r -> RolloutStates.releaseIsRunning(r.version(), running))
+                        .findFirst().orElse(null);
+        Integer dahinter = ist == null ? null : (int) register.stream()
+                .filter(r -> linie.equals(r.boxArt()) && r.releaseSeq() > ist.releaseSeq())
+                .count();
+        String stand = LinienStand.of(linie, stufe1, v.state(),
+                RolloutStates.offline(lebenszeichen, now), urteil.upToDate());
+        return new BoxSicht(linie, lebenszeichen, stufe1, ist, dahinter, urteil.upToDate(), stand);
+    }
+
+    /** Die Sammlung einer Linie über die Flotte: Zählung, Stand-Gruppen, Versionsleiter. */
+    private static final class Linie {
+        int devices;
+        int known;
+        int upToDate;
+        final Map<String, Integer> stand = new LinkedHashMap<>();
+        final Map<String, Long> seqJeVersion = new LinkedHashMap<>();
+        final Map<String, List<UUID>> boxenJeVersion = new LinkedHashMap<>();
+
+        Linie() {
+            for (String s : LinienStand.REIHENFOLGE) {
+                stand.put(s, 0);
+            }
+        }
+
+        void add(RolloutRepository.FleetDeviceRow d, RolloutStates.Verdict v, BoxSicht b) {
+            devices++;
+            if (!RolloutStates.UNBEKANNT.equals(v.state())) {
+                known++;
+            }
+            if (Boolean.TRUE.equals(b.upToDate())) {
+                upToDate++;
+            }
+            stand.merge(b.stand(), 1, Integer::sum);
+            String running = reportedRunning(d);
+            String version = b.ist() != null ? b.ist().version() : running;
+            if (version != null) {
+                seqJeVersion.putIfAbsent(version, b.ist() == null ? null : b.ist().releaseSeq());
+                boxenJeVersion.computeIfAbsent(version, k -> new ArrayList<>()).add(d.deviceId());
+            }
+        }
+
+        Map<String, Integer> stand() {
+            return java.util.Collections.unmodifiableMap(stand);
+        }
+
+        /** Registrierte Releases neueste zuerst, danach nicht registrierte Stände nach Namen. */
+        List<EdgeUpdatesDto.LineVersionDto> versions() {
+            return boxenJeVersion.keySet().stream()
+                    .sorted(java.util.Comparator
+                            .comparing((String v) -> seqJeVersion.get(v) == null)
+                            .thenComparing((String v) -> seqJeVersion.get(v) == null ? 0L
+                                    : -seqJeVersion.get(v))
+                            .thenComparing(v -> v))
+                    .map(v -> new EdgeUpdatesDto.LineVersionDto(v, seqJeVersion.get(v),
+                            List.copyOf(boxenJeVersion.get(v))))
+                    .toList();
+        }
+    }
+
+    /**
+     * Die drei Fakten der aktuellen Anfrage einer Box ({@link UpdateFakten});
+     * {@code null} ohne Anfrage.
+     */
+    private static EdgeUpdatesDto.FaktenDto fakten(RolloutRepository.TargetRow t,
+            RolloutRepository.FleetDeviceRow d, Instant now) {
+        if (t == null) {
+            return null;
+        }
+        UpdateFakten.Fakten f = UpdateFakten.of(
+                new UpdateFakten.Anfrage(t.releaseVersion(), t.releaseSeq(), t.assignedAt(),
+                        t.assignedBy()),
+                d == null ? null : new UpdateFakten.Meldung(d.reportedTarget(), d.reportedVerdict(),
+                        d.targetVerdictAt(), reportedRunning(d), d.currentSince(),
+                        d.reportedState(), d.reportedReason(), lebenszeichen(d)),
+                now);
+        if (f == null) {
+            return null;
+        }
+        return new EdgeUpdatesDto.FaktenDto(
+                new EdgeUpdatesDto.AngefragtDto(f.angefragt().release(), f.angefragt().releaseSeq(),
+                        f.angefragt().am(), f.angefragt().von()),
+                new EdgeUpdatesDto.AngenommenDto(f.angenommen().stand(), f.angenommen().am(),
+                        f.angenommen().grund()),
+                new EdgeUpdatesDto.BestaetigtDto(f.bestaetigt().stand(), f.bestaetigt().am(),
+                        f.bestaetigt().schritt(), f.bestaetigt().grund()));
+    }
+
+    /** Das letzte Lebenszeichen einer Box - die EINE Uhr ({@link RolloutStates#lebenszeichen}). */
+    private static Instant lebenszeichen(RolloutRepository.FleetDeviceRow d) {
+        if (d == null) {
+            return null;
+        }
+        return d.lastSeenAt() != null ? d.lastSeenAt() : d.reportedAt();
+    }
+
+    /**
+     * Die Eignung jeder Box für EIN signiertes Release (Geräte &amp; Updates G1,
+     * der Verteil-Dialog): bereit, wartet (offline), aktuell oder kann nicht -
+     * mit Grund ({@link UpdateEignung}).
+     *
+     * <p>Es stehen die Boxen der Linie des Releases darin und die Boxen
+     * unbekannter Art (ein Docker-Release dürfen sie bekommen, ein
+     * Edge-Light-Release nicht - beides mit Grund). Boxen der ANDEREN Linie zählt
+     * {@code andereLinie}; sie kämen für dieses Release nie in Frage.
+     *
+     * <p>Rein lesend. Die Sperren sind dieselben, mit denen {@link #assign} und
+     * {@link #createRollout} antworten; das Portal fragt an, die Box entscheidet.
+     *
+     * @throws ResponseStatusException 404 (unbekannt) oder 409 (nicht signiert),
+     *         wie beim Zuweisen
+     */
+    public EdgeUpdatesDto.EignungDto eignung(long releaseSeq, Instant now) {
+        EdgeReleaseDto release = signedRelease(releaseSeq);
+        String art = releaseBoxArt(release);
+        UpdateEignung.Release rel = new UpdateEignung.Release(release.version(),
+                release.releaseSeq(), art, UpdateEignung.erlaubtRueckschritt(release.manifest()));
+        List<EdgeVersionRepository.RegisterEntry> derLinie = releases.findAll().stream()
+                .filter(r -> art.equals(releaseBoxArt(r)))
+                .map(r -> new EdgeVersionRepository.RegisterEntry(r.version(), r.releaseSeq(), art))
+                .toList();
+        List<EdgeUpdatesDto.EignungBoxDto> boxen = new ArrayList<>();
+        int andereLinie = 0;
+        for (RolloutRepository.FleetDeviceRow d : rollouts.fleetDevices()) {
+            String geraetArt = boxArt(d);
+            if (geraetArt != null && !geraetArt.equals(art)) {
+                andereLinie++;
+                continue;
+            }
+            String running = reportedRunning(d);
+            EdgeVersionRepository.RegisterEntry ist = running == null ? null : derLinie.stream()
+                    .filter(r -> RolloutStates.releaseIsRunning(r.version(), running))
+                    .findFirst().orElse(null);
+            Instant lebenszeichen = lebenszeichen(d);
+            UpdateEignung.Urteil u = UpdateEignung.of(rel, new UpdateEignung.Box(geraetArt,
+                    vertrauenGekreuzt(d), running, ist == null ? null : ist.version(),
+                    ist == null ? null : ist.releaseSeq(),
+                    lebenszeichen == null || RolloutStates.offline(lebenszeichen, now),
+                    beendete.beendet(d.tenantId())));
+            boxen.add(new EdgeUpdatesDto.EignungBoxDto(d.deviceId(), label(d), d.externalRef(),
+                    d.siteName(), d.tenantName(), running, u.gruppe(), u.grund(), lebenszeichen));
+        }
+        return new EdgeUpdatesDto.EignungDto(release.releaseSeq(), release.version(), art,
+                List.copyOf(boxen), andereLinie);
     }
 
     /**
@@ -548,7 +713,8 @@ public class RolloutService {
     }
 
     private EdgeUpdatesDto.RolloutDto rolloutDto(RolloutRepository.RolloutRow r,
-            List<RolloutRepository.FleetDeviceRow> fleet, Instant now) {
+            List<RolloutRepository.FleetDeviceRow> fleet,
+            Map<UUID, RolloutRepository.TargetRow> targets, Instant now) {
         Map<UUID, RolloutRepository.FleetDeviceRow> byId = new HashMap<>();
         for (RolloutRepository.FleetDeviceRow d : fleet) {
             byId.put(d.deviceId(), d);
@@ -558,7 +724,7 @@ public class RolloutService {
         int failed = 0;
         for (RolloutRepository.RolloutDeviceRow rd : rollouts.devicesOf(r.id())) {
             RolloutRepository.FleetDeviceRow d = byId.get(rd.deviceId());
-            RolloutStates.Verdict v = deviceVerdict(d, r.releaseVersion(), now);
+            RolloutStates.Verdict v = rolloutDeviceVerdict(r, d, targets.get(rd.deviceId()), now);
             if (RolloutStates.isConfirmed(v.state())) {
                 confirmed++;
             }
@@ -610,6 +776,34 @@ public class RolloutService {
             rollouts.markPublished(d.deviceId());
         }
         return sent;
+    }
+
+    private Map<UUID, RolloutRepository.TargetRow> targetsById() {
+        Map<UUID, RolloutRepository.TargetRow> map = new HashMap<>();
+        for (RolloutRepository.TargetRow t : rollouts.allTargets()) {
+            map.put(t.deviceId(), t);
+        }
+        return map;
+    }
+
+    /**
+     * Der Zustand eines Geräts IN EINER Verteilung: gemessen an deren Release -
+     * außer die Anfrage dieser Verteilung gilt nicht mehr (Geräte &amp; Updates G2,
+     * Nebenbefund 4 des Konzepts). Wurde sie zurückgezogen oder durch eine
+     * andere Anfrage abgelöst, und fährt die Box das Release der Verteilung
+     * nicht, heißt sie {@link RolloutStates#ZURUECKGEZOGEN} und hält die
+     * Verteilung nicht mehr offen; sonst blieb ein Lauf dauerhaft „aktiv".
+     */
+    static RolloutStates.Verdict rolloutDeviceVerdict(RolloutRepository.RolloutRow r,
+            RolloutRepository.FleetDeviceRow d, RolloutRepository.TargetRow aktuell, Instant now) {
+        RolloutStates.Verdict v = deviceVerdict(d, r.releaseVersion(), now);
+        boolean giltNoch = aktuell != null && r.id().equals(aktuell.rolloutId());
+        if (giltNoch || d == null || RolloutStates.isConfirmed(v.state())) {
+            return v;
+        }
+        return new RolloutStates.Verdict(RolloutStates.ZURUECKGEZOGEN, aktuell == null
+                ? "Die Anfrage wurde zurückgezogen."
+                : "Abgelöst durch eine neuere Anfrage (" + aktuell.releaseVersion() + ").");
     }
 
     private Map<UUID, RolloutRepository.FleetDeviceRow> fleetById() {

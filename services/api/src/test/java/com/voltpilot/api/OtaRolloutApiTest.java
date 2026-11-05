@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.ota.RolloutStates;
 import com.voltpilot.api.ota.RolloutService;
+import com.voltpilot.api.ota.UpdateStatusListener;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -141,6 +142,12 @@ class OtaRolloutApiTest {
 
     @Autowired
     RolloutService rollouts;
+
+    @Autowired
+    com.voltpilot.api.repo.DeviceRepository deviceRepo;
+
+    @Autowired
+    com.voltpilot.api.repo.UpdateStatusRepository updateStatusRepo;
 
     private final ObjectMapper json = new ObjectMapper();
 
@@ -629,6 +636,170 @@ class OtaRolloutApiTest {
         assertThat(lightLinie.get("upToDate").asInt()).isEqualTo(1);
         assertThat(page.get("lines").get(0).get("boxArt").asText()).isEqualTo("docker");
         assertThat(page.get("kpi").get("newestRelease").asText()).isEqualTo("edge-light-2026.10.1");
+    }
+
+    /**
+     * Geräte &amp; Updates G1/G2: die Linien-Sicht, die drei Fakten mit EIGENEN
+     * Zeitpunkten über den ECHTEN Ingest (UpdateStatusListener), die Eignung je
+     * Box und Release, und eine zurückgezogene Anfrage hält ihren Lauf nicht mehr
+     * offen.
+     */
+    @Test
+    @Order(7)
+    void linienFaktenEignungUndZurueckgezogen() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        UUID a = claim(customer, TestKennung.box("ota-ga-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID b = claim(customer, TestKennung.box("ota-gb-" + UUID.randomUUID().toString().substring(0, 8)));
+        UpdateStatusListener ingest = new UpdateStatusListener("tcp://localhost:1883", "", "",
+                deviceRepo, updateStatusRepo);
+        herzschlag(ingest, a, "edge-2026.10.0-3bf8c038a1b2", null, null, "idle");
+        herzschlag(ingest, b, "edge-2026.10.0-3bf8c038a1b2", null, null, "idle");
+        registerRelease(admin, "edge-2026.10.2", 42,
+                MANIFEST.replace("edge-2026.08.0", "edge-2026.10.2").replace(":12", ":42"), SIGNATURE);
+
+        // ── Eignung (G1): bereit; die Edge-Light-Box zählt nur als andere Linie ─
+        JsonNode eignung = getJson(admin, "/api/v1/admin/edge-updates/eignung?releaseSeq=42");
+        assertThat(eignung.get("boxArt").asText()).isEqualTo("docker");
+        assertThat(eignungOf(eignung, a).get("gruppe").asText()).isEqualTo("bereit");
+        assertThat(eignung.get("andereLinie").asInt()).as("die Edge-Light-Box aus Fall 6").isPositive();
+        assertThat(rest.exchange(url("/api/v1/admin/edge-updates/eignung?releaseSeq=11"),
+                HttpMethod.GET, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .as("nicht signiert").isEqualTo(HttpStatus.CONFLICT);
+        assertThat(rest.exchange(url("/api/v1/admin/edge-updates/eignung?releaseSeq=42"),
+                HttpMethod.GET, new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        // ── Angefragt (Portal) ─────────────────────────────────────────────
+        ResponseEntity<Map<String, Object>> lauf = post("/api/v1/admin/rollouts", admin,
+                Map.of("releaseSeq", 42, "devices", List.of(a.toString(), b.toString())));
+        assertThat(lauf.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        UUID rolloutId = UUID.fromString((String) lauf.getBody().get("rolloutId"));
+        JsonNode fakten = rowOf(readModel(admin), a).get("fakten");
+        assertThat(fakten.get("angefragt").get("release").asText()).isEqualTo("edge-2026.10.2");
+        assertThat(fakten.get("angefragt").get("am").isNull()).isFalse();
+        assertThat(fakten.get("angefragt").get("von").asText()).isNotBlank();
+        assertThat(fakten.get("angenommen").get("stand").asText()).isEqualTo("offen");
+        assertThat(fakten.get("bestaetigt").get("stand").asText()).isEqualTo("offen");
+
+        // ── Angenommen (Box) mit Zeitpunkt, dann der Zwischenschritt ───────
+        herzschlag(ingest, a, "edge-2026.10.0-3bf8c038a1b2", "edge-2026.10.2", "ok", "downloading");
+        fakten = rowOf(readModel(admin), a).get("fakten");
+        assertThat(fakten.get("angenommen").get("stand").asText()).isEqualTo("ja");
+        assertThat(fakten.get("angenommen").get("am").isNull()).as("Serverzeit des Wechsels").isFalse();
+        assertThat(fakten.get("bestaetigt").get("stand").asText()).isEqualTo("laeuft");
+        assertThat(fakten.get("bestaetigt").get("schritt").asText()).isEqualTo("laedt");
+
+        // ── Bestätigt (Box) mit dem Zeitpunkt des Versionswechsels ─────────
+        herzschlag(ingest, a, "edge-2026.10.2-9b37439a02c1", "edge-2026.10.2", "ok", "succeeded");
+        JsonNode page = readModel(admin);
+        JsonNode zeileA = rowOf(page, a);
+        assertThat(zeileA.get("fakten").get("bestaetigt").get("stand").asText()).isEqualTo("ja");
+        assertThat(zeileA.get("fakten").get("bestaetigt").get("am").isNull()).isFalse();
+        assertThat(zeileA.get("istSeit").isNull()).isFalse();
+        assertThat(zeileA.get("istRelease").asText()).isEqualTo("edge-2026.10.2");
+        assertThat(zeileA.get("linie").asText()).isEqualTo("docker");
+        assertThat(zeileA.get("stand").asText()).isEqualTo("aktuell");
+        assertThat(zeileA.get("releasesDahinter").asInt()).isZero();
+        assertThat(zeileA.get("lastSeenAt").isNull()).isFalse();
+        JsonNode zeileB = rowOf(page, b);
+        assertThat(zeileB.get("stand").asText()).as("angefragt, noch nicht angenommen").isEqualTo("laeuft");
+        assertThat(zeileB.get("releasesDahinter").asInt()).isEqualTo(1);
+        assertThat(zeileB.get("istSeit").isNull()).as("die erste Meldung sagt nicht, seit wann").isTrue();
+
+        // ── Linien-Sicht (G1) ──────────────────────────────────────────────
+        JsonNode docker = linie(page, "docker");
+        assertThat(docker.get("newestRelease").asText()).isEqualTo("edge-2026.10.2");
+        assertThat(docker.get("releases").asInt()).isGreaterThanOrEqualTo(2);
+        assertThat(docker.get("stand").get("aktuell").asInt()).isPositive();
+        assertThat(docker.get("stand").get("laeuft").asInt()).isPositive();
+        assertThat(versionOf(docker, "edge-2026.10.2").get("releaseSeq").asLong()).isEqualTo(42);
+        assertThat(versionOf(docker, "edge-2026.10.2").get("devices").toString()).contains(a.toString());
+        assertThat(versionOf(docker, "edge-2026.10.0").get("devices").toString()).contains(b.toString());
+
+        // ── Eignung danach: A ist aktuell und kann kein älteres Release ─────
+        assertThat(eignungOf(getJson(admin, "/api/v1/admin/edge-updates/eignung?releaseSeq=42"), a)
+                .get("gruppe").asText()).isEqualTo("aktuell");
+        JsonNode aelter = eignungOf(getJson(admin, "/api/v1/admin/edge-updates/eignung?releaseSeq=40"), a);
+        assertThat(aelter.get("gruppe").asText()).isEqualTo("kann_nicht");
+        assertThat(aelter.get("grund").asText()).contains("Läuft schon edge-2026.10.2");
+
+        // ── Zurückgezogen: der Lauf hält nicht mehr auf B und wird mit A fertig ─
+        assertThat(post("/api/v1/admin/devices/" + b + "/update-target/revert", admin, Map.of())
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        rollouts.reconcile(Instant.now());
+        page = readModel(admin);
+        JsonNode r = rolloutOf(page, rolloutId);
+        assertThat(r.get("state").asText()).isEqualTo("done");
+        assertThat(rolloutDeviceState(r, b)).isEqualTo("zurueckgezogen");
+        assertThat(rolloutDeviceState(r, a)).isEqualTo("bestaetigt");
+        assertThat(rowOf(page, b).get("fakten").isNull()).as("keine Anfrage mehr").isTrue();
+    }
+
+    /** Ein Status-Herzschlag mit Update-Block durch den ECHTEN Ingest. */
+    private void herzschlag(UpdateStatusListener ingest, UUID deviceId, String laeuft, String ziel,
+            String urteil, String zustand) {
+        String update = "{\"backend\":\"compose\",\"current\":\"" + laeuft + "\",\"state\":\""
+                + zustand + "\"" + (ziel == null ? "" : ",\"target\":\"" + ziel + "\"")
+                + (urteil == null ? "" : ",\"target_verdict\":\"" + urteil + "\"") + "}";
+        String payload = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT_A
+                + "\",\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + deviceId
+                + "\",\"online\":true,\"ts\":\"" + Instant.now() + "\",\"version\":\"" + laeuft
+                + "\",\"update\":" + update + "}";
+        ingest.handle("ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + deviceId + "/status",
+                payload.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private JsonNode getJson(String token, String path) throws Exception {
+        ResponseEntity<String> res = rest.exchange(url(path), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), String.class);
+        assertThat(res.getStatusCode()).as(path).isEqualTo(HttpStatus.OK);
+        return json.readTree(res.getBody());
+    }
+
+    private static JsonNode rowOf(JsonNode page, UUID deviceId) {
+        for (JsonNode row : page.get("fleet")) {
+            if (deviceId.toString().equals(row.get("deviceId").asText())) {
+                return row;
+            }
+        }
+        throw new AssertionError("Gerät " + deviceId + " fehlt in der Flotte");
+    }
+
+    private static JsonNode eignungOf(JsonNode eignung, UUID deviceId) {
+        for (JsonNode box : eignung.get("boxen")) {
+            if (deviceId.toString().equals(box.get("deviceId").asText())) {
+                return box;
+            }
+        }
+        throw new AssertionError("Gerät " + deviceId + " fehlt in der Eignung");
+    }
+
+    private static JsonNode versionOf(JsonNode linie, String version) {
+        for (JsonNode v : linie.get("versions")) {
+            if (version.equals(v.get("version").asText())) {
+                return v;
+            }
+        }
+        throw new AssertionError("Version " + version + " fehlt in der Leiter");
+    }
+
+    private static JsonNode rolloutOf(JsonNode page, UUID rolloutId) {
+        for (JsonNode r : page.get("rollouts")) {
+            if (rolloutId.toString().equals(r.get("id").asText())) {
+                return r;
+            }
+        }
+        throw new AssertionError("Lauf " + rolloutId + " fehlt");
+    }
+
+    private static String rolloutDeviceState(JsonNode rollout, UUID deviceId) {
+        for (JsonNode d : rollout.get("devices")) {
+            if (deviceId.toString().equals(d.get("deviceId").asText())) {
+                return d.get("state").asText();
+            }
+        }
+        throw new AssertionError("Gerät " + deviceId + " fehlt im Lauf");
     }
 
     private static Map<String, Object> kundenStand(List<Map<String, Object>> stande, UUID deviceId) {
