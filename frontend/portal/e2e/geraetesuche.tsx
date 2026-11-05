@@ -69,7 +69,14 @@ const wechselrichter = {
  * Heizstab am Shelly Pro 3 (Vorlage, Schreibfähigkeit, noch nicht von der Box als Quelle gemeldet). Der Aufbau
  * muss zwei Geräte zeigen: den Deye und den Heizstab als eigene Zeile.
  */
-const heizstabFall = frage.get('heizstab') === '1';
+const heizstabFall = frage.get('heizstab') === '1' || frage.get('heizstab') === '2';
+/**
+ * `&heizstab=2`: derselbe Heizstab NACH der Erstbindung (Live-Fall „Zuhause", 05.11.2026): die Box meldet seine
+ * Quelle `set:0,1,2`, die Komponente trägt den Pin, und der Pro 3 misst nicht - die Topologie kennt ihn mit
+ * `never`. Der Aufbau darf ihn weder als „Neues Gerät gefunden" ein zweites Mal anbieten noch auf Daten warten lassen.
+ */
+const heizstabGebunden = frage.get('heizstab') === '2';
+const STAB_PIN = 'src-7q7pdrwh';
 const zuhause = (() => {
   const basis = { control: false, capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }] }, guards: null, syncStatus: 'in_sync', observed: null, edgeSourceId: null };
   const netz = { ...basis, id: 'e-netz', entityType: 'grid-meter', typeLabel: 'Netzanschluss', role: 'grid-meter', label: null, deviceId: GS_BOX_ID, sourceKind: 'composed' };
@@ -78,7 +85,12 @@ const zuhause = (() => {
   const heizstab = {
     id: 'e-hz', entityType: 'heating-rod', typeLabel: 'Heizstab', role: 'consumer', label: 'Heizstab', control: true, deviceId: null,
     capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }], actuate: [{ command: 'on_off' }, { command: 'setpoint_kw', min: 0, max: 6 }, { command: 'limit_kw', max: 6 }] },
-    guards: { limits: { max_consumption_kw: 6 }, failsafe: { behavior: 'off' } }, syncStatus: 'pending', observed: null, edgeSourceId: null, sourceKind: 'builtin',
+    guards: { limits: { max_consumption_kw: 6 }, failsafe: { behavior: 'off' } }, syncStatus: heizstabGebunden ? 'in_sync' : 'pending', observed: null,
+    edgeSourceId: heizstabGebunden ? STAB_PIN : null, sourceKind: 'builtin',
+  };
+  const stabQuelle = {
+    id: STAB_PIN, kind: 'source', role: 'consumer', brand: 'shelly', model: 'shelly_http', label: 'Heizstab',
+    reportedAt: new Date(jetzt - 20_000).toISOString(), adoptedEntityId: heizstabGebunden ? 'e-hz' : null,
   };
   const gemeldet = {
     id: 'inverter', kind: 'inverter', role: null, brand: 'deye', model: 'sun-29.9k-sg01hp3', label: 'SUN-29.9K-SG01HP3-EU',
@@ -87,18 +99,21 @@ const zuhause = (() => {
   const zeile = {
     id: 'e-hz', role: 'consumer', entityType: 'heating-rod', label: 'Heizstab', brand: 'shelly', model: 'shelly_http', family: 'shelly_http',
     communication: 'shelly_http', connection: { ip: '192.168.178.43', port: 80, channels: [0, 1, 2], output_kw: [2, 2, 2], stages: [1, 2, 3], anschluss: 'stern_mit_n' },
-    sourceKind: 'builtin', templateRef: 'builtin:shelly:shelly_http', templateVersion: 1, definitionVersion: 1, edgeSourceId: null, syncStatus: 'pending',
+    sourceKind: 'builtin', templateRef: 'builtin:shelly:shelly_http', templateVersion: 1, definitionVersion: 1,
+    edgeSourceId: heizstabGebunden ? STAB_PIN : null, syncStatus: heizstabGebunden ? 'in_sync' : 'pending',
   };
   return {
     entities: [netz, haus, deye, heizstab] as unknown as SiteEntity[],
-    localSetup: [gemeldet] as unknown as SiteEntities['localSetup'],
+    localSetup: (heizstabGebunden ? [gemeldet, stabQuelle] : [gemeldet]) as unknown as SiteEntities['localSetup'],
     komponenten: [zeile],
   };
 })();
 const topology = {
   schemaVersion: '1.0',
   entities: ohneGeraete ? [] : [{ id: 'e-wr', entityType: 'battery-hybrid', typeLabel: 'Wechselrichter', label: 'Wechselrichter',
-    category: 'battery', health: 'ok', capabilities: [] }],
+    category: 'battery', health: 'ok', capabilities: [] },
+  ...(heizstabGebunden ? [{ id: 'e-hz', entityType: 'heating-rod', typeLabel: 'Heizstab', label: 'Heizstab', category: 'consumer',
+    health: 'never', capabilities: [] }] : [])],
   topology: { schema_version: '1.0', nodes: [] },
 } as unknown as SiteTopology;
 

@@ -235,6 +235,16 @@ for (const breite of BREITEN) {
       const body = await gesendet(page, 'createComponent');
       expect(body?.consumerType).toBe('heating-rod');
       expect(body?.connection).toMatchObject({ channels: [0, 1, 2], output_kw: [2, 2, 2], stages: [1, 2, 3], anschluss: 'stern_mit_n', rotation: 'daily' });
+      // Nach der Übernahme (Live-Fall „Zuhause“, 05.11.2026): zurück zur Liste, keine offene Frage, kein Fusstext,
+      // der der Übernahme zu widersprechen scheint - und das Banner nennt das Wort der Steuerung.
+      const suche = modal(page);
+      await expect(suche.getByText(/„Heizstab“ ist angelegt\./)).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Was schaltet der Schalter?' })).toHaveCount(0);
+      await expect(page.getByText(/Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht/)).toHaveCount(0);
+      await expect(page.getByText(/Mit Sonnenstrom/)).toBeVisible();
+      await expect(page.getByText(/Solar-Überschuss/)).toHaveCount(0);
+      await expect(suche.getByRole('region', { name: 'Übernommen' }).getByText('Heizstab')).toBeVisible();
+      await pruefeUndFotografiere(page, info, breite, 'hz-uebernommen', true);
       expect(fehler).toEqual([]);
     });
 

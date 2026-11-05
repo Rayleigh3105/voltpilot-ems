@@ -214,6 +214,14 @@ describe('Gerätesuche · Übernehmen', () => {
     expect(istUebernommen(gsShelly, u)).toBe(true);
     expect(istUebernommen(gsGoe, new Set([gsGoe.schluessel]))).toBe(true);
   });
+
+  it('„Alle Ausgänge zusammen“ (ein Heizstab) nimmt jeden Ausgang mit: keiner bleibt offen', () => {
+    // Der Fund steht unter seinem Schlüssel, nicht jeder Ausgang unter `#k` - sonst bliebe der Dialog nach der
+    // Übernahme auf „Was schaltet der Schalter?“ stehen (Live-Fall „Zuhause“, 05.11.2026).
+    const u = new Set([gsShelly.schluessel]);
+    expect(offeneAusgaenge(gsShelly, u)).toEqual([]);
+    expect(istUebernommen(gsShelly, u)).toBe(true);
+  });
 });
 
 describe('Gerätesuche · Ergebnis', () => {

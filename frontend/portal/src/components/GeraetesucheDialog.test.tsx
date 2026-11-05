@@ -315,6 +315,31 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
     expect(screen.queryByRole('button', { name: 'Shelly Pro 3 übernehmen' })).toBeNull();
   });
 
+  // Live-Fall „Zuhause“, 05.11.2026: nach der Übernahme stand der Dialog weiter auf „Was schaltet der Schalter?“,
+  // mit dem Fusstext „Einen einzelnen Ausgang … übernimmt VoltPilot nicht“ - als widerspräche er der Übernahme, die
+  // gerade geschehen war. Der Fund gehört jetzt dem Heizstab (alle Ausgänge): zurück zur Liste, keine offene Frage.
+  it('Heizstab V1: nach „Alle Ausgänge zusammen“ geht es zur Liste zurück - keine offene Frage, kein widersprechender Fusstext', async () => {
+    starten(F.fertig);
+    const { props, r } = rendere();
+    fireEvent.click(await screen.findByRole('button', { name: 'Shelly Pro 3 übernehmen' }));
+    expect(await screen.findByRole('heading', { name: 'Was schaltet der Schalter?' })).toBeInTheDocument();
+    expect(screen.getByText(/Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht/)).toBeInTheDocument();
+
+    r.rerender(
+      <GeraetesucheDialog
+        {...props}
+        uebernommen={new Map([[gsShelly.schluessel, 'Heizstab']])}
+        zuletzt={{ titel: 'Heizstab', n: 1 }}
+      />,
+    );
+
+    expect(await screen.findByText(/„Heizstab“ ist angelegt\./)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Was schaltet der Schalter?' })).toBeNull();
+    expect(screen.queryByText(/Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht/)).toBeNull();
+    const uebernommen = screen.getByRole('region', { name: 'Übernommen' });
+    expect(within(uebernommen).getByText('Heizstab')).toBeInTheDocument();
+  });
+
   it('Heizstab V1: ist ein Ausgang schon einzeln übernommen, gibt es „Alle Ausgänge zusammen“ nicht mehr', async () => {
     starten(F.fertig);
     rendere({ uebernommen: new Map([[`${gsShelly.schluessel}#1`, 'Pumpe']]) });

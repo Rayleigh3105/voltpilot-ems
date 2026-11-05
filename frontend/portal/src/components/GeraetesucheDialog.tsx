@@ -1231,13 +1231,24 @@ function AusgangWahl({
   return (
     <div className="vp-gs-wahlseite" data-testid="gs-ausgang">
       <AusDerSuche titel={fundTitel(fund)} zeile={[fundAdresse(fund), artText(fund)].filter(Boolean).join(' · ')} fund={fund} />
-      <header className="vp-gs-kopf">
-        <h3 ref={titelRef} tabIndex={-1}>Was schaltet der Schalter?</h3>
-        <p className="vp-gs-unter">
-          Das lässt sich vom Netz aus nicht erkennen. VoltPilot übernimmt einen Schalter als Heizstab:{' '}
-          {n > 1 ? 'ein Gerät über alle Ausgänge, eine Phase je Ausgang.' : 'ein Gerät an diesem Ausgang.'}
-        </p>
-      </header>
+      {alleName ? (
+        // Übernommen: keine offene Frage mehr, sondern der nächste Schritt.
+        <header className="vp-gs-kopf">
+          <h3 ref={titelRef} tabIndex={-1}>{alleName} ist angelegt</h3>
+          <p className="vp-gs-unter">
+            Der Schalter gehört jetzt dem Heizstab. Er heizt automatisch, sobald Sie in der Steuerung „Mit
+            Sonnenstrom“ wählen; von Hand geht es mit „Jetzt heizen“ auf seiner Geräteseite.
+          </p>
+        </header>
+      ) : (
+        <header className="vp-gs-kopf">
+          <h3 ref={titelRef} tabIndex={-1}>Was schaltet der Schalter?</h3>
+          <p className="vp-gs-unter">
+            Das lässt sich vom Netz aus nicht erkennen. VoltPilot übernimmt einen Schalter als Heizstab:{' '}
+            {n > 1 ? 'ein Gerät über alle Ausgänge, eine Phase je Ausgang.' : 'ein Gerät an diesem Ausgang.'}
+          </p>
+        </header>
+      )}
       <ul className="vp-gs-liste">
         <li>
           {alleName ? (
@@ -1274,10 +1285,12 @@ function AusgangWahl({
           </ul>
         </>
       )}
-      <p className="vp-gs-fussnote">
-        Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht. Der Test schaltet nichts; der Heizstab
-        heizt erst, wenn Sie in der Steuerung „Mit Sonnenstrom“ wählen oder „Jetzt heizen“ nutzen.
-      </p>
+      {!alleName && (
+        <p className="vp-gs-fussnote">
+          Einen einzelnen Ausgang als eigenes Gerät übernimmt VoltPilot nicht. Der Test schaltet nichts; der Heizstab
+          heizt erst, wenn Sie in der Steuerung „Mit Sonnenstrom“ wählen oder „Jetzt heizen“ nutzen.
+        </p>
+      )}
     </div>
   );
 }
