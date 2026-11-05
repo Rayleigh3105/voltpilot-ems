@@ -207,3 +207,31 @@ test('Dialoge am Telefon: Blatt von unten in Inhaltshöhe, Hauptknopf über „A
   expect(rechner.zentriert).toBe(true);
   expect(rechner.k.find((x) => x.text === 'Abbrechen')!.left).toBeLessThan(rechner.k.find((x) => x.text !== 'Abbrechen')!.left);
 });
+
+test('Aufbau am Telefon: Geschwister stehen bündig, Tiefe zeigen Linien am Zeilenrand statt Einzug', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${HILFE}?state=single#/anlage/help-site/modell`);
+  const geraete = page.locator('.vp-auf-t-zeile.is-geraet');
+  await expect(geraete.first()).toBeVisible();
+  const m = await page.evaluate(() => {
+    const links = (z: Element) => z.querySelector('.vp-auf-sym')!.getBoundingClientRect().left;
+    const zeilen = [...document.querySelectorAll('.vp-auf-t-zeile.is-geraet')];
+    const schiene = (z: Element) => parseFloat(getComputedStyle(z, '::before').width);
+    const box = document.querySelector('.vp-auf-t-zeile.is-box')!;
+    return {
+      symbole: zeilen.map(links),
+      geraetSchiene: zeilen.map(schiene),
+      boxSchiene: schiene(box),
+      name: zeilen.map((z) => (z.querySelector('.vp-auf-t-titel') as HTMLElement).innerText),
+      gebrochen: zeilen.map((z) => { const t = z.querySelector('.vp-auf-t-titel .vp-auf-t-kuerze') as HTMLElement; return t.scrollWidth > t.clientWidth + 1; }),
+    };
+  });
+  expect(m.symbole.length).toBeGreaterThan(1);
+  expect(new Set(m.symbole.map((x) => Math.round(x))).size, `Symbole der Geräte stehen versetzt: ${m.symbole.join(', ')}`).toBe(1);
+  // Die Box liegt eine Ebene unter der Anlage (eine Linie), ihre Geräte eine tiefer (zwei).
+  expect(m.boxSchiene).toBeGreaterThan(0);
+  for (const s of m.geraetSchiene) expect(s).toBeGreaterThan(m.boxSchiene);
+  // Der Name behält seine Breite: kein Wort läuft über den Rand (der erste Einzug-Versuch ließ „Speicher Scheune" brechen).
+  for (const g of m.gebrochen) expect(g).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
