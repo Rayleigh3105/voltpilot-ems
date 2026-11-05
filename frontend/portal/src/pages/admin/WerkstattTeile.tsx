@@ -58,10 +58,14 @@ export function BeschriftungKarte({ edgeRef }: { edgeRef: string }) {
           dem Telefon öffnet, landet nach der Anmeldung dort, wo er eine Box verbindet, mit dieser Referenz im Feld.
         </p>
         <Befehl text={b.link} was="Direktlink" />
-        <p className="vp-muted" style={{ margin: 0 }}>
-          QR-Code Fassung {q.fassung}, {q.groesse} × {q.groesse} Module, Fehlerkorrektur {q.korrektur}. Die Druckdatei für
-          das Gehäuse baut im Repository <code>edge-light/gehaeuse/glinet-gl-mt300n-v2/bauen.sh --referenz {edgeRef}</code>.
-        </p>
+        {/* QR-Daten und Bau-Befehl braucht nur, wer das Gehäuse selbst baut: aufklappbar statt im Fließtext. */}
+        <details className="vp-ws-technik">
+          <summary>Technische Angaben</summary>
+          <p className="vp-muted" style={{ margin: '4px 0 0' }}>
+            QR-Code Fassung {q.fassung}, {q.groesse} × {q.groesse} Module, Fehlerkorrektur {q.korrektur}. Die Druckdatei für
+            das Gehäuse baut im Repository <code>edge-light/gehaeuse/glinet-gl-mt300n-v2/bauen.sh --referenz {edgeRef}</code>.
+          </p>
+        </details>
         <div className="vp-ws-werkzeug">
           <a className="vp-btn vp-btn--outline vp-btn--sm" href={datei} download={`beschriftung-${edgeRef}.svg`}>
             Vorlage als SVG (echte Größe)

@@ -30,6 +30,7 @@ import {
   type EinrichtungZeile,
 } from '../../werkstattEinrichtung';
 import { PhasenListe } from './WerkstattBank';
+import { schrittTitel } from '../../werkstattLauf';
 import { AbnahmeAnzeige, BeschriftungKarte, DirektlinkQr, STAND_BADGE } from './WerkstattTeile';
 
 type Bindung = { art: 'laedt' } | { art: 'keine' } | { art: 'fehler'; text: string } | { art: 'da'; box: FernwartungBox; uebersicht: FernwartungUebersicht | null };
@@ -134,7 +135,11 @@ export function WerkstattBoxSeite({
         <p className="vp-alert vp-alert-warn">Für die Docker-Box gibt es noch keinen Ablauf im Dienst und keine Abnahme (kommt mit der nächsten Stufe).</p>
       )}
       {zeile.lauf?.grund && zeile.stand === 'problem' && (
-        <p className="vp-alert vp-alert-warn" data-testid="ws-grund">{zeile.lauf.grund}</p>
+        <div className="vp-alert vp-alert-warn" data-testid="ws-grund">
+          {/* Erst der Schritt in Worten, dann der Grund des Dienstes als Beleg für die Technik. */}
+          <strong>{zeile.lauf.schritt ? `Stehen geblieben bei „${schrittTitel(zeile.lauf.schritt)}“` : 'Der Lauf ist stehen geblieben'}</strong>
+          <div className="vp-ws-technik-grund">Grund des Dienstes: <code>{zeile.lauf.grund}</code></div>
+        </div>
       )}
 
       {kunde.art === 'eingerichtet' && (

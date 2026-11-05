@@ -719,6 +719,9 @@ describe('Werkstatt: Nochmal versuchen und zur Seite legen', () => {
     expect(liste).toHaveTextContent('Die Mango war während des Laufs weg.');
     expect(liste).toHaveTextContent('box_weg');
     expect(liste).toHaveTextContent('i/o timeout');
+    // Klartext vorn: der Schritt mit seinem Namen; die Rohwörter stehen eingeklappt „für die Technik“.
+    expect(liste).toHaveTextContent('Beim Schritt „OpenWrt aufspielen“');
+    expect(within(liste).getByText('box_weg').closest('details')).not.toHaveAttribute('open');
   });
 
   it('eine API vor der Lauf-Seite (kein zurSeite): keine Liste; scheitert das Speichern, liegt die Box trotzdem weg', async () => {

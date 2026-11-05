@@ -852,3 +852,10 @@
   /* erledigte Phasen eingeklappt: ✓ und Zahl reichen */
   .vp-wsl-phase.ok > .vp-wsl-schritte { display: none; }
 }
+
+/* UI-Runde Admin: Klartext vorn, Rohwörter des Dienstes aufklappbar „für die Technik“. */
+.vp-ws-technik summary { cursor: pointer; font-size: 0.8125rem; color: var(--vp-text-muted); width: fit-content; border-radius: var(--vp-radius-sm); }
+.vp-ws-technik summary:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
+.vp-ws-technik small { display: block; margin-top: 2px; }
+.vp-ws-technik-grund { margin-top: 4px; font-size: 0.875rem; overflow-wrap: anywhere; }
+.vp-ws-technik-grund code { font-size: 0.8125rem; }

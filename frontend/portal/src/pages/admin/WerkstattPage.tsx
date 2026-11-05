@@ -33,7 +33,7 @@ import {
 } from '../../werkstattBank';
 import { AdminPageHead } from './AdminPageHead';
 import { WerkstattBank } from './WerkstattBank';
-import { neueresRelease } from '../../werkstattLauf';
+import { neueresRelease, schrittTitel } from '../../werkstattLauf';
 import type { EdgeUpdatesRelease } from '../../adminEdgeUpdates';
 import { WerkstattFreigabeDialog } from './WerkstattFreigabeDialog';
 import { STAND_BADGE } from './WerkstattTeile';
@@ -385,11 +385,18 @@ function ZurSeiteKarte({ liste, onWaehle }: { liste: ZurSeite[]; onWaehle: (ref:
                 <span className="vp-muted">{new Date(z.gelegtAm).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               <strong>{z.loesungTitel ?? 'Ohne Lösung des Dienstes'}</strong>
-              <small>
-                {z.fall && <code>{z.fall}</code>}
-                {z.schritt && <> · Schritt {z.schritt}</>}
-                {z.grund && <> · {z.grund}</>}
-              </small>
+              {/* Klartext vorn (Schritt mit seinem Namen), die Rohwörter des Dienstes aufklappbar für die Technik. */}
+              {z.schritt && <small>Beim Schritt „{schrittTitel(z.schritt)}“</small>}
+              {(z.fall || z.grund) && (
+                <details className="vp-ws-technik">
+                  <summary>Für die Technik</summary>
+                  <small>
+                    {z.fall && <code>{z.fall}</code>}
+                    {z.fall && z.grund && ' · '}
+                    {z.grund}
+                  </small>
+                </details>
+              )}
             </li>
           ))}
         </ul>
