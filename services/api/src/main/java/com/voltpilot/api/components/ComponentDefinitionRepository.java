@@ -156,10 +156,10 @@ public class ComponentDefinitionRepository {
             String role, String entityType, String label, BigDecimal capacityKwp,
             String brand, String model, String family, String communication,
             String connectionJson, String sourceKind, String templateRef,
-            Integer templateVersion, String capabilitiesJson, String guardConfigJson) {
+            Integer templateVersion, boolean control, String capabilitiesJson, String guardConfigJson) {
         List<Applied> rows = jdbc.query(
                 "UPDATE measurement_point SET role = ?, entity_type = COALESCE(?, entity_type), "
-                        + "control = CASE WHEN ? = 'battery-hybrid' THEN control ELSE false END, "
+                        + "control = CASE WHEN ? = 'battery-hybrid' THEN control ELSE ? END, "
                         + "label = NULLIF(?::text, ''), capacity_kwp = ?, brand = ?, model = ?, "
                         + "family = ?, communication = ?, connection_json = ?::jsonb, "
                         + "source_kind = ?, template_ref = ?, template_version = ?, "
@@ -169,7 +169,7 @@ public class ComponentDefinitionRepository {
                         + "WHERE id = ? AND site_id = ? AND definition_version = ? "
                         + "RETURNING definition_version, label",
                 (rs, n) -> new Applied(rs.getInt(1), rs.getString(2)),
-                role, entityType, entityType, label, capacityKwp, brand, model, family, communication,
+                role, entityType, entityType, control, label, capacityKwp, brand, model, family, communication,
                 connectionJson, sourceKind, templateRef, templateVersion, capabilitiesJson,
                 guardConfigJson, entityId, siteId, expectedRevision);
         return rows.isEmpty() ? null : rows.get(0);

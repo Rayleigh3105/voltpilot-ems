@@ -455,27 +455,33 @@ public class ComponentService {
             einstellungen.fehlgeschlagen(entityId, template.communication(), existing.connectionJson(),
                     connJson, e);
         }
+        // Ein steuerbares Gerät bleibt beim Bearbeiten, was es ist: Typ, Schreibweg (control +
+        // actuate) und Schutzgrenzen gehören zusammen und ändern sich nur, wenn die Bearbeitung sie
+        // selbst neu bestimmt (Heizstab: aus der Ausgangsmenge; echter Typwechsel: Anlege-Vorgabe).
+        String editType = entityTypeForEdit(role, template, existing);
+        String editCapabilities = heizstabGeraet ? heizstab.capabilities(desired)
+                : capabilitiesForEdit(editType, role, existing);
+        boolean capabilitiesRetained = editCapabilities == null;
+        boolean controlAfter = heizstabGeraet || (capabilitiesRetained && existing.control());
+        String editGuards = heizstabGeraet ? heizstab.guards(desired)
+                : capabilitiesRetained && existing.control() ? null
+                        : ComponentDefaults.guards(mapper, role, req.capacityKwp());
         ComponentDefinitionRepository.Applied applied = definitions.applyEditDefinition(siteId,
-                entityId, req.expectedRevision(), dbRole, entityTypeFor(role, template),
+                entityId, req.expectedRevision(), dbRole, editType,
                 normalizeLabel(req.label()), capacity, template.brand(), template.model(),
                 template.family(), template.communication(), connJson,
                 SOURCE_KIND_CERTIFIED.equals(template.kind()) ? SOURCE_KIND_CERTIFIED
                         : SOURCE_KIND_BUILTIN,
-                template.templateRef(), template.version(),
+                template.templateRef(), template.version(), controlAfter,
                 // Heizstab V1: Fähigkeiten und Schutzgrenzen folgen der Ausgangsmenge (oberste Stufe
                 // als Obergrenze von Sollwert, Grenze und Klemme). Der allgemeine Bearbeitungs-Default
                 // („nur messen", Failsafe measure-only) würde dem Stab Schreibweg und Klemme nehmen.
-                heizstabGeraet ? heizstab.capabilities(desired) : capabilitiesForEdit(role, template, existing),
-                heizstabGeraet ? heizstab.guards(desired) : ComponentDefaults.guards(mapper, role, req.capacityKwp()));
+                editCapabilities, editGuards);
         if (applied == null) {
             EntityRow current = entityRepo.entityForSite(siteId, entityId);
             if (current == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Komponente nicht gefunden.");
             throw stale(current.definitionVersion());
-        }
-        if (heizstabGeraet) {
-            // Der Bearbeitungsweg setzt `control` für jeden Nicht-Speicher zurück; der Stab bleibt steuerbar.
-            entityRepo.setControl(entityId, true);
         }
         adjustPvCapacity(TenantContext.get(), siteId, existing, role, capacity);
         String note = req.note() == null || req.note().isBlank()
@@ -1054,14 +1060,31 @@ public class ComponentService {
      * trägt) setzt sie neu - dann sind die alten Kanäle Aussagen über ein
      * anderes Gerät.
      */
-    private String capabilitiesForEdit(String role, ComponentTemplateDto template,
-            EntityRow existing) {
-        String targetType = entityTypeFor(role, template);
+    private String capabilitiesForEdit(String targetType, String role, EntityRow existing) {
         String storedType = existing.entityType();
         if (targetType != null && storedType != null && targetType.equals(storedType.trim())) {
             return null;
         }
         return ComponentDefaults.capabilities(mapper, entityTypes, targetType, role);
+    }
+
+    /**
+     * Der Entitätstyp nach dem Bearbeiten. Die Rolle {@code consumer} übersetzt sich beim Anlegen in
+     * {@code generic-load}; ein Verbraucher mit einem genaueren Typ (Heizstab, Wallbox, Pumpe, ...)
+     * behält seinen Typ - sonst wäre jedes Bearbeiten eine stille Umwidmung zum Allerwelts-Verbraucher,
+     * mit allem, was am Typ hängt (Stufenprofil, Schreibweg, Katalog-Vorgaben).
+     */
+    private String entityTypeForEdit(String role, ComponentTemplateDto template, EntityRow existing) {
+        String target = entityTypeFor(role, template);
+        String stored = existing.entityType() == null ? null : existing.entityType().trim();
+        if (ROLE_CONSUMER.equals(role) && ROLE_ENTITY_TYPE.get(ROLE_CONSUMER).equals(target)
+                && stored != null && !stored.isEmpty()) {
+            EntityTypeCatalog.EntityType type = entityTypes == null ? null : entityTypes.find(stored);
+            if (type != null && "consumer".equals(type.category()) && !type.composed()) {
+                return stored;
+            }
+        }
+        return target;
     }
 
     private void requireCompatibleRoleChange(UUID siteId, UUID entityId, String role,
