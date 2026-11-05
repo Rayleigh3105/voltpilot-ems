@@ -235,3 +235,35 @@ test('Aufbau am Telefon: Geschwister stehen bündig, Tiefe zeigen Linien am Zeil
   for (const g of m.gebrochen) expect(g).toBe(false);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
+
+test('Einstellungen auf der Hilfe-Bühne: die Seite steht, E-Mail-Adresse bricht nur hinter dem „@"', async ({ page }) => {
+  const fehler: string[] = [];
+  page.on('pageerror', (e) => fehler.push(e.message));
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${HILFE}?state=single#/einstellungen`);
+  await expect(page.getByRole('heading', { name: 'Einstellungen', level: 1 })).toBeVisible();
+  await expect(page.getByText('So erreichen wir Sie')).toBeVisible();
+  const wert = page.locator('.vp-einst-wert', { hasText: '@' });
+  await expect(wert).toBeVisible();
+  const bruch = await wert.evaluate((el) => {
+    const r = document.createRange();
+    const tops: number[] = [];
+    // Alle Textknoten des Werts (Adresse = Text, „@", Text): Zeichen für Zeichen die Zeile messen.
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let n: Node | null;
+    let voll = '';
+    while ((n = walker.nextNode())) {
+      for (let i = 0; i < n.textContent!.length; i++) {
+        r.setStart(n, i); r.setEnd(n, i + 1);
+        tops.push(Math.round(r.getBoundingClientRect().top));
+        voll += n.textContent![i];
+      }
+    }
+    const umbrueche = tops.map((t, i) => (i > 0 && t !== tops[i - 1] ? i : -1)).filter((i) => i >= 0);
+    return { voll, umbrueche, at: voll.indexOf('@') };
+  });
+  expect(bruch.voll).toContain('@');
+  // Jeder Zeilenwechsel liegt unmittelbar hinter dem „@" (oder es gibt keinen).
+  for (const i of bruch.umbrueche) expect(i, `Umbruch mitten im Wort bei ${i}: ${bruch.voll}`).toBe(bruch.at + 1);
+  expect(fehler).toEqual([]);
+});
