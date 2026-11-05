@@ -53,6 +53,7 @@ class LaeuferBeendetArchitekturTest {
             entry("VorbehaltMetrik", "liest nur: Kennzahlen des Betriebs"),
             entry("MeasurementConfigStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
                     + " Rueckmeldeweg"),
+            entry("GeraetesucheListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
             entry("PlanResultListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
             entry("SprungprobeBerichtListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
                     + " Rueckmeldeweg"),
@@ -62,6 +63,8 @@ class LaeuferBeendetArchitekturTest {
                     + " für jeden Kundenbereich gleich — keine neue Zeile"),
             entry("ZeilentextAufbewahrungLaeufer", "Aufbewahrung: leert Importzeilen-Texte nach ihrer Frist, für jeden"
                     + " Kundenbereich gleich — keine neue Zeile"),
+            entry("GeraetesucheAufraeumen", "Aufbewahrung: löscht Suchen und Funde nach 30 Tagen (SQL-Funktion), für jeden"
+                    + " Kundenbereich gleich — keine neue Zeile; das Protokoll bleibt"),
             entry("OcppActionService", "schließt abgelaufene OCPP-Aufträge ab und räumt nach Frist (SQL-Funktion);"
                     + " spricht keine Box an"),
             entry("ControlCertificationService", "Schutz: das Freigaberegister geht an jede Box — eine Verkleinerung"
