@@ -2674,11 +2674,17 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 .vp-empty h3 {
   font-size: 1.25rem;
+  /* Titel stehen eng (Token „Kartentitel"): bei der Körper-Zeilenhöhe 1,6 liefen zwei Zeilen am Telefon 32 px
+     auseinander. Balance hält den Umbruch ruhig statt „…nicht / geladen werden". */
+  line-height: var(--vp-leading-snug);
+  text-wrap: balance;
   margin-bottom: var(--vp-space-2);
 }
 .vp-empty p {
   color: var(--vp-text-muted);
   max-width: 440px;
+  line-height: 1.5;
+  text-wrap: pretty;
   margin: 0 auto var(--vp-space-5);
 }
 
@@ -5635,6 +5641,13 @@ button.vp-cl-item.is-off .vp-cl-label {
   cursor: pointer;
 }
 .vp-linkbtn:hover { color: var(--vp-link-hover, #2c5282); }
+/* Ein Link im Satz einer Meldung (`Erneut laden`) bleibt eine Textzeile: die Treffläche wächst unsichtbar (Polster
+   gegen negativen Rand), der Zeilenabstand bleibt der des Satzes. Eine eigene 44-px-Zeile bekäme er nur als eigener Knopf. */
+.vp-alert .vp-linkbtn {
+  font-weight: 700;
+  padding: 12px 4px;
+  margin: -12px -4px;
+}
 
 /* ---------------------------------------------------------------------------
    Steuerungs-Freigabe (Plattform) - das Modell-Register + die Scharfschaltung.

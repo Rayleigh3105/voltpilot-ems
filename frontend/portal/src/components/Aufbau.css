@@ -23,6 +23,7 @@
   min-width: 0;
   --vp-auf-haar: color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
   --vp-auf-einzug: 22px;
+  --vp-auf-schiene: color-mix(in srgb, var(--vp-primary) 60%, var(--vp-surface));
 }
 
 /* --- Kleine Bausteine ------------------------------------------------------- */
@@ -948,8 +949,34 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   .vp-auf-t-auf-platz {
     display: none;
   }
+  /* Geschwister stehen bündig: ein Gerät ohne Aufklappknopf behält dessen Platz, sonst läge sein Symbol links von dem
+     des aufklappbaren Geräts darüber (und links vom Symbol der Box, die es enthält). */
+  .vp-auf-t-zeile.is-geraet > .vp-auf-t-name > .vp-auf-t-auf-platz {
+    display: block;
+  }
   .vp-auf-t-kopf {
     display: none;
+  }
+  /* Tiefe ohne Einzug: der Name braucht am Telefon jeden Pixel (ein Einzug ließ „Speicher Scheune“ mitten im Wort
+     brechen). Statt dessen laufen am linken Zeilenrand so viele feine Linien wie die Zeile Ebenen tief liegt - sie
+     stehen im vorhandenen Polster und verbinden sich über die Zeilengrenzen zu einer Schiene unter der Box. */
+  .vp-auf-t-zeile.is-e1,
+  .vp-auf-t-zeile.is-e2,
+  .vp-auf-t-zeile.is-e3 {
+    position: relative;
+  }
+  .vp-auf-t-zeile.is-e1::before,
+  .vp-auf-t-zeile.is-e2::before,
+  .vp-auf-t-zeile.is-e3::before {
+    content: '';
+    position: absolute;
+    left: 1px;
+    top: -1px;
+    bottom: 0;
+    /* Höchstens zwei Linien: das Polster (8 px) endet vor dem Aufklappknopf, tiefere Ebenen zeigen dieselben zwei. */
+    width: calc(min(var(--ebene, 1), 2) * 4px - 2px);
+    background: repeating-linear-gradient(90deg, var(--vp-auf-schiene) 0 2px, transparent 2px 4px);
+    pointer-events: none;
   }
   /* Der Name behält am Telefon mindestens knapp die Hälfte der Zeile: ein langes Zustandswort („Noch keine
      Rückmeldung", „Wartet auf die ersten Daten") nahm der Namensspalte sonst alles - der Gerätename stand mit

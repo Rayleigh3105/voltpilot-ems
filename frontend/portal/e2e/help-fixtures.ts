@@ -8,6 +8,7 @@ import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { keycloak } from '../src/auth';
 import { derive } from '../src/topology';
+import { zustellwegeFixture } from './zustellwege-fixture';
 import {
   erzeugerBeispiel,
   vorgabeDetailBeispiel,
@@ -359,9 +360,14 @@ export function installHelpFixtures() {
   Object.assign(entitiesApi, { typeCatalog: result({ catalog_version: '1.0', types: definitions.map((d) => ({ type: d.entityType, label: d.typeLabel, category: d.category, controllable: d.control, composed: false, default_failsafe: 'release' })) }) });
   Object.assign(consumersApi, { options: result({ types: [], signals: [], intents: [], hasStorage: true, reportedSources: [] }), list: result([]), status: result([]), overrides: result([]), fulfillment: result([]) });
   const realFetch = window.fetch.bind(window);
+  // `#/einstellungen`: die Benachrichtigungs-Routen sprechen dieselbe Antwort wie die Einstellungs-Bühne
+  // (`zustellwege=voll|leer|unbestaetigt|ohne-telegram`, Standard `voll`; `ruhezeitAktiv=1` meldet eine laufende Ruhezeit).
+  const zustellwege = zustellwegeFixture({ fall: params.get('zustellwege') ?? 'voll', ruhezeitAktiv: params.get('ruhezeitAktiv') === '1' });
   window.fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
     if (!url.pathname.startsWith('/api/')) return realFetch(input, init);
+    const einstellung = await zustellwege(input, init);
+    if (einstellung) return einstellung;
     let data: unknown = [];
     if (url.pathname.endsWith('/flow-node-governance')) data = { gatedNodes: [] };
     if (url.pathname.endsWith('/flow-node-status')) data = { nodes: [], reportedAt: NOW };

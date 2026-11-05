@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -117,6 +117,26 @@ function probeFolge(key: string, ergebnis: ProbeErgebnis): FolgeEintrag {
   return ergebnis.erfolgreich
     ? { key, text: 'Testnachricht gesendet.', istFehler: false }
     : { key, text: ergebnis.fehler ?? SCHALT_FEHLER, istFehler: true };
+}
+
+/**
+ * Eine E-Mail-Adresse darf hinter dem „@“ umbrechen. Ohne diesen Wink schneidet `overflow-wrap: anywhere` am Telefon
+ * mitten im Wort („…ahrenberg.exampl / e“). `<wbr>` ändert den Text nicht (kein eigener Knoten um die Teile): Kopieren,
+ * Vorlesen und Textsuche sehen die Adresse ganz.
+ */
+function Adresse({ text }: { text: string }) {
+  const teile = text.split('@');
+  return (
+    <>
+      {teile.map((teil, i) => (
+        <Fragment key={i}>
+          {i > 0 && '@'}
+          {i > 0 && <wbr />}
+          {teil}
+        </Fragment>
+      ))}
+    </>
+  );
 }
 
 function Kachel({ icon, kat }: { icon: IconName; kat: string }) {
@@ -722,7 +742,7 @@ export function EinstellungenPage() {
             icon="file-text"
             kat="navy"
             label="E-Mail"
-            wert={email ? email.ziel : 'Nicht eingerichtet'}
+            wert={email ? <Adresse text={email.ziel} /> : 'Nicht eingerichtet'}
             warn={!!email && !email.bestaetigt}
             sub={email && !email.bestaetigt ? 'Wartet auf Bestätigung' : null}
             onClick={() => oeffne({ art: 'email' })}
@@ -1088,7 +1108,7 @@ function EmailBlatt({
   if (!email.bestaetigt) {
     return (
       <div className="vp-einst-blatt">
-        <p className="vp-note">Noch nicht bestätigt. Bitte öffnen Sie den Link in der Mail an {email.ziel}.</p>
+        <p className="vp-note">Noch nicht bestätigt. Bitte öffnen Sie den Link in der Mail an <Adresse text={email.ziel} />.</p>
         <Button type="button" size="md" variant="outline" disabled={busy} onClick={() => onAnfordern(email.ziel)}>
           Link erneut senden
         </Button>
@@ -1110,7 +1130,7 @@ function EmailBlatt({
   }
   return (
     <div className="vp-einst-blatt">
-      <p className="vp-note">{email.ziel} · Bestätigt</p>
+      <p className="vp-note"><Adresse text={email.ziel} /> · Bestätigt</p>
       <Switch checked={email.aktiv} disabled={busy} onChange={(e) => onAktivSetzen(e.target.checked)} label="Eingeschaltet" />
       <StufenSchalter id="email" wert={stufeAusSchwere(email.abSchwere)} disabled={busy || !email.aktiv} onChange={onStufe} />
       <Button type="button" variant="outline" size="md" disabled={busy} onClick={onProbe}>

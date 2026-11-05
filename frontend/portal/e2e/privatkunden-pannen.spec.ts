@@ -137,3 +137,133 @@ test('die Knopfreihe über der Gerätetabelle überlagert die Zählzeile nie', a
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
 });
+
+test('die Fehlerkarte „Daten konnten nicht geladen werden" setzt Titel eng und Text ruhig', async ({ page }) => {
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 812 });
+    await page.goto(`${HILFE}?state=error#/`);
+    const titel = page.locator('.vp-empty h3', { hasText: 'Daten konnten nicht geladen werden' });
+    await expect(titel).toBeVisible();
+    const mass = await page.evaluate(() => {
+      const zeile = (el: Element) => {
+        const c = getComputedStyle(el);
+        return parseFloat(c.lineHeight) / parseFloat(c.fontSize);
+      };
+      const h3 = document.querySelector('.vp-empty h3') as Element;
+      const p = document.querySelector('.vp-empty p') as Element;
+      return { titel: zeile(h3), text: zeile(p) };
+    });
+    // Körpertext liegt bei 1,6: ein Titel in dieser Höhe läuft über zwei Zeilen 32 px auseinander.
+    expect(mass.titel, `Titel bei ${width} px`).toBeLessThanOrEqual(1.4);
+    expect(mass.text, `Text bei ${width} px`).toBeLessThanOrEqual(1.5);
+  }
+});
+
+test('der Link „Erneut laden" in der Fehlerzeile der Wallbox dehnt seine Zeile nicht auf 44 px', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${HILFE}?state=single#/anlage/help-site/geraet/VP-DEMO-0001/cp-CP-CARPORT`);
+  const meldung = page.locator('.vp-alert', { hasText: 'OCPP-Gerätedaten konnten nicht geladen werden' });
+  await expect(meldung).toBeVisible();
+  const mass = await meldung.evaluate((el) => {
+    const c = getComputedStyle(el);
+    const zeile = parseFloat(c.lineHeight);
+    const polster = parseFloat(c.paddingTop) + parseFloat(c.paddingBottom);
+    return { zeilen: Math.round((el.getBoundingClientRect().height - polster) / zeile * 10) / 10, zeile };
+  });
+  // Zwei Textzeilen (der Link steht in der zweiten), nicht zwei plus eine 44-px-Knopfzeile.
+  expect(mass.zeilen).toBeLessThanOrEqual(2.1);
+  // Die Treffläche des Links bleibt trotzdem fingergroß.
+  const link = await meldung.getByRole('button', { name: 'Erneut laden' }).boundingBox();
+  expect(link?.height ?? 0).toBeGreaterThanOrEqual(44);
+});
+
+test('Dialoge am Telefon: Blatt von unten in Inhaltshöhe, Hauptknopf über „Abbrechen"; am Rechner unverändert', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${HILFE}?state=single#/anlage/help-site/modell?neu=box`);
+  const dialog = page.getByRole('dialog', { name: 'VoltPilot-Box hinzufügen' });
+  await expect(dialog).toBeVisible();
+  await page.waitForTimeout(500); // die Einblendung (translateY) ist durch
+  const m = await dialog.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const body = el.querySelector('.dbody')!;
+    const inhaltEnde = Math.max(...[...body.children].map((c) => c.getBoundingClientRect().bottom));
+    const knoepfe = [...el.querySelectorAll('.dfoot button')].map((b) => ({ text: b.textContent!.trim(), top: b.getBoundingClientRect().top }));
+    return { top: box.top, bottom: box.bottom, vh: innerHeight, luecke: el.querySelector('.dfoot')!.getBoundingClientRect().top - inhaltEnde, knoepfe };
+  });
+  // In Inhaltshöhe, am unteren Rand verankert - kein bildschirmhohes Blatt mit leerem Feld vor dem Fuß.
+  expect(m.top, 'Blatt füllt den Bildschirm').toBeGreaterThan(48);
+  expect(Math.abs(m.bottom - m.vh)).toBeLessThanOrEqual(1);
+  expect(m.luecke, 'toter Raum zwischen Formular und Fußknöpfen').toBeLessThanOrEqual(40);
+  const haupt = m.knoepfe.find((k) => k.text === 'VoltPilot-Box hinzufügen')!;
+  const abbrechen = m.knoepfe.find((k) => k.text === 'Abbrechen')!;
+  expect(haupt.top, 'Hauptknopf steht über „Abbrechen"').toBeLessThan(abbrechen.top);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(100);
+  const rechner = await dialog.evaluate((el) => {
+    const k = [...el.querySelectorAll('.dfoot button')].map((b) => ({ text: b.textContent!.trim(), left: b.getBoundingClientRect().left }));
+    return { zentriert: Math.abs(el.getBoundingClientRect().left + el.getBoundingClientRect().width / 2 - innerWidth / 2) <= 2, k };
+  });
+  expect(rechner.zentriert).toBe(true);
+  expect(rechner.k.find((x) => x.text === 'Abbrechen')!.left).toBeLessThan(rechner.k.find((x) => x.text !== 'Abbrechen')!.left);
+});
+
+test('Aufbau am Telefon: Geschwister stehen bündig, Tiefe zeigen Linien am Zeilenrand statt Einzug', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${HILFE}?state=single#/anlage/help-site/modell`);
+  const geraete = page.locator('.vp-auf-t-zeile.is-geraet');
+  await expect(geraete.first()).toBeVisible();
+  const m = await page.evaluate(() => {
+    const links = (z: Element) => z.querySelector('.vp-auf-sym')!.getBoundingClientRect().left;
+    const zeilen = [...document.querySelectorAll('.vp-auf-t-zeile.is-geraet')];
+    const schiene = (z: Element) => parseFloat(getComputedStyle(z, '::before').width);
+    const box = document.querySelector('.vp-auf-t-zeile.is-box')!;
+    return {
+      symbole: zeilen.map(links),
+      geraetSchiene: zeilen.map(schiene),
+      boxSchiene: schiene(box),
+      name: zeilen.map((z) => (z.querySelector('.vp-auf-t-titel') as HTMLElement).innerText),
+      gebrochen: zeilen.map((z) => { const t = z.querySelector('.vp-auf-t-titel .vp-auf-t-kuerze') as HTMLElement; return t.scrollWidth > t.clientWidth + 1; }),
+    };
+  });
+  expect(m.symbole.length).toBeGreaterThan(1);
+  expect(new Set(m.symbole.map((x) => Math.round(x))).size, `Symbole der Geräte stehen versetzt: ${m.symbole.join(', ')}`).toBe(1);
+  // Die Box liegt eine Ebene unter der Anlage (eine Linie), ihre Geräte eine tiefer (zwei).
+  expect(m.boxSchiene).toBeGreaterThan(0);
+  for (const s of m.geraetSchiene) expect(s).toBeGreaterThan(m.boxSchiene);
+  // Der Name behält seine Breite: kein Wort läuft über den Rand (der erste Einzug-Versuch ließ „Speicher Scheune" brechen).
+  for (const g of m.gebrochen) expect(g).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
+test('Einstellungen auf der Hilfe-Bühne: die Seite steht, E-Mail-Adresse bricht nur hinter dem „@"', async ({ page }) => {
+  const fehler: string[] = [];
+  page.on('pageerror', (e) => fehler.push(e.message));
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${HILFE}?state=single#/einstellungen`);
+  await expect(page.getByRole('heading', { name: 'Einstellungen', level: 1 })).toBeVisible();
+  await expect(page.getByText('So erreichen wir Sie')).toBeVisible();
+  const wert = page.locator('.vp-einst-wert', { hasText: '@' });
+  await expect(wert).toBeVisible();
+  const bruch = await wert.evaluate((el) => {
+    const r = document.createRange();
+    const tops: number[] = [];
+    // Alle Textknoten des Werts (Adresse = Text, „@", Text): Zeichen für Zeichen die Zeile messen.
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let n: Node | null;
+    let voll = '';
+    while ((n = walker.nextNode())) {
+      for (let i = 0; i < n.textContent!.length; i++) {
+        r.setStart(n, i); r.setEnd(n, i + 1);
+        tops.push(Math.round(r.getBoundingClientRect().top));
+        voll += n.textContent![i];
+      }
+    }
+    const umbrueche = tops.map((t, i) => (i > 0 && t !== tops[i - 1] ? i : -1)).filter((i) => i >= 0);
+    return { voll, umbrueche, at: voll.indexOf('@') };
+  });
+  expect(bruch.voll).toContain('@');
+  // Jeder Zeilenwechsel liegt unmittelbar hinter dem „@" (oder es gibt keinen).
+  for (const i of bruch.umbrueche) expect(i, `Umbruch mitten im Wort bei ${i}: ${bruch.voll}`).toBe(bruch.at + 1);
+  expect(fehler).toEqual([]);
+});
