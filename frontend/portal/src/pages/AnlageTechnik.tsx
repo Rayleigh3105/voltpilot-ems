@@ -1410,7 +1410,8 @@ function ProfilDialog({
       open={open}
       title="Profil ändern"
       intro="Wofür wird diese Anlage betrieben?"
-      consequences={profilAenderungsFolgen(wahl)}
+      // Die Folgen erst, wenn wirklich etwas anderes gewählt ist - vorher gibt es keine.
+      consequences={wahl === (site.profil ?? null) ? [] : profilAenderungsFolgen(wahl)}
       confirmLabel={busy ? 'Speichere…' : 'Profil speichern'}
       busy={busy}
       onConfirm={speichern}

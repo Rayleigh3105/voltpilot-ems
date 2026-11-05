@@ -126,10 +126,12 @@ export function TariffFields({
           value={tarifArt}
           onChange={(v) => changeArt(v as TarifArt)}
         />
-        <p className="vp-note" style={{ margin: 0 }}>
-          Für den Wert Ihres Eigenverbrauchs. Bei „Ohne Angabe" zeigen wir den
-          Eigenverbrauch nur in kWh, nie einen erfundenen Euro-Wert.
-        </p>
+        {/* Nur die Wahl, die eine Folge hat, die man nicht sieht, trägt einen Satz. */}
+        {tarifArt === 'ohne' && (
+          <p className="vp-note" style={{ margin: 0 }}>
+            Ohne Angabe zeigen wir den Eigenverbrauch nur in kWh, nie einen erfundenen Euro-Wert.
+          </p>
+        )}
       </div>
 
       {modeChoice && (
@@ -156,8 +158,7 @@ export function TariffFields({
             ))}
           </div>
           <p className="vp-note" style={{ margin: 0 }}>
-            {priceModeExplain(priceMode!, tarifArt)} Es zählt immer nur einer der
-            beiden Wege - nie beide zusammen.
+            {priceModeExplain(priceMode!, tarifArt)}
           </p>
         </fieldset>
       )}

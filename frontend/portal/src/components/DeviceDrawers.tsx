@@ -277,7 +277,7 @@ export function AddDeviceDrawer({
           <p className="vp-note" style={{ marginTop: 0 }}>
             {nachfolgerVon
               ? `Verbinden Sie die neue Box mit ihrer Kennung als Nachfolger von ${nachfolgerVon.name || nachfolgerVon.externalRef}. Die bisherige Box bleibt bis zur zweiten Bestätigung unverändert.`
-              : <>{DEVICE_ID_FIELD.help} Die Box verbindet sich selbst - Sie müssen keine IDs übertragen.</>}
+              : DEVICE_ID_FIELD.help}
           </p>
           <HelpLink article="box-verbinden">Hilfe beim Verbinden</HelpLink>
           <div className="vp-form-stack">

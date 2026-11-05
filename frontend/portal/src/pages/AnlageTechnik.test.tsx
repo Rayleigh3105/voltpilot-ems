@@ -1027,10 +1027,12 @@ describe('Einstellungen · Profil ändern (Anwendungs-Programm Stufe 2)', () => 
 
     expect(zeile('Profil')).toHaveTextContent('Privat');
     fireEvent.click(zeile('Profil'));
-    expect(screen.getByText(/Ihre eingeschalteten Betriebsmodelle bleiben unverändert/)).toBeInTheDocument();
+    // Vor einer Wahl gibt es keine Folgen zu nennen.
+    expect(screen.queryByText(/Ihre eingeschalteten Betriebsmodelle bleiben unverändert/)).toBeNull();
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Profil' }));
     fireEvent.click(await screen.findByRole('option', { name: /Gewerbe/ }));
+    expect(screen.getByText(/Ihre eingeschalteten Betriebsmodelle bleiben unverändert/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Profil speichern' }));
 
     await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'gewerbe'));

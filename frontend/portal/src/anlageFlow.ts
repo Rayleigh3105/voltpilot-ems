@@ -58,7 +58,7 @@ export function normalizeDeviceIdInput(value: string): string {
 export const DEVICE_ID_FIELD = {
   label: 'Kennung',
   placeholder: 'z. B. edge-k7m2xq3',
-  help: 'Die Kennung steht unten auf Ihrer Box, unter dem QR-Code: „EDGE-“ und sieben Zeichen. Groß- oder Kleinschreibung spielt keine Rolle. Scannen Sie den QR-Code, steht sie schon im Feld.',
+  help: 'Die Kennung steht unten auf Ihrer Box, unter dem QR-Code: „EDGE-“ und sieben Zeichen. Wer den QR-Code scannt, findet sie schon im Feld.',
 } as const;
 
 /** One 422 message for both gates (unknown register ID OR a ref that is no box Kennung). */

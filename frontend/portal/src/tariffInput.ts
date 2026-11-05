@@ -222,9 +222,8 @@ export function tarifParamWarning(art: TarifArt, text: string): string | null {
           'Bitte prüfen Sie den Wert - speichern können Sie ihn trotzdem.';
   }
   return low
-    ? `Ungewöhnlich niedrig für diesen Aufschlag (üblich ${typical}). ` +
-        'Gemeint sind Netzentgelte, Abgaben UND Marge zusammen, nicht nur die ' +
-        'Marge Ihres Anbieters. Speichern können Sie den Wert trotzdem.'
+    ? `Ungewöhnlich niedrig für diesen Aufschlag (üblich ${typical}) - gemeint ist alles ` +
+        'zusammen, nicht nur die Marge. Speichern können Sie den Wert trotzdem.'
     : `Ungewöhnlich hoch für einen Aufschlag (üblich ${typical}). ` +
         'Meinten Sie Ihren festen Arbeitspreis? Dann wählen Sie oben „Fest". ' +
         'Speichern können Sie den Wert trotzdem.';

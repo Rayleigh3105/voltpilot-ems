@@ -129,7 +129,8 @@ describe('tarifParamWarning — warnt, sperrt nie, und nennt die andere Bedeutun
 
   it('fängt die reine Marge im Sammelaufschlag-Feld', () => {
     const w = tarifParamWarning('dynamisch', '1,5');
-    expect(w).toContain('Netzentgelte, Abgaben UND Marge zusammen');
+    // Das Feld darüber nennt die Bestandteile schon; die Warnung sagt nur noch, worauf es ankommt.
+    expect(w).toContain('alles zusammen, nicht nur die Marge');
   });
 
   it('warnt bei einem absurd hohen Arbeitspreis', () => {
