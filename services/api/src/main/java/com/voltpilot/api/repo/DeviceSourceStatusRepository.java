@@ -50,22 +50,62 @@ public class DeviceSourceStatusRepository {
      * wholesale, because the heartbeat carries the COMPLETE Ist: a source the
      * customer removed on the device must disappear here too, and a merge would
      * keep ghosts in the breakdown forever.
+     *
+     * <p><b>Concurrent writers: the youngest report wins.</b> Two heartbeats of
+     * one box can be written at the same time (a second API instance on the same
+     * topic, a redelivery). The former {@code DELETE} + {@code INSERT} lost that
+     * race: the {@code DELETE} cannot see the other transaction's uncommitted
+     * rows, the {@code INSERT} then died on the primary key once it committed.
+     * Now every row is an {@code ON CONFLICT} upsert that overwrites only a row
+     * that is not YOUNGER than this report ({@code reported_at}, the box's own
+     * report time), and the vanished rows go the same way. Rows are written in
+     * {@code source_id} order, so two writers queue on one lock chain instead of
+     * deadlocking. Same limit as {@code EntityObservedRepository}: an OLDER
+     * report written while a younger one is uncommitted can add a row the younger
+     * one no longer carries; the next heartbeat replaces the set again.
      */
     @Transactional
     public void replaceForDevice(UUID deviceId, UUID tenantId, UUID siteId, Instant reportedAt,
             List<SourceRow> rows) {
-        jdbc.update("DELETE FROM device_source_status WHERE device_id = ?", deviceId);
-        for (SourceRow r : rows) {
+        Timestamp reported = Timestamp.from(reportedAt);
+        Integer younger = jdbc.queryForObject(
+                "SELECT count(*) FROM device_source_status WHERE device_id = ? AND reported_at > ?",
+                Integer.class, deviceId, reported);
+        if (younger != null && younger > 0) {
+            return; // a younger report is already stored: this one is out of order
+        }
+        List<SourceRow> ordered = rows.stream()
+                .sorted(java.util.Comparator.comparing(SourceRow::sourceId)).toList();
+        for (SourceRow r : ordered) {
             jdbc.update(
                     "INSERT INTO device_source_status (device_id, source_id, tenant_id, site_id, "
                             + "kind, role, label, brand, model, pv_kw, power_kw, load_kw, health, "
                             + "read_at, reported_at, bms) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)",
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb) "
+                            + "ON CONFLICT (device_id, source_id) DO UPDATE SET "
+                            + "tenant_id = EXCLUDED.tenant_id, site_id = EXCLUDED.site_id, "
+                            + "kind = EXCLUDED.kind, role = EXCLUDED.role, label = EXCLUDED.label, "
+                            + "brand = EXCLUDED.brand, model = EXCLUDED.model, "
+                            + "pv_kw = EXCLUDED.pv_kw, power_kw = EXCLUDED.power_kw, "
+                            + "load_kw = EXCLUDED.load_kw, health = EXCLUDED.health, "
+                            + "read_at = EXCLUDED.read_at, reported_at = EXCLUDED.reported_at, "
+                            + "bms = EXCLUDED.bms "
+                            + "WHERE device_source_status.reported_at <= EXCLUDED.reported_at",
                     deviceId, r.sourceId(), tenantId, siteId, r.kind(), r.role(), r.label(),
                     r.brand(), r.model(), r.pvKw(), r.powerKw(), r.loadKw(), r.health(),
                     r.readAt() == null ? null : Timestamp.from(r.readAt()),
-                    Timestamp.from(reportedAt), bmsJson(r.bms()));
+                    reported, bmsJson(r.bms()));
         }
+        String[] kept = ordered.stream().map(SourceRow::sourceId).toArray(String[]::new);
+        jdbc.update(con -> {
+            java.sql.PreparedStatement ps = con.prepareStatement(
+                    "DELETE FROM device_source_status WHERE device_id = ? AND reported_at <= ? "
+                            + "AND NOT (source_id = ANY (?))");
+            ps.setObject(1, deviceId);
+            ps.setTimestamp(2, reported);
+            ps.setArray(3, con.createArrayOf("text", kept));
+            return ps;
+        });
     }
 
     /**
