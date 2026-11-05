@@ -167,22 +167,16 @@ export function WerkstattBoxSeite({
         {mango && (
           <Card padding="md" radius="lg" className="vp-ws-karte vp-ws-breit" data-testid="ws-gehaeuse">
             <h3 className="vp-ws-kartenkopf">Gehäuse-Druckdatei (3MF)</h3>
-            <p className="vp-alert vp-alert-warn" style={{ margin: 0 }} data-testid="ws-gehaeuse-hinweis">{GEHAEUSE_OHNE_KENNUNG}</p>
             <ul className="vp-ws-dateien">
               {GEHAEUSE_DATEIEN.map((d) => (
                 <li key={d.name} className="vp-ws-datei" data-testid={`ws-gehaeuse-${d.name}`}>
-                  <div className="vp-ws-spalte">
-                    <strong>{d.titel}</strong>
-                    <span>{d.inhalt}</span>
-                    <span className="vp-muted">{d.druckStand}</span>
-                  </div>
                   <a className="vp-btn vp-btn--outline vp-btn--sm" href={d.url} download={d.name} type="model/3mf">
                     {d.name} laden
                   </a>
                 </li>
               ))}
             </ul>
-            <p className="vp-muted vp-ws-fuss">Drucken: Bambu Studio, Filament 1 weiß, 2 schwarz, 3 hellblau.</p>
+            <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-hinweis">{GEHAEUSE_OHNE_KENNUNG}</p>
           </Card>
         )}
 
