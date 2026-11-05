@@ -133,7 +133,9 @@
 .vp-ocpp-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--ocpp-ink); font: inherit; }
 .vp-ocpp-empty { display: flex; align-items: center; gap: 10px; min-height: 82px; padding: 16px; border: 1px dashed var(--ocpp-border); border-radius: var(--vp-radius-md, 10px); color: var(--ocpp-muted); }
 .vp-ocpp-empty p { margin: 0; }
-.vp-linkbtn { min-height: 44px; border: 0; background: transparent; color: var(--vp-link, #2c5282); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+/* Allein in seiner Zeile ein 44-px-Knopf. Nicht auf `.vp-linkbtn` allgemein: die Regel gälte sonst für jeden Link im Satz
+   des ganzen Portals (Fehlerzeile, Kopfhinweis, Tabellenzelle) und dehnte dessen Zeile auf 44 px. */
+.vp-ocpp-journal-actions .vp-linkbtn { min-height: 44px; font-weight: 700; }
 
 .vp-ocpp-table-wrap { max-width: 100%; overflow-x: auto; }
 .vp-ocpp-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: .84rem; }

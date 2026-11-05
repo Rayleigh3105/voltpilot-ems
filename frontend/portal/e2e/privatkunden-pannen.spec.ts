@@ -137,3 +137,42 @@ test('die Knopfreihe über der Gerätetabelle überlagert die Zählzeile nie', a
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
 });
+
+test('die Fehlerkarte „Daten konnten nicht geladen werden" setzt Titel eng und Text ruhig', async ({ page }) => {
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 812 });
+    await page.goto(`${HILFE}?state=error#/`);
+    const titel = page.locator('.vp-empty h3', { hasText: 'Daten konnten nicht geladen werden' });
+    await expect(titel).toBeVisible();
+    const mass = await page.evaluate(() => {
+      const zeile = (el: Element) => {
+        const c = getComputedStyle(el);
+        return parseFloat(c.lineHeight) / parseFloat(c.fontSize);
+      };
+      const h3 = document.querySelector('.vp-empty h3') as Element;
+      const p = document.querySelector('.vp-empty p') as Element;
+      return { titel: zeile(h3), text: zeile(p) };
+    });
+    // Körpertext liegt bei 1,6: ein Titel in dieser Höhe läuft über zwei Zeilen 32 px auseinander.
+    expect(mass.titel, `Titel bei ${width} px`).toBeLessThanOrEqual(1.4);
+    expect(mass.text, `Text bei ${width} px`).toBeLessThanOrEqual(1.5);
+  }
+});
+
+test('der Link „Erneut laden" in der Fehlerzeile der Wallbox dehnt seine Zeile nicht auf 44 px', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${HILFE}?state=single#/anlage/help-site/geraet/VP-DEMO-0001/cp-CP-CARPORT`);
+  const meldung = page.locator('.vp-alert', { hasText: 'OCPP-Gerätedaten konnten nicht geladen werden' });
+  await expect(meldung).toBeVisible();
+  const mass = await meldung.evaluate((el) => {
+    const c = getComputedStyle(el);
+    const zeile = parseFloat(c.lineHeight);
+    const polster = parseFloat(c.paddingTop) + parseFloat(c.paddingBottom);
+    return { zeilen: Math.round((el.getBoundingClientRect().height - polster) / zeile * 10) / 10, zeile };
+  });
+  // Zwei Textzeilen (der Link steht in der zweiten), nicht zwei plus eine 44-px-Knopfzeile.
+  expect(mass.zeilen).toBeLessThanOrEqual(2.1);
+  // Die Treffläche des Links bleibt trotzdem fingergroß.
+  const link = await meldung.getByRole('button', { name: 'Erneut laden' }).boundingBox();
+  expect(link?.height ?? 0).toBeGreaterThanOrEqual(44);
+});
