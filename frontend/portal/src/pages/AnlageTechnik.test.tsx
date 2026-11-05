@@ -860,14 +860,12 @@ describe('Einstellungen · Einspeisevergütung unter Strom & Geld', () => {
       undefined,
       verguetungStand({ zustand: 'direktvermarktung', wirksamCtKwh: null, anzulegenderWertCtKwh: 8.11 }),
     );
-    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('Börsenpreis + Marktprämie'));
-    const b = await blatt('Einspeisevergütung');
-    expect(within(b).queryByRole('radio')).toBeNull();
-    expect(within(b).queryByRole('textbox')).toBeNull();
-    expect(within(b).queryByText('Wirkt auf: Fahrplan')).toBeNull();
-    expect(within(b).getByText(/Marktprämie aus Ihrem anzulegenden Wert/)).toHaveTextContent('8,11 ct/kWh');
-    fireEvent.click(within(b).getByRole('button', { name: 'Verstanden' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const anlage = document.getElementById('technik-verguetung') as HTMLElement;
+    await waitFor(() => expect(anlage).toHaveTextContent('Börsenpreis + Marktprämie'));
+    // Nichts anzugeben: der Grund steht an der Zeile, sie öffnet kein Blatt mit „Verstanden".
+    expect(within(anlage).queryByRole('button')).toBeNull();
+    expect(within(anlage).getByText(/Marktprämie aus Ihrem anzulegenden Wert/)).toHaveTextContent('8,11 ct/kWh');
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(setzen).not.toHaveBeenCalled();
     setzen.mockRestore();
     restore();
@@ -882,12 +880,12 @@ describe('Einstellungen · Einspeisevergütung unter Strom & Geld', () => {
       undefined,
       verguetungStand({ zustand: 'netzladen', wirksamCtKwh: null, angegebenCtKwh: 12.5 }),
     );
-    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('solange Netzladen erlaubt ist'));
-    const b = await blatt('Einspeisevergütung');
-    expect(within(b).getByText(/Ausschließlichkeitsprinzip/)).toHaveTextContent(
+    const z = document.getElementById('technik-verguetung') as HTMLElement;
+    await waitFor(() => expect(z).toHaveTextContent('solange Netzladen erlaubt ist'));
+    expect(within(z).getByText(/Ausschließlichkeitsprinzip/)).toHaveTextContent(
       'Ihr Satz von 12,50 ct/kWh gilt wieder, sobald Netzladen aus ist.',
     );
-    expect(within(b).queryByRole('radio')).toBeNull();
+    expect(within(z).queryByRole('button')).toBeNull();
     restore();
   });
 
@@ -896,7 +894,7 @@ describe('Einstellungen · Einspeisevergütung unter Strom & Geld', () => {
     await waitFor(() => expect(verguetungAbruf).toHaveBeenCalledTimes(1));
     verguetungAbruf.mockResolvedValue(verguetungStand({ zustand: 'netzladen', wirksamCtKwh: null }));
     rerender({ ...eegSite, netzladenErlaubt: true });
-    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('Börsenpreis'));
+    await waitFor(() => expect(document.getElementById('technik-verguetung')).toHaveTextContent('Börsenpreis'));
     expect(verguetungAbruf).toHaveBeenCalledTimes(2);
     restore();
   });
@@ -1133,11 +1131,11 @@ describe('Einstellungen · Speicher, Registrierung, Löschen', () => {
     restore();
   });
 
-  it('nennt den Weg, solange der Anlage noch eine Box zugeordnet ist', async () => {
+  it('nennt den Weg an der Zeile, solange der Anlage noch eine Box zugeordnet ist - ohne Blatt', async () => {
     const { restore } = await renderEinstellungen();
-    const b = await blatt('Anlage löschen');
-    expect(within(b).getByText(/Entfernen Sie die Box zuerst im Aufbau/)).toBeInTheDocument();
-    expect(within(b).queryByRole('button', { name: 'Anlage löschen' })).toBeNull();
+    const loeschen = document.getElementById('technik-loeschen') as HTMLElement;
+    expect(loeschen).toHaveTextContent(/Entfernen Sie die Box zuerst im Aufbau/);
+    expect(within(loeschen).queryByRole('button')).toBeNull();
     restore();
   });
 

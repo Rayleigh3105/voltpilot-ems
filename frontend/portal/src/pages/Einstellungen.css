@@ -176,6 +176,12 @@ button.vp-einst-zeile:focus-visible {
   color: var(--vp-warn-ink);
 }
 
+/* Der Grund an einer Zeile ohne Blatt (Vergütung bei Netzladen/Direktvermarktung). */
+.vp-einst-grund {
+  display: block;
+  margin-top: 2px;
+}
+
 .vp-einst-ende {
   display: inline-flex;
   align-items: center;

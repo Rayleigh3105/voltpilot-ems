@@ -45,7 +45,7 @@ import { AnlageStandortZeile, useAnlageStandort } from '../components/AnlageStan
 import { koordinatenLabel } from '../anlageStandort';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { EinspeiseverguetungBlatt } from '../components/EinspeiseverguetungBlatt';
-import { angabeMoeglich, verguetungFolge, verguetungZeile } from '../einspeiseverguetung';
+import { angabeMoeglich, ruhtErklaerung, verguetungFolge, verguetungZeile } from '../einspeiseverguetung';
 import { DangerZone } from '../components/DangerZone';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfoTip } from '../components/InfoTip';
@@ -259,6 +259,10 @@ export function TechnikSection({
   siteRef.current = site;
 
   const siteDevices = useMemo(() => devices.filter((d) => d.siteId === site.id), [devices, site.id]);
+  const loeschSperre =
+    siteDevices.length > 0
+      ? `Die Anlage kann nicht gelöscht werden, solange ihr ${siteDevices.length === 1 ? 'eine VoltPilot-Box zugeordnet ist' : `${siteDevices.length} VoltPilot-Boxen zugeordnet sind`}. Entfernen Sie die Box zuerst im Aufbau.`
+      : null;
   const anchored = useSettingsAnchor();
   // UEMS AP-02 IP-8 (T6a, W4): das Objekt „Standort“ der Anlage. Ohne eines bleibt
   // die Gruppe „Anlage“ Zeichen für Zeichen, wie sie ist (AnlageTechnik.standort.test.tsx).
@@ -768,6 +772,9 @@ export function TechnikSection({
             kat="gefahr"
             label="Anlage löschen"
             gefahr
+            // Solange eine Box zugeordnet ist, geht es nicht - der Weg steht an der Zeile statt in einem Blatt.
+            statisch={loeschSperre != null}
+            sub={loeschSperre}
             onClick={() => oeffne({ art: 'loeschen' })}
           />
         </Gruppe>
@@ -796,7 +803,7 @@ export function TechnikSection({
       </p>
 
       {/* ---------- das eine Blatt ---------- */}
-      <Modal open={blatt != null} onClose={schliesse} title={blattTitel(blattInhalt, battery)}>
+      <Modal open={blatt != null} onClose={schliesse} title={blattTitel(blattInhalt, battery, koordinatenLabel(anlageStandort))}>
         {blattInhalt?.art === 'stammdaten' && (
           <StammdatenEditForm
             site={site}
@@ -938,11 +945,7 @@ export function TechnikSection({
             description="Eine gelöschte Anlage kann nicht wiederhergestellt werden."
             consequences={deleteConsequences()}
             confirmLabel="Anlage endgültig löschen"
-            disabledReason={
-              siteDevices.length > 0
-                ? `Die Anlage kann nicht gelöscht werden, solange ihr ${siteDevices.length === 1 ? 'eine VoltPilot-Box zugeordnet ist' : `${siteDevices.length} VoltPilot-Boxen zugeordnet sind`}. Entfernen Sie die Box zuerst im Aufbau.`
-                : null
-            }
+            disabledReason={loeschSperre}
             busy={deleteBusy}
             error={deleteError}
             onConfirm={() => void deleteSite()}
@@ -972,10 +975,11 @@ export function TechnikSection({
   );
 }
 
-function blattTitel(b: BlattArt | null, battery: SiteAsset | null): string {
+function blattTitel(b: BlattArt | null, battery: SiteAsset | null, standortZeile: string): string {
   switch (b?.art) {
     case 'stammdaten':
-      return STAMMDATEN_TITEL[b.nur];
+      // Die Standort-Zeile heißt je nach Standort-Objekt „Standort" oder „Standort auf der Karte".
+      return b.nur === 'standort' ? standortZeile : STAMMDATEN_TITEL[b.nur];
     case 'einstellung':
     case 'voltpilot':
       return b.setting.label;
@@ -1051,6 +1055,7 @@ function Zeile({
   schloss = false,
   gefahr = false,
   recht,
+  statisch = false,
   onClick,
   nach = null,
 }: {
@@ -1070,10 +1075,16 @@ function Zeile({
    * es bleibt der Wert lesbar, die Zeile öffnet nichts, und der Grund steht darunter.
    */
   recht?: string;
+  /**
+   * Es gibt hier nichts zu tun: die Zeile nennt Wert und Grund und öffnet kein
+   * Blatt (ein Blatt mit nur einem Satz und „Verstanden" wäre ein unnötiges Modal).
+   */
+  statisch?: boolean;
   onClick: () => void;
 }) {
   const rollen = useRollen();
-  if (recht && !rollen.darf(recht)) {
+  const ohneRecht = recht != null && !rollen.darf(recht);
+  if (ohneRecht || statisch) {
     return (
       <li id={id}>
         <div className={`vp-einst-zeile is-statisch${gefahr ? ' is-gefahr' : ''}`}>
@@ -1081,9 +1092,13 @@ function Zeile({
           <span className="vp-einst-lab">
             <b>{label}</b>
             {wert != null && <span className="vp-einst-wert">{wert}</span>}
-            <small>
-              <Recht aktion={recht}>{null}</Recht>
-            </small>
+            {ohneRecht ? (
+              <small>
+                <Recht aktion={recht}>{null}</Recht>
+              </small>
+            ) : (
+              sub && <small className={warn ? 'is-warn' : undefined}>{sub}</small>
+            )}
           </span>
           <span />
         </div>
@@ -1164,6 +1179,23 @@ function VerguetungZeile({
     );
   }
   const z = verguetungZeile(stand);
+  // Bei Direktvermarktung und Netzladen gibt es keinen Satz anzugeben: der Grund steht an der Zeile.
+  if (!angabeMoeglich(stand.zustand)) {
+    const ruht = ruhtErklaerung(stand);
+    return (
+      <Zeile
+        id="technik-verguetung"
+        icon="sun"
+        kat="dynamic"
+        label={label}
+        wert={z.wert}
+        sub={ruht ? <>{z.sub}<span className="vp-einst-grund">{ruht}</span></> : z.sub}
+        statisch
+        onClick={onBlatt}
+        nach={folge}
+      />
+    );
+  }
   return (
     <Zeile
       id="technik-verguetung"
@@ -1173,7 +1205,7 @@ function VerguetungZeile({
       wert={z.wert}
       sub={z.sub}
       warn={z.warn}
-      recht={angabeMoeglich(stand.zustand) ? 'anlage.verwalten' : undefined}
+      recht="anlage.verwalten"
       onClick={onBlatt}
       nach={folge}
     />
