@@ -131,7 +131,7 @@ cd "$(dirname "$0")/.."
 #   Der Einstieg zog vier große Fach-Module für je eine kleine Hilfe mit.
 #   Die Hilfen wohnen jetzt in eigenen Modulen, die alten Module reichen sie
 #   unverändert weiter:
-#   `ladestandVon.ts` (statt `batterieAnschluss`/`selbstbau`),
+#   `ladestandVon.ts` (statt eines großen Fach-Moduls),
 #   `geraetAdresse.ts` (statt `geraetSeite`), `provenienz.ts` (statt
 #   `historieWelten`), `geldWelt.ts` (statt `portfolioHistorie`).
 #

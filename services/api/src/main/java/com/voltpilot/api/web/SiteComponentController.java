@@ -4,8 +4,6 @@ import com.voltpilot.api.components.ComponentConnectionReceipts;
 import com.voltpilot.api.components.ComponentConnectionSchema;
 import com.voltpilot.api.components.ComponentService;
 import com.voltpilot.api.components.SelfBuildComponentService;
-import com.voltpilot.api.components.UserDefinedBatteryDefinition;
-import com.voltpilot.api.components.UserDefinedBatteryService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.zugriff.Geltungsbereich;
@@ -17,7 +15,6 @@ import com.voltpilot.api.web.dto.ComponentActivationStatusDto;
 import com.voltpilot.api.web.dto.ComponentTestRequest;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
 import com.voltpilot.api.web.dto.SaveSelfBuildRequest;
-import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest;
 import com.voltpilot.api.web.dto.RollbackComponentRequest;
 import com.voltpilot.api.web.dto.SelfBuildReadRequest;
 import com.voltpilot.api.web.dto.SelfBuildReadResult;
@@ -79,14 +76,11 @@ public class SiteComponentController {
     private final ComponentConnectionReceipts receipts;
     private final ProbeService probes;
     private final SelfBuildComponentService selfBuild;
-    private final UserDefinedBatteryService batteries;
 
     public SiteComponentController(Geltungsbereich geltungsbereich, ComponentService components,
             ComponentConnectionReceipts receipts,
-            ProbeService probes, SelfBuildComponentService selfBuild,
-            UserDefinedBatteryService batteries) {
+            ProbeService probes, SelfBuildComponentService selfBuild) {
         this.selfBuild = selfBuild;
-        this.batteries = batteries;
         this.geltungsbereich = geltungsbereich;
         this.components = components;
         this.receipts = receipts;
@@ -192,76 +186,6 @@ public class SiteComponentController {
     public SiteComponentsDto deleteCustom(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.delete(siteId, entityId, subject(jwt));
-    }
-
-    // ---- Die eigene BATTERIE (P5 Ebene 1: MQTT oder HTTP/JSON) ------------
-
-    /**
-     * Eine selbst angebundene Batterie anlegen (Konzept
-     * {@code vp-deye-diybms-luecke-l5} §3.2b): eine Quelle im Kundennetz plus
-     * die Feld-Zuordnung auf die Standard-Batteriekanäle. Seit P5-HTTP kennt
-     * dieselbe Route ZWEI Anschlussarten - {@code mqtt_local} (ein lokaler
-     * Broker, Topic-Filter) und {@code http_local} (eine JSON-Auskunft,
-     * Wertepfade) -, und alles dahinter ist identisch: Entität, Fassung,
-     * generierter Flow über {@code v2/flows}, Ladestand (P5b), Bindung (P6).
-     * {@code transport} entscheidet; fehlt es, gilt der MQTT-Weg.
-     *
-     * <p>Anders als der Modbus-Baukasten fordert dieser Weg (noch) KEINEN
-     * Verbindungstest: eine MQTT-Vorschau braucht ein Lauschfenster statt einer
-     * Einmal-Lesung, und die kommt mit dem Zuordnungs-Assistenten (P5d). Eine
-     * Pflicht ohne Tür wäre eine Sackgasse. Die LAN-Regel gilt unverändert.
-     */
-    @PostMapping("/components/battery")
-    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
-    public SiteComponentsDto createBattery(@PathVariable UUID siteId,
-            @Valid @RequestBody SaveUserDefinedBatteryRequest request,
-            @AuthenticationPrincipal Jwt jwt) {
-        return batteries.create(siteId, request, subject(jwt));
-    }
-
-    /**
-     * Die ZUORDNUNGS-VORSCHAU einer selbst angebundenen Batterie (P5d): die
-     * Box lauscht kurz auf dem Broker des Kunden und antwortet je Zuordnung
-     * mit dem, was wirklich hereinkam - Roh- UND skalierter Wert nebeneinander,
-     * genau wie beim „Jetzt lesen" des Modbus-Baukastens.
-     *
-     * <p><b>Sie schreibt nichts und hinterlegt keinen Beleg.</b> Anders als
-     * {@link #test} ist sie KEINE Voraussetzung des Speicherns: eine
-     * MQTT-Vorschau braucht ein Lauschfenster, das ältere Boxen nicht haben,
-     * und eine Pflicht ohne Tür wäre eine Sackgasse statt eines Schutzes.
-     *
-     * <p>Deshalb ist auch jeder Ausgang ein 200 mit einer benannten Klasse:
-     * {@code not_supported} ist eine Aussage über die BOX („kann noch nicht
-     * lauschen"), {@code timeout} über die Verbindung - keiner von beiden ist
-     * ein Urteil über die Zuordnung, und die Fläche sagt das genau so.
-     */
-    @PostMapping("/components/battery/preview")
-    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
-    public ProbeResult previewBattery(@PathVariable UUID siteId,
-            @Valid @RequestBody SaveUserDefinedBatteryRequest request,
-            @RequestParam(name = "entityId", required = false) UUID entityId,
-            @AuthenticationPrincipal Jwt jwt) {
-        Map<String, Object> connection = batteries.previewConnection(siteId, request, entityId);
-        return probes.testConnection(siteId, null, entityId, "batterie",
-                UserDefinedBatteryDefinition.ENTITY_TYPE, null, null, null, connection,
-                subject(jwt));
-    }
-
-    /** Eine selbst angebundene Batterie ändern - eine NEUE Fassung. */
-    @PutMapping("/components/battery/{entityId}")
-    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
-    public SiteComponentsDto updateBattery(@PathVariable UUID siteId, @PathVariable UUID entityId,
-            @Valid @RequestBody SaveUserDefinedBatteryRequest request,
-            @AuthenticationPrincipal Jwt jwt) {
-        return batteries.update(siteId, entityId, request, subject(jwt));
-    }
-
-    /** Eine selbst angebundene Batterie entfernen - samt ihrem Lese-Flow. */
-    @DeleteMapping("/components/battery/{entityId}")
-    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
-    public SiteComponentsDto deleteBattery(@PathVariable UUID siteId, @PathVariable UUID entityId,
-            @AuthenticationPrincipal Jwt jwt) {
-        return batteries.delete(siteId, entityId, subject(jwt));
     }
 
     // ---- Steuern freigeben (Einheitsmodell Stufe 4) -----------------------
@@ -508,7 +432,7 @@ public class SiteComponentController {
 
     /** Deutsche Gründe erreichen das Portal als {"message": ...} (MastrController-Muster). */
     /**
-     * Ein selbst definiertes Gerät oder eine eigene Batterie ist Beleg freigegebener Berichtsstände
+     * Ein selbst definiertes Gerät ist Beleg freigegebener Berichtsstände
      * (UEMS AP-12 E13 S2): 409 {@code berichts_belege} mit der Liste - nichts geschrieben.
      */
     @ExceptionHandler(BelegeImWeg.class)

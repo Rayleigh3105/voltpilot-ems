@@ -1127,23 +1127,16 @@ public class ComponentService {
      *
      * <p>Die Fail-closed-Regel von {@link ComponentSecrets#maskedJson} greift,
      * wenn die Vorlage einer Komponente nicht (mehr) auflösbar ist: dann ist
-     * JEDER gespeicherte Schlüssel verdächtig. Für die drei Anschlüsse, die die
-     * api SELBST schreibt - der Modbus-Baukasten und die beiden Lesetypen der
-     * eigenen Batterie - gibt es aber gar keine Vorlage, die verschwinden
-     * könnte: ihre Form ist Code, und sie ist bekannt.
+     * JEDER gespeicherte Schlüssel verdächtig. Für den Anschluss, den die api
+     * SELBST schreibt - der Modbus-Baukasten -, gibt es aber gar keine Vorlage,
+     * die verschwinden könnte: seine Form ist Code, und sie ist bekannt.
      *
      * <p>Fail-closed dort anzuwenden wäre nicht sicherer, sondern nur
-     * unbrauchbar: das Bearbeiten-Formular bekäme statt Topic, Wertepfad und
-     * Skalierung acht Punkte zurück. Die Geheimnis-HEURISTIK bleibt dabei
-     * unverändert scharf - genau deshalb heißt der Schlüssel des HTTP-Anschlusses
-     * {@code auth_secret} und wohnt auf der obersten Ebene
-     * ({@link UserDefinedBatteryDefinition#SECRET_FIELD}): {@code isSecretKey}
-     * maskiert ihn auch ohne Vorlage.
+     * unbrauchbar: das Bearbeiten-Formular bekäme statt der Register acht
+     * Punkte zurück. Die Geheimnis-HEURISTIK bleibt dabei unverändert scharf.
      */
     private static boolean selfAuthored(String communication) {
-        return SelfBuildDefinition.COMMUNICATION.equals(communication)
-                || UserDefinedBatteryDefinition.COMMUNICATION.equals(communication)
-                || UserDefinedBatteryDefinition.COMMUNICATION_HTTP.equals(communication);
+        return SelfBuildDefinition.COMMUNICATION.equals(communication);
     }
 
     private ComponentDefinitionDto masked(ComponentDefinitionDto row) {

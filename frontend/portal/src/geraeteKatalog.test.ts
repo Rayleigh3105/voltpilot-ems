@@ -192,8 +192,8 @@ describe('katalogAnsicht — Suche', () => {
 
   it('findet die Wege über ihre Stichwörter', () => {
     expect(gruppen(ansicht({ q: 'ocpp' }))).toEqual(['Laden: Ladesäule mit OCPP 1.6']);
-    // Die Batterie mit eigenem BMS bietet der Katalog nicht mehr an - auch nicht über ihre alten Stichwörter.
-    for (const q of ['seplos', 'diybms', 'bms']) expect(gruppen(ansicht({ q }))).not.toContain('Batterie: Batterie mit eigenem BMS');
+    // Eine Batterie ohne Hybrid-Wechselrichter bietet der Katalog nicht an: kein Eintrag in der Art „Batterie".
+    expect(gruppen(ansicht({ q: 'batterie' })).filter((g) => g.startsWith('Batterie:'))).toEqual([]);
   });
 
   it('findet eigene Vorlagen und was die Box meldet', () => {

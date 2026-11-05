@@ -366,7 +366,7 @@ for (const breite of BREITEN) {
       expect(fehler).toEqual([]);
     });
 
-    test('Katalog, Art „Batterie": kein Eintrag „Batterie mit eigenem BMS", nur der Hinweis zum Hybrid-Wechselrichter', async ({ page }, info) => {
+    test('Katalog, Art „Batterie": kein Eintrag, nur der Hinweis zum Hybrid-Wechselrichter', async ({ page }, info) => {
       const fehler = konsole(page);
       await oeffne(page, breite, 'neu=0');
       await page.getByRole('button', { name: 'Gerät hinzufügen' }).first().click();
@@ -374,12 +374,7 @@ for (const breite of BREITEN) {
       await katalog.getByRole('button', { name: /^Batterie/ }).click();
       await expect(katalog.getByText(/Fertige Batterie-Modelle gibt es im Katalog noch nicht/)).toBeVisible();
       await expect(katalog.getByText(/richten Sie über den Wechselrichter ein/)).toBeVisible();
-      await expect(katalog.getByText('Batterie mit eigenem BMS')).toHaveCount(0);
-      await expect(katalog.getByText(/DIYBMS|Seplos/)).toHaveCount(0);
       await pruefeUndFotografiere(page, info, breite, 'katalog-batterie');
-      // Auch die Suche nach den alten Stichwörtern führt nicht mehr zu ihr.
-      await katalog.getByRole('searchbox').fill('seplos');
-      await expect(katalog.getByText('Batterie mit eigenem BMS')).toHaveCount(0);
       expect(fehler).toEqual([]);
     });
   });

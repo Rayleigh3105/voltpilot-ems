@@ -344,10 +344,9 @@ public class TopologyService {
     /**
      * Was ein Kreis zeigt (K8/B1): ein LEISTUNGS-Kanal das Mittel über
      * {@link TopologyRepository#DISPLAY_MEAN_WINDOW}, damit PV, Netz, Speicher
-     * und Haus auf derselben Zeitbasis stehen und ihre Bilanz stimmt. Ladestand,
-     * Grenzen/Freigaben (Zahlen mit Ja/Nein-Bedeutung) und alles ohne kW/W
-     * bleiben der letzte Wert - ein gemitteltes „erlaubt" oder ein gemittelter
-     * Zählerstand wäre eine erfundene Zahl.
+     * und Haus auf derselben Zeitbasis stehen und ihre Bilanz stimmt. Ladestand
+     * und alles ohne kW/W bleiben der letzte Wert - ein gemittelter Zählerstand
+     * wäre eine erfundene Zahl.
      */
     static double displayValue(LiveValue lv, String channel, String unit) {
         boolean leistung = "kW".equals(unit) || "W".equals(unit);

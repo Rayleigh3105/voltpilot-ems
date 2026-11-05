@@ -47,7 +47,7 @@ Die Kennungen bleiben für Querverweise erhalten; Detailregeln stehen im jeweili
 | D-18 | Eine ConsumerPolicy je Verbraucher mit gemeinsam validierter Semantik |
 | D-19 | Generierter reaktiver Flow über bestehenden Compiler; serverseitiges `origin`, kein freier Control-Override |
 | D-20 | Interner Deadline-Fallback zwischen Flow und Marktplan, nur mit belegtem Fortschritt |
-| D-21 | `origin` markiert generierte Herkunft; Consumer-Policy/Modbus sowie ergänzend MQTT-/HTTP-Geräte (D-22/D-24) |
+| D-21 | `origin` markiert generierte Herkunft; Consumer-Policy und Modbus |
 
 ## Implementierung und bekannte Abweichung
 
@@ -108,9 +108,5 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | Kennung | Regel |
 |---|---|
 | D-6a | Handeingriff `local-ui` + `override` hat Rang 75; Ausnahme beim Konflikt mit einer Regel. [Arbitration](edge-desired-arbitration.md#handeingriff-d-6a). |
-| D-22 | Selbst angebundene Batterie: ein generierter `vp.mqtt.read`, gemeinsame Feldzuordnung und Aggregation über Zelltopics. |
-| D-23 | `vp.soc.derive` liefert SoC mit numerischer Herkunft; fehlend bleibt abwesend. |
-| D-24 | `vp.http.read` als zweiter Lesepfad; Auth-Geheimnis in Registry/Probe, nicht im Flow. |
-| D-25 | `vp.bms.limit` begrenzt Wünsche anhand aktueller Batteriegrenzen; ein Autor je Kanal, kein direkter Register-Schreibpfad. |
 
-Details zu D-22–25: [Entity-Konfiguration](edge-entity-config.md#selbst-angebundene-batterien-und-schutzgrenzen). Fehlende optionale Felder erhalten das bisherige Verhalten; neue Leser zuerst auf der Box ausrollen.
+Fehlende optionale Felder erhalten das bisherige Verhalten; neue Leser zuerst auf der Box ausrollen.

@@ -145,51 +145,6 @@ type Driver struct {
 // together, or the box would start refusing pushes it should ignore.
 const CommunicationSelfBuild = "modbus_baukasten"
 
-// CommunicationMqttLocal marks a BATTERY the customer connected themselves over
-// a LOCAL MQTT broker (P5 Ebene 1, Konzept vp-deye-diybms-luecke-l5 §3.2b).
-// Same story as CommunicationSelfBuild: such a component is read by its own
-// generated flow (one vp-mqtt-read node with the user's field mapping), never
-// by the self-wiring tab - so this applier deliberately does NOT turn it into a
-// source.
-//
-// ⚠ The value is shared verbatim with the cloud
-// (services/api .../components/UserDefinedBatteryDefinition.COMMUNICATION).
-// ⚠ ROLLOUT ORDER: a box WITHOUT this constant refuses the driver of such a
-// component ("nennt keine Marke") and Derive is all-or-nothing - the site would
-// lose the application of its inverter and every source. The edge release
-// therefore has to reach a site BEFORE the first battery is connected there.
-const CommunicationMqttLocal = "mqtt_local"
-
-// CommunicationHTTPLocal marks a BATTERY the customer connected themselves over
-// its own HTTP/JSON endpoint in the LAN (P5 Ebene 1 "HTTP/JSON", Konzept
-// vp-deye-diybms-luecke-l5 §3.2b) - the sibling of CommunicationMqttLocal, and
-// the same story: read by its own generated flow (one vp-http-read node with
-// the user's value-path mapping), never by the self-wiring tab.
-//
-// ⚠ Unlike the other two, this driver block DOES carry something the box needs:
-// `connection.auth_secret`, the credential of the endpoint. It reaches the read
-// node through the per-entity retained config, NOT through the flow document -
-// a flow document is readable through the portal API, so a credential in it
-// would be a credential in the browser.
-//
-// ⚠ The value is shared verbatim with the cloud
-// (services/api .../components/UserDefinedBatteryDefinition.COMMUNICATION_HTTP).
-// ⚠ ROLLOUT ORDER, exactly as for mqtt_local: a box WITHOUT this constant
-// refuses the driver of such a component ("nennt keine Marke") and Derive is
-// all-or-nothing - the site would lose the application of its inverter and
-// every source. The edge release therefore has to reach a site BEFORE the first
-// HTTP-connected battery is created there.
-const CommunicationHTTPLocal = "http_local"
-
-// selfReadCommunications are the communications whose devices carry their own
-// generated read flow. They are skipped here - never refused: refusing would
-// sink the WHOLE push over a device this applier is not responsible for.
-func isSelfRead(communication string) bool {
-	return communication == CommunicationSelfBuild ||
-		communication == CommunicationMqttLocal ||
-		communication == CommunicationHTTPLocal
-}
-
 // Plan is the derived local configuration of one push: at most one primary
 // inverter plus the additional read-only sources, all already validated against
 // the box's own catalog.
@@ -256,22 +211,17 @@ func ParseDriver(e entities.Entity) (Driver, bool, error) {
 	if len(d.Connection) == 0 {
 		return Driver{}, false, nil
 	}
-	// ⚠ A SELF-READ device is not part of the local read path at all, and
+	// ⚠ A SELF-BUILT device is not part of the local read path at all, and
 	// skipping it HERE - before the brand check - is load-bearing, not
 	// cosmetic: Derive is all-or-nothing, roleFor does not know the
-	// `modbus-generic` / `user-defined-battery` types, and such a device
-	// carries no brand by construction. Without this branch ONE
-	// customer-defined sensor would sink the WHOLE push, so a plant would lose
-	// the application of its inverter and every source the moment it defines
-	// its first own device.
+	// `modbus-generic` type, and such a device carries no brand by
+	// construction. Without this branch ONE customer-defined sensor would sink
+	// the WHOLE push, so a plant would lose the application of its inverter and
+	// every source the moment it defines its first own device.
 	//
 	// Its READ PLAN travels elsewhere: as a generated flow over v2/flows (one
-	// vp-modbus-read per channel, or ONE vp-mqtt-read / vp-http-read carrying
-	// the whole field mapping of a self-connected battery), publishing its own
-	// per-entity telemetry. The driver block carries display/context - and, for
-	// the HTTP read type, the endpoint credential the read node picks up from
-	// the per-entity retained config.
-	if isSelfRead(d.Communication) {
+	// vp-modbus-read per channel), publishing its own per-entity telemetry.
+	if d.Communication == CommunicationSelfBuild {
 		return Driver{}, false, nil
 	}
 	// A plant controller (UEMS EZ-21) carries no brand by construction: a SPS

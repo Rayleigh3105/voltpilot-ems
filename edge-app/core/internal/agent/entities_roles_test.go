@@ -166,3 +166,26 @@ func TestNoRoleAssignmentIsByteIdentical(t *testing.T) {
 		}
 	}
 }
+
+// TestTelemetryOfAnEntityTheRegistryNoLongerKnowsIsIgnored: ein Gerät kann aus
+// dem Registry-Push verschwinden, während sein Lese-Flow auf der Box noch
+// läuft (Typ aus dem Angebot genommen, Flow noch nicht abgelöst). Seine
+// Telemetrie ist dann weder ein Fehler noch Teil des Energieflusses.
+func TestTelemetryOfAnEntityTheRegistryNoLongerKnowsIsIgnored(t *testing.T) {
+	a := newGateTestAgent(t)
+	a.applyEntityRegistry(pushFixture(t, "edge-entity.valid.registry-push-roles.json"))
+	before := nodeByRole(a.Topology(), topology.RoleStorage)
+
+	a.onEntityTelemetry("edge/entities/entfernt-0001/telemetry",
+		[]byte(`{"schema_version":"1.0","entity_id":"entfernt-0001","channels":{"soc_pct":55,"power_kw":3}}`))
+
+	if after := nodeByRole(a.Topology(), topology.RoleStorage); (before == nil) != (after == nil) {
+		t.Fatalf("Telemetrie einer unbekannten Entität hat den Speicher-Knoten verändert: %+v -> %+v", before, after)
+	}
+	a.entMu.Lock()
+	_, kept := a.entReadings["entfernt-0001"]
+	a.entMu.Unlock()
+	if kept {
+		t.Fatal("die Lesung einer nicht registrierten Entität wurde behalten")
+	}
+}

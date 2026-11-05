@@ -1970,6 +1970,20 @@
       "nachher": null,
       "commit": "fm/vp-wallbox-ein-ort-laden-w1",
       "grund": "Konzept Wallbox-Einbindung e1 (Captain 27.10.2026, E1-E6 = A), Scheibe 3 §4.3/§7: „Ladesäule anbinden“ öffnet keinen eigenen Assistenten-Drawer mehr, sondern führt als Link auf den Aufbau derselben Anlage (`aufbauHash(site.id, 'geraet')`) - demselben Ort, an dem auch eine Anlage oder eine Box entsteht (Hausregel „Ein Ort zum Anlegen“). Der Formular-Körper components/LadesaeuleAnbinden.tsx lebt unverändert im Aufbau-Fluss (AnlegenFlow.tsx) weiter; nur die Drawer-Hülle (components/LadesaeuleAnbindenDrawer) ist entfallen."
+    },
+    {
+      "datei": "components/LivePuls.tsx",
+      "vorher": "4cc68f6e572e958ddb6b99cf8dce19eeca66428d0541ff954f869365bd4ac998",
+      "nachher": "02b205513155e7f0fb1720c503e778ecf6bee169a752a8c6245934e903ce1764",
+      "commit": "fm/vp-batterie-bms-vollentfernung",
+      "grund": "Die Zeile der Speicher-Kachel verliert die beiden Nebenzeilen für die Herkunft eines berechneten Ladestands und die Grenzen des Batteriemanagements: beide Auskünfte kamen nur von der entfernten Batterie mit eigenem BMS. Die Handlung (Sprung in den Verlauf) und alle Attribute der Zeile bleiben unverändert; „Ladestand von: <Gerät>“ bleibt."
+    },
+    {
+      "datei": "components/ZuordnenDialog.tsx",
+      "vorher": "cb76a4b565affa0bd86fff63c8778b90f3d942b10eeff8db888a6d65610c32fb",
+      "nachher": "ebabd260dec868b20d975bcc0c3b15ad4c0bc00815e1fdac23893bfe088909eb",
+      "commit": "822aaaee73d66348ce6f5a108e1ce3651aed70a4",
+      "grund": "Der Knopf „Fertig“ benennt den Zug („Zuordnen“ bzw. „Wieder verbinden“, #1666); Handler, Sperre und Recht bleiben. Der Wächter war seit dem Merge von #1666 auf main rot."
     }
   ],
   "assistentZusammenfuehrung": {
@@ -3312,6 +3326,17 @@
         "components/AnstossVerwerfenDialog.tsx": {
           "entfaellt": true,
           "wohin": "Blatt „Stand n behalten“ (BerichtBehaltenBlatt): ein Grund für alle offenen Anstöße"
+        }
+      }
+    },
+    {
+      "entscheid": "Captain-Auftrag vom 04.11.2026: die „Batterie mit eigenem BMS“ (MQTT oder HTTP/JSON) entfällt vollständig - Gerätetyp, Anlegen, Bearbeiten, Vorschau und Zuordnung. Den realen Kunden dazu gibt es nicht mehr; eine Batterie am Hybrid-Wechselrichter richtet der Kunde über den Wechselrichter ein.",
+      "commit": "fm/vp-batterie-bms-vollentfernung",
+      "ersetzt": "die Bedienelemente des Batterie-Assistenten (Anschluss, Zuordnung, Ladestand, Bindung, Speichern); eine Fortschreibung gab es für sie nie",
+      "dateien": {
+        "components/BatterieAssistent.tsx": {
+          "entfaellt": true,
+          "wohin": "kein Nachfolger: der Gerätetyp ist entfernt (die Migration löscht den Bestand), der Katalog nennt für „Batterie“ den Weg über den Wechselrichter"
         }
       }
     }

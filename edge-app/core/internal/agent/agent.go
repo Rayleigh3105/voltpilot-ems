@@ -2857,13 +2857,6 @@ func (a *Agent) applySetpoint(now time.Time) {
 		SocMinPct:       a.Cfg.SocMinPct,
 		SocMaxPct:       a.Cfg.SocMaxPct,
 		SolarOnlyCharge: solarOnly,
-		// What the battery's own protection block allows (P5c) caps this path
-		// too, and it MUST: on a v1-controlled plant - the shadow phase, which
-		// is exactly where the DIYBMS customer lives - this is the path that
-		// actually writes the inverter. A guard the live path skipped would be
-		// a guard in name only. nil = no protection block, and the clamp is
-		// byte-for-byte what it was.
-		Bms: a.bmsEnvelope(a.batteryEntityID()),
 	}
 	// The Netzladen-Sperre as a STATELESS stage (EN-1 A, guards.Limits.
 	// StrictExclusivity) for the two writes the last stage below never sees:
@@ -3582,7 +3575,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	a.mu.Lock()
 	battGemessen := a.lastBattKw
 	a.mu.Unlock()
-	sprung := a.sprungSchritt(now, r, battGemessen, kw < vorBezugswaechter, limits.Bms)
+	sprung := a.sprungSchritt(now, r, battGemessen, kw < vorBezugswaechter)
 	kw = sprungprobe.Laden(kw, sprung)
 
 	// DYNAMISCHE EINSPEISEBEGRENZUNG (2026-08-06): the real-time watchdog at the

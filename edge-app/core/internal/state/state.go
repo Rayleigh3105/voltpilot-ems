@@ -239,9 +239,7 @@ type Snapshot struct {
 	//
 	// Display + heartbeat visibility only. It is deliberately NOT a measurement
 	// channel: the frozen v1 cloud telemetry contract stays untouched, and
-	// nothing on the box CONTROLS from these values - the BMS cap that guards
-	// setpoints is the v2 entity-channel envelope (guards.BmsEnvelope, P5c),
-	// which comes from an entity the portal bound on purpose.
+	// nothing on the box CONTROLS from these values.
 	BmsReading map[string]float64 `json:"bms_reading,omitempty"`
 
 	// DespikedDropped is the running count of transient garbage samples the

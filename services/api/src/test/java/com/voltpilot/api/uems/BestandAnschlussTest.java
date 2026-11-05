@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.components.SelfBuildDefinition;
-import com.voltpilot.api.components.UserDefinedBatteryDefinition;
 import com.voltpilot.api.templates.ComponentTemplateDefinition;
 import com.voltpilot.api.uems.BestandAnschluss.Anschluss;
 import java.io.InputStream;
@@ -108,18 +107,6 @@ class BestandAnschlussTest {
                 .adresse()).isEqualTo("https://stick.local:443");
         assertThat(BestandAnschluss.aus("fronius_solar_api", "{\"ip\":\"192.168.0.40\",\"scheme\":\"https\"}")
                 .adresse()).isEqualTo("https://192.168.0.40:80");
-        assertThat(BestandAnschluss.aus("http_local", "{\"transport\":\"http_local\",\"endpoint\":{\"host\":"
-                + "\"192.168.30.20\",\"path\":\"api/bms\",\"tls\":false},\"auth_secret\":\"x\"}").adresse())
-                .isEqualTo("http://192.168.30.20:80/api/bms");
-    }
-
-    @Test
-    void mqttHatEineAdresseNurMitGenauEinemThema() {
-        assertThat(BestandAnschluss.aus("mqtt_local", "{\"broker\":{\"host\":\"127.0.0.1\",\"port\":1883},"
-                + "\"mappings\":[{\"channel\":\"soc\",\"topic\":\"bms/1/state\"},{\"channel\":\"power\","
-                + "\"topic\":\"bms/1/state\"}]}")).isEqualTo(new Anschluss("mqtt", "bms/1/state", null, null));
-        assertThat(BestandAnschluss.aus("mqtt_local", "{\"mappings\":[{\"topic\":\"bms/1/soc\"},"
-                + "{\"topic\":\"bms/1/power\"}]}").adresse()).as("kein gemeinsamer Filter").isNull();
     }
 
     /** Deye über seinen Datenlogger: Host, Port, Logger-Seriennummer, Slave-ID — wie der Treiber sie braucht. */
@@ -177,8 +164,6 @@ class BestandAnschlussTest {
         }
         real.addAll(ComponentTemplateDefinition.COMMUNICATIONS);
         real.add(SelfBuildDefinition.COMMUNICATION);
-        real.add(UserDefinedBatteryDefinition.COMMUNICATION);
-        real.add(UserDefinedBatteryDefinition.COMMUNICATION_HTTP);
         Set<String> box = treiberDerBox();
         assertThat(box).as("die Treiber der Box sind gelesen").contains("solarman_v5", "modbus_baukasten");
         real.addAll(box);

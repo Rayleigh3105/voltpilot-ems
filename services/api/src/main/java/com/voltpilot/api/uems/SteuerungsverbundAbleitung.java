@@ -100,7 +100,7 @@ public final class SteuerungsverbundAbleitung {
     }
 
     /** Die Komponenten-Typen eines Speichers — Einrichten (Frage 5) und die Rückfallzeit des Übergangszuschlags. */
-    public static final Set<String> SPEICHER_TYPEN = Set.of("battery-hybrid", "user-defined-battery");
+    public static final Set<String> SPEICHER_TYPEN = Set.of("battery-hybrid");
 
     /**
      * Steuerbare Bezugs-Geräte AUSSERHALB des Ladepark-Rahmens der Box (AP-15 Folge von IP-19, V3): Schalter/Relais,

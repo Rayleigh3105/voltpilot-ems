@@ -99,15 +99,6 @@ type selfBuildDefinition struct {
 // COMMUNICATION, not the entity type: the type vocabulary is the cloud's and
 // grows, the communication word is the one this box shares verbatim with the
 // cloud (CommunicationSelfBuild).
-//
-// ⚠ Since P5 the SKIPPED set (isSelfRead) is WIDER than this LISTED set: a
-// battery connected over a local MQTT broker (CommunicationMqttLocal) is
-// skipped by the applier just the same, but it is deliberately not listed
-// here. The setup page's device card is Modbus-shaped - it reads
-// transport.host/port/unit_id and a channel list out of the stored definition,
-// and an MQTT battery has neither. Listing it would print an empty address
-// card, which is a worse answer than not listing it; the battery gets its own
-// card the day the box UI learns that shape.
 func IsSelfBuilt(e entities.Entity) bool {
 	if len(e.Driver) == 0 {
 		return false

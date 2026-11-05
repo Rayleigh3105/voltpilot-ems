@@ -64,14 +64,8 @@ Die Rollen-Zuordnung `entity_role_assignment` ist verallgemeinert (`V20260914100
 - **Rückfall.** `zuordnung_vorhanden = false` (keine PV-Zuordnung an der Anlage) → der Wert ist `null` und die Cockpit-Anzeige bleibt bei der Roh-Telemetrie `telemetry.pv_power_kw` (die Umlenkung ist ein eigener Schritt, hier nur der Lese-Vertrag).
 - **Trennung vom Lesemodell.** Das Topologie-Lesemodell (`GET …/topology`, `TopologyDeriver`) liest weiterhin nur die nativen `capability`-Overrides; Gesamtwert-Zuordnungen (`capability` NULL) sind dort gefiltert und bleiben byte-identisch unsichtbar.
 
-## Eigene Batterie ausdrücklich zuordnen
+## Selbstbau-Typen und Ladestand-Herkunft
 
-Selbstbau-Typen (`modbus-generic`, `modbus-load`, `user-defined-battery`) erhalten **keine automatische Rolle**, auch nicht durch einen passenden Kanalnamen.
+Selbstbau-Typen (`modbus-generic`, `modbus-load`) erhalten **keine automatische Rolle**, auch nicht durch einen passenden Kanalnamen.
 
-| `binding.mode` | Wirkung |
-|---|---|
-| `unbound` | eigene Messwerte außerhalb der Energiebilanz |
-| `feeds_inverter` | SoC und BMS-Grenzen für `inverter_entity_id`; Leistung weiterhin vom Wechselrichter |
-| `standalone` | SoC, Grenzen und eigene Leistung als Speicher |
-
-Die Cloud speichert Rollen je Kanal mit `is_primary` und überträgt sie als `role_assignment`. `soc_source` benennt den tatsächlichen SoC-Lieferanten, auch bei Ersatz durch einen anderen Kandidaten. `limits` kommen aus genau einer ausgewählten Quelle. Stromgrenzen und Freigaben werden nie als kW-Mitglieder summiert; unbekannte Felder bleiben abwesend.
+Die Cloud speichert Rollen je Kanal mit `is_primary` und überträgt sie als `role_assignment`. `soc_source` benennt den tatsächlichen SoC-Lieferanten, auch bei Ersatz durch einen anderen Kandidaten. Unbekannte Felder bleiben abwesend.

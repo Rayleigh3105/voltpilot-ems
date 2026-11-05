@@ -4,7 +4,6 @@ import type { BezugsbasisVergleich, BezugsbasisVergleichMonat, BezugsbasisVergle
 import type { VerbesserungUebersicht } from './verbesserungUebersicht';
 import type { Wiedervorlage, WiedervorlageZuletzt } from './wiedervorlage';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
-import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
 import type {
   CockpitLayoutDocument,
@@ -1950,13 +1949,9 @@ export interface ProbeAntwort {
     reading?: Record<string, unknown> | null;
     finding?: ProbeBefund | null;
     /**
-     * Die Zuordnungs-VORSCHAU einer selbst angebundenen Batterie (P5d): EINE
-     * Zeile je Feld-Zuordnung.
-     *
-     * ⚠ Der Block ist ABWESEND, wenn die Box (noch) nicht lauschen kann - das
-     * heißt „diese Box kann es nicht", nie „es kam nichts an". Eine Zeile ohne
-     * Empfang trägt `count: 0` und KEINE Zahl; „nicht gemessen" ist nie
-     * „gemessen 0".
+     * Die benannten Messwert-Zeilen eines Verbindungstests: EINE Zeile je Kanal.
+     * Eine Zeile ohne Empfang trägt `count: 0` und KEINE Zahl; „nicht gemessen"
+     * ist nie „gemessen 0".
      */
     samples?: ProbeVorschauZeile[] | null;
     /**
@@ -1967,14 +1962,12 @@ export interface ProbeAntwort {
   }[];
 }
 
-/** Was EINE Feld-Zuordnung im Lauschfenster empfangen hat (P5d). */
+/** Eine benannte Messwert-Zeile eines Verbindungstests. */
 export interface ProbeVorschauZeile {
   channel: string;
-  topic?: string | null;
   raw?: number | null;
   value?: number | null;
   count: number;
-  at?: string | null;
 }
 
 /**
@@ -11148,60 +11141,6 @@ export const api = {
   /** Ein selbst definiertes Gerät entfernen - samt seinem Lese-Flow. */
   deleteCustomComponent: (siteId: string, entityId: string) =>
     request<SiteComponents>(`/api/v1/sites/${siteId}/components/custom/${entityId}`, {
-      method: 'DELETE',
-    }),
-  /**
-   * Die KURVEN-VORLAGEN der SoC-Ableitung (P5b/P5d).
-   *
-   * ⚠ Sie kommen vom Server, damit das Portal die Stützpunkte NICHT nachbaut:
-   * eine Kennlinie im Frontend wäre ein Zwilling von `soccurves/catalog.json`
-   * und dürfte von ihm abdriften - und eine abgedriftete Kennlinie ist ein
-   * falscher Ladestand mit Nachkommastellen.
-   */
-  socCurveTemplates: () => request<SocCurveTemplate[]>('/api/v1/soc-curve-templates'),
-  /**
-   * Die Feld-Zuordnung EINMAL vorschauen (P5d): die Box lauscht kurz auf dem
-   * Broker des Kunden und antwortet je Zuordnung mit Roh- UND skaliertem Wert.
-   *
-   * ⚠ Sie schreibt NICHTS und ist ausdrücklich KEINE Voraussetzung des
-   * Speicherns - anders als `testComponentConnection`. Eine Box, die noch
-   * nicht lauschen kann, antwortet `not_supported`; das ist eine Aussage über
-   * die Box, nie über die Zuordnung.
-   */
-  previewBattery: (
-    siteId: string,
-    body: Record<string, unknown>,
-    /**
-     * Beim BEARBEITEN die Komponente: nur dann kann der Server ein
-     * gespeichertes Geheimnis wieder einsetzen, damit die Vorschau exakt das
-     * tut, was das Speichern täte. Ohne sie müsste der Kunde seinen
-     * BMS-Schlüssel für jede Vorschau neu eintippen.
-     */
-    entityId?: string | null,
-  ) =>
-    request<ProbeAntwort>(
-      `/api/v1/sites/${siteId}/components/battery/preview`
-      + (entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''),
-      {
-        method: 'POST',
-        body: JSON.stringify(body),
-      },
-    ),
-  /** Eine selbst angebundene Batterie anlegen (P5 Ebene 1 + P5b Ebene 2). */
-  createBattery: (siteId: string, body: Record<string, unknown>) =>
-    request<SiteComponents>(`/api/v1/sites/${siteId}/components/battery`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  /** Eine selbst angebundene Batterie ändern - eine NEUE Fassung. */
-  updateBattery: (siteId: string, entityId: string, body: Record<string, unknown>) =>
-    request<SiteComponents>(`/api/v1/sites/${siteId}/components/battery/${entityId}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
-  /** Eine selbst angebundene Batterie entfernen - samt ihrem Lese-Flow. */
-  deleteBattery: (siteId: string, entityId: string) =>
-    request<SiteComponents>(`/api/v1/sites/${siteId}/components/battery/${entityId}`, {
       method: 'DELETE',
     }),
   /**

@@ -68,9 +68,7 @@ in der Sektion „Komponenten" (`geraetSeite.bmsZeilen`).
 
 **Der eingefrorene v1-Telemetrievertrag bleibt unberührt** — die Kanäle werden NIE
 Messkanäle, nichts davon geht in Puffer, Rollups, Erlöse oder den Optimierer. Es ist reine
-SICHTBARKEIT, genau wie der Rest des `sources`-Blocks. Die Grenzen, die einen Sollwert
-wirklich kappen, sind die v2-Entitäts-Kanäle des Schutzbausteins
-([`der-schutz-grenzbaustein-p5c.md`](der-schutz-grenzbaustein-p5c.md)) — nicht diese.
+SICHTBARKEIT, genau wie der Rest des `sources`-Blocks. Diese Kanäle kappen keinen Sollwert.
 
 Fällt die Kopplung weg, verschwindet der Block: **kein Hold-last**. Eine Grenze, die niemand
 mehr gewährt, ist keine Grenze.
