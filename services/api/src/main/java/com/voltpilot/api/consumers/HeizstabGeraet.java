@@ -57,6 +57,9 @@ public class HeizstabGeraet {
     /** Die Fähigkeit der Box (edge-supports.md). */
     public static final String FAEHIGKEIT = "heizstab_regler";
 
+    /** Die Fähigkeit der Box, genau die gewählten Phasen zu schalten (heizstab-shelly.md „Handeingriff je Phase“). */
+    public static final String FAEHIGKEIT_PHASEN = "heizstab_phasen";
+
     /** Mindestlauf und -pause des Profils (Konzept §3, Vorschlag). */
     static final int MINDESTLAUF_S = 300;
     static final int MINDESTPAUSE_S = 300;
@@ -131,6 +134,23 @@ public class HeizstabGeraet {
         }
         Map<String, Object> conn = lies(c.get(0));
         return HeizstabAusgaenge.istMenge(conn) && !HeizstabAusgaenge.anschlussBestaetigt(conn);
+    }
+
+    /**
+     * Die Ausgangsmenge eines Heizstabs dieser Anlage (seine Verbindung), {@code null} = kein
+     * Heizstab über eine Ausgangsmenge.
+     */
+    public Map<String, Object> menge(UUID siteId, UUID entityId) {
+        List<String> c = jdbc.queryForList("SELECT connection_json::text FROM measurement_point "
+                + "WHERE site_id = ? AND id = ? AND entity_type = ? AND communication = 'shelly_http'",
+                String.class, siteId, entityId, TYP);
+        Map<String, Object> conn = c.isEmpty() ? null : lies(c.get(0));
+        return HeizstabAusgaenge.istMenge(conn) ? conn : null;
+    }
+
+    /** Ob diese Box einzelne Phasen schaltet ({@code heizstab_phasen}); sonst nur Stufen. */
+    public boolean phasenEinzeln(UUID boxId) {
+        return boxId != null && faehigkeiten.kann(boxId, FAEHIGKEIT_PHASEN);
     }
 
     /** Ob eine aktive Box der Anlage Ausgangsmenge und Regler kann. */

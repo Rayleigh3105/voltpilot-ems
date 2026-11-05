@@ -58,7 +58,38 @@ public final class ShellyModellnamen {
             Map.entry("S3EM-002CXCEU", "Shelly EM Gen3"),
             Map.entry("S3EM-003CXCEU63", "Shelly 3EM-63 Gen3"));
 
+    /**
+     * Die Zahl der Schaltausgänge je Modellcode, nur wo das Gerät ausschließlich als Schalter läuft (dieselben
+     * Gerät-Seiten wie oben: Pro 3 hat drei Relais, Pro 4PM vier). Geräte, die auch als Rollladen laufen können
+     * (Pro 2PM, Plus 2PM, Shelly 2.5), und Zähler fehlen: ihre Zahl hängt an der Einstellung des Geräts.
+     */
+    private static final Map<String, Integer> AUSGAENGE = Map.ofEntries(
+            Map.entry("SHSW-1", 1), Map.entry("SHSW-PM", 1), Map.entry("SHSW-L", 1),
+            Map.entry("SHPLG-1", 1), Map.entry("SHPLG-S", 1), Map.entry("SHPLG-U1", 1), Map.entry("SHPLG2-1", 1),
+            Map.entry("SPSW-003XE16EU", 3),
+            Map.entry("SPSW-001XE16EU", 1), Map.entry("SPSW-201XE16EU", 1),
+            Map.entry("SPSW-001PE16EU", 1), Map.entry("SPSW-201PE16EU", 1),
+            Map.entry("SPSW-002XE16EU", 2), Map.entry("SPSW-202XE16EU", 2),
+            Map.entry("SPSW-004PE16EU", 4), Map.entry("SPSW-104PE16EU", 4),
+            Map.entry("SNSW-001X16EU", 1), Map.entry("SNSW-001P16EU", 1), Map.entry("SNPL-00112EU", 1),
+            Map.entry("SNSW-001X8EU", 1), Map.entry("SNSW-001P8EU", 1),
+            Map.entry("S3SW-001X16EU", 1), Map.entry("S3SW-001P16EU", 1));
+
     private ShellyModellnamen() {
+    }
+
+    /**
+     * Die Schaltausgänge eines Shelly-Fundes: was die Box gezählt hat, sonst die Zahl des Modells, sonst null
+     * (unbekannt - nie still 1). Die Box zählt nur, wenn {@code Shelly.GetStatus} antwortet; ein Shelly mit
+     * Passwort oder eine langsame Antwort ließ die Zahl offen, und ein Pro 3 wurde als Heizstab mit einem
+     * Ausgang angelegt (Live-Fall GATE, 05.11.2026).
+     */
+    public static Integer ausgaenge(GeraetesucheBericht.Fund fund) {
+        if (fund.kanaele() != null || !"shelly".equalsIgnoreCase(fund.hersteller()) || fund.modell() == null
+                || !"schaltaktor".equals(fund.art())) {
+            return fund.kanaele();
+        }
+        return AUSGAENGE.get(fund.modell().trim().toUpperCase(Locale.ROOT));
     }
 
     /** Der Produktname eines Shelly-Fundes; null, wenn er kein Shelly ist oder Shelly den Code nicht nennt. */

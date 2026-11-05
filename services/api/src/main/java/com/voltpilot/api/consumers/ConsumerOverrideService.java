@@ -6,6 +6,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
@@ -33,22 +34,52 @@ public class ConsumerOverrideService {
     static final Duration MAX_TTL = Duration.ofHours(4);
 
     /**
+     * Heizstab, von Hand geschaltet (Entscheid D1-A, 05.11.2026): ohne eigene Dauer kehrt er zwei
+     * Stunden nach dem letzten Tipp zu Smart zurück - jeder Tipp setzt die Frist neu.
+     */
+    static final Duration HEIZSTAB_ZURUECK_ZU_SMART = Duration.ofHours(2);
+
+    /**
      * @param stufe Heizstab V1: die Stufe eines Stufen-Verbrauchers, 1-basiert in seine
      *     {@code levels_kw} (ein Heizstab mit Stufen 1/2/3 Phasen: 1 = eine Phase). Fehlt sie,
      *     gilt {@code setpointKw} (auf die Stufe darunter gerundet) oder die oberste Stufe.
+     * @param ausgaenge Heizstab, Handeingriff je Phase: die Ausgänge (Kanalnummern des Shelly), die
+     *     laufen sollen. Ihre Zahl ist die Stufe; eine Box mit {@code heizstab_phasen} schaltet genau
+     *     diese, jede andere wählt die Ausgänge der Stufe selbst.
      */
     public record OverrideRequest(String action, Integer durationMinutes, Instant endsAt,
-            BigDecimal setpointKw, Integer stufe) {
+            BigDecimal setpointKw, Integer stufe, java.util.List<Integer> ausgaenge) {
 
         /** Der Weg vor dem Heizstab (V1, Paket 3). */
         public OverrideRequest(String action, Integer durationMinutes, Instant endsAt, BigDecimal setpointKw) {
-            this(action, durationMinutes, endsAt, setpointKw, null);
+            this(action, durationMinutes, endsAt, setpointKw, null, null);
+        }
+
+        /** Der Weg mit Stufe, vor dem Handeingriff je Phase. */
+        public OverrideRequest(String action, Integer durationMinutes, Instant endsAt, BigDecimal setpointKw,
+                Integer stufe) {
+            this(action, durationMinutes, endsAt, setpointKw, stufe, null);
         }
     }
 
+    /**
+     * @param phasenGenau nur bei einer Phasen-Wahl ({@code ausgaenge}): ob die Box genau diese Phasen
+     *     schaltet ({@code heizstab_phasen}) - {@code false} = sie wählt die Phasen der Stufe selbst
+     *     oder der Eingriff ging nicht hinaus. Sonst fehlt das Feld.
+     */
     public record OverrideOutcome(boolean applied, boolean pushed, String kind, Instant endsAt,
             BigDecimal effectivePowerKw, boolean gridImportPossible, boolean ttlCapped,
-            String message, String pushReason) {}
+            String message, String pushReason,
+            @com.fasterxml.jackson.annotation.JsonInclude(
+                    com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Boolean phasenGenau) {
+
+        public OverrideOutcome(boolean applied, boolean pushed, String kind, Instant endsAt,
+                BigDecimal effectivePowerKw, boolean gridImportPossible, boolean ttlCapped,
+                String message, String pushReason) {
+            this(applied, pushed, kind, endsAt, effectivePowerKw, gridImportPossible, ttlCapped, message,
+                    pushReason, null);
+        }
+    }
 
     private final ConsumerRepository consumers;
     private final ConsumerOverrideRepository overrides;
@@ -76,8 +107,18 @@ public class ConsumerOverrideService {
         if (!stop && !"start".equals(action)) {
             throw badRequest("Unbekannte Aktion. Erlaubt sind \"start\" und \"stop\".");
         }
+        java.util.List<Integer> ausgaenge = req.ausgaenge() == null ? null
+                : req.ausgaenge().stream().sorted().toList();
+        // Ein Heizstab über eine Ausgangsmenge (sonst null): er kehrt ohne eigene Dauer nach zwei
+        // Stunden zu Smart zurück (D1-A) und kennt die Phasen-Wahl.
+        Map<String, Object> menge = heizstab == null ? null : heizstab.menge(siteId, entityId);
+        if (ausgaenge != null && (stop || menge == null || !"stepped".equals(row.controlKind())
+                || stufenKw(row).isEmpty())) {
+            throw badRequest(stop ? "Zum Ausschalten aller Phasen gibt es „Aus“ - ohne Phasen-Wahl."
+                    : "Einzelne Phasen gibt es nur bei einem Heizstab über mehrere Ausgänge.");
+        }
         Instant now = Instant.now();
-        Instant endsAt = requireEnd(req, now);
+        Instant endsAt = requireEnd(req, now, menge != null ? HEIZSTAB_ZURUECK_ZU_SMART : null);
         boolean capped = false;
         if (endsAt.isAfter(now.plus(MAX_TTL))) {
             endsAt = now.plus(MAX_TTL);
@@ -108,7 +149,20 @@ public class ConsumerOverrideService {
                                 + "bestätigt hat, schaltet VoltPilot den Stab.");
             }
             command = "setpoint_kw";
-            value = stufeKw(stufenKw(row), req.stufe(), req.setpointKw());
+            if (ausgaenge != null) {
+                // Handeingriff je Phase: die Zahl der Wahl ist die Stufe, der Sollwert die kW der gewählten
+                // Elemente (heizstab-shelly.md). Eine ältere Box wählt daraus eine Stufe, nie mehr.
+                String fehler = HeizstabAusgaenge.phasenFehler(menge, ausgaenge);
+                if (fehler != null) {
+                    throw badRequest(fehler);
+                }
+                if (req.stufe() != null && req.stufe() != ausgaenge.size()) {
+                    throw badRequest("Stufe und Phasen-Wahl passen nicht zusammen.");
+                }
+                value = HeizstabAusgaenge.kwDer(menge, ausgaenge);
+            } else {
+                value = stufeKw(stufenKw(row), req.stufe(), req.setpointKw());
+            }
             onOff = null;
             effectivePower = value;
         } else {
@@ -122,20 +176,29 @@ public class ConsumerOverrideService {
 
         boolean flagOn = activation.activationAvailable();
         UUID deviceId = flagOn ? ziel.komponente(siteId, entityId).id() : null;
-        overrides.put(siteId, entityId, stop ? "stop" : "start", command, value, endsAt, actor);
+        overrides.put(siteId, entityId, stop ? "stop" : "start", command, value, ausgaenge, endsAt, actor);
         audit.append(siteId, entityId, stop ? "override_stopped" : "override_started", null, null,
-                actor, "ends_at=" + endsAt);
+                actor, "ends_at=" + endsAt + (ausgaenge == null ? "" : " ausgaenge=" + ausgaenge));
         ConsumerOverridePublisher pub = flagOn ? publisher.getIfAvailable() : null;
-        boolean pushed = pub != null && pub.publishOverride(TenantContext.get(), siteId, deviceId,
-                entityId, onOff, value, ttlSeconds, now);
+        // Die gewählten Phasen gehen nur an eine Box, die sie kennt; jede andere bekommt die Stufe.
+        boolean phasenGenau = ausgaenge != null && heizstab.phasenEinzeln(deviceId);
+        boolean pushed = pub != null && (phasenGenau
+                ? pub.publishPhasenOverride(TenantContext.get(), siteId, deviceId, entityId, value, ausgaenge,
+                        ttlSeconds, now)
+                : pub.publishOverride(TenantContext.get(), siteId, deviceId, entityId, onOff, value,
+                        ttlSeconds, now));
         String reason = !flagOn ? "control_disabled" : pub == null ? "publisher_unavailable"
                 : pushed ? null : "publish_failed";
         boolean grid = !stop; // a manual run may draw grid power (the §14.13 hint)
         String msg = message(stop, flagOn, pushed)
                 + ("publisher_unavailable".equals(reason) ? " Die Zustellung ist derzeit nicht verfügbar."
-                        : "publish_failed".equals(reason) ? " Die Zustellung an die Box ist fehlgeschlagen." : "");
+                        : "publish_failed".equals(reason) ? " Die Zustellung an die Box ist fehlgeschlagen." : "")
+                + (ausgaenge != null && pushed && !phasenGenau
+                        ? " Ihre Box wählt die Phasen noch selbst; einzelne Phasen schaltet sie nach dem "
+                                + "nächsten Update."
+                        : "");
         return new OverrideOutcome(true, pushed, stop ? "stop" : "start", endsAt, effectivePower,
-                grid, capped, msg, reason);
+                grid, capped, msg, reason, ausgaenge == null ? null : pushed && phasenGenau);
     }
 
     @Transactional
@@ -171,7 +234,7 @@ public class ConsumerOverrideService {
         return stop ? "Der Verbraucher wird gestoppt." : "Der Verbraucher wird gestartet.";
     }
 
-    private Instant requireEnd(OverrideRequest req, Instant now) {
+    private Instant requireEnd(OverrideRequest req, Instant now, Duration vorgabe) {
         if (req.endsAt() != null) {
             if (!req.endsAt().isAfter(now)) {
                 throw badRequest("Die Endzeit muss in der Zukunft liegen.");
@@ -180,6 +243,9 @@ public class ConsumerOverrideService {
         }
         if (req.durationMinutes() != null && req.durationMinutes() > 0) {
             return now.plus(Duration.ofMinutes(req.durationMinutes()));
+        }
+        if (vorgabe != null) {
+            return now.plus(vorgabe);
         }
         throw badRequest("Bitte eine Endzeit oder Dauer angeben - ein Eingriff läuft nie unbegrenzt.");
     }

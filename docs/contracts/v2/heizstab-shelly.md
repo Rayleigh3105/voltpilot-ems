@@ -81,6 +81,14 @@ Seit dem 05.11.2026 kann ein Handeingriff einzelne Phasen schalten statt nur ein
 
 Die Box meldet das im Herzschlag als `supports: heizstab_phasen` ([edge-supports.md](edge-supports.md)); beide Box-Arten tragen es, der Stufenweg steckt im Core. Die Cloud sendet `outputs` nur an eine solche Box. Eine ältere Box überliest das Feld und wählt die Stufe aus dem Sollwert. Vektoren: der Block `plan` in [heizstab-stufen-vectors.json](heizstab-stufen-vectors.json), Fälle „Handeingriff je Phase: …“.
 
+**In der Cloud** nimmt `POST /api/v1/sites/{siteId}/consumers/{id}/override` die Wahl als `ausgaenge` (Kanalnummern) neben `action: start` an:
+
+- Die API prüft sie mit derselben Regel wie die Box (`HeizstabAusgaenge.phasenFehler`). Eine falsche Wahl ergibt 400 und schreibt nichts. Alle Phasen aus ist `action: stop` ohne Wahl.
+- Der Sollwert ist die Summe der kW der gewählten Elemente.
+- Die Wahl liegt in `consumer_override.target_outputs`, und `GET …/consumer-overrides` liefert sie als `targetOutputs`. Das ist der Wunsch; was läuft, meldet die Box in `stage.outputs_on`.
+- `outputs` geht nur an eine Box mit `heizstab_phasen`. Jede andere bekommt den Sollwert allein, und die Antwort trägt `phasenGenau: false`.
+- Ohne eigene Dauer endet ein Handeingriff an einem Heizstab über eine Ausgangsmenge nach zwei Stunden; das gilt auch für „Aus“ (Entscheid D1-A, 05.11.2026). Jeder neue Tipp setzt die Frist neu. Danach führt wieder Smart.
+
 ## Rücklesung `edge/entities/{id}/readback`
 
 Eine Anfrage liest alle Ausgänge: Gen2 `Shelly.GetStatus`, Gen1 `/status`. Die v1-Form bleibt, mit drei Zusätzen:

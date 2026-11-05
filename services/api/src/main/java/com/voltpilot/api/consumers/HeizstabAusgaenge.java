@@ -155,6 +155,61 @@ public final class HeizstabAusgaenge {
         return List.of(ch instanceof Number n ? n.intValue() : 0);
     }
 
+    /**
+     * Der Satz, warum diese Phasen-Wahl des Handeingriffs nicht geht; {@code null} = in Ordnung
+     * (heizstab-shelly.md „Handeingriff je Phase“). Dieselbe Regel wie {@code shelly.ExplicitOutputs}
+     * der Box: jeder Ausgang gehört zur Menge, keiner doppelt, und ihre Zahl ist eine erlaubte Stufe -
+     * „nur alle zusammen“ bleibt alle zusammen. Die Leistung prüft die Box gegen den gewährten
+     * Sollwert; die Cloud schickt dafür die kW der gewählten Elemente ({@link #kwDer}).
+     */
+    public static String phasenFehler(Map<String, Object> connection, List<Integer> wahl) {
+        if (fehler(connection) != null) {
+            return "Die Ausgänge dieses Heizstabs sind nicht vollständig eingerichtet.";
+        }
+        if (wahl == null || wahl.isEmpty()) {
+            return "Bitte mindestens eine Phase wählen. Alle Phasen aus ist „Aus“.";
+        }
+        List<Integer> menge = ganzzahlen(connection.get("channels"));
+        Set<Integer> gesehen = new HashSet<>();
+        for (Integer ch : wahl) {
+            if (ch == null || !menge.contains(ch)) {
+                return "Ausgang " + ch + " gehört nicht zu diesem Heizstab.";
+            }
+            if (!gesehen.add(ch)) {
+                return "Ausgang " + ch + " steht zweimal in der Wahl.";
+            }
+        }
+        if (stufeMit(connection, wahl.size()) == null) {
+            List<Integer> erlaubt = stufenOder(connection, menge.size());
+            if (erlaubt.size() == 1 && erlaubt.get(0) == menge.size()) {
+                return "Dieser Heizstab schaltet nur alle Phasen zusammen.";
+            }
+            return wahl.size() + (wahl.size() == 1 ? " Phase" : " Phasen")
+                    + " zugleich sind bei diesem Heizstab nicht erlaubt (erlaubt: "
+                    + String.join(", ", erlaubt.stream().map(String::valueOf).toList()) + ").";
+        }
+        return null;
+    }
+
+    /**
+     * Die kW der gewählten Elemente (Summe ihrer {@code output_kw}): der Sollwert des Handeingriffs je Phase,
+     * die Obergrenze, gegen die die Box die Wahl prüft. Vorher mit {@link #phasenFehler} prüfen.
+     */
+    public static BigDecimal kwDer(Map<String, Object> connection, List<Integer> wahl) {
+        List<Integer> menge = ganzzahlen(connection.get("channels"));
+        List<Double> kw = zahlen(connection.get("output_kw"));
+        double sum = 0;
+        for (int ch : wahl) {
+            sum += kw.get(menge.indexOf(ch));
+        }
+        return BigDecimal.valueOf(sum).setScale(3, RoundingMode.HALF_UP);
+    }
+
+    /** Die erlaubte Stufe mit genau so vielen Ausgängen, {@code null} = keine solche Stufe. */
+    public static Stufe stufeMit(Map<String, Object> connection, int ausgaenge) {
+        return stufen(connection).stream().filter(s -> s.ausgaenge() == ausgaenge).findFirst().orElse(null);
+    }
+
     private static List<Integer> stufenOder(Map<String, Object> connection, int n) {
         Object raw = connection.get("stages");
         if (raw == null) {

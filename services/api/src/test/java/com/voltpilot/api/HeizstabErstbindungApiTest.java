@@ -241,6 +241,46 @@ class HeizstabErstbindungApiTest {
         }
     }
 
+    /**
+     * Handeingriff je Phase (D1-A, 05.11.2026): der Kunde schaltet L1 und L3; die Wahl liegt mit dem Sollwert
+     * der Stufe im Eingriff, ohne eigene Dauer endet er nach zwei Stunden, und eine falsche Wahl schreibt nichts.
+     */
+    @Test
+    void derHandeingriffMerktSichDieGewaehltenPhasen() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Zuhause");
+        try {
+            UUID id = legeZuhauseAn(customer, site, "edge-heizstab-03");
+            heartbeat(site, anyDeviceOf(site), localSetup());
+            String override = "/api/v1/sites/" + site + "/consumers/" + id + "/override";
+
+            ResponseEntity<String> falsch = post(override, customer, Map.of("action", "start", "ausgaenge", List.of(5)));
+            assertThat(falsch.getStatusCode()).as(falsch.getBody()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(getJson("/api/v1/sites/" + site + "/consumer-overrides", customer)).isEmpty();
+
+            Instant vorher = Instant.now();
+            ResponseEntity<String> l1l3 = post(override, customer, Map.of("action", "start", "ausgaenge", List.of(2, 0)));
+            assertThat(l1l3.getStatusCode()).as(l1l3.getBody()).isEqualTo(HttpStatus.OK);
+            JsonNode antwort = json.readTree(l1l3.getBody());
+            assertThat(antwort.path("effectivePowerKw").decimalValue()).isEqualByComparingTo("4.0");
+            assertThat(antwort.has("phasenGenau")).as("Phasen-Wahl: das Feld ist da").isTrue();
+
+            JsonNode aktiv = getJson("/api/v1/sites/" + site + "/consumer-overrides", customer);
+            assertThat(aktiv).hasSize(1);
+            assertThat(aktiv.get(0).path("targetOutputs").toString()).isEqualTo("[0,2]");
+            assertThat(aktiv.get(0).path("targetValue").decimalValue()).isEqualByComparingTo("4.0");
+            Instant ende = Instant.parse(aktiv.get(0).path("endsAt").asText());
+            assertThat(ende).isBetween(vorher.plusSeconds(7200 - 5), Instant.now().plusSeconds(7200 + 5));
+
+            // Eine Stufe ohne Wahl löscht die Wahl wieder (eine Zeile je Verbraucher).
+            post(override, customer, Map.of("action", "start", "durationMinutes", 30, "stufe", 3));
+            JsonNode stufe = getJson("/api/v1/sites/" + site + "/consumer-overrides", customer);
+            assertThat(stufe.get(0).has("targetOutputs")).as(stufe.toString()).isFalse();
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
     @Test
     void eineFremdeQuelleBindetDenHeizstabNicht() throws Exception {
         String customer = token("demo", "demo");

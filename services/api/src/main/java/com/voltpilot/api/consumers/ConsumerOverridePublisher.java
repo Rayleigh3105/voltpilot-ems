@@ -68,6 +68,24 @@ public class ConsumerOverridePublisher {
      */
     public boolean publishOverride(UUID tenantId, UUID siteId, UUID deviceId, UUID entityId,
             Boolean onOff, BigDecimal setpointKw, int ttlSeconds, Instant now) {
+        return publish(tenantId, siteId, deviceId,
+                envelope(entityId, onOff, setpointKw, null, ttlSeconds, now).toString(), entityId);
+    }
+
+    /**
+     * The manual per-phase switch of a heating rod (heizstab-shelly.md "Handeingriff je Phase"):
+     * the setpoint (the kW of the stage with that many outputs) PLUS {@code command.outputs}, the
+     * channel numbers to run. Only for a box that reports {@code heizstab_phasen}; any other box
+     * gets the plain setpoint and picks the outputs itself.
+     */
+    public boolean publishPhasenOverride(UUID tenantId, UUID siteId, UUID deviceId, UUID entityId,
+            BigDecimal setpointKw, java.util.List<Integer> outputs, int ttlSeconds, Instant now) {
+        return publish(tenantId, siteId, deviceId,
+                envelope(entityId, null, setpointKw, outputs, ttlSeconds, now).toString(), entityId);
+    }
+
+    private ObjectNode envelope(UUID entityId, Boolean onOff, BigDecimal setpointKw,
+            java.util.List<Integer> outputs, int ttlSeconds, Instant now) {
         ObjectNode env = mapper.createObjectNode();
         env.put("schema_version", "1.0");
         env.put("entity_id", entityId.toString());
@@ -82,11 +100,14 @@ public class ConsumerOverridePublisher {
         if (setpointKw != null) {
             command.put("type", "setpoint_kw");
             command.put("value", setpointKw);
+            if (outputs != null && !outputs.isEmpty()) {
+                outputs.forEach(command.putArray("outputs")::add);
+            }
         } else {
             command.put("type", "on_off");
             command.put("value", onOff != null && onOff);
         }
-        return publish(tenantId, siteId, deviceId, env.toString(), entityId);
+        return env;
     }
 
     /** Publish the withdrawal so the plan/automation re-takes at once ("Automatik fortsetzen"). */

@@ -257,6 +257,32 @@ class GeraetesucheAbgleichTest {
         assertThat(ShellyModellnamen.name(mitModell(deye, "SPSW-003XE16EU"))).isNull();
     }
 
+    /**
+     * Live-Fall GATE (05.11.2026): ohne Antwort auf {@code Shelly.GetStatus} meldet die Box keine Zahl der
+     * Ausgänge, das Portal machte daraus still einen, und ein Pro 3 wurde ein Heizstab mit nur Ausgang 0.
+     * Die Zahl des Modells füllt die Lücke; was die Box gezählt hat, gilt vor ihr; ein Gerät, das auch als
+     * Rollladen läuft, bleibt unbekannt.
+     */
+    @Test
+    void einShellyOhneGezaehlteAusgaengeBekommtDieZahlSeinesModells() {
+        GeraetesucheBericht.Fund pro3 = mitKanaelen(fund(docker, "shelly:192.168.178.50:80"), null);
+        assertThat(pro3.art()).isEqualTo("schaltaktor");
+        assertThat(ShellyModellnamen.ausgaenge(pro3)).isEqualTo(3);
+        assertThat(ShellyModellnamen.ausgaenge(mitKanaelen(pro3, 2))).as("gezählt gilt").isEqualTo(2);
+        assertThat(ShellyModellnamen.ausgaenge(mitModell(pro3, "SPSW-104PE16EU"))).isEqualTo(4);
+        assertThat(ShellyModellnamen.ausgaenge(mitModell(pro3, "SPSW-202PE16EU"))).as("Pro 2PM: auch Rollladen")
+                .isNull();
+        assertThat(ShellyModellnamen.ausgaenge(mitModell(pro3, "SXXX-999ZZ"))).isNull();
+        GeraetesucheBericht.Fund deye = mitKanaelen(fund(docker, "solarman:3115580613"), null);
+        assertThat(ShellyModellnamen.ausgaenge(mitModell(deye, "SPSW-003XE16EU"))).isNull();
+    }
+
+    private static GeraetesucheBericht.Fund mitKanaelen(GeraetesucheBericht.Fund d, Integer kanaele) {
+        return new GeraetesucheBericht.Fund(d.schluessel(), d.erkenner(), d.art(), d.hersteller(), d.modell(),
+                d.seriennummer(), d.firmware(), d.familie(), d.spannung(), kanaele, d.erkennung(), d.merkmale(),
+                d.anbindung(), d.hindernis(), d.verbindung(), d.liestBoxSchon());
+    }
+
     private static GeraetesucheBericht.Fund mitSpannung(GeraetesucheBericht.Fund d, String spannung) {
         return new GeraetesucheBericht.Fund(d.schluessel(), d.erkenner(), d.art(), d.hersteller(), d.modell(),
                 d.seriennummer(), d.firmware(), d.familie(), spannung, d.kanaele(), d.erkennung(), d.merkmale(),
