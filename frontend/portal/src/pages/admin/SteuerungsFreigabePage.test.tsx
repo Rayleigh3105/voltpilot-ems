@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const controlCertifications = vi.fn();
@@ -17,7 +17,7 @@ vi.mock('../../admin/adminApi', () => ({
   },
 }));
 
-const { SteuerungsFreigabePage } = await import('./SteuerungsFreigabePage');
+const { SteuerungsFreigabePage, gemeinsameHinweise } = await import('./SteuerungsFreigabePage');
 
 /**
  * Admin-Umbau Stufe 3 (Captain-Entscheid F4): „Gerätetypen" ist keine eigene
@@ -87,5 +87,53 @@ describe('SteuerungsFreigabePage - die drei Sektionen', () => {
     // … und die Seite steht trotzdem.
     expect(screen.getByRole('heading', { name: 'Freigegebene Modelle' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Anlagen' })).toBeInTheDocument();
+  });
+});
+
+const anlage = (id: string, verdict: 'covered_not_activated' | null) => ({
+  deviceId: id, tenantId: 't', siteId: `s-${id}`, siteName: `Anlage ${id}`, tenantName: 'Mandant', externalRef: `VP-${id}`,
+  activated: false, platformCertVerdict: verdict, platformCertModel: null, certSource: null, activatedAt: null, activatedBy: null,
+});
+
+/** UI-Runde Admin: derselbe Grund an vielen Anlagen steht einmal, der Knopf ist nur bei „bereit“ laut. */
+describe('SteuerungsFreigabePage - Anlagen ohne Wiederholung', () => {
+  beforeEach(() => {
+    window.location.hash = '';
+    controlCertifications.mockResolvedValue([]);
+    controlCandidates.mockResolvedValue([anlage('1', null), anlage('2', null), anlage('3', 'covered_not_activated')]);
+    consumerDeviceTypes.mockResolvedValue([
+      { type: 'wallbox', label: 'Wallbox', certificationStatus: 'simulator_only', certifiedAt: null, certificationNotes: 'Nur am Simulator (Runbook §5).', connectedCount: 0 },
+    ]);
+  });
+
+  it('nennt den gemeinsamen Grund einmal über der Tabelle, nicht an jeder Zeile', async () => {
+    render(<SteuerungsFreigabePage />);
+    await screen.findByText('Anlage 1');
+    expect(screen.getAllByText(/hat noch nicht gemeldet, ob sein Modell im Register steht/)).toHaveLength(1);
+    expect(screen.getByText('(2)', { exact: false })).toBeInTheDocument();
+    // Ein einmaliger Grund bleibt an seiner Zeile.
+    expect(screen.getByText(/Es fehlt nur die Aktivierung für diese Anlage/)).toBeInTheDocument();
+  });
+
+  it('macht nur den Knopf der freigegebenen Anlage zur Hauptaktion', async () => {
+    render(<SteuerungsFreigabePage />);
+    const zeile = (await screen.findByText('Anlage 3')).closest('tr')!;
+    expect(within(zeile).getByRole('button', { name: 'Steuerung aktivieren' }).className).toMatch(/primary/);
+    const leise = screen.getByText('Anlage 1').closest('tr')!;
+    expect(within(leise).getByRole('button', { name: 'Steuerung aktivieren' }).className).not.toMatch(/primary/);
+  });
+
+  it('klappt den Prüfstandsbeleg eines Gerätetyps erst auf Wunsch auf', async () => {
+    render(<SteuerungsFreigabePage />);
+    const beleg = await screen.findByText('Nur am Simulator (Runbook §5).');
+    expect(beleg.closest('details')).not.toHaveAttribute('open');
+  });
+});
+
+describe('gemeinsameHinweise', () => {
+  it('zählt nur Gründe, die mindestens zweimal vorkommen', () => {
+    expect(gemeinsameHinweise([
+      { label: 'A', hint: 'x' }, { label: 'A', hint: 'x' }, { label: 'B', hint: 'y' }, { label: 'C', hint: '' }, { label: 'C', hint: '' },
+    ])).toEqual([{ label: 'A', hint: 'x', anzahl: 2 }]);
   });
 });

@@ -45,6 +45,7 @@ import {
 import { parseSektion } from '../../nav';
 import { AdminPageHead } from './AdminPageHead';
 import { GeraetetypenSektion } from './GeraetetypenSektion';
+import './SteuerungsFreigabe.css';
 
 export function SteuerungsFreigabePage(): JSX.Element {
   const [register, setRegister] = useState<ControlCertification[] | null>(null);
@@ -103,13 +104,15 @@ export function SteuerungsFreigabePage(): JSX.Element {
   }
 
   const rows = register ? registerRows(register) : [];
+  const gemeinsameGruende = plants ? gemeinsameHinweise(plants.map((p) => plantCertView(p.activated, p.platformCertVerdict))) : [];
+  const gemeinsam = new Set(gemeinsameGruende.map((g) => g.hint));
 
   return (
     <div className="vp-admin-page">
       <AdminPageHead
         icon="settings"
         title="Steuerungs-Freigabe"
-        description="Ein Wechselrichter-Modell wird EINMAL am Prüfstand freigegeben und gilt danach für die ganze Flotte. Ob eine Anlage wirklich gesteuert wird, bleibt trotzdem eine ausdrückliche Entscheidung - ein Klick je Anlage."
+        description="Ein Wechselrichter-Modell wird einmal am Prüfstand freigegeben und gilt dann für die ganze Flotte. Gesteuert wird eine Anlage erst, wenn Sie sie einzeln aktivieren."
       />
 
       {error && <div className="vp-alert-warn vp-cert-error">{error}</div>}
@@ -165,7 +168,13 @@ export function SteuerungsFreigabePage(): JSX.Element {
                           {r.signLabel && (
                             <div className="vp-cell-sub">Vorzeichen: {r.signLabel}</div>
                           )}
-                          {r.note && <div className="vp-cell-sub">{r.note}</div>}
+                          {/* Der Prüfstandsbeleg ist lang und technisch: aufklappbar statt immer offen. */}
+                          {r.note && (
+                            <details className="vp-cert-nachweis">
+                              <summary>Nachweis</summary>
+                              <div className="vp-cell-sub">{r.note}</div>
+                            </details>
+                          )}
                         </td>
                         <td data-label="">
                           <Button
@@ -191,9 +200,8 @@ export function SteuerungsFreigabePage(): JSX.Element {
           <section className="vp-admin-sec">
             <h2 className="vp-admin-sec-head">Anlagen</h2>
             <p className="vp-cert-summary">
-              Die Scharfschaltung bleibt eine ausdrückliche Entscheidung - es geht um
-              Schreibzugriff auf den Wechselrichter eines Kunden. Sie ist nur noch EIN Klick,
-              sobald das Register das Modell deckt.
+              Steuern heißt Schreibzugriff auf den Wechselrichter eines Kunden. Darum wird jede
+              Anlage einzeln aktiviert, auch wenn ihr Modell freigegeben ist.
             </p>
             {plants.length === 0 ? (
               <EmptyState
@@ -202,6 +210,16 @@ export function SteuerungsFreigabePage(): JSX.Element {
               />
             ) : (
               <Card radius="lg" style={{ padding: 0, overflow: 'hidden' }}>
+                {/* Derselbe Grund an vielen Zeilen steht einmal über der Tabelle statt an jeder Zeile. */}
+                {gemeinsameGruende.length > 0 && (
+                  <ul className="vp-cert-gruende">
+                    {gemeinsameGruende.map((g) => (
+                      <li key={g.label}>
+                        <b>{g.label}</b> ({g.anzahl}): {g.hint}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <table className="vp-table responsive">
                   <thead>
                     <tr>
@@ -227,7 +245,7 @@ export function SteuerungsFreigabePage(): JSX.Element {
                             </Badge>
                             {/* Der Grund steht IMMER daneben - ein Zustandswort
                                 ohne Ursache ist ein Rätsel. */}
-                            {view.hint && <div className="vp-cell-sub">{view.hint}</div>}
+                            {view.hint && !gemeinsam.has(view.hint) && <div className="vp-cell-sub">{view.hint}</div>}
                             {p.activated && p.activatedBy && (
                               <div className="vp-cell-sub">aktiviert durch {p.activatedBy}</div>
                             )}
@@ -251,7 +269,10 @@ export function SteuerungsFreigabePage(): JSX.Element {
                               /* Ein Knopf, der strukturell nichts bewirken kann,
                                  wird nicht angeboten - dort steht der Grund. */
                               view.canActivate && (
-                                <Button onClick={() => setArming(p)}>Steuerung aktivieren</Button>
+                                // Laut nur, wo das Modell freigegeben ist; meldet das Gerät noch nichts, bleibt der Knopf leise.
+                                <Button variant={view.state === 'bereit' ? 'primary' : 'outline'} onClick={() => setArming(p)}>
+                                  Steuerung aktivieren
+                                </Button>
                               )
                             )}
                           </td>
@@ -446,4 +467,19 @@ function CertifyForm({
       </form>
     </details>
   );
+}
+
+/**
+ * Gründe, die an mindestens zwei Anlagen gleich lauten: sie stehen einmal über der Tabelle
+ * (mit Zustandswort und Anzahl), die Zeilen tragen dann nur noch ihr Zustandswort.
+ */
+export function gemeinsameHinweise(views: { label: string; hint: string }[]): { label: string; hint: string; anzahl: number }[] {
+  const zaehler = new Map<string, { label: string; hint: string; anzahl: number }>();
+  for (const v of views) {
+    if (!v.hint) continue;
+    const e = zaehler.get(v.hint);
+    if (e) e.anzahl += 1;
+    else zaehler.set(v.hint, { label: v.label, hint: v.hint, anzahl: 1 });
+  }
+  return [...zaehler.values()].filter((e) => e.anzahl >= 2);
 }

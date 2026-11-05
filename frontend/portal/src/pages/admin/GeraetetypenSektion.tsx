@@ -46,8 +46,8 @@ export function GeraetetypenSektion(): JSX.Element {
     <section className="vp-admin-sec" id="sektion-geraetetypen">
       <h2 className="vp-admin-sec-head">Steuerbare Gerätetypen</h2>
       <p className="vp-cert-summary">
-        Der plattformweite Freigabe-Stand je Gerätetyp. Zertifizierung gilt für alle Kunden und
-        wird einmalig per Bench-Session freigegeben - hier gibt es nichts umzuschalten.
+        Der Freigabe-Stand je Gerätetyp. Er gilt für alle Kunden und wird einmal am Prüfstand
+        festgelegt - hier gibt es nichts umzuschalten.
       </p>
 
       {failed && (
@@ -86,7 +86,13 @@ export function GeraetetypenSektion(): JSX.Element {
                     </td>
                     <td data-label="Freigabe-Stand">
                       <Badge variant={cert.tone} dot>{cert.label}</Badge>
-                      {detail && <div className="vp-cell-sub">{detail}</div>}
+                      {/* Der Beleg ist ein technischer Nachweis: aufklappbar statt immer offen. */}
+                      {detail && (
+                        <details className="vp-cert-nachweis">
+                          <summary>Nachweis</summary>
+                          <div className="vp-cell-sub">{detail}</div>
+                        </details>
+                      )}
                     </td>
                     <td data-label="Verbundene Geräte">
                       {t.connectedCount.toLocaleString('de-DE')}
