@@ -134,7 +134,7 @@ export function GeraeteKatalog({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Gerät hinzufügen">
+    <Modal open={open} onClose={onClose} title="Gerät hinzufügen" breit>
       <div className="vp-kat">
         <div className="vp-kat-kopf">
           <label className="vp-kat-suche">

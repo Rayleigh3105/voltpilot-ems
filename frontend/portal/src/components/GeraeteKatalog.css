@@ -6,6 +6,14 @@
  *
  * Bewegung nur über `--vp-motion-*`: ein Wechsel der Art blendet den Inhalt
  * kurz ein (`vp-kat-ein`), sonst bewegt sich nichts.
+ *
+ * Breite (Auftrag 05.11.2026, Captain: „zu hochkant" - Nachtrag: am Telefon
+ * bleibt die heutige Linie): das `Modal` trägt `breit` (840 px statt 640 px);
+ * ab der Telefon-Grenze (721 px, dieselbe wie `shell.css`/`useIsPhone`) wird
+ * jede Marken-/Modell-Liste ein Karten-Raster, das die Breite nutzt, statt
+ * eines einspaltigen Turms - dieselben Einträge, nur nebeneinander. Am
+ * Telefon (≤720 px) bleibt die bisherige einspaltige, geränderte Liste
+ * unverändert.
  */
 
 .vp-kat {
@@ -89,6 +97,39 @@
     overflow-x: visible;
     margin: 0;
     padding: 0;
+  }
+
+  /* Der Turm wird ein Raster: dieselben Einträge nebeneinander statt
+     untereinander - `auto-fill`/`minmax` wählt die Spaltenzahl selbst, je
+     nach Breite des `Modal` (640 → 840 px mit `breit`). */
+  .vp-kat-liste {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+    gap: 8px;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+    background: transparent;
+  }
+  .vp-kat-liste > li + li {
+    border-top: 0;
+  }
+  .vp-kat-eintrag {
+    height: 100%;
+    align-items: start;
+    border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+    border-radius: var(--vp-radius-sm);
+    background: var(--vp-surface);
+  }
+  .vp-kat-eintrag:hover {
+    border-color: var(--vp-action);
+  }
+  .vp-kat-eintrag.is-fund {
+    background: var(--vp-mint-start);
+  }
+  /* „Im Heimnetz suchen" bleibt die EINE breite Zeile oben - kein schmales Kärtchen neben leeren Rasterspalten. */
+  .vp-kat-liste.vp-kat-heimnetz {
+    grid-template-columns: 1fr;
   }
 }
 .vp-kat-art {
