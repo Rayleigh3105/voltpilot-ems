@@ -93,7 +93,7 @@ const angehaltenerLauf: LaufStand = { kennung: 'lauf-20261101-1530', freigabe: '
 
 function registerBox(edgeRef: string, boxArt: 'edge-light' | 'edge-app', over: Partial<WerkstattBox> = {}): WerkstattBox {
   return { id: `w-${edgeRef}`, edgeRef, boxArt, lanNetz: boxArt === 'edge-light' ? '10.213.0.1/24' : null, schritte: {}, notiz: null,
-    angelegtAm: iso(-40 * 60_000), angelegtVon: 'werkstatt-dienst', geaendertAm: iso(-28 * 60_000), abnahmen: [], ...over };
+    angelegtAm: iso(-40 * 60_000), angelegtVon: 'werkstatt-dienst', geaendertAm: iso(-28 * 60_000), abnahmen: [], kunde: null, ...over };
 }
 
 const register: WerkstattBox[] = [

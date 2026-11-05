@@ -141,6 +141,24 @@ public class WerkstattRepository {
                 boxId, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef, edgeRef);
     }
 
+    /**
+     * Ob ein Kunde die Box schon eingerichtet hat: der Claim über den QR-Einstieg legt die Zeile in
+     * {@code device} mit dieser Referenz, Mandant und Anlage an ({@code POST /api/v1/devices/claim}).
+     * Leer = noch kein Kunde. Die Vorab-Registrierung ({@code provisioned_device}) zählt nicht.
+     */
+    public Optional<Kunde> kunde(String edgeRef) {
+        return jdbc.query("SELECT t.name AS mandant, s.name AS anlage, d.created_at "
+                        + "FROM device d JOIN tenant t ON t.id = d.tenant_id LEFT JOIN site s ON s.id = d.site_id "
+                        + "WHERE d.external_ref = ? ORDER BY d.created_at LIMIT 1",
+                (rs, n) -> new Kunde(rs.getString("mandant"), rs.getString("anlage"),
+                        rs.getTimestamp("created_at").toInstant()),
+                edgeRef).stream().findFirst();
+    }
+
+    /** Der Kunde einer Box: Mandant, Anlage (null = ohne Anlage) und seit wann. */
+    public record Kunde(String mandant, String anlage, Instant seit) {
+    }
+
     /** Die Zeile mit wer/wann in {@code werkstatt_box_entfernt} festhalten, dann löschen. */
     public void boxEntfernen(UUID id, String akteur, String akteurName) {
         jdbc.update("INSERT INTO werkstatt_box_entfernt (box_id, edge_ref, box_art, lan_netz, schritte, notiz, "

@@ -27780,6 +27780,18 @@ components:
           description: >
             Wo die Referenz schon benutzt wird, in Worten; leer = der Eintrag
             lässt sich mit DELETE wieder entfernen.
+        kunde:
+          type: object
+          nullable: true
+          required: [mandant, seit]
+          description: >
+            Wer die Box über den QR-Einstieg eingerichtet hat (Claim, Zeile in
+            `device` mit dieser Referenz); null = noch kein Kunde. Die
+            Vorab-Registrierung zählt nicht.
+          properties:
+            mandant: { type: string }
+            anlage: { type: string, nullable: true }
+            seit: { type: string, format: date-time }
     FernwartungSoll:
       type: object
       required: [version, erzeugtAm, boxNetz, technikerNetz, peers, fenster]

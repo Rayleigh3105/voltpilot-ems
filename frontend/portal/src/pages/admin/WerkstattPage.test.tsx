@@ -212,6 +212,40 @@ describe('Werkstatt: Einrichtungs-Detailseite einer Box', () => {
     expect(g.compareDocumentPosition(screen.getByTestId('ws-einrichtung')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('Kunde: noch nicht eingerichtet zeigt den Link des QR-Codes zum Kopieren und den QR-Code', async () => {
+    werkstattBoxen.mockResolvedValue([{ ...box('edge-5t2dcy6'), kunde: null }]);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const k = await screen.findByTestId('ws-kunde');
+    expect(k).toHaveTextContent('Noch nicht vom Kunden eingerichtet');
+    expect(k).toHaveTextContent('privaten Fenster');
+    expect(within(k).getByTestId('ws-kunde-link')).toHaveTextContent('https://portal.voltpilot.de/k/edge-5t2dcy6');
+    expect(within(k).getByTestId('ws-kunde-qr')).toHaveAttribute('aria-label', 'QR-Code: https://portal.voltpilot.de/k/edge-5t2dcy6');
+    expect(within(k).queryByRole('link')).toBeNull();
+    fireEvent.click(within(k).getByRole('button', { name: 'Link kopieren' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://portal.voltpilot.de/k/edge-5t2dcy6'));
+    expect(await within(k).findByText('Kopiert')).toBeInTheDocument();
+  });
+
+  it('Kunde: eingerichtet nennt Mandant und Anlage, ohne Knopf', async () => {
+    werkstattBoxen.mockResolvedValue([{ ...box('edge-5t2dcy6'), kunde: { mandant: 'Familie Probe', anlage: 'Dach Süd', seit: '2026-11-03T08:00:00Z' } }]);
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const k = await screen.findByTestId('ws-kunde');
+    expect(k).toHaveTextContent('Vom Kunden eingerichtet: Familie Probe, Anlage Dach Süd');
+    expect(screen.queryByTestId('ws-kunde-link')).toBeNull();
+  });
+
+  it('Kunde: ohne Angabe der API unbekannt, nie „nicht eingerichtet“', async () => {
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const k = await screen.findByTestId('ws-kunde');
+    expect(k).toHaveTextContent('nicht bekannt');
+    expect(screen.queryByTestId('ws-kunde-link')).toBeNull();
+  });
+
   it('eine Box ohne Abnahme sagt, was fehlt, statt Werte zu erfinden', async () => {
     const b = box('edge-5t2dcy6');
     werkstattBoxen.mockResolvedValue([{ ...b, abnahmen: [] }]);

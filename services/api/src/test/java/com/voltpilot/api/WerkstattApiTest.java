@@ -414,6 +414,41 @@ class WerkstattApiTest {
                 .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * Ob der Kunde die Box schon eingerichtet hat: erst der Claim (Zeile in {@code device}) setzt
+     * {@code kunde}; die Vorab-Registrierung allein nicht.
+     */
+    @Test
+    @Order(5)
+    void kundeErstNachDemClaim() throws Exception {
+        String admin = token("admin", "admin");
+        String ref = aufnehmen(admin, "wrkkun");
+        assertThat(getJson(BASE + "/boxen/" + ref, admin).get("kunde").isNull()).isTrue();
+
+        JdbcTemplate eigner = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(), POSTGRES.getPassword()));
+        eigner.update("INSERT INTO provisioned_device (external_ref) VALUES (?)", ref);
+        assertThat(getJson(BASE + "/boxen/" + ref, admin).get("kunde").isNull()).as("nur vorab registriert").isTrue();
+
+        UUID tenant = UUID.randomUUID();
+        UUID site = UUID.randomUUID();
+        eigner.update("INSERT INTO tenant (id, name) VALUES (?, 'Kunde Werkstatt')", tenant);
+        eigner.update("INSERT INTO site (id, tenant_id, name) VALUES (?, ?, 'Dach Süd')", site, tenant);
+        eigner.update("INSERT INTO device (tenant_id, site_id, external_ref, kind, status) VALUES (?,?,?,?,?)",
+                tenant, site, ref, "gateway", "claimed");
+
+        JsonNode kunde = getJson(BASE + "/boxen/" + ref, admin).get("kunde");
+        assertThat(kunde.get("mandant").asText()).isEqualTo("Kunde Werkstatt");
+        assertThat(kunde.get("anlage").asText()).isEqualTo("Dach Süd");
+        assertThat(kunde.get("seit").asText()).isNotBlank();
+        JsonNode inListe = null;
+        for (JsonNode b : getJson(BASE + "/boxen", admin)) {
+            if (ref.equals(b.get("edgeRef").asText())) inListe = b;
+        }
+        assertThat(inListe).isNotNull();
+        assertThat(inListe.get("kunde").get("mandant").asText()).isEqualTo("Kunde Werkstatt");
+    }
+
     /** 409 mit Grund, der Eintrag bleibt, und die Seite liest denselben Grund in {@code inGebrauch}. */
     private void abgelehnt(String admin, String ref, String... gruende) throws Exception {
         ResponseEntity<String> r = send(HttpMethod.DELETE, BASE + "/boxen/" + ref, admin, null);

@@ -14,7 +14,7 @@
  */
 import gehaeuseUrl from './assets/gehaeuse/gehaeuse-v04.3mf?url';
 import { boxOrt, type FernwartungBox } from './adminFernwartung';
-import type { WerkstattAbnahme, WerkstattBox } from './werkstatt';
+import { beschriftung, type WerkstattAbnahme, type WerkstattBox } from './werkstatt';
 import type { WerkstattFreigabe } from './werkstattBank';
 
 /** Die Hardware der Mango, wie das Gehäuse-Programm sie nennt. */
@@ -100,6 +100,22 @@ export function bindung(fw: FernwartungBox | null): EinrichtungZeile[] {
     { id: 'zugang', titel: 'Fernwartungs-Zugang', wert: fw.status === 'aktiv' ? 'aktiv' : 'gesperrt' },
     { id: 'ort', titel: 'Kunde und Anlage', wert: boxOrt(fw) },
   ];
+}
+
+/**
+ * Ob der Kunde die Box schon eingerichtet hat (Claim über den QR-Einstieg), aus `kunde` der
+ * Werkstatt-API. Ohne Register-Eintrag oder bei einer API ohne das Feld: unbekannt, nie „offen“.
+ * `link` ist genau die Adresse des QR-Codes auf dem Gehäuse (`beschriftung`).
+ */
+export type KundenStand =
+  | { art: 'unbekannt' }
+  | { art: 'offen'; link: string }
+  | { art: 'eingerichtet'; mandant: string; anlage: string | null; seit: string };
+
+export function kundenStand(box: WerkstattBox | null, ref: string): KundenStand {
+  if (!box || box.kunde === undefined) return { art: 'unbekannt' };
+  if (box.kunde === null) return { art: 'offen', link: beschriftung(ref).link };
+  return { art: 'eingerichtet', mandant: box.kunde.mandant, anlage: box.kunde.anlage, seit: box.kunde.seit };
 }
 
 /** Frühere Abnahmen dieser Box (neueste zuerst im Register; die erste zeigt die Seite voll). */

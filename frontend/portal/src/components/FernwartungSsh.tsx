@@ -49,7 +49,7 @@ async function kopiere(text: string, neben: HTMLElement): Promise<boolean> {
 }
 
 /** Eine Befehlszeile zum Kopieren. Sie bricht um, statt abgeschnitten zu werden. */
-export function Befehl({ text, was }: { text: string; was: string }) {
+export function Befehl({ text, was, knopf = 'Kopieren' }: { text: string; was: string; knopf?: string }) {
   const [stand, setStand] = useState<'ruhe' | 'kopiert' | 'fehler'>('ruhe');
   const zeile = useRef<HTMLDivElement>(null);
   const code = useRef<HTMLElement>(null);
@@ -84,7 +84,7 @@ export function Befehl({ text, was }: { text: string; was: string }) {
         onClick={(e: React.MouseEvent<HTMLButtonElement>) => void kopieren(e.currentTarget)}
       >
         <span aria-live="polite">
-          {stand === 'kopiert' ? 'Kopiert' : stand === 'fehler' ? 'Markiert' : 'Kopieren'}
+          {stand === 'kopiert' ? 'Kopiert' : stand === 'fehler' ? 'Markiert' : knopf}
         </span>
       </Button>
     </div>

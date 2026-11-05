@@ -87,11 +87,16 @@ public class AdminWerkstattController {
     /**
      * Eine Box des Registers; {@code abnahmen} neueste zuerst, leer = noch nicht abgenommen.
      * {@code inGebrauch}: wo die Referenz schon benutzt wird, in Worten; leer = der Eintrag
-     * lässt sich mit {@code DELETE /boxen/{ref}} wieder entfernen.
+     * lässt sich mit {@code DELETE /boxen/{ref}} wieder entfernen. {@code kunde}: wer die Box über
+     * den QR-Einstieg eingerichtet hat (Claim); null = noch kein Kunde.
      */
     public record BoxDto(UUID id, String edgeRef, String boxArt, String lanNetz, Map<String, SchrittDto> schritte,
             String notiz, Instant angelegtAm, String angelegtVon, Instant geaendertAm, List<AbnahmeDto> abnahmen,
-            List<String> inGebrauch) {
+            List<String> inGebrauch, KundeDto kunde) {
+    }
+
+    /** Der Kunde einer Box: Mandant, Anlage (null = ohne Anlage) und seit wann sie zu ihm gehört. */
+    public record KundeDto(String mandant, String anlage, Instant seit) {
     }
 
     /** Was die Seite vor allem anderen braucht: die geschlossene Liste der Prüfungen und den Vorschlag fürs LAN. */
@@ -274,7 +279,8 @@ public class AdminWerkstattController {
         s.schritte().forEach((k, v) -> schritte.put(k, SchrittDto.of(v)));
         return new BoxDto(s.box().id(), s.box().edgeRef(), s.box().boxArt(), s.box().lanNetz(), schritte,
                 s.box().notiz(), s.box().angelegtAm(), name(s.box().angelegtVonName(), s.box().angelegtVon()),
-                s.box().geaendertAm(), s.abnahmen().stream().map(this::abnahmeDto).toList(), s.inGebrauch());
+                s.box().geaendertAm(), s.abnahmen().stream().map(this::abnahmeDto).toList(), s.inGebrauch(),
+                s.kunde() == null ? null : new KundeDto(s.kunde().mandant(), s.kunde().anlage(), s.kunde().seit()));
     }
 
     private AbnahmeDto abnahmeDto(Abnahme a) {

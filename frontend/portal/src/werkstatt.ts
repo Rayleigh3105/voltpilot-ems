@@ -78,6 +78,18 @@ export interface WerkstattBox {
    * einer API vor dieser Route.
    */
   inGebrauch?: string[];
+  /**
+   * Wer die Box über den QR-Einstieg eingerichtet hat (Claim); null = noch kein Kunde. Fehlt bei
+   * einer API vor diesem Feld: dann ist es unbekannt, nicht „kein Kunde“.
+   */
+  kunde?: WerkstattKunde | null;
+}
+
+/** Der Kunde einer Box: Mandant, Anlage (null = ohne Anlage), seit wann (ISO). */
+export interface WerkstattKunde {
+  mandant: string;
+  anlage: string | null;
+  seit: string;
 }
 
 /**

@@ -14,6 +14,7 @@ import { Card } from '../../../designsystem/components/core/Card';
 import { adminApi } from '../../admin/adminApi';
 import { boxVerbindung, zeitpunkt, type FernwartungBox, type FernwartungUebersicht } from '../../adminFernwartung';
 import { ApiError } from '../../api';
+import { Befehl } from '../../components/FernwartungSsh';
 import { fernwartungHash } from '../../nav';
 import { entfernbar, VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
 import type { UebersichtZeile, WerkstattFreigabe } from '../../werkstattBank';
@@ -24,10 +25,11 @@ import {
   fruehereAbnahmen,
   GEHAEUSE_DATEIEN,
   GEHAEUSE_OHNE_KENNUNG,
+  kundenStand,
   type EinrichtungZeile,
 } from '../../werkstattEinrichtung';
 import { PhasenListe } from './WerkstattBank';
-import { AbnahmeAnzeige, BeschriftungKarte, STAND_BADGE } from './WerkstattTeile';
+import { AbnahmeAnzeige, BeschriftungKarte, DirektlinkQr, STAND_BADGE } from './WerkstattTeile';
 
 type Bindung = { art: 'laedt' } | { art: 'keine' } | { art: 'fehler'; text: string } | { art: 'da'; box: FernwartungBox; uebersicht: FernwartungUebersicht | null };
 
@@ -106,6 +108,7 @@ export function WerkstattBoxSeite({
   const abnahme = zeile.abnahme;
   const freigabe = box ? freigabeDerBox(abnahme, zeile.lauf?.freigabe, freigaben) : null;
   const verbindung = verb.art === 'da' ? boxVerbindung(verb.box, verb.uebersicht, jetzt) : null;
+  const kunde = kundenStand(box, ref);
 
   return (
     <div className="vp-ws-detail vp-ws-seite" data-testid="ws-detail">
@@ -131,6 +134,33 @@ export function WerkstattBoxSeite({
       )}
       {zeile.lauf?.grund && zeile.stand === 'problem' && (
         <p className="vp-alert vp-alert-warn" data-testid="ws-grund">{zeile.lauf.grund}</p>
+      )}
+
+      {kunde.art === 'eingerichtet' && (
+        <p className="vp-alert vp-alert-ok" style={{ margin: 0 }} data-testid="ws-kunde">
+          Vom Kunden eingerichtet: {kunde.mandant}
+          {kunde.anlage ? `, Anlage ${kunde.anlage}` : ', ohne Anlage'} · seit {zeitpunkt(kunde.seit, jetzt)}
+        </p>
+      )}
+      {kunde.art === 'offen' && (
+        <div className="vp-alert vp-alert-warn vp-ws-kunde-offen" data-testid="ws-kunde">
+          <DirektlinkQr edgeRef={ref} testId="ws-kunde-qr" />
+          <div className="vp-ws-spalte">
+            <strong>Noch nicht vom Kunden eingerichtet.</strong>
+            <span>
+              Der Kunde richtet die Box über diesen Link ein (derselbe wie der QR-Code auf dem Gehäuse); als Admin
+              öffnest du ihn in einem privaten Fenster.
+            </span>
+            <div data-testid="ws-kunde-link">
+              <Befehl text={kunde.link} was="Link" knopf="Link kopieren" />
+            </div>
+          </div>
+        </div>
+      )}
+      {kunde.art === 'unbekannt' && (
+        <p className="vp-muted" style={{ margin: 0 }} data-testid="ws-kunde">
+          Ob ein Kunde die Box schon eingerichtet hat, ist nicht bekannt.
+        </p>
       )}
 
       <div className="vp-ws-seitenraster">

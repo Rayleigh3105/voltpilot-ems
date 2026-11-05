@@ -61,10 +61,11 @@ public class WerkstattService {
     /**
      * Eine Box des Registers mit ihren Schritten und Abnahmen (neueste zuerst).
      * {@code inGebrauch}: wo die Referenz schon benutzt wird, in Worten; leer =
-     * der Eintrag lässt sich wieder entfernen ({@link #entfernen}).
+     * der Eintrag lässt sich wieder entfernen ({@link #entfernen}). {@code kunde}: wer die Box
+     * eingerichtet hat (Claim), null = noch kein Kunde.
      */
     public record Stand(Box box, Map<String, SchrittStand> schritte, List<Abnahme> abnahmen,
-            List<String> inGebrauch) {
+            List<String> inGebrauch, WerkstattRepository.Kunde kunde) {
     }
 
     public record Angelegt(boolean neu, Stand stand) {
@@ -107,7 +108,7 @@ public class WerkstattService {
         }
         return repo.boxen().stream()
                 .map(b -> new Stand(b, schritte(b), jeBox.getOrDefault(b.id(), List.of()),
-                        repo.inGebrauch(b.id(), b.edgeRef())))
+                        repo.inGebrauch(b.id(), b.edgeRef()), repo.kunde(b.edgeRef()).orElse(null)))
                 .toList();
     }
 
@@ -428,7 +429,8 @@ public class WerkstattService {
     // ── intern ────────────────────────────────────────────────────────────
 
     private Stand stand(Box b) {
-        return new Stand(b, schritte(b), repo.abnahmen(b.id()), repo.inGebrauch(b.id(), b.edgeRef()));
+        return new Stand(b, schritte(b), repo.abnahmen(b.id()), repo.inGebrauch(b.id(), b.edgeRef()),
+                repo.kunde(b.edgeRef()).orElse(null));
     }
 
     private Map<String, SchrittStand> schritte(Box b) {
