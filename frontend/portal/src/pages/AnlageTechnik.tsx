@@ -120,7 +120,8 @@ const NETZLADEN_FOLGE = {
 const SCHALT_FEHLER = 'Die Änderung wurde nicht gespeichert. Bitte versuchen Sie es erneut.';
 
 type BlattArt =
-  | { art: 'stammdaten' }
+  // `nur`: die Zeile öffnet nur IHR Feld (Name, Veräußerungsform, Einspeisegrenze, Standort).
+  | { art: 'stammdaten'; nur: StammdatenFeld }
   | { art: 'einstellung'; setting: ModeSettingDef }
   | { art: 'voltpilot'; setting: ModeSettingDef }
   // Die Einspeisevergütung braucht den Stand vom Server (Herleitung, Herkunft).
@@ -223,6 +224,7 @@ export function TechnikSection({
   onSiteSaved: (updated: Site) => void;
   onSiteDeleted: () => void;
 }) {
+  const rollen = useRollen();
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
   const [assetsError, setAssetsError] = useState(false);
   const [assetsReloadKey, setAssetsReloadKey] = useState(0);
@@ -494,14 +496,14 @@ export function TechnikSection({
       <div className="vp-einst-raster">
         {/* ---------- Anlage ---------- */}
         <Gruppe id="anlage" titel="Anlage">
-          <Zeile icon="home" kat="home" label="Name" wert={site.name} recht="anlage.verwalten" onClick={() => oeffne({ art: 'stammdaten' })} />
+          <Zeile icon="home" kat="home" label="Name" wert={site.name} recht="anlage.verwalten" onClick={() => oeffne({ art: 'stammdaten', nur: 'name' })} />
           <Zeile
             icon="euro"
             kat="dynamic"
             label={VERAEUSSERUNGSFORM_LABEL}
             wert={plantKindLabel(site.plantKind)}
             recht="anlage.verwalten"
-            onClick={() => oeffne({ art: 'stammdaten' })}
+            onClick={() => oeffne({ art: 'stammdaten', nur: 'veraeusserung' })}
           />
           <Zeile icon="users" kat="home" label="Profil" wert={profilLabel(site.profil)} recht="betriebsweise.aendern" onClick={() => setProfilOffen(true)} />
           <Zeile
@@ -510,7 +512,7 @@ export function TechnikSection({
             label="Einspeisegrenze"
             wert={site.maxFeedInKw != null ? fmtNum(site.maxFeedInKw, 'kW', 1) : 'keine Grenze hinterlegt'}
             recht="anlage.verwalten"
-            onClick={() => oeffne({ art: 'stammdaten' })}
+            onClick={() => oeffne({ art: 'stammdaten', nur: 'einspeisegrenze' })}
           />
           {/*
             „Ein Ort fürs Laden" Scheibe 4 (E5 = A): die Anschlussgrenze zieht
@@ -547,7 +549,7 @@ export function TechnikSection({
             sub={coords ? null : 'Ohne Standort auf der Karte gibt es keine Wettervorhersage.'}
             warn={!coords}
             recht="anlage.verwalten"
-            onClick={() => oeffne({ art: 'stammdaten' })}
+            onClick={() => oeffne({ art: 'stammdaten', nur: 'standort' })}
           />
         </Gruppe>
 
@@ -715,7 +717,8 @@ export function TechnikSection({
                 label="Kapazität"
                 wert={battery.capacityKwh != null ? fmtNum(battery.capacityKwh, 'kWh', 1) : 'nicht hinterlegt'}
                 sub="Leistung, Wirkungsgrad, steuerndes Gerät"
-                onClick={() => oeffne({ art: 'speicher', bearbeiten: false })}
+                // Wer bearbeiten darf, landet direkt im Formular - kein Lese-Blatt mit „Speicher bearbeiten“ davor.
+                onClick={() => oeffne({ art: 'speicher', bearbeiten: rollen.darf('geraet.einrichten') })}
               />
               {schonung && (
                 <UmgangZeile
@@ -797,6 +800,7 @@ export function TechnikSection({
         {blattInhalt?.art === 'stammdaten' && (
           <StammdatenEditForm
             site={site}
+            nur={blattInhalt.nur}
             onCancel={schliesse}
             onSaved={(updated) => {
               schliesse();
@@ -867,7 +871,11 @@ export function TechnikSection({
               battery={battery}
               devices={siteDevices}
               startEditing={blattInhalt.bearbeiten}
-              onSaved={(a) => setAssets(a)}
+              onSaved={(a) => {
+                setAssets(a);
+                if (blattInhalt.bearbeiten) schliesse();
+              }}
+              onEditCancel={blattInhalt.bearbeiten ? schliesse : undefined}
             />
           </div>
         )}
@@ -967,7 +975,7 @@ export function TechnikSection({
 function blattTitel(b: BlattArt | null, battery: SiteAsset | null): string {
   switch (b?.art) {
     case 'stammdaten':
-      return 'Anlage bearbeiten';
+      return STAMMDATEN_TITEL[b.nur];
     case 'einstellung':
     case 'voltpilot':
       return b.setting.label;
@@ -1398,21 +1406,39 @@ function ProfilDialog({
   );
 }
 
+/** Das eine Feld, das eine Zeile der Einstellungen öffnet. */
+export type StammdatenFeld = 'name' | 'veraeusserung' | 'einspeisegrenze' | 'standort';
+
+/** Der Titel des Blatts je Zeile - wortgleich mit der Zeile, die es öffnet. */
+const STAMMDATEN_TITEL: Record<StammdatenFeld, string> = {
+  name: 'Name',
+  veraeusserung: VERAEUSSERUNGSFORM_LABEL,
+  einspeisegrenze: 'Einspeisegrenze',
+  standort: 'Standort',
+};
+
 /**
- * Das Formular der Grunddaten im Blatt „Anlage bearbeiten": Name, Gebotszone,
- * Veräußerungsform, Standort auf der Karte und die Einspeisegrenze. Es trägt die
- * WHOLE site unverändert mit (`buildSitePayload`, Voll-Repräsentation), damit
- * ein fokussierter Save nie ein Feld blankt, das eine andere Zeile besitzt.
+ * Das Formular der Grunddaten: Name, Gebotszone, Veräußerungsform, Standort auf
+ * der Karte und die Einspeisegrenze. Es trägt die WHOLE site unverändert mit
+ * (`buildSitePayload`, Voll-Repräsentation), damit ein fokussierter Save nie ein
+ * Feld blankt, das eine andere Zeile besitzt.
+ *
+ * Mit `nur` zeigt es genau das Feld der Zeile, die es geöffnet hat (Standort =
+ * Karte und Gebotszone) - wer den Namen ändert, sieht nicht die Karte und zwei
+ * Absätze zur Einspeisung. Gespeichert wird trotzdem die ganze Anlage.
  */
 export function StammdatenEditForm({
   site,
+  nur,
   onCancel,
   onSaved,
 }: {
   site: Site;
+  nur?: StammdatenFeld;
   onCancel: () => void;
   onSaved: (updated: Site) => void;
 }) {
+  const zeige = (f: StammdatenFeld) => nur == null || nur === f;
   const [name, setName] = useState(site.name);
   const [biddingZone, setBiddingZone] = useState(site.biddingZone);
   const [plantKind, setPlantKind] = useState<PlantKind>(site.plantKind ?? 'eigenverbrauch');
@@ -1458,13 +1484,13 @@ export function StammdatenEditForm({
   return (
     <div className="vp-tech-editform">
       <div className="vp-form-stack">
-        <Input
-          label="Name *"
+        {zeige('name') && <Input
+          label={nur ? 'Name' : 'Name *'}
           value={name}
           autoFocus
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-        />
-        <VpPicker
+        />}
+        {zeige('standort') && <VpPicker
           id="edit-site-zone"
           label="Gebotszone"
           options={[
@@ -1474,8 +1500,8 @@ export function StammdatenEditForm({
           ]}
           value={biddingZone}
           onChange={setBiddingZone}
-        />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        />}
+        {zeige('veraeusserung') && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <VpPicker
             id="edit-site-plant-kind"
             label={VERAEUSSERUNGSFORM_LABEL}
@@ -1492,8 +1518,8 @@ export function StammdatenEditForm({
           <p className="vp-note" style={{ margin: 0 }}>
             {VERAEUSSERUNGSFORM_FRAGE} {VERAEUSSERUNGSFORM_TIP}
           </p>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        </div>}
+        {zeige('standort') && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
           <LocationMap
             lat={lat}
@@ -1506,8 +1532,8 @@ export function StammdatenEditForm({
           <p className="vp-note" style={{ margin: 0 }}>
             Verschieben Sie den Pin auf Ihren Standort - nötig für die Wettervorhersage. Optional.
           </p>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        </div>}
+        {zeige('einspeisegrenze') && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <Input
             label="Maximale Einspeiseleistung am Netzanschlusspunkt (kW)"
             placeholder="z. B. 75"
@@ -1520,7 +1546,7 @@ export function StammdatenEditForm({
             wenn angegeben, plant VoltPilot die Einspeisung nie über diese Grenze
             hinaus. Ihr Bezug aus dem Netz ist davon nicht betroffen.
           </p>
-        </div>
+        </div>}
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
       <div className="vp-tech-editactions">
@@ -1528,7 +1554,7 @@ export function StammdatenEditForm({
           Abbrechen
         </Button>
         <Recht aktion="anlage.verwalten"><Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
-          {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
+          {busy ? 'Wird gespeichert…' : nur ? 'Speichern' : 'Änderungen speichern'}
         </Button></Recht>
       </div>
     </div>
@@ -1549,6 +1575,7 @@ export function BatteryControlSection({
   onSaved,
   hideWarning = false,
   startEditing = false,
+  onEditCancel,
 }: {
   siteId: string;
   battery: SiteAsset | null;
@@ -1558,6 +1585,8 @@ export function BatteryControlSection({
   hideWarning?: boolean;
   /** Direkt im Formular beginnen („Speicher hinzufügen", „Gerät zuordnen"). */
   startEditing?: boolean;
+  /** „Abbrechen" im Formular schließt die umgebende Fläche statt zur Lese-Ansicht zu wechseln. */
+  onEditCancel?: () => void;
 }) {
   const [editing, setEditing] = useState(startEditing);
   // Nur ein WECHSEL der Anlage beendet das Bearbeiten - nicht das erste Rendern.
@@ -1579,7 +1608,7 @@ export function BatteryControlSection({
         siteId={siteId}
         battery={battery}
         devices={devices}
-        onCancel={() => setEditing(false)}
+        onCancel={onEditCancel ?? (() => setEditing(false))}
         onSaved={(a) => {
           setEditing(false);
           onSaved(a);

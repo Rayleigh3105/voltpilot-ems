@@ -429,8 +429,52 @@ describe('Einstellungen · die kurze Liste (E5)', () => {
     expect(within(anlage).getByText('Veräußerungsform')).toBeInTheDocument();
     expect(within(anlage).queryByText('Anlagentyp')).toBeNull();
     const b = await blatt('Veräußerungsform');
-    expect(b).toHaveAccessibleName('Anlage bearbeiten');
+    expect(b).toHaveAccessibleName('Veräußerungsform');
     expect(within(b).getByText(/Wie wird Ihr Strom vergütet/)).toBeInTheDocument();
+    restore();
+  });
+
+  it('jede Zeile öffnet nur IHR Feld - gespeichert wird trotzdem die ganze Anlage', async () => {
+    const updateSite = vi.spyOn(api, 'updateSite').mockResolvedValue({ ...eegSite, name: 'Hof Neu' });
+    const { restore } = await renderEinstellungen({ maxFeedInKw: 30 });
+    const b = await blatt('Name');
+    expect(b).toHaveAccessibleName('Name');
+    expect(within(b).getByLabelText('Name')).toHaveValue('Hof Sonnenfeld');
+    // Keine Karte, keine Einspeisegrenze, keine Veräußerungsform im Namens-Blatt.
+    expect(within(b).queryByText('Standort auf der Karte')).toBeNull();
+    expect(within(b).queryByLabelText(/Maximale Einspeiseleistung/)).toBeNull();
+    expect(within(b).queryByText(/Wie wird Ihr Strom vergütet/)).toBeNull();
+    fireEvent.change(within(b).getByLabelText('Name'), { target: { value: 'Hof Neu' } });
+    fireEvent.click(within(b).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(updateSite).toHaveBeenCalled());
+    // Die Felder, die das Blatt nicht zeigt, reisen unverändert mit.
+    expect(updateSite).toHaveBeenCalledWith('s-1', expect.objectContaining({ name: 'Hof Neu', maxFeedInKw: 30 }));
+    updateSite.mockRestore();
+    restore();
+  });
+
+  it('„Kapazität" öffnet direkt das Speicher-Formular - Abbrechen schließt das Blatt', async () => {
+    const { restore } = await renderEinstellungen();
+    const b = await blatt('Kapazität');
+    expect(within(b).getByLabelText('Kapazität (kWh) *')).toBeInTheDocument();
+    expect(within(b).queryByRole('button', { name: /Speicher bearbeiten/ })).toBeNull();
+    fireEvent.click(within(b).getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    restore();
+  });
+
+  it('Einspeisegrenze und Standort öffnen ihr eigenes Feld', async () => {
+    const { restore } = await renderEinstellungen({ maxFeedInKw: 30 });
+    const grenze = await blatt('Einspeisegrenze');
+    expect(grenze).toHaveAccessibleName('Einspeisegrenze');
+    expect(within(grenze).getByLabelText(/Maximale Einspeiseleistung/)).toBeInTheDocument();
+    expect(within(grenze).queryByLabelText('Name')).toBeNull();
+    fireEvent.click(within(grenze).getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const ort = await blatt('Standort');
+    expect(ort).toHaveAccessibleName('Standort');
+    expect(within(ort).getByText('Standort auf der Karte')).toBeInTheDocument();
+    expect(within(ort).queryByLabelText(/Maximale Einspeiseleistung/)).toBeNull();
     restore();
   });
 
