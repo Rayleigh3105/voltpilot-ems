@@ -885,12 +885,6 @@ export function reconnectCandidates(
     }));
 }
 
-/**
- * Der Zustand eines Geräts, das VoltPilot nur steuert. Er behauptet weder „bereit" noch „liefert Daten": was das
- * Gerät meldet, wenn es schaltet, steht auf seiner Seite; hier steht nur, WAS es für VoltPilot ist.
- */
-export const STEUER_ZUSTAND = 'Wird von VoltPilot gesteuert';
-
 /** The device's state in one plain word (never a Messwert count). */
 export function deviceState(health: ComponentHealth): string {
   switch (health) {
@@ -1518,7 +1512,8 @@ export function plantModel(
     // Störung, und ohne Rückmeldung der Box (`unknown`) wird nichts behauptet.
     d.nurGesteuert = d.health === 'never' && comps.length > 0 &&
       comps.every((c) => c.aspect === 'main' && c.schaltbar && !c.orphaned);
-    d.state = d.nurGesteuert ? STEUER_ZUSTAND : deviceState(d.health);
+    // Das Wort ist das der Steuer-Marke (`CONTROL_BADGE`): es sagt, WAS das Gerät für VoltPilot ist, nicht „bereit“.
+    d.state = d.nurGesteuert ? CONTROL_BADGE : deviceState(d.health);
     d.summary = deviceSummary(comps);
   }
 

@@ -35,3 +35,33 @@ for (const breite of [375, 1440] as const) {
     await page.screenshot({ path: join(BILDER, `aufbau-heizstab-${breite}.png`), fullPage: true });
   });
 }
+
+/**
+ * Live-Fall „Zuhause“, 05.11.2026: nach der Erstbindung stand der Heizstab im Aufbau als „Wartet auf die ersten
+ * Daten“ mit „1 braucht Aufmerksamkeit“ - dabei misst der Pro 3 nicht, VoltPilot steuert ihn. `&heizstab=2` stellt den
+ * gebundenen Stab: eigene Geräteseite, ehrlicher Zustand, keine zweite Fundzeile für denselben Shelly.
+ */
+for (const breite of [375, 1440] as const) {
+  test(`gebundener Heizstab: wird gesteuert, kein Alarm, kein zweites Fund-Angebot (${breite})`, async ({ page }, info) => {
+    const passend = breite < 720 ? info.project.name === 'mobile-webkit' : info.project.name === 'desktop-chromium';
+    test.skip(!passend, 'je Breite nur die passende Maschine');
+    await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
+    await page.goto('/e2e/geraetesuche.html?flaeche=aufbau&neu=0&heizstab=2');
+
+    const tabelle = page.getByRole('table', { name: 'Aufbau: Anlagen, Boxen und Geräte' });
+    await expect(tabelle).toBeVisible();
+    const stab = tabelle.locator('[data-aufbau-geraet]').filter({ hasText: 'Heizstab' });
+    await expect(stab).toHaveCount(1);
+    await expect(stab).toContainText('Wird von VoltPilot gesteuert');
+    await expect(page.getByText('Wartet auf die ersten Daten')).toHaveCount(0);
+    // Der Stab hat seine Geräteseite (an der Quelle der Box) und steht nicht ein zweites Mal als Fund da.
+    await expect(stab.getByRole('link', { name: 'Heizstab' })).toHaveAttribute('href', /\/geraet\/edge-seewiesen\/src-7q7pdrwh$/);
+    await expect(page.getByText(/Nicht übernommen|Shelly gefunden/)).toHaveCount(0);
+    // Die einzige Aufmerksamkeit der Bühne gehört dem Deye ohne Rückmeldung, nie dem Stab.
+    await expect(tabelle.locator('[data-aufbau-geraet="inverter"]')).toContainText('Noch keine Rückmeldung');
+
+    if (!BILDER) return;
+    mkdirSync(BILDER, { recursive: true });
+    await page.screenshot({ path: join(BILDER, `aufbau-heizstab-gebunden-${breite}.png`), fullPage: true });
+  });
+}
