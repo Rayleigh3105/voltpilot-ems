@@ -478,7 +478,12 @@ class UemsMesskundenLaufAbnahmeTest {
         Antwort a = ok(ruf(anna, HttpMethod.POST, "/api/v1/standorte", Map.of("name", "Werk Lindach",
                 "zeitzone", "Europe/Berlin", "adresse", adresse)), 201);
         gesehen.add(a.text());
-        return UUID.fromString(a.body().path("id").asText());
+        UUID id = UUID.fromString(a.body().path("id").asText());
+        // Der Lauf spielt ab dem 01.11.2026 (Ort „gültig ab“), das Anlegen schreibt aber die ECHTE Uhr: sobald sie
+        // den 01.11. überschritten hat, „gibt es“ das Werk erst seit heute (ziel_gab_es_noch_nicht). Das Werk
+        // gehört VOR den Lauf, wie an dem Tag, an dem der Kunde es angelegt hätte.
+        root.update("UPDATE standort SET created_at = TIMESTAMPTZ '2026-10-25T00:00:00Z' WHERE id = ?", id);
+        return id;
     }
 
     /** Schritt 3 — Anlage „nur messen": kein Betriebsmodell, keine Veräußerungsform, kein Geld. */
