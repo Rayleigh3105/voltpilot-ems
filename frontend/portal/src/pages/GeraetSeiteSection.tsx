@@ -810,6 +810,10 @@ function GeraetSeiteKern({
       regeln: regelNamenOf(strategies, eigeneKomponenten),
       topologie: topology?.entities ?? null,
       speicherKnoten: topology?.topology.nodes.find((n) => n.role === 'storage') ?? null,
+      // Teil A (Captain-Befund 05.11.2026): dieselben Anlagen-weiten Knoten wie
+      // das Dashboard - der Heizstab-Held prüft seine Annahme gegen sie.
+      pvKnoten: topology?.topology.nodes.find((n) => n.role === 'pv') ?? null,
+      netzKnoten: topology?.topology.nodes.find((n) => n.role === 'grid') ?? null,
       // WÖRTLICH die geteilte Erfüllungs-Kopfzeile bzw. die geteilte
       // D3-Regel - ein zweites Urteil hier wäre eine zweite Wahrheit.
       erfuellung: fulfilment ? fulfilmentSummary(fulfilment).headline : null,

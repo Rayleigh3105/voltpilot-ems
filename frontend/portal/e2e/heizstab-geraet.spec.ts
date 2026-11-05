@@ -106,6 +106,19 @@ for (const breite of [375, 1440] as const) {
       expect(fehler).toEqual([]);
     });
 
+    test('Teil A (Captain-Befund 05.11.2026): die Hausbilanz widerlegt die Annahme - „eingeschaltet, aber nichts zu sehen", nie „Heizt gerade."', async ({ page }) => {
+      const fehler = await oeffne(page, breite, 'widerspruch');
+      await expect(page.getByText(
+        'Eingeschaltet, aber im Hausverbrauch ist davon nichts zu sehen - vermutlich hat der Thermostat abgeschaltet.',
+      )).toBeVisible();
+      await expect(page.getByText('Heizt gerade.')).toHaveCount(0);
+      // Die Stufe und die angenommene kW-Zahl bleiben stehen - nur der Satz ändert sich.
+      await expect(page.getByText(/angenommen/).first()).toBeVisible();
+      await ohneUeberlauf(page);
+      await bild(page, 'k-widerspruch', breite);
+      expect(fehler).toEqual([]);
+    });
+
     test('noch keine Rückmeldung: „?“ statt „aus“', async ({ page }) => {
       const fehler = await oeffne(page, breite, 'still');
       const karte = page.getByTestId('heizstab-karte');

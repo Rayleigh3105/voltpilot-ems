@@ -151,6 +151,32 @@ func TestConsumersSummaryReadbackTriStateAndForcedRun(t *testing.T) {
 	}
 }
 
+// TestConsumersSummaryNamesAManualOverrideHonestly is the Teil-B repro (Captain-
+// Befund 05.11.2026): a human's "Von Hand" override - cloud/portal forwards it
+// as Source{Kind: local-ui}, Override: true, ClassFlow (desired.ManualRank) -
+// reaches `runningState` with holderKind "local-ui", not "flow". Before the
+// fix it fell through to running_optimized ("von VoltPilot geplant"), exactly
+// the dashboard's dishonest claim the captain flagged; it must read
+// running_manual instead.
+func TestConsumersSummaryNamesAManualOverrideHonestly(t *testing.T) {
+	a := newGateTestAgent(t)
+	a.setEntityIdentity("t", "s", "d")
+	a.applyEntityRegistry(consumerRegistry())
+
+	kw := 11.0
+	a.arb.SubmitInternal(&desired.Desired{
+		EntityID: "wb-1", RequestID: "hand:1",
+		Source:   desired.Source{Kind: desired.SourceLocalUI},
+		Priority: desired.ClassFlow, Override: true,
+		TTL: time.Hour, IssuedAt: time.Now().UTC(),
+		Commands: entities.Commands{SetpointKw: &kw},
+	})
+	wb := a.consumersSummary()["wb-1"]
+	if wb.State != "running_manual" {
+		t.Fatalf("manual override must read running_manual, not a run claimed by the plan: %+v", wb)
+	}
+}
+
 func TestConsumersSummaryActualKwAndOffline(t *testing.T) {
 	a := newGateTestAgent(t)
 	a.setEntityIdentity("t", "s", "d")

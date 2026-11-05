@@ -30,7 +30,10 @@ import '../src/index.css';
  * - `alt`: eine Box ohne `heizstab_phasen` - sie schaltet nur Stufen;
  * - `zusammen`: ein Stab „nur alle zusammen“ (ein Schalter);
  * - `ruht`: Smart ruht (Gerät pausiert), der Stab ist aus;
- * - `einrichtung`: der Stab wurde mit nur Ausgang 0 angelegt (Fall GATE) und wird unter „Technik“ repariert.
+ * - `einrichtung`: der Stab wurde mit nur Ausgang 0 angelegt (Fall GATE) und wird unter „Technik“ repariert;
+ * - `widerspruch` (Teil A, Captain-Befund 05.11.2026): bestätigt 3 Phasen · 6,0 kW, die gemessene
+ *   Hausbilanz derselben Anlage gibt nur ≈0,3 kW her (PV 0,2 + Speicherentladung 0,1, Netz ausgeglichen) -
+ *   der Thermostat des Stabs hat vermutlich selbst abgeschaltet.
  *
  * Die Uhr der Seite stellt die Spec (`page.clock`); belegt ist, was die Seite fragt, alles Übrige antwortet
  * „nichts da“. Die Bühne ruft nie eine Cloud.
@@ -145,9 +148,12 @@ const stufe = {
   zusammen: aus,
   ruht: aus,
   einrichtung: aus,
+  // Teil A (Captain-Befund 05.11.2026): 3 Phasen bestätigt (6,0 kW), die
+  // gemessene Hausbilanz (siehe `topology` unten) gibt dafür keinen Raum.
+  widerspruch: { commanded: 3, commanded_kw: 6, confirmed: 3, confirmed_kw: 6, outputs_on: [0, 1, 2], mismatch_since: null, at: JETZT },
 }[fall] ?? null;
 
-const regler = fall === 'still' || fall === 'hand' || fall === 'ruht'
+const regler = fall === 'still' || fall === 'hand' || fall === 'ruht' || fall === 'widerspruch'
   ? null
   : fall === 'abweichung'
     ? { stufe: 1, code: 'kein_ueberschuss', grund: 'Netzbezug - hält er 30 Sekunden an, folgt eine kleinere Stufe.' }
@@ -155,11 +161,38 @@ const regler = fall === 'still' || fall === 'hand' || fall === 'ruht'
       ? { stufe: 0, code: 'kein_ueberschuss', grund: 'Wartet auf Sonne · frei 0,8 von 6,0 kW.' }
       : { stufe: 2, code: 'ueberschuss', grund: 'Heizt mit Überschuss.' };
 
+/**
+ * Teil A: dieselben Anlagen-weiten Knoten wie das Dashboard (`pvKnoten`/
+ * `netzKnoten`/`speicherKnoten`) - ≈0,3 kW Hausverbrauch gegen die
+ * bestätigte Stufe 3 (≈6,0 kW in dieser Bühne). Jeder andere Fall bleibt
+ * ohne Anlagen-Topologie (kein Plausibilitätsurteil nötig).
+ */
+const topology = fall === 'widerspruch'
+  ? {
+    schemaVersion: '1.0',
+    entities: [
+      { id: 'e-pv', entityType: 'inverter', typeLabel: 'Wechselrichter', label: 'Wechselrichter', category: 'producer', health: 'ok', capabilities: [] },
+      { id: 'e-grid', entityType: 'meter', typeLabel: 'Zähler', label: 'Netzzähler', category: 'meter', health: 'ok', capabilities: [] },
+      { id: 'e-batt', entityType: 'battery', typeLabel: 'Speicher', label: 'Speicher', category: 'storage', health: 'ok', capabilities: [] },
+    ],
+    topology: {
+      schema_version: '1.0',
+      nodes: [
+        { role: 'pv', value_kw: 0.2, flow_active: true, direction: 'in', members: [{ entity_id: 'e-pv', label: 'Wechselrichter', primary: true, value_kw: 0.2 }] },
+        { role: 'grid', value_kw: 0, flow_active: false, members: [{ entity_id: 'e-grid', label: 'Netzzähler', primary: true, value_kw: 0 }] },
+        { role: 'storage', value_kw: 0.1, flow_active: true, direction: 'in', members: [{ entity_id: 'e-batt', label: 'Speicher', primary: true, value_kw: -0.1 }] },
+      ],
+    },
+  }
+  : { schemaVersion: '1.0', entities: [], topology: { schema_version: '1.0', nodes: [] } };
+
 const status = fall === 'still'
   ? []
   : [{
     entityId: STAB,
-    state: fall === 'hand' ? 'manual_override' : 'running_optimized',
+    // Teil B (Captain-Befund 05.11.2026): ein Handeingriff heißt im
+    // geschlossenen Vokabular `running_manual`, nie ein erfundenes Wort.
+    state: fall === 'hand' ? 'running_manual' : 'running_optimized',
     actualKw: null,
     confirmed: stufe ? true : null,
     reportedAt: JETZT,
@@ -188,7 +221,7 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
     }],
     staleOnDevice: [],
   }),
-  topology: ok({ schemaVersion: '1.0', entities: [], topology: { schema_version: '1.0', nodes: [] } }),
+  topology: ok(topology),
   siteSources: ok([{
     deviceId: box.id, sourceId: QUELLE, kind: 'source', role: 'consumer', label: 'Shelly Pro 3', brand: 'shelly',
     model: 'shelly_http', pvKw: null, powerKw: null, loadKw: null, health: 'ok', readAt: JETZT, reportedAt: JETZT,

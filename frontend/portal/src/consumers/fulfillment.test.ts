@@ -148,6 +148,14 @@ describe('consumerStrip', () => {
     expect(v.sumKw).toBeCloseTo(4, 5); // only the reporting one contributes
   });
 
+  it('counts a manual override as running too (Teil B)', () => {
+    const v = consumerStrip(consumers, [
+      st({ entityId: 'a', state: 'running_manual', actualKw: 1.5 }),
+    ])!;
+    expect(v.running).toBe(1);
+    expect(v.rows[0].text).toBe('Läuft · von Hand geschaltet');
+  });
+
   it('sum is null when nothing is measured', () => {
     expect(consumerStrip(consumers, [])!.sumKw).toBeNull();
   });

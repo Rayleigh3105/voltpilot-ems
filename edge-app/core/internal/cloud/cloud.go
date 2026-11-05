@@ -1008,8 +1008,9 @@ type ConsumersSummary map[string]ConsumerRuntime
 // ConsumerRuntime is one consumer entity's edge runtime state.
 type ConsumerRuntime struct {
 	// State is from the §14.13 vocabulary. The edge only ever claims what it
-	// can know: running_forced | running_optimized | clamped | waiting |
-	// offline (device had telemetry, went silent).
+	// can know: running_forced | running_optimized | running_manual (a
+	// human's own "Von Hand" override, never the plan's claim) | clamped |
+	// waiting | offline (device had telemetry, went silent).
 	State string `json:"state"`
 	// ReasonCode is from the §15 vocabulary incl. the cycle-guard extension
 	// (guard_min_on | guard_min_off | guard_max_starts | guard_ramp |

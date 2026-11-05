@@ -182,6 +182,20 @@ describe('verbrauchKomposition · der Rest ist eine Differenz, kein Gerät', () 
     expect(c.rest.note).toBe('nicht bestimmbar (Wärmepumpe ohne Leistungsmessung)');
   });
 
+  it('ein von Hand laufender Verbraucher ohne Messwert blockiert ihn ebenso (Teil B)', () => {
+    const c = k({
+      topology: topo([HAUS, HEIZSTAB, { entity_id: 'wp', label: 'Wärmepumpe', primary: false }], [
+        ...ENTITIES,
+        entity({ id: 'wp', entityType: 'heat-pump', typeLabel: 'Wärmepumpe' }),
+      ]),
+      consumerStatus: [
+        { entityId: 'wp', state: 'running_manual', reportedAt: '2026-08-28T09:41:00Z' },
+      ],
+    });
+    expect(c.rest.kw).toBeNull();
+    expect(c.rest.note).toBe('nicht bestimmbar (Wärmepumpe ohne Leistungsmessung)');
+  });
+
   it('ein VERALTETER Messwert blockiert ihn ebenfalls, mit eigenem Grund', () => {
     const c = k({
       topology: topo([HAUS, HEIZSTAB], [

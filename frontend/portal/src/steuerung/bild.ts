@@ -750,6 +750,11 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
     case 'running_optimized':
       pill = ['on', freigabe ? 'angehoben' : 'läuft'];
       break;
+    case 'running_manual':
+      // Teil B (Captain-Befund 05.11.2026): ein Handeingriff ist weder eine
+      // Pflichtregel noch ein VoltPilot-Plan - die Pille sagt das ehrlich.
+      pill = ['on', 'von Hand'];
+      break;
     case 'waiting':
       pill = ['wait', 'wartet'];
       break;

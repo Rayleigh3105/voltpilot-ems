@@ -58,6 +58,17 @@ describe('consumerStatusLine', () => {
     expect(consumerStatusLine(entry({ confirmed: false })).tone).toBe('warn');
   });
 
+  /**
+   * Teil B (Captain-Befund 05.11.2026): ein Handeingriff ist weder eine
+   * Pflichtregel noch ein VoltPilot-Plan - „von VoltPilot geplant" behauptete
+   * bisher die Wirkung eines Knopfdrucks.
+   */
+  it('ein Handeingriff liest ehrlich „von Hand geschaltet", nie „von VoltPilot geplant"', () => {
+    const line = consumerStatusLine(entry({ state: 'running_manual' }));
+    expect(line.text).toBe('Läuft · von Hand geschaltet');
+    expect(line.tone).toBe('ok');
+  });
+
   it('a device-started deadline run reads honestly (Increment 6)', () => {
     const line = consumerStatusLine({
       entityId: 'pump-1', state: 'running_optimized',
@@ -74,7 +85,7 @@ describe('consumerStatusLine', () => {
     // a word the api stores but the portal cannot say would strand the
     // customer with an empty line.
     const states = ['disconnected', 'offline', 'ready', 'running_forced',
-      'running_optimized', 'waiting', 'fulfilled', 'clamped', 'missed', 'unknown'];
+      'running_optimized', 'running_manual', 'waiting', 'fulfilled', 'clamped', 'missed', 'unknown'];
     for (const s of states) {
       expect(CONSUMER_STATE_TEXT[s], `state ${s}`).toBeTruthy();
     }

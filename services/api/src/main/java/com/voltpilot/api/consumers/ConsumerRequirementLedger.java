@@ -125,7 +125,12 @@ public final class ConsumerRequirementLedger {
             int actualRuntimeSeconds, EnergyConfirmation energyConfirmation, State state,
             String reasonCode) {}
 
-    private static final Set<String> RUNNING_STATES = Set.of("running_forced", "running_optimized");
+    // running_manual (Teil B, Captain-Befund 05.11.2026): a human's own "Von
+    // Hand" override still runs the device - the ledger counts it exactly
+    // like running_forced/running_optimized, or a manually-held run would
+    // silently drop out of the day's fulfilment.
+    private static final Set<String> RUNNING_STATES =
+            Set.of("running_forced", "running_optimized", "running_manual");
     private static final Set<String> BLOCKED_REASONS =
             Set.of("guard_grid_limit", "guard_rated_power", "guard_min_off", "guard_max_starts");
 

@@ -137,6 +137,16 @@ describe('geraete', () => {
     expect(laeuft.jetztKw).toBe(2.5);
   });
 
+  it('ein von der Box gemeldeter Handeingriff liest ehrlich „von Hand", nie „läuft" wie ein Plan (Teil B)', () => {
+    const [g] = geraete({
+      raster: r,
+      reihen: leereReihen(),
+      verbraucher: { verbraucher: [eintrag({ entityId: 'a' })], ladepunkte: { standard: null, standardFolger: 0, gesamt: 0, rahmen: null }, rangliste: [] },
+      status: [{ entityId: 'a', state: 'running_manual', reportedAt: NOW.toISOString() }],
+    });
+    expect(g.pill).toEqual(['on', 'von Hand']);
+  });
+
   it('nennt einen Eingriff mit Ende', () => {
     const [g] = geraete({
       raster: r,

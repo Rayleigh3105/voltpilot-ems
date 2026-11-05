@@ -68,8 +68,11 @@ public final class RuleEvents {
     /**
      * Die Zustände, die „läuft" bedeuten. Nur ein Übergang über diese Grenze
      * ist ein SCHALTVORGANG - daran hängt der Zähler „heute N× geschaltet".
+     * running_manual (Teil B, Captain-Befund 05.11.2026) zählt mit: ein
+     * Handeingriff lässt das Gerät genauso laufen, der Schaltzähler darf ihn
+     * nicht verschweigen.
      */
-    static final Set<String> RUNNING = Set.of("running_forced", "running_optimized");
+    static final Set<String> RUNNING = Set.of("running_forced", "running_optimized", "running_manual");
 
     /** Die Ack-Zustände, die ein PROBLEM des Geräts mit der Regel bedeuten. */
     static final Set<String> ACK_PROBLEM = Set.of("error", "unsupported");
