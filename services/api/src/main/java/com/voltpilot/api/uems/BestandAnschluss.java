@@ -19,6 +19,9 @@ import java.util.Map;
  *   <li>Modbus TCP ({@code modbus_tcp}, {@code kostal_modbus}, {@code kaco_modbus}, der Selbstbau
  *       {@code modbus_baukasten}) und SunSpec-Modbus ({@code sunspec_tcp}, {@code fronius_sunspec}):
  *       {@code ip:port}, die Geräte-ID ist {@code unit_id}.</li>
+ *   <li>Huawei SUN2000 ({@code huawei_modbus}): wie Modbus TCP, aber die Unit-ID 0 ist bei Huawei
+ *       eine GÜLTIGE Adresse (Werkswert bei direkter WLAN-/LAN-Verbindung) und die Vorgabe des
+ *       Treibers — sie wird nicht als „fehlt“ gelesen.</li>
  *   <li>Solarman-Datenlogger ({@code solarman_v5}, Deye): {@code ip:port/serial} — die Seriennummer
  *       des Datenloggers gehört zum Weg (ohne sie liest der Treiber nicht), die Geräte-ID ist die
  *       Slave-ID {@code mb_slave_id}.</li>
@@ -69,13 +72,14 @@ public final class BestandAnschluss {
      */
     record Transport(String protokoll, Integer standardPort, Integer standardGeraeteId, Weg weg) {}
 
-    enum Weg { MODBUS, MODBUS_BAUKASTEN, SOLARMAN, HTTP, KACO_SERIAL }
+    enum Weg { MODBUS, MODBUS_UNIT_NULL_GUELTIG, MODBUS_BAUKASTEN, SOLARMAN, HTTP, KACO_SERIAL }
 
     /** Die geschlossene, vollständige Tabelle — ein neuer Transport kommt hierher UND in den Vertrag. */
     static final Map<String, Transport> TRANSPORTE = Map.ofEntries(
             Map.entry("modbus_tcp", new Transport("modbus_tcp", 502, 1, Weg.MODBUS)),
             Map.entry("kostal_modbus", new Transport("modbus_tcp", 1502, 71, Weg.MODBUS)),
             Map.entry("kaco_modbus", new Transport("modbus_tcp", 502, 1, Weg.MODBUS)),
+            Map.entry("huawei_modbus", new Transport("modbus_tcp", 502, 0, Weg.MODBUS_UNIT_NULL_GUELTIG)),
             Map.entry("modbus_baukasten", new Transport("modbus_tcp", 502, 1, Weg.MODBUS_BAUKASTEN)),
             Map.entry("sunspec_tcp", new Transport("sunspec_modbus", 502, 1, Weg.MODBUS)),
             Map.entry("fronius_sunspec", new Transport("sunspec_modbus", 502, 1, Weg.MODBUS)),
@@ -106,6 +110,8 @@ public final class BestandAnschluss {
         return switch (t.weg()) {
             case MODBUS -> modbus(t, text(c.get("ip")), c.get("port"),
                     geraeteId(c.get("unit_id"), t.standardGeraeteId(), true), kadenz);
+            case MODBUS_UNIT_NULL_GUELTIG -> modbus(t, text(c.get("ip")), c.get("port"),
+                    geraeteId(c.get("unit_id"), t.standardGeraeteId(), false), kadenz);
             case MODBUS_BAUKASTEN -> {
                 // Der Selbstbau nimmt eine 0 als Geräte-ID ernst (SelfBuildDefinition), nur „fehlt“ ist 1.
                 JsonNode tr = c.path("transport");

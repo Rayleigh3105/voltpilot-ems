@@ -117,6 +117,10 @@
     {
       "code": "solarman_v5",
       "name": "Solarman-Datenlogger"
+    },
+    {
+      "code": "kaco_serial",
+      "name": "Serieller RS485-Wandler"
     }
   ],
   "urteile": [

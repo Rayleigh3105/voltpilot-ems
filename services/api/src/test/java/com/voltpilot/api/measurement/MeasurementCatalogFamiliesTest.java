@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class MeasurementCatalogFamiliesTest {
 
     /** Families whose device socket the box core owns alone (no measurement runtime). */
-    private static final Set<String> CORE_OWNED_WITHOUT_POINTS = Set.of("ebyte_m31");
+    private static final Set<String> CORE_OWNED_WITHOUT_POINTS = Set.of("ebyte_m31", "huawei_sun2000_luna");
 
     @Test
     void everyBuiltinBindingFamilyResolvesToCanonicalCatalogPoints() throws Exception {
@@ -29,7 +29,7 @@ class MeasurementCatalogFamiliesTest {
         assertThat(configured).containsExactlyInAnyOrder(
                 "string", "hybrid_1p", "hybrid_3p", "micro",
                 "sunspec", "sunspec_live", "fronius_solar_api",
-                "kaco_http", "kaco_http_hybrid", "kostal_plenticore", "kaco_serial",
+                "kaco_http", "kaco_http_hybrid", "kostal_plenticore", "kaco_serial", "huawei_sun2000_luna",
                 "goe_http_api", "shelly_http", "ebyte_m31");
         for (String family : configured) {
             if (CORE_OWNED_WITHOUT_POINTS.contains(family)) {

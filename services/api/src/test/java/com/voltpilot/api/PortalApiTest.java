@@ -4455,9 +4455,19 @@ class PortalApiTest {
                 url("/api/v1/earnings?range=all"), HttpMethod.GET,
                 new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
         assertThat(all.getStatusCode()).isEqualTo(HttpStatus.OK);
+        // The fleet is the whole tenant of a database that other tests of this class seed too (on
+        // 2026-03-03 and 2026-03-10), so the rule is pinned, not the calendar date: the fleet starts
+        // at the earliest first covered day of its own sites, this test's April day is among them,
+        // and the window opens at that day's Berlin midnight.
+        String fleetFirst = list(all.getBody(), "sites").stream()
+                .map(x -> (String) x.get("firstCoveredDate")).filter(java.util.Objects::nonNull)
+                .min(java.util.Comparator.naturalOrder()).orElseThrow();
+        assertThat(fleetFirst).isLessThanOrEqualTo("2026-04-14");
+        assertThat(siteRow(all.getBody(), dv)).containsEntry("firstCoveredDate", "2026-04-14");
         assertThat(map(all.getBody(), "totals"))
-                .containsEntry("firstCoveredDate", "2026-04-14");
-        assertThat(all.getBody()).containsEntry("from", "2026-04-13T22:00:00Z");
+                .containsEntry("firstCoveredDate", fleetFirst);
+        assertThat(all.getBody()).containsEntry("from", java.time.LocalDate.parse(fleetFirst)
+                .atStartOfDay(com.voltpilot.api.history.HistoryRange.ZONE).toInstant().toString());
         // The all-range DV aggregate still carries the April slots.
         assertThat(num(siteRow(all.getBody(), dv), "savedEur")).isCloseTo(-0.025, eps);
 

@@ -448,7 +448,7 @@ class QuelleEinstellungApiTest {
     // ---- Der Hebel (W5) ------------------------------------------------------------------
 
     /**
-     * Der Hebel „Auf ×10 stellen" ruft den PUT der Komponente mit {@code power_scale = "10"}.
+     * Der Hebel „Auf ×10 stellen" ruft den PUT der Komponente mit {@code power_scale = 10} (die Zahl der Auswahl, nicht ihr Text).
      * Bisher: der Wert gilt sofort, der Verbindungstest bleibt Pflicht. Das bleibt — ohne Beleg 422
      * und dann auch KEINE Fassung. Mit Beleg steht danach in derselben Transaktion die Fassung 1 aus
      * der bisherigen Verbindung (Skalierung automatisch, beide Vorzeichen — seit Beginn der Speisung)
@@ -476,9 +476,9 @@ class QuelleEinstellungApiTest {
                     + "AND gueltig_bis IS NULL", UUID.class, komponente);
             assertThat(fassungenAn(geraet)).as("vor der ersten Änderung keine Fassung").isZero();
 
-            // Der Hebel setzt das Feld auf „10" (Text, wie SKALIERUNG_X10 im Portal).
+            // Der Hebel setzt das Feld auf 10 (der Optionswert des Schemas als Zahl; das Portal macht aus SKALIERUNG_X10 "10" vorher die Zahl).
             Map<String, Object> x10 = new LinkedHashMap<>(verbindung);
-            x10.put("power_scale", "10");
+            x10.put("power_scale", 10);
             Map<String, Object> bearbeiten = speichern(DEYE, "inverter", x10);
             bearbeiten.put("expectedRevision", fassungDerKomponente);
             ResponseEntity<String> ohneBeleg = komponentenRuf(HttpMethod.PUT, "/api/v1/sites/" + site + "/components/"
@@ -585,7 +585,7 @@ class QuelleEinstellungApiTest {
             try {
                 double fehlerVorher = fehlerZaehler();
                 Map<String, Object> x10 = new LinkedHashMap<>(verbindung);
-                x10.put("power_scale", "10");
+                x10.put("power_scale", 10);
                 receipts.record(site, DEYE, 1, x10);
                 Map<String, Object> bearbeiten = speichern(DEYE, "inverter", x10);
                 bearbeiten.put("expectedRevision", fassungDerKomponente);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
@@ -17,11 +17,16 @@ import './index.css';
 import { initAuth, keycloak, login, wasRateLimited, wasSessionExpired } from './auth';
 import { BOOT_TIMEOUT_MS, BootTimeoutError, bootOutcome, withTimeout } from './boot';
 import { BootErrorBoundary, BootSplash } from './components/Boot';
-import { ZustellwegBestaetigenScreen } from './components/ZustellwegBestaetigenScreen';
 import { initInstallApp } from './installApp';
 import { koppelEmpfang, koppelLinkAnnehmen } from './koppelLink';
 import { isRegisterRoute, zustellwegBestaetigenToken } from './nav';
 import { registerServiceWorker } from './serviceWorker';
+
+// Die Bestätigungsseite braucht nur, wer den Link aus der Mail öffnet - ein Lazy-Stück, nicht Teil des
+// ersten Bilds (Bündel-Wächter `test/bundle-smoke.sh`). Bis es da ist, steht der Ladeschirm.
+const ZustellwegBestaetigenScreen = lazy(() =>
+  import('./components/ZustellwegBestaetigenScreen').then((m) => ({ default: m.ZustellwegBestaetigenScreen })),
+);
 
 // App-Hülle. Beides läuft VOR dem Auth-Bootstrap, weil beides von ihm
 // unabhängig ist: `beforeinstallprompt` feuert kurz nach dem Laden und wird
@@ -86,7 +91,11 @@ const koppelAnnahme = koppelLinkAnnehmen(window.location, (url) =>
 // whether the browser happens to be logged in or not, since it never asks.
 const zustellwegToken = zustellwegBestaetigenToken();
 if (zustellwegToken) {
-  render(<ZustellwegBestaetigenScreen token={zustellwegToken} />);
+  render(
+    <Suspense fallback={<BootSplash />}>
+      <ZustellwegBestaetigenScreen token={zustellwegToken} />
+    </Suspense>,
+  );
 } else {
   // White-page fix, part 2: the whole auth bootstrap is bounded. keycloak-js
   // contains unbounded iframe/postMessage waits (a Keycloak/proxy error page

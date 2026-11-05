@@ -3,6 +3,7 @@ package com.voltpilot.api.consumers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -12,6 +13,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -52,6 +54,14 @@ public class HeizstabFaehigkeitenNachtrag {
     private final ObjectProvider<EntityRegistryService> registry;
     private final TransactionTemplate tx;
     private final boolean enabled;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public HeizstabFaehigkeitenNachtrag(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             HeizstabGeraet heizstab, EntityRegistryRepository entityRepo,
@@ -97,6 +107,7 @@ public class HeizstabFaehigkeitenNachtrag {
         UUID vorher = TenantContext.get();
         try {
             for (Zeile z : zeilen) {
+                if (beendete.beendet(z.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
                 Map<String, Object> conn = lies(z.connection());
                 if (conn == null || !HeizstabAusgaenge.istMenge(conn) || HeizstabAusgaenge.fehler(conn) != null) {
                     continue;

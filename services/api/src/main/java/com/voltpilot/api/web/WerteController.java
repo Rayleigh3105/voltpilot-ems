@@ -34,7 +34,7 @@ import org.springframework.web.server.ResponseStatusException;
  * die auch "Anlage › Aufbau" zeigt (§6.1 Nr. 3 "dieselbe Zahl wie die Fläche"); ihr Live-Wert kommt
  * direkt aus der Topologie-Antwort, ohne zweiten Lesevorgang.
  *
- * <p>UEMS EZ-11: dazu die Alarm-Vorlagen der Leserart {@code erzeuger} - nur an einer Anlage mit Anlagensteuerung,
+ * <p>Erzeuger-Reihe EZ-11: dazu die Alarm-Vorlagen der Leserart {@code erzeuger} - nur an einer Anlage mit Anlagensteuerung,
  * mit ihrem aktuellen Zustand (die Vorlage je Einheit hat an der Anlage keinen einzelnen Zustand).
  *
  * <p>"Ein Ort fürs Laden" Scheibe 4 (E6 = A): dazu die wählbaren Alarm-Vorlagen der Leserart {@code ladepunkt}

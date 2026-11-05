@@ -59,6 +59,9 @@ cd "$(dirname "$0")/.."
 #           Geräten) importierte `push.ts` statisch in `AppShell.tsx`.
 #   257,04  B8-Nachlade-Fix (Grenze 258) — `push.ts` nur noch per `import()` beim Klick auf
 #           „Abmelden“ geladen, s.u.
+#   258,08  main 05.11.2026 (Grenze 258, rot) - viele kleine Zuwächse seit 23.10.
+#   257,73  Bestätigungsseite der Zustellweg-Mail (`ZustellwegBestaetigenScreen`) nur noch als
+#           `lazy` in `main.tsx` - sie braucht allein, wer den Link aus der Mail öffnet. Die Grenze bleibt 258.
 #
 # WARUM DIE GRENZE AM 19.10.2026 VON 257 AUF 258 GEHT (vp-bundle-b8-nachladung, Belege im
 #   PR-Text): B8s EIGENES Gewicht ist vollständig draußen — `push.ts` und sein Daten-Zwilling

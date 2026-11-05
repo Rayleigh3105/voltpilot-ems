@@ -60,6 +60,19 @@ class BestandAnschlussTest {
                 .isEqualTo("http://192.168.0.30:8484");
     }
 
+    /** Huawei SUN2000: Modbus TCP, aber die Unit-ID 0 (Werkswert bei direkter Verbindung) ist GÜLTIG. */
+    @Test
+    void huaweiLiestUnitIdNullAlsGueltigeAdresse() {
+        assertThat(BestandAnschluss.aus("huawei_modbus", "{\"ip\":\"192.168.0.50\",\"port\":502,\"unit_id\":0}"))
+                .isEqualTo(new Anschluss("modbus_tcp", "192.168.0.50:502", 0, null));
+        // Fehlende Felder: die Vorgaben des Treibers (Port 502, Unit-ID 0).
+        assertThat(BestandAnschluss.aus("huawei_modbus", "{\"ip\":\"192.168.0.51\"}"))
+                .isEqualTo(new Anschluss("modbus_tcp", "192.168.0.51:502", 0, null));
+        // Hinter einem Smart Dongle vergibt der Hersteller häufig 1.
+        assertThat(BestandAnschluss.aus("huawei_modbus", "{\"ip\":\"192.168.0.51\",\"unit_id\":1}").geraeteId())
+                .isEqualTo(1);
+    }
+
     /** KACO-Powador-Altgeräte über den RS485-zu-Ethernet-Wandler: die Geräte-ID ist die Busadresse (1-32). */
     @Test
     void kacoSeriellLiestWandlerHostPortUndRs485Adresse() {
