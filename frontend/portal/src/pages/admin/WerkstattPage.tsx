@@ -130,12 +130,13 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
 
   return (
     <div className="vp-admin-page vp-fw vp-ws">
+      {/* Die Reiter stehen auf allen Geräte-Seiten über dem Kopf - sonst springt die Leiste beim Wechsel. */}
+      {tabs}
       <AdminPageHead
         icon="sliders"
         title="Werkstatt"
         description="Boxen vor dem Versand: Der Werkstatt-Dienst richtet sie ein und prüft sie, jeden Schritt mit Beleg. Hier siehst du, was er tut, und gibst die Werkstatt frei."
       />
-      {tabs}
 
       {ladeFehler && !geladen ? (
         <ErrorState message={ladeFehler} onRetry={() => void laden()} />

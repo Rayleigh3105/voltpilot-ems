@@ -159,8 +159,9 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
 
   return (
     <div className="vp-admin-page vp-fw">
-      <AdminPageHead icon="lock" title="Fernwartung" description={ZUSTIMMUNG_SATZ} />
+      {/* Die Reiter stehen auf allen Geräte-Seiten über dem Kopf - sonst springt die Leiste beim Wechsel. */}
       {tabs}
+      <AdminPageHead icon="lock" title="Fernwartung" description={ZUSTIMMUNG_SATZ} />
 
       {ladeFehler && !geladen ? (
         <ErrorState message={ladeFehler} onRetry={() => void laden()} />

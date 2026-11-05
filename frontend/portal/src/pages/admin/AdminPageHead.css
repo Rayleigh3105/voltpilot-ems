@@ -1,8 +1,17 @@
 /* The mobile console should lead into its records without a screen of KPI
    padding. Keep the same cards and labels, with a compact summary rhythm. */
 @media (max-width: 720px) {
-  .vp-admin-head .vp-admin-head-main { align-items: flex-start; }
-  .vp-admin-head .titles p { font-size: 1rem; line-height: 1.5; }
+  /* Am Telefon steht das Symbol neben dem Titel, die Beschreibung darunter über die
+     volle Breite - nicht eingerückt in einer Spalte neben dem Symbol. */
+  .vp-admin-head .vp-admin-head-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--vp-space-3);
+  }
+  .vp-admin-head .vp-admin-head-main > .titles { display: contents; }
+  .vp-admin-head .titles h1 { font-size: 1.75rem; line-height: 1.2; overflow-wrap: anywhere; hyphens: auto; }
+  .vp-admin-head .titles p { grid-column: 1 / -1; font-size: 1rem; line-height: 1.5; }
   .vp-kpis.vp-admin-pulse { gap: var(--vp-space-2); }
   .vp-admin-pulse .vp-kpi { padding: 0.75rem 1rem !important; }
   .vp-admin-pulse .vp-stat-val { font-size: 1.25rem; }

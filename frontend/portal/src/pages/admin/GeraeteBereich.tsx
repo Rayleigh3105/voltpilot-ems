@@ -4,6 +4,7 @@ import { GeraeteRegistryPage } from './GeraeteRegistryPage';
 import { EdgeUpdatesPage } from './EdgeUpdatesPage';
 import { FernwartungPage } from './FernwartungPage';
 import { WerkstattPage } from './WerkstattPage';
+import './GeraeteBereich.css';
 
 /** Geräte opens on Updates: version overview and rollout actions. Registration
  * is the secondary tab, Fernwartung (Wartungstunnel, E5) the third, Werkstatt
@@ -63,7 +64,7 @@ export function GeraeteTabs({
     };
   }, [active]);
   return (
-    <div className="vp-seg vp-bereich-tabs" role="tablist" aria-label="Geräte-Bereich">
+    <div className="vp-seg vp-bereich-tabs vp-geraete-tabs" role="tablist" aria-label="Geräte-Bereich">
       {GERAETE_BEREICH.tabs.map((t) => (
         <button
           key={t.id}
