@@ -131,6 +131,7 @@ import {
 import { CockpitHero } from '../components/CockpitHero';
 import { MobileStickyHead } from '../components/CockpitBlocks';
 import { ZustandCard } from '../components/ZustandCard';
+import { KachelRaster } from '../components/kacheln/KachelRaster';
 import { gateStrompreis } from '../strompreisGate';
 import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
 import { ersteWerteOffen } from '../ersteWerte';
@@ -217,11 +218,11 @@ function stapelMitRaster(
     const i = vorn ? lauf.findIndex((x) => x.id === vorn) : -1;
     if (i > 0) lauf.unshift(...lauf.splice(i, 1));
     out.push(
-      <section key={`raster-${lauf[0].id}`} className="vp-kraster" aria-label="Kacheln">
+      <KachelRaster key={`raster-${lauf[0].id}`}>
         {lauf.map((x) => (
           <Fragment key={x.id}>{x.node}</Fragment>
         ))}
-      </section>,
+      </KachelRaster>,
     );
     lauf = [];
   };

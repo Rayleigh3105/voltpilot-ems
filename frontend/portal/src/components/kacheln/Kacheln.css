@@ -249,7 +249,10 @@ button.vp-k-kopf:focus-visible {
   font-size: 0.8125rem;
 }
 .vp-k-mini > span:first-child {
-  white-space: nowrap;
+  /* Umbrechen statt unter die Zahl laufen: in einer schmalen Kachel (Sonne am
+     Telefon) überlappte „PV heute gemessen" sonst den Wert. */
+  white-space: normal;
+  overflow-wrap: anywhere;
   min-width: 0;
   color: var(--vp-c-muted-fg, #475569);
 }
