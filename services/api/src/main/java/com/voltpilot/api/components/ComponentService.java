@@ -211,20 +211,34 @@ public class ComponentService {
             + "(alle Ausgänge zusammen).";
 
     /**
-     * Ein Schaltausgang (Vorlage {@code device_type: switch}, heute der Shelly) als
-     * eigenes Verbraucher-Gerät entstünde als reines Messgerät: {@code generic-load}
-     * ohne {@code actuate}, Rückfall {@code measure-only} ({@link ComponentDefaults}).
-     * Einem solchen Gerät kann die Box keine Rolle zuordnen - sie liest es nicht und
-     * meldet es als abgelehnt (am VoltPilotGATE hielten drei solche Ausgänge am
-     * 02.11.2026 sogar den ganzen Push auf). Angelegt wird ein Schalter deshalb nur
-     * als Heizstab über seine Ausgänge. Bestehende Zeilen bleiben, wie sie sind;
-     * Bearbeiten ist nicht betroffen.
+     * Der Satz, mit dem das Anlegen einer Wallbox über ihre HTTP-Schnittstelle abgelehnt wird. Er nennt den
+     * Weg, der funktioniert.
+     */
+    static final String WALLBOX_NUR_UEBER_OCPP = "Eine Wallbox lässt sich nicht über ihre HTTP-Schnittstelle "
+            + "als Verbraucher anlegen: sie ist nur lesend, die VoltPilot-Box kann ihr keine Rolle in der Anlage "
+            + "zuordnen und würde sie nicht anwenden. Binden Sie die Wallbox über OCPP an: Wählen Sie unter "
+            + "„Gerät hinzufügen“ „Ladesäule mit OCPP 1.6“ und tragen Sie die dort angezeigte Adresse in der "
+            + "Wallbox als OCPP-Server ein.";
+
+    /**
+     * Ein Schaltausgang (Vorlage {@code device_type: switch}, heute der Shelly) oder die HTTP-Schnittstelle einer
+     * Wallbox ({@code device_type: wallbox}, heute go-e, nur lesend) als eigenes Verbraucher-Gerät entstünde als
+     * reines Messgerät: {@code generic-load} ohne {@code actuate}, Rückfall {@code measure-only}
+     * ({@link ComponentDefaults}). Einem solchen Gerät kann die Box keine Rolle zuordnen - sie liest es nicht und
+     * meldet es als abgelehnt (am VoltPilotGATE hielten drei solche Ausgänge am 02.11.2026 sogar den ganzen Push
+     * auf). Angelegt wird ein Schalter deshalb nur als Heizstab über seine Ausgänge, eine Wallbox über OCPP.
+     * Bestehende Zeilen bleiben, wie sie sind; Bearbeiten ist nicht betroffen.
      */
     static void requireNoRolelessSwitch(String role, ComponentTemplateDto template,
             boolean heizstabGeraet) {
-        if (!heizstabGeraet && ROLE_CONSUMER.equals(role)
-                && "switch".equals(template.deviceType())) {
+        if (heizstabGeraet || !ROLE_CONSUMER.equals(role)) {
+            return;
+        }
+        if ("switch".equals(template.deviceType())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, SCHALTER_OHNE_ROLLE);
+        }
+        if ("wallbox".equals(template.deviceType())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, WALLBOX_NUR_UEBER_OCPP);
         }
     }
 

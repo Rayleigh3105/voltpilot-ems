@@ -12,6 +12,7 @@ import {
   GS_TEMPLATES,
   geraetesucheFaelle,
   gsDeye,
+  gsGoeNurOcpp,
   gsKomponenten,
   gsShelly,
   gsVerlauf,
@@ -177,6 +178,20 @@ describe('GeraetesucheDialog · Ergebnis (m3/d3)', () => {
       schluessel: 'goe:204117',
       suchId: GS_SUCH_ID,
     });
+  });
+
+  it('go-e, wie die Cloud sie meldet: kein Knopf zum Übernehmen, aber der Weg über OCPP', async () => {
+    const suche = structuredClone(F.breit);
+    suche.gruppen = suche.gruppen.map((g) => ({
+      ...g,
+      funde: g.gruppe === 'bereit' ? g.funde.filter((f) => f.schluessel !== 'goe:204117')
+        : g.gruppe === 'nicht_anbindbar' ? [...g.funde, structuredClone(gsGoeNurOcpp)] : g.funde,
+    }));
+    starten(suche);
+    rendere();
+    await screen.findByTestId('gs-ergebnis');
+    expect(screen.queryByRole('button', { name: 'go-e Wallbox übernehmen' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Eine Wallbox binden Sie über „Gerät hinzufügen“ → „Ladesäule mit OCPP 1\.6“ an/)).toBeInTheDocument();
   });
 
   it('„Selbst beschreiben" gibt den Fund mit dem Bezug auf diese Suche weiter', async () => {

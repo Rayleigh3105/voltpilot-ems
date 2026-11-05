@@ -61,7 +61,7 @@ class GeraetesucheAbgleichTest {
     @Test
     void ohneKomponentenIstJederFundNeuUndDieGruppeFolgtDerAnbindung() {
         assertThat(GeraetesucheDienst.zaehler(docker.funde(), List.of())).containsExactly(
-                Map.entry("braucht_hilfe", 0), Map.entry("bereit", 3), Map.entry("nicht_anbindbar", 0),
+                Map.entry("braucht_hilfe", 0), Map.entry("bereit", 2), Map.entry("nicht_anbindbar", 1),
                 Map.entry("vielleicht", 1), Map.entry("schon_eingerichtet", 0), Map.entry("weitere", 1));
         // Edge Light: der geschützte Shelly braucht Hilfe; Fronius (nur Docker liest ihn), SMA und der Shelly-Zähler
         // (kein Leseweg) sind „erkannt, mit dieser Box noch nicht anbindbar“.

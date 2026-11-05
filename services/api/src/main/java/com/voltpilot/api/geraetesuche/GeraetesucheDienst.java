@@ -196,8 +196,25 @@ public class GeraetesucheDienst {
         return zuletzt.isBefore(jetzt.minus(GeraetesucheVertrag.KEINE_ANTWORT)) ? KEINE_ANTWORT : z.zustand();
     }
 
+    /**
+     * Was das Portal als Anbindung eines Fundes sieht. Die go-e meldet die Box als {@code uebernehmen}
+     * (sie liest die HTTP-Schnittstelle), aber der Anlege-Weg lehnt sie als Verbraucher ab: nur lesend, keine
+     * Rolle für die Box ({@code ComponentService#requireNoRolelessSwitch}). Das Portal bietet sie darum nicht
+     * zum Übernehmen an, sondern als „nicht anbindbar" mit dem Weg über OCPP. Der Vertrag mit der Box bleibt
+     * unberührt, gespeichert ist, was sie gemeldet hat.
+     */
+    static GeraetesucheBericht.Fund fuerPortal(GeraetesucheBericht.Fund f) {
+        if (!"wallbox".equals(f.art()) || !GeraetesucheVertrag.UEBERNEHMEN.equals(f.anbindung())) {
+            return f;
+        }
+        return new GeraetesucheBericht.Fund(f.schluessel(), f.erkenner(), f.art(), f.hersteller(), f.modell(),
+                f.seriennummer(), f.firmware(), f.familie(), f.spannung(), f.kanaele(), f.erkennung(),
+                f.merkmale(), GeraetesucheVertrag.KEIN_LESEWEG, f.hindernis(), f.verbindung(), f.liestBoxSchon());
+    }
+
     private GeraetesucheDto.Suche antwort(Zeile z, Instant jetzt) {
-        List<GeraetesucheBericht.Fund> funde = suchen.funde(z.id());
+        List<GeraetesucheBericht.Fund> funde = suchen.funde(z.id()).stream()
+                .map(GeraetesucheDienst::fuerPortal).toList();
         List<GeraetesucheAbgleich.Komponente> komponenten = suchen.komponenten(z.siteId());
         List<ComponentTemplateDto> katalog = funde.stream()
                 .anyMatch(f -> GeraetesucheVertrag.UEBERNEHMEN.equals(f.anbindung()))
@@ -235,7 +252,8 @@ public class GeraetesucheDienst {
             List<GeraetesucheAbgleich.Komponente> komponenten) {
         Map<String, Integer> z = new LinkedHashMap<>();
         GeraetesucheVertrag.GRUPPEN.forEach(g -> z.put(g, 0));
-        for (GeraetesucheBericht.Fund f : funde) {
+        for (GeraetesucheBericht.Fund box : funde) {
+            GeraetesucheBericht.Fund f = fuerPortal(box);
             String abgleich = GeraetesucheAbgleich.abgleichen(f, komponenten).abgleich();
             z.merge(GeraetesucheVertrag.gruppe(f.anbindung(), abgleich, f.hindernis()), 1, Integer::sum);
         }
