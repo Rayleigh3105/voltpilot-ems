@@ -1185,7 +1185,34 @@ type UpdateSummary struct {
 	//
 	// ABSENT and EMPTY mean different things on purpose - see TrustSummary.
 	Trust *TrustSummary `json:"trust,omitempty"`
+	// Geraet is WHAT the box runs on (Geraete & Updates G8, contract
+	// docs/contracts/v2/box-geraet.md): the device model as the device states it
+	// (OpenWrt sysinfo, device tree, the Pi's cpuinfo line, DMI - never guessed),
+	// the architecture of THIS program, and for Edge Light the loader state.
+	// nil = an older box, or the detection did not run (tests) - additive, an
+	// older cloud ignores it.
+	Geraet *GeraetSummary `json:"geraet,omitempty"`
 }
+
+// GeraetSummary is update.geraet (Geraete & Updates G8).
+type GeraetSummary struct {
+	// Modell is the device's own model statement, normalised; omitted when
+	// no source could be read (never a placeholder like "Default string").
+	Modell string `json:"modell,omitempty"`
+	// Arch is runtime.GOARCH of the running program (amd64, arm64, mipsle, …).
+	Arch string `json:"arch,omitempty"`
+	// Loader is Edge Light only: LoaderUpdate when the loader knows the update
+	// protocol (it sets VP_OTA_RAM_DIR, Stufe 2), LoaderFlash when it always
+	// starts the version from the flash (Stufe 1). Omitted on the Docker box.
+	Loader string `json:"loader,omitempty"`
+}
+
+const (
+	// LoaderUpdate: the Edge Light loader swaps a verified candidate (Stufe 2).
+	LoaderUpdate = "update"
+	// LoaderFlash: the Edge Light loader only starts the flash copy (Stufe 1).
+	LoaderFlash = "flash"
+)
 
 // NeutralVerifiedSummary is one geraete-lokal gemessener Neutral-Zeit-Nachweis
 // (the otaapply.NeutralRecord counterpart carried in the heartbeat).

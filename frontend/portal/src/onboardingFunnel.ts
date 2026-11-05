@@ -81,7 +81,7 @@ export function funnelStages(
   let open = 0;
   let vonHand = 0;
   for (const d of connectedRows) {
-    const s = crossoverState(d.trust, d.boxArt).state;
+    const s = crossoverState(d.trust, d.boxArt, d.loader).state;
     if (s === 'gekreuzt') crossed += 1;
     else if (s === 'offen' || s === 'fehler') open += 1;
     // Edge Light ohne Stufe 2 ist keine offene Aufgabe, aber auch nicht

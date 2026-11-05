@@ -40,6 +40,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flexfallback"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraet"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche/suche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
@@ -115,6 +116,10 @@ type Agent struct {
 	// releaseReady is the battery executor's per-tick word on whether it
 	// covers a vehicle's draw („Sonne + Speicher", ocpp_release.go).
 	releaseReady releaseReadiness
+
+	// geraet ist, was das Programm beim Start ueber sein Geraet erkannt hat
+	// (SetGeraet, Geraete & Updates G8); nil = keine Erkennung (Tests).
+	geraet *geraet.Erkannt
 
 	// net answers "under which address is my box reachable" - the ONE fact the
 	// box could never say about itself (D5). It records the Host header of

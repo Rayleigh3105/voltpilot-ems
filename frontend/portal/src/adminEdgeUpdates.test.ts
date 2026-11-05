@@ -26,9 +26,12 @@ import {
   startSummary,
   stateLabel,
   trustSetSpread,
+  stufe1,
   vertrauenGekreuzt,
   visibleJournal,
   zuweisbareReleases,
+  geraetZeile,
+  loaderLabel,
   type DeviceTrust,
   type EdgeUpdates,
   type EdgeUpdatesRelease,
@@ -705,6 +708,38 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
     // Nachgerüstet bekommt die Mango ihr Edge-Light-Release angeboten.
     expect(zuweisbareReleases([light, docker], 'light', stufe2Trust).passend
       .map((r) => r.releaseSeq)).toEqual([41]);
+  });
+
+  it('G8: ein Loader, der nur die Flash-Fassung startet, ist Stufe 1 - auch mit gekreuztem Vertrauen (wie BoxArtTest.stufe1AmLoader)', () => {
+    const light = rel({ releaseSeq: 41, version: 'edge-light-2026.11.4', boxArt: 'light' });
+    expect(releaseSperre(light, 'light', stufe2Trust, 'flash')).toBe(
+      'Release für Edge Light – diese Box hat Stufe 1: ihr Loader startet immer die Fassung aus dem '
+      + 'Flash und kennt keine Updates. Einmal über den Wartungstunnel nachrüsten, danach kommt jede '
+      + 'Fassung über das Portal.');
+    expect(releaseSperre(light, 'light', stufe2Trust, 'update')).toBeNull();
+    expect(releaseSperre(light, 'light', stufe2Trust), 'nicht gemeldet: das Vertrauen entscheidet').toBeNull();
+    expect(releaseSperre(rel({}), 'docker', stufe2Trust, 'flash')).toBeNull();
+    expect(stufe1('light', stufe2Trust, 'flash')).toBe(true);
+    expect(stufe1('light', stufe2Trust, 'update')).toBe(false);
+    expect(stufe1('light', pilotTrust, null)).toBe(true);
+    expect(stufe1('docker', pilotTrust, 'flash')).toBe(false);
+    const cross = crossoverState(stufe2Trust, 'light', 'flash');
+    expect(cross.state).toBe('von_hand');
+    expect(cross.detail).toContain('Loader');
+    expect(crossoverState(stufe2Trust, 'light', 'update').state).toBe('gekreuzt');
+    expect(zuweisbareReleases([light], 'light', stufe2Trust, 'flash').hinweis)
+      .toContain('ihr Loader startet immer die Fassung aus dem Flash');
+  });
+
+  it('G8: nennt das Gerät, wie die Box es meldet - nie geraten', () => {
+    expect(geraetZeile({ geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64' }))
+      .toBe('Raspberry Pi 4 Model B Rev 1.4 · arm64');
+    expect(geraetZeile({ geraetModell: null, geraetArch: 'amd64' })).toBe('amd64');
+    expect(geraetZeile({})).toBe('Gerät nicht gemeldet');
+    expect(loaderLabel('update')).toBe('kennt Updates (Stufe 2)');
+    expect(loaderLabel('flash')).toBe('startet nur die Fassung aus dem Flash (Stufe 1)');
+    expect(loaderLabel(null)).toBeNull();
+    expect(loaderLabel('uboot')).toBeNull();
   });
 
   it('nennt bei einer Box mit Stufe 1 den Weg zum Nachrüsten, auch neben anderen Gründen', () => {

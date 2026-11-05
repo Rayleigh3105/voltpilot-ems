@@ -48,6 +48,8 @@ test('Box-Art: Chip, Filter und keine Docker-Zuweisung für Edge Light', async (
   await expect(mango).not.toContainText('ohne Vertrauens-Set');
   await expect(boxes.locator('tr').filter({ hasText: 'Neubau am Feldrain' }).getByTestId('box-art'))
     .toHaveText('Box-Art unbekannt');
+  await expect(boxes.locator('tr').filter({ hasText: 'Neubau am Feldrain' }).getByTestId('box-geraet'))
+    .toHaveText('Gerät nicht gemeldet');
 
   // Filtern nach Box-Art.
   await page.locator('.vp-box-filter-panel > summary').click();
@@ -56,9 +58,14 @@ test('Box-Art: Chip, Filter und keine Docker-Zuweisung für Edge Light', async (
   await expect(boxes.locator('tbody tr')).toHaveCount(1);
   await expect(boxes).toContainText('Kleingarten Ostend');
 
+  // Geräte & Updates G8: das gemeldete Gerät in der Tabelle.
+  await expect(mango.getByTestId('box-geraet')).toHaveText('GL.iNet GL-MT300N-V2 · mipsle');
+
   // „Update verwalten": kein Docker-Release, sondern der Grund.
   await page.getByRole('button', { name: 'Update verwalten für Kleingarten Ostend · edge-m4ng0q1' }).click();
   const drawer = page.getByRole('dialog');
+  await expect(drawer.getByTestId('drawer-geraet')).toHaveText('GL.iNet GL-MT300N-V2 · mipsle');
+  await expect(drawer.getByTestId('drawer-loader')).toHaveText('startet nur die Fassung aus dem Flash (Stufe 1)');
   // Stufe 1 (S0): das Edge-Light-Release ist gesperrt, und der Grund sagt, was zu tun ist.
   await expect(drawer.getByTestId('drawer-keine-passenden')).toContainText('diese Box hat Stufe 1');
   await expect(drawer.getByTestId('drawer-keine-passenden')).toContainText('nachrüsten');

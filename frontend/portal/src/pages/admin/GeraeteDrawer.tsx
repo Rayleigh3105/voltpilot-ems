@@ -11,6 +11,8 @@ import {
   crossoverState,
   eventLabel,
   formatTrustStamp,
+  geraetZeile,
+  loaderLabel,
   stateLabel,
   zuweisbareReleases,
   type EdgeUpdatesRelease,
@@ -53,6 +55,11 @@ export interface DrawerDevice {
   trust?: Parameters<typeof crossoverState>[0];
   /** Box-Art aus der API (`ota.BoxArt`); `null`/fehlend = unbekannt. */
   boxArt?: string | null;
+  /** Das gemeldete Gerät (Geräte & Updates G8); `null`/fehlend = nicht gemeldet. */
+  geraetModell?: string | null;
+  geraetArch?: string | null;
+  /** Nur Edge Light: der Loader-Stand (`update` | `flash`). */
+  loader?: string | null;
 }
 
 /**
@@ -100,7 +107,7 @@ export function GeraeteDrawer({
 }) {
   // Nur, was signiert ist UND zur Box-Art passt (und bei Edge Light: Stufe 2);
   // der Rest wird benannt.
-  const zuweisbar = zuweisbareReleases(releases, device.boxArt, device.trust);
+  const zuweisbar = zuweisbareReleases(releases, device.boxArt, device.trust, device.loader);
   const passend = zuweisbar.passend;
   const [seq, setSeq] = useState<number | null>(
     passend.find((r) => r.releaseSeq === device.sollSeq)?.releaseSeq
@@ -109,7 +116,7 @@ export function GeraeteDrawer({
   const history = device.deviceId
     ? journal.filter((e) => e.deviceId === device.deviceId).slice(0, 10)
     : [];
-  const cross = crossoverState(device.trust, device.boxArt);
+  const cross = crossoverState(device.trust, device.boxArt, device.loader);
   const lever = blockerLever(device.blocker);
   const connected = device.deviceId != null;
 
@@ -140,6 +147,15 @@ export function GeraeteDrawer({
             {/* Die Bauart entscheidet, welche Releases überhaupt passen. */}
             <dt>Box-Art</dt>
             <dd><BoxArtChip boxArt={device.boxArt} /></dd>
+            {/* Was die Box über ihr Gerät meldet (Geräte & Updates G8) - nie geraten. */}
+            <dt>Gerät</dt>
+            <dd data-testid="drawer-geraet">{geraetZeile(device)}</dd>
+            {loaderLabel(device.loader) && (
+              <>
+                <dt>Loader</dt>
+                <dd data-testid="drawer-loader">{loaderLabel(device.loader)}</dd>
+              </>
+            )}
             {/* Tag + Build getrennt: `edge-2026.08.0-3bf8c038e1d2` neben
                 `edge-2026.08.0` sind zwei verschieden AUSSEHENDE Zeichenketten
                 für dieselbe Frage. */}

@@ -96,6 +96,17 @@ public class UpdateStatusRepository {
                 Timestamp.from(reportedAt));
     }
 
+    /**
+     * Die Geräte-Angabe einer Box festhalten ({@code update.geraet}, Geräte &amp;
+     * Updates G8) - nur gerufen, wenn der Herzschlag den Block trägt; sonst
+     * bleibt die zuletzt gemeldete Angabe stehen. Nach {@link #upsert} im selben
+     * Mandanten (RLS), die Zeile besteht also.
+     */
+    public void geraet(UUID deviceId, String modell, String arch, String loader) {
+        jdbc.update("UPDATE device_update_status SET geraet_modell = ?, geraet_arch = ?, loader = ? "
+                + "WHERE device_id = ?", modell, arch, loader, deviceId);
+    }
+
     // Bewusst NUR ein Schreibpfad: gelesen wird der Stand cross-tenant im
     // Flotten-Aggregat (AdminFleetRepository.updateStatusPerSite) - eine zweite
     // Lese-Methode ohne Aufrufer wäre toter Code, der aussieht wie ein Vertrag.

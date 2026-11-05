@@ -354,6 +354,7 @@ func (a *Agent) otaLightMeldeApplying(m *otaverify.Manifest, state, reason strin
 		Reason:    reason,
 		Target:    m.Release,
 		TargetSeq: &seq,
+		Geraet:    a.geraetSummary(),
 	}); err != nil {
 		slog.Warn("OTA (Edge Light): durabler applying-Bericht fehlgeschlagen", "err", err)
 	}

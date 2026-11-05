@@ -136,7 +136,7 @@ public class RolloutService {
         }
         EdgeReleaseDto release = signedRelease(releaseSeq);
         String grund = BoxArt.sperrgrund(boxArt(device), releaseBoxArt(release),
-                vertrauenGekreuzt(device));
+                vertrauenGekreuzt(device), device.loader());
         if (grund != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Release '" + release.version() + "' ist diesem Gerät nicht zuweisbar: "
@@ -248,7 +248,8 @@ public class RolloutService {
         Map<String, List<String>> gesperrt = new LinkedHashMap<>();
         for (UUID d : unique) {
             RolloutRepository.FleetDeviceRow row = fleet.get(d);
-            String grund = BoxArt.sperrgrund(boxArt(row), releaseArt, vertrauenGekreuzt(row));
+            String grund = BoxArt.sperrgrund(boxArt(row), releaseArt, vertrauenGekreuzt(row),
+                    row.loader());
             if (grund != null) {
                 gesperrt.computeIfAbsent(grund, g -> new ArrayList<>())
                         .add(label(row) + " (" + row.siteName() + ")");
@@ -452,7 +453,7 @@ public class RolloutService {
                     rd == null ? null : rd.rolloutId(), trustDto(d), boxArt(d),
                     b.lebenszeichen(), b.linie(), b.stand(), b.stufe1(),
                     b.ist() == null ? null : b.ist().version(), b.dahinter(), d.currentSince(),
-                    fakten(t, d, now)));
+                    fakten(t, d, now), d.geraetModell(), d.geraetArch(), d.loader()));
 
             if (RolloutStates.UNBEKANNT.equals(v.state())) {
                 unknown++;
@@ -521,7 +522,7 @@ public class RolloutService {
         EdgeStandVerdict.Verdict urteil = EdgeStandVerdict.of(running, boxArt(d), register);
         String linie = urteil.linie();
         Instant lebenszeichen = lebenszeichen(d);
-        boolean stufe1 = BoxArt.LIGHT.equals(linie) && !vertrauenGekreuzt(d);
+        boolean stufe1 = BoxArt.stufe1(linie, vertrauenGekreuzt(d), d.loader());
         EdgeVersionRepository.RegisterEntry ist = linie == null || running == null ? null
                 : register.stream().filter(r -> linie.equals(r.boxArt()))
                         .filter(r -> RolloutStates.releaseIsRunning(r.version(), running))
@@ -662,7 +663,7 @@ public class RolloutService {
                     vertrauenGekreuzt(d), running, ist == null ? null : ist.version(),
                     ist == null ? null : ist.releaseSeq(),
                     lebenszeichen == null || RolloutStates.offline(lebenszeichen, now),
-                    beendete.beendet(d.tenantId())));
+                    beendete.beendet(d.tenantId()), d.loader()));
             boxen.add(new EdgeUpdatesDto.EignungBoxDto(d.deviceId(), label(d), d.externalRef(),
                     d.siteName(), d.tenantName(), running, u.gruppe(), u.grund(), lebenszeichen));
         }
@@ -815,7 +816,8 @@ public class RolloutService {
                     t == null ? null : t.releaseVersion(), t == null ? null : t.releaseSeq(),
                     v.state(), v.reason(), d.reportedBlocker(), d.lastSeenAt(), d.reportedAt(),
                     p != null, p == null ? null : p.note(),
-                    p == null ? null : p.provisionedAt(), trustDto(d), boxArt(d)));
+                    p == null ? null : p.provisionedAt(), trustDto(d), boxArt(d),
+                    d.geraetModell(), d.geraetArch(), d.loader()));
         }
         // Danach die gedruckten IDs, die noch KEIN Gerät sind. Sie tragen
         // bewusst keinen Zustand: über eine ID, die sich nie gemeldet hat, ist
@@ -828,7 +830,7 @@ public class RolloutService {
             rows.add(new AdminDevicesDto.DeviceRowDto(null, p.externalRef(), null, null, null,
                     null, null, p.kind(), null, null, null,
                     null, null, null, null, null, true, p.note(), p.provisionedAt(), null,
-                    null));
+                    null, null, null, null));
         }
         return new AdminDevicesDto(rows);
     }

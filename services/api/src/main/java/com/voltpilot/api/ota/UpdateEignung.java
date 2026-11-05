@@ -61,16 +61,24 @@ public final class UpdateEignung {
      * @param istSeq            seine Sequenz, sonst {@code null}
      * @param offline           kein Lebenszeichen im Online-Fenster, oder nie gemeldet
      * @param beendet           ihr Kundenbereich ist beendet
+     * @param loader            gemeldeter Loader-Stand ({@code update}, {@code flash}; {@code null} = keine Angabe)
      */
     public record Box(String boxArt, boolean vertrauenGekreuzt, String laeuft, String istRelease,
-            Long istSeq, boolean offline, boolean beendet) {
+            Long istSeq, boolean offline, boolean beendet, String loader) {
+
+        /** Ohne gemeldeten Loader-Stand (vor Geräte &amp; Updates G8). */
+        public Box(String boxArt, boolean vertrauenGekreuzt, String laeuft, String istRelease,
+                Long istSeq, boolean offline, boolean beendet) {
+            this(boxArt, vertrauenGekreuzt, laeuft, istRelease, istSeq, offline, beendet, null);
+        }
     }
 
     public static Urteil of(Release release, Box box) {
         if (box.beendet()) {
             return new Urteil(KANN_NICHT, GRUND_BEENDET);
         }
-        String sperre = BoxArt.sperrgrund(box.boxArt(), release.boxArt(), box.vertrauenGekreuzt());
+        String sperre = BoxArt.sperrgrund(box.boxArt(), release.boxArt(), box.vertrauenGekreuzt(),
+                box.loader());
         if (sperre != null) {
             return new Urteil(KANN_NICHT, sperre);
         }

@@ -330,7 +330,7 @@ function software(
     hebel,
     grund: device.reason ?? null,
     verbunden,
-    releases: zuweisbareReleases(releases, device.boxArt, device.trust),
+    releases: zuweisbareReleases(releases, device.boxArt, device.trust, device.loader),
     boxArt: boxArtLabel(device.boxArt),
   };
 }
@@ -345,7 +345,7 @@ function toneOf(tone: UpdateTone): Tone {
 // ---------------------------------------------------------------------------
 
 function vertrauen(device: AdminDeviceRow): GeraetVertrauen {
-  const cross = crossoverState(device.trust, device.boxArt);
+  const cross = crossoverState(device.trust, device.boxArt, device.loader);
   const set = device.trust?.trustSetKeyIds ?? [];
   const stand = device.trust?.trustSetGeneratedAt;
   return {

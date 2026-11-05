@@ -172,6 +172,12 @@ Zuweisung desselben Release versucht wieder).
   = „keine Box-Änderung", `null` = keine Angabe. `GET
   /admin/edge-updates/releases/{seq}` zeigt Inhalt, Programme, Läuft-auf,
   Verteilungen.
+- **Gerät und Loader (Geräte & Updates G8):** Die Box meldet `update.geraet`
+  (Modell, Architektur, bei Edge Light `loader` update | flash; Vertrag
+  `docs/contracts/v2/box-geraet.md`). Stufe 1 = kein gekreuztes Vertrauen ODER
+  `loader = flash` (`BoxArt.stufe1`, Portal `stufe1`); ohne Loader-Angabe
+  entscheidet das Vertrauen. Gespeichert nur, wenn der Block kommt - sonst
+  bleibt die letzte Angabe.
 
 ### Portal
 

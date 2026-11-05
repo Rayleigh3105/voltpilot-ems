@@ -285,7 +285,8 @@ public class RolloutRepository {
             String reportedBlocker, Instant reportedAt, Instant lastSeenAt,
             Instant controlCheckedAt, Boolean controlConfirmed, Boolean controlCertified,
             String rootKeyIds, String trustSetKeyIds, String trustSetGeneratedAt,
-            String trustSetError, Instant targetVerdictAt, Instant currentSince) {
+            String trustSetError, Instant targetVerdictAt, Instant currentSince,
+            String geraetModell, String geraetArch, String loader) {
     }
 
     /**
@@ -302,6 +303,7 @@ public class RolloutRepository {
                        u.reason, u.blocker, u.reported_at,
                        u.root_key_ids, u.trust_set_key_ids, u.trust_set_generated_at,
                        u.trust_set_error, u.target_verdict_at, u.current_since,
+                       u.geraet_modell, u.geraet_arch, u.loader,
                        coalesce(d.device_status_seen_at, ls.last_seen) AS last_seen,
                        c.checked_at AS control_checked_at, c.all_match AS control_confirmed,
                        c.certified AS control_certified
@@ -348,7 +350,11 @@ public class RolloutRepository {
                         // Geräte & Updates G2: „angenommen" und „läuft seit" -
                         // null = unbekannt (kein beobachteter Wechsel).
                         instant(rs, "target_verdict_at"),
-                        instant(rs, "current_since")));
+                        instant(rs, "current_since"),
+                        // Geräte & Updates G8: das Gerät (null = nicht gemeldet).
+                        rs.getString("geraet_modell"),
+                        rs.getString("geraet_arch"),
+                        rs.getString("loader")));
     }
 
     /** Prüft, ob eine Geräte-Id überhaupt existiert (bevor sie ein Ziel bekommt). */

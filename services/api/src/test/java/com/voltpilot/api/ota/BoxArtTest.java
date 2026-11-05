@@ -123,6 +123,27 @@ class BoxArtTest {
     }
 
     @Test
+    @DisplayName("G8: ein Loader, der nur die Flash-Fassung startet, ist Stufe 1 - auch mit gekreuztem Vertrauen")
+    void stufe1AmLoader() {
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.LIGHT, true, "flash"))
+                .isEqualTo("Release für Edge Light – diese Box hat Stufe 1: ihr Loader startet immer die "
+                        + "Fassung aus dem Flash und kennt keine Updates. Einmal über den Wartungstunnel "
+                        + "nachrüsten, danach kommt jede Fassung über das Portal.");
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.LIGHT, true, "update")).isNull();
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.LIGHT, true, null))
+                .as("nicht gemeldet (ältere Box): das Vertrauen entscheidet").isNull();
+        assertThat(BoxArt.sperrgrund(BoxArt.LIGHT, BoxArt.LIGHT, false, "update"))
+                .isEqualTo(BoxArt.GRUND_LIGHT_STUFE_1);
+        assertThat(BoxArt.sperrgrund(BoxArt.DOCKER, BoxArt.DOCKER, true, "flash"))
+                .as("der Loader ist eine Edge-Light-Angabe").isNull();
+        assertThat(BoxArt.stufe1(BoxArt.LIGHT, true, "flash")).isTrue();
+        assertThat(BoxArt.stufe1(BoxArt.LIGHT, true, "update")).isFalse();
+        assertThat(BoxArt.stufe1(BoxArt.LIGHT, true, null)).isFalse();
+        assertThat(BoxArt.stufe1(BoxArt.LIGHT, false, null)).isTrue();
+        assertThat(BoxArt.stufe1(BoxArt.DOCKER, false, "flash")).isFalse();
+    }
+
+    @Test
     @DisplayName("Vertrauen gekreuzt = Wurzel UND geprüftes Vertrauens-Set gemeldet (Zwilling von crossoverState)")
     void vertrauenGekreuzt() {
         assertThat(BoxArt.vertrauenGekreuzt("root-2026-a", "rel-2026-a,rel-2026-b")).isTrue();

@@ -397,7 +397,7 @@ function DeviceInventory({
                 const d = r.row;
                 const connected = r.lifecycle === 'verbunden';
                 const online = verbindung.get(r.key) ?? null;
-                const cross = crossoverState(d.trust, d.boxArt);
+                const cross = crossoverState(d.trust, d.boxArt, d.loader);
                 const st = stateLabel(d.state);
 
                 return (

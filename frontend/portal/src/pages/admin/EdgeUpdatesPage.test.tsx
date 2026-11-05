@@ -188,6 +188,24 @@ describe('EdgeUpdatesPage', () => {
     expect(within(drawer).getByTestId('choose-all')).toHaveTextContent('Alle passenden Geräte (1)');
   });
 
+  it('zeigt das gemeldete Gerät in der Tabelle und im Drawer, mit dem Loader-Stand (G8)', async () => {
+    const d = stand0511();
+    d.fleet[0] = { ...d.fleet[0], geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64' };
+    d.fleet[2] = { ...d.fleet[2], geraetModell: 'GL.iNet GL-MT300N-V2', geraetArch: 'mipsle', loader: 'flash' };
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+    const table = await screen.findByTestId('box-versions');
+    const pilsting = within(table).getByText('Pilsting').closest('tr')!;
+    expect(within(pilsting).getByTestId('box-geraet')).toHaveTextContent('Raspberry Pi 4 Model B Rev 1.4 · arm64');
+    const gate = within(table).getByText('Heizstab-Pilot').closest('tr')!;
+    expect(within(gate).getByTestId('box-geraet')).toHaveTextContent('Gerät nicht gemeldet');
+    fireEvent.click(within(table).getByRole('button', { name: 'Update verwalten für Zuhause · edge-tgjn9gd' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByTestId('drawer-geraet')).toHaveTextContent('GL.iNet GL-MT300N-V2 · mipsle');
+    expect(within(drawer).getByTestId('drawer-loader'))
+      .toHaveTextContent('startet nur die Fassung aus dem Flash (Stufe 1)');
+  });
+
   it('ordnet Releases nach Sequenz und bietet ein unsigniertes neuestes Release nicht an', async () => {
     const d = data();
     d.releases[1].releaseSeq = 20;

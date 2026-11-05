@@ -18,6 +18,7 @@ flowchart LR
 | v1-Fahrplan | [mqtt-schedule](mqtt-schedule.schema.json) |
 | Status-Herzschlag: Steuerstand des Speichers | [Vertrag](speicher-steuerstand.md), [Vektoren](speicher-steuerstand-vectors.json) |
 | Status-Herzschlag: Ladequelle je Säule (Echo für „Box hat übernommen“) | [Vertrag](ladepunkt-quelle-echo.md), [Vektoren](ladepunkt-quelle-echo-vectors.json) |
+| Status-Herzschlag: Gerät der Box im Update-Block (Modell, Architektur, Edge-Light-Loader; Geräte & Updates G8) | [Vertrag](v2/box-geraet.md), [Vektoren](v2/box-geraet-vectors.json) |
 | Vorsprung mit Bestand je Anlage (api → Optimierer, Vorsprung-Budget NS-2 A) | [Vertrag](steuerung-vorsprung-v1.md), Tabelle `steuerung_vorsprung` |
 | Einspeisevergütung je eingespeister kWh: Angabe des Kunden über dem EEG-Satzplan (Optimierer, Erlöse, Karte im Portal) | [Vektoren](einspeiseverguetung-vectors.json), Spalte `site.einspeiseverguetung_ct_kwh`, Route `/api/v1/sites/{siteId}/einspeiseverguetung` |
 | Provisioning | [Hello-/Config-Vertrag](mqtt-provisioning.schema.json) |

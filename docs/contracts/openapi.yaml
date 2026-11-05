@@ -6558,6 +6558,12 @@ paths:
         request. Times are server time of the observed change; null = unknown,
         never invented. A rollout row whose request was withdrawn or replaced
         reads `zurueckgezogen` and no longer holds the rollout open.
+        DEVICE (Geräte & Updates G8, additive): each fleet row (and each row of
+        /admin/devices) carries `geraetModell`, `geraetArch` and - Edge Light
+        only - `loader` (update | flash) as the box reports them in
+        `update.geraet` (contract docs/contracts/v2/box-geraet.md; null = not
+        reported). `loader = flash` makes an Edge Light box Stufe 1 even with
+        crossed trust (409 with the loader sentence).
       responses:
         "200":
           description: Releases, the recent updates, the fleet matrix, the journal, the KPI and the lines.

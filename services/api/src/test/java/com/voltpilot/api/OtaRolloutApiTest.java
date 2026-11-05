@@ -821,6 +821,91 @@ class OtaRolloutApiTest {
                 .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * Geräte &amp; Updates G8: die Box meldet ihr Gerät im Update-Block (echter
+     * Ingest); der Loader-Stand macht die Stufe sicher - eine Edge-Light-Box mit
+     * gekreuztem Vertrauen, deren Loader nur die Flash-Fassung startet, ist
+     * Stufe 1 und bekommt kein Release, bis sie nachgerüstet ist.
+     */
+    @Test
+    @Order(9)
+    void geraetUndLoaderAusDemHerzschlag() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        UUID mango = claim(customer, TestKennung.box("ota-gm-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID pi = claim(customer, TestKennung.box("ota-gp-" + UUID.randomUUID().toString().substring(0, 8)));
+        UpdateStatusListener ingest = new UpdateStatusListener("tcp://localhost:1883", "", "",
+                deviceRepo, updateStatusRepo);
+        String trust = ",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],\"trust_set_key_ids\":[\"rel-2026-a\"]}";
+        herzschlagRoh(ingest, mango, "edge-light-2026.10.1-9b37439a02c1",
+                "{\"backend\":\"light\",\"current\":\"edge-light-2026.10.1-9b37439a02c1\",\"state\":\"idle\""
+                        + trust + ",\"geraet\":{\"modell\":\"GL.iNet GL-MT300N-V2\",\"arch\":\"mipsle\","
+                        + "\"loader\":\"flash\"}}");
+        herzschlagRoh(ingest, pi, "edge-2026.10.2-9b37439a02c1",
+                "{\"backend\":\"compose\",\"current\":\"edge-2026.10.2-9b37439a02c1\",\"state\":\"idle\","
+                        + "\"geraet\":{\"modell\":\"Raspberry Pi 4 Model B Rev 1.4\",\"arch\":\"arm64\"}}");
+
+        JsonNode page = readModel(admin);
+        JsonNode zeile = rowOf(page, mango);
+        assertThat(zeile.get("geraetModell").asText()).isEqualTo("GL.iNet GL-MT300N-V2");
+        assertThat(zeile.get("geraetArch").asText()).isEqualTo("mipsle");
+        assertThat(zeile.get("loader").asText()).isEqualTo("flash");
+        assertThat(zeile.get("stufe1").asBoolean()).as("gekreuzt, aber der Loader kennt keine Updates").isTrue();
+        assertThat(zeile.get("stand").asText()).isEqualTo("hand");
+        JsonNode zeilePi = rowOf(page, pi);
+        assertThat(zeilePi.get("geraetModell").asText()).isEqualTo("Raspberry Pi 4 Model B Rev 1.4");
+        assertThat(zeilePi.get("geraetArch").asText()).isEqualTo("arm64");
+        assertThat(zeilePi.get("loader").isNull()).isTrue();
+        JsonNode inventar = json.readTree(rest.exchange(url("/api/v1/admin/devices"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), String.class).getBody()).get("devices");
+        assertThat(inventoryRow(inventar, pi).get("geraetModell").asText())
+                .isEqualTo("Raspberry Pi 4 Model B Rev 1.4");
+
+        // Stufe 1 am Loader: 409 mit dem Loader-Satz, im Dialog „kann nicht".
+        ResponseEntity<Map<String, Object>> gesperrt = post("/api/v1/admin/devices/" + mango + "/update-target",
+                admin, Map.of("releaseSeq", 41));
+        assertThat(gesperrt.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) gesperrt.getBody().get("message")).contains("ihr Loader startet immer die Fassung aus dem Flash");
+        ResponseEntity<Map<String, Object>> gesperrtAuftrag = post("/api/v1/admin/rollouts", admin,
+                Map.of("releaseSeq", 41, "devices", List.of(mango.toString())));
+        assertThat(gesperrtAuftrag.getStatusCode()).as("auch die Verteilung").isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) gesperrtAuftrag.getBody().get("message"))
+                .contains("ihr Loader startet immer die Fassung aus dem Flash");
+        JsonNode eignung = eignungOf(getJson(admin, "/api/v1/admin/edge-updates/eignung?releaseSeq=41"), mango);
+        assertThat(eignung.get("gruppe").asText()).isEqualTo("kann_nicht");
+
+        // Nachgerüstet: der neue Loader kennt Updates - die Zuweisung geht durch.
+        herzschlagRoh(ingest, mango, "edge-light-2026.10.1-9b37439a02c1",
+                "{\"backend\":\"light\",\"current\":\"edge-light-2026.10.1-9b37439a02c1\",\"state\":\"idle\""
+                        + trust + ",\"geraet\":{\"modell\":\"GL.iNet GL-MT300N-V2\",\"arch\":\"mipsle\","
+                        + "\"loader\":\"update\"}}");
+        assertThat(rowOf(readModel(admin), mango).get("stufe1").asBoolean()).isFalse();
+        assertThat(post("/api/v1/admin/devices/" + mango + "/update-target", admin,
+                Map.of("releaseSeq", 41)).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        // Ein Bericht OHNE Block (Sofort-Bericht, ältere Box) lässt die Angabe stehen.
+        herzschlagRoh(ingest, pi, "edge-2026.10.2-9b37439a02c1",
+                "{\"backend\":\"compose\",\"current\":\"edge-2026.10.2-9b37439a02c1\",\"state\":\"idle\"}");
+        assertThat(rowOf(readModel(admin), pi).get("geraetArch").asText()).isEqualTo("arm64");
+
+        // Gerät und Loader sind kein Verlauf (G3): der Trigger auf device_update_status
+        // schreibt nur Stand, Urteil und Zustand - auch der Wechsel flash -> update nicht.
+        assertThat(arten(getJson(admin, "/api/v1/admin/devices/" + pi + "/verlauf").get("eintraege")))
+                .as("zwei Meldungen derselben Fassung, eine davon ohne Block").containsExactly("box:stand");
+        assertThat(arten(getJson(admin, "/api/v1/admin/devices/" + mango + "/verlauf").get("eintraege")))
+                .containsExactly("portal:angefragt", "box:stand");
+    }
+
+    /** Ein Status-Herzschlag mit beliebigem Update-Block durch den ECHTEN Ingest. */
+    private void herzschlagRoh(UpdateStatusListener ingest, UUID deviceId, String version, String update) {
+        String payload = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT_A
+                + "\",\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + deviceId
+                + "\",\"online\":true,\"ts\":\"" + Instant.now() + "\",\"version\":\"" + version
+                + "\",\"update\":" + update + "}";
+        ingest.handle("ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + deviceId + "/status",
+                payload.getBytes(StandardCharsets.UTF_8));
+    }
+
     /** „quelle:art" je Verlauf-Eintrag, in der gelieferten Reihenfolge. */
     private static List<String> arten(JsonNode eintraege) {
         List<String> out = new java.util.ArrayList<>();

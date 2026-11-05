@@ -62,6 +62,16 @@ describe('Box versions', () => {
       .map((l) => l.boxArt)).toEqual(['docker']);
   });
 
+  it('counts an Edge Light box as stage 1 when its loader only starts the flash copy (G8)', () => {
+    const mitLoader = {
+      ...stand0511,
+      fleet: stand0511.fleet.map((r) => r.deviceId === 'gate' ? { ...r, loader: 'flash' } : r),
+    } as EdgeUpdates;
+    const light = linienSicht(mitLoader).find((l) => l.boxArt === 'light')!;
+    expect(light.stufe1).toBe(2);
+    expect(light.zuweisbar).toBe(0);
+  });
+
   it('names the boxes of a line with their word', () => {
     expect(boxenDerLinie('docker', 3)).toBe('3 Docker-Boxen');
     expect(boxenDerLinie('light', 1)).toBe('1 Edge-Light-Box');

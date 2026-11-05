@@ -462,6 +462,7 @@ func (a *Agent) updateSummary() *cloud.UpdateSummary {
 		Target:        v.target,
 		TargetVerdict: v.targetVerdict,
 		Trust:         a.otaTrust(),
+		Geraet:        a.geraetSummary(),
 	}
 	if v.targetSeq > 0 {
 		seq := v.targetSeq

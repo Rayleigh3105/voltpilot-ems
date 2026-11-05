@@ -144,6 +144,11 @@ export interface AdminDeviceRow {
   trust?: DeviceTrust | null;
   /** Box-Art aus der API (`ota.BoxArt`); `null` = unbekannt oder noch kein Gerät. */
   boxArt?: string | null;
+  /** Das gemeldete Gerät (Geräte & Updates G8, `update.geraet`); `null` = nicht gemeldet. */
+  geraetModell?: string | null;
+  geraetArch?: string | null;
+  /** Nur Edge Light: `update` (Stufe 2) oder `flash` (Stufe 1). */
+  loader?: string | null;
 }
 
 export interface ProvisionDeviceInput {

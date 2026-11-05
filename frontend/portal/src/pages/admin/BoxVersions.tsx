@@ -6,7 +6,7 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { EmptyState } from '../../components/States';
 import { VpPicker } from '../../components/VpPicker';
-import { crossoverState, stateLabel,
+import { crossoverState, geraetZeile, stateLabel,
   type EdgeUpdates, type EdgeUpdatesRelease } from '../../adminEdgeUpdates';
 import { versionDisplay } from '../../edgeVersionLabel';
 import { fmtRelative } from '../../format';
@@ -160,7 +160,7 @@ export function BoxVersions({ data, busy, onUpdate, onOpen, online = null, onlin
                 <caption className="vp-sr-only">Software-Version und Update-Status aller verbundenen Boxen</caption>
                 <thead><tr><th>Box / Anlage</th><th>Online-Status</th><th>Installierte Version</th><th>Zielversion</th><th>Update-Status</th><th><span className="vp-sr-only">Aktionen</span></th></tr></thead>
                 <tbody>{rows.map((r) => {
-                  const cross = crossoverState(r.trust, r.boxArt);
+                  const cross = crossoverState(r.trust, r.boxArt, r.loader);
                   const status = stateLabel(r.state);
                   return <tr key={r.deviceId}>
                     <td data-label="Box / Anlage">
@@ -168,6 +168,8 @@ export function BoxVersions({ data, busy, onUpdate, onOpen, online = null, onlin
                         <span className="vp-cell-sub">{r.tenantName}</span>
                         <span className="vp-box-ref">{r.label !== r.externalRef ? `${r.label} · ` : ''}{r.externalRef}</span>
                         <span className="vp-box-art"><BoxArtChip boxArt={r.boxArt} /></span>
+                        {/* Geräte & Updates G8: was die Box über ihr Gerät meldet - nie geraten. */}
+                        <span className="vp-cell-sub vp-box-geraet" data-testid="box-geraet">{geraetZeile(r)}</span>
                       </span>
                     </td>
                     <td data-label="Online-Status"><OnlineStatusZelle verbindung={verbindung.get(r.deviceId)} /></td>

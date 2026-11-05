@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraet"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraetesuche"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otalight"
@@ -335,5 +336,37 @@ func TestEdgeLightSchreibtKeinSignalInDenFlash(t *testing.T) {
 	b.a.otaSignalOnce()
 	if _, err := os.Stat(filepath.Join(b.dir, otaapply.FileCoreSignal)); err == nil {
 		t.Fatal("core-signal.json im Flash")
+	}
+}
+
+// TestUpdateBlockMeldetGeraetUndLoader (Geraete & Updates G8): der Update-Block
+// traegt Modell und Architektur aus der Erkennung; Edge Light dazu den
+// Loader-Stand - „update", wenn der Loader das Protokoll kennt (VP_OTA_RAM_DIR),
+// sonst „flash" (Stufe 1). Ohne Erkennung (aeltere Box, Test) fehlt der Block.
+func TestUpdateBlockMeldetGeraetUndLoader(t *testing.T) {
+	b := newLightBox(t)
+	if g := b.a.updateSummary().Geraet; g != nil {
+		t.Fatalf("ohne Erkennung darf update.geraet nicht erscheinen: %+v", g)
+	}
+	b.a.SetGeraet(geraet.Erkannt{Modell: "GL.iNet GL-MT300N-V2", Arch: "mipsle"})
+	g := b.a.updateSummary().Geraet
+	if g == nil || g.Modell != "GL.iNet GL-MT300N-V2" || g.Arch != "mipsle" || g.Loader != cloud.LoaderUpdate {
+		t.Fatalf("Stufe-2-Loader: %+v", g)
+	}
+	b.a.Cfg.OtaRAMDir = ""
+	if g := b.a.updateSummary().Geraet; g == nil || g.Loader != cloud.LoaderFlash {
+		t.Fatalf("Stufe-1-Loader: %+v", g)
+	}
+	raw, err := json.Marshal(b.a.updateSummary())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"geraet":{"modell":"GL.iNet GL-MT300N-V2","arch":"mipsle","loader":"flash"}`) {
+		t.Fatalf("Herzschlag-Form: %s", raw)
+	}
+	// Die Docker-Box hat keinen Loader: das Feld fehlt.
+	b.a.Cfg.BoxArt = geraetesuche.BoxArtDocker
+	if g := b.a.updateSummary().Geraet; g == nil || g.Loader != "" || g.Arch != "mipsle" {
+		t.Fatalf("Docker-Box: %+v", g)
 	}
 }

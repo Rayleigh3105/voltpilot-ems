@@ -13,11 +13,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/agent"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/geraet"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/web"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/werkstatt"
 )
@@ -67,6 +69,11 @@ func Main(o Options) {
 		slog.Error("agent init failed", "err", err)
 		os.Exit(1)
 	}
+	// Geraete & Updates G8: auf welchem Geraet laeuft dieses Programm? Einmal
+	// beim Start - das Geraet wechselt nicht, solange das Programm laeuft.
+	erkannt := geraet.Erkennen(os.DirFS("/"), runtime.GOARCH)
+	a.SetGeraet(erkannt)
+	slog.Info("device detected", "model", erkannt.Modell, "arch", erkannt.Arch)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

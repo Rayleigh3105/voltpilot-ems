@@ -48,6 +48,18 @@ class UpdateEignungTest {
     }
 
     @Test
+    @DisplayName("G8: ein Loader, der nur die Flash-Fassung startet, kann nicht - auch mit Vertrauens-Set")
+    void loaderFlash() {
+        var dirolf = new UpdateEignung.Box(BoxArt.LIGHT, true, "edge-light-2026.11.3",
+                "edge-light-2026.11.3", 57L, false, false, "flash");
+        assertThat(UpdateEignung.of(LIGHT_114, dirolf))
+                .isEqualTo(new UpdateEignung.Urteil(UpdateEignung.KANN_NICHT, BoxArt.GRUND_LIGHT_STUFE_1_LOADER));
+        var nachgeruestet = new UpdateEignung.Box(BoxArt.LIGHT, true, "edge-light-2026.11.3",
+                "edge-light-2026.11.3", 57L, false, false, "update");
+        assertThat(UpdateEignung.of(LIGHT_114, nachgeruestet).gruppe()).isEqualTo(UpdateEignung.BEREIT);
+    }
+
+    @Test
     @DisplayName("kann nicht: eine neuere Fassung läuft schon und das Release erlaubt keinen Rückschritt")
     void rueckschritt() {
         var neuer = docker("edge-2026.11.0", 59L, false);

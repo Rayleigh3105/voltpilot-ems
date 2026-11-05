@@ -93,6 +93,15 @@ public final class BoxArt {
      */
     public static final String GRUND_DOCKER_AUF_LIGHT =
             "Release für die Docker-Box – diese Box ist eine Edge Light.";
+    /**
+     * Edge-Light-Release an eine Edge-Light-Box, deren Loader nur die Fassung aus
+     * dem Flash startet (Stufe 1, gemeldet als {@code update.geraet.loader = flash},
+     * Geräte &amp; Updates G8) - auch mit geprüftem Vertrauens-Set.
+     */
+    public static final String GRUND_LIGHT_STUFE_1_LOADER =
+            "Release für Edge Light – diese Box hat Stufe 1: ihr Loader startet immer die Fassung "
+                    + "aus dem Flash und kennt keine Updates. Einmal über den Wartungstunnel "
+                    + "nachrüsten, danach kommt jede Fassung über das Portal.";
     /** Edge-Light-Release an eine Edge-Light-Box mit Stufe 1 (kein gekreuztes Vertrauen). */
     public static final String GRUND_LIGHT_STUFE_1 =
             "Release für Edge Light – diese Box hat Stufe 1 und nimmt keine Updates aus dem "
@@ -206,12 +215,36 @@ public final class BoxArt {
      * @return {@code null}, wenn die Zuweisung passt, sonst der deutsche Grund
      */
     public static String sperrgrund(String geraet, String release, boolean vertrauenGekreuzt) {
+        return sperrgrund(geraet, release, vertrauenGekreuzt, null);
+    }
+
+    /**
+     * Wie oben, mit dem gemeldeten Loader-Stand (Geräte &amp; Updates G8):
+     * {@code flash} heißt Stufe 1, auch wenn das Vertrauen gekreuzt ist - die
+     * Box prüft das Release dann zwar, wendet es aber nie an. {@code null} =
+     * nicht gemeldet (ältere Box): dann entscheidet allein das Vertrauen.
+     */
+    public static String sperrgrund(String geraet, String release, boolean vertrauenGekreuzt,
+            String loader) {
         if (LIGHT.equals(release)) {
             if (LIGHT.equals(geraet)) {
+                if (BoxGeraet.LOADER_FLASH.equals(loader)) {
+                    return GRUND_LIGHT_STUFE_1_LOADER;
+                }
                 return vertrauenGekreuzt ? null : GRUND_LIGHT_STUFE_1;
             }
             return geraet == null ? GRUND_LIGHT_AUF_UNBEKANNT : GRUND_LIGHT_AUF_DOCKER;
         }
         return LIGHT.equals(geraet) ? GRUND_DOCKER_AUF_LIGHT : null;
+    }
+
+    /**
+     * Hat eine Edge-Light-Box Stufe 1 - nimmt sie keine Updates aus dem Portal
+     * an? Ohne gekreuztes Vertrauen, oder mit einem Loader, der nur die Fassung
+     * aus dem Flash startet. Für andere Box-Arten {@code false}.
+     */
+    public static boolean stufe1(String geraet, boolean vertrauenGekreuzt, String loader) {
+        return LIGHT.equals(geraet)
+                && (!vertrauenGekreuzt || BoxGeraet.LOADER_FLASH.equals(loader));
     }
 }

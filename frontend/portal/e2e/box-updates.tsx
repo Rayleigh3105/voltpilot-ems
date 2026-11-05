@@ -26,8 +26,10 @@ const base: FleetRow = {
   trust: { rootKeyIds: ['root'], trustSetKeyIds: ['release'], trustSetGeneratedAt: now, trustSetError: null },
 };
 const fleet: FleetRow[] = [
-  base,
+  // Geräte & Updates G8: was die Box über ihr Gerät meldet (fiktiv).
+  { ...base, geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64' },
   { ...base, deviceId: 'd2', externalRef: 'edge-abcdefj', label: 'Box Werkstatt', siteName: 'Werkstatt am Bach',
+    geraetModell: 'Intel(R) Client Systems NUC11TNHi5', geraetArch: 'amd64',
     ist: 'edge-2026.09.02-73486bab2980', state: 'laedt', reason: 'Das Update wird heruntergeladen.' },
   { ...base, deviceId: 'd3', externalRef: 'VP-BOX-1003', label: 'VP-BOX-1003', siteName: 'Gewerbepark West',
     tenantName: 'Muster Solar GmbH', ist: 'edge-2026.09.02-73486bab2980', state: 'blockiert',
@@ -41,7 +43,7 @@ const fleet: FleetRow[] = [
   // Edge Light, Stufe 1: am Stempel erkannt, Wurzel eingebacken, aber kein Vertrauens-Set.
   { ...base, deviceId: 'd6', externalRef: 'edge-m4ng0q1', label: 'Mango Hof', siteName: 'Kleingarten Ostend',
     tenantName: 'Familie Beispiel', ist: 'edge-light-g2d2bca1b6', soll: null, sollSeq: null,
-    state: 'aktuell', boxArt: 'light',
+    state: 'aktuell', boxArt: 'light', geraetModell: 'GL.iNet GL-MT300N-V2', geraetArch: 'mipsle', loader: 'flash',
     trust: { rootKeyIds: ['root'], trustSetKeyIds: [], trustSetGeneratedAt: null,
       trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' } },
 ];

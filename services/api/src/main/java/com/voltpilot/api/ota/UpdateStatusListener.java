@@ -307,6 +307,11 @@ public class UpdateStatusListener extends Rueckmeldeweg {
                     // einem älteren Stand einen Knopf verweigern, den er sehr wohl
                     // bedienen kann.
                     reportedAt);
+            // Geräte & Updates G8: das Gerät, wenn der Herzschlag es nennt.
+            BoxGeraet.Angabe geraet = hasUpdate ? BoxGeraet.of(update.get("geraet")) : null;
+            if (geraet != null) {
+                updateStatus.geraet(deviceId, geraet.modell(), geraet.arch(), geraet.loader());
+            }
         } finally {
             TenantContext.clear();
         }

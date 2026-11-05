@@ -1,7 +1,7 @@
 import { releaseIsRunning } from './adminFleet';
 import {
   BOX_ART_LABELS, BOX_ART_UNBEKANNT, boxArtLabel, deviceBoxArt, releaseBoxArt, releaseSperre, sortFleet,
-  stateLabel, vertrauenGekreuzt, type BoxArt, type EdgeUpdates, type EdgeUpdatesRelease, type FleetRow,
+  stateLabel, stufe1 as istStufe1, type BoxArt, type EdgeUpdates, type EdgeUpdatesRelease, type FleetRow,
 } from './adminEdgeUpdates';
 import { versionDisplay } from './edgeVersionLabel';
 
@@ -24,8 +24,9 @@ export interface LinienSicht {
   /** Davon auf dem neuesten Release der Linie. */
   upToDate: number;
   /**
-   * Edge-Light-Boxen mit Stufe 1 (kein gekreuztes Vertrauen): sie nehmen kein
-   * Release aus dem Portal an (`releaseSperre`) - benannt, nie still mitgezählt.
+   * Edge-Light-Boxen mit Stufe 1 (kein gekreuztes Vertrauen oder ein Loader, der
+   * nur die Flash-Fassung startet): sie nehmen kein Release aus dem Portal an
+   * (`releaseSperre`) - benannt, nie still mitgezählt.
    */
   stufe1: number;
   /**
@@ -47,9 +48,9 @@ const LINIEN: BoxArt[] = ['docker', 'light'];
 export function linienSicht(data: Pick<EdgeUpdates, 'releases' | 'fleet' | 'lines'>): LinienSicht[] {
   const releases = [...data.releases].sort((a, b) => b.releaseSeq - a.releaseSeq);
   const stufe1 = (art: BoxArt) => art !== 'light' ? 0
-    : data.fleet.filter((r) => deviceBoxArt(r.boxArt) === 'light' && !vertrauenGekreuzt(r.trust)).length;
+    : data.fleet.filter((r) => istStufe1(r.boxArt, r.trust, r.loader)).length;
   const zuweisbar = (release: EdgeUpdatesRelease | null) => !release ? 0
-    : data.fleet.filter((r) => releaseSperre(release, r.boxArt, r.trust) == null).length;
+    : data.fleet.filter((r) => releaseSperre(release, r.boxArt, r.trust, r.loader) == null).length;
   if (data.lines) {
     return data.lines.map((l) => {
       const release = l.newestReleaseSeq == null ? null

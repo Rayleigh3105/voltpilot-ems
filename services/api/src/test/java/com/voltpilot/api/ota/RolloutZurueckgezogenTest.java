@@ -25,7 +25,7 @@ class RolloutZurueckgezogenTest {
         return new RolloutRepository.FleetDeviceRow(BOX, "edge-bsp0002", "Ahrenberg Lager", UUID.randomUUID(),
                 "Lager", UUID.randomUUID(), "Ahrenberg GmbH", laeuft, "compose", laeuft, "edge-2026.11.0",
                 "idle", "ok", null, null, NOW, NOW, null, null, null, "root-2026-a", "rel-2026-a", null,
-                null, null, null);
+                null, null, null, null, null, null);
     }
 
     private static RolloutRepository.TargetRow ziel(UUID lauf, String release) {

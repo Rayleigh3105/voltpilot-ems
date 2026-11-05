@@ -157,6 +157,13 @@ export interface FleetRow {
   istSeit?: string | null;
   /** Angefragt · angenommen · bestätigt der aktuellen Anfrage; `null` = keine Anfrage. */
   fakten?: UpdateFakten | null;
+  // ── Geräte & Updates G8 (additiv) ──
+  /** Das Modell, wie die Box es meldet (`update.geraet`); `null` = nicht gemeldet. */
+  geraetModell?: string | null;
+  /** Die Architektur des laufenden Programms (amd64, arm64, mipsle …). */
+  geraetArch?: string | null;
+  /** Nur Edge Light: `update` (Loader kennt Updates, Stufe 2) oder `flash` (Stufe 1). */
+  loader?: string | null;
 }
 
 /**
@@ -412,6 +419,10 @@ export const VON_HAND_LABEL = 'Updates von Hand (Edge Light, Stufe 1)';
 export const VON_HAND_DETAIL =
   'Diese Box prüft Updates noch nicht gegen die Signaturkette; Aktualisierung über den '
   + 'Wartungstunnel.';
+/** Stufe 1 am gemeldeten Loader (Geräte & Updates G8). */
+export const VON_HAND_DETAIL_LOADER =
+  'Der Loader dieser Box startet immer die Fassung aus dem Flash und kennt keine Updates; '
+  + 'einmal über den Wartungstunnel nachrüsten.';
 
 /**
  * Trägt dieses Gerät schon ein schlüsseltragendes Image?
@@ -442,15 +453,36 @@ export function vertrauenGekreuzt(trust: DeviceTrust | null | undefined): boolea
     && Array.isArray(trust.trustSetKeyIds) && trust.trustSetKeyIds.length > 0;
 }
 
+/** Der Loader einer Edge-Light-Box startet nur die Fassung aus dem Flash (`update.geraet.loader`). */
+export const LOADER_FLASH = 'flash';
+
+/**
+ * Hat eine Edge-Light-Box Stufe 1 - nimmt sie keine Updates aus dem Portal an?
+ * Ohne gekreuztes Vertrauen, oder mit einem Loader, der nur die Fassung aus dem
+ * Flash startet (Geräte & Updates G8). Zwilling von `BoxArt.stufe1`; ein nicht
+ * gemeldeter Loader (ältere Box) lässt allein das Vertrauen entscheiden.
+ */
+export function stufe1(
+  boxArt: string | null | undefined,
+  trust: DeviceTrust | null | undefined,
+  loader?: string | null,
+): boolean {
+  return deviceBoxArt(boxArt) === 'light' && (!vertrauenGekreuzt(trust) || loader === LOADER_FLASH);
+}
+
 export function crossoverState(
   trust: DeviceTrust | null | undefined,
   boxArt?: string | null,
+  loader?: string | null,
 ): {
   state: CrossoverState;
   label: string;
   tone: UpdateTone;
   detail: string | null;
 } {
+  if (deviceBoxArt(boxArt) === 'light' && loader === LOADER_FLASH) {
+    return { state: 'von_hand', label: VON_HAND_LABEL, tone: 'off', detail: VON_HAND_DETAIL_LOADER };
+  }
   if (deviceBoxArt(boxArt) === 'light' && !vertrauenGekreuzt(trust)) {
     return { state: 'von_hand', label: VON_HAND_LABEL, tone: 'off', detail: VON_HAND_DETAIL };
   }
@@ -504,7 +536,7 @@ export function crossoverHint(fleet: FleetRow[]): string | null {
   let fehler = 0;
   let vonHand = 0;
   for (const row of fleet) {
-    const s = crossoverState(row.trust, row.boxArt).state;
+    const s = crossoverState(row.trust, row.boxArt, row.loader).state;
     if (s === 'offen') offen += 1;
     else if (s === 'unbekannt') unbekannt += 1;
     else if (s === 'fehler') fehler += 1;
@@ -538,6 +570,23 @@ export function crossoverHint(fleet: FleetRow[]): string | null {
 // ── Box-Art: Docker-Box oder Edge Light ────────────────────────────────────
 
 /** Die Box-Art eines Geräts; ein unbekanntes Wort bleibt unbekannt. */
+/**
+ * Das Gerät in einer Zeile (Geräte & Updates G8): „Raspberry Pi 4 Model B Rev 1.4 ·
+ * arm64". Was die Box nicht meldet, wird nicht ergänzt: ohne Modell steht nur die
+ * Architektur, ohne beides „Gerät nicht gemeldet".
+ */
+export function geraetZeile(row: { geraetModell?: string | null; geraetArch?: string | null }): string {
+  const teile = [row.geraetModell, row.geraetArch].filter((t): t is string => !!t && t.trim() !== '');
+  return teile.length > 0 ? teile.join(' · ') : 'Gerät nicht gemeldet';
+}
+
+/** Der Loader-Stand in Worten (nur Edge Light); `null`, wenn er nicht gemeldet ist. */
+export function loaderLabel(loader: string | null | undefined): string | null {
+  if (loader === 'update') return 'kennt Updates (Stufe 2)';
+  if (loader === LOADER_FLASH) return 'startet nur die Fassung aus dem Flash (Stufe 1)';
+  return null;
+}
+
 export function deviceBoxArt(boxArt: string | null | undefined): BoxArt | null {
   return boxArt === 'docker' || boxArt === 'light' ? boxArt : null;
 }
@@ -581,6 +630,11 @@ export const GRUND_LIGHT_AUF_DOCKER = 'Release für Edge Light – diese Box ist
 export const GRUND_LIGHT_AUF_UNBEKANNT =
   'Release für Edge Light – die Box-Art dieses Geräts ist unbekannt. Ein Edge-Light-Release '
   + 'geht nur an eine Box, die sich als Edge Light gemeldet hat.';
+/** Edge-Light-Release an eine Edge-Light-Box, deren Loader nur die Flash-Fassung startet (G8). */
+export const GRUND_LIGHT_STUFE_1_LOADER =
+  'Release für Edge Light – diese Box hat Stufe 1: ihr Loader startet immer die Fassung aus dem '
+  + 'Flash und kennt keine Updates. Einmal über den Wartungstunnel nachrüsten, danach kommt jede '
+  + 'Fassung über das Portal.';
 /** Edge-Light-Release an eine Edge-Light-Box mit Stufe 1 (Geräte & Updates S0). */
 export const GRUND_LIGHT_STUFE_1 =
   'Release für Edge Light – diese Box hat Stufe 1 und nimmt keine Updates aus dem Portal an '
@@ -604,9 +658,11 @@ export function releaseSperre(
   release: Pick<EdgeUpdatesRelease, 'boxArt'>,
   boxArt: string | null | undefined,
   trust: DeviceTrust | null | undefined,
+  loader?: string | null,
 ): string | null {
   const geraet = deviceBoxArt(boxArt);
   if (releaseBoxArt(release) === 'light') {
+    if (geraet === 'light' && loader === LOADER_FLASH) return GRUND_LIGHT_STUFE_1_LOADER;
     if (geraet === 'light') return vertrauenGekreuzt(trust) ? null : GRUND_LIGHT_STUFE_1;
     return geraet == null ? GRUND_LIGHT_AUF_UNBEKANNT : GRUND_LIGHT_AUF_DOCKER;
   }
@@ -632,18 +688,19 @@ export function zuweisbareReleases(
   releases: EdgeUpdatesRelease[],
   boxArt: string | null | undefined,
   trust: DeviceTrust | null | undefined,
+  loader?: string | null,
 ): ZuweisbareReleases {
   const signed = releases.filter((r) => r.signed);
   const passend: EdgeUpdatesRelease[] = [];
   let gesperrt = 0;
   let grund: string | null = null;
   for (const r of signed) {
-    const g = releaseSperre(r, boxArt, trust);
+    const g = releaseSperre(r, boxArt, trust, loader);
     if (g == null) passend.push(r);
     else {
       gesperrt += 1;
       // Stufe 1 ist der Grund, der zählt: er sagt, was zu tun ist (nachrüsten).
-      grund = g === GRUND_LIGHT_STUFE_1 ? g : grund ?? g;
+      grund = g === GRUND_LIGHT_STUFE_1 || g === GRUND_LIGHT_STUFE_1_LOADER ? g : grund ?? g;
     }
   }
   let hinweis: string | null = null;
@@ -1008,7 +1065,7 @@ export function candidates(
 ): CandidateView[] {
   const views = sortFleet(fleet).map((row) => {
     const st = stateLabel(row.state);
-    const cross = crossoverState(row.trust, row.boxArt);
+    const cross = crossoverState(row.trust, row.boxArt, row.loader);
     let caveat: string | null = null;
     if (row.state === 'offline_holt_nach') {
       caveat = 'meldet sich gerade nicht - die Zuweisung wird nachgeholt';
@@ -1025,7 +1082,7 @@ export function candidates(
       cls: st.cls,
       caveat,
       boxArt: deviceBoxArt(row.boxArt),
-      sperre: release ? releaseSperre(release, row.boxArt, row.trust) : null,
+      sperre: release ? releaseSperre(release, row.boxArt, row.trust, row.loader) : null,
     };
   });
   // Stabil: die passenden zuerst, in der Warn-first-Ordnung von `sortFleet`.
@@ -1051,7 +1108,7 @@ export function startSummary(deviceIds: string[], fleet: FleetRow[]): string[] {
       + 'Zuweisung liegt beim Broker bereit und wird nachgeholt.');
   }
   const uncrossed = chosen.filter((r) => {
-    const c = crossoverState(r.trust, r.boxArt).state;
+    const c = crossoverState(r.trust, r.boxArt, r.loader).state;
     return c === 'offen' || c === 'fehler';
   }).length;
   if (uncrossed > 0) {

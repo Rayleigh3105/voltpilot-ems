@@ -228,7 +228,11 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
             // istSeit     - seit wann der laufende Stand läuft (null = unbekannt);
             // fakten      - angefragt/angenommen/bestätigt der aktuellen Anfrage (null = keine).
             Instant lastSeenAt, String linie, String stand, boolean stufe1, String istRelease,
-            Integer releasesDahinter, Instant istSeit, FaktenDto fakten) {
+            Integer releasesDahinter, Instant istSeit, FaktenDto fakten,
+            // Geräte & Updates G8 (additiv): das Gerät, wie die Box es meldet
+            // (update.geraet; null = nicht gemeldet) - Modell, Architektur und
+            // bei Edge Light der Loader-Stand (update | flash).
+            String geraetModell, String geraetArch, String loader) {
     }
 
     /**
