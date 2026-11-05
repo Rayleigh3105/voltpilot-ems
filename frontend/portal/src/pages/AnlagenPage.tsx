@@ -110,7 +110,6 @@ import {
   type EigeneAuswertungWerte,
 } from '../eigeneAuswertung';
 import { EigenerBaustein } from '../components/EigeneAuswertung';
-import { EigeneAuswertungDialog } from '../components/EigeneAuswertungDialog';
 import {
   AnpassenHuelle,
   AnpassenLeiste,
@@ -132,7 +131,7 @@ import {
 import { CockpitHero } from '../components/CockpitHero';
 import { MobileStickyHead } from '../components/CockpitBlocks';
 import { ZustandCard } from '../components/ZustandCard';
-import { gateStrompreis } from '../strompreis';
+import { gateStrompreis } from '../strompreisGate';
 import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
 import { ersteWerteOffen } from '../ersteWerte';
 import { peakBand, serverQuarterHourMean } from '../peakBand';
@@ -160,6 +159,13 @@ const AnlageHinweise = lazy(() => import('../components/AnlageHinweise'));
 // Die Einrichtungs-Karte („Ihr Weg zum fertigen EMS“) steht nur an einer neuen, noch leeren Anlage - sie kommt
 // nachgeladen, das erste Bild jeder laufenden Anlage trägt sie nicht (Einstiegs-Budget, Anlage-Flow a1 Paket 2).
 const AnlageSetup = lazy(() => import('../components/AnlageSetup').then((m) => ({ default: m.AnlageSetup })));
+// Der Dialog „Eigene Auswertung“ öffnet nur aus dem Anpassen-Modus (beide Einstiege stehen dort) - er trägt den
+// Messwert-Baum (`verlauf`/`komponenten`) und kommt deshalb nachgeladen. `ladeEigeneAuswertung` ist die EINE
+// Aufrufstelle: der Anpassen-Modus holt das Stück vor, sobald er aufgeht, der Klick findet es schon da.
+const ladeEigeneAuswertung = () => import('../components/EigeneAuswertungDialog');
+const EigeneAuswertungDialog = lazy(() =>
+  ladeEigeneAuswertung().then((m) => ({ default: m.EigeneAuswertungDialog })),
+);
 const WetterSection = lazy(() =>
   SUB_CHUNK.daten().then((m) => ({ default: m.WetterSection })),
 );
@@ -1796,6 +1802,10 @@ export function AnlageSeite({
   const [eigenDialog, setEigenDialog] = useState<
     { offen: true; bearbeiten: EigeneAuswertungDef | null } | null
   >(null);
+  // Beide Einstiege des Dialogs stehen im Anpassen-Modus: sobald er aufgeht, ist das Stück schon unterwegs.
+  useEffect(() => {
+    if (layout.anpassen) void ladeEigeneAuswertung();
+  }, [layout.anpassen]);
   // Der Rollenabruf frischt mit dem Schnappschuss auf; Antworten einer vorigen
   // Anlage werden auch vor dem nächsten Effekt niemals am neuen Standort gezeigt.
   const [rollenStand, setRollenStand] = useState<{
@@ -2351,20 +2361,22 @@ export function AnlageSeite({
           Seite (nicht am Anpassen-Modus), damit ein Speichern den Modus nicht
           aufreisst - der Kunde arrangiert weiter, wo er war. */}
       {eigenDialog && (
-        <EigeneAuswertungDialog
-          open
-          siteId={site.id}
-          bearbeiten={eigenDialog.bearbeiten}
-          onSpeichern={(def) => {
-            layout.setzeEigene(def);
-            setEigenDialog(null);
-          }}
-          onEntfernen={(id) => {
-            layout.entferneEigene(id);
-            setEigenDialog(null);
-          }}
-          onAbbrechen={() => setEigenDialog(null)}
-        />
+        <LazyBoundary fallback={null}>
+          <EigeneAuswertungDialog
+            open
+            siteId={site.id}
+            bearbeiten={eigenDialog.bearbeiten}
+            onSpeichern={(def) => {
+              layout.setzeEigene(def);
+              setEigenDialog(null);
+            }}
+            onEntfernen={(id) => {
+              layout.entferneEigene(id);
+              setEigenDialog(null);
+            }}
+            onAbbrechen={() => setEigenDialog(null)}
+          />
+        </LazyBoundary>
       )}
       {/* vp-agg §2.5/C: der gerätefreie Gesamtwert-Assistent (Einstieg +
           Anzeige) ist aus der Cockpit-Bühne in die Auswertungen-/Verlauf-Fläche

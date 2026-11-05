@@ -31,7 +31,7 @@
 import type { IconName } from '../designsystem/components/core/Icon';
 import type { SiteTopology, TelemetryPoint } from './api';
 import { deriveTiles } from './adaptiveLive';
-import { toComponentHealth, type ComponentHealth } from './komponenten';
+import { toComponentHealth, type ComponentHealth } from './komponentenHealth';
 import { numOrNoData } from './nodata';
 import {
   batteryState,
@@ -42,7 +42,7 @@ import {
   type LiveSnapshot,
 } from './live';
 import type { FlowMember, Role } from './topology';
-import { V1_ENTITY } from './verlauf';
+import { V1_ENTITY } from './verlaufEntity';
 
 /** Der Kopfhinweis des Boards — beide Zeitbezüge, eine Interaktion. */
 export const BOARD_HINT = 'Jetzt und heute · eine Zeile öffnet den Verlauf';
