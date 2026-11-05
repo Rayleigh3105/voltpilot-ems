@@ -129,6 +129,10 @@ class SiteScopeArchitekturTest {
                     "web/SiteEarningsController.java", "SiteDto site = sites.findById(siteId);"),
             new Erlaubt("repo/EarningsRepository.java", "telemetry_rollup_15m", 1, Grund.ANLAGE_GEPRUEFT,
                     "web/SiteEarningsController.java", "SiteDto site = sites.findById(siteId);"),
+            // Ladungen mit Herkunft und Geld (#1594): die Hausbilanz je Viertelstunde DIESER Anlage;
+            // die Route transactions/economics ruft vorher requireSite.
+            new Erlaubt("repo/ChargingEconomicsRepository.java", "telemetry_rollup_15m", 1, Grund.ANLAGE_GEPRUEFT,
+                    "web/SiteOcppController.java", "geltungsbereich.requireSite(siteId);"),
             // I/O-Modul (main #1202/8edb7c6da): Ausgangszahl und Ein-/Ausgangszustände je Modul DIESER Anlage;
             // beide Routen (consumer-options, io-modules/{id}/zustand) rufen vorher requireSite.
             new Erlaubt("consumers/ConsumerRepository.java", "telemetry_v2", 2, Grund.ANLAGE_GEPRUEFT,
