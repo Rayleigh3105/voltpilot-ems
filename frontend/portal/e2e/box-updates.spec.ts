@@ -30,6 +30,10 @@ test('Updates: Lage, Linien, Braucht dich und Boxen - Fortschritt, Box-Dialog un
   await expect(light.getByTestId('linie-neuestes')).toHaveText('edge-light-2026.09.12');
   await expect(light.getByTestId('linie-plattformen')).toContainText('Mango · mipsle ✓');
 
+  // Der Lauf in der Karte (G6): drei Zahlen statt eines gemischten Zustands.
+  const lauf = docker.getByTestId('linie-lauf');
+  await expect(lauf).toContainText('edge-2026.09.10 an 3 Boxen');
+  await expect(lauf).toContainText('3angefragt (Portal)1angenommen (Box)0bestätigt (Box)');
   const aufgaben = page.getByTestId('braucht-dich').getByTestId('aufgabe');
   await expect(aufgaben).toHaveCount(3);
   await expect(aufgaben.nth(0)).toContainText('Gewerbepark West: hält das Update zurück');
@@ -104,19 +108,57 @@ test('Box-Art: Chip, Gerät, Stufe 1 und keine Docker-Zuweisung für Edge Light'
   await page.keyboard.press('Escape');
   await expect(drawer).not.toBeVisible();
 
-  // Die Releases der Docker-Linie: die Edge-Light-Box steht im Verteil-Dialog ausgegraut mit Grund.
-  await page.getByTestId('linie-docker').getByRole('button', { name: 'Releases (2)' }).click();
-  const releases = page.getByRole('dialog', { name: 'Releases · Docker-Box' });
-  await expect(releases.getByTestId('releases')).toContainText('edge-2026.09.02');
-  await expect(releases).not.toContainText('edge-light-2026.09.12');
-  await releases.getByRole('button', { name: /Aktualisieren/ }).first().click();
-  const rollout = page.getByRole('dialog', { name: 'Aktualisieren auf edge-2026.09.10' });
-  const gesperrt = rollout.getByTestId('candidate-gesperrt');
-  await expect(gesperrt).toContainText('Kleingarten Ostend');
-  await expect(gesperrt).toContainText('diese Box ist eine Edge Light');
-  await expect(gesperrt.locator('input')).toBeDisabled();
-  await expect(rollout.getByTestId('choose-all')).toContainText('Alle passenden Geräte (5)');
+  // Die Releases der Edge-Light-Linie: im Verteil-Dialog kann die Mango nicht - mit dem Weg zum Nachrüsten.
+  await page.getByTestId('linie-light').getByRole('button', { name: 'Releases (1)' }).click();
+  const releases = page.getByRole('dialog', { name: 'Releases · Edge Light' });
+  await expect(releases).not.toContainText('edge-2026.09.02');
+  await releases.getByRole('button', { name: /Verteilen/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Update verteilen · Edge Light' });
+  const kannNicht = dialog.getByTestId('verteil-kann_nicht');
+  await expect(kannNicht).toContainText('Kleingarten Ostend');
+  await expect(kannNicht).toContainText('diese Box hat Stufe 1');
+  await expect(kannNicht.getByRole('checkbox').first()).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: '0 Boxen anfragen' })).toBeDisabled();
+  await kannNicht.getByRole('button', { name: 'Nachrüsten' }).click();
+  await expect(page.getByRole('dialog')).toContainText('Kleingarten Ostend');
+  await expect(page.getByRole('dialog').getByTestId('drawer-loader')).toBeVisible();
   await page.keyboard.press('Escape');
+  expect(errors).toEqual([]);
+});
+
+test('Update verteilen: Gruppen, „Erst eine Box“ und der Knopf, der sagt, was passiert (G6)', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/e2e/box-updates.html');
+  await page.getByTestId('linie-docker').getByRole('button', { name: 'Releases (2)' }).click();
+  await page.getByRole('dialog', { name: 'Releases · Docker-Box' }).getByRole('button', { name: /Verteilen/ }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Update verteilen · Docker-Box' });
+  await expect(dialog.getByRole('radio', { name: /edge-2026\.09\.10/ })).toBeChecked();
+  await expect(dialog.getByTestId('verteil-bereit')).toContainText('Ahrenberg Lager');
+  await expect(dialog.getByTestId('verteil-bereit')).toContainText('Ahrenberg Werk 1');
+  await expect(dialog.getByTestId('verteil-wartet')).toContainText('Neubau am Feldrain');
+  await expect(dialog.getByTestId('verteil-angefragt')).toContainText('Werkstatt am Bach');
+  await expect(dialog.getByTestId('verteil-aktuell')).toContainText('Solarpark Sonnenhof');
+  await expect(dialog).toContainText('1 Box der anderen Linie kommt für dieses Release nicht in Frage.');
+  // „Erst eine Box" ist vorgeschlagen - eine bereite (online) Box.
+  await expect(dialog.getByRole('radio', { name: /Erst eine Box: Ahrenberg Lager/ })).toBeChecked();
+  await expect(dialog.getByTestId('verteil-satz')).toContainText('Fragt jetzt 1 Box an.');
+  await dialog.getByRole('button', { name: '1 Box anfragen' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Aktion ist fehlgeschlagen');
+  await dialog.getByRole('radio', { name: /Alle 3 auf einmal/ }).click();
+  await expect(dialog.getByRole('button', { name: '3 Boxen anfragen' })).toBeEnabled();
+
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const over = await page.evaluate(() => {
+      const d = document.querySelector('[data-testid="verteil-dialog"]')!;
+      return { seite: document.documentElement.scrollWidth - innerWidth, dialog: d.scrollWidth - d.clientWidth };
+    });
+    expect(over.seite, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
+    expect(over.dialog, `Dialog bei ${width}px`).toBeLessThanOrEqual(1);
+  }
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -180,7 +222,7 @@ test('Registrierung: Online-Status je Box mit Zählung und Filter, ohne Überlau
   await page.getByRole('tab', { name: 'Registrierung' }).click();
   const devices = page.getByTestId('devices');
   await expect(devices).toBeVisible();
-  await expect(page.getByTestId('online-zaehlung')).toHaveText('4 online · 1 offline · 1 nie gemeldet');
+  await expect(page.getByTestId('online-zaehlung')).toHaveText('6 online · 1 offline · 1 nie gemeldet');
   const still = devices.locator('tr').filter({ hasText: 'Hof Lindenallee' });
   await expect(still).toContainText('Meldet sich nicht');
   await expect(still).toContainText('Letzte Meldung: vor 4 Std.');
@@ -190,8 +232,8 @@ test('Registrierung: Online-Status je Box mit Zählung und Filter, ohne Überlau
   const gruppe = page.getByRole('group', { name: 'Boxen nach Online-Status filtern' });
   await gruppe.getByRole('button', { name: 'Offline 1' }).click();
   await expect(devices.locator('tbody tr')).toHaveCount(1);
-  await gruppe.getByRole('button', { name: 'Online 4' }).click();
-  await expect(devices.locator('tbody tr')).toHaveCount(4);
+  await gruppe.getByRole('button', { name: 'Online 6' }).click();
+  await expect(devices.locator('tbody tr')).toHaveCount(6);
 
   for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -221,7 +263,7 @@ test('Updates: Verbindung je Box aus der einen Uhr, mit Filter, ohne Überlauf',
   await gruppe.getByRole('button', { name: 'Offline 1' }).click();
   await expect(table.getByTestId('box-zeile')).toHaveCount(1);
   await gruppe.getByRole('button', { name: 'Offline 1' }).click();
-  await expect(table.getByTestId('box-zeile')).toHaveCount(6);
+  await expect(table.getByTestId('box-zeile')).toHaveCount(8);
 
   for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 1000 });

@@ -250,6 +250,33 @@ export interface EdgeUpdates {
 }
 
 /**
+ * Wer EIN Release bekommen kann (`GET /admin/edge-updates/eignung?releaseSeq=`,
+ * Geräte & Updates G1): jede Box der Linie (und jede unbekannter Art) in GENAU
+ * einer Gruppe - `bereit`, `wartet` (offline, holt die Anfrage retained ab),
+ * `aktuell` oder `kann_nicht` mit dem Satz der Sperre. „Bereit" ist keine Zusage:
+ * das Portal fragt an, die Box entscheidet.
+ */
+export interface EignungBox {
+  deviceId: string;
+  label: string | null;
+  externalRef: string;
+  siteName: string | null;
+  tenantName: string | null;
+  ist: string | null;
+  gruppe: 'bereit' | 'wartet' | 'aktuell' | 'kann_nicht' | (string & {});
+  grund: string | null;
+  lastSeenAt: string | null;
+}
+export interface EdgeEignung {
+  releaseSeq: number;
+  version: string;
+  boxArt: string;
+  boxen: EignungBox[];
+  /** Boxen der anderen Linie - sie kommen für dieses Release nie in Frage. */
+  andereLinie: number;
+}
+
+/**
  * Die Release-Seite (`GET /admin/edge-updates/releases/{releaseSeq}`, Geräte &
  * Updates G4): Inhalt aus dem signierten Manifest, bei Edge Light welche
  * Programme fertig im Portal liegen, „Was ist neu" und wo es läuft.
@@ -432,17 +459,6 @@ export function kpiUnknownNote(kpi: EdgeUpdatesKpi): string | null {
     : `${kpi.unknown} Geräte melden keinen Stand (unbekannt, nicht veraltet).`;
 }
 
-/** Der Zustand einer Aktualisierung in Worten. */
-export function rolloutStateLabel(state: string): { label: string; tone: UpdateTone } {
-  switch (state) {
-    case 'active':
-      return { label: 'läuft', tone: 'busy' };
-    case 'done':
-      return { label: 'abgeschlossen ✓', tone: 'ok' };
-    default:
-      return { label: 'unbekannt', tone: 'off' };
-  }
-}
 export type CrossoverState = 'gekreuzt' | 'offen' | 'unbekannt' | 'fehler' | 'von_hand';
 
 /** Die ruhige Zeile für Edge Light ohne signierte Updates (Plan Edge Light, Stufe 1). */
@@ -887,153 +903,7 @@ export function signatureLabel(release: EdgeUpdatesRelease): {
     : { label: 'nicht signiert', tone: 'off' };
 }
 
-// ── Beobachten: Namen, Handeln, Fortschritt, Frische ───────────────────────
-
-/**
- * Der Name eines Geräts in einer Aktualisierungs-Zeile - **nie eine UUID**.
- *
- * Der Server liefert einen NAMENS-Schnappschuss vom Zuweisungs-Zeitpunkt;
- * fehlt er, wird das ausdrücklich GESAGT statt eine Kennung zu rendern, die
- * die Frage der Zeile („welche Anlage?") gar nicht beantwortet. Die Kurzform
- * der Id steht nur als Wiedererkennungs-Hilfe dahinter, nie allein.
- */
-export function rolloutDeviceName(device: RolloutDevice): { name: string; removed: boolean } {
-  const shortId = device.deviceId ? device.deviceId.slice(0, 8) : '';
-  const named = device.siteName ?? device.label ?? null;
-  if (!named) {
-    return { name: `Entferntes Gerät${shortId ? ` (${shortId}…)` : ''}`, removed: true };
-  }
-  if (device.removed) {
-    return { name: `${named} (entfernt)`, removed: true };
-  }
-  return { name: named, removed: false };
-}
-export interface ProgressSegment {
-  cls: StateClass;
-  label: string;
-  count: number;
-}
-
-export interface ProgressView {
-  /** Der Nenner: die ERREICHBARE Menge, ohne offline/unbekannt. */
-  total: number;
-  segments: ProgressSegment[];
-  /** Was neben der Quote steht, statt im Nenner zu verschwinden. */
-  asideNote: string | null;
-}
-
-/**
- * Die Aktualisierungen, die HEUTE noch eine Zuweisung besitzen.
- *
- * `rollouts` ist absichtlich ein Verlauf der jüngsten Aufträge. Der
- * Flotten-Zustand dagegen beantwortet ausschließlich die aktuelle Zuweisung
- * eines Geräts. Ohne diesen Join würde ein Gerät, das inzwischen `.26` lädt,
- * denselben Live-Zustand auch in seiner alten `.25`-Karte zeigen.
- *
- * Mehrere parallele Aktualisierungen bleiben sichtbar, solange jede davon
- * noch mindestens ein eigenes Gerät besitzt. Historische Mitgliedschaften
- * verschwinden nur aus den LIVE-Karten; das Audit-Journal bleibt unberührt.
- */
-export function currentRolloutViews(rollouts: Rollout[], fleet: FleetRow[]): Rollout[] {
-  const current = new Map(fleet.map((row) => [row.deviceId, row]));
-  return rollouts.flatMap((rollout) => {
-    const devices = rollout.devices.filter((device) => {
-      const row = current.get(device.deviceId);
-      return row?.rolloutId === rollout.id && row.sollSeq === rollout.releaseSeq;
-    });
-    return devices.length > 0 ? [{ ...rollout, devices, total: devices.length }] : [];
-  });
-}
-
-const PROGRESS_ORDER: { cls: StateClass; label: string }[] = [
-  { cls: 'calm', label: 'bestätigt' },
-  { cls: 'busy', label: 'im Gang' },
-  { cls: 'blocked', label: 'blockiert' },
-  { cls: 'incident', label: 'Vorfall' },
-];
-
-/**
- * Das Fortschritts-Rückgrat EINER Aktualisierung: wo steht die Verteilung?
- *
- * Gezählt wird der LIVE-Zustand (aus der Flotte), nicht der historische der
- * Zeile - eine Fläche, eine Wahrheit. **Offline und unbekannt stehen NEBEN der
- * Quote, nie in ihrem Nenner** (die bestehende Quoten-Regel: ein Gerät hinter
- * NAT ist der Normalfall einer Verteilung, kein Rückstand).
- */
-export function progressBackbone(rollout: Rollout | null, fleet: FleetRow[]): ProgressView | null {
-  if (!rollout) return null;
-  const live = new Map(fleet.map((r) => [r.deviceId, r.state]));
-  const counts = new Map<StateClass, number>();
-  let offline = 0;
-  let unknown = 0;
-  let total = 0;
-  for (const d of rollout.devices) {
-    const state = live.get(d.deviceId) ?? d.state;
-    if (state === 'offline_holt_nach') {
-      offline += 1;
-      continue;
-    }
-    if (state === 'unbekannt' || !live.has(d.deviceId)) {
-      // Ein Gerät, über das nichts bekannt ist (oder das die Plattform
-      // verlassen hat), zählt weder im Zähler noch im Nenner.
-      unknown += 1;
-      continue;
-    }
-    total += 1;
-    const cls = stateLabel(state).cls;
-    counts.set(cls, (counts.get(cls) ?? 0) + 1);
-  }
-  const segments = PROGRESS_ORDER
-    .map((s) => ({ ...s, count: counts.get(s.cls) ?? 0 }))
-    .filter((s) => s.count > 0);
-  const aside: string[] = [];
-  if (offline > 0) {
-    aside.push(offline === 1 ? '1 offline – holt nach' : `${offline} offline – holen nach`);
-  }
-  if (unknown > 0) {
-    aside.push(unknown === 1 ? '1 ohne Meldung' : `${unknown} ohne Meldung`);
-  }
-  return {
-    total,
-    segments,
-    asideNote: aside.length > 0 ? `${aside.join(' · ')} (zählt nicht in die Quote)` : null,
-  };
-}
-/**
- * Die eine ruhige Zeile, wenn gerade nichts läuft.
- *
- * Statt leerer Karten („Kein Rollout", „Noch nichts passiert") sagt die Seite
- * in einem Satz, wie die Flotte steht - und nennt Unbekanntes getrennt, statt
- * es als Rückstand zu zählen.
- */
-export function restingLine(data: EdgeUpdates | null): string | null {
-  if (!data || data.rollouts.length > 0) return null;
-  // An individually assigned update has no rollout card but still runs.
-  if (data.fleet.some((r) => stateLabel(r.state).cls === 'busy')) return null;
-  const kpi = data.kpi;
-  if (kpi.known === 0 && kpi.unknown === 0) {
-    return 'Es ist kein Gerät verbunden. Gerade wird nichts aktualisiert.';
-  }
-  const parts: string[] = [];
-  if (data.lines && data.lines.length > 0) {
-    // Je Linie (S0): eine Docker-Box wird nie am Edge-Light-Release gemessen.
-    for (const l of data.lines) {
-      parts.push(l.newestRelease
-        ? `${BOX_ART_LABELS[l.boxArt]}: ${l.upToDate}/${l.known} auf ${l.newestRelease} ✓`
-        : `${BOX_ART_LABELS[l.boxArt]}: noch kein Release`);
-    }
-  } else if (kpi.newestRelease) {
-    parts.push(`${kpi.upToDate}/${kpi.known} Geräte auf ${kpi.newestRelease} ✓`);
-  } else {
-    parts.push('Kein Release im Register - ohne Maßstab wird kein Stand bewertet');
-  }
-  if (kpi.unknown > 0) {
-    parts.push(kpi.unknown === 1
-      ? '1 meldet keinen Stand (unbekannt, nicht veraltet)'
-      : `${kpi.unknown} melden keinen Stand (unbekannt, nicht veraltet)`);
-  }
-  return `${parts.join(' · ')}. Gerade wird nichts aktualisiert.`;
-}
+// ── Beobachten: Frische ────────────────────────────────────────────────────
 
 const NBSP = '\u00a0';
 
@@ -1056,96 +926,3 @@ export function freshnessLabel(fetchedAt: number, now: number): string {
 
 // ── Rollout starten: der Kandidat und die Zusammenfassung ──────────────────
 
-/** Wie tauglich ist dieses Gerät gerade als Canary? */
-export interface CandidateView {
-  deviceId: string;
-  name: string;
-  tenantName: string | null;
-  /** Der Zustand in Worten (dieselbe Ableitung wie überall). */
-  state: string;
-  cls: StateClass;
-  /** Was gegen dieses Gerät spricht - null heißt: nichts Bekanntes. */
-  caveat: string | null;
-  /** Die Box-Art für den Chip (`null` = unbekannt). */
-  boxArt: BoxArt | null;
-  /**
-   * Warum dieses Release dieser Box NICHT zugewiesen werden kann (Box-Art).
-   * Anders als `caveat` ist das eine Sperre: die API lehnt mit 409 ab, also
-   * ist die Zeile ausgegraut - und nennt den Grund.
-   */
-  sperre: string | null;
-}
-
-/**
- * Die wählbaren Geräte - **mit ihrem Zustand**, statt als nackte Checkbox-Liste.
- *
- * Ein Einwand ist ein HINWEIS, nie eine Sperre: seit dem Ein-Schritt-Umbau gibt
- * es keine Vorbedingung über den ZUSTAND eines Geräts mehr. Ein offline
- * gegangenes Gerät holt die Zuweisung beim nächsten Verbindungsaufbau selbst ab
- * (die Zuweisung liegt retained beim Broker) - es auszuschließen wäre die alte
- * Gängelung in neuer Form.
- *
- * Die eine Sperre ist die BAUART: ein Release passt nur auf Boxen seiner
- * Box-Art, und eine Edge-Light-Box mit Stufe 1 nimmt keines an
- * (`releaseSperre`). Solche Geräte stehen ausgegraut mit Grund am Ende der
- * Liste, statt still zu fehlen.
- */
-export function candidates(
-  fleet: FleetRow[],
-  release?: Pick<EdgeUpdatesRelease, 'boxArt'> | null,
-): CandidateView[] {
-  const views = sortFleet(fleet).map((row) => {
-    const st = stateLabel(row.state);
-    const cross = crossoverState(row.trust, row.boxArt, row.loader);
-    let caveat: string | null = null;
-    if (row.state === 'offline_holt_nach') {
-      caveat = 'meldet sich gerade nicht - die Zuweisung wird nachgeholt';
-    } else if (row.state === 'unbekannt') {
-      caveat = 'hat noch keinen Stand gemeldet';
-    } else if (cross.state === 'offen' || cross.state === 'fehler') {
-      caveat = 'Vertrauen noch nicht gekreuzt - dieses Gerät kann kein Release anwenden';
-    }
-    return {
-      deviceId: row.deviceId,
-      name: row.siteName,
-      tenantName: row.tenantName,
-      state: st.label,
-      cls: st.cls,
-      caveat,
-      boxArt: deviceBoxArt(row.boxArt),
-      sperre: release ? releaseSperre(release, row.boxArt, row.trust, row.loader) : null,
-    };
-  });
-  // Stabil: die passenden zuerst, in der Warn-first-Ordnung von `sortFleet`.
-  return [...views.filter((c) => !c.sperre), ...views.filter((c) => c.sperre)];
-}
-
-/**
- * Die Zusammenfassung VOR dem Klick - was dieser eine Knopf konkret auslöst.
- *
- * Sie nennt ausdrücklich auch, was NICHT sofort passiert (ein offline
- * gegangenes Gerät holt nach): das sieht später wie ein Fehler aus, wenn es
- * hier nicht angekündigt wurde.
- */
-export function startSummary(deviceIds: string[], fleet: FleetRow[]): string[] {
-  const chosen = fleet.filter((r) => deviceIds.includes(r.deviceId));
-  const lines: string[] = [];
-  if (chosen.length === 0) return lines;
-  lines.push(`${chosen.length} Gerät${chosen.length === 1 ? '' : 'e'} bekommen die Zuweisung `
-    + 'SOFORT - und aktualisieren sich selbst.');
-  const offline = chosen.filter((r) => r.state === 'offline_holt_nach').length;
-  if (offline > 0) {
-    lines.push(`${offline} Gerät${offline === 1 ? '' : 'e'} meldet sich gerade nicht - die `
-      + 'Zuweisung liegt beim Broker bereit und wird nachgeholt.');
-  }
-  const uncrossed = chosen.filter((r) => {
-    const c = crossoverState(r.trust, r.boxArt, r.loader).state;
-    return c === 'offen' || c === 'fehler';
-  }).length;
-  if (uncrossed > 0) {
-    lines.push(`${uncrossed} Gerät${uncrossed === 1 ? ' hat' : 'e haben'} das Vertrauen noch `
-      + 'nicht gekreuzt und meldet dann einen Grund - es geht nichts verloren.');
-  }
-  lines.push('Es gibt keinen zweiten Schritt: niemand muss an ein Gerät.');
-  return lines;
-}

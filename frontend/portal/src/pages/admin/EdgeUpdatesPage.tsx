@@ -6,41 +6,28 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { ApiError } from '../../api';
 import { adminApi } from '../../admin/adminApi';
-import { MiniShareBar } from '../../components/MiniChart';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
-import { fmtRelative } from '../../format';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { pageRoute, type Route } from '../../nav';
-import { BoxArtChip } from './BoxArtChip';
 import './BoxVersions.css';
 import { AdminPageHead } from './AdminPageHead';
-import { GeraeteDrawer, UpdateActionError } from './GeraeteDrawer';
+import { GeraeteDrawer } from './GeraeteDrawer';
 import { BoxenListe, BrauchtDich, LinienKarten, UpdatesLage } from './GeraeteUpdates';
+import { VerteilDialog, type VerteilStart } from './VerteilDialog';
 import {
   BOX_ART_LABELS,
   actorLabel,
-  blockerLever,
-  candidates,
   crossoverHint,
   crossoverState,
-  currentRolloutViews,
   eventLabel,
   freshnessLabel,
-  progressBackbone,
   releaseBoxArt,
-  rolloutDeviceName,
-  rolloutStateLabel,
   signatureLabel,
-  startSummary,
-  stateLabel,
   visibleJournal,
   type BoxArt,
   type EdgeReleaseSeite,
   type EdgeUpdates,
   type EdgeUpdatesRelease,
-  type FleetRow,
-  type Rollout,
-  type RolloutDevice,
   type UpdateTone,
 } from '../../adminEdgeUpdates';
 import {
@@ -54,23 +41,6 @@ const toneVariant = (tone: UpdateTone): 'ok' | 'warn' | 'off' =>
 
 const fmtWhen = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '–';
-
-/**
- * Das Kleid EINES Zustands - die vier Klassen der Beobachtungs-Grammatik.
- *
- * Bewusst KEIN `Badge`: die Unterscheidung „läuft von selbst" (pulsiert) vs.
- * „ein Vorfall" ist der Punkt, und der Badge kennt nur ok/warn/off. Die Klasse
- * trägt sie, die Beschriftung bleibt die des reinen Moduls.
- */
-function StateChip({ state }: { state: string }) {
-  const st = stateLabel(state);
-  return (
-    <span className={`vp-ustate vp-ustate-${st.cls}`} data-testid={`state-${st.cls}`}>
-      <i className="vp-ustate-dot" aria-hidden="true" />
-      {st.label}
-    </span>
-  );
-}
 
 /** Das neueste Edge-Light-Release: seine Release-Seite sagt, welche Programme fertig im Portal liegen. */
 function neuestesLightRelease(data: EdgeUpdates): number | null {
@@ -123,7 +93,7 @@ export function EdgeUpdatesPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [rolloutFor, setRolloutFor] = useState<EdgeUpdatesRelease | null>(null);
+  const [verteilen, setVerteilen] = useState<VerteilStart | null>(null);
   const [deviceFor, setDeviceFor] = useState<string | null>(null);
   const [releasesFor, setReleasesFor] = useState<BoxArt | null>(null);
   const [filter, setFilter] = useState<BoxFilter>(KEIN_FILTER);
@@ -213,13 +183,6 @@ export function EdgeUpdatesPage({
   const journal = useMemo(() => visibleJournal(data?.journal ?? []), [data]);
   const crossover = useMemo(() => crossoverHint((data?.fleet ?? [])
     .filter((r) => crossoverState(r.trust, r.boxArt, r.loader).state !== 'von_hand')), [data]);
-  // `data.rollouts` enthält bewusst auch jüngere Historie. Live-Zustände
-  // gehören aber nur zu der Zuweisung, die das Gerät HEUTE besitzt; sonst
-  // würde ein `.26`-Download auch in der alten `.25`-Karte als „lädt" stehen.
-  const rollouts = useMemo(
-    () => currentRolloutViews(data?.rollouts ?? [], data?.fleet ?? []),
-    [data],
-  );
 
   const oeffneBox = (deviceId: string) => { setActionError(null); setDeviceFor(deviceId); };
   // „Fortschritt": die Boxen mit laufendem Update, in ihrer Linie.
@@ -259,7 +222,7 @@ export function EdgeUpdatesPage({
         }
       />
 
-      {actionError && !rolloutFor && !deviceFor && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
+      {actionError && !verteilen && !deviceFor && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
       {loadError && data && <div className="vp-alert vp-alert-warn" role="alert">
         Die Aktualisierung ist fehlgeschlagen. Die zuletzt geladenen Versionsstände bleiben sichtbar.
       </div>}
@@ -279,10 +242,14 @@ export function EdgeUpdatesPage({
           <LinienKarten
             karten={karten}
             busy={busy || data.fleet.length === 0}
-            onVerteilen={(release) => { setActionError(null); setRolloutFor(release); }}
+            onVerteilen={(release) => { setActionError(null); setVerteilen({ art: releaseBoxArt(release), releaseSeq: release.releaseSeq }); }}
             onReleases={setReleasesFor}
             onFortschritt={fortschritt}
             onNachruesten={oeffneBox}
+            onWeiter={(art, releaseSeq, uebrige) => {
+              setActionError(null);
+              setVerteilen({ art, releaseSeq, nur: uebrige, reihenfolge: 'alle' });
+            }}
           />
 
           {/* Warn-first: was Aufmerksamkeit braucht, steht oben und NENNT die
@@ -290,7 +257,13 @@ export function EdgeUpdatesPage({
               Sperre - nichts hält deswegen an. */}
           <BrauchtDich
             aufgaben={brauchtDich}
+            busy={busy}
             onBox={oeffneBox}
+            onNochmal={(deviceId, releaseSeq) => void act(() => adminApi.setUpdateTarget(deviceId, { releaseSeq }))}
+            onZurueckziehen={(ids) => void act(async () => {
+              // Nacheinander: ein Fehlschlag hält an und nennt seinen Grund.
+              for (const id of ids) await adminApi.revertUpdateTarget(id);
+            })}
             onFernwartung={onNavigate ? () => onNavigate(pageRoute('fernwartung')) : undefined}
             onNachruesten={oeffneBox}
           />
@@ -300,21 +273,6 @@ export function EdgeUpdatesPage({
               steht schon in „Braucht dich". Ein Gerät, das nichts meldet, wird
               getrennt genannt - aus „unbekannt" lässt sich keine Aufgabe ableiten. */}
           {crossover && <p className="vp-muted vp-text-sm" data-testid="fleet-pointer" style={{ margin: 0 }}>{crossover}</p>}
-
-          {/* Laufende Verteilungen: ohne aktuelle Zuweisung gibt es die Karte
-              GAR NICHT; ältere Aufträge bleiben im Verlauf, übernehmen aber nie
-              den Live-Status eines neueren Releases. */}
-          {rollouts.length > 0 && (
-            <section id="vp-gu-laeufe" className="vp-gu-block" aria-labelledby="vp-gu-laeufe-titel" data-testid="laeufe">
-              <div className="vp-gu-block-titel">
-                <h2 id="vp-gu-laeufe-titel">Verteilungen</h2>
-                <span className="vp-gu-leise vp-gu-klein">je Release, mit jeder Box</span>
-              </div>
-              {rollouts.map((r) => (
-                <RolloutCard key={r.id} rollout={r} fleet={data.fleet} onOpenDevice={oeffneBox} />
-              ))}
-            </section>
-          )}
 
           <Card padding="lg" radius="lg">
             <details>
@@ -383,23 +341,28 @@ export function EdgeUpdatesPage({
           releases={data.releases}
           busy={busy || data.fleet.length === 0}
           onClose={() => setReleasesFor(null)}
-          onVerteilen={(release) => { setReleasesFor(null); setActionError(null); setRolloutFor(release); }}
+          onVerteilen={(release) => {
+            setReleasesFor(null);
+            setActionError(null);
+            setVerteilen({ art: releaseBoxArt(release), releaseSeq: release.releaseSeq });
+          }}
         />
       )}
 
-      {rolloutFor && data && (
-        <StartRolloutDrawer
-          release={rolloutFor}
+      {verteilen && data && (
+        <VerteilDialog
+          start={verteilen}
+          releases={data.releases}
           fleet={data.fleet}
+          boxenDerLinie={karten.find((k) => k.boxArt === verteilen.art)?.gesamt ?? 0}
+          ladeEignung={(seq) => adminApi.edgeEignung(seq)}
           busy={busy}
           error={actionError}
-          onClose={() => { setRolloutFor(null); setActionError(null); }}
-          onStart={async (devices) => {
-            const ok = await act(() =>
-              adminApi.createRollout({ releaseSeq: rolloutFor.releaseSeq, devices }),
-            );
-            if (ok) setRolloutFor(null);
+          onClose={() => { setVerteilen(null); setActionError(null); }}
+          onStart={async (releaseSeq, devices) => {
+            if (await act(() => adminApi.createRollout({ releaseSeq, devices }))) setVerteilen(null);
           }}
+          onNachruesten={(deviceId) => { setVerteilen(null); oeffneBox(deviceId); }}
         />
       )}
     </div>
@@ -461,7 +424,7 @@ function LinienReleases({
                   <td>
                     {r.signed ? (
                       <Button variant="primary" size="sm" disabled={busy} onClick={() => onVerteilen(r)}>
-                        Aktualisieren ▸
+                        Verteilen ▸
                       </Button>
                     ) : (
                       <span className="vp-muted vp-text-sm">Nicht signiert – nicht verteilbar</span>
@@ -473,268 +436,6 @@ function LinienReleases({
           </tbody>
         </table>
       )}
-    </Modal>
-  );
-}
-
-/**
- * EINE Aktualisierung: Kopf, Fortschritts-Rückgrat, Geräte-Zeilen.
- *
- * Es gibt hier keinen Knopf mehr. Die Karte ist reine BEOBACHTUNG - das war
- * bis zum Ein-Schritt-Umbau die Ausnahme und ist jetzt die Regel.
- */
-function RolloutCard({
-  rollout,
-  fleet,
-  onOpenDevice,
-}: {
-  rollout: Rollout;
-  fleet: FleetRow[];
-  onOpenDevice: (deviceId: string) => void;
-}) {
-  const st = rolloutStateLabel(rollout.state);
-  const progress = useMemo(() => progressBackbone(rollout, fleet), [rollout, fleet]);
-  const live = useMemo(
-    () => new Map(fleet.map((r) => [r.deviceId, r] as const)),
-    [fleet],
-  );
-
-  return (
-    <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-6)' }}
-          data-testid="rollout-card">
-      <div className="vp-row-gap" style={{ alignItems: 'baseline' }}>
-        <h3 style={{ marginTop: 0 }}>{rollout.releaseVersion}</h3>
-        <Badge variant={toneVariant(st.tone)} dot>{st.label}</Badge>
-        <span className="vp-muted vp-text-sm">
-          gestartet {fmtRelative(rollout.createdAt)}
-          {rollout.createdBy ? ` · ${actorLabel(rollout.createdBy)}` : ''}
-        </span>
-      </div>
-
-      {/* Das Fortschritts-Rückgrat: wo steht die Verteilung, in einem Blick -
-          über die ERREICHBARE Menge, offline daneben statt im Nenner. */}
-      {progress && progress.total > 0 && (
-        <div className="vp-backbone" data-testid="backbone">
-          <MiniShareBar
-            className="vp-backbone-bar"
-            segments={progress.segments.map((s) => ({
-              key: s.cls,
-              weight: s.count,
-              className: `vp-backbone-seg vp-ustate-${s.cls}`,
-              title: `${s.count} ${s.label}`,
-            }))}
-          />
-          <div className="vp-backbone-legend vp-text-sm">
-            {progress.segments.map((s) => (
-              <span key={s.cls} className="vp-backbone-key">
-                <i className={`vp-ustate-dot vp-ustate-${s.cls}`} aria-hidden="true" />
-                {s.count} {s.label}
-              </span>
-            ))}
-            {progress.asideNote && (
-              <span className="vp-muted" data-testid="backbone-aside">
-                {progress.asideNote}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      <table className="vp-table responsive" data-testid="rollout-devices">
-        <thead>
-          <tr>
-            <th>Anlage</th>
-            <th>Ist</th>
-            <th>Zustand</th>
-            <th>Grund</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rollout.devices.map((d) => (
-            <RolloutDeviceRow
-              key={d.deviceId}
-              device={d}
-              row={live.get(d.deviceId) ?? null}
-              onOpen={onOpenDevice}
-            />
-          ))}
-        </tbody>
-      </table>
-    </Card>
-  );
-}
-
-/**
- * Eine Geräte-Zeile EINER Aktualisierung.
- *
- * Der Zustand kommt LIVE aus der Flotte, wo es sie gibt - eine Fläche, eine
- * Wahrheit. Fehlt das Gerät dort (Unclaim), bleibt der Schnappschuss der Zeile
- * stehen und sagt das ausdrücklich; eine UUID wird nie gerendert.
- */
-function RolloutDeviceRow({
-  device,
-  row,
-  onOpen,
-}: {
-  device: RolloutDevice;
-  row: FleetRow | null;
-  onOpen: (deviceId: string) => void;
-}) {
-  const name = rolloutDeviceName(device);
-  const state = row?.state ?? device.state;
-  const reason = row?.reason ?? device.reason;
-  const lever = blockerLever(row?.blocker);
-  return (
-    <tr>
-      <td data-label="Anlage">
-        {row ? (
-          <button type="button" className="vp-linkbtn" onClick={() => onOpen(device.deviceId)}>
-            {name.name}
-          </button>
-        ) : (
-          <span className={name.removed ? 'vp-muted' : undefined}>{name.name}</span>
-        )}
-        {device.tenantName && (
-          <div className="vp-muted vp-text-sm">{device.tenantName}</div>
-        )}
-      </td>
-      <td data-label="Ist">
-        {row?.ist ?? '–'}
-      </td>
-      <td data-label="Zustand"><StateChip state={state} /></td>
-      {/* Jede nicht-grüne Zeile trägt ihren Grund. Der HEBEL kommt aus dem
-          maschinenlesbaren Namen, nie aus einer Stichwortsuche im Satz. */}
-      <td data-label="Grund" className="vp-muted vp-text-sm">
-        {reason ?? '–'}
-        {lever && <div className="vp-lever">Hebel: {lever}</div>}
-      </td>
-    </tr>
-  );
-}
-
-/**
- * Der EINE Schritt: Geräte ankreuzen, „Aktualisieren".
- *
- * Es gibt keine Welle, keinen Canary, keinen Kanal und keine Vorbedingung über
- * den Zustand eines Geräts. Ein Einwand an einem Gerät ist ein HINWEIS: ein
- * offline gegangenes Gerät holt die Zuweisung beim nächsten Verbindungsaufbau
- * selbst ab (sie liegt retained beim Broker).
- *
- * Die eine Sperre ist die Box-Art: ein Gerät, auf das dieses Release nicht
- * passt, steht ausgegraut mit Grund in der Liste („Alle passenden Geräte"
- * wählt es nicht mit) - die API würde es mit 409 ablehnen.
- */
-function StartRolloutDrawer({
-  release,
-  fleet,
-  busy,
-  error,
-  onClose,
-  onStart,
-}: {
-  release: EdgeUpdatesRelease;
-  fleet: FleetRow[];
-  busy: boolean;
-  error: string | null;
-  onClose: () => void;
-  onStart: (devices: string[]) => Promise<void>;
-}) {
-  const cands = useMemo(() => candidates(fleet, release), [fleet, release]);
-  const passend = useMemo(() => cands.filter((c) => !c.sperre), [cands]);
-  const gesperrt = cands.length - passend.length;
-  const [chosen, setChosen] = useState<string[]>([]);
-  const summary = useMemo(() => startSummary(chosen, fleet), [chosen, fleet]);
-  const allChosen = passend.length > 0 && chosen.length === passend.length;
-
-  return (
-    <Modal open title={`Aktualisieren auf ${release.version}`} onClose={onClose}>
-      <UpdateActionError error={error} />
-      <p className="vp-muted">
-        Die gewählten Geräte bekommen das Release sofort zugewiesen und aktualisieren sich
-        selbst. Es gibt keinen zweiten Schritt - niemand muss an ein Gerät.
-      </p>
-      <p className="vp-text-sm" data-testid="release-box-art">
-        Release für <BoxArtChip boxArt={releaseBoxArt(release)} />
-        {gesperrt > 0 && (
-          <span className="vp-muted">
-            {' '}· {gesperrt === 1
-              ? '1 Gerät passt nicht dazu und ist ausgegraut.'
-              : `${gesperrt} Geräte passen nicht dazu und sind ausgegraut.`}
-          </span>
-        )}
-      </p>
-
-      <label className="vp-check-row" data-testid="choose-all">
-        <input
-          type="checkbox"
-          checked={allChosen}
-          disabled={passend.length === 0}
-          onChange={(e) =>
-            setChosen(e.target.checked ? passend.map((c) => c.deviceId) : [])
-          }
-        />{' '}
-        <strong>
-          {gesperrt > 0 ? 'Alle passenden Geräte' : 'Alle Geräte'} ({passend.length})
-        </strong>
-      </label>
-
-      <fieldset style={{ border: 0, padding: 0 }}>
-        <legend className="vp-text-sm" style={{ fontWeight: 600 }}>Geräte</legend>
-        {cands.map((c) => (
-          <label key={c.deviceId}
-            className={`vp-check-row vp-candidate${c.sperre ? ' vp-candidate-gesperrt' : ''}`}
-            data-testid={c.sperre ? 'candidate-gesperrt' : 'candidate'}>
-            <input
-              type="checkbox"
-              checked={chosen.includes(c.deviceId)}
-              disabled={!!c.sperre}
-              onChange={(e) =>
-                setChosen((prev) =>
-                  e.target.checked
-                    ? [...prev, c.deviceId]
-                    : prev.filter((id) => id !== c.deviceId),
-                )
-              }
-            />{' '}
-            <span className="vp-cell-main">
-              <span>
-                {c.name} <span className="vp-muted">· {c.tenantName}</span>{' '}
-                <BoxArtChip boxArt={c.boxArt} />{' '}
-                <span className={`vp-ustate vp-ustate-${c.cls}`}>
-                  <i className="vp-ustate-dot" aria-hidden="true" />
-                  {c.state}
-                </span>
-              </span>
-              {/* Die Box-Art ist eine SPERRE (die API lehnt mit 409 ab) und
-                  steht deshalb mit Grund an der ausgegrauten Zeile. */}
-              {c.sperre && <span className="vp-cell-sub">{c.sperre}</span>}
-              {/* Ein Einwand ist ein HINWEIS, nie eine Sperre - die Checkbox
-                  bleibt wählbar. */}
-              {!c.sperre && c.caveat && <span className="vp-cell-sub vp-lever">{c.caveat}</span>}
-            </span>
-          </label>
-        ))}
-      </fieldset>
-
-      {/* Was dieser Klick konkret auslöst - inklusive dessen, was NICHT sofort
-          passiert (offline nachholend). Das sieht später wie ein Fehler aus,
-          wenn es hier nicht angekündigt wurde. */}
-      {summary.length > 0 && (
-        <>
-          <h4>Das passiert jetzt</h4>
-          <ul className="vp-plain-list vp-text-sm" data-testid="start-summary">
-            {summary.map((l) => <li key={l}>{l}</li>)}
-          </ul>
-        </>
-      )}
-
-      <Button
-        variant="primary"
-        disabled={busy || chosen.length === 0}
-        onClick={() => void onStart(chosen)}
-      >
-        Aktualisieren
-      </Button>
     </Modal>
   );
 }

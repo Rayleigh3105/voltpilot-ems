@@ -6,7 +6,7 @@ import {
   type PlatformCertVerdict,
   type Site,
 } from '../api';
-import type { DeviceTrust, EdgeReleaseSeite, EdgeUpdates } from '../adminEdgeUpdates';
+import type { DeviceTrust, EdgeEignung, EdgeReleaseSeite, EdgeUpdates } from '../adminEdgeUpdates';
 import type { AdminVorlage } from '../adminVorlagen';
 import type { FlottenAnlage } from '../adminKomponentenFlotte';
 import type { PlattformModellWahlZustand } from '../prognose';
@@ -434,6 +434,10 @@ export const adminApi = {
 
   /** Alles, was die Seite „Edge-Updates" zeigt, in EINEM Aufruf. */
   edgeUpdates: () => request<EdgeUpdates>('/api/v1/admin/edge-updates'),
+
+  /** Wer EIN Release bekommen kann, je Box mit Grund (Geräte & Updates G1, der Verteil-Dialog). */
+  edgeEignung: (releaseSeq: number) =>
+    request<EdgeEignung>(`/api/v1/admin/edge-updates/eignung?releaseSeq=${releaseSeq}`),
 
   /** Die Release-Seite: Inhalt je Plattform, Programme im Portal, „Was ist neu" (Geräte & Updates G4). */
   edgeRelease: (releaseSeq: number) =>

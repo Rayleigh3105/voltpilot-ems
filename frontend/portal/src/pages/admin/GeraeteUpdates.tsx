@@ -79,6 +79,8 @@ export interface LinienAktionen {
   onReleases: (art: BoxArt) => void;
   onFortschritt: (art: BoxArt) => void;
   onNachruesten: (deviceId: string) => void;
+  /** E1 A: dasselbe Release an die übrigen Boxen - ein neuer Ein-Schritt-Lauf. */
+  onWeiter: (art: BoxArt, releaseSeq: number, uebrige: string[]) => void;
 }
 
 function LinienKnopf({ karte, a }: { karte: LinieKarte; a: LinienAktionen }) {
@@ -101,6 +103,9 @@ function LinienKnopf({ karte, a }: { karte: LinieKarte; a: LinienAktionen }) {
       );
     case 'aktuell':
       return <Button variant="primary" size="sm" disabled title="Jede Box dieser Linie läuft auf ihrem neuesten Release.">Alle aktuell</Button>;
+    case 'weiter':
+      // Den Knopf trägt der Lauf selbst („An die übrigen …").
+      return null;
     case 'nichts':
       return (
         <>
@@ -111,6 +116,42 @@ function LinienKnopf({ karte, a }: { karte: LinieKarte; a: LinienAktionen }) {
     default:
       return null;
   }
+}
+
+/** Der Lauf in der Karte (G6): drei Zahlen statt eines gemischten Zustands, danach ggf. „An die übrigen". */
+function Lauf({ karte, a }: { karte: LinieKarte; a: LinienAktionen }) {
+  const l = karte.lauf!;
+  const kopf = [l.seit ? `seit ${l.seit}` : null, l.von ? `von ${l.von}` : null].filter(Boolean).join(' · ');
+  return (
+    <div className="vp-gu-lauf" data-testid="linie-lauf">
+      <div className="vp-gu-lauf-kopf">
+        <Icon name="refresh-cw" size={16} />
+        <span>
+          <span className="vp-gu-mono">{l.release}</span> an {l.angefragt} {l.angefragt === 1 ? 'Box' : 'Boxen'}
+          {kopf ? ` · ${kopf}` : ''}
+        </span>
+      </div>
+      <div className="vp-gu-drei">
+        <div><b>{l.angefragt}</b><small>angefragt (Portal)</small></div>
+        <div><b>{l.angenommen}</b><small>angenommen (Box)</small></div>
+        <div><b>{l.bestaetigt}</b><small>bestätigt (Box)</small></div>
+      </div>
+      {l.gescheitert > 0 && (
+        <p className="vp-gu-lauf-fehler">
+          {l.gescheitert} {l.gescheitert === 1 ? 'Box hat' : 'Boxen haben'} abgelehnt oder zurückgenommen – siehe „Braucht dich“.
+        </p>
+      )}
+      {l.weiter && (
+        <div className="vp-gu-weiter" data-testid="linie-weiter">
+          <span><SatzText satz={l.weiter.text} /></span>
+          <Button variant="primary" size="sm" iconLeft={<Icon name="refresh-cw" size={16} />} disabled={a.busy}
+            onClick={() => a.onWeiter(karte.boxArt, l.releaseSeq, l.weiter!.uebrige)}>
+            {`An die übrigen ${l.weiter.uebrige.length}`}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function LinienKartenKarte({ karte, a }: { karte: LinieKarte; a: LinienAktionen }) {
@@ -149,6 +190,7 @@ function LinienKartenKarte({ karte, a }: { karte: LinieKarte; a: LinienAktionen 
         </div>
       )}
       <Balken karte={karte} />
+      {karte.lauf && <Lauf karte={karte} a={a} />}
       {karte.leiter.length > 0 && (
         <div className="vp-gu-leiter" data-testid="linie-leiter">
           {karte.leiter.map((s) => (
@@ -188,11 +230,16 @@ export function LinienKarten({ karten, ...a }: { karten: LinieKarte[] } & Linien
 
 // ── Braucht dich ────────────────────────────────────────────────────────────
 
-export function BrauchtDich({ aufgaben, onBox, onFernwartung, onNachruesten }: {
+export function BrauchtDich({ aufgaben, busy, onBox, onFernwartung, onNachruesten, onNochmal, onZurueckziehen }: {
   aufgaben: Aufgabe[];
+  busy: boolean;
   onBox: (deviceId: string) => void;
   onFernwartung?: () => void;
   onNachruesten: (deviceId: string) => void;
+  /** Dieselbe Anfrage noch einmal: ein neuer `assigned_at`, die Box versucht es wieder. */
+  onNochmal: (deviceId: string, releaseSeq: number) => void;
+  /** Die Anfrage zurückziehen (Zeile und retained Nachricht). */
+  onZurueckziehen: (deviceIds: string[]) => void;
 }) {
   if (aufgaben.length === 0) return null;
   return (
@@ -217,6 +264,22 @@ export function BrauchtDich({ aufgaben, onBox, onFernwartung, onNachruesten }: {
                     <Button key={k} variant="outline" size="sm" iconLeft={<Icon name="hand" size={16} />}
                       onClick={() => onNachruesten(id)}>
                       Nachrüsten: so geht’s
+                    </Button>
+                  );
+                }
+                if (k === 'nochmal') {
+                  return a.nochmal ? (
+                    <Button key={k} variant="ghost" size="sm" disabled={busy}
+                      onClick={() => onNochmal(a.nochmal!.deviceId, a.nochmal!.releaseSeq)}>
+                      Noch einmal anfragen
+                    </Button>
+                  ) : null;
+                }
+                if (k === 'zurueckziehen') {
+                  return (
+                    <Button key={k} variant="ghost" size="sm" disabled={busy || a.anfragen.length === 0}
+                      onClick={() => onZurueckziehen(a.anfragen)}>
+                      {a.anfragen.length > 1 ? `${a.anfragen.length} Anfragen zurückziehen` : 'Anfrage zurückziehen'}
                     </Button>
                   );
                 }

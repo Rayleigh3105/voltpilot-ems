@@ -1,8 +1,8 @@
 import { boxVerbindung, releaseIsRunning } from './adminFleet';
 import {
-  BOX_ART_LABELS, BOX_ART_UNBEKANNT, LOADER_FLASH, blockerLever, deviceBoxArt, geraetZeile, releaseBoxArt,
-  releaseSperre, stateLabel, type BoxArt, type EdgeReleaseSeite, type EdgeUpdates, type EdgeUpdatesRelease,
-  type FleetRow, type UpdateFakten,
+  BOX_ART_LABELS, BOX_ART_UNBEKANNT, LOADER_FLASH, actorLabel, blockerLever, deviceBoxArt, geraetZeile,
+  releaseBoxArt, releaseSperre, stateLabel, type BoxArt, type EdgeEignung, type EdgeReleaseSeite, type EdgeUpdates,
+  type EdgeUpdatesRelease, type FleetRow, type UpdateFakten,
 } from './adminEdgeUpdates';
 import { versionDisplay } from './edgeVersionLabel';
 import { fmtRelative, seitDauer } from './format';
@@ -439,7 +439,7 @@ export interface LeiterSprosse {
   deviceIds: string[];
 }
 
-export type LinienAktion = 'verteilen' | 'fortschritt' | 'nachruesten' | 'aktuell' | 'nichts' | 'keins';
+export type LinienAktion = 'verteilen' | 'fortschritt' | 'weiter' | 'nachruesten' | 'aktuell' | 'nichts' | 'keins';
 
 export interface LinieKarte {
   boxArt: BoxArt;
@@ -462,6 +462,8 @@ export interface LinieKarte {
   aktion: LinienAktion;
   /** Warum nicht verteilt werden kann (bei `nichts`); sichtbar neben dem gesperrten Knopf. */
   sperre: string | null;
+  /** Der Lauf dieser Linie (G6): die jüngste Anfrage, solange sie offen ist oder höchstens einen Tag zurückliegt. */
+  lauf: LaufInDerKarte | null;
 }
 
 const ARCH_GERAET: Record<string, string> = { amd64: 'PC', arm64: 'Raspberry Pi', mipsle: 'Mango' };
@@ -579,8 +581,11 @@ export function linienKarten(
       .sort((a, b) => boxName(a).localeCompare(boxName(b), 'de')).map((r) => r.deviceId);
     const laeuft = zaehlung.get('lauf')?.length ?? 0;
     const alleAktuell = rows.every((r) => segmentArt(r.stand) === 'ok');
+    const lauf = laufInDerKarte(rows, releases, now);
     const aktion: LinienAktion = !neuRelease ? 'keins'
       : laeuft > 0 ? 'fortschritt'
+        // E1 A: nach der ersten Bestätigung trägt der Lauf selbst den Knopf „An die übrigen".
+        : lauf?.weiter ? 'weiter'
         : verteilbar > 0 ? 'verteilen'
           : stufe1.length > 0 ? 'nachruesten'
             : alleAktuell ? 'aktuell' : 'nichts';
@@ -605,23 +610,213 @@ export function linienKarten(
       stufe1,
       aktion,
       sperre,
+      lauf,
     }];
   });
+}
+
+// ── Lauf in der Karte (G6) ──────────────────────────────────────────────────
+
+export interface LaufInDerKarte {
+  release: string;
+  releaseSeq: number;
+  /** Die Boxen dieser Anfrage. */
+  deviceIds: string[];
+  /** Seit wann (die früheste Anfrage), als Uhrzeit. */
+  seit: string | null;
+  /** Wer angefragt hat (die jüngste Anfrage). */
+  von: string | null;
+  angefragt: number;
+  angenommen: number;
+  bestaetigt: number;
+  /** Abgelehnt, fehlgeschlagen, zurückgenommen oder verstummt. */
+  gescheitert: number;
+  /**
+   * E1 A: Hat die Box (oder haben die Boxen) bestätigt und ist nichts
+   * gescheitert, bietet die Karte „An die übrigen" an - die Boxen der Linie,
+   * die das Release noch nicht haben und es bekommen können. Ein neuer
+   * Ein-Schritt-Lauf; im Server wartet nichts.
+   */
+  weiter: { text: Satz; uebrige: string[] } | null;
+}
+
+/** Der jüngste Zeitpunkt einer Anfrage: angefragt, angenommen oder bestätigt. */
+function letzteRegung(f: UpdateFakten): number | null {
+  const t = [f.angefragt.am, f.angenommen.am, f.bestaetigt.am]
+    .map((x) => (x ? Date.parse(x) : Number.NaN)).filter((x) => Number.isFinite(x));
+  return t.length ? Math.max(...t) : null;
+}
+
+/** Zählt eine Anfrage noch zum Lauf? Offen immer; beendet noch einen Tag lang. */
+export function imLauf(f: UpdateFakten | null | undefined, now: Date): boolean {
+  if (!f) return false;
+  if (anfrageOffen(f)) return true;
+  const t = letzteRegung(f);
+  return t != null && now.getTime() - t < TRACKER_NACH_BESTAETIGT_MS;
+}
+
+const gescheitert = (f: UpdateFakten) => f.angenommen.stand === 'abgelehnt' || ENDE_FEHLER.includes(f.bestaetigt.stand);
+
+const boxWort = (n: number) => (n === 1 ? 'Box' : 'Boxen');
+
+/**
+ * Der Lauf einer Linie: die Boxen mit der jüngsten noch laufenden (oder seit
+ * höchstens einem Tag beendeten) Anfrage, gezählt in den drei Schritten. Die
+ * Fakten sind die heutige Anfrage je Box - ein älterer Auftrag kann nie als
+ * Live-Zustand eines neueren erscheinen.
+ */
+export function laufInDerKarte(rows: FleetRow[], releases: EdgeUpdatesRelease[], now: Date): LaufInDerKarte | null {
+  const laufend = rows.filter((r) => imLauf(r.fakten, now));
+  if (laufend.length === 0) return null;
+  const zeit = (r: FleetRow) => (r.fakten?.angefragt.am ? Date.parse(r.fakten.angefragt.am) : 0);
+  const juengste = [...laufend].sort((a, b) => zeit(b) - zeit(a))[0];
+  const seq = juengste.fakten!.angefragt.releaseSeq;
+  const gruppe = laufend.filter((r) => r.fakten!.angefragt.releaseSeq === seq);
+  const f = (r: FleetRow) => r.fakten!;
+  const frueheste = Math.min(...gruppe.map(zeit).filter((t) => t > 0));
+  const bestaetigt = gruppe.filter((r) => f(r).bestaetigt.stand === 'ja');
+  const zahl = {
+    angefragt: gruppe.length,
+    angenommen: gruppe.filter((r) => f(r).angenommen.stand === 'ja').length,
+    bestaetigt: bestaetigt.length,
+    gescheitert: gruppe.filter((r) => gescheitert(f(r))).length,
+  };
+  const release = releases.find((x) => x.releaseSeq === seq) ?? null;
+  let weiter: LaufInDerKarte['weiter'] = null;
+  if (release && release.signed && zahl.bestaetigt > 0 && zahl.gescheitert === 0
+    && gruppe.every((r) => !anfrageOffen(r.fakten))) {
+    const inGruppe = new Set(gruppe.map((r) => r.deviceId));
+    const uebrige = rows.filter((r) => !inGruppe.has(r.deviceId)
+      && releaseSperre(release, r.boxArt, r.trust, r.loader) == null
+      && !(r.ist && releaseIsRunning(release.version, r.ist))
+      && !anfrageOffen(r.fakten))
+      .sort((a, b) => boxName(a).localeCompare(boxName(b), 'de'));
+    if (uebrige.length > 0) {
+      const wer = bestaetigt.length === 1
+        ? `${boxName(bestaetigt[0])} hat bestätigt${uhr(f(bestaetigt[0]).bestaetigt.am, now) ? ` (${uhr(f(bestaetigt[0]).bestaetigt.am, now)})` : ''}.`
+        : `${bestaetigt.length} Boxen haben bestätigt.`;
+      const staende = [...new Set(uebrige.map((r) => istText(r)))];
+      const k = uebrige.length;
+      const rest: Satz = staende.length === 1 && staende[0]
+        ? [` ${k} ${boxWort(k)} ${k === 1 ? 'läuft' : 'laufen'} noch auf `, { mono: staende[0] }, '.']
+        : [` ${k} ${boxWort(k)} ${k === 1 ? 'hat' : 'haben'} es noch nicht.`];
+      weiter = { text: [wer, ...rest], uebrige: uebrige.map((r) => r.deviceId) };
+    }
+  }
+  const von = f(juengste).angefragt.von;
+  return {
+    release: f(juengste).angefragt.release,
+    releaseSeq: seq,
+    deviceIds: gruppe.map((r) => r.deviceId),
+    seit: Number.isFinite(frueheste) ? uhr(new Date(frueheste).toISOString(), now) : null,
+    von: von ? actorLabel(von) : null,
+    ...zahl,
+    weiter,
+  };
+}
+
+// ── Verteil-Dialog (G6) ─────────────────────────────────────────────────────
+
+export type VerteilGruppeId = 'bereit' | 'wartet' | 'angefragt' | 'aktuell' | 'kann_nicht';
+export interface VerteilBox {
+  deviceId: string;
+  name: string;
+  text: string;
+  /** Nur „bereit" und „wartet" lassen sich anfragen. */
+  waehlbar: boolean;
+  /** Stufe 1: der Weg ist Nachrüsten, nicht dieses Release. */
+  nachruesten: boolean;
+}
+export interface VerteilGruppe { id: VerteilGruppeId; titel: string; boxen: VerteilBox[] }
+
+const VERTEIL_GRUPPEN: { id: VerteilGruppeId; titel: string }[] = [
+  { id: 'bereit', titel: 'Bereit' },
+  { id: 'wartet', titel: 'Wartet, bis sie online ist' },
+  { id: 'angefragt', titel: 'Schon angefragt' },
+  { id: 'aktuell', titel: 'Schon aktuell' },
+  { id: 'kann_nicht', titel: 'Kann nicht' },
+];
+
+/**
+ * Die Boxen des Dialogs in GENAU einer Gruppe - aus der Eignung des Servers
+ * (G1), ergänzt um „schon angefragt": eine Box mit offener Anfrage für genau
+ * dieses Release bekäme nur dieselbe Anfrage noch einmal. Ein Wort, das dieser
+ * Portal-Stand nicht kennt, landet unter „kann nicht" - nie still „bereit".
+ */
+export function verteilGruppen(e: EdgeEignung, fleet: FleetRow[], now: Date): VerteilGruppe[] {
+  const byId = new Map(fleet.map((r) => [r.deviceId, r]));
+  const sammel = new Map<VerteilGruppeId, VerteilBox[]>(VERTEIL_GRUPPEN.map((g) => [g.id, []]));
+  for (const b of e.boxen) {
+    const row = byId.get(b.deviceId);
+    const name = b.siteName?.trim() || b.label || b.externalRef;
+    const laeuft = row ? istText(row) : (versionDisplay(b.ist)?.tag ?? b.ist);
+    const gemeldet = b.gruppe as string;
+    let id: VerteilGruppeId = gemeldet === 'bereit' || gemeldet === 'wartet' || gemeldet === 'aktuell' ? gemeldet : 'kann_nicht';
+    const f = row?.fakten ?? null;
+    if ((id === 'bereit' || id === 'wartet') && anfrageOffen(f) && f!.angefragt.releaseSeq === e.releaseSeq) id = 'angefragt';
+    let text: string;
+    if (id === 'bereit') {
+      text = ['online', row?.geraetModell ?? null, laeuft ? `läuft ${laeuft}` : 'meldet keine Version'].filter(Boolean).join(' · ');
+    } else if (id === 'wartet') {
+      const seit = seitDauer(b.lastSeenAt, now);
+      text = `${seit ? `offline ${seit}` : 'noch nie gemeldet'} · bekommt die Anfrage, sobald sie sich meldet`;
+    } else if (id === 'angefragt') {
+      const um = uhr(f!.angefragt.am, now);
+      text = `angefragt${um ? ` ${um}` : ''} · die Anfrage läuft schon`;
+    } else if (id === 'aktuell') {
+      text = laeuft ? `läuft ${laeuft}` : 'läuft dieses Release';
+    } else {
+      text = b.grund ?? 'Die Box kann dieses Release nicht bekommen.';
+    }
+    sammel.get(id)!.push({
+      deviceId: b.deviceId, name, text, waehlbar: id === 'bereit' || id === 'wartet',
+      nachruesten: id === 'kann_nicht' && (row?.stand === 'hand' || row?.stufe1 === true),
+    });
+  }
+  return VERTEIL_GRUPPEN
+    .map((g) => ({ ...g, boxen: sammel.get(g.id)!.sort((a, b) => a.name.localeCompare(b.name, 'de')) }))
+    .filter((g) => g.boxen.length > 0);
+}
+
+/** Vorausgewählt: jede wählbare Box - oder nur die genannten (für „An die übrigen"). */
+export function vorauswahl(gruppen: VerteilGruppe[], nur?: string[] | null): string[] {
+  const waehlbar = gruppen.flatMap((g) => g.boxen).filter((b) => b.waehlbar).map((b) => b.deviceId);
+  return nur ? waehlbar.filter((id) => nur.includes(id)) : waehlbar;
+}
+
+/** Die erste Box bei „Erst eine Box": eine bereite (online) vor einer wartenden, in Listen-Reihenfolge. */
+export function ersteBox(gruppen: VerteilGruppe[], auswahl: string[]): string | null {
+  for (const id of ['bereit', 'wartet'] as VerteilGruppeId[]) {
+    const b = gruppen.find((g) => g.id === id)?.boxen.find((x) => auswahl.includes(x.deviceId));
+    if (b) return b.deviceId;
+  }
+  return null;
+}
+
+/** Die Boxen, die der Knopf anfragt, in Listen-Reihenfolge (bereit vor wartet). */
+export function anzufragen(gruppen: VerteilGruppe[], auswahl: string[], reihenfolge: 'eine' | 'alle', erste: string | null): string[] {
+  const reihe = gruppen.flatMap((g) => g.boxen).filter((b) => b.waehlbar && auswahl.includes(b.deviceId)).map((b) => b.deviceId);
+  if (reihenfolge === 'eine' && reihe.length > 1) return erste && reihe.includes(erste) ? [erste] : reihe.slice(0, 1);
+  return reihe;
 }
 
 // ── Braucht dich ────────────────────────────────────────────────────────────
 
 export type AufgabeTon = 'fehler' | 'halt' | 'warn' | 'hand';
-export type AufgabeKnopf = 'box' | 'fernwartung' | 'nachruesten';
+export type AufgabeKnopf = 'box' | 'fernwartung' | 'nachruesten' | 'nochmal' | 'zurueckziehen';
 export interface Aufgabe {
   id: string;
   ton: AufgabeTon;
   icon: 'alert-triangle' | 'wifi' | 'hand';
   titel: string;
   text: Satz;
-  /** Die Boxen der Aufgabe; ein Knopf wirkt auf die erste. */
+  /** Die Boxen der Aufgabe; „Box ansehen"/„Nachrüsten" wirken auf die erste. */
   deviceIds: string[];
   knoepfe: AufgabeKnopf[];
+  /** „Anfrage zurückziehen": die Boxen der Aufgabe, die eine Anfrage tragen. */
+  anfragen: string[];
+  /** „Noch einmal anfragen": dasselbe Release als NEUE Anfrage (neuer `assigned_at`, die Box versucht es wieder). */
+  nochmal: { deviceId: string; releaseSeq: number } | null;
 }
 
 function fehlerAufgabe(r: FleetRow, now: Date): Aufgabe {
@@ -654,7 +849,13 @@ function fehlerAufgabe(r: FleetRow, now: Date): Aufgabe {
       ...(ist ? [' Die Box läuft auf ', { mono: ist }, '.'] : []),
     ];
   }
-  return { id: `fehler-${r.deviceId}`, ton: 'fehler', icon: 'alert-triangle', titel, text, deviceIds: [r.deviceId], knoepfe: ['box'] };
+  // Von selbst versucht die Box es nicht noch einmal; eine neue Anfrage (neuer
+  // `assigned_at`) löst ihren Merkzettel - auch für dasselbe Release.
+  const nochmal = f ? { deviceId: r.deviceId, releaseSeq: f.angefragt.releaseSeq } : null;
+  return {
+    id: `fehler-${r.deviceId}`, ton: 'fehler', icon: 'alert-triangle', titel, text, deviceIds: [r.deviceId],
+    knoepfe: nochmal ? ['box', 'nochmal'] : ['box'], anfragen: [], nochmal,
+  };
 }
 
 function haltAufgabe(r: FleetRow): Aufgabe {
@@ -663,7 +864,7 @@ function haltAufgabe(r: FleetRow): Aufgabe {
     id: `halt-${r.deviceId}`, ton: 'halt', icon: 'alert-triangle',
     titel: `${boxName(r)}: hält das Update zurück`,
     text: [r.reason ?? 'Die Box nennt keinen Grund.', ...(lever ? [` ${lever}`] : [])],
-    deviceIds: [r.deviceId], knoepfe: ['box'],
+    deviceIds: [r.deviceId], knoepfe: ['box'], anfragen: [], nochmal: null,
   };
 }
 
@@ -678,7 +879,7 @@ function offlineAufgabe(r: FleetRow, now: Date): Aufgabe {
       'Angefragt ist ', { mono: r.fakten!.angefragt.release },
       '; die Box holt es, sobald sie sich wieder meldet. Für das Update ist nichts zu tun.',
     ],
-    deviceIds: [r.deviceId], knoepfe: ['fernwartung', 'box'],
+    deviceIds: [r.deviceId], knoepfe: ['fernwartung', 'zurueckziehen'], anfragen: [r.deviceId], nochmal: null,
   };
 }
 
@@ -705,9 +906,12 @@ function handAufgabe(rows: FleetRow[]): Aufgabe {
         ` an ${boxName(r)} hat die Box abgelehnt${f.angenommen.grund ? `: ${f.angenommen.grund}` : ''}.`);
     }
   }
+  // Eine Anfrage an eine Box mit Stufe 1 kann sie nie annehmen: zurückziehen räumt sie ab.
+  const anfragen = rows.filter((r) => !!r.fakten).map((r) => r.deviceId);
   return {
     id: `hand-${rows.map((r) => r.deviceId).join('-')}`, ton: 'hand', icon: 'hand', titel, text,
-    deviceIds: rows.map((r) => r.deviceId), knoepfe: ['nachruesten'],
+    deviceIds: rows.map((r) => r.deviceId), knoepfe: anfragen.length ? ['nachruesten', 'zurueckziehen'] : ['nachruesten'],
+    anfragen, nochmal: null,
   };
 }
 

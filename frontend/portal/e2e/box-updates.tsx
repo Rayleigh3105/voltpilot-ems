@@ -6,7 +6,9 @@ import { AppShell } from '../src/shell/AppShell';
 import { GeraeteBereich } from '../src/pages/admin/GeraeteBereich';
 import { adminApi } from '../src/admin/adminApi';
 import { keycloak } from '../src/auth';
-import { type EdgeUpdates, type FleetRow } from '../src/adminEdgeUpdates';
+import {
+  GRUND_LIGHT_AUF_UNBEKANNT, GRUND_LIGHT_STUFE_1_LOADER, type EdgeUpdates, type FleetRow,
+} from '../src/adminEdgeUpdates';
 import { type PageId } from '../src/nav';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -67,6 +69,13 @@ const fleet: FleetRow[] = [
     trust: { rootKeyIds: ['root'], trustSetKeyIds: [], trustSetGeneratedAt: null,
       trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' },
     linie: 'light', stand: 'hand', stufe1: true, istRelease: null, releasesDahinter: null, istSeit: null, fakten: null },
+  // Geräte & Updates G6: zwei Docker-Boxen auf dem älteren Release, ohne Anfrage - sie bekommen es über den Dialog.
+  { ...base, ...aelter, deviceId: 'd7', externalRef: 'edge-bsp0001', label: 'edge-bsp0001', siteName: 'Ahrenberg Werk 1',
+    tenantName: 'Ahrenberg GmbH', geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64',
+    soll: null, sollSeq: null, state: 'aktuell', stand: 'aelter', fakten: null },
+  { ...base, ...aelter, deviceId: 'd8', externalRef: 'edge-bsp0002', label: 'edge-bsp0002', siteName: 'Ahrenberg Lager',
+    tenantName: 'Ahrenberg GmbH', geraetModell: 'Mini-PC', geraetArch: 'amd64',
+    soll: null, sollSeq: null, state: 'aktuell', stand: 'aelter', fakten: null },
 ];
 const data: EdgeUpdates = {
   fleet, rollouts: [], journal: [],
@@ -84,11 +93,11 @@ const data: EdgeUpdates = {
   // Linien tragen das Urteil je Box-Art (so liefert es die API seit S0/G1).
   kpi: { known: 5, upToDate: 0, unknown: 1, inRollout: 1, failed: 0, newestRelease: 'edge-light-2026.09.12' },
   lines: [
-    { boxArt: 'docker', newestRelease: 'edge-2026.09.10', newestReleaseSeq: 42, devices: 4, known: 4, upToDate: 1,
-      releases: 2, stand: { hand: 0, fehler: 0, offline: 1, laeuft: 1, gehalten: 1, aktuell: 1, aelter: 0, unbekannt: 0 },
+    { boxArt: 'docker', newestRelease: 'edge-2026.09.10', newestReleaseSeq: 42, devices: 6, known: 6, upToDate: 1,
+      releases: 2, stand: { hand: 0, fehler: 0, offline: 1, laeuft: 1, gehalten: 1, aktuell: 1, aelter: 2, unbekannt: 0 },
       versions: [
         { version: 'edge-2026.09.10', releaseSeq: 42, devices: ['d1'] },
-        { version: 'edge-2026.09.02', releaseSeq: 41, devices: ['d2', 'd3', 'd4'] },
+        { version: 'edge-2026.09.02', releaseSeq: 41, devices: ['d2', 'd3', 'd4', 'd7', 'd8'] },
       ] },
     { boxArt: 'light', newestRelease: 'edge-light-2026.09.12', newestReleaseSeq: 43, devices: 1, known: 1, upToDate: 0,
       releases: 1, stand: { hand: 1, fehler: 0, offline: 0, laeuft: 0, gehalten: 0, aktuell: 0, aelter: 0, unbekannt: 0 },
@@ -108,6 +117,26 @@ const releaseSeite = (releaseSeq: number) => ({
     { arch: 'linux/arm64', groesse: 4475301, empfangen: 4475301, fertig: true },
   ],
 });
+// Die Eignung je Release (G1), wie die API sie aus denselben Boxen bildet.
+const eignung = (releaseSeq: number) => {
+  const rel = data.releases.find((r) => r.releaseSeq === releaseSeq)!;
+  const light = rel.boxArt === 'light';
+  const boxen = fleet.filter((r) => (light ? r.linie !== 'docker' : r.linie !== 'light')).map((r) => {
+    const seq = (v: string | null | undefined) => data.releases.find((x) => x.version === v)?.releaseSeq ?? null;
+    const offline = !r.lastSeenAt || Date.now() - Date.parse(r.lastSeenAt) > 5 * MIN;
+    let gruppe = 'bereit';
+    let grund: string | null = null;
+    if (light && r.linie == null) { gruppe = 'kann_nicht'; grund = GRUND_LIGHT_AUF_UNBEKANNT; }
+    else if (light && r.loader === 'flash') { gruppe = 'kann_nicht'; grund = GRUND_LIGHT_STUFE_1_LOADER; }
+    else if (r.istRelease === rel.version) gruppe = 'aktuell';
+    else if ((seq(r.istRelease) ?? 0) > releaseSeq) {
+      gruppe = 'kann_nicht'; grund = `Läuft schon ${r.istRelease} (neuer). Eine ältere Fassung lehnt die Box ab.`;
+    } else if (offline) { gruppe = 'wartet'; grund = 'Meldet sich gerade nicht – bekommt die Anfrage, sobald sie sich meldet.'; }
+    return { deviceId: r.deviceId, label: r.label, externalRef: r.externalRef, siteName: r.siteName,
+      tenantName: r.tenantName, ist: r.ist, gruppe, grund, lastSeenAt: r.lastSeenAt ?? null };
+  });
+  return { releaseSeq, version: rel.version, boxArt: rel.boxArt ?? 'docker', boxen, andereLinie: fleet.length - boxen.length };
+};
 const LETZTE_MELDUNG: Record<string, string | null> = {
   d4: new Date(Date.now() - 4 * 3600_000).toISOString(),
   d5: null,
@@ -116,6 +145,7 @@ Object.assign(keycloak, { tokenParsed: { name: 'Alex Beispiel', email: 'alex@exa
 Object.assign(adminApi, {
   edgeUpdates: async () => data,
   edgeRelease: async (releaseSeq: number) => releaseSeite(releaseSeq),
+  edgeEignung: async (releaseSeq: number) => eignung(releaseSeq),
   // Online-Status der Registrierung: je Box eine eigene letzte Meldung - zwei
   // frisch, eine seit 4 Std. still, eine hat sich noch nie gemeldet.
   listDevices: async () => fleet.map((d) => ({
@@ -135,7 +165,7 @@ Object.assign(adminApi, {
 function Fixture() {
   const [page, setPage] = useState<PageId>('edge-updates');
   return <AppShell page={page} onNavigate={setPage} isAdmin showOverview={false} showAddAnlage={false}
-    counts={{ sites: 6, devices: 6 }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
+    counts={{ sites: 8, devices: 8 }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
     <GeraeteBereich page={page} onNavigate={(r) => setPage(typeof r === 'string' ? r : r.page)} />
   </AppShell>;
 }

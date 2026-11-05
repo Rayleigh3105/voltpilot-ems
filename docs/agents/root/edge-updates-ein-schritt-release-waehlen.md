@@ -197,25 +197,35 @@ Feld, „Verbindung unbekannt"), laufendem Stand, Anfrage (Ziel) und den drei
 Schritten angefragt · angenommen · bestätigt aus `fakten`. Fehlt `stand` (älterer
 Server), steht eine Box „ohne Stand", nie „neuestes".
 
-Verteilt wird weiter in EINEM Schritt: Release → „Aktualisieren ▸" → Drawer mit
-„Alle Geräte" + Checkbox je Gerät (jedes trägt seinen ZUSTAND und ggf. einen
-**Einwand als HINWEIS, nie als Sperre**) → Zusammenfassung „Das passiert jetzt" →
-**Aktualisieren**. Unter den Boxen je AKTUELLER Zuweisung eine Karte mit
-Fortschritts-Rückgrat (über die ERREICHBARE Menge; offline/unbekannt stehen
-DANEBEN, nie im Nenner) und einer Zeile je Gerät (Ist · Zustand · Grund · Hebel).
-`currentRolloutViews` verbindet dafür `FleetRow.rolloutId` + `sollSeq` mit der
-Karte: der Live-Zustand einer neueren Zuweisung erscheint NIE unter dem
-Release-Kopf eines älteren Rollouts; dessen Mitgliedschaft bleibt ausschließlich
-im Journal. Der geteilte `GeraeteDrawer` weist ein Einzelgerät zu
-(`onAssign(releaseSeq)` — kein Kanal, kein Pin). Angeboten werden nur zur
-Box-Art passende, SIGNIERTE Releases, einer Edge-Light-Box mit Stufe 1 keines
-(`zuweisbareReleases`, `releaseSperre` braucht `trust`); unpassende Geräte stehen
-im Rollout-Dialog ausgegraut MIT Grund (E10), „Alle passenden Geräte" wählt sie
-nicht mit. Stufe 1 heißt ruhig „nur von Hand" (`stand = hand`, eigene Farbe), nie
-„ohne Vertrauens-Set" und nie ein Fehler. Es gibt **nirgends** einen zweiten
-Knopf; die Vier-Klassen-Grammatik ist auf `busy` (läuft von selbst, pulsiert) ·
-`blocked` · `incident` · `calm` geschrumpft, die frühere fünfte Klasse `action`
-(„SIE sind dran") ist entfallen.
+Verteilt wird weiter in EINEM Schritt, seit G6 im Dialog „Update verteilen ·
+Linie" (`pages/admin/VerteilDialog.tsx`, Einstieg „Verteilen …" der Karte oder
+„Verteilen ▸" in „Releases (n)"): (1) ein SIGNIERTES Release dieser Linie,
+(2) die Boxen in GENAU einer Gruppe aus der Eignung des Servers
+(`GET /admin/edge-updates/eignung`, G1) — bereit · wartet, bis sie online ist ·
+schon angefragt (offene Anfrage für genau dieses Release, aus `fakten`) · schon
+aktuell · kann nicht mit Grund (Stufe 1 mit „Nachrüsten"); Boxen der anderen
+Linie liefert der Server nicht, er zählt sie (`andereLinie`). Ein unbekanntes
+Gruppen-Wort ist „kann nicht", nie still „bereit". (3) Reihenfolge: „Erst eine
+Box" ist VORGESCHLAGEN (E1 A, eine bereite vor einer wartenden), „Alle n auf
+einmal" die Alternative; der Knopf sagt, was passiert („1 Box anfragen").
+Gesendet wird `createRollout` mit genau diesen Boxen — im Server wartet nichts.
+Der Lauf steht IN der Linien-Karte (`laufInDerKarte`): die jüngste Anfrage je
+Linie, offen oder seit höchstens einem Tag beendet, als drei Zahlen
+angefragt · angenommen · bestätigt aus den Fakten der HEUTIGEN Anfrage je Box —
+ein älterer Auftrag erscheint so nie als Live-Zustand eines neueren. Hat die
+erste Box bestätigt und ist nichts gescheitert, bietet der Lauf „An die übrigen
+n" an (derselbe Dialog, vorausgewählt nur die übrigen, „alle auf einmal"). Die
+Lauf-Karten unter der Liste und der alte Rollout-Drawer sind entfallen.
+„Braucht dich" trägt „Anfrage zurückziehen" (`…/update-target/revert`, für eine
+stumme Box und für die abgelehnte Anfrage an eine Box mit Stufe 1) und „Noch
+einmal anfragen" (dieselbe Anfrage neu: neuer `assigned_at`, die Box löst damit
+ihren Merkzettel `FileFailed` — `otaupdater/engine.go`, ebenso Edge Light).
+Der geteilte `GeraeteDrawer` weist ein Einzelgerät zu (`onAssign(releaseSeq)` —
+kein Kanal, kein Pin). Angeboten werden nur zur Box-Art passende, SIGNIERTE
+Releases, einer Edge-Light-Box mit Stufe 1 keines (`zuweisbareReleases`,
+`releaseSperre` braucht `trust`). Stufe 1 heißt ruhig „nur von Hand"
+(`stand = hand`, eigene Farbe), nie „ohne Vertrauens-Set" und nie ein Fehler. Es
+gibt **nirgends** einen zweiten Knopf am Gerät.
 
 ### Edge-Seite (Kurzform; Details in `edge-app/AGENTS.md`)
 

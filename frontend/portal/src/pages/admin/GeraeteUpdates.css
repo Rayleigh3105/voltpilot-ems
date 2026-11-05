@@ -156,6 +156,46 @@
 .vp-gu-tracker .warten { color: #8a5300; }
 .vp-gu-tracker .warten i { background: repeating-linear-gradient(90deg, #E0B060 0 5px, #F5E3BC 5px 10px); }
 
+/* Lauf in der Linie (G6): drei Zahlen, danach ggf. „An die übrigen" */
+.vp-gu-lauf { background: var(--vp-paleblue-start); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; }
+.vp-gu-lauf-kopf { display: flex; gap: 8px; align-items: center; font-weight: 700; color: var(--vp-navy-2); font-size: 0.92rem; }
+.vp-gu-lauf-kopf > svg { flex: none; }
+.vp-gu-drei { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.vp-gu-drei div { background: #fff; border-radius: 10px; padding: 7px 10px; }
+.vp-gu-drei b { display: block; font-size: 1.15rem; font-family: var(--vp-font-heading); }
+.vp-gu-drei small { color: var(--vp-text-gray); font-size: 0.76rem; display: block; }
+.vp-gu-lauf-fehler { margin: 0; font-size: 0.84rem; color: #B71C1C; }
+.vp-gu-weiter { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px dashed #9DB6E0; border-radius: 10px; padding: 9px 12px; font-size: 0.88rem; }
+.vp-gu-weiter > span { flex: 1 1 220px; }
+
+/* Verteil-Dialog (G6): drei Teile, je Box eine Wahl. Rendert im Modal, also
+   außerhalb des Containers .vp-gu - die Regeln hängen nicht an ihm. */
+.vp-gu-verteil { display: grid; gap: 14px; }
+.vp-gu-teil { border: 0; margin: 0; padding: 0 0 14px; border-bottom: 1px solid var(--vp-border); display: grid; gap: 8px; min-width: 0; }
+.vp-gu-teil:last-child { border-bottom: none; padding-bottom: 0; }
+.vp-gu-teil legend { font-family: var(--vp-font-heading); font-weight: 700; font-size: 0.95rem; display: flex; gap: 8px; align-items: center; padding: 0; margin-bottom: 8px; }
+.vp-gu-teil legend .n { width: 22px; height: 22px; border-radius: 50%; background: var(--vp-action); color: #fff; display: grid; place-items: center; font-size: 0.78rem; flex: none; }
+.vp-gu-teil p { margin: 0; }
+.vp-gu-wahl { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: start; border: 1px solid var(--vp-border); border-radius: 12px; padding: 10px 12px; cursor: pointer; }
+.vp-gu-wahl input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--vp-action); }
+.vp-gu-wahl > span:nth-child(2) { min-width: 0; }
+.vp-gu-wahl b { display: block; font-size: 0.93rem; overflow-wrap: anywhere; }
+.vp-gu-wahl small { display: block; font-size: 0.82rem; color: var(--vp-text-gray); overflow-wrap: anywhere; }
+.vp-gu-wahl.an { border-color: var(--vp-action); background: #F3F7FF; }
+.vp-gu-wahl.gesperrt { background: #FAFBFC; color: #7A8592; cursor: default; }
+.vp-gu-wahl:focus-within { box-shadow: 0 0 0 3px rgba(90, 141, 232, 0.25); }
+.vp-gu-wahl-gruppe { display: grid; gap: 6px; }
+.vp-gu-wahl-titel { font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--vp-text-gray); margin-top: 4px; }
+.vp-gu-link { background: none; border: 0; padding: 2px 0; font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--vp-action); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; justify-self: start; }
+.vp-gu-link:focus-visible { outline: 3px solid var(--vp-focus-ring, #5A8DE8); outline-offset: 2px; }
+.vp-gu-erste { margin-left: 30px; }
+.vp-gu-fuss-satz { margin: 0 auto 0 0; flex: 1 1 260px; align-self: center; font-size: 0.88rem; color: #3E4A57; }
+/* Am Telefon (Blatt, Fuß in umgekehrter Spalte): der Satz über den Knöpfen, kurz wie im Board. */
+@media (max-width: 720px) {
+  .vp-gu-fuss-satz { order: 3; flex: none; margin: 0; }
+  .vp-gu-fuss-lang { display: none; }
+}
+
 /* ---------- Telefon: dieselbe Auszeichnung, schmal ---------- */
 @container vp-gu (max-width: 640px) {
   .vp-gu-lage { flex-wrap: wrap; align-items: flex-start; }

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { EdgeReleaseSeite, EdgeUpdates, EdgeUpdatesRelease, FleetRow, UpdateFakten } from './adminEdgeUpdates';
 import {
-  KEIN_FILTER, aufgaben, boxZeile, boxZeilen, filterBoxen, filterZahlen, gruppen, kurzeVersion, lage,
-  linienKarten, plattformen, tracker, uhr, wann, type Satz,
+  KEIN_FILTER, anzufragen, aufgaben, boxZeile, boxZeilen, ersteBox, filterBoxen, filterZahlen, gruppen,
+  kurzeVersion, lage, linienKarten, plattformen, tracker, uhr, verteilGruppen, vorauswahl, wann, type Satz,
 } from './geraeteUpdates';
+import type { EdgeEignung } from './adminEdgeUpdates';
 
 /** Die fünf Zustände des Konzept-Boards (05.11.2026), mit denselben Boxen. */
 const NOW = new Date('2026-11-05T16:50:00+01:00');
@@ -145,6 +146,11 @@ describe('Update läuft', () => {
     expect(docker.leiter.map((s) => [s.version, s.wer, s.neuestes])).toEqual([
       ['edge-2026.11.0', 'Herzogau', true], ['edge-2026.10.7', '2 Boxen · Update läuft', false],
     ]);
+    // Der Lauf in der Karte (G6): drei Zahlen, nie ein gemischter Zustand.
+    expect(docker.lauf).toMatchObject({
+      release: 'edge-2026.11.0', releaseSeq: 61, angefragt: 3, angenommen: 2, bestaetigt: 1, gescheitert: 0,
+      seit: '15:20', von: 'alex', weiter: null,
+    });
   });
 
   it('jede Box sagt, wo sie steht: angefragt → angenommen → bestätigt', () => {
@@ -177,7 +183,8 @@ describe('Fehlgeschlagen', () => {
     expect(a.titel).toBe('Ahrenberg Werk 1: Update zurückgenommen');
     expect(text(a.text)).toBe('Die Box hat edge-2026.11.0 angenommen, der Selbsttest wurde nicht grün (Node-RED startete nicht).'
       + ' Sie läuft wieder auf edge-2026.10.7 und versucht es nicht von selbst noch einmal.');
-    expect(a.knoepfe).toEqual(['box']);
+    expect(a.knoepfe).toEqual(['box', 'nochmal']);
+    expect(a.nochmal).toEqual({ deviceId: werk.deviceId, releaseSeq: 61 });
     const z = boxZeile(werk, NOW);
     expect(z.tracker?.map((t) => [t.zustand, t.wort])).toEqual([
       ['fertig', 'angefragt'], ['fertig', 'angenommen'], ['fehler', 'zurückgenommen'],
@@ -213,7 +220,8 @@ describe('Box offline', () => {
     expect(a.titel).toBe(`Ahrenberg Lager ist seit 4${NB}Std. offline`);
     expect(text(a.text)).toBe('Letzte Meldung 13:12. Angefragt ist edge-2026.11.0; die Box holt es, sobald sie sich '
       + 'wieder meldet. Für das Update ist nichts zu tun.');
-    expect(a.knoepfe).toEqual(['fernwartung', 'box']);
+    expect(a.knoepfe).toEqual(['fernwartung', 'zurueckziehen']);
+    expect(a.anfragen).toEqual([lager.deviceId]);
     const z = boxZeile(lager, NOW);
     expect(z.verbindung).toEqual({ zustand: 'offline', text: 'Meldet sich nicht', gesehen: `seit 4${NB}Std. · zuletzt 13:12` });
     expect(z.urteil).toEqual({ ton: 'off', text: 'Stand von 13:12' });
@@ -264,7 +272,9 @@ describe('Stufe 1 (Stand vom 05.11.)', () => {
       + ' Einmal nachrüsten (ca. 1 Min. Unterbrechung), danach kommt jede Fassung über das Portal.'
       + ' Die Anfrage 11.4 an Zuhause hat die Box abgelehnt: Vertrauens-Set fehlt.');
     expect(a.deviceIds).toEqual([dirolf.deviceId, zuhause.deviceId]);
-    expect(a.knoepfe).toEqual(['nachruesten']);
+    expect(a.knoepfe).toEqual(['nachruesten', 'zurueckziehen']);
+    // Zurückgezogen wird nur, was angefragt ist: die abgelehnte Anfrage an Zuhause.
+    expect(a.anfragen).toEqual([zuhause.deviceId]);
   });
 
   it('die Linien-Karte: Leiter aus der API, „Nachrüsten" statt „Verteilen"', () => {
@@ -358,3 +368,108 @@ describe('Grenzen', () => {
       { schritt: 'bestaetigt', zustand: 'fehler', wort: 'verstummt' });
   });
 });
+
+describe('An die übrigen (E1 A, G6)', () => {
+  const herzogau = box('Herzogau', 'docker', { ...aktuell(R.d110),
+    fakten: fakten({ release: R.d110, am: vor(90 * MIN), angenommenAm: vor(85 * MIN), bestaetigt: 'ja', bestaetigtAm: vor(79 * MIN) }) });
+  const werk = box('Ahrenberg Werk 1', 'docker', { ist: 'edge-2026.10.7-c39b18d9c2a4', istRelease: 'edge-2026.10.7',
+    releasesDahinter: 1, stand: 'aelter' });
+  const lager = box('Ahrenberg Lager', 'docker', { ist: 'edge-2026.10.7-c39b18d9c2a4', istRelease: 'edge-2026.10.7',
+    releasesDahinter: 1, stand: 'aelter', lastSeenAt: vor(40 * MIN) });
+
+  it('nach der ersten Bestätigung bietet die Karte die übrigen an - ein neuer Ein-Schritt-Lauf', () => {
+    const [docker] = linienKarten(daten([herzogau, werk, lager, ...lightRuhig()]), NOW);
+    expect(docker.aktion).toBe('weiter');
+    expect(docker.lauf).toMatchObject({ angefragt: 1, angenommen: 1, bestaetigt: 1 });
+    expect(text(docker.lauf!.weiter!.text)).toBe('Herzogau hat bestätigt (15:31). 2 Boxen laufen noch auf edge-2026.10.7.');
+    expect(docker.lauf!.weiter!.uebrige).toEqual([lager.deviceId, werk.deviceId]);
+  });
+
+  it('kein „weiter", solange die Anfrage offen ist oder etwas gescheitert ist', () => {
+    const offen = { ...herzogau, fakten: fakten({ release: R.d110, bestaetigt: 'laeuft' }), stand: 'laeuft' };
+    expect(linienKarten(daten([offen, werk]), NOW)[0].lauf?.weiter).toBeNull();
+    const zurueck = { ...werk, stand: 'fehler',
+      fakten: fakten({ release: R.d110, bestaetigt: 'zurueckgenommen', bestaetigtAm: vor(30 * MIN) }) };
+    const karte = linienKarten(daten([herzogau, zurueck, lager]), NOW)[0];
+    expect(karte.lauf).toMatchObject({ angefragt: 2, bestaetigt: 1, gescheitert: 1, weiter: null });
+  });
+
+  it('eine Bestätigung von vorgestern ist kein Lauf mehr', () => {
+    const alt = { ...herzogau, fakten: fakten({ release: R.d110, am: vor(50 * STD), bestaetigt: 'ja', bestaetigtAm: vor(49 * STD) }) };
+    const [docker] = linienKarten(daten([alt, werk]), NOW);
+    expect(docker.lauf).toBeNull();
+    expect(docker.aktion).toBe('verteilen');
+  });
+});
+
+describe('Verteil-Dialog (G6)', () => {
+  const herzogau = box('Herzogau', 'docker', { ist: 'edge-2026.10.7-c39b18d9c2a4', istRelease: 'edge-2026.10.7',
+    releasesDahinter: 1, stand: 'aelter' });
+  const werk = box('Ahrenberg Werk 1', 'docker', { ist: 'edge-2026.10.7-c39b18d9c2a4', istRelease: 'edge-2026.10.7',
+    releasesDahinter: 1, stand: 'aelter', geraetModell: 'Raspberry Pi 4' });
+  const lager = box('Ahrenberg Lager', 'docker', { ist: 'edge-2026.10.7-c39b18d9c2a4', istRelease: 'edge-2026.10.7',
+    releasesDahinter: 1, stand: 'offline', lastSeenAt: vor(40 * MIN) });
+  const neu = box('Neubau', 'docker', { ...aktuell(R.d110) });
+  const halle = box('Halle', 'docker', { ist: 'edge-2026.10.7-c39b18d9c2a4', istRelease: 'edge-2026.10.7', stand: 'laeuft',
+    fakten: fakten({ release: R.d110, angenommen: 'offen' }) });
+  const zuhause = box('Zuhause', 'light', { stand: 'hand', stufe1: true });
+  const fleet = [herzogau, werk, lager, neu, halle, zuhause];
+  const eignung: EdgeEignung = {
+    releaseSeq: 61, version: 'edge-2026.11.0', boxArt: 'docker', andereLinie: 1,
+    boxen: [
+      { deviceId: herzogau.deviceId, label: null, externalRef: 'edge-45gz7da', siteName: 'Herzogau', tenantName: null,
+        ist: herzogau.ist, gruppe: 'bereit', grund: null, lastSeenAt: vor(8_000) },
+      { deviceId: werk.deviceId, label: null, externalRef: 'edge-bsp0001', siteName: 'Ahrenberg Werk 1', tenantName: null,
+        ist: werk.ist, gruppe: 'bereit', grund: null, lastSeenAt: vor(14_000) },
+      { deviceId: lager.deviceId, label: null, externalRef: 'edge-bsp0002', siteName: 'Ahrenberg Lager', tenantName: null,
+        ist: lager.ist, gruppe: 'wartet', grund: 'Meldet sich gerade nicht – bekommt die Anfrage, sobald sie sich meldet.',
+        lastSeenAt: vor(40 * MIN) },
+      { deviceId: neu.deviceId, label: null, externalRef: 'edge-neu', siteName: 'Neubau', tenantName: null,
+        ist: neu.ist, gruppe: 'aktuell', grund: null, lastSeenAt: vor(8_000) },
+      { deviceId: halle.deviceId, label: null, externalRef: 'edge-halle', siteName: 'Halle', tenantName: null,
+        ist: halle.ist, gruppe: 'bereit', grund: null, lastSeenAt: vor(8_000) },
+      { deviceId: 'fremd', label: 'Box X', externalRef: 'edge-fremd', siteName: null, tenantName: null,
+        ist: null, gruppe: 'irgendwas', grund: null, lastSeenAt: null },
+    ],
+  };
+
+  it('jede Box in genau einer Gruppe, mit dem Satz, was sie tut', () => {
+    const g = verteilGruppen(eignung, fleet, NOW);
+    expect(g.map((x) => [x.titel, x.boxen.map((b) => b.name)])).toEqual([
+      ['Bereit', ['Ahrenberg Werk 1', 'Herzogau']],
+      ['Wartet, bis sie online ist', ['Ahrenberg Lager']],
+      ['Schon angefragt', ['Halle']],
+      ['Schon aktuell', ['Neubau']],
+      ['Kann nicht', ['Box X']],
+    ]);
+    expect(g[0].boxen[0].text).toBe('online · Raspberry Pi 4 · läuft edge-2026.10.7');
+    expect(g[1].boxen[0].text).toBe(`offline seit 40${NB}Min. · bekommt die Anfrage, sobald sie sich meldet`);
+    expect(g[2].boxen[0]).toMatchObject({ waehlbar: false, text: 'angefragt 15:20 · die Anfrage läuft schon' });
+    // Ein Wort, das dieses Portal nicht kennt, ist nie still „bereit".
+    expect(g[4].boxen[0]).toMatchObject({ waehlbar: false, text: 'Die Box kann dieses Release nicht bekommen.' });
+  });
+
+  it('wählt die Bereiten und Wartenden vor; „Erst eine Box" nimmt eine bereite', () => {
+    const g = verteilGruppen(eignung, fleet, NOW);
+    const auswahl = vorauswahl(g);
+    expect(auswahl).toEqual([werk.deviceId, herzogau.deviceId, lager.deviceId]);
+    expect(ersteBox(g, auswahl)).toBe(werk.deviceId);
+    expect(anzufragen(g, auswahl, 'eine', werk.deviceId)).toEqual([werk.deviceId]);
+    expect(anzufragen(g, auswahl, 'eine', herzogau.deviceId)).toEqual([herzogau.deviceId]);
+    expect(anzufragen(g, auswahl, 'alle', null)).toEqual([werk.deviceId, herzogau.deviceId, lager.deviceId]);
+    // „An die übrigen": nur die genannten, und nie eine Box, die nicht wählbar ist.
+    expect(vorauswahl(g, [lager.deviceId, neu.deviceId])).toEqual([lager.deviceId]);
+    expect(ersteBox(g, [lager.deviceId])).toBe(lager.deviceId);
+  });
+
+  it('Stufe 1 steht unter „kann nicht" mit dem Weg zum Nachrüsten', () => {
+    const e: EdgeEignung = { releaseSeq: 60, version: 'edge-light-2026.11.4', boxArt: 'light', andereLinie: 5, boxen: [
+      { deviceId: zuhause.deviceId, label: null, externalRef: 'edge-tgjn9gd', siteName: 'Zuhause', tenantName: null,
+        ist: null, gruppe: 'kann_nicht', grund: 'Release für Edge Light – diese Box hat Stufe 1 …', lastSeenAt: vor(8_000) },
+    ] };
+    const [g] = verteilGruppen(e, fleet, NOW);
+    expect(g.boxen[0]).toMatchObject({ waehlbar: false, nachruesten: true, text: 'Release für Edge Light – diese Box hat Stufe 1 …' });
+    expect(vorauswahl([g])).toEqual([]);
+  });
+});
+

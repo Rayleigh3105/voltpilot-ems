@@ -4,10 +4,8 @@ import {
   blockerLever,
   boxArtLabel,
   canRollOut,
-  candidates,
   crossoverHint,
   crossoverState,
-  currentRolloutViews,
   eventLabel,
   freshnessLabel,
   isLoud,
@@ -15,15 +13,10 @@ import {
   kpiTone,
   kpiUnknownNote,
   loudBanner,
-  progressBackbone,
   releaseBoxArt,
   releaseSperre,
-  restingLine,
-  rolloutDeviceName,
-  rolloutStateLabel,
   signatureLabel,
   sortFleet,
-  startSummary,
   stateLabel,
   trustSetSpread,
   stufe1,
@@ -33,12 +26,9 @@ import {
   geraetZeile,
   loaderLabel,
   type DeviceTrust,
-  type EdgeUpdates,
   type EdgeUpdatesRelease,
   type FleetRow,
   type JournalEntry,
-  type Rollout,
-  type RolloutDevice,
 } from './adminEdgeUpdates';
 
 const row = (over: Partial<FleetRow> = {}): FleetRow => ({
@@ -234,17 +224,6 @@ describe('Puls-Kennzahl', () => {
   });
 });
 
-describe('Aktualisierung', () => {
-  it('benennt jeden Zustand einer Aktualisierung', () => {
-    expect(rolloutStateLabel('active').tone).toBe('busy');
-    expect(rolloutStateLabel('done').tone).toBe('ok');
-    // Die Zustände der Wellen-Ära (paused/halted) gibt es nicht mehr - und ein
-    // Wort, das dieser Stand nicht kennt, wird NIE zu „läuft".
-    expect(rolloutStateLabel('paused').label).toBe('unbekannt');
-    expect(rolloutStateLabel('irgendwas').label).toBe('unbekannt');
-  });
-});
-
 describe('Journal', () => {
   const e = (over: Partial<JournalEntry>): JournalEntry => ({
     id: 1, at: '2026-08-05T08:00:00Z', actor: 'admin', event: 'rollout_created',
@@ -388,165 +367,9 @@ describe('TOFU-Abschluss (Stufe 4)', () => {
   });
 });
 
-// ── Beobachten: Namen, Fortschritt, Frische ────────────────────────────────
+// ── Beobachten: Frische ────────────────────────────────────────────────────
 
-const rolloutDev = (over: Partial<RolloutDevice> = {}): RolloutDevice => ({
-  deviceId: 'd1', label: 'edge-a1', siteName: 'Pilsting', tenantName: 'Kunde A',
-  state: 'bestaetigt', reason: null, since: null, ...over,
-});
-
-const rolloutOf = (over: Partial<Rollout> = {}): Rollout => ({
-  id: 'r1', releaseVersion: 'edge-2026.08.1', releaseSeq: 14,
-  state: 'active', createdBy: 'admin', createdAt: '2026-08-05T09:12:00Z',
-  total: 0, confirmed: 0, failed: 0, devices: [], ...over,
-});
-
-const updates = (over: Partial<EdgeUpdates> = {}): EdgeUpdates => ({
-  releases: [], rollouts: [], fleet: [], journal: [],
-  kpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
-  ...over,
-});
-
-describe('Namen in der Geräte-Liste', () => {
-  it('rendert NIE eine UUID', () => {
-    const got = rolloutDeviceName(rolloutDev({
-      deviceId: '7a1f0c2e-1111-2222-3333-444455556666', siteName: null, label: null,
-    }));
-    expect(got.name).not.toContain('7a1f0c2e-1111');
-    expect(got.name).toContain('Entferntes Gerät');
-    expect(got.removed).toBe(true);
-  });
-
-  it('nimmt den Schnappschuss, wenn das Gerät weg ist - und sagt es', () => {
-    const got = rolloutDeviceName(rolloutDev({ siteName: 'Pilsting', removed: true }));
-    expect(got.name).toBe('Pilsting (entfernt)');
-    expect(got.removed).toBe(true);
-  });
-
-  it('nennt ein lebendes Gerät schlicht beim Namen', () => {
-    expect(rolloutDeviceName(rolloutDev())).toEqual({ name: 'Pilsting', removed: false });
-  });
-});
-
-describe('Fortschritts-Rückgrat', () => {
-  const board = (states: string[]) => ({
-    rollout: rolloutOf({ devices: states.map((_, i) => rolloutDev({ deviceId: `d${i}` })) }),
-    fleet: states.map((s, i) => row({ deviceId: `d${i}`, state: s })),
-  });
-
-  it('zählt je Klasse und hält offline AUS dem Nenner', () => {
-    const b = board(['bestaetigt', 'bestaetigt', 'wendet_an', 'blockiert', 'offline_holt_nach']);
-    const view = progressBackbone(b.rollout, b.fleet)!;
-    // Vier erreichbare Geräte - das offline-Gerät steht daneben, nie im Nenner.
-    expect(view.total).toBe(4);
-    expect(view.segments.find((s) => s.cls === 'calm')?.count).toBe(2);
-    expect(view.segments.find((s) => s.cls === 'busy')?.count).toBe(1);
-    expect(view.segments.find((s) => s.cls === 'blocked')?.count).toBe(1);
-    expect(view.asideNote).toContain('1 offline');
-    expect(view.asideNote).toContain('zählt nicht in die Quote');
-  });
-
-  it('nennt Geräte ohne Meldung getrennt, statt sie als Rückstand zu zählen', () => {
-    const b = board(['bestaetigt', 'unbekannt']);
-    const view = progressBackbone(b.rollout, b.fleet)!;
-    expect(view.total).toBe(1);
-    expect(view.asideNote).toContain('1 ohne Meldung');
-  });
-
-  it('folgt der LIVE-Wahrheit, nicht dem eingefrorenen Zustand der Zeile', () => {
-    const view = progressBackbone(
-      rolloutOf({ devices: [rolloutDev({ deviceId: 'd1', state: 'fehlgeschlagen' })] }),
-      [row({ deviceId: 'd1', state: 'bestaetigt' })],
-    )!;
-    expect(view.segments.find((s) => s.cls === 'calm')?.count).toBe(1);
-    expect(view.segments.find((s) => s.cls === 'incident')).toBeUndefined();
-  });
-
-  it('gibt es ohne Aktualisierung gar nicht', () => {
-    expect(progressBackbone(null, [])).toBeNull();
-  });
-});
-
-describe('Aktuelle Aktualisierungs-Karten', () => {
-  it('zeigt den Live-Status nur beim aktuell zugewiesenen Release', () => {
-    const current = rolloutOf({
-      id: 'r26',
-      releaseVersion: 'edge-2026.08.26',
-      releaseSeq: 26,
-      devices: [rolloutDev({ deviceId: 'd1', state: 'laedt' })],
-    });
-    const previous = rolloutOf({
-      id: 'r25',
-      releaseVersion: 'edge-2026.08.25',
-      releaseSeq: 25,
-      devices: [rolloutDev({ deviceId: 'd1', state: 'laedt' })],
-    });
-
-    const views = currentRolloutViews([current, previous], [row({
-      deviceId: 'd1',
-      soll: 'edge-2026.08.26',
-      sollSeq: 26,
-      rolloutId: 'r26',
-      state: 'laedt',
-    })]);
-
-    expect(views.map((view) => view.releaseVersion)).toEqual(['edge-2026.08.26']);
-  });
-
-  it('behält parallele aktuelle Releases für verschiedene Geräte sichtbar', () => {
-    const first = rolloutOf({
-      id: 'r1', releaseSeq: 26,
-      devices: [rolloutDev({ deviceId: 'd1' })],
-    });
-    const second = rolloutOf({
-      id: 'r2', releaseSeq: 25,
-      devices: [rolloutDev({ deviceId: 'd2' })],
-    });
-
-    expect(currentRolloutViews([first, second], [
-      row({ deviceId: 'd1', sollSeq: 26, rolloutId: 'r1' }),
-      row({ deviceId: 'd2', sollSeq: 25, rolloutId: 'r2' }),
-    ])).toHaveLength(2);
-  });
-});
-
-describe('Ruhezustand + Bezugszeit', () => {
-  it('sagt in EINEM Satz, wie die Flotte steht', () => {
-    const line = restingLine(updates({
-      kpi: { known: 4, upToDate: 4, unknown: 1, inRollout: 0, failed: 0,
-        newestRelease: 'edge-2026.08.1' },
-    }))!;
-    expect(line).toContain('4/4 Geräte auf edge-2026.08.1');
-    // „unbekannt" ist NIE „veraltet" - auch nicht in der Kurzform.
-    expect(line).toContain('unbekannt, nicht veraltet');
-    expect(line).toContain('Gerade wird nichts aktualisiert');
-  });
-
-  it('sagt den Stand JE LINIE, sobald der Server sie liefert (S0)', () => {
-    const line = restingLine(updates({
-      kpi: { known: 6, upToDate: 1, unknown: 0, inRollout: 0, failed: 0,
-        newestRelease: 'edge-light-2026.11.4' },
-      lines: [
-        { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 58, devices: 3, known: 3, upToDate: 3 },
-        { boxArt: 'light', newestRelease: 'edge-light-2026.11.4', newestReleaseSeq: 60, devices: 3, known: 3, upToDate: 1 },
-      ],
-    }))!;
-    expect(line).toContain('Docker-Box: 3/3 auf edge-2026.10.7 ✓');
-    expect(line).toContain('Edge Light: 1/3 auf edge-light-2026.11.4 ✓');
-    expect(line).not.toContain('1/6');
-  });
-
-  it('behauptet ohne Register keinen Maßstab', () => {
-    const line = restingLine(updates({
-      kpi: { known: 2, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
-    }))!;
-    expect(line).toContain('Kein Release im Register');
-  });
-
-  it('schweigt, solange eine Aktualisierung läuft', () => {
-    expect(restingLine(updates({ rollouts: [rolloutOf()] }))).toBeNull();
-  });
-
+describe('Bezugszeit', () => {
   it('nennt die Bezugszeit in Worten', () => {
     const t = 1_000_000_000_000;
     expect(freshnessLabel(t, t + 2_000)).toBe('Stand: gerade eben');
@@ -554,53 +377,6 @@ describe('Ruhezustand + Bezugszeit', () => {
     expect(freshnessLabel(t, t + 120_000)).toContain('2');
     // Eine Zukunft rechnet nie negativ.
     expect(freshnessLabel(t, t - 5_000)).toBe('Stand: gerade eben');
-  });
-});
-
-describe('Aktualisieren: Geräte-Auswahl + Zusammenfassung', () => {
-  it('zeigt je Gerät den ZUSTAND und nennt, was dagegen spricht - als HINWEIS', () => {
-    // Seit dem Ein-Schritt-Umbau gibt es keine Vorbedingung mehr: der Einwand
-    // erklärt, er sperrt nicht. Ein „festgenagelt" gibt es gar nicht mehr.
-    const list = candidates([
-      row({ deviceId: 'a', siteName: 'A', state: 'bestaetigt' }),
-      row({ deviceId: 'b', siteName: 'B', state: 'offline_holt_nach' }),
-      row({ deviceId: 'c', siteName: 'C', state: 'unbekannt' }),
-    ]);
-    const byName = new Map(list.map((c) => [c.name, c]));
-    expect(byName.get('A')!.caveat).toBeNull();
-    expect(byName.get('B')!.caveat).toContain('nachgeholt');
-    expect(byName.get('C')!.caveat).toContain('noch keinen Stand');
-    // JEDES Gerät bleibt wählbar - die Liste kennt keine Sperre.
-    expect(list).toHaveLength(3);
-  });
-
-  it('nennt einen offenen Crossover als Einwand - dort wirkt kein Release', () => {
-    const list = candidates([row({
-      deviceId: 'a', siteName: 'A', state: 'bestaetigt',
-      trust: { rootKeyIds: [], trustSetKeyIds: [], trustSetGeneratedAt: null,
-        trustSetError: 'kein Anker' },
-    })]);
-    expect(list[0].caveat).toContain('Vertrauen');
-  });
-
-  it('sagt vor dem Klick, was passiert - INKLUSIVE dessen, was nicht sofort passiert', () => {
-    const lines = startSummary(['a', 'd'], [
-      row({ deviceId: 'a', siteName: 'Pilsting' }),
-      row({ deviceId: 'b', siteName: 'B' }),
-      row({ deviceId: 'd', siteName: 'D', state: 'offline_holt_nach' }),
-    ]);
-    const text = lines.join(' ');
-    expect(text).toContain('2 Geräte');
-    expect(text).toContain('SOFORT');
-    expect(text).toContain('aktualisieren sich selbst');
-    // Das sieht später wie ein Fehler aus, wenn es hier nicht angekündigt wurde.
-    expect(text).toContain('nachgeholt');
-    // Der Satz, der den ganzen Umbau trägt.
-    expect(text).toContain('niemand muss an ein Gerät');
-  });
-
-  it('behauptet ohne Auswahl gar nichts', () => {
-    expect(startSummary([], [row()])).toEqual([]);
   });
 });
 
@@ -754,28 +530,4 @@ describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
       + 'kommt jede Fassung über das Portal.');
   });
 
-  it('graut im Rollout-Dialog unpassende Geräte aus - mit Grund, am Ende der Liste', () => {
-    const fleet = [
-      row({ deviceId: 'mango', siteName: 'Hof Linde', state: 'fehlgeschlagen', boxArt: 'light' }),
-      row({ deviceId: 'box', siteName: 'Pilsting', boxArt: 'docker' }),
-    ];
-    const c = candidates(fleet, rel({}));
-    expect(c.map((x) => x.deviceId)).toEqual(['box', 'mango']);
-    expect(c[0].sperre).toBeNull();
-    expect(c[1].sperre).toContain('diese Box ist eine Edge Light');
-    expect(c[1].boxArt).toBe('light');
-    // Ohne Release-Bezug gibt es keine Sperre (und die alte Ordnung bleibt).
-    expect(candidates(fleet).map((x) => x.sperre)).toEqual([null, null]);
-  });
-
-  it('graut im Rollout-Dialog eines Edge-Light-Releases die Boxen mit Stufe 1 aus (S0)', () => {
-    const fleet = [
-      row({ deviceId: 'zuhause', siteName: 'Zuhause', boxArt: 'light', trust: pilotTrust }),
-      row({ deviceId: 'gate', siteName: 'VoltPilotGATE', boxArt: 'light', trust: stufe2Trust }),
-    ];
-    const c = candidates(fleet, rel({ releaseSeq: 41, version: 'edge-light-2026.11.4', boxArt: 'light' }));
-    expect(c.map((x) => x.deviceId)).toEqual(['gate', 'zuhause']);
-    expect(c[0].sperre).toBeNull();
-    expect(c[1].sperre).toContain('diese Box hat Stufe 1');
-  });
 });

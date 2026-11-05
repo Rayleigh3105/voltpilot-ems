@@ -1,7 +1,6 @@
 /* Geteilte Stile des Geräte-Bereichs (Updates, Registrierung). Die Seite
    „Updates" selbst trägt seit Geräte & Updates G5 ihre Stile in
-   GeraeteUpdates.css; hier bleibt, was Registrierung, Drawer und der
-   Verteil-Dialog brauchen. */
+   GeraeteUpdates.css; hier bleibt, was Registrierung und Drawer brauchen. */
 .vp-box-filters { display: flex; flex-wrap: wrap; gap: var(--vp-space-2); padding: 0 var(--vp-space-5) var(--vp-space-4); }
 .vp-box-filters button { display: inline-flex; align-items: center; gap: var(--vp-space-2); min-height: 44px; padding: var(--vp-space-2) var(--vp-space-3); border: 1px solid var(--vp-border); border-radius: var(--vp-radius-sm); background: var(--vp-surface); color: var(--vp-text-muted); font: inherit; font-size: .8rem; cursor: pointer; }
 .vp-box-filters button[aria-pressed="true"] { background: var(--vp-tint); border-color: var(--vp-action); color: var(--vp-action); font-weight: 600; }
@@ -9,10 +8,6 @@
 .vp-box-filters button:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
 .vp-box-filters button span { font-variant-numeric: tabular-nums; }
 .vp-box-art { display: block; margin-top: var(--vp-space-2); }
-/* Rollout-Dialog: ein Gerät, auf das das Release nicht passt (Box-Art) -
-   ausgegraut, aber mit seinem Grund sichtbar (E10). */
-.vp-candidate-gesperrt { color: var(--vp-text-muted); cursor: not-allowed; }
-.vp-candidate-gesperrt input { cursor: not-allowed; }
 .vp-box-support { padding: var(--vp-space-4) var(--vp-space-5); margin-top: var(--vp-space-5); }
 .vp-box-support summary { cursor: pointer; min-height: 44px; align-content: center; font-weight: 600; }
 .vp-box-support summary small { color: var(--vp-text-muted); font-weight: 400; }
@@ -23,7 +18,6 @@
 }
 
 .vp-seg.vp-bereich-tabs button.active { color: var(--vp-action); }
-.vp-edge-updates .vp-ustate-busy { color: var(--vp-action); }
 @media (max-width: 720px) {
   .vp-edge-updates .vp-admin-head { margin-bottom: var(--vp-space-4); gap: var(--vp-space-3); }
   .vp-edge-updates .vp-admin-head .actions { margin-top: 0; }
