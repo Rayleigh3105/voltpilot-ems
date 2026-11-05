@@ -15,7 +15,7 @@ const BELEGE = process.env.BELEGE;
 async function springe(page: Page, mandant: string) {
   await page.goto('/e2e/mandantensicht-navigation.html#/mandanten');
   await page.getByRole('button', { name: `Details zu ${mandant}` }).click();
-  await page.getByRole('dialog', { name: mandant }).getByRole('button', { name: /In Mandanten-Ansicht springen/ }).click();
+  await page.getByRole('region', { name: mandant }).getByRole('button', { name: /In Mandanten-Ansicht springen/ }).click();
 }
 
 /** Die Bereiche der Anlage: Seitenleiste am Rechner, Telefon-Leiste am Telefon - dieselben Wörter, dieselbe Folge. */

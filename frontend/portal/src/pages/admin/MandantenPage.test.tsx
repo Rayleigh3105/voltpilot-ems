@@ -25,7 +25,12 @@ vi.mock('../../admin/adminApi', () => ({
   },
 }));
 
-const { MandantenPage } = await import('./MandantenPage');
+const { MandantenPage, mandantAusHash, mandantHash } = await import('./MandantenPage');
+
+// Die Mandanten-Seite steht in der Adresse; jeder Fall beginnt auf der Liste.
+beforeEach(() => {
+  window.location.hash = '';
+});
 
 const TENANT = {
   id: 't-1',
@@ -82,6 +87,28 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Aktionen für anna' }));
     expect(screen.queryByRole('menuitem', { name: 'Passwort zurücksetzen' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Benutzer anlegen' })).toBeDisabled();
+    // Der Grund steht sichtbar daneben, nicht nur ein grauer Knopf.
+    expect(screen.getByRole('button', { name: 'Benutzer anlegen' })).toHaveAccessibleDescription(
+      /Weitere Benutzer und Startpasswörter vergibt der Kundenadministrator im Portal/,
+    );
+  });
+
+  it('öffnet den Mandanten als Seite mit Adresse, nicht als Dialog, und führt zurück zur Liste', async () => {
+    openDetail();
+    expect(await screen.findByRole('region', { name: TENANT.name })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(window.location.hash).toBe('#/mandanten?mandant=t-1');
+    expect(screen.queryByRole('button', { name: `Details zu ${TENANT.name}` })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Alle Mandanten' }));
+    expect(screen.getByRole('button', { name: `Details zu ${TENANT.name}` })).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/mandanten');
+  });
+
+  it('liest den Mandanten nur aus der eigenen Adresse', () => {
+    expect(mandantAusHash(mandantHash('a b'))).toBe('a b');
+    expect(mandantAusHash('#/mandanten')).toBeNull();
+    expect(mandantAusHash('#/werkstatt?mandant=x')).toBeNull();
+    expect(mandantHash(null)).toBe('#/mandanten');
   });
 
   it('bearbeitet einen Benutzer, ohne den Anmeldenamen anzufassen', async () => {
@@ -157,7 +184,7 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
 
   it('spricht durchgehend von der Mandanten-Ansicht (F7, keine Umbenennung)', async () => {
     openDetail();
-    const drawer = await screen.findByRole('dialog', { name: TENANT.name });
+    const drawer = await screen.findByRole('region', { name: TENANT.name });
     expect(
       within(drawer).getByRole('button', { name: /In Mandanten-Ansicht springen/ }),
     ).toBeInTheDocument();
@@ -168,11 +195,12 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
   });
 
   it('verspricht den Sprung wieder ohne Bedingung: Seite und Dialog nennen den Umschalter, keine Unterstützung', async () => {
-    openDetail();
-    const drawer = await screen.findByRole('dialog', { name: TENANT.name });
+    render(<MandantenPage tenants={[TENANT]} onReloadTenants={vi.fn()} onJumpToTenant={vi.fn()} />);
     // Seit dem 26.10.2026 ist der Umschalter wieder offen: die Plattform springt ohne Unterstützung hinein.
     expect(screen.getByText(/oben über den Mandanten-Umschalter in die Ansicht eines Mandanten springen/)).toBeInTheDocument();
-    expect(within(drawer).getByText(/Über den Mandanten-Umschalter oben \(oder den Knopf unten\) sehen Sie Anlagen/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: `Details zu ${TENANT.name}` }));
+    const drawer = await screen.findByRole('region', { name: TENANT.name });
+    expect(within(drawer).getByText(/„In Mandanten-Ansicht springen“ zeigt Anlagen, Geräte und Übersicht wie der Kunde/)).toBeInTheDocument();
     expect(within(drawer).getByText(/Eine Unterstützung oder ein Notfall-Zugriff ist dafür\s+nicht nötig/)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain('öffnet sich nur');
     expect(document.body.textContent).not.toContain('beschränkt auf die Standorte Ihrer Unterstützung');

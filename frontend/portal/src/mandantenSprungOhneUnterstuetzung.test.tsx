@@ -83,7 +83,7 @@ async function springe(m: { name: string }) {
   render(<App initialAuth />);
   // Die Mandanten-Seite und ihr API-Modul werden nachgeladen - die erste Zeile braucht länger als die Vorgabe.
   fireEvent.click(await screen.findByRole('button', { name: `Details zu ${m.name}` }, { timeout: 15000 }));
-  const dialog = await screen.findByRole('dialog');
+  const dialog = await screen.findByRole('region', { name: m.name });
   fireEvent.click(within(dialog).getByRole('button', { name: /In Mandanten-Ansicht springen/ }));
 }
 

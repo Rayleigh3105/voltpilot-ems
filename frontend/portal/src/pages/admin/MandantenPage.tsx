@@ -26,6 +26,7 @@ import { CreateUserDrawer } from './CreateUserDrawer';
 import { EditUserDrawer } from './UserDrawers';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { RowMenu } from '../../components/RowMenu';
+import './Mandanten.css';
 import type { PageId } from '../../nav';
 
 /**
@@ -58,13 +59,69 @@ export function MandantenPage({
   tenantsError?: boolean;
 }) {
   const [addOpen, setAddOpen] = useState(false);
-  const [detail, setDetail] = useState<Tenant | null>(null);
+  // Der geöffnete Mandant ist eine eigene Seite mit Adresse (`#/mandanten?mandant=<id>`), kein Dialog:
+  // Benutzer, Anlagen, Unterstützung und Offboarding brauchen Platz, und ihre Rückfragen gehen
+  // dann von einer Seite auf statt als Dialog über einem Dialog.
+  const [detailId, setDetailId] = useState<string | null>(() => mandantAusHash(window.location.hash));
+  useEffect(() => {
+    const onHash = () => setDetailId(mandantAusHash(window.location.hash));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  const detail = detailId ? tenants.find((t) => t.id === detailId) ?? null : null;
+
+  function oeffne(t: Tenant) {
+    setDetailId(t.id);
+    window.location.hash = mandantHash(t.id);
+    window.scrollTo?.({ top: 0 });
+  }
+  function zurueck() {
+    const zuletzt = detailId;
+    setDetailId(null);
+    window.location.hash = mandantHash(null);
+    // Zurück auf die Zeile, aus der man kam (Tastatur und Bildschirmleser verlieren den Ort nicht).
+    requestAnimationFrame(() => {
+      if (zuletzt) document.querySelector<HTMLElement>(`[data-mandant="${zuletzt.replace(/["\\]/g, '')}"]`)?.focus();
+    });
+  }
 
   const addButton = (
     <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
       Mandant anlegen
     </Button>
   );
+
+  if (detailId) {
+    if (detail) {
+      return (
+        <TenantDetailSeite
+          key={detail.id}
+          tenant={detail}
+          onClose={zurueck}
+          onJumpToTenant={onJumpToTenant}
+          onChanged={(t) => onReloadTenants(t?.id)}
+          onDeleted={() => {
+            zurueck();
+            onReloadTenants();
+          }}
+        />
+      );
+    }
+    return (
+      <>
+        <ZurueckZuMandanten onClick={zurueck} />
+        <Card padding="lg" radius="lg">
+          {tenantsError ? (
+            <ErrorState message="Die Mandantenliste ließ sich gerade nicht laden. Bitte versuchen Sie es erneut." onRetry={() => onReloadTenants()} />
+          ) : !tenantsLoaded ? (
+            <TextSkeleton lines={4} />
+          ) : (
+            <EmptyState icon="building" category="industry" title="Mandant nicht gefunden" description="Diesen Mandanten gibt es nicht (mehr)." action={<Button variant="outline" onClick={zurueck}>Alle Mandanten</Button>} />
+          )}
+        </Card>
+      </>
+    );
+  }
 
   return (
     <>
@@ -112,7 +169,7 @@ export function MandantenPage({
               </thead>
               <tbody>
                 {tenants.map((t) => (
-                  <tr key={t.id} className="clickable" onClick={() => setDetail(t)}>
+                  <tr key={t.id} className="clickable" onClick={() => oeffne(t)}>
                     <td data-label="Mandant">
                       <div className="vp-cell-main">
                         <b>{t.name}</b>
@@ -132,9 +189,10 @@ export function MandantenPage({
                         variant="ghost"
                         size="sm"
                         aria-label={`Details zu ${t.name}`}
+                        data-mandant={t.id}
                         onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();
-                          setDetail(t);
+                          oeffne(t);
                         }}
                       >
                         Details <Icon name="chevron-right" size={16} />
@@ -154,21 +212,6 @@ export function MandantenPage({
         onCreated={(t) => onReloadTenants(t.id)}
       />
 
-      {detail && (
-        <TenantDetailDrawer
-          tenant={detail}
-          onClose={() => setDetail(null)}
-          onJumpToTenant={onJumpToTenant}
-          onChanged={(t) => {
-            if (t) setDetail(t);
-            onReloadTenants(t?.id);
-          }}
-          onDeleted={() => {
-            setDetail(null);
-            onReloadTenants();
-          }}
-        />
-      )}
     </>
   );
 }
@@ -290,7 +333,7 @@ function CreateTenantDrawer({
   );
 }
 
-function TenantDetailDrawer({
+function TenantDetailSeite({
   tenant,
   onClose,
   onJumpToTenant,
@@ -399,99 +442,92 @@ function TenantDetailDrawer({
   // Offboarding done: show the report instead of the (now gone) tenant data.
   if (report) {
     return (
-      <Modal
-        open
-        onClose={onDeleted}
-        title={`Mandant gelöscht: ${report.tenantName}`}
-        icon={
-          <IconTile category="industry" size={40}>
-            <Icon name="trash" size={20} />
-          </IconTile>
-        }
-        footer={
-          <Button variant="primary" onClick={onDeleted}>
-            Schließen
-          </Button>
-        }
-      >
-        <div className="vp-alert vp-alert-ok" style={{ marginTop: 0 }}>
-          Der Mandant „{report.tenantName}" wurde vollständig entfernt.
-        </div>
-        <table className="vp-table" style={{ marginTop: 'var(--vp-space-4)' }}>
-          <tbody>
-            <tr>
-              <th scope="row">Anlagen</th>
-              <td>{report.deletedSites}</td>
-            </tr>
-            <tr>
-              <th scope="row">Geräte</th>
-              <td>{report.deletedDevices}</td>
-            </tr>
-            <tr>
-              <th scope="row">Messpunkte</th>
-              <td>{fmtNum(report.deletedTelemetryRows, '', 0)}</td>
-            </tr>
-            <tr>
-              <th scope="row">Gelöschte Benutzer</th>
-              <td>{report.deletedUsers.length > 0 ? report.deletedUsers.join(', ') : '-'}</td>
-            </tr>
-          </tbody>
-        </table>
-        {report.failedUsers.length > 0 && (
-          <div className="vp-alert vp-alert-err">
-            Diese Benutzerkonten konnten nicht gelöscht werden und brauchen manuelle
-            Nacharbeit: <b>{report.failedUsers.join(', ')}</b>
+      <>
+        <ZurueckZuMandanten onClick={onDeleted} />
+        <AdminPageHead icon="trash" category="industry" title={`Mandant gelöscht: ${report.tenantName}`} />
+        <Card padding="lg" radius="lg">
+          <div className="vp-alert vp-alert-ok" style={{ marginTop: 0 }}>
+            Der Mandant „{report.tenantName}" wurde vollständig entfernt.
           </div>
-        )}
-      </Modal>
+          <table className="vp-table" style={{ marginTop: 'var(--vp-space-4)' }}>
+            <tbody>
+              <tr>
+                <th scope="row">Anlagen</th>
+                <td>{report.deletedSites}</td>
+              </tr>
+              <tr>
+                <th scope="row">Geräte</th>
+                <td>{report.deletedDevices}</td>
+              </tr>
+              <tr>
+                <th scope="row">Messpunkte</th>
+                <td>{fmtNum(report.deletedTelemetryRows, '', 0)}</td>
+              </tr>
+              <tr>
+                <th scope="row">Gelöschte Benutzer</th>
+                <td>{report.deletedUsers.length > 0 ? report.deletedUsers.join(', ') : '-'}</td>
+              </tr>
+            </tbody>
+          </table>
+          {report.failedUsers.length > 0 && (
+            <div className="vp-alert vp-alert-err">
+              Diese Benutzerkonten konnten nicht gelöscht werden und brauchen manuelle
+              Nacharbeit: <b>{report.failedUsers.join(', ')}</b>
+            </div>
+          )}
+          <div style={{ marginTop: 'var(--vp-space-4)' }}>
+            <Button variant="primary" onClick={onDeleted}>Zu den Mandanten</Button>
+          </div>
+        </Card>
+      </>
     );
   }
 
+  const springen = (
+    <Button variant="primary" onClick={() => onJumpToTenant(tenant.id, 'uebersicht')}>
+      In Mandanten-Ansicht springen →
+    </Button>
+  );
+
   return (
     <>
-      <Modal
-        open
-        onClose={onClose}
-        title={tenant.name}
-        icon={
-          <IconTile category="industry" size={40}>
-            <Icon name="building" size={20} />
-          </IconTile>
-        }
-        footer={
-          <>
-            <Button variant="ghost" onClick={onClose}>
-              Schließen
-            </Button>
-            <Button variant="primary" onClick={() => onJumpToTenant(tenant.id, 'uebersicht')}>
-              In Mandanten-Ansicht springen →
-            </Button>
-          </>
-        }
-      >
-        <UnterstuetzungAdmin tenantId={tenant.id} name={tenant.name} />
-        <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
-          <Badge variant="tint">{segmentLabel(tenant.segment)}</Badge>
-          <Badge variant="tint">
-            {tenant.betriebsart == null
-              ? 'Automatisch (nach Anzahl Anlagen)'
-              : betriebsartLabel(tenant.betriebsart)}
-          </Badge>
-          <Badge variant="tint">Tarif {tenant.plan.toUpperCase()}</Badge>
-          <span className="vp-mono" style={{ alignSelf: 'center' }}>{tenant.id}</span>
+      <section className="vp-mandant-seite" aria-label={tenant.name}>
+        <ZurueckZuMandanten onClick={onClose} />
+        <AdminPageHead
+          icon="building"
+          category="industry"
+          title={tenant.name}
+          description="„In Mandanten-Ansicht springen“ zeigt Anlagen, Geräte und Übersicht wie der Kunde. Eine Unterstützung oder ein Notfall-Zugriff ist dafür nicht nötig."
+          actions={springen}
+        />
+
+        <Card padding="lg" radius="lg" className="vp-mandant-karte">
+        <div className="vp-section-head">
+          <h2>Stammdaten</h2>
           {!editing && (
-            <Button
-              variant="ghost"
-              size="sm"
-              iconLeft={<Icon name="pencil" size={16} />}
-              onClick={() => setEditing(true)}
-              style={{ marginLeft: 'auto' }}
-            >
-              Bearbeiten
-            </Button>
+            <span className="actions">
+              <Button
+                variant="ghost"
+                size="sm"
+                iconLeft={<Icon name="pencil" size={16} />}
+                onClick={() => setEditing(true)}
+              >
+                Bearbeiten
+              </Button>
+            </span>
           )}
         </div>
-
+        {!editing && (
+          <dl className="vp-mandant-stamm">
+            <div><dt>Segment</dt><dd>{segmentLabel(tenant.segment)}</dd></div>
+            <div>
+              <dt>Betriebsart</dt>
+              <dd>{tenant.betriebsart == null ? 'Automatisch (nach Anzahl Anlagen)' : betriebsartLabel(tenant.betriebsart)}</dd>
+            </div>
+            <div><dt>Tarif</dt><dd>{tenant.plan.toUpperCase()}</dd></div>
+            <div><dt>Kennung</dt><dd className="vp-mono">{tenant.id}</dd></div>
+          </dl>
+        )}
         {editing && (
           <TenantEditForm
             tenant={tenant}
@@ -503,16 +539,24 @@ function TenantDetailDrawer({
           />
         )}
 
-        {error && <div className="vp-alert vp-alert-err">{error}</div>}
+        </Card>
 
-        <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-          <h2 style={{ fontSize: '1.05rem' }}>Benutzer {users ? `(${users.length})` : ''}</h2>
+        {error && <div className="vp-alert vp-alert-err" role="alert">{error}</div>}
+
+        <Card padding="lg" radius="lg" className="vp-mandant-karte">
+        <div className="vp-section-head">
+          <h2>Benutzer {users ? `(${users.length})` : ''}</h2>
           <span className="actions">
-            <Button variant="outline" size="sm" disabled={!users || users.length > 0} iconLeft={<Icon name="plus" size={16} />} onClick={(event) => { event.currentTarget.focus(); setUserDrawer(true); }}>
+            <Button variant="outline" size="sm" disabled={!users || users.length > 0} aria-describedby={users && users.length > 0 ? 'mandant-benutzer-hinweis' : undefined} iconLeft={<Icon name="plus" size={16} />} onClick={(event) => { event.currentTarget.focus(); setUserDrawer(true); }}>
               Benutzer anlegen
             </Button>
           </span>
         </div>
+        {users && users.length > 0 && (
+          <p id="mandant-benutzer-hinweis" className="vp-muted vp-mandant-hinweis">
+            Die Plattform legt nur den ersten Benutzer an. Weitere Benutzer und Startpasswörter vergibt der Kundenadministrator im Portal.
+          </p>
+        )}
         {loadError ? (
           <ErrorState message={loadError} onRetry={() => void reload()} />
         ) : users == null ? (
@@ -520,7 +564,7 @@ function TenantDetailDrawer({
         ) : users.length === 0 ? (
           <p className="vp-muted">Noch keine Benutzer für diesen Mandanten.</p>
         ) : (
-          <table className="vp-table responsive" style={{ marginBottom: 'var(--vp-space-5)' }}>
+          <table className="vp-table responsive">
             {/* `responsive` + `data-label`: seit Stufe 4 ist DAS hier die
                 einzige Benutzer-Verwaltung, und vier Spalten samt
                 Aktions-Menü messen am Telefon 499 px in einem 374-px-Einschub
@@ -571,8 +615,11 @@ function TenantDetailDrawer({
           </table>
         )}
 
-        <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-          <h2 style={{ fontSize: '1.05rem' }}>Anlagen {sites ? `(${sites.length})` : ''}</h2>
+        </Card>
+
+        <Card padding="lg" radius="lg" className="vp-mandant-karte">
+        <div className="vp-section-head">
+          <h2>Anlagen {sites ? `(${sites.length})` : ''}</h2>
           <span className="actions">
             <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setSiteDrawer(true)}>
               Anlage anlegen
@@ -612,12 +659,9 @@ function TenantDetailDrawer({
           </table>
         )}
 
-        <div className="vp-alert vp-alert-info" style={{ marginTop: 'var(--vp-space-5)' }}>
-          Über den Mandanten-Umschalter oben (oder den Knopf unten) sehen Sie Anlagen,
-          Geräte und Übersicht dieses Mandanten - dieselben Seiten wie der Kunde, nur
-          mit gewähltem Mandanten. Eine Unterstützung oder ein Notfall-Zugriff ist dafür
-          nicht nötig.
-        </div>
+        </Card>
+
+        <UnterstuetzungAdmin tenantId={tenant.id} name={tenant.name} />
 
         <DangerZone
           actionLabel="Mandant löschen (Offboarding)"
@@ -634,7 +678,7 @@ function TenantDetailDrawer({
           error={deleteError}
           onConfirm={() => void offboard()}
         />
-      </Modal>
+      </section>
 
       <CreateUserDrawer
         open={userDrawer}
@@ -787,6 +831,29 @@ function TenantEditForm({
           {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Adresse der Mandanten-Seite; ohne Kennung die Liste. */
+export function mandantHash(id: string | null): string {
+  return id ? `#/mandanten?mandant=${encodeURIComponent(id)}` : '#/mandanten';
+}
+
+/** Der geöffnete Mandant aus `#/mandanten?mandant=<id>`; alles andere ist die Liste. */
+export function mandantAusHash(hash: string): string | null {
+  const [pfad, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  if (pfad.split('/')[0] !== 'mandanten' || rest.length === 0) return null;
+  const id = new URLSearchParams(rest.join('?')).get('mandant');
+  return id && id.trim() ? id.trim() : null;
+}
+
+function ZurueckZuMandanten({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="vp-mandant-zurueck">
+      <Button variant="ghost" size="sm" iconLeft={<Icon name="chevron-left" size={16} />} onClick={onClick}>
+        Alle Mandanten
+      </Button>
     </div>
   );
 }

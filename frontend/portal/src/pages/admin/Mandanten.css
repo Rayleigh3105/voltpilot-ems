@@ -1,0 +1,21 @@
+/* Die Seite eines Mandanten (statt des früheren Dialogs): ein Zurück-Knopf, der Kopf
+   und je Abschnitt eine Karte - Stammdaten, Benutzer, Anlagen, Unterstützung, Offboarding. */
+.vp-mandant-zurueck { margin: 0 0 var(--vp-space-2); }
+.vp-mandant-seite { display: flex; flex-direction: column; gap: var(--vp-space-5); }
+.vp-mandant-seite > .vp-page-head { margin-bottom: 0; }
+.vp-mandant-karte .vp-section-head { margin-bottom: var(--vp-space-3); }
+.vp-mandant-karte .vp-section-head h2 { font-size: 1.05rem; margin: 0; }
+.vp-mandant-seite > .vp-unterstuetzung { margin: 0; }
+.vp-mandant-seite > .vp-unterstuetzung h3 { margin-top: 0; font-size: 1.05rem; }
+.vp-mandant-hinweis { margin: 0 0 var(--vp-space-3); font-size: 0.875rem; }
+.vp-mandant-stamm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--vp-space-3) var(--vp-space-5);
+  margin: 0;
+}
+.vp-mandant-stamm div { min-width: 0; }
+.vp-mandant-stamm dt { font-size: 0.8125rem; color: var(--vp-text-muted); margin-bottom: 0.15rem; }
+.vp-mandant-stamm dd { margin: 0; overflow-wrap: anywhere; }
+.vp-mandant-stamm dd.vp-mono { font-size: 0.8125rem; }
+.vp-mandant-seite .vp-danger-zone, .vp-mandant-seite > .vp-alert { margin: 0; }

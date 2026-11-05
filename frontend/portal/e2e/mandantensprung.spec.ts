@@ -10,7 +10,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 async function oeffne(page: Page, mandant: string): Promise<Locator> {
   await page.goto('/e2e/mandantensprung.html#/mandanten');
   await page.getByRole('button', { name: `Details zu ${mandant}` }).click();
-  const dialog = page.getByRole('dialog', { name: mandant });
+  const dialog = page.getByRole('region', { name: mandant });
   await expect(dialog.getByRole('heading', { name: 'Unterstützung' })).toBeVisible();
   return dialog;
 }
@@ -49,7 +49,7 @@ test('ohne Unterstützung: der Sprung landet in der Ansicht des Mandanten', asyn
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
 });
 
-test('Mandant ohne Standort: der Dialog sagt, warum keine Unterstützung geht, und der Sprung öffnet sein Portfolio', async ({ page }) => {
+test('Mandant ohne Standort: die Mandanten-Seite sagt, warum keine Unterstützung geht, und der Sprung öffnet sein Portfolio', async ({ page }) => {
   const dialog = await oeffne(page, 'Musterwerk Nord GmbH');
   const hinweis = dialog.getByRole('note');
   await expect(hinweis).toBeVisible();
