@@ -216,6 +216,20 @@ function mitRueckmeldung(liste: FernwartungBox[]): FernwartungBox[] {
   });
 }
 
+/**
+ * Die Zugänge mit dem letzten Handshake, den der Dienst meldet: „Alex (Laptop)" vor 40 s,
+ * „Kim (Tablet)" noch nie; ein gesperrter steht nicht im Soll-Stand und fehlt in der Meldung.
+ */
+function mitHandshake(liste: FernwartungTechniker[]): FernwartungTechniker[] {
+  const am = gemeldetAm();
+  if (!am) return liste;
+  return liste.map((t) => {
+    if (t.status !== 'aktiv') return t;
+    const letzterHandshakeUm = t.id === 't1' ? new Date(new Date(am).getTime() - 28_000).toISOString() : null;
+    return { ...t, rueckmeldung: { gemeldetAm: am, letzterHandshakeUm } };
+  });
+}
+
 Object.assign(keycloak, { tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } } });
 Object.assign(adminApi, {
   fernwartung: async () => ({
@@ -234,7 +248,7 @@ Object.assign(adminApi, {
     if (!b) throw new ApiError(404, `Für ${ref} ist kein Tunnel-Schlüssel hinterlegt.`);
     return b;
   },
-  fernwartungTechniker: async () => techniker,
+  fernwartungTechniker: async () => mitHandshake(techniker),
   fernwartungProtokoll: async () => protokoll,
   fernwartungFensterOeffnen: async (i: { edgeRef: string; technikerId: string; grund: string; dauerMinuten: number }) => {
     const t = zugang(i.technikerId);

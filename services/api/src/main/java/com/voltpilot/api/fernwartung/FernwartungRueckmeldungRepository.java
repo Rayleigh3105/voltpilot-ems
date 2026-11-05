@@ -3,6 +3,7 @@ package com.voltpilot.api.fernwartung;
 import com.voltpilot.api.fernwartung.FernwartungRueckmeldung.Box;
 import com.voltpilot.api.fernwartung.FernwartungRueckmeldung.Fenster;
 import com.voltpilot.api.fernwartung.FernwartungRueckmeldung.Geprueft;
+import com.voltpilot.api.fernwartung.FernwartungRueckmeldung.Techniker;
 import java.sql.Array;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -24,7 +25,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Die Tabellen der Rückmeldung (Migration V20261010203000) an der
+ * Die Tabellen der Rückmeldung (Migrationen V20261010203000 und
+ * V20261105233000 für den Handshake der Techniker) an der
  * BYPASSRLS-Rolle {@code voltpilot_admin}. Bewusst ein EIGENES Repository
  * neben {@link FernwartungRepository}: Was der Tunnel-Dienst meldet, ist
  * Anzeige, und der Soll-Stand liest hier nichts.
@@ -50,6 +52,10 @@ public class FernwartungRueckmeldungRepository {
     public record FensterStand(UUID fensterId, Instant angenommenAm, Instant schluesselAbgeholtUm) {
     }
 
+    /** Was der Dienst zuletzt zu einem Techniker-Zugang gemeldet hat; {@code letzterHandshakeUm} null = keiner. */
+    public record TechnikerStand(UUID technikerId, Instant angenommenAm, Instant letzterHandshakeUm) {
+    }
+
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
 
@@ -62,6 +68,11 @@ public class FernwartungRueckmeldungRepository {
     /** Welche dieser Kennungen gehören zu einer Box der Fernwartung (aktiv oder gesperrt)? */
     public Set<UUID> bekannteBoxen(Collection<UUID> ids) {
         return bekannte("SELECT id FROM fernwartung_zugang WHERE art = 'box' AND id = ANY (?)", ids);
+    }
+
+    /** Welche dieser Kennungen gehören zu einem Techniker-Zugang (aktiv oder gesperrt)? */
+    public Set<UUID> bekannteTechniker(Collection<UUID> ids) {
+        return bekannte("SELECT id FROM fernwartung_zugang WHERE art = 'techniker' AND id = ANY (?)", ids);
     }
 
     /** Welche dieser Kennungen gehören zu einem Fenster? */
@@ -116,6 +127,17 @@ public class FernwartungRueckmeldungRepository {
                         ps.setTimestamp(3, am);
                         ps.setTimestamp(4, zeit(f.schluesselAbgeholtUm()));
                     });
+            jdbc.batchUpdate("INSERT INTO fernwartung_rueckmeldung_techniker (techniker_id, dienst, angenommen_am, "
+                            + "letzter_handshake_um) VALUES (?, ?, ?, ?) "
+                            + "ON CONFLICT (techniker_id) DO UPDATE SET dienst = excluded.dienst, "
+                            + "angenommen_am = excluded.angenommen_am, "
+                            + "letzter_handshake_um = excluded.letzter_handshake_um",
+                    m.techniker(), 500, (PreparedStatement ps, Techniker t) -> {
+                        ps.setObject(1, t.id());
+                        ps.setString(2, dienst);
+                        ps.setTimestamp(3, am);
+                        ps.setTimestamp(4, zeit(t.letzterHandshakeUm()));
+                    });
         });
     }
 
@@ -153,6 +175,17 @@ public class FernwartungRueckmeldungRepository {
                     m.put(id, new FensterStand(id, instant(rs, "angenommen_am"),
                             instant(rs, "schluessel_abgeholt_um")));
                 });
+        return m;
+    }
+
+    /** Der letzte gemeldete Handshake je Techniker-Zugang, nach Kennung des Zugangs. */
+    public Map<UUID, TechnikerStand> techniker() {
+        Map<UUID, TechnikerStand> m = new HashMap<>();
+        jdbc.query("SELECT techniker_id, angenommen_am, letzter_handshake_um "
+                + "FROM fernwartung_rueckmeldung_techniker", rs -> {
+            UUID id = rs.getObject("techniker_id", UUID.class);
+            m.put(id, new TechnikerStand(id, instant(rs, "angenommen_am"), instant(rs, "letzter_handshake_um")));
+        });
         return m;
     }
 

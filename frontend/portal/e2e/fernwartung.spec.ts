@@ -41,6 +41,19 @@ test('Fernwartung: Lage, Sperrgründe und Fenster öffnen auf jeder Bildschirmgr
 
   await expect(page.getByTestId('fw-protokoll')).toContainText('Fenster geöffnet');
 
+  // Letzter Handshake je Zugang: gemeldet mit genauer Zeit im Hover, noch nie, und unbekannt beim gesperrten.
+  const zugaenge = page.getByTestId('fw-techniker');
+  // Am Telefon trägt jede Zelle die Spaltenbeschriftung selbst (data-label), der Tabellenkopf ist ausgeblendet.
+  await expect(zugaenge.locator('th', { hasText: 'Letzter Handshake' })).toHaveCount(1);
+  const alexAktiv = zugaenge.locator('tr').filter({ hasText: '10.10.32.3' }).getByTestId('fw-handshake');
+  await expect(alexAktiv).toHaveAttribute('data-fall', 'gemeldet');
+  await expect(alexAktiv).toHaveAttribute('data-label', 'Letzter Handshake');
+  await expect(alexAktiv).toBeVisible();
+  await expect(alexAktiv).toHaveText(/^vor \d+ s$/);
+  await expect(alexAktiv).toHaveAttribute('title', /^Letzter Handshake: \d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}:\d{2}\./);
+  await expect(zugaenge.locator('tr').filter({ hasText: 'Kim (Tablet)' }).getByTestId('fw-handshake')).toHaveText('noch nie');
+  await expect(zugaenge.locator('tr').filter({ hasText: 'Werkstatt-Tablet' }).getByTestId('fw-handshake')).toHaveText('unbekannt');
+
   // Kein horizontaler Überlauf der Seite (Tabellen scrollen lokal).
   const ueberlauf = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(ueberlauf).toBeLessThanOrEqual(0);

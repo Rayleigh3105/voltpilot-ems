@@ -26,6 +26,7 @@ import {
   sshBefehle,
   sshSchluesselPruefen,
   sshText,
+  technikerHandshake,
   technikerKonfig,
   technikerOptionen,
   type FernwartungBox,
@@ -795,5 +796,51 @@ describe('SSH-Schlüssel des Technikers (Fenster-Schlüssel, Schritt 1)', () => 
         JETZT,
       ),
     ).toBe('10.10.32.2 · FY4LLXFa…BI8/Y=');
+  });
+});
+
+describe('Letzter Handshake je Techniker-Zugang: gemeldet, noch nie, unbekannt', () => {
+  const handshake = (iso: string | null, gemeldetAm = FRISCH) => ({ gemeldetAm, letzterHandshakeUm: iso });
+
+  it('gemeldet: relativ in der Zelle, genau im Hover', () => {
+    const jetzt = technikerHandshake(tech({ rueckmeldung: handshake('2026-10-07T11:59:13Z') }), mitMeldung(), JETZT);
+    expect([jetzt.fall, jetzt.ton, jetzt.text]).toEqual(['gemeldet', 'ok', 'vor 47 s']);
+    expect(jetzt.titel).toBe('Letzter Handshake: 07.10.2026, 13:59:13. Stand: vor 20 s.');
+    // Länger her ist eine Aussage, kein Fehler: neutral, nicht rot.
+    const gestern = technikerHandshake(tech({ rueckmeldung: handshake('2026-10-06T09:00:00Z') }), mitMeldung(), JETZT);
+    expect([gestern.fall, gestern.ton, gestern.text]).toEqual(['gemeldet', 'off', 'vor 27 h']);
+    expect(gestern.titel).toMatch(/^Letzter Handshake: 06\.10\.2026, 11:00:00\./);
+    const vorTagen = technikerHandshake(tech({ rueckmeldung: handshake('2026-10-01T12:00:00Z') }), mitMeldung(), JETZT);
+    expect(vorTagen.text).toBe('vor 6 Tagen');
+    // Genau an der Grenze von drei Minuten noch frisch.
+    expect(technikerHandshake(tech({ rueckmeldung: handshake('2026-10-07T11:57:00Z') }), mitMeldung(), JETZT).ton).toBe('ok');
+    expect(technikerHandshake(tech({ rueckmeldung: handshake('2026-10-07T11:56:59Z') }), mitMeldung(), JETZT).ton).toBe('off');
+  });
+
+  it('noch nie: der Server hat gemeldet und kennt keinen Handshake', () => {
+    const nie = technikerHandshake(tech({ rueckmeldung: handshake(null) }), mitMeldung(), JETZT);
+    expect([nie.fall, nie.ton, nie.text]).toEqual(['noch_nie', 'warn', 'noch nie']);
+    expect(nie.titel).toMatch(/kennt keinen Handshake dieses Geräts/);
+    expect(nie.titel).toMatch(/öffentliche Schlüssel dem dieses Zugangs entspricht/);
+    expect(nie.titel).toMatch(/Stand: vor 20 s\.$/);
+  });
+
+  it('unbekannt ist nie „noch nie": keine Meldung, alte Meldung, Zugang nicht genannt, älterer Dienst', () => {
+    const faelle: Array<[string, ReturnType<typeof technikerHandshake>, RegExp]> = [
+      ['nie gemeldet', technikerHandshake(tech(), uebersicht(), JETZT), /noch nie seinen Zustand gemeldet/],
+      ['Übersicht nicht geladen', technikerHandshake(tech(), null, JETZT), /ließ sich nicht laden/],
+      // API vor diesem Feld oder Dienst ohne die Angabe: kein rueckmeldung am Zugang.
+      ['API ohne das Feld', technikerHandshake(tech({ rueckmeldung: undefined }), mitMeldung(), JETZT), /nennt diesen Zugang nicht.*noch nicht meldet/],
+      ['Dienst ohne die Angabe', technikerHandshake(tech({ rueckmeldung: null }), mitMeldung(), JETZT), /nennt diesen Zugang nicht/],
+      // Eine frühere Meldung sagte „noch nie" - die letzte nennt den Zugang nicht mehr.
+      ['nicht in der letzten Meldung', technikerHandshake(tech({ rueckmeldung: handshake(null, ALT) }), mitMeldung(), JETZT), /nennt diesen Zugang nicht/],
+      ['veraltet', technikerHandshake(tech({ rueckmeldung: handshake('2026-10-07T11:39:00Z', ALT) }), mitMeldung({ zuletztAm: ALT }), JETZT), /ist 20 min alt\. Damals lag der letzte Handshake bei 07\.10\.2026, 13:39:00\./],
+      ['veraltet, damals nie', technikerHandshake(tech({ rueckmeldung: handshake(null, ALT) }), mitMeldung({ zuletztAm: ALT }), JETZT), /ist 20 min alt\.$/],
+      ['gesperrt', technikerHandshake(tech({ status: 'gesperrt', rueckmeldung: handshake(null) }), mitMeldung(), JETZT), /gesperrt; der Wartungsserver führt ihn nicht/],
+    ];
+    for (const [name, h, satz] of faelle) {
+      expect([name, h.fall, h.ton, h.text]).toEqual([name, 'unbekannt', 'off', 'unbekannt']);
+      expect(h.titel, name).toMatch(satz);
+    }
   });
 });

@@ -5,7 +5,7 @@
 - **Peers** auf der WireGuard-Schnittstelle `wg-wartung`: Boxen und Techniker-Zugänge, je genau eine `/32`.
 - **Fenster** in der nftables-Menge `fenster` der eigenen Tabelle `voltpilot_wartung`: Techniker → Box nur, solange das Fenster offen ist. Jedes Element hat eine **Ablaufzeit**; das Fenster schließt im Kernel, auch wenn API oder Dienst ausfallen.
 - **Schlüsselausgabe** (wenn eingestellt): Eine Box fragt im Tunnel, wessen SSH-Schlüssel sich gerade bei ihr anmelden darf, und bekommt die Schlüssel der Techniker, für die ein Fenster zu ihr offen ist. Siehe [Schlüsselausgabe](#schlüsselausgabe).
-- **Rückmeldung ans Portal:** Nach jedem Lauf meldet der Dienst, welche Box verbunden ist, wann sie zuletzt nach Schlüsseln gefragt hat und welches Fenster seinen Schlüssel abgeholt hat. Das ist Anzeige im Portal und ändert an den drei Punkten davor nichts. Siehe [Rückmeldung ans Portal](#rückmeldung-ans-portal).
+- **Rückmeldung ans Portal:** Nach jedem Lauf meldet der Dienst, welche Box verbunden ist, wann sie zuletzt nach Schlüsseln gefragt hat, welches Fenster seinen Schlüssel abgeholt hat und wann das Gerät jedes Techniker-Zugangs zuletzt einen Handshake hatte. Das ist Anzeige im Portal und ändert an den drei Punkten davor nichts. Siehe [Rückmeldung ans Portal](#rückmeldung-ans-portal).
 
 Fachliche Grundlage, Rollen und Datenmodell: [Fernwartung](../../docs/fernwartung.md). `vpn.voltpilot.de` mit WireGuard UI ist davon nicht berührt.
 
@@ -285,9 +285,10 @@ Der Techniker soll im Portal sehen, **warum** er nicht hineinkommt: Box nicht ve
 | je Box „verbunden seit“ | `wg show wg-wartung latest-handshakes`: verbunden ist eine Box, deren letzter Handshake höchstens 3 Minuten alt ist. Seit wann, führt der Dienst selbst mit |
 | je Box „zuletzt gefragt um“ | die Schlüsselausgabe: Beginn der letzten Anfrage dieser Box |
 | je Fenster „Schlüssel abgeholt um“ | die Schlüsselausgabe: Die Box hat den Prüfwert der Liste genannt, die den Schlüssel dieses Fensters enthält |
+| je Techniker-Zugang „letzter Handshake um“ | `wg show wg-wartung latest-handshakes` für seinen Peer, ohne Schwelle; `null`, wenn WireGuard keinen kennt (auch nach einem Neustart von WireGuard). Im Portal die Spalte „Letzter Handshake“ der Techniker-Zugänge |
 | seit wann der Dienst läuft, ob er Schlüssel ausgibt | der Dienst selbst |
 
-- **Kein Schlüssel, kein Fingerabdruck, keine Adresse, kein Name.** Box und Fenster sind nur über die `id` aus dem Soll-Stand benannt.
+- **Kein Schlüssel, kein Fingerabdruck, keine Adresse, kein Endpunkt, kein Name.** Box, Fenster und Techniker-Zugang sind nur über die `id` aus dem Soll-Stand benannt.
 - **Genannt werden** die Boxen des letzten frisch abgeholten Soll-Stands und dessen Fenster, soweit sie nach dem Lauf in der Kernel-Menge `fenster` stehen. Ohne frischen Soll-Stand seit dem Start geht keine Meldung hinaus.
 - **„Verbunden seit“** ist beim ersten Blick nach dem Start der Start des Dienstes (im Portal: „mindestens seit“), danach der Handshake, mit dem die Box wieder verbunden war. Eine Unterbrechung unter 3 Minuten sieht der Dienst nicht.
 - **Kann der Dienst die Handshakes nicht lesen,** entfällt die Meldung: Im Portal steht dann „unbekannt“ und nicht „nicht verbunden“.
@@ -312,7 +313,7 @@ Belegt ist das in `cmd/vp-tunnel-dienst/umlauf_test.go`: Gegen eine API, die die
 
 | Journal | Bedeutung |
 |---|---|
-| `msg="Rückmeldung ans Portal angenommen" boxen=… fenster=…` | die API nimmt die Meldung an. Einmal, bis sich die Lage ändert |
+| `msg="Rückmeldung ans Portal angenommen" boxen=… fenster=… techniker=…` | die API nimmt die Meldung an. Einmal, bis sich die Lage ändert |
 | `msg="Rückmeldung: die API kennt die Route nicht (älterer Stand der API); …" antwort=404 naechsterVersuchIn=10m0s` | auf der Cloud-Seite läuft noch ein Stand ohne Rückmeldung. Kein Fehler |
 | `WARN msg="Rückmeldung ans Portal gescheitert; …" fehler=… naechsterVersuchIn=…` | die API antwortet nicht (`keine Verbindung zur API`, `Frist überschritten`) oder mit einem Fehler (`Rückmeldung: HTTP 400: …` mit dem Grund der API, etwa einer abweichenden Uhr) |
 | `WARN msg="Rückmeldung ans Portal entfällt: Handshakes nicht lesbar"` | `wg show` scheitert |

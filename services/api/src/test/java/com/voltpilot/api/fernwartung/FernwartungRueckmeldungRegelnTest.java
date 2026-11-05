@@ -37,6 +37,8 @@ class FernwartungRueckmeldungRegelnTest {
     private static final Path VEKTOR = VERTRAEGE.resolve("fernwartung-rueckmeldung-v1.example.json");
     private static final Path QUELLEN = Path.of("src", "main", "java", "com", "voltpilot", "api");
     private static final String MIGRATION = "/db/migration/V20261010203000__fernwartung_rueckmeldung.sql";
+    private static final String MIGRATION_TECHNIKER =
+            "/db/migration/V20261105233000__fernwartung_rueckmeldung_techniker.sql";
 
     private final ObjectMapper json = new ObjectMapper();
 
@@ -62,6 +64,10 @@ class FernwartungRueckmeldungRegelnTest {
             assertThat(f.id()).isEqualTo(UUID.fromString("c4d2e6f8-0a1b-4c3d-9e5f-7a8b9c0d1e44"));
             assertThat(f.schluesselAbgeholtUm()).isEqualTo(Instant.parse("2026-10-07T13:30:41Z"));
         });
+        assertThat(g.techniker()).singleElement().satisfies(t -> {
+            assertThat(t.id()).isEqualTo(UUID.fromString("a3e5c7d9-1b2f-4c6e-8a0d-3f5b7d9e1c33"));
+            assertThat(t.letzterHandshakeUm()).isEqualTo(Instant.parse("2026-10-07T13:58:44Z"));
+        });
 
         // Die Felder des Vektors sind genau die der Java-Form: ein neues Feld
         // braucht Vertrag, Go-Struktur und diese Form in derselben Änderung.
@@ -71,16 +77,22 @@ class FernwartungRueckmeldungRegelnTest {
                 .containsExactlyInAnyOrderElementsOf(komponenten(FernwartungRueckmeldung.BoxMeldung.class));
         assertThat(felder(baum.get("fenster").get(0)))
                 .containsExactlyInAnyOrderElementsOf(komponenten(FernwartungRueckmeldung.FensterMeldung.class));
+        assertThat(felder(baum.get("techniker").get(0)))
+                .containsExactlyInAnyOrderElementsOf(komponenten(FernwartungRueckmeldung.TechnikerMeldung.class));
 
         // Die Meldung gehört zum Vektor des Soll-Stands: dieselben Kennungen.
         JsonNode soll = json.readTree(Files.readAllBytes(VERTRAEGE.resolve("fernwartung-soll-v1.example.json")));
         List<String> boxen = new ArrayList<>();
+        List<String> techniker = new ArrayList<>();
         soll.get("peers").forEach(p -> {
             if ("box".equals(p.get("art").asText())) {
                 boxen.add(p.get("id").asText());
+            } else {
+                techniker.add(p.get("id").asText());
             }
         });
         assertThat(g.boxen()).extracting(b -> b.id().toString()).containsExactlyElementsOf(boxen);
+        assertThat(g.techniker()).extracting(t -> t.id().toString()).containsExactlyElementsOf(techniker);
         assertThat(g.fenster().get(0).id().toString()).isEqualTo(soll.get("fenster").get(0).get("id").asText());
     }
 
@@ -95,8 +107,30 @@ class FernwartungRueckmeldungRegelnTest {
                 .containsExactly("id", "verbundenSeit", "zuletztGefragtUm");
         assertThat(komponenten(FernwartungRueckmeldung.FensterMeldung.class))
                 .containsExactly("id", "schluesselAbgeholtUm");
-        assertThat(komponenten(FernwartungRueckmeldung.Meldung.class))
-                .containsExactly("version", "gemeldetUm", "gestartetUm", "schluesselausgabe", "boxen", "fenster");
+        assertThat(komponenten(FernwartungRueckmeldung.TechnikerMeldung.class))
+                .containsExactly("id", "letzterHandshakeUm");
+        assertThat(komponenten(FernwartungRueckmeldung.Meldung.class)).containsExactly("version", "gemeldetUm",
+                "gestartetUm", "schluesselausgabe", "boxen", "fenster", "techniker");
+        // Auch kein Endpunkt des Geräts: weder Feld noch Port.
+        assertThat(vektor).doesNotContain("endpoint").doesNotContain("endpunkt").doesNotContain(":51820");
+    }
+
+    /**
+     * Additiv: Ein Dienst vom älteren Stand kennt {@code techniker} nicht. Seine
+     * Meldung bleibt gültig und nennt keinen Techniker - im Portal bleibt der
+     * Handshake dann unbekannt, nicht „noch nie".
+     */
+    @Test
+    void eineMeldungOhneTechnikerVomAelterenDienstBleibtGueltig() throws Exception {
+        Instant jetzt = Instant.parse("2026-10-07T14:00:31Z");
+        Geprueft alt = pruefe(m -> m.remove("techniker"), jetzt);
+        assertThat(alt.techniker()).isEmpty();
+        assertThat(alt.boxen()).hasSize(2);
+        assertThat(pruefe(m -> m.putNull("techniker"), jetzt).techniker()).isEmpty();
+        assertThat(pruefe(m -> m.putArray("techniker"), jetzt).techniker()).isEmpty();
+        // null ist eine Aussage: WireGuard kennt keinen Handshake.
+        Geprueft nie = pruefe(m -> ((ObjectNode) m.get("techniker").get(0)).putNull("letzterHandshakeUm"), jetzt);
+        assertThat(nie.techniker()).singleElement().satisfies(t -> assertThat(t.letzterHandshakeUm()).isNull());
     }
 
     // ── Was die API abweist ───────────────────────────────────────────────
@@ -130,6 +164,16 @@ class FernwartungRueckmeldungRegelnTest {
         abgewiesen(m -> ((ArrayNode) m.get("boxen")).add(m.get("boxen").get(0).deepCopy()), jetzt, "mehrfach");
         abgewiesen(m -> ((ArrayNode) m.get("fenster")).add(m.get("fenster").get(0).deepCopy()), jetzt, "mehrfach");
         abgewiesen(m -> ((ArrayNode) m.get("boxen")).addNull(), jetzt, "leere Box");
+        abgewiesen(m -> ((ArrayNode) m.get("techniker")).addNull(), jetzt, "leeren Techniker");
+        abgewiesen(m -> ((ArrayNode) m.get("techniker")).add(m.get("techniker").get(0).deepCopy()), jetzt,
+                "mehrfach");
+        abgewiesen(m -> ((ObjectNode) m.get("techniker").get(0)).put("id", "max"), jetzt,
+                "Techniker ohne gültige id");
+        abgewiesen(m -> ((ObjectNode) m.get("techniker").get(0)).put("publicKey", "x"), jetzt, "vereinbarte Form");
+        abgewiesen(m -> ((ObjectNode) m.get("techniker").get(0)).put("endpunkt", "203.0.113.7:51820"), jetzt,
+                "vereinbarte Form");
+        abgewiesen(m -> ((ObjectNode) m.get("techniker").get(0)).put("letzterHandshakeUm", "2026-10-07T14:00:31Z"),
+                jetzt, "letzterHandshakeUm nach gemeldetUm");
         abgewiesen(m -> ((ArrayNode) m.get("fenster")).addNull(), jetzt, "leeres Fenster");
 
         // Zeit: nichts liegt nach gemeldetUm, und gemeldetUm passt zur Uhr der API.
@@ -233,7 +277,8 @@ class FernwartungRueckmeldungRegelnTest {
         String repo = ohneKommentare(Files.readString(
                 QUELLEN.resolve("fernwartung/FernwartungRueckmeldungRepository.java")));
         assertThat(repo).contains("INSERT INTO fernwartung_rueckmeldung_dienst",
-                "INSERT INTO fernwartung_rueckmeldung_box", "INSERT INTO fernwartung_rueckmeldung_fenster");
+                "INSERT INTO fernwartung_rueckmeldung_box", "INSERT INTO fernwartung_rueckmeldung_fenster",
+                "INSERT INTO fernwartung_rueckmeldung_techniker");
         for (String tabelle : List.of("fernwartung_zugang", "fernwartung_fenster", "fernwartung_protokoll",
                 "fernwartung_dienst_abruf")) {
             assertThat(repo).as(tabelle).doesNotContain("INSERT INTO " + tabelle + " ")
@@ -268,6 +313,26 @@ class FernwartungRueckmeldungRegelnTest {
         // Die angewandten Tabellen der Fernwartung fasst die Migration nicht an.
         assertThat(ohne).doesNotContain("ALTER TABLE fernwartung_zugang").doesNotContain("ALTER TABLE fernwartung_fenster")
                 .doesNotContain("ALTER TABLE fernwartung_protokoll").doesNotContain("DROP ");
+    }
+
+    /** Die Tabelle des Handshakes je Techniker: Rechte und RLS wie die übrigen, keine Spalte mit Schlüssel. */
+    @Test
+    void dieMigrationDesHandshakesVergibtNurWasSieBraucht() throws Exception {
+        String sql;
+        try (InputStream in = getClass().getResourceAsStream(MIGRATION_TECHNIKER)) {
+            sql = new String(Objects.requireNonNull(in, MIGRATION_TECHNIKER).readAllBytes(), StandardCharsets.UTF_8);
+        }
+        String ohne = sql.replaceAll("(?m)^\\s*--.*$", "");
+        String tabelle = "fernwartung_rueckmeldung_techniker";
+        assertThat(ohne).contains("CREATE TABLE IF NOT EXISTS " + tabelle + " (")
+                .contains("ALTER TABLE " + tabelle + " ENABLE ROW LEVEL SECURITY;")
+                .contains("ALTER TABLE " + tabelle + " FORCE ROW LEVEL SECURITY;")
+                .contains("REVOKE ALL ON " + tabelle + " FROM ${appDbUser};")
+                .contains("GRANT SELECT, INSERT, UPDATE ON " + tabelle + " TO ${adminDbUser};")
+                .contains("letzter_handshake_um TIMESTAMPTZ,")
+                .doesNotContain("DELETE").doesNotContain("TO ${appDbUser}").doesNotContain("DROP ")
+                .doesNotContain("ALTER TABLE fernwartung_zugang").doesNotContainIgnoringCase("public_key")
+                .doesNotContainIgnoringCase("adresse").doesNotContainIgnoringCase("endpunkt");
     }
 
     // ── Hilfen ────────────────────────────────────────────────────────────

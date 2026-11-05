@@ -833,6 +833,84 @@ class FernwartungApiTest {
     }
 
     /**
+     * Die Spalte „Letzter Handshake“ der Techniker-Zugänge: Der Dienst meldet
+     * je Techniker-Peer den letzten WireGuard-Handshake (additiv im Feld
+     * {@code techniker}). Ohne Meldung ist er unbekannt ({@code rueckmeldung}
+     * null), mit {@code letzterHandshakeUm} null „noch nie“. Auch das ist
+     * Anzeige: Soll-Stand und Bestand bleiben unberührt.
+     */
+    @Test
+    @Order(5)
+    void derLetzteHandshakeStehtAmTechnikerZugang() throws Exception {
+        String admin = token("admin", "admin");
+        String dienst = serviceToken("voltpilot-tunnel-dienst", "voltpilot-tunnel-dienst-dev-secret");
+        String route = "/api/v1/fernwartung/rueckmeldung";
+        String mitGeraet = json.readTree(send(HttpMethod.POST, BASE + "/techniker", admin,
+                Map.of("name", "Handshake Laptop", "publicKey", wireguardSchluessel())).getBody())
+                .get("techniker").get("id").asText();
+        JsonNode angelegt = mitId(getJson(BASE + "/techniker", admin), mitGeraet);
+        String ohneGeraet = json.readTree(send(HttpMethod.POST, BASE + "/techniker", admin,
+                Map.of("name", "Handshake ohne Gerät", "publicKey", wireguardSchluessel())).getBody())
+                .get("techniker").get("id").asText();
+        String boxId = getJson(BASE + "/boxen/" + ZWEITE, admin).get("id").asText();
+
+        // ── Ein Dienst vom älteren Stand meldet ohne das Feld: angenommen, Handshake unbekannt.
+        Instant start = Instant.now().minusSeconds(3600).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        assertThat(angelegt.has("rueckmeldung")).isTrue();
+        assertThat(angelegt.get("rueckmeldung").isNull()).as("neu angelegt: unbekannt").isTrue();
+        assertThat(send(HttpMethod.PUT, route, dienst, meldung(start, List.of(box(boxId, null, null)), List.of()))
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(mitId(getJson(BASE + "/techniker", admin), mitGeraet).get("rueckmeldung").isNull())
+                .as("alter Dienst: unbekannt, nicht noch nie").isTrue();
+
+        String sollVorher = sollOhneZeit(dienst);
+        String bestandVorher = bestand();
+
+        // ── Der neue Dienst meldet: ein Gerät vor 47 s, das andere noch nie.
+        Instant handshake = Instant.now().minusSeconds(47).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        Map<String, Object> neu = meldung(start, List.of(box(boxId, null, null)), List.of());
+        neu.put("techniker", List.of(technikerMeldung(mitGeraet, handshake), technikerMeldung(ohneGeraet, null)));
+        assertThat(send(HttpMethod.PUT, route, dienst, neu).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        // DER BELEG: nur Anzeige - Soll-Stand, Zugänge, Fenster und Protokoll bleiben, wie sie waren.
+        assertThat(sollOhneZeit(dienst)).isEqualTo(sollVorher).doesNotContain("letzterHandshake");
+        assertThat(bestand()).isEqualTo(bestandVorher);
+        JsonNode liste = getJson(BASE + "/techniker", admin);
+        String angenommen = getJson(BASE, admin).get("rueckmeldungen").get(0).get("zuletztAm").asText();
+        JsonNode gemeldet = mitId(liste, mitGeraet).get("rueckmeldung");
+        assertThat(gemeldet.get("letzterHandshakeUm").asText()).isEqualTo(handshake.toString());
+        assertThat(gemeldet.get("gemeldetAm").asText()).isEqualTo(angenommen);
+        JsonNode nie = mitId(liste, ohneGeraet).get("rueckmeldung");
+        assertThat(nie.isNull()).as("gemeldet ist nicht unbekannt").isFalse();
+        assertThat(nie.get("letzterHandshakeUm").isNull()).as("noch nie").isTrue();
+        // Kein Schlüssel und keine Adresse kommen aus der Meldung dazu: die Antwort trägt nur die Zeiten.
+        assertThat(felder(gemeldet)).containsExactlyInAnyOrder("gemeldetAm", "letzterHandshakeUm");
+        // Dieselbe Angabe an den schreibenden Routen des Zugangs.
+        JsonNode gesperrt = json.readTree(send(HttpMethod.POST, BASE + "/techniker/" + ohneGeraet + "/sperren",
+                admin, Map.of("grund", "Test")).getBody());
+        assertThat(gesperrt.get("rueckmeldung").get("letzterHandshakeUm").isNull()).isTrue();
+        assertThat(send(HttpMethod.POST, BASE + "/techniker/" + ohneGeraet + "/entsperren", admin, null)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // ── Abgewiesen: ein unbekannter Zugang oder eine Box als Techniker; nichts wird gespeichert.
+        for (String falsch : List.of("99999999-9999-4999-8999-999999999999", boxId)) {
+            Map<String, Object> m = meldung(start, List.of(box(boxId, null, null)), List.of());
+            m.put("techniker", List.of(technikerMeldung(mitGeraet, null), technikerMeldung(falsch, handshake)));
+            ResponseEntity<String> res = send(HttpMethod.PUT, route, dienst, m);
+            assertThat(res.getStatusCode()).as(falsch).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(message(res)).contains("einen Techniker-Zugang, den die API nicht kennt");
+        }
+        Map<String, Object> mitEndpunkt = meldung(start, List.of(), List.of());
+        Map<String, Object> t = technikerMeldung(mitGeraet, handshake);
+        t.put("endpunkt", "203.0.113.7:51820");
+        mitEndpunkt.put("techniker", List.of(t));
+        assertThat(send(HttpMethod.PUT, route, dienst, mitEndpunkt).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(mitId(getJson(BASE + "/techniker", admin), mitGeraet).get("rueckmeldung")
+                .get("letzterHandshakeUm").asText()).as("abgewiesene Meldungen ändern nichts")
+                .isEqualTo(handshake.toString());
+    }
+
+    /**
      * O3 und die Rollen-Grenze: der Kunde sieht nichts, das Dienstkonto liest
      * nur seinen Soll-Stand, der Release-Publisher erreicht hier nichts.
      */
@@ -894,7 +972,7 @@ class FernwartungApiTest {
         JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
         for (String tabelle : List.of("fernwartung_zugang", "fernwartung_fenster", "fernwartung_protokoll",
                 "fernwartung_dienst_abruf", "fernwartung_rueckmeldung_dienst", "fernwartung_rueckmeldung_box",
-                "fernwartung_rueckmeldung_fenster")) {
+                "fernwartung_rueckmeldung_fenster", "fernwartung_rueckmeldung_techniker")) {
             assertThatThrownBy(() -> app.queryForObject("SELECT count(*) FROM " + tabelle, Long.class))
                     .as(tabelle).rootCause().hasMessageContaining("permission denied");
         }
@@ -950,6 +1028,19 @@ class FernwartungApiTest {
         b.put("verbundenSeit", verbundenSeit == null ? null : verbundenSeit.toString());
         b.put("zuletztGefragtUm", zuletztGefragtUm == null ? null : zuletztGefragtUm.toString());
         return b;
+    }
+
+    private static Map<String, Object> technikerMeldung(String id, Instant letzterHandshake) {
+        Map<String, Object> t = new java.util.LinkedHashMap<>();
+        t.put("id", id);
+        t.put("letzterHandshakeUm", letzterHandshake == null ? null : letzterHandshake.toString());
+        return t;
+    }
+
+    private static List<String> felder(JsonNode knoten) {
+        List<String> namen = new ArrayList<>();
+        knoten.fieldNames().forEachRemaining(namen::add);
+        return namen;
     }
 
     private static Map<String, Object> fensterMeldung(String id, Instant abgeholt) {

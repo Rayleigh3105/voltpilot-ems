@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
  * Die Rückmeldung des Tunnel-Dienstes ans Portal (Fenster-Schlüssel, Schritt 4;
  * Vertrag: {@code docs/contracts/fernwartung-rueckmeldung-v1.md}): je Box
  * „verbunden seit" und „zuletzt gefragt um", je Fenster „Schlüssel abgeholt
- * um". Hier stehen die Form der Meldung und die Regeln, nach denen die API
+ * um", je Techniker-Zugang „letzter Handshake um". Hier stehen die Form der Meldung und die Regeln, nach denen die API
  * sie annimmt - rein, ohne Datenbank.
  *
  * <p><b>Die Meldung ist Anzeige.</b> Nichts aus ihr fließt in den Soll-Stand
@@ -32,12 +32,17 @@ import java.util.regex.Pattern;
  * eine Uhr des Wartungsservers, die von der der API abweicht: die ganze
  * Meldung wird abgewiesen. Eine halbe Meldung zeigte im Portal einen Stand,
  * den es so nie gab.
+ *
+ * <p><b>Additiv: {@code techniker}.</b> Das einzige Feld, das fehlen darf: Ein
+ * Dienst vom Stand vor der Spalte „Letzter Handshake“ sendet es nicht. Dann
+ * nennt die Meldung keinen Techniker, und im Portal bleibt der Handshake
+ * unbekannt - nie „noch nie“.
  */
 public final class FernwartungRueckmeldung {
 
     /** Die einzige Version der Meldung, die diese API annimmt. */
     public static final int VERSION = 1;
-    /** Mehr Boxen bzw. Fenster nennt eine Meldung nicht. */
+    /** Mehr Boxen, Fenster bzw. Techniker nennt eine Meldung nicht. */
     public static final int MAX_EINTRAEGE = 10_000;
     /** Eine größere Meldung liest die API nicht zu Ende. */
     public static final int MAX_BYTES = 2 * 1024 * 1024;
@@ -62,7 +67,7 @@ public final class FernwartungRueckmeldung {
 
     /** Die Meldung, wie sie ankommt: jedes Feld kann fehlen, die Prüfung nennt den Grund. */
     public record Meldung(Integer version, Instant gemeldetUm, Instant gestartetUm, Boolean schluesselausgabe,
-            List<BoxMeldung> boxen, List<FensterMeldung> fenster) {
+            List<BoxMeldung> boxen, List<FensterMeldung> fenster, List<TechnikerMeldung> techniker) {
     }
 
     /** {@code null} ist eine Aussage: nicht verbunden bzw. seit dem Start des Dienstes nicht gefragt. */
@@ -73,15 +78,22 @@ public final class FernwartungRueckmeldung {
     public record FensterMeldung(String id, Instant schluesselAbgeholtUm) {
     }
 
-    /** Eine geprüfte Meldung. */
+    /** {@code null}: WireGuard kennt keinen Handshake dieses Peers. */
+    public record TechnikerMeldung(String id, Instant letzterHandshakeUm) {
+    }
+
+    /** Eine geprüfte Meldung; {@code techniker} ist leer, wenn der Dienst das Feld nicht kennt. */
     public record Geprueft(Instant gemeldetUm, Instant gestartetUm, boolean schluesselausgabe, List<Box> boxen,
-            List<Fenster> fenster) {
+            List<Fenster> fenster, List<Techniker> techniker) {
     }
 
     public record Box(UUID id, Instant verbundenSeit, Instant zuletztGefragtUm) {
     }
 
     public record Fenster(UUID id, Instant schluesselAbgeholtUm) {
+    }
+
+    public record Techniker(UUID id, Instant letzterHandshakeUm) {
     }
 
     /** Die Meldung hat nicht die vereinbarte Form; die Nachricht nennt den Grund. */
@@ -122,8 +134,10 @@ public final class FernwartungRueckmeldung {
             throw new Ungueltig("In der Rückmeldung fehlt ein Feld (gemeldetUm, gestartetUm, schluesselausgabe, "
                     + "boxen, fenster).");
         }
-        if (m.boxen().size() > MAX_EINTRAEGE || m.fenster().size() > MAX_EINTRAEGE) {
-            throw new Ungueltig("Die Rückmeldung nennt mehr als " + MAX_EINTRAEGE + " Boxen oder Fenster.");
+        List<TechnikerMeldung> technikerMeldungen = m.techniker() == null ? List.of() : m.techniker();
+        if (m.boxen().size() > MAX_EINTRAEGE || m.fenster().size() > MAX_EINTRAEGE
+                || technikerMeldungen.size() > MAX_EINTRAEGE) {
+            throw new Ungueltig("Die Rückmeldung nennt mehr als " + MAX_EINTRAEGE + " Boxen, Fenster oder Techniker.");
         }
         Duration abweichung = Duration.between(jetzt, m.gemeldetUm()).abs();
         if (abweichung.compareTo(MAX_UHRABWEICHUNG) > 0) {
@@ -160,8 +174,21 @@ public final class FernwartungRueckmeldung {
             spaetestens(f.schluesselAbgeholtUm(), m.gemeldetUm(), "schluesselAbgeholtUm");
             fenster.add(new Fenster(id, f.schluesselAbgeholtUm()));
         }
+        gesehen.clear();
+        List<Techniker> techniker = new ArrayList<>(technikerMeldungen.size());
+        for (TechnikerMeldung t : technikerMeldungen) {
+            if (t == null) {
+                throw new Ungueltig("Die Rückmeldung nennt einen leeren Techniker.");
+            }
+            UUID id = kennung(t.id(), "Techniker");
+            if (!gesehen.add(id)) {
+                throw new Ungueltig("Die Rückmeldung nennt den Techniker " + id + " mehrfach.");
+            }
+            spaetestens(t.letzterHandshakeUm(), m.gemeldetUm(), "letzterHandshakeUm");
+            techniker.add(new Techniker(id, t.letzterHandshakeUm()));
+        }
         return new Geprueft(m.gemeldetUm(), m.gestartetUm(), m.schluesselausgabe(), List.copyOf(boxen),
-                List.copyOf(fenster));
+                List.copyOf(fenster), List.copyOf(techniker));
     }
 
     private static UUID kennung(String text, String was) {

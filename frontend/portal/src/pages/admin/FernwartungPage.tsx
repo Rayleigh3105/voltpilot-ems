@@ -35,6 +35,7 @@ import {
   rueckmeldungLage,
   serverLage,
   SSH_STAND_SATZ,
+  technikerHandshake,
   ZUSTIMMUNG_SATZ,
   zeitpunkt,
   type FernwartungBox,
@@ -42,6 +43,7 @@ import {
   type FernwartungProtokollEintrag,
   type FernwartungTechniker,
   type FernwartungUebersicht,
+  type TechnikerHandshake,
 } from '../../adminFernwartung';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import {
@@ -363,6 +365,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                         <th>Zugang</th>
                         <th>Tunnel</th>
                         <th>SSH-Schlüssel</th>
+                        <th>Letzter Handshake</th>
                         <th>Status</th>
                         <th aria-label="Aktionen" />
                       </tr>
@@ -399,6 +402,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 </span>
                               )}
                             </td>
+                            <HandshakeZelle handshake={technikerHandshake(t, uebersicht, jetzt)} />
                             <td data-label="Status">
                               <Badge variant={t.status === 'aktiv' ? 'ok' : 'off'} dot>
                                 {t.status}
@@ -604,5 +608,24 @@ export function ProtokollListe({
         </table>
       </div>
     </Card>
+  );
+}
+
+/**
+ * „Letzter Handshake" eines Techniker-Zugangs: relativ in der Zelle, die genaue
+ * Zeit (oder warum es unbekannt ist) beim Darüberfahren.
+ */
+function HandshakeZelle({ handshake }: { handshake: TechnikerHandshake }) {
+  return (
+    <td
+      data-label="Letzter Handshake"
+      data-testid="fw-handshake"
+      data-fall={handshake.fall}
+      title={handshake.titel}
+    >
+      <Badge variant={handshake.ton} dot>
+        {handshake.text}
+      </Badge>
+    </td>
   );
 }

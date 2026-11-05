@@ -672,6 +672,33 @@ describe('FernwartungPage', () => {
     });
   });
 
+  it('die Spalte „Letzter Handshake": gemeldet, noch nie, unbekannt - mit genauer Zeit im Hover', async () => {
+    const jetzt = Date.now();
+    const meldung = new Date(jetzt - 10_000).toISOString();
+    fernwartung.mockResolvedValue(
+      uebersicht({
+        rueckmeldungen: [
+          { dienst: 'voltpilot-tunnel-dienst', zuletztAm: meldung, gestartetUm: '2026-10-07T09:15:00Z', schluesselausgabe: true, boxen: 1, fenster: 0 },
+        ],
+      }),
+    );
+    fernwartungTechniker.mockResolvedValue([
+      { ...max, id: 't1', name: 'Macbook Air', rueckmeldung: { gemeldetAm: meldung, letzterHandshakeUm: new Date(jetzt - 47_000).toISOString() } },
+      { ...max, id: 't2', name: 'Max (ASUS)', rueckmeldung: { gemeldetAm: meldung, letzterHandshakeUm: null } },
+      { ...max, id: 't3', name: 'Werkstatt-Dienst', rueckmeldung: null },
+    ]);
+    render(<FernwartungPage />);
+    const tabelle = await screen.findByTestId('fw-techniker');
+    expect(within(tabelle).getByRole('columnheader', { name: 'Letzter Handshake' })).toBeInTheDocument();
+    const zellen = within(tabelle).getAllByTestId('fw-handshake');
+    expect(zellen.map((z) => z.getAttribute('data-fall'))).toEqual(['gemeldet', 'noch_nie', 'unbekannt']);
+    expect(zellen[0]).toHaveTextContent(/^vor 4[6-9] s$/);
+    expect(zellen[0].getAttribute('title')).toMatch(/^Letzter Handshake: \d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}:\d{2}\./);
+    expect(zellen[1]).toHaveTextContent('noch nie');
+    expect(zellen[2]).toHaveTextContent('unbekannt');
+    expect(zellen[2].getAttribute('title')).toMatch(/nennt diesen Zugang nicht/);
+  });
+
   it('warnt, wenn der Tunnel-Dienst nicht abholt', async () => {
     fernwartung.mockResolvedValue(uebersicht({ abrufe: [] }));
     render(<FernwartungPage />);

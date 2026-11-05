@@ -70,6 +70,13 @@ export interface FensterRueckmeldung {
   schluesselAbgeholtUm: string | null;
 }
 
+/** Was der Tunnel-Dienst zuletzt zu einem Techniker-Zugang gemeldet hat. */
+export interface TechnikerRueckmeldung {
+  gemeldetAm: string;
+  /** null = der Wartungsserver kennt keinen WireGuard-Handshake dieses Geräts. */
+  letzterHandshakeUm: string | null;
+}
+
 export interface FernwartungUebersicht {
   server: FernwartungServer;
   maxFensterMinuten: number;
@@ -153,6 +160,11 @@ export interface FernwartungTechniker {
   /** Wie `ssh-keygen -lf` ihn zeigt: `SHA256:…`. */
   sshFingerabdruck: string | null;
   sshBits: number | null;
+  /**
+   * null oder fehlend = keine Meldung hat diesen Zugang genannt (Dienst ohne
+   * diese Angabe, oder eine API vor ihr): unbekannt, nicht „noch nie".
+   */
+  rueckmeldung?: TechnikerRueckmeldung | null;
 }
 
 export type ProtokollAktion =
@@ -360,6 +372,90 @@ export function rueckmeldungLage(u: FernwartungUebersicht, jetzt: Date): Lage {
     ton: letzte.schluesselausgabe ? 'ok' : 'warn',
     titel: 'Tunnel-Dienst meldet seinen Zustand',
     text: `Letzte Meldung vor ${alterText(s)} (${letzte.boxen} Boxen, ${letzte.fenster} offene Fenster auf dem Wartungsserver). Der Dienst läuft seit ${zeitpunkt(letzte.gestartetUm, jetzt)}.${ausgabe}`,
+  };
+}
+
+export type HandshakeFall = 'gemeldet' | 'noch_nie' | 'unbekannt';
+
+export interface TechnikerHandshake {
+  fall: HandshakeFall;
+  ton: Ton;
+  /** Für die Zelle: „vor 47 s", „noch nie", „unbekannt". */
+  text: string;
+  /** Für den Hover: die genaue Zeit oder warum es unbekannt ist. */
+  titel: string;
+}
+
+const GENAU = new Intl.DateTimeFormat('de-DE', {
+  timeZone: 'Europe/Berlin',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+
+/** „05.11.2026, 14:03:12" (Europe/Berlin), für den Hover. */
+export function genauerZeitpunkt(iso: string): string {
+  return GENAU.format(new Date(iso));
+}
+
+function unbekannterHandshake(titel: string): TechnikerHandshake {
+  return { fall: 'unbekannt', ton: 'off', text: 'unbekannt', titel };
+}
+
+/**
+ * Wann hatte das Gerät dieses Zugangs zuletzt einen WireGuard-Handshake mit dem
+ * Wartungsserver? Das sagt allein die letzte Meldung des Tunnel-Dienstes, der
+ * `wg show … latest-handshakes` liest. Fehlt die Meldung, ist sie älter als drei
+ * Minuten oder nennt sie den Zugang nicht, ist die Antwort „unbekannt" - nie
+ * „noch nie". „noch nie" heißt: der Server hat es gemeldet, und er kennt keinen.
+ *
+ * Nur Anzeige: Ob ein Fenster „bereit" ist, hängt (noch) nicht daran.
+ */
+export function technikerHandshake(
+  t: FernwartungTechniker,
+  u: FernwartungUebersicht | null,
+  jetzt: Date,
+): TechnikerHandshake {
+  if (t.status === 'gesperrt') {
+    return unbekannterHandshake('Der Zugang ist gesperrt; der Wartungsserver führt ihn nicht.');
+  }
+  if (!u) return unbekannterHandshake('Der Stand des Tunnel-Dienstes ließ sich nicht laden.');
+  const letzte = letzteRueckmeldung(u);
+  if (!letzte) {
+    return unbekannterHandshake('Der Tunnel-Dienst hat dem Portal noch nie seinen Zustand gemeldet.');
+  }
+  const alter = alterSek(letzte.zuletztAm, jetzt);
+  const r = t.rueckmeldung ?? null;
+  if (alter > RUECKMELDUNG_VERALTET_S) {
+    const damals = r?.letzterHandshakeUm
+      ? ` Damals lag der letzte Handshake bei ${genauerZeitpunkt(r.letzterHandshakeUm)}.`
+      : '';
+    return unbekannterHandshake(`Die letzte Meldung des Tunnel-Dienstes ist ${alterText(alter)} alt.${damals}`);
+  }
+  if (!r || !inLetzterMeldung(r.gemeldetAm, letzte)) {
+    return unbekannterHandshake(
+      'Die letzte Meldung des Tunnel-Dienstes nennt diesen Zugang nicht. Entweder läuft auf dem Wartungsserver ein Stand, der den Handshake noch nicht meldet, oder der Zugang ist gerade erst angelegt oder entsperrt (bis zu einer Minute).',
+    );
+  }
+  const stand = `Stand: vor ${alterText(alter)}.`;
+  if (!r.letzterHandshakeUm) {
+    return {
+      fall: 'noch_nie',
+      ton: 'warn',
+      text: 'noch nie',
+      titel: `Der Wartungsserver kennt keinen Handshake dieses Geräts - seit der Zugang dort eingerichtet ist (auch nach einem Neustart von WireGuard auf dem Server). Prüfen Sie in der WireGuard-App, ob der öffentliche Schlüssel dem dieses Zugangs entspricht. ${stand}`,
+    };
+  }
+  const her = alterSek(r.letzterHandshakeUm, jetzt);
+  return {
+    fall: 'gemeldet',
+    // Ein Gerät mit offenem Tunnel erneuert den Handshake alle zwei Minuten.
+    ton: her <= RUECKMELDUNG_VERALTET_S ? 'ok' : 'off',
+    text: `vor ${alterText(her)}`,
+    titel: `Letzter Handshake: ${genauerZeitpunkt(r.letzterHandshakeUm)}. ${stand}`,
   };
 }
 

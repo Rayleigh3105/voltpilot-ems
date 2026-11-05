@@ -251,7 +251,7 @@ Den Vektor lesen beide Seiten: `FernwartungRegelnTest` (Java) prüft die Felder 
 
 Entscheid des Kapitäns (K3 a, 08.10.2026): Der Tunnel-Dienst darf dem Portal Rückmeldung geben, nur Zustandsangaben, über eine eigene Route. Damit sieht der Techniker im Portal, **warum** er nicht hineinkommt. Vertrag mit Vektor: [`fernwartung-rueckmeldung-v1.md`](contracts/fernwartung-rueckmeldung-v1.md); Seite des Dienstes: [Tunnel-Dienst](../services/tunnel-dienst/README.md#rückmeldung-ans-portal).
 
-**Was der Dienst meldet, und sonst nichts:** je Box „verbunden seit“ und „zuletzt gefragt um“, je Fenster „Schlüssel abgeholt um“; dazu, seit wann er läuft und ob er Schlüssel ausgibt. Kein Schlüssel, kein Fingerabdruck, keine Adresse: Box und Fenster sind nur über die `id` benannt, die das Portal selbst vergeben hat.
+**Was der Dienst meldet, und sonst nichts:** je Box „verbunden seit“ und „zuletzt gefragt um“, je Fenster „Schlüssel abgeholt um“, je Techniker-Zugang „letzter Handshake um“; dazu, seit wann er läuft und ob er Schlüssel ausgibt. Kein Schlüssel, kein Fingerabdruck, keine Adresse: Box und Fenster sind nur über die `id` benannt, die das Portal selbst vergeben hat.
 
 | Angabe | Woran der Dienst sie festmacht |
 |---|---|
@@ -270,6 +270,7 @@ Entscheid des Kapitäns (K3 a, 08.10.2026): Der Tunnel-Dienst darf dem Portal R�
 | Stand unbekannt | keine Meldung, eine veraltete, oder die letzte nennt Box oder Fenster nicht |
 
 - **Unbekannt ist kein „nicht verbunden“.** Kam nie eine Meldung (auf dem Wartungsserver läuft ein Dienst ohne Rückmeldung), ist die letzte älter als 3 Minuten (VM oder Dienst nicht erreichbar) oder nennt sie die Box nicht, sagt das Portal genau das. Bei einer veralteten Meldung nennt es, was damals galt, als Vergangenes. Die Regeln: `adminFernwartung.ts` (`rueckmeldungLage`, `boxVerbindung`, `boxAnmeldung`).
+- **Letzter Handshake je Techniker-Zugang** (Spalte in „Techniker-Zugänge“): „vor 47 s“ mit der genauen Zeit beim Darüberfahren; „noch nie“, wenn der Wartungsserver gemeldet hat und keinen Handshake dieses Geräts kennt; „unbekannt“ ohne frische Meldung, bei einem gesperrten Zugang oder wenn der Dienst die Angabe (noch) nicht meldet. Nur Anzeige: „Alles bereit“ am Fenster hängt nicht daran. Die Regel: `technikerHandshake` in `adminFernwartung.ts`.
 - **Die Seite holt den Stand alle 20 s neu,** solange sie sichtbar ist. Nach dem Öffnen eines Fensters steht dort bis zur nächsten Meldung „Stand unbekannt“, danach folgt die Zeile ohne Zutun.
 - **Das Alter misst die API.** Sie hält je Box und Fenster fest, wann sie die Meldung angenommen hat. Eine Meldung, deren Uhr um mehr als 5 Minuten von der der API abweicht, weist sie ab.
 - **„Verbunden seit“ gleich dem Start des Dienstes** heißt: mindestens seit dann. Das Portal schreibt es so.

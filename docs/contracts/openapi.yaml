@@ -27869,6 +27869,24 @@ components:
             properties:
               id: { type: string, format: uuid, description: Die id des Fensters aus dem Soll-Stand. }
               schluesselAbgeholtUm: { type: string, format: date-time, nullable: true }
+        techniker:
+          type: array
+          maxItems: 10000
+          description: >
+            Additiv: je Techniker-Peer aus dem Soll-Stand der letzte
+            WireGuard-Handshake. Ein älterer Dienst sendet das Feld nicht; dann
+            bleibt der Handshake im Portal unbekannt.
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, letzterHandshakeUm]
+            properties:
+              id: { type: string, format: uuid, description: Die id des Techniker-Peers aus dem Soll-Stand. }
+              letzterHandshakeUm:
+                type: string
+                format: date-time
+                nullable: true
+                description: Letzter Handshake laut `wg show … latest-handshakes`; null = WireGuard kennt keinen.
     FernwartungSchluesselAntwort:
       type: object
       properties:
@@ -27897,6 +27915,23 @@ components:
           example: "SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc"
           description: Fingerabdruck wie bei `ssh-keygen -lf`; null ohne SSH-Schlüssel.
         sshBits: { type: integer, nullable: true, example: 3072, description: Länge des RSA-Schlüssels; null ohne SSH-Schlüssel. }
+        rueckmeldung:
+          type: object
+          nullable: true
+          description: >
+            Was der Tunnel-Dienst zuletzt zu diesem Zugang gemeldet hat; null,
+            solange keine Meldung ihn genannt hat (unbekannt, nicht „noch nie“).
+            Nur Anzeige.
+          properties:
+            gemeldetAm: { type: string, format: date-time, description: Uhr der API beim Annehmen der Meldung. }
+            letzterHandshakeUm:
+              type: string
+              format: date-time
+              nullable: true
+              description: >
+                Letzter WireGuard-Handshake des Geräts mit dem Wartungsserver;
+                null = der Server kennt keinen (noch nie, seit der Peer dort
+                eingerichtet ist).
     FernwartungProtokollEintrag:
       type: object
       properties:

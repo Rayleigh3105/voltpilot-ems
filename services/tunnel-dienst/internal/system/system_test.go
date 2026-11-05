@@ -229,6 +229,43 @@ func TestFensterBefehle(t *testing.T) {
 	}
 }
 
+// Ausgabe von `wg show <if> latest-handshakes`: Schlüssel, Tab, Unix-Sekunden;
+// 0 heißt "noch kein Handshake". Kaputte Zeilen fallen weg, statt den ganzen
+// Stand zu verwerfen.
+func TestHandshakesAusWgAusgabe(t *testing.T) {
+	out := "jUg9DePFPkIQ+KNIAXqSEuVTw2UNHwbUH/HPFK5HiEM=\t1791378727\n" +
+		"SBsk0U9z6BgB/U8nb+L9PdK/46p7mBvWRQe8I0Vg3C0=\t0\n" +
+		"FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y=\t1791381524\n" +
+		"kaputt\n" +
+		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\tgestern\n"
+	a := &aufzeichner{antwort: func(string) ([]byte, error) { return []byte(out), nil }}
+	hs, err := WireGuard{R: a, Schnittstelle: "wg-wartung"}.Handshakes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hs) != 3 {
+		t.Fatalf("%v", hs)
+	}
+	if got := hs["FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y="].UTC().Format(time.RFC3339); got != "2026-10-07T13:58:44Z" {
+		t.Fatalf("Techniker: %s", got)
+	}
+	if got := hs["jUg9DePFPkIQ+KNIAXqSEuVTw2UNHwbUH/HPFK5HiEM="].UTC().Format(time.RFC3339); got != "2026-10-07T13:12:07Z" {
+		t.Fatalf("Box: %s", got)
+	}
+	if nie, da := hs["SBsk0U9z6BgB/U8nb+L9PdK/46p7mBvWRQe8I0Vg3C0="]; !da || !nie.IsZero() {
+		t.Fatalf("ohne Handshake: %v %v", nie, da)
+	}
+	// Eine leere Schnittstelle ist kein Fehler; ein gescheitertes wg schon.
+	a.antwort = func(string) ([]byte, error) { return nil, nil }
+	if leer, err := (WireGuard{R: a, Schnittstelle: "wg-wartung"}).Handshakes(context.Background()); err != nil || len(leer) != 0 {
+		t.Fatalf("leer: %v %v", leer, err)
+	}
+	a.antwort = func(string) ([]byte, error) { return nil, errors.New("exit status 1") }
+	if _, err := (WireGuard{R: a, Schnittstelle: "wg-wartung"}).Handshakes(context.Background()); err == nil {
+		t.Fatal("Fehler von wg verschluckt")
+	}
+}
+
 func TestWireGuardBefehleBeruehrenNieDenPrivatenSchluessel(t *testing.T) {
 	a := &aufzeichner{}
 	w := WireGuard{R: a, Schnittstelle: "wg-wartung"}

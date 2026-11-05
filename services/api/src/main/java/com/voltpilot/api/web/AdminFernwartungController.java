@@ -11,6 +11,7 @@ import com.voltpilot.api.fernwartung.FernwartungRepository.Zugang;
 import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.BoxStand;
 import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.DienstStand;
 import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.FensterStand;
+import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.TechnikerStand;
 import com.voltpilot.api.fernwartung.FernwartungRueckmeldungService;
 import com.voltpilot.api.fernwartung.FernwartungService;
 import com.voltpilot.api.fernwartung.FernwartungService.Ergebnis;
@@ -127,6 +128,17 @@ public class AdminFernwartungController {
         }
     }
 
+    /**
+     * Was der Tunnel-Dienst zuletzt zu einem Techniker-Zugang gemeldet hat.
+     * {@code letzterHandshakeUm} null = der Wartungsserver kennt keinen
+     * Handshake des Geräts (noch nie, seit der Peer dort eingerichtet ist).
+     */
+    public record TechnikerRueckmeldungDto(Instant gemeldetAm, Instant letzterHandshakeUm) {
+        static TechnikerRueckmeldungDto of(TechnikerStand t) {
+            return t == null ? null : new TechnikerRueckmeldungDto(t.angenommenAm(), t.letzterHandshakeUm());
+        }
+    }
+
     public record UebersichtDto(ServerDto server, long maxFensterMinuten, List<AbrufDto> abrufe,
             List<RueckmeldungDto> rueckmeldungen, long boxenAktiv, long boxenGesperrt, long technikerAktiv,
             long technikerGesperrt, long fensterOffen, long fensterGeplant, Instant stand) {
@@ -178,16 +190,19 @@ public class AdminFernwartungController {
      * alle drei gesetzt oder alle drei null: der öffentliche SSH-Schlüssel des
      * Technikers in Normalform, sein Fingerabdruck wie bei
      * {@code ssh-keygen -lf} und die Schlüssellänge.
+     *
+     * <p>{@code rueckmeldung} ist {@code null}, solange keine Meldung des
+     * Tunnel-Dienstes diesen Zugang genannt hat: unbekannt, nicht „noch nie“.
      */
     public record TechnikerDto(UUID id, String name, String publicKey, String publicKeyKurz, String adresse,
             String status, String notiz, Instant angelegtAm, Instant geaendertAm, String sshPublicKey,
-            String sshFingerabdruck, Integer sshBits) {
-        static TechnikerDto of(Zugang z) {
+            String sshFingerabdruck, Integer sshBits, TechnikerRueckmeldungDto rueckmeldung) {
+        static TechnikerDto of(Zugang z, TechnikerStand gemeldet) {
             SshSchluessel.Geprueft ssh = z.ssh().orElse(null);
             return new TechnikerDto(z.id(), z.name(), z.publicKey(), WireguardSchluessel.kurz(z.publicKey()),
                     z.adresse(), z.status(), z.notiz(), z.angelegtAm(), z.geaendertAm(),
                     ssh == null ? null : ssh.zeile(), ssh == null ? null : ssh.fingerabdruck(),
-                    ssh == null ? null : ssh.bits());
+                    ssh == null ? null : ssh.bits(), TechnikerRueckmeldungDto.of(gemeldet));
         }
     }
 
@@ -312,7 +327,8 @@ public class AdminFernwartungController {
 
     @GetMapping("/techniker")
     public List<TechnikerDto> techniker() {
-        return service.techniker().stream().map(TechnikerDto::of).toList();
+        Map<UUID, TechnikerStand> gemeldet = rueckmeldung.techniker();
+        return service.techniker().stream().map(z -> TechnikerDto.of(z, gemeldet.get(z.id()))).toList();
     }
 
     @PostMapping("/techniker")
@@ -320,18 +336,18 @@ public class AdminFernwartungController {
             @AuthenticationPrincipal Jwt caller) {
         Zugang z = service.technikerAnlegen(req.name(), req.publicKey(), req.sshPublicKey(), req.notiz(),
                 Akteur.aus(caller));
-        return ResponseEntity.status(HttpStatus.CREATED).body(new TechnikerAntwortDto(TechnikerDto.of(z), server()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(new TechnikerAntwortDto(technikerDto(z), server()));
     }
 
     @PostMapping("/techniker/{id}/sperren")
     public TechnikerDto technikerSperren(@PathVariable UUID id,
             @Valid @RequestBody(required = false) SperrenRequest req, @AuthenticationPrincipal Jwt caller) {
-        return TechnikerDto.of(service.technikerSperren(id, req == null ? null : req.grund(), Akteur.aus(caller)));
+        return technikerDto(service.technikerSperren(id, req == null ? null : req.grund(), Akteur.aus(caller)));
     }
 
     @PostMapping("/techniker/{id}/entsperren")
     public TechnikerDto technikerEntsperren(@PathVariable UUID id, @AuthenticationPrincipal Jwt caller) {
-        return TechnikerDto.of(service.technikerEntsperren(id, Akteur.aus(caller)));
+        return technikerDto(service.technikerEntsperren(id, Akteur.aus(caller)));
     }
 
     /**
@@ -344,14 +360,14 @@ public class AdminFernwartungController {
     @PutMapping("/techniker/{id}/ssh-schluessel")
     public TechnikerDto technikerSshSchluesselSetzen(@PathVariable UUID id,
             @RequestBody SshSchluesselRequest req, @AuthenticationPrincipal Jwt caller) {
-        return TechnikerDto.of(service.technikerSshSchluesselSetzen(id, req.sshPublicKey(), Akteur.aus(caller)));
+        return technikerDto(service.technikerSshSchluesselSetzen(id, req.sshPublicKey(), Akteur.aus(caller)));
     }
 
     /** Den SSH-Schlüssel entfernen (idempotent): Fenster öffnen danach nur noch den Netzweg. */
     @DeleteMapping("/techniker/{id}/ssh-schluessel")
     public TechnikerDto technikerSshSchluesselEntfernen(@PathVariable UUID id,
             @AuthenticationPrincipal Jwt caller) {
-        return TechnikerDto.of(service.technikerSshSchluesselEntfernen(id, Akteur.aus(caller)));
+        return technikerDto(service.technikerSshSchluesselEntfernen(id, Akteur.aus(caller)));
     }
 
     /**
@@ -400,6 +416,10 @@ public class AdminFernwartungController {
     }
 
     // ── intern ────────────────────────────────────────────────────────────
+
+    private TechnikerDto technikerDto(Zugang z) {
+        return TechnikerDto.of(z, rueckmeldung.techniker().get(z.id()));
+    }
 
     private BoxDto boxDto(Zugang box) {
         List<Fenster> laufend = service.laufendeFensterJeBox().getOrDefault(box.id(), List.of());

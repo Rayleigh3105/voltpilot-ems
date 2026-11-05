@@ -1,6 +1,6 @@
 # Fernwartung: Rückmeldung des Tunnel-Dienstes ans Portal (v1)
 
-Der Tunnel-Dienst meldet dem Portal, was er auf dem Wartungsserver sieht: je Box „verbunden seit“ und „zuletzt gefragt um“, je Fenster „Schlüssel abgeholt um“. Das Portal zeigt es an Box und Fenster. Hintergrund: [Fernwartung](../fernwartung.md#rückmeldung-des-tunnel-dienstes), Seite des Dienstes: [Tunnel-Dienst](../../services/tunnel-dienst/README.md#rückmeldung-ans-portal).
+Der Tunnel-Dienst meldet dem Portal, was er auf dem Wartungsserver sieht: je Box „verbunden seit“ und „zuletzt gefragt um“, je Fenster „Schlüssel abgeholt um“, je Techniker-Zugang „letzter Handshake um“. Das Portal zeigt es an Box und Fenster. Hintergrund: [Fernwartung](../fernwartung.md#rückmeldung-des-tunnel-dienstes), Seite des Dienstes: [Tunnel-Dienst](../../services/tunnel-dienst/README.md#rückmeldung-ans-portal).
 
 **Die Rückmeldung ist Anzeige.** Sie fließt nie in den [Soll-Stand](fernwartung-soll-v1.example.json) zurück, aus dem der Dienst Peers, Fenster und Schlüsselausgabe ableitet. Die API hält sie in eigenen Tabellen und liest sie nur für die Routen des Portals.
 
@@ -27,9 +27,12 @@ Content-Type: application/json
 | `fenster[]` | jedes Fenster aus dem Soll-Stand, das gerade in der Kernel-Menge `fenster` steht, höchstens 10 000 |
 | `fenster[].id` | die `id` des Fensters aus dem Soll-Stand |
 | `fenster[].schluesselAbgeholtUm` | wann die Box den Schlüssel dieses Fensters abgeholt hat; `null`: seit `gestartetUm` nicht |
+| `techniker[]` | **additiv:** jeder Techniker-Peer aus dem letzten frisch abgeholten Soll-Stand, höchstens 10 000. Ein Dienst vom älteren Stand sendet das Feld nicht; die API nimmt seine Meldung trotzdem an |
+| `techniker[].id` | die `id` des Techniker-Peers aus dem Soll-Stand |
+| `techniker[].letzterHandshakeUm` | der letzte WireGuard-Handshake des Geräts mit dem Wartungsserver, wie `wg show … latest-handshakes` ihn zeigt; `null`: WireGuard kennt keinen (noch nie, seit der Peer auf dem Server eingerichtet ist, auch nach einem Neustart von WireGuard) |
 
-- Zeitangaben sind RFC 3339 in UTC auf ganze Sekunden. Jedes Feld steht immer da; `null` ist eine Aussage, kein fehlender Wert.
-- **Sonst steht nichts in der Meldung:** kein Schlüssel, kein Fingerabdruck, keine Adresse, kein Name. Box und Fenster sind nur über die `id` benannt, die das Portal selbst vergeben hat.
+- Zeitangaben sind RFC 3339 in UTC auf ganze Sekunden. Jedes Feld steht immer da (außer dem additiven `techniker` bei einem älteren Dienst); `null` ist eine Aussage, kein fehlender Wert.
+- **Sonst steht nichts in der Meldung:** kein Schlüssel, kein Fingerabdruck, keine Adresse, kein Endpunkt, kein Name. Box, Fenster und Techniker-Zugang sind nur über die `id` benannt, die das Portal selbst vergeben hat.
 - **Die Meldung ist der ganze Stand des Dienstes.** Eine Box oder ein Fenster, das sie nicht nennt, kennt der Dienst gerade nicht.
 
 ### Was die Angaben heißen
@@ -40,6 +43,7 @@ Content-Type: application/json
 | `verbundenSeit` gleich `gestartetUm` | die Box war schon verbunden, als der Dienst startete: **mindestens** seit dann |
 | `verbundenSeit` später | der Handshake, mit dem die Box (wieder) verbunden war |
 | `zuletztGefragtUm` | die Box hat `/v1/schluessel` aufgerufen. Das tut nur eine Box, deren Tunnel mit `service-tunnel.sh` ab den Fenster-Schlüsseln eingerichtet ist |
+| `letzterHandshakeUm` | genau die Zeit aus `latest-handshakes`, ohne Schwelle: Auch ein Handshake von gestern ist eine Aussage. Ein Gerät mit offenem Tunnel erneuert ihn alle 2 Minuten |
 | `schluesselAbgeholtUm` | die Box hat in einer **späteren** Anfrage den Prüfwert der Liste genannt, die den Schlüssel dieses Fensters enthält. Den Prüfwert nennt sie erst, nachdem sie die Liste geprüft und in ihre Schlüsseldatei geschrieben hat. Die erste solche Anfrage seit `gestartetUm` zählt |
 
 Ein Fenster ohne SSH-Schlüssel am Techniker-Zugang steht mit `schluesselAbgeholtUm: null` in der Meldung: Es gibt nichts abzuholen. Ob der Zugang einen Schlüssel trägt, weiß das Portal selbst.
@@ -49,9 +53,9 @@ Ein Fenster ohne SSH-Schlüssel am Techniker-Zugang steht mit `schluesselAbgehol
 | Ergebnis | Bedeutung |
 |---|---|
 | `204` | angenommen und gespeichert |
-| `400` | die Meldung hat nicht die verlangte Form: kein JSON, unbekanntes Feld, andere `version`, eine `id` ist keine UUID oder steht doppelt, zu viele Einträge, eine Zeitangabe liegt nach `gemeldetUm`, oder `gemeldetUm` weicht um mehr als 5 Minuten von der Uhr der API ab |
+| `400` | die Meldung hat nicht die verlangte Form: kein JSON, unbekanntes Feld (eine API vor dem Feld `techniker` weist eine Meldung mit ihm so ab, darum zuerst die API ausrollen), andere `version`, eine `id` ist keine UUID oder steht doppelt, zu viele Einträge, eine Zeitangabe liegt nach `gemeldetUm`, oder `gemeldetUm` weicht um mehr als 5 Minuten von der Uhr der API ab |
 | `413` | die Meldung ist größer als 2 MiB |
-| `422` | die Meldung nennt eine Box oder ein Fenster, das die API nicht kennt. **Nichts aus dieser Meldung wird gespeichert** |
+| `422` | die Meldung nennt eine Box, ein Fenster oder einen Techniker-Zugang, den die API nicht kennt. **Nichts aus dieser Meldung wird gespeichert** |
 | `401`, `403` | kein Token oder nicht die Rolle `tunnel-dienst`. Kunden-, Publisher- und Admin-Token bekommen 403 |
 | `404`, `405` | diese API kennt die Rückmeldung noch nicht (älterer Stand) |
 
@@ -60,7 +64,7 @@ Fehler tragen `{"message": "…"}`.
 ## Regeln
 
 - **Die API misst das Alter selbst.** Sie hält zu jeder Box und jedem Fenster fest, wann sie die Meldung angenommen hat, nach ihrer eigenen Uhr. Das Portal zeigt dieses Alter und behandelt eine Angabe, die älter als 3 Minuten ist, als unbekannt.
-- **Unbekannt ist kein „nicht verbunden“.** Fehlt die Meldung, ist sie alt oder nennt sie die Box nicht, sagt das Portal genau das.
+- **Unbekannt ist kein „nicht verbunden“** und kein „noch nie“. Fehlt die Meldung, ist sie alt oder nennt sie die Box bzw. den Techniker-Zugang nicht, sagt das Portal genau das.
 - **Der Dienst meldet nach jedem Lauf,** also im Abstand seines Abrufintervalls (30 s), in einem eigenen Aufruf mit 5 s Frist. Scheitert der Aufruf, ändert das nichts an Soll-Stand, Firewall und Schlüsselausgabe; der Dienst versucht es in wachsendem Abstand wieder, höchstens alle 10 Minuten.
-- **Beide Seiten vertragen die jeweils ältere andere.** Ein Dienst mit Rückmeldung an einer API ohne diese Route bekommt 404 und fragt alle 10 Minuten wieder nach. Eine API mit dieser Route und ein Dienst ohne Rückmeldung: Es kommt keine Meldung, das Portal zeigt „keine Meldung“.
-- **Gespeichert wird nur der letzte Stand** je Box, je Fenster und je Dienstkonto. Ein Verlauf entsteht nicht; das Protokoll der Fernwartung bleibt davon unberührt.
+- **Beide Seiten vertragen die jeweils ältere andere.** Ein Dienst mit Rückmeldung an einer API ohne diese Route bekommt 404 und fragt alle 10 Minuten wieder nach. Eine API mit dieser Route und ein Dienst ohne Rückmeldung: Es kommt keine Meldung, das Portal zeigt „keine Meldung“. Für das additive Feld `techniker` gilt nur die eine Richtung: eine neue API nimmt Meldungen ohne es an (Handshake im Portal „unbekannt“), eine API vor ihm weist Meldungen mit ihm als 400 ab, und der Dienst versucht es in wachsendem Abstand wieder. Darum zuerst die API, dann den Dienst ausrollen.
+- **Gespeichert wird nur der letzte Stand** je Box, je Fenster, je Techniker-Zugang und je Dienstkonto. Ein Verlauf entsteht nicht; das Protokoll der Fernwartung bleibt davon unberührt.

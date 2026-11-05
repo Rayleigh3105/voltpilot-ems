@@ -95,12 +95,15 @@ class FernwartungVertragTest {
         Map<String, Object> meldung = schema("FernwartungRueckmeldungMeldung");
         List<String> felder = komponenten(FernwartungRueckmeldung.Meldung.class);
         assertThat(map(meldung, "properties").keySet()).containsExactlyInAnyOrderElementsOf(felder);
-        assertThat(meldung.get("required")).asList().containsExactlyInAnyOrderElementsOf(felder);
+        // Pflicht ist alles außer dem additiven Feld techniker (ein älterer Dienst kennt es nicht).
+        assertThat(meldung.get("required")).asList().containsExactlyInAnyOrderElementsOf(
+                felder.stream().filter(f -> !"techniker".equals(f)).toList());
         assertThat(meldung.get("additionalProperties")).isEqualTo(false);
         assertThat(map(map(meldung, "properties"), "version").get("enum")).asList()
                 .containsExactly(FernwartungRueckmeldung.VERSION);
         for (Object[] liste : new Object[][] {{"boxen", FernwartungRueckmeldung.BoxMeldung.class},
-                {"fenster", FernwartungRueckmeldung.FensterMeldung.class}}) {
+                {"fenster", FernwartungRueckmeldung.FensterMeldung.class},
+                {"techniker", FernwartungRueckmeldung.TechnikerMeldung.class}}) {
             Map<String, Object> eintraege = map(map(meldung, "properties"), (String) liste[0]);
             assertThat(eintraege.get("maxItems")).isEqualTo(FernwartungRueckmeldung.MAX_EINTRAEGE);
             List<String> spalten = komponenten((Class<?>) liste[1]);
@@ -119,7 +122,10 @@ class FernwartungVertragTest {
         assertThat(map(map(map(map(schema("FernwartungUebersicht"), "properties"), "rueckmeldungen"), "items"),
                 "properties").keySet())
                 .containsExactlyInAnyOrderElementsOf(komponenten(AdminFernwartungController.RueckmeldungDto.class));
-        for (String form : List.of("FernwartungBox", "FernwartungFenster")) {
+        assertThat(map(map(map(schema("FernwartungTechniker"), "properties"), "rueckmeldung"), "properties").keySet())
+                .containsExactlyInAnyOrderElementsOf(
+                        komponenten(AdminFernwartungController.TechnikerRueckmeldungDto.class));
+        for (String form : List.of("FernwartungBox", "FernwartungFenster", "FernwartungTechniker")) {
             assertThat(map(map(schema(form), "properties"), "rueckmeldung").get("nullable")).as(form)
                     .isEqualTo(true);
         }

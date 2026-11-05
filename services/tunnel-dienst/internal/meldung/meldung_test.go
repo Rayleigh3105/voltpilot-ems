@@ -28,6 +28,7 @@ var (
 	box1    = netip.MustParseAddr("10.10.16.2")
 	keyBox1 = "jUg9DePFPkIQ+KNIAXqSEuVTw2UNHwbUH/HPFK5HiEM="
 	keyBox2 = "SBsk0U9z6BgB/U8nb+L9PdK/46p7mBvWRQe8I0Vg3C0="
+	keyTech = "FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y="
 )
 
 // sicher ist ein Puffer fürs Journal, in den mehrere Goroutinen schreiben.
@@ -131,7 +132,8 @@ func um(h, m, s int) time.Time { return time.Date(2026, 10, 7, h, m, s, 0, time.
 
 // Der Vertragsvektor der Meldung, Byte für Byte: Die erste Box war beim Start
 // nicht verbunden und ist es seit 11:42:07, fragt regelmäßig und hat den
-// Schlüssel des Fensters abgeholt; die zweite ist nicht verbunden.
+// Schlüssel des Fensters abgeholt; die zweite ist nicht verbunden. Das Gerät
+// des Technikers hatte seinen letzten Handshake um 13:58:44.
 func TestVertragsvektorDerMeldung(t *testing.T) {
 	lage, g := vektorLage(t)
 	p := neuerPruefstand(t)
@@ -143,7 +145,8 @@ func TestVertragsvektorDerMeldung(t *testing.T) {
 		p.hs = map[string]time.Time{keyBox1: verbunden.Add(jetzt.Sub(verbunden).Truncate(2 * time.Minute)), keyBox2: {}}
 		p.lauf(jetzt, lage)
 	}
-	techniker := g.Peers["FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y="]
+	techniker := g.Peers[keyTech]
+	p.hs[keyTech] = um(13, 58, 44)
 	p.auskunft.Boxen[box1] = ausgabe.BoxAuskunft{
 		LetzteAnfrage: um(14, 0, 12).Add(300 * time.Millisecond),
 		Bestaetigt:    map[string]map[string]time.Time{techniker.ID: {techniker.SSH.Fingerabdruck: um(13, 30, 41)}},
@@ -176,7 +179,7 @@ func TestVertragsvektorDerMeldung(t *testing.T) {
 func TestMeldungNenntNurDieVereinbartenAngaben(t *testing.T) {
 	lage, g := vektorLage(t)
 	p := neuerPruefstand(t)
-	p.hs = map[string]time.Time{keyBox1: start, keyBox2: start}
+	p.hs = map[string]time.Time{keyBox1: start, keyBox2: start, keyTech: start}
 	var fingerabdruck string
 	for _, peer := range g.Peers {
 		if peer.Art == soll.ArtTechniker {
@@ -199,12 +202,16 @@ func TestMeldungNenntNurDieVereinbartenAngaben(t *testing.T) {
 		}
 		return strings.Join(sortiere(k), ",")
 	}
-	if got := felder(roh); got != "boxen,fenster,gemeldetUm,gestartetUm,schluesselausgabe,version" {
+	if got := felder(roh); got != "boxen,fenster,gemeldetUm,gestartetUm,schluesselausgabe,techniker,version" {
 		t.Fatalf("Felder der Meldung: %s", got)
 	}
-	var boxen, fenster []map[string]json.RawMessage
+	var boxen, fenster, techniker []map[string]json.RawMessage
 	_ = json.Unmarshal(roh["boxen"], &boxen)
 	_ = json.Unmarshal(roh["fenster"], &fenster)
+	_ = json.Unmarshal(roh["techniker"], &techniker)
+	if len(techniker) != 1 || felder(techniker[0]) != "id,letzterHandshakeUm" {
+		t.Fatalf("Felder eines Technikers: %s", roh["techniker"])
+	}
 	if len(boxen) != 2 || felder(boxen[0]) != "id,verbundenSeit,zuletztGefragtUm" {
 		t.Fatalf("Felder einer Box: %s", roh["boxen"])
 	}
@@ -223,6 +230,59 @@ func TestMeldungNenntNurDieVereinbartenAngaben(t *testing.T) {
 	}
 	if !strings.Contains(text, `"schluesselAbgeholtUm":"2026-10-07T09:15:00Z"`) {
 		t.Errorf("der abgeholte Schlüssel fehlt:\n%s", text)
+	}
+}
+
+// Der letzte Handshake je Techniker-Zugang: genau die Zeit, die WireGuard
+// zeigt, auf ganze Sekunden; null, wenn WireGuard keinen kennt - als Null-Zeit
+// ("0" in der Ausgabe von wg) oder weil der Peer dort (noch) fehlt. Anders als
+// bei Boxen gibt es keine Schwelle: auch ein Handshake von gestern ist eine
+// Aussage.
+func TestLetzterHandshakeDesTechnikers(t *testing.T) {
+	lage, g := vektorLage(t)
+	techniker := g.Peers[keyTech]
+	p := neuerPruefstand(t)
+	handshake := func(b Bericht) string {
+		t.Helper()
+		if len(b.Techniker) != 1 || b.Techniker[0].ID != techniker.ID {
+			t.Fatalf("Techniker der Meldung: %+v", b.Techniker)
+		}
+		if b.Techniker[0].LetzterHandshakeUm == nil {
+			return "noch nie"
+		}
+		return b.Techniker[0].LetzterHandshakeUm.Format(time.RFC3339)
+	}
+
+	// WireGuard kennt den Peer, aber keinen Handshake.
+	p.hs = map[string]time.Time{keyTech: {}}
+	p.lauf(start.Add(10*time.Second), lage)
+	if got := handshake(p.letzter(t)); got != "noch nie" {
+		t.Fatalf("ohne Handshake: %s", got)
+	}
+	// WireGuard kennt den Peer gar nicht (noch nicht eingerichtet).
+	p.hs = map[string]time.Time{}
+	p.lauf(start.Add(40*time.Second), lage)
+	if got := handshake(p.letzter(t)); got != "noch nie" {
+		t.Fatalf("Peer fehlt in wg: %s", got)
+	}
+	// Ein Handshake vor gut einem Tag bleibt eine Aussage, auf Sekunden in UTC.
+	gestern := start.Add(-26*time.Hour + 1500*time.Millisecond).In(time.FixedZone("MESZ", 2*3600))
+	p.hs = map[string]time.Time{keyTech: gestern}
+	p.lauf(start.Add(70*time.Second), lage)
+	if got := handshake(p.letzter(t)); got != "2026-10-06T07:15:01Z" {
+		t.Fatalf("Handshake von gestern: %s", got)
+	}
+	// Ein Handshake, der während der Lesung kam, liegt nie nach gemeldetUm.
+	p.hs = map[string]time.Time{keyTech: start.Add(101 * time.Second)}
+	p.lauf(start.Add(100*time.Second).Add(400*time.Millisecond), lage)
+	if got := handshake(p.letzter(t)); got != "2026-10-07T09:16:40Z" {
+		t.Fatalf("Handshake nach der Meldung: %s", got)
+	}
+	// Ein Box-Schlüssel macht den Techniker nicht verbunden.
+	p.hs = map[string]time.Time{keyBox1: start.Add(110 * time.Second)}
+	p.lauf(start.Add(130*time.Second), lage)
+	if got := handshake(p.letzter(t)); got != "noch nie" {
+		t.Fatalf("Handshake einer Box beim Techniker: %s", got)
 	}
 }
 

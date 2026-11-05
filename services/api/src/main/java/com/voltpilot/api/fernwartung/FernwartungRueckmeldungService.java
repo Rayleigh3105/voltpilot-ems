@@ -4,6 +4,7 @@ import com.voltpilot.api.fernwartung.FernwartungRueckmeldung.Geprueft;
 import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.BoxStand;
 import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.DienstStand;
 import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.FensterStand;
+import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.TechnikerStand;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Collection;
@@ -49,7 +50,7 @@ public class FernwartungRueckmeldungService {
 
     /**
      * Prüft und speichert eine Meldung. 400 = nicht die vereinbarte Form,
-     * 422 = eine Box oder ein Fenster ist der API unbekannt; in beiden Fällen
+     * 422 = eine Box, ein Fenster oder ein Techniker-Zugang ist der API unbekannt; in beiden Fällen
      * bleibt der vorige Stand unverändert.
      */
     public void annehmen(String dienst, byte[] rumpf) {
@@ -64,8 +65,11 @@ public class FernwartungRueckmeldungService {
         meldung.boxen().forEach(b -> boxen.add(b.id()));
         Set<UUID> fenster = new HashSet<>();
         meldung.fenster().forEach(f -> fenster.add(f.id()));
+        Set<UUID> techniker = new HashSet<>();
+        meldung.techniker().forEach(t -> techniker.add(t.id()));
         unbekannt(boxen, repo.bekannteBoxen(boxen), "eine Box, die");
         unbekannt(fenster, repo.bekannteFenster(fenster), "ein Fenster, das");
+        unbekannt(techniker, repo.bekannteTechniker(techniker), "einen Techniker-Zugang, den");
         repo.speichern(dienst == null || dienst.isBlank() ? "unbekannt" : dienst, jetzt, meldung);
     }
 
@@ -92,5 +96,10 @@ public class FernwartungRueckmeldungService {
 
     public Map<UUID, FensterStand> fenster(Collection<UUID> ids) {
         return repo.fenster(ids);
+    }
+
+    /** Der letzte gemeldete Handshake je Techniker-Zugang, nach Kennung des Zugangs. */
+    public Map<UUID, TechnikerStand> techniker() {
+        return repo.techniker();
     }
 }

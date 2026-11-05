@@ -1,7 +1,8 @@
 // Package meldung ist die Rückmeldung des Dienstes ans Portal: je Box
 // "verbunden seit" und "zuletzt gefragt um", je Fenster "Schlüssel abgeholt
-// um" (Vertrag: docs/contracts/fernwartung-rueckmeldung-v1.md). Sonst steht
-// nichts darin - kein Schlüssel, kein Fingerabdruck, keine Adresse.
+// um", je Techniker-Zugang "letzter Handshake um" (Vertrag:
+// docs/contracts/fernwartung-rueckmeldung-v1.md). Sonst steht nichts darin -
+// kein Schlüssel, kein Fingerabdruck, keine Adresse, kein Endpunkt.
 //
 // Die Rückmeldung ist Anzeige im Portal und darf die eigentliche Arbeit nie
 // stören:
@@ -57,6 +58,9 @@ type Bericht struct {
 	Schluesselausgabe bool      `json:"schluesselausgabe"`
 	Boxen             []Box     `json:"boxen"`
 	Fenster           []Fenster `json:"fenster"`
+	// Techniker ist additiv (seit der Spalte "Letzter Handshake" im Portal):
+	// eine ältere API weist die Meldung mit diesem Feld als unbekannt ab.
+	Techniker []Techniker `json:"techniker"`
 }
 
 // Box ist eine Box aus dem Soll-Stand, benannt nur über ihre id.
@@ -70,6 +74,15 @@ type Box struct {
 type Fenster struct {
 	ID                   string     `json:"id"`
 	SchluesselAbgeholtUm *time.Time `json:"schluesselAbgeholtUm"`
+}
+
+// Techniker ist ein Techniker-Zugang aus dem Soll-Stand, benannt nur über
+// seine id. LetzterHandshakeUm ist, was `wg show … latest-handshakes` für
+// seinen Peer zeigt; null: WireGuard kennt keinen Handshake dieses Peers
+// (noch nie, seit der Peer auf dem Server eingerichtet ist).
+type Techniker struct {
+	ID                 string     `json:"id"`
+	LetzterHandshakeUm *time.Time `json:"letzterHandshakeUm"`
 }
 
 // Melder baut und schickt die Meldung und merkt sich dafür, seit wann eine
@@ -161,7 +174,7 @@ func (m *Melder) Melde(ctx context.Context, lage dienst.Lage, bekannt bool) {
 	if !bekannt || jetzt.Before(m.naechster) {
 		return
 	}
-	bericht := m.baue(lage, jetzt)
+	bericht := m.baue(lage, jetzt, hs)
 	rumpf, err := json.Marshal(bericht)
 	if err != nil || len(rumpf) > MaxRumpf {
 		m.melde(slog.LevelWarn, "Rückmeldung ans Portal entfällt: Meldung nicht darstellbar oder zu groß",
@@ -174,7 +187,7 @@ func (m *Melder) Melde(ctx context.Context, lage dienst.Lage, bekannt bool) {
 	case err == nil:
 		m.fehler, m.naechster = 0, time.Time{}
 		m.melde(slog.LevelInfo, "Rückmeldung ans Portal angenommen", "boxen", len(bericht.Boxen),
-			"fenster", len(bericht.Fenster))
+			"fenster", len(bericht.Fenster), "techniker", len(bericht.Techniker))
 	case errors.Is(err, quelle.ErrKeinToken):
 		// Der Abruf des Soll-Stands holt das Token; scheitert er, steht das
 		// schon im Journal.
@@ -275,11 +288,11 @@ func (m *Melder) beobachte(hs map[string]time.Time, jetzt time.Time) {
 	m.verbunden = neu
 }
 
-// baue stellt die Meldung zusammen: Boxen in der Reihenfolge ihrer Adressen,
-// Fenster nach ihrer id.
-func (m *Melder) baue(lage dienst.Lage, jetzt time.Time) Bericht {
+// baue stellt die Meldung zusammen: Boxen und Techniker in der Reihenfolge
+// ihrer Adressen, Fenster nach ihrer id. hs sind die Handshakes dieser Lesung.
+func (m *Melder) baue(lage dienst.Lage, jetzt time.Time, hs map[string]time.Time) Bericht {
 	b := Bericht{Version: Version, GemeldetUm: sekunde(jetzt), GestartetUm: sekunde(m.GestartetUm),
-		Boxen: []Box{}, Fenster: []Fenster{}}
+		Boxen: []Box{}, Fenster: []Fenster{}, Techniker: []Techniker{}}
 	var auskunft ausgabe.Auskunft
 	if m.Auskunft != nil {
 		auskunft = m.Auskunft()
@@ -299,6 +312,13 @@ func (m *Melder) baue(lage dienst.Lage, jetzt time.Time) Bericht {
 		switch p.Art {
 		case soll.ArtTechniker:
 			techniker[p.Adresse] = p
+			// Nur die Zeit: weder der Schlüssel noch der Endpunkt, von dem
+			// das Gerät kam, gehen hinaus.
+			t := Techniker{ID: p.ID}
+			if zuletzt := hs[p.PublicKey]; !zuletzt.IsZero() {
+				t.LetzterHandshakeUm = zeiger(zuletzt)
+			}
+			b.Techniker = append(b.Techniker, t)
 		case soll.ArtBox:
 			box := Box{ID: p.ID}
 			if seit, verbunden := m.verbunden[p.PublicKey]; verbunden {
