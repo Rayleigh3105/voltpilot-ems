@@ -11,7 +11,8 @@ import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { pageRoute, type Route } from '../../nav';
 import './BoxVersions.css';
 import { AdminPageHead } from './AdminPageHead';
-import { GeraeteDrawer } from './GeraeteDrawer';
+import { BoxSeite } from './BoxSeite';
+import { ReleaseSeite } from './ReleaseSeite';
 import { BoxenListe, BrauchtDich, LinienKarten, UpdatesLage } from './GeraeteUpdates';
 import { VerteilDialog, type VerteilStart } from './VerteilDialog';
 import {
@@ -31,7 +32,7 @@ import {
   type UpdateTone,
 } from '../../adminEdgeUpdates';
 import {
-  KEIN_FILTER, aufgaben, boxZeilen, lage, linienKarten, type BoxFilter, type LageZiel,
+  KEIN_FILTER, aufgaben, boxZeilen, lage, linieDerBox, linienKarten, type BoxFilter, type LageZiel,
 } from '../../geraeteUpdates';
 // LIST: eine Verwaltungs-Übersicht bewegt sich nicht sekündlich.
 import { LIST_POLL_MS } from '../../pollCadence';
@@ -96,6 +97,7 @@ export function EdgeUpdatesPage({
   const [verteilen, setVerteilen] = useState<VerteilStart | null>(null);
   const [deviceFor, setDeviceFor] = useState<string | null>(null);
   const [releasesFor, setReleasesFor] = useState<BoxArt | null>(null);
+  const [releaseFor, setReleaseFor] = useState<number | null>(null);
   const [filter, setFilter] = useState<BoxFilter>(KEIN_FILTER);
   // Zustand UND Bezugszeit werden ZUSAMMEN gesetzt - ein Alter, das gegen eine
   // Uhr über einem stehenden Schnappschuss rechnet, verfällt von selbst.
@@ -246,6 +248,7 @@ export function EdgeUpdatesPage({
             onReleases={setReleasesFor}
             onFortschritt={fortschritt}
             onNachruesten={oeffneBox}
+            onRelease={(seq) => setReleaseFor(seq)}
             onWeiter={(art, releaseSeq, uebrige) => {
               setActionError(null);
               setVerteilen({ art, releaseSeq, nur: uebrige, reihenfolge: 'alle' });
@@ -300,25 +303,28 @@ export function EdgeUpdatesPage({
       {deviceFor && data && (() => {
         const row = data.fleet.find((r) => r.deviceId === deviceFor);
         if (!row) return null;
+        const art = linieDerBox(row);
+        const neu = karten.find((k) => k.boxArt === art)?.neu?.release ?? null;
+        const stufe1 = row.stand === 'hand' || row.stufe1 === true;
         return (
-          <GeraeteDrawer
-            device={row}
-            releases={data.releases}
-            journal={data.journal}
+          <BoxSeite
+            key={`${row.deviceId}-${fetchedAt}`}
+            row={row}
+            neuesterDerLinie={neu}
+            ladeVerlauf={(id) => adminApi.boxVerlauf(id)}
             busy={busy}
             error={actionError}
             onClose={() => { setDeviceFor(null); setActionError(null); }}
-            onAssign={async (releaseSeq) => {
-              if (await act(() => adminApi.setUpdateTarget(row.deviceId, { releaseSeq }))) {
-                setDeviceFor(null);
-              }
-            }}
-            onRevert={async () => {
-              if (await act(() => adminApi.revertUpdateTarget(row.deviceId))) {
-                setDeviceFor(null);
-              }
-            }}
-            onOpenGeraetseite={
+            onAnfragen={art && !stufe1 ? () => {
+              setDeviceFor(null);
+              setActionError(null);
+              setVerteilen({ art, releaseSeq: neu?.releaseSeq ?? null, nur: [row.deviceId], reihenfolge: 'alle' });
+            } : undefined}
+            onZurueckziehen={row.fakten || row.soll
+              ? () => void act(() => adminApi.revertUpdateTarget(row.deviceId))
+              : undefined}
+            onFernwartung={onNavigate ? () => onNavigate(pageRoute('fernwartung')) : undefined}
+            onGeraeteseite={
               onJumpToTenant
                 ? () => {
                     setDeviceFor(null);
@@ -335,12 +341,29 @@ export function EdgeUpdatesPage({
         );
       })()}
 
+      {releaseFor != null && data && (
+        <ReleaseSeite
+          releaseSeq={releaseFor}
+          releases={data.releases}
+          fleet={data.fleet}
+          ladeSeite={(seq) => adminApi.edgeRelease(seq)}
+          onClose={() => setReleaseFor(null)}
+          onVerteilen={(release) => {
+            setReleaseFor(null);
+            setActionError(null);
+            setVerteilen({ art: releaseBoxArt(release), releaseSeq: release.releaseSeq });
+          }}
+          onBox={(id) => { setReleaseFor(null); oeffneBox(id); }}
+        />
+      )}
+
       {releasesFor && data && (
         <LinienReleases
           art={releasesFor}
           releases={data.releases}
           busy={busy || data.fleet.length === 0}
           onClose={() => setReleasesFor(null)}
+          onRelease={(seq) => { setReleasesFor(null); setReleaseFor(seq); }}
           onVerteilen={(release) => {
             setReleasesFor(null);
             setActionError(null);
@@ -376,12 +399,14 @@ export function EdgeUpdatesPage({
  * prüfen könnte. Das ist das EINZIGE Tor am Release, nie am Zustand eines Geräts.
  */
 function LinienReleases({
-  art, releases, busy, onClose, onVerteilen,
+  art, releases, busy, onClose, onRelease, onVerteilen,
 }: {
   art: BoxArt;
   releases: EdgeUpdatesRelease[];
   busy: boolean;
   onClose: () => void;
+  /** Die Release-Seite öffnen (G7). */
+  onRelease: (releaseSeq: number) => void;
   onVerteilen: (release: EdgeUpdatesRelease) => void;
 }) {
   const liste = releases.filter((r) => releaseBoxArt(r) === art).sort((a, b) => b.releaseSeq - a.releaseSeq);
@@ -409,7 +434,9 @@ function LinienReleases({
               return (
                 <tr key={r.releaseSeq}>
                   <td data-label="Version">
-                    <strong>{r.version}</strong>
+                    <button type="button" className="vp-gu-link" onClick={() => onRelease(r.releaseSeq)}>
+                      <strong>{r.version}</strong>
+                    </button>
                     {r.notes && <div className="vp-muted vp-text-sm">{r.notes}</div>}
                   </td>
                   <td data-label="Commit" className="vp-muted">{r.targetCommit ?? '–'}</td>

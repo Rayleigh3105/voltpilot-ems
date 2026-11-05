@@ -196,6 +196,55 @@
   .vp-gu-fuss-lang { display: none; }
 }
 
+/* Release-Seite und Box-Seite (G7): Blätter im Modal - außerhalb von .vp-gu. */
+.vp-gu-version-link { background: none; border: 0; padding: 0; color: inherit; cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; }
+.vp-gu-version-link:hover { text-decoration-color: currentColor; }
+.vp-gu-version-link:focus-visible { outline: 3px solid var(--vp-focus-ring, #5A8DE8); outline-offset: 2px; border-radius: 4px; }
+.vp-gu-blatt { display: grid; gap: 0; }
+.vp-gu-blatt-kopf { display: grid; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--vp-border); }
+.vp-gu-blatt-teil { padding: 14px 0; border-bottom: 1px solid var(--vp-border); display: grid; gap: 10px; min-width: 0; }
+.vp-gu-blatt-teil:last-child { border-bottom: none; }
+.vp-gu-blatt-teil h3, .vp-gu-technik summary { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--vp-text-gray); font-family: var(--vp-font-body); font-weight: 700; margin: 0; }
+.vp-gu-blatt-teil p { margin: 0; }
+.vp-gu-notiz { font-size: 0.95rem; }
+.vp-gu-fakten { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.vp-gu-fakt { border: 1px solid var(--vp-border); border-radius: 12px; padding: 10px 12px; display: grid; gap: 3px; align-content: start; }
+.vp-gu-fakt small { font-size: 0.74rem; color: var(--vp-text-gray); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.vp-gu-fakt b { font-size: 0.95rem; overflow-wrap: anywhere; }
+.vp-gu-fakt span { font-size: 0.8rem; color: var(--vp-text-gray); overflow-wrap: anywhere; }
+.vp-gu-verlauf { list-style: none; margin: 0; padding: 0; display: grid; }
+.vp-gu-ereignis { display: grid; grid-template-columns: 92px 18px minmax(0, 1fr); gap: 10px; }
+.vp-gu-ereignis .wann { font-size: 0.8rem; color: var(--vp-text-gray); text-align: right; padding-top: 1px; }
+.vp-gu-ereignis .linie { position: relative; }
+.vp-gu-ereignis .linie::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: #E3E8EF; }
+.vp-gu-ereignis:last-child .linie::before { bottom: auto; height: 16px; }
+.vp-gu-ereignis .linie i { position: absolute; left: 3px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px #90A4AE; }
+.vp-gu-ereignis .linie i.ok { box-shadow: inset 0 0 0 3px #43A047; }
+.vp-gu-ereignis .linie i.fehler { box-shadow: inset 0 0 0 3px #E53935; }
+.vp-gu-ereignis .linie i.lauf { box-shadow: inset 0 0 0 3px #5A8DE8; }
+.vp-gu-ereignis .was { padding-bottom: 14px; font-size: 0.88rem; min-width: 0; }
+.vp-gu-ereignis .was b { display: block; font-size: 0.92rem; overflow-wrap: anywhere; }
+.vp-gu-ereignis .was small { display: block; color: var(--vp-text-gray); font-size: 0.8rem; }
+.vp-gu-schritte { margin: 0; padding-left: 1.2rem; display: grid; gap: 8px; font-size: 0.88rem; }
+.vp-gu-schritte li > div { margin-top: 6px; }
+.vp-gu-hinweis { background: #FBF3D5; color: #5C4700; border-radius: 12px; padding: 12px 14px; font-size: 0.88rem; display: grid; gap: 6px; }
+.vp-gu-hinweis b { color: #4A3900; }
+.vp-gu-tab-rahmen { overflow-x: auto; }
+.vp-gu-tab { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.vp-gu-tab th, .vp-gu-tab td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--vp-border); vertical-align: top; }
+.vp-gu-tab th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vp-text-gray); }
+.vp-gu-tab tr:last-child td { border-bottom: none; }
+.vp-gu-technik summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+.vp-gu-technik dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 8px 0 0; font-size: 0.86rem; }
+.vp-gu-technik dt { color: var(--vp-text-gray); }
+.vp-gu-technik dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .vp-gu-fakten { grid-template-columns: minmax(0, 1fr); }
+  .vp-gu-ereignis { grid-template-columns: 64px 18px minmax(0, 1fr); gap: 8px; }
+  .vp-gu-technik dl { grid-template-columns: minmax(0, 1fr); }
+  .vp-gu-technik dd { margin-bottom: 6px; }
+}
+
 /* ---------- Telefon: dieselbe Auszeichnung, schmal ---------- */
 @container vp-gu (max-width: 640px) {
   .vp-gu-lage { flex-wrap: wrap; align-items: flex-start; }

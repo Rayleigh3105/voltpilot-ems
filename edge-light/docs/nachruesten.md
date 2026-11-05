@@ -7,7 +7,7 @@ Eine Box mit Stufe 1 startet für immer die Fassung aus ihrem Flash; ihr Loader 
 ## Voraussetzungen
 
 1. K1 bis K5 sind gemergt und deployt (api, Portal, Werkstatt-Dienst).
-2. Die Repo-Variable `EDGE_LIGHT_SIGNIEREN=true` ist gesetzt, und es gibt **zwei** signierte Edge-Light-Releases: `N` zum Nachrüsten und `N+1` für das erste Update. Im Portal unter Edge-Updates stehen beide, jedes mit fertigen Programmen (`GET /api/v1/admin/edge-releases/<fassung>/programme` → `fertig: true` für `linux/mipsle`).
+2. Die Repo-Variable `EDGE_LIGHT_SIGNIEREN=true` ist gesetzt, und es gibt **zwei** signierte Edge-Light-Releases: `N` zum Nachrüsten und `N+1` für das erste Update. Im Portal unter Geräte → Updates stehen beide („Releases (n)“ der Karte Edge Light), jedes mit fertigen Programmen (die Release-Seite zeigt je Programm „geprüft“; `GET /api/v1/admin/edge-releases/<fassung>/programme` → `fertig: true` für `linux/mipsle`).
 3. Der Laborbeweis ist an der Labor-Mango gelaufen ([Labor](../labor/README.md)), oder er läuft unmittelbar vorher mit denselben Schritten.
 4. Ein Techniker-Zugang mit RSA-SSH-Schlüssel (`~/.ssh/id_rsa_voltpilot`), WireGuard zum Wartungsserver steht ([Fernwartung](../../docs/fernwartung.md)).
 5. Ein Zeitpunkt, zu dem eine Unterbrechung von rund einer Minute beim Kunden nicht stört (Überschussladen der go-e, [mango.md](mango.md)).
@@ -85,28 +85,28 @@ Erwartet in `/health`:
 - `ota_update.current_seq` = Stand `N`
 - `cloud_connected: true`
 
-Im Portal zeigt das Gerät unter Edge-Updates **kein** „Updates von Hand (Edge Light, Stufe 1)“ mehr.
+Im Portal steht die Box unter Geräte → Updates **nicht** mehr als „nur von Hand · Stufe 1“; ihre Box-Seite zeigt keine Schritte zum Nachrüsten mehr.
 
 Tunnel: `ssh vp-tgjn9gd 'wg show vp-wartung latest-handshakes'` → jünger als 3 min. Dann das Fenster schließen.
 
 ### 6. Erstes echtes Update über das Portal (U-6)
 
-Portal → Plattform → Edge-Updates → Release `N+1` wählen → `edge-tgjn9gd` ankreuzen → „Aktualisieren“. Zusehen (Portal und, mit offenem Fenster, `logread -f -e vp-edge-light`):
+Portal → Geräte → Updates → Karte „Edge Light“ → „Releases (n)“ → bei `N+1` „Verteilen ▸“ → `edge-tgjn9gd` steht unter „Bereit“ → „1 Box anfragen“. Zusehen (Portal und, mit offenem Fenster, `logread -f -e vp-edge-light`). Die Box-Zeile zeigt unter „Update“ die drei Schritte angefragt · angenommen · bestätigt und darunter den Satz:
 
-| Zustand im Portal | Was die Box tut |
+| Satz im Portal | Was die Box tut |
 |---|---|
-| wird geladen | Programm lädt ~5 MB aus `/api/v1/edge/light-programm/…` und prüft sie |
-| wird angewandt | Programm beendet sich; der Loader tauscht (Probestart `version`) |
-| Selbsttest | neue Fassung läuft zur Probe; Trockenlauf, Web-App, Cloud |
-| erfolgreich | Loader legt die Fassung in den Flash (Prüfsummen zuerst), `current.json` = Stand `N+1` |
+| angenommen … · lädt | Programm lädt ~5 MB aus `/api/v1/edge/light-programm/…` und prüft sie |
+| angenommen … · wendet an | Programm beendet sich; der Loader tauscht (Probestart `version`) |
+| angenommen … · Selbsttest | neue Fassung läuft zur Probe; Trockenlauf, Web-App, Cloud |
+| bestätigt … | Loader legt die Fassung in den Flash (Prüfsummen zuerst), `current.json` = Stand `N+1` |
 
-Danach: `/health` → `"version"` = `N+1`; `/etc/vp-edge-light/ota/versuche` endet mit `start <N+1> …` und `ok <N+1> …`. Die Unterbrechung dauert rund 30 s. Wenn es scheitert: Der Loader nimmt zurück (Portal „zurückgenommen“ mit Grund). Die Box läuft mit `N` weiter; der Grund steht im Portal und in `versuche`. Erst nach einer Klärung erneut „Aktualisieren“.
+Danach: `/health` → `"version"` = `N+1`; `/etc/vp-edge-light/ota/versuche` endet mit `start <N+1> …` und `ok <N+1> …`. Die Unterbrechung dauert rund 30 s. Wenn es scheitert: Der Loader nimmt zurück (Portal „zurückgenommen“ mit Grund, die Box steht unter „Braucht dich“). Die Box läuft mit `N` weiter; der Grund steht im Portal und in `versuche`. Von selbst versucht sie es nicht noch einmal; erst nach einer Klärung „Noch einmal anfragen“.
 
 Mit diesem gelungenen Update und dem grünen Laborbeweis ist U-6 erfüllt: Dann wird der Satz „Nicht versenden“ in der Werkstatt durch die Abnahme-Prüfung „Update-bereit“ ersetzt (eigener kleiner PR: `VERSAND_SATZ` und der Beleg „versand“ des Werkstatt-Dienstes).
 
 ## Danach: Pilot und VoltPilotGATE
 
-- `edge-zay5sdd` hängt noch am alten Service-VPN (`10.10.1.25`, [mango.md](mango.md)). Die Schritte 1, 3–6 gelten unverändert; `HostName` ist die VPN-Adresse, Port nach dem dortigen Stand (22 im alten VPN).
+- `edge-zay5sdd` hängt noch am alten Service-VPN (`10.10.1.25`, [mango.md](mango.md)). Die Schritte 1, 3–6 gelten unverändert; `HostName` ist die VPN-Adresse, Port `2222` wie im neuen Tunnel: auch im alten VPN nimmt die Box SSH nur auf `10.10.1.25:2222` an, Port 22 weist sie ab ([mango.md](mango.md)).
 - VoltPilotGATE: nur, wenn ein Tunnel oder ein VPN-Weg besteht. Sonst vor Ort im LAN mit denselben Schritten.
 
 ## Zurück, falls nötig

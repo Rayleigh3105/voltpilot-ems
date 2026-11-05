@@ -220,8 +220,20 @@ Lauf-Karten unter der Liste und der alte Rollout-Drawer sind entfallen.
 stumme Box und für die abgelehnte Anfrage an eine Box mit Stufe 1) und „Noch
 einmal anfragen" (dieselbe Anfrage neu: neuer `assigned_at`, die Box löst damit
 ihren Merkzettel `FileFailed` — `otaupdater/engine.go`, ebenso Edge Light).
-Der geteilte `GeraeteDrawer` weist ein Einzelgerät zu (`onAssign(releaseSeq)` —
-kein Kanal, kein Pin). Angeboten werden nur zur Box-Art passende, SIGNIERTE
+Seit G7 öffnet jede Box ihre Box-Seite (`pages/admin/BoxSeite.tsx`, ersetzt
+den `GeraeteDrawer`): drei Kästen läuft (Box) · angefragt (Portal) · zuletzt
+bestätigt (Box) und der Verlauf (`GET /admin/devices/{id}/verlauf`, G3); als
+„bestätigt" gilt nur ein Stand, den das Portal seit dem vorigen Wechsel
+angefragt hatte (`zuletztBestaetigt`), ein Wechsel von Hand heißt „läuft jetzt".
+Eine einzelne Box fragt man dort mit „Update anfragen …" an — derselbe Dialog,
+nur diese Box, kein Kanal, kein Pin. Eine Box mit Stufe 1 zeigt oben den Grund
+in einem Satz (Loader vor Vertrauen) und die vier Schritte zum Nachrüsten mit
+„Fenster öffnen" (Fernwartung); Nachrüsten bleibt Handarbeit (E3 A,
+`edge-light/docs/nachruesten.md`). Ein Klick auf eine Version (Linien-Karte,
+„Releases (n)") öffnet die Release-Seite (`ReleaseSeite.tsx`, Daten aus G4):
+was neu ist (nur Box-Änderungen seit dem Vorgänger DERSELBEN Linie), Inhalt je
+Gerät mit „geprüft" im Portal, was nie im Update ist, wo es läuft und wann es
+verteilt wurde. Angeboten werden nur zur Box-Art passende, SIGNIERTE
 Releases, einer Edge-Light-Box mit Stufe 1 keines (`zuweisbareReleases`,
 `releaseSperre` braucht `trust`). Stufe 1 heißt ruhig „nur von Hand"
 (`stand = hand`, eigene Farbe), nie „ohne Vertrauens-Set" und nie ein Fehler. Es

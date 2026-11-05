@@ -2,10 +2,10 @@ import { boxVerbindung, releaseIsRunning } from './adminFleet';
 import {
   BOX_ART_LABELS, BOX_ART_UNBEKANNT, LOADER_FLASH, actorLabel, blockerLever, deviceBoxArt, geraetZeile,
   releaseBoxArt, releaseSperre, stateLabel, type BoxArt, type EdgeEignung, type EdgeReleaseSeite, type EdgeUpdates,
-  type EdgeUpdatesRelease, type FleetRow, type UpdateFakten,
+  type EdgeUpdatesRelease, type FleetRow, type UpdateFakten, type VerlaufEintrag,
 } from './adminEdgeUpdates';
 import { versionDisplay } from './edgeVersionLabel';
-import { fmtRelative, seitDauer } from './format';
+import { NBSP, fmtRelative, seitDauer } from './format';
 
 /**
  * Die reine Schicht der Seite „Geräte & Updates" (Geräte & Updates G5, Konzept
@@ -1037,4 +1037,181 @@ export function lage(data: Pick<EdgeUpdates, 'fleet'>, now: Date): Lage {
     text: [`${aktuell} von ${boxen(rows.length)} laufen auf dem neuesten Release ihrer Linie; die übrigen haben keinen bewertbaren Stand.`],
     link: null,
   };
+}
+
+// ── Box-Seite und Release-Seite (G7) ────────────────────────────────────────
+
+export type VerlaufTon = 'ok' | 'lauf' | 'fehler' | 'leer';
+export interface VerlaufZeile { wann: string; ton: VerlaufTon; titel: Satz; text: string | null }
+
+/**
+ * Ein gemeldeter Stempel als Release-Name: „edge-2026.10.7-c39b18d9c2a4" →
+ * „edge-2026.10.7". Ein Stempel ohne Release-Form (Build von Hand) bleibt, wie
+ * die Box ihn meldet.
+ */
+function standText(stamp: string | null): string | null {
+  if (!stamp) return null;
+  const m = /^(edge(?:-light)?-\d{4}\.\d{2}\.\d+)-[0-9a-f]{12}$/.exec(stamp.trim());
+  return m ? m[1] : versionDisplay(stamp)?.tag ?? stamp;
+}
+
+/**
+ * Hat das Portal diesen Stand angefragt, seit die Box zuletzt gewechselt hat?
+ * `aelter` sind die Einträge NACH dem Stand in der Liste (neueste zuerst), bis
+ * zum vorigen Wechsel. Nur dann heißt der Wechsel „bestätigt" - ein Stand von
+ * Hand (Wartungstunnel, Werkstatt) ist keine Bestätigung einer Anfrage.
+ */
+function warAngefragt(aelter: VerlaufEintrag[], stamp: string | null): boolean {
+  if (!stamp) return false;
+  for (const e of aelter) {
+    if (e.quelle === 'box' && e.art === 'stand') return false;
+    if (e.quelle === 'portal' && e.art === 'angefragt' && e.release && releaseIsRunning(e.release, stamp)) return true;
+  }
+  return false;
+}
+
+/** Der Verlauf einer Box in Worten - was das Portal tat und was die Box meldete. */
+export function verlaufSicht(eintraege: VerlaufEintrag[], now: Date): VerlaufZeile[] {
+  return eintraege.map((e, i): VerlaufZeile => {
+    const wann = uhr(e.am, now) ?? '–';
+    const von = e.von ? `von ${actorLabel(e.von)}` : null;
+    const rel: Satz = e.release ? [{ mono: e.release }] : [];
+    const grund = e.grund ? `: ${e.grund}` : '';
+    if (e.quelle === 'portal') {
+      switch (e.art) {
+        case 'angefragt': return { wann, ton: 'leer', titel: ['angefragt', ...(rel.length ? [': ', ...rel] : [])], text: von };
+        case 'zurueckgezogen': return { wann, ton: 'leer', titel: ['Anfrage zurückgezogen', ...(rel.length ? [': ', ...rel] : [])], text: von };
+        case 'erneut_gesendet': return { wann, ton: 'leer', titel: ['Anfrage erneut gesendet', ...(rel.length ? [': ', ...rel] : [])], text: von };
+        case 'entfernt': return { wann, ton: 'leer', titel: ['Aus der Verteilung entfernt'], text: von };
+        default: return { wann, ton: 'leer', titel: [e.art], text: von };
+      }
+    }
+    switch (e.art) {
+      case 'stand': {
+        const neu = standText(e.release);
+        if (!e.vorher) return { wann, ton: 'ok', titel: ['erste Meldung', ...(neu ? [': ', { mono: neu }] : [])], text: null };
+        const text = `vorher ${standText(e.vorher)}`;
+        return warAngefragt(eintraege.slice(i + 1), e.release)
+          ? { wann, ton: 'ok', titel: [{ mono: neu ?? '' }, ' bestätigt'], text }
+          : { wann, ton: 'ok', titel: ['läuft jetzt ', { mono: neu ?? '' }], text };
+      }
+      case 'angenommen':
+        return { wann, ton: 'lauf', titel: ['angenommen', ...(rel.length ? [': ', ...rel] : [])], text: 'Die Box hat das Release geprüft und übernimmt es.' };
+      case 'abgelehnt': return { wann, ton: 'fehler', titel: [`abgelehnt${grund}`], text: e.release ? `Anfrage ${e.release}` : null };
+      case 'zurueckgestellt': return { wann, ton: 'leer', titel: [`zurückgestellt${grund}`], text: e.release ? `Anfrage ${e.release}` : null };
+      case 'fehlgeschlagen': return { wann, ton: 'fehler', titel: [`fehlgeschlagen${grund}`], text: e.release ? `Anfrage ${e.release}` : null };
+      case 'zurueckgenommen': return { wann, ton: 'fehler', titel: [`zurückgenommen${grund}`], text: e.release ? `Anfrage ${e.release}` : null };
+      default: return { wann, ton: 'leer', titel: [e.art], text: null };
+    }
+  });
+}
+
+/** Die jüngste Bestätigung im Verlauf: ein Stand, den das Portal vorher angefragt hatte. */
+export function zuletztBestaetigt(eintraege: VerlaufEintrag[]): { release: string; am: string } | null {
+  for (let i = 0; i < eintraege.length; i += 1) {
+    const e = eintraege[i];
+    if (e.quelle === 'box' && e.art === 'stand' && e.vorher && warAngefragt(eintraege.slice(i + 1), e.release)) {
+      return { release: standText(e.release) ?? '', am: e.am };
+    }
+  }
+  return null;
+}
+
+export interface Fakt { wer: string; wert: string; satz: string }
+
+/**
+ * Die drei Kästen der Box-Seite, nie vermischt: läuft (meldet die Box) ·
+ * angefragt (Portal) · zuletzt bestätigt (Box). `eintraege` `null` = der Verlauf
+ * ist noch nicht da; dann sagt der dritte Kasten das, statt „nie" zu behaupten.
+ */
+export function boxFakten(row: FleetRow, eintraege: VerlaufEintrag[] | null, now: Date): Fakt[] {
+  const f = row.fakten ?? null;
+  const laeuft = istText(row);
+  const stempel = row.ist && laeuft && row.ist !== laeuft ? `Stempel ${row.ist}` : null;
+  const gemeldet = row.lastSeenAt ? fmtRelative(row.lastSeenAt, now) : null;
+  const angefragt: Fakt = f
+    ? {
+      wer: 'Angefragt · Portal', wert: f.angefragt.release,
+      satz: [uhr(f.angefragt.am, now), f.angefragt.von ? `von ${actorLabel(f.angefragt.von)}` : null,
+        f.angenommen.stand === 'abgelehnt' ? `Box lehnt ab${f.angenommen.grund ? `: ${f.angenommen.grund}` : ''}` : null]
+        .filter(Boolean).join(' · '),
+    }
+    : { wer: 'Angefragt · Portal', wert: '–', satz: 'keine Anfrage' };
+  let bestaetigt: Fakt;
+  if (f && f.bestaetigt.stand === 'ja') {
+    bestaetigt = { wer: 'Zuletzt bestätigt · Box', wert: f.angefragt.release, satz: uhr(f.bestaetigt.am, now) ?? 'bestätigt' };
+  } else if (eintraege == null) {
+    bestaetigt = { wer: 'Zuletzt bestätigt · Box', wert: '…', satz: 'Der Verlauf wird geladen.' };
+  } else {
+    const z = zuletztBestaetigt(eintraege);
+    bestaetigt = z
+      ? { wer: 'Zuletzt bestätigt · Box', wert: z.release, satz: uhr(z.am, now) ?? '' }
+      : { wer: 'Zuletzt bestätigt · Box', wert: '–', satz: 'keine Bestätigung im Verlauf' };
+  }
+  return [
+    { wer: 'Läuft · meldet die Box', wert: laeuft ?? '–', satz: [stempel, gemeldet].filter(Boolean).join(' · ') || 'nichts gemeldet' },
+    angefragt,
+    bestaetigt,
+  ];
+}
+
+/** Die Box mit Stufe 1 in einem Satz und woran man das Ende des Nachrüstens erkennt. */
+export function stufe1Hinweis(row: FleetRow): { grund: string; fertig: string } {
+  return row.loader === LOADER_FLASH
+    ? {
+      grund: 'Ihr Startprogramm startet immer die Fassung aus dem Flash. Das ist kein Defekt.',
+      fertig: 'Fertig, sobald die Box meldet, dass ihr Startprogramm Updates kennt und ihr Vertrauens-Set geprüft ist. Das Portal erkennt das selbst.',
+    }
+    : {
+      grund: 'Ihr fehlt das geprüfte Vertrauens-Set. Das ist kein Defekt.',
+      fertig: 'Fertig, sobald die Box ihr geprüftes Vertrauens-Set meldet. Das Portal erkennt das selbst.',
+    };
+}
+
+/** „4,7 MB" - Größen zur Anzeige (dezimal, eine Stelle). */
+export function mb(bytes: number): string {
+  return `${(bytes / 1e6).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}${NBSP}MB`;
+}
+
+export interface InhaltZeile { teil: Satz; geraet: string; groesse: string; portal: ZeilenBadge }
+
+/**
+ * Was ein Release enthält, je Teil: Docker die Bilder (für PC und Raspberry Pi
+ * aus der Registry), Edge Light je Programm mit Gerät, Größe und ob es fertig
+ * geprüft im Portal liegt. Die letzte Zeile nennt, was NIE über das Portal
+ * kommt (Board Abschnitt 6).
+ */
+export function releaseInhalt(seite: EdgeReleaseSeite): InhaltZeile[] {
+  const art = releaseBoxArt({ boxArt: seite.boxArt === 'light' ? 'light' : 'docker' });
+  const zeilen: InhaltZeile[] = seite.inhalt.map((t): InhaltZeile => {
+    if (art === 'docker' || !t.arch) {
+      return { teil: ['Bild ', { mono: t.name }], geraet: 'PC und Raspberry Pi', groesse: '–', portal: { ton: 'off', text: 'aus der Registry' } };
+    }
+    const prog = seite.programme.find((x) => x.arch === t.arch) ?? null;
+    const portal: ZeilenBadge = !prog ? { ton: 'warn', text: 'fehlt im Portal' }
+      : prog.fertig ? { ton: 'ok', text: 'geprüft' }
+        : { ton: 'warn', text: `${Math.floor((prog.empfangen * 100) / Math.max(1, prog.groesse))} % empfangen` };
+    const a = t.arch.replace(/^linux\//, '');
+    return {
+      teil: [{ mono: t.name }, ` ${t.arch}`],
+      geraet: ARCH_GERAET[a] ?? a,
+      groesse: t.gzGroesse ? `${mb(t.gzGroesse)} gepackt` : t.groesse ? mb(t.groesse) : '–',
+      portal,
+    };
+  });
+  zeilen.push({
+    teil: [art === 'light' ? 'Loader, Dienst, Tunnel-Skripte' : 'Updater und Betriebssystem'],
+    geraet: '–', groesse: 'nicht im Update', portal: { ton: 'off', text: 'nur Werkstatt' },
+  });
+  return zeilen;
+}
+
+/** Die Verteilungen eines Releases als Verlauf: wann, an wie viele, wie viele bestätigt. */
+export function verteiltSicht(seite: EdgeReleaseSeite, now: Date): VerlaufZeile[] {
+  return [...seite.verteilt].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).map((v) => ({
+    wann: uhr(v.createdAt, now) ?? '–',
+    ton: v.failed > 0 ? 'fehler' : v.confirmed >= v.total && v.total > 0 ? 'ok' : 'lauf',
+    titel: [`an ${boxWort(v.total) === 'Box' ? '1 Box' : `${v.total} Boxen`} angefragt · ${v.confirmed} bestätigt${v.failed ? ` · ${v.failed} gescheitert` : ''}`],
+    text: v.createdBy ? `von ${actorLabel(v.createdBy)}` : null,
+  }));
 }

@@ -8,7 +8,7 @@ import {
   BOX_ART_LABELS, releaseBoxArt, type BoxArt, type EdgeEignung, type EdgeUpdatesRelease, type FleetRow,
 } from '../../adminEdgeUpdates';
 import { anzufragen, ersteBox, verteilGruppen, vorauswahl, wann, type VerteilGruppe } from '../../geraeteUpdates';
-import { UpdateActionError } from './GeraeteDrawer';
+import { UpdateActionError } from './UpdateActionError';
 
 /** Womit der Dialog aufgeht: die Linie, ggf. ein Release und - für „An die übrigen" - die Boxen. */
 export interface VerteilStart {

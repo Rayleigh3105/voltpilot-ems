@@ -48,14 +48,15 @@ test('Updates: Lage, Linien, Braucht dich und Boxen - Fortschritt, Box-Dialog un
   await expect(werkstatt.getByTestId('box-laeuft')).toHaveText('edge-2026.09.02');
   await expect(werkstatt.getByTestId('box-ziel')).toHaveText('Anfrage edge-2026.09.10');
   await expect(werkstatt.getByTestId('box-update')).toContainText('lädt');
+  // Die Box-Seite (G7): drei Kästen getrennt, darunter ihr Verlauf.
   await page.getByRole('button', { name: 'Update verwalten für Werkstatt am Bach · edge-abcdefj' }).click();
-  const drawer = page.getByRole('dialog');
-  await expect(drawer).toBeVisible();
-  await expect(drawer).toContainText('Software-Version');
-  await drawer.getByRole('button', { name: 'Aktualisieren', exact: true }).click();
-  await expect(drawer.getByRole('alert')).toContainText('Aktion ist fehlgeschlagen');
+  const seite = page.getByRole('dialog', { name: 'Werkstatt am Bach' });
+  await expect(seite.getByTestId('box-seite-fakten')).toContainText('Angefragt · Portal');
+  await expect(seite.getByTestId('box-seite-fakten')).toContainText('edge-2026.09.10');
+  await expect(seite.getByTestId('box-seite-verlauf')).toContainText('angenommen: edge-2026.09.10');
+  await expect(seite.getByTestId('box-seite-verlauf')).toContainText('angefragt: edge-2026.09.10');
   await page.keyboard.press('Escape');
-  await expect(drawer).not.toBeVisible();
+  await expect(seite).not.toBeVisible();
 
   // Suche über Anlage und Gerät; die Filter lassen sich gemeinsam zurücksetzen.
   await page.getByRole('searchbox', { name: 'Boxen durchsuchen' }).fill('Sonnenhof');
@@ -96,17 +97,19 @@ test('Box-Art: Chip, Gerät, Stufe 1 und keine Docker-Zuweisung für Edge Light'
   await expect(boxes.getByTestId('box-zeile')).toHaveCount(1);
   await expect(boxes).toContainText('Kleingarten Ostend');
 
-  // „Update verwalten": kein Docker-Release, sondern der Grund.
+  // Die Box-Seite einer Box mit Stufe 1 (G7, E3 A): der Grund in einem Satz und die Schritte - kein Release.
   await page.getByRole('button', { name: 'Update verwalten für Kleingarten Ostend · edge-m4ng0q1' }).click();
-  const drawer = page.getByRole('dialog');
-  await expect(drawer.getByTestId('drawer-geraet')).toHaveText('GL.iNet GL-MT300N-V2 · mipsle');
-  await expect(drawer.getByTestId('drawer-loader')).toHaveText('startet nur die Fassung aus dem Flash (Stufe 1)');
-  // Stufe 1 (S0): das Edge-Light-Release ist gesperrt, und der Grund sagt, was zu tun ist.
-  await expect(drawer.getByTestId('drawer-keine-passenden')).toContainText('diese Box hat Stufe 1');
-  await expect(drawer.getByTestId('drawer-keine-passenden')).toContainText('nachrüsten');
-  await expect(drawer.getByRole('button', { name: 'Aktualisieren', exact: true })).toHaveCount(0);
+  const seite = page.getByRole('dialog', { name: 'Kleingarten Ostend' });
+  await expect(seite.getByTestId('box-seite-geraet')).toHaveText('GL.iNet GL-MT300N-V2 · mipsle');
+  await expect(seite.getByTestId('box-seite-stufe1')).toContainText('Ihr Startprogramm startet immer die Fassung aus dem Flash.');
+  await expect(seite.getByTestId('box-seite-schritte')).toContainText('Fassung zum Nachrüsten: edge-light-2026.09.12, signiert');
+  await expect(seite.getByRole('button', { name: 'Fenster öffnen' })).toBeVisible();
+  await expect(seite.getByRole('button', { name: 'Update anfragen …' })).toHaveCount(0);
+  await seite.getByText('Technik').click();
+  await expect(seite.getByTestId('box-seite-loader')).toHaveText('startet nur die Fassung aus dem Flash (Stufe 1)');
+  await expect(seite.getByTestId('box-seite-verlauf')).toContainText('erste Meldung: edge-light-g2d2bca1b6');
   await page.keyboard.press('Escape');
-  await expect(drawer).not.toBeVisible();
+  await expect(seite).not.toBeVisible();
 
   // Die Releases der Edge-Light-Linie: im Verteil-Dialog kann die Mango nicht - mit dem Weg zum Nachrüsten.
   await page.getByTestId('linie-light').getByRole('button', { name: 'Releases (1)' }).click();
@@ -120,8 +123,7 @@ test('Box-Art: Chip, Gerät, Stufe 1 und keine Docker-Zuweisung für Edge Light'
   await expect(kannNicht.getByRole('checkbox').first()).toBeDisabled();
   await expect(dialog.getByRole('button', { name: '0 Boxen anfragen' })).toBeDisabled();
   await kannNicht.getByRole('button', { name: 'Nachrüsten' }).click();
-  await expect(page.getByRole('dialog')).toContainText('Kleingarten Ostend');
-  await expect(page.getByRole('dialog').getByTestId('drawer-loader')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Kleingarten Ostend' }).getByTestId('box-seite-stufe1')).toBeVisible();
   await page.keyboard.press('Escape');
   expect(errors).toEqual([]);
 });
@@ -159,6 +161,41 @@ test('Update verteilen: Gruppen, „Erst eine Box“ und der Knopf, der sagt, wa
   }
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('Release-Seite: Inhalt, was neu ist, wo es läuft, wann verteilt - von dort zur Box und zum Verteilen (G7)', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/e2e/box-updates.html');
+  await page.getByTestId('linie-docker').getByTestId('linie-neuestes').click();
+  const seite = page.getByRole('dialog', { name: 'edge-2026.09.10' });
+  await expect(seite.getByTestId('release-aenderungen')).toContainText('Änderungen an der Box seit edge-2026.09.02: 2');
+  await expect(seite).toContainText('Core: Neuverbindung nach Funkloch (#1601)');
+  await expect(seite.getByTestId('release-inhalt')).toContainText('Bild core');
+  await expect(seite.getByTestId('release-inhalt')).toContainText('PC und Raspberry Pi');
+  await expect(seite.getByTestId('release-laeuft-auf')).toContainText('1 von 6 Docker-Boxen: Solarpark Sonnenhof.');
+  await expect(seite.getByTestId('release-verteilt')).toContainText('an 3 Boxen angefragt · 0 bestätigt');
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    expect(over, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
+  }
+  // Von der Release-Seite zur Box …
+  await seite.getByRole('button', { name: 'Solarpark Sonnenhof' }).click();
+  const box = page.getByRole('dialog', { name: 'Solarpark Sonnenhof' });
+  await expect(box.getByTestId('box-seite-verlauf')).toContainText('edge-2026.09.10 bestätigt');
+  await expect(box.getByTestId('box-seite-fakten')).toContainText('Zuletzt bestätigt · Box');
+  await page.keyboard.press('Escape');
+  // … und zum Verteilen.
+  await page.getByTestId('linie-light').getByTestId('linie-neuestes').click();
+  const light = page.getByRole('dialog', { name: 'edge-light-2026.09.12' });
+  await expect(light.getByTestId('release-inhalt')).toContainText('Mango');
+  await expect(light.getByTestId('release-inhalt')).toContainText('geprüft');
+  await expect(light.getByTestId('release-inhalt')).toContainText('Loader, Dienst, Tunnel-Skripte');
+  await light.getByRole('button', { name: 'Verteilen …' }).click();
+  await expect(page.getByRole('dialog', { name: 'Update verteilen · Edge Light' })).toBeVisible();
+  await page.keyboard.press('Escape');
   expect(errors).toEqual([]);
 });
 

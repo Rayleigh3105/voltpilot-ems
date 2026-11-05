@@ -107,16 +107,48 @@ const data: EdgeUpdates = {
       ] },
   ],
 };
-// Die Release-Seite des neuesten Edge-Light-Release (G4): beide Programme fertig im Portal.
-const releaseSeite = (releaseSeq: number) => ({
-  releaseSeq, version: 'edge-light-2026.09.12', boxArt: 'light', signed: true, signingKeyId: 'release', createdAt: now,
-  targetCommit: 'c0ffee12', notes: null, aenderungen: ['Leser für weitere Wechselrichter (#1693)'], erlaubtRueckschritt: false,
-  minFromSeq: null, inhalt: [], laeuftAuf: [], boxenDerLinie: 1, verteilt: [],
-  programme: [
-    { arch: 'linux/mipsle', groesse: 4679121, empfangen: 4679121, fertig: true },
-    { arch: 'linux/arm64', groesse: 4475301, empfangen: 4475301, fertig: true },
-  ],
-});
+// Die Release-Seiten (G4): Edge Light mit beiden Programmen fertig im Portal, Docker mit seinen Bildern.
+const releaseSeite = (releaseSeq: number) => {
+  const rel = data.releases.find((r) => r.releaseSeq === releaseSeq)!;
+  const light = rel.boxArt === 'light';
+  return {
+    releaseSeq, version: rel.version, boxArt: rel.boxArt ?? 'docker', signed: rel.signed, signingKeyId: rel.signingKeyId,
+    createdAt: rel.createdAt, targetCommit: rel.targetCommit, notes: rel.notes, erlaubtRueckschritt: false, minFromSeq: null,
+    aenderungen: light ? ['Leser für weitere Wechselrichter (#1693)'] : releaseSeq === 42
+      ? ['Core: Neuverbindung nach Funkloch (#1601)', 'Updater: Bilder vor dem Stoppen holen (#1588)'] : null,
+    inhalt: light
+      ? [{ typ: 'binary', name: 'vp-edge-light', arch: 'linux/mipsle', groesse: 14614743, gzGroesse: 4679121 },
+        { typ: 'binary', name: 'vp-edge-light', arch: 'linux/arm64', groesse: 13893816, gzGroesse: 4475301 }]
+      : [{ typ: 'oci-image', name: 'core', arch: null, groesse: null, gzGroesse: null },
+        { typ: 'oci-image', name: 'nodered', arch: null, groesse: null, gzGroesse: null }],
+    programme: light ? [
+      { arch: 'linux/mipsle', groesse: 4679121, empfangen: 4679121, fertig: true },
+      { arch: 'linux/arm64', groesse: 4475301, empfangen: 4475301, fertig: true },
+    ] : [],
+    laeuftAuf: fleet.filter((r) => r.istRelease === rel.version).map((r) => r.deviceId),
+    boxenDerLinie: fleet.filter((r) => r.linie === (light ? 'light' : 'docker')).length,
+    verteilt: releaseSeq === 42
+      ? [{ rolloutId: 'r42', state: 'active', createdBy: 'alex', createdAt: vor(20 * MIN), total: 3, confirmed: 0, failed: 0 },
+        { rolloutId: 'r41', state: 'done', createdBy: 'alex', createdAt: '2026-09-11T08:00:00Z', total: 1, confirmed: 1, failed: 0 }]
+      : [],
+  };
+};
+// Der Verlauf je Box (G3), neueste zuerst.
+const verlauf = (deviceId: string) => {
+  const e = (am: string, quelle: string, art: string, release: string | null, vorher: string | null = null, von: string | null = null) =>
+    ({ am, quelle, art, release, vorher, grund: null, von, rolloutId: null });
+  const eintraege: Record<string, ReturnType<typeof e>[]> = {
+    d1: [e('2026-09-11T08:30:00Z', 'box', 'stand', 'edge-2026.09.10-a18b472eab90', 'edge-2026.09.02-73486bab2980'),
+      e('2026-09-11T08:02:00Z', 'box', 'angenommen', 'edge-2026.09.10'),
+      e('2026-09-11T08:00:00Z', 'portal', 'angefragt', 'edge-2026.09.10', null, 'alex'),
+      e('2026-09-02T14:00:00Z', 'box', 'stand', 'edge-2026.09.02-73486bab2980', null)],
+    d2: [e(vor(18 * MIN), 'box', 'angenommen', 'edge-2026.09.10'),
+      e(vor(20 * MIN), 'portal', 'angefragt', 'edge-2026.09.10', null, 'alex'),
+      e('2026-09-03T09:00:00Z', 'box', 'stand', 'edge-2026.09.02-73486bab2980', null)],
+    d6: [e('2026-11-04T10:00:00Z', 'box', 'stand', 'edge-light-g2d2bca1b6', null)],
+  };
+  return { deviceId, eintraege: eintraege[deviceId] ?? [] };
+};
 // Die Eignung je Release (G1), wie die API sie aus denselben Boxen bildet.
 const eignung = (releaseSeq: number) => {
   const rel = data.releases.find((r) => r.releaseSeq === releaseSeq)!;
@@ -146,6 +178,7 @@ Object.assign(adminApi, {
   edgeUpdates: async () => data,
   edgeRelease: async (releaseSeq: number) => releaseSeite(releaseSeq),
   edgeEignung: async (releaseSeq: number) => eignung(releaseSeq),
+  boxVerlauf: async (deviceId: string) => verlauf(deviceId),
   // Online-Status der Registrierung: je Box eine eigene letzte Meldung - zwei
   // frisch, eine seit 4 Std. still, eine hat sich noch nie gemeldet.
   listDevices: async () => fleet.map((d) => ({

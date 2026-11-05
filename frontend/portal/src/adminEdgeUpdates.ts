@@ -250,6 +250,28 @@ export interface EdgeUpdates {
 }
 
 /**
+ * Ein Eintrag im Verlauf einer Box (`GET /admin/devices/{id}/verlauf`, Geräte &
+ * Updates G3), neueste zuerst. `quelle` `portal`: angefragt, zurueckgezogen,
+ * erneut_gesendet, entfernt (`von` = Akteur). `quelle` `box`: stand (mit `vorher`;
+ * `null` = erste Meldung), angenommen, abgelehnt, zurueckgestellt,
+ * fehlgeschlagen, zurueckgenommen (mit dem Grund der Box). Serverzeit.
+ */
+export interface VerlaufEintrag {
+  am: string;
+  quelle: 'portal' | 'box' | (string & {});
+  art: string;
+  release: string | null;
+  vorher: string | null;
+  grund: string | null;
+  von: string | null;
+  rolloutId: string | null;
+}
+export interface BoxVerlauf {
+  deviceId: string;
+  eintraege: VerlaufEintrag[];
+}
+
+/**
  * Wer EIN Release bekommen kann (`GET /admin/edge-updates/eignung?releaseSeq=`,
  * Geräte & Updates G1): jede Box der Linie (und jede unbekannter Art) in GENAU
  * einer Gruppe - `bereit`, `wartet` (offline, holt die Anfrage retained ab),

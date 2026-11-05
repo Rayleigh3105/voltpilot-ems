@@ -5,6 +5,7 @@ import type { EdgeUpdates, FleetRow, UpdateFakten } from '../../adminEdgeUpdates
 const edgeUpdates = vi.fn();
 const edgeRelease = vi.fn();
 const edgeEignung = vi.fn();
+const boxVerlauf = vi.fn();
 const createRollout = vi.fn();
 const setUpdateTarget = vi.fn();
 const revertUpdateTarget = vi.fn();
@@ -15,6 +16,7 @@ vi.mock('../../admin/adminApi', () => ({
     edgeUpdates: (...a: unknown[]) => edgeUpdates(...a),
     edgeRelease: (...a: unknown[]) => edgeRelease(...a),
     edgeEignung: (...a: unknown[]) => edgeEignung(...a),
+    boxVerlauf: (...a: unknown[]) => boxVerlauf(...a),
     createRollout: (...a: unknown[]) => createRollout(...a),
     setUpdateTarget: (...a: unknown[]) => setUpdateTarget(...a),
     revertUpdateTarget: (...a: unknown[]) => revertUpdateTarget(...a),
@@ -142,6 +144,7 @@ describe('EdgeUpdatesPage', () => {
     vi.clearAllMocks();
     edgeUpdates.mockResolvedValue(data());
     edgeRelease.mockRejectedValue(new Error('keine Release-Seite'));
+    boxVerlauf.mockResolvedValue({ deviceId: 'd1', eintraege: [] });
     listDevices.mockResolvedValue([]);
   });
 
@@ -289,7 +292,7 @@ describe('EdgeUpdatesPage', () => {
     expect(await screen.findByRole('dialog')).toHaveTextContent('Zuhause');
   });
 
-  it('zeigt das gemeldete Gerät in der Tabelle und im Drawer, mit dem Loader-Stand (G8)', async () => {
+  it('zeigt das gemeldete Gerät in der Tabelle und auf der Box-Seite, mit dem Loader-Stand (G8)', async () => {
     const d = stand0511();
     d.fleet[0] = { ...d.fleet[0], geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64' };
     d.fleet[2] = { ...d.fleet[2], geraetModell: 'GL.iNet GL-MT300N-V2', geraetArch: 'mipsle', loader: 'flash' };
@@ -299,10 +302,15 @@ describe('EdgeUpdatesPage', () => {
     expect(within(zeile('Pilsting')).getByTestId('box-geraet')).toHaveTextContent('Raspberry Pi 4 Model B Rev 1.4 · arm64');
     expect(within(zeile('Heizstab-Pilot')).getByTestId('box-geraet')).toHaveTextContent('Gerät nicht gemeldet');
     fireEvent.click(screen.getByRole('button', { name: 'Update verwalten für Zuhause · edge-tgjn9gd' }));
-    const drawer = await screen.findByRole('dialog');
-    expect(within(drawer).getByTestId('drawer-geraet')).toHaveTextContent('GL.iNet GL-MT300N-V2 · mipsle');
-    expect(within(drawer).getByTestId('drawer-loader'))
+    const seite = await screen.findByRole('dialog', { name: 'Zuhause' });
+    expect(within(seite).getByTestId('box-seite-geraet')).toHaveTextContent('GL.iNet GL-MT300N-V2 · mipsle');
+    expect(within(seite).getByTestId('box-seite-loader'))
       .toHaveTextContent('startet nur die Fassung aus dem Flash (Stufe 1)');
+    // Stufe 1 am Loader: der Grund in einem Satz und die Schritte zum Nachrüsten (E3 A).
+    expect(within(seite).getByTestId('box-seite-stufe1'))
+      .toHaveTextContent('Ihr Startprogramm startet immer die Fassung aus dem Flash. Das ist kein Defekt.');
+    expect(within(seite).getByTestId('box-seite-schritte')).toHaveTextContent('Fassung zum Nachrüsten: edge-light-2026.11.4, signiert');
+    expect(within(seite).queryByRole('button', { name: 'Update anfragen …' })).toBeNull();
   });
 
   it('bietet ein unsigniertes neuestes Release nicht zum Verteilen an und sagt es', async () => {
@@ -317,15 +325,79 @@ describe('EdgeUpdatesPage', () => {
     expect(within(docker).getByTestId('linie-sperre')).toHaveTextContent('Nicht signiert – nicht verteilbar.');
   });
 
-  it('zeigt eine Ablehnung direkt im Box-Dialog und erhält die Auswahl', async () => {
+  it('zeigt eine Ablehnung direkt auf der Box-Seite und bleibt offen', async () => {
     const { ApiError } = await import('../../api');
-    setUpdateTarget.mockRejectedValue(new ApiError(409, 'Dieses Release ist nicht mehr verfügbar.'));
+    revertUpdateTarget.mockRejectedValue(new ApiError(409, 'Diese Box hat keine Anfrage mehr.'));
     render(<EdgeUpdatesPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'Update verwalten für Pilsting · edge-a1' }));
-    const drawer = await screen.findByRole('dialog');
-    fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
-    expect(await within(drawer).findByRole('alert')).toHaveTextContent('Dieses Release ist nicht mehr verfügbar.');
-    expect(drawer).toBeInTheDocument();
+    const seite = await screen.findByRole('dialog', { name: 'Pilsting' });
+    fireEvent.click(within(seite).getByRole('button', { name: 'Anfrage zurückziehen' }));
+    expect(await within(seite).findByRole('alert')).toHaveTextContent('Diese Box hat keine Anfrage mehr.');
+    expect(screen.getByRole('dialog', { name: 'Pilsting' })).toBeInTheDocument();
+  });
+
+  it('die Box-Seite: drei Kästen getrennt, darunter der Verlauf dieser Box (G7)', async () => {
+    edgeUpdates.mockResolvedValue(mitStand(data({ rollouts: [] }), {
+      d1: { ist: 'edge-2026.08.0-3bf8c038e1d2', istRelease: 'edge-2026.08.0', releasesDahinter: 0, stand: 'aktuell',
+        fakten: fakten({ bestaetigt: 'ja', bestaetigtAm: vor(20 * 60_000) }) },
+    }));
+    boxVerlauf.mockResolvedValue({ deviceId: 'd1', eintraege: [
+      { am: vor(20 * 60_000), quelle: 'box', art: 'stand', release: 'edge-2026.08.0-3bf8c038e1d2',
+        vorher: 'edge-2026.07.2-665d59b8c0de', grund: null, von: null, rolloutId: null },
+      { am: vor(30 * 60_000), quelle: 'portal', art: 'angefragt', release: 'edge-2026.08.0', vorher: null,
+        grund: null, von: 'admin', rolloutId: 'r1' },
+    ] });
+    render(<EdgeUpdatesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Update verwalten für Pilsting · edge-a1' }));
+    const seite = await screen.findByRole('dialog', { name: 'Pilsting' });
+    expect(boxVerlauf).toHaveBeenCalledWith('d1');
+    const kaesten = within(seite).getByTestId('box-seite-fakten');
+    expect(kaesten).toHaveTextContent('Läuft · meldet die Box');
+    expect(kaesten).toHaveTextContent('Angefragt · Portal');
+    expect(kaesten).toHaveTextContent('Zuletzt bestätigt · Box');
+    const verlauf = await within(seite).findByTestId('box-seite-verlauf');
+    expect(verlauf).toHaveTextContent('edge-2026.08.0 bestätigt');
+    expect(verlauf).toHaveTextContent('angefragt: edge-2026.08.0');
+    expect(within(seite).getByTestId('box-seite-vertrauen')).toBeInTheDocument();
+  });
+
+  it('sagt auf der Box-Seite, wenn der Verlauf nicht kommt, und versucht es erneut', async () => {
+    const { ApiError } = await import('../../api');
+    boxVerlauf.mockRejectedValueOnce(new ApiError(503, 'Der Verlauf ist gerade nicht erreichbar.'))
+      .mockResolvedValueOnce({ deviceId: 'd1', eintraege: [{ am: vor(60_000), quelle: 'box', art: 'stand',
+        release: 'edge-2026.08.0', vorher: null, grund: null, von: null, rolloutId: null }] });
+    render(<EdgeUpdatesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Update verwalten für Pilsting · edge-a1' }));
+    const seite = await screen.findByRole('dialog', { name: 'Pilsting' });
+    expect(await within(seite).findByRole('alert')).toHaveTextContent('Der Verlauf ist gerade nicht erreichbar.');
+    fireEvent.click(within(seite).getByRole('button', { name: 'Erneut versuchen' }));
+    expect(await within(seite).findByTestId('box-seite-verlauf')).toHaveTextContent('erste Meldung: edge-2026.08.0');
+  });
+
+  it('die Release-Seite: was drin ist, was neu ist, wo es läuft, wann verteilt - und „Verteilen …" (G7)', async () => {
+    edgeUpdates.mockResolvedValue(mitStand(data({ rollouts: [] }), { d1: aelter07 }));
+    edgeRelease.mockResolvedValue({
+      releaseSeq: 12, version: 'edge-2026.08.0', boxArt: 'docker', signed: true, signingKeyId: 'rel-2026-a',
+      createdAt: '2026-08-05T08:00:00Z', targetCommit: '3bf8c038', notes: 'Verbindung stabiler.',
+      aenderungen: ['Core: Neuverbindung nach Funkloch (#1601)'], erlaubtRueckschritt: false, minFromSeq: null,
+      inhalt: [{ typ: 'oci-image', name: 'core', arch: null, groesse: null, gzGroesse: null }], programme: [],
+      laeuftAuf: ['d2'], boxenDerLinie: 2,
+      verteilt: [{ rolloutId: 'r1', state: 'active', createdBy: 'admin', createdAt: '2026-08-05T08:00:00Z',
+        total: 2, confirmed: 1, failed: 0 }],
+    });
+    edgeEignung.mockResolvedValue(eignung(12, 'edge-2026.08.0', { d1: ['bereit', null] }));
+    render(<EdgeUpdatesPage />);
+    fireEvent.click(within(await screen.findByTestId('linie-docker')).getByTestId('linie-neuestes'));
+    const seite = await screen.findByRole('dialog', { name: 'edge-2026.08.0' });
+    expect(edgeRelease).toHaveBeenCalledWith(12);
+    expect(await within(seite).findByTestId('release-aenderungen')).toHaveTextContent('Änderungen an der Box seit edge-2026.07.2: 1');
+    expect(seite).toHaveTextContent('Core: Neuverbindung nach Funkloch (#1601)');
+    expect(within(seite).getByTestId('release-inhalt')).toHaveTextContent('Bild core');
+    expect(within(seite).getByTestId('release-inhalt')).toHaveTextContent('nur Werkstatt');
+    expect(within(seite).getByTestId('release-laeuft-auf')).toHaveTextContent('1 von 2 Docker-Boxen: Auernheim.');
+    expect(within(seite).getByTestId('release-verteilt')).toHaveTextContent('an 2 Boxen angefragt · 1 bestätigt');
+    fireEvent.click(within(seite).getByRole('button', { name: 'Verteilen …' }));
+    expect(await screen.findByRole('dialog', { name: 'Update verteilen · Docker-Box' })).toBeInTheDocument();
   });
 
   it('erhält bei einem fehlgeschlagenen Refresh die Versionen mit sichtbarem Hinweis', async () => {
@@ -344,7 +416,7 @@ describe('EdgeUpdatesPage', () => {
     const rows = within(table).getAllByRole('row');
     // Das signierte Release trägt den Knopf, das unsignierte den Grund.
     expect(within(rows[1]).getByRole('button', { name: /Verteilen/ })).toBeEnabled();
-    expect(within(rows[2]).queryByRole('button')).toBeNull();
+    expect(within(rows[2]).queryByRole('button', { name: /Verteilen/ })).toBeNull();
     expect(rows[2]).toHaveTextContent('Nicht signiert');
   });
 
@@ -577,22 +649,22 @@ describe('EdgeUpdatesPage', () => {
       );
     });
 
-    it('bietet einer Edge-Light-Box kein Docker-Release an und sagt warum', async () => {
+    it('zeigt einer Edge-Light-Box mit Stufe 1 den Weg statt eines Releases - und lässt die Anfrage zurückziehen', async () => {
       const d = mitEdgeLight();
-      // Eine Zuweisung aus der Zeit vor der Sperre bleibt zurücknehmbar.
+      // Eine Zuweisung aus der Zeit vor der Sperre bleibt zurückziehbar.
       d.fleet[2].soll = 'edge-2026.08.0';
       d.fleet[2].sollSeq = 12;
       edgeUpdates.mockResolvedValue(d);
+      revertUpdateTarget.mockResolvedValue(undefined);
       render(<EdgeUpdatesPage />);
       fireEvent.click(await screen.findByRole('button', { name: 'Update verwalten für Hof Linde · edge-m4ng0q1' }));
-      const drawer = await screen.findByRole('dialog');
-      expect(within(drawer).getByTestId('box-art')).toHaveTextContent('Edge Light');
-      expect(within(drawer).getByTestId('drawer-keine-passenden'))
-        .toHaveTextContent('diese Box ist eine Edge Light');
-      expect(within(drawer).queryByRole('combobox', { name: 'Release' })).toBeNull();
-      expect(within(drawer).queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
-      expect(drawer).toHaveTextContent('Diese Box prüft Updates noch nicht gegen die Signaturkette');
-      expect(within(drawer).getByRole('button', { name: 'Zuweisung zurücknehmen' })).toBeEnabled();
+      const seite = await screen.findByRole('dialog', { name: 'Hof Linde' });
+      expect(within(seite).getByTestId('box-seite-stufe1')).toHaveTextContent('Nimmt keine Updates aus dem Portal an (Stufe 1).');
+      expect(within(seite).getByTestId('box-seite-stufe1')).toHaveTextContent('Ihr fehlt das geprüfte Vertrauens-Set.');
+      expect(within(seite).getByTestId('box-seite-schritte')).toHaveTextContent('Fertig, sobald die Box ihr geprüftes Vertrauens-Set meldet.');
+      expect(within(seite).queryByRole('button', { name: 'Update anfragen …' })).toBeNull();
+      fireEvent.click(within(seite).getByRole('button', { name: 'Anfrage zurückziehen' }));
+      await waitFor(() => expect(revertUpdateTarget).toHaveBeenCalledWith('d3'));
     });
 
     it('zeigt in den Releases einer Linie nur ihre Releases', async () => {
@@ -694,19 +766,21 @@ describe('EdgeUpdatesPage', () => {
     expect(within(journal).queryByText(/bestaetigt/)).toBeNull();
   });
 
-  it('weist ein Einzelgerät über die Geräte-Zeile zu - ohne Kanal und ohne Pin', async () => {
-    setUpdateTarget.mockResolvedValue(undefined);
+  it('fragt für EINE Box über ihre Seite an - derselbe Dialog, nur diese Box, ohne Kanal und ohne Pin', async () => {
+    createRollout.mockResolvedValue({ rolloutId: 'r5' });
+    edgeUpdates.mockResolvedValue(mitStand(data({ rollouts: [] }), { d1: aelter07 }));
+    edgeEignung.mockResolvedValue(eignung(12, 'edge-2026.08.0', { d1: ['bereit', null], d2: ['wartet', null] }));
     render(<EdgeUpdatesPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'Update verwalten für Auernheim · edge-b2' }));
-
-    const drawer = await screen.findByRole('dialog');
-    expect(drawer).toHaveTextContent('edge-2026.08.0');
-    expect(drawer).not.toHaveTextContent('Kanal');
-    expect(within(drawer).queryByText(/Festnageln/)).toBeNull();
-    fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
-    await waitFor(() =>
-      expect(setUpdateTarget).toHaveBeenCalledWith('d2', { releaseSeq: 12 }),
-    );
+    const seite = await screen.findByRole('dialog', { name: 'Auernheim' });
+    expect(seite).not.toHaveTextContent('Kanal');
+    expect(within(seite).queryByText(/Festnageln/)).toBeNull();
+    fireEvent.click(within(seite).getByRole('button', { name: 'Update anfragen …' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Update verteilen · Docker-Box' });
+    expect(await within(dialog).findByRole('checkbox', { name: /Auernheim/ })).toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: /Pilsting/ })).not.toBeChecked();
+    fireEvent.click(within(dialog).getByRole('button', { name: '1 Box anfragen' }));
+    await waitFor(() => expect(createRollout).toHaveBeenCalledWith({ releaseSeq: 12, devices: ['d2'] }));
   });
 
   it('führt aus dem Drawer auf die EINE Geräteseite - mit gesetztem Mandanten', async () => {

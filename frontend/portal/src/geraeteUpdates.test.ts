@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { EdgeReleaseSeite, EdgeUpdates, EdgeUpdatesRelease, FleetRow, UpdateFakten } from './adminEdgeUpdates';
 import {
-  KEIN_FILTER, anzufragen, aufgaben, boxZeile, boxZeilen, ersteBox, filterBoxen, filterZahlen, gruppen,
-  kurzeVersion, lage, linienKarten, plattformen, tracker, uhr, verteilGruppen, vorauswahl, wann, type Satz,
+  KEIN_FILTER, anzufragen, aufgaben, boxFakten, boxZeile, boxZeilen, ersteBox, filterBoxen, filterZahlen, gruppen,
+  kurzeVersion, lage, linienKarten, mb, plattformen, releaseInhalt, stufe1Hinweis, tracker, uhr, verlaufSicht,
+  verteilGruppen, verteiltSicht, vorauswahl, wann, zuletztBestaetigt, type Satz,
 } from './geraeteUpdates';
-import type { EdgeEignung } from './adminEdgeUpdates';
+import type { EdgeEignung, VerlaufEintrag } from './adminEdgeUpdates';
 
 /** Die fünf Zustände des Konzept-Boards (05.11.2026), mit denselben Boxen. */
 const NOW = new Date('2026-11-05T16:50:00+01:00');
@@ -470,6 +471,121 @@ describe('Verteil-Dialog (G6)', () => {
     const [g] = verteilGruppen(e, fleet, NOW);
     expect(g.boxen[0]).toMatchObject({ waehlbar: false, nachruesten: true, text: 'Release für Edge Light – diese Box hat Stufe 1 …' });
     expect(vorauswahl([g])).toEqual([]);
+  });
+});
+
+describe('Box-Seite (G7)', () => {
+  const e = (o: Partial<VerlaufEintrag> & Pick<VerlaufEintrag, 'quelle' | 'art'>): VerlaufEintrag => ({
+    am: vor(10 * MIN), release: null, vorher: null, grund: null, von: null, rolloutId: null, ...o,
+  });
+  // Neueste zuerst - wie die Route sie liefert.
+  const verlauf: VerlaufEintrag[] = [
+    e({ am: vor(30 * MIN), quelle: 'box', art: 'stand', release: 'edge-2026.10.7-c39b18d9c2a4', vorher: 'edge-2026.10.5-aaaaaaaaaaaa' }),
+    e({ am: vor(45 * MIN), quelle: 'box', art: 'angenommen', release: 'edge-2026.10.7' }),
+    e({ am: vor(46 * MIN), quelle: 'portal', art: 'angefragt', release: 'edge-2026.10.7', von: 'alex' }),
+    e({ am: '2026-10-26T09:31:00Z', quelle: 'box', art: 'stand', release: 'edge-2026.10.5-aaaaaaaaaaaa', vorher: 'edge-2026.10.1-bbbbbbbbbbbb' }),
+    e({ am: '2026-10-12T19:40:00Z', quelle: 'box', art: 'stand', release: 'edge-2026.10.1-bbbbbbbbbbbb', vorher: null }),
+  ];
+
+  it('nennt jeden Eintrag in Worten - „bestätigt" nur, wenn das Portal den Stand angefragt hatte', () => {
+    expect(verlaufSicht(verlauf, NOW).map((z) => [z.wann, z.ton, text(z.titel), z.text])).toEqual([
+      ['16:20', 'ok', 'edge-2026.10.7 bestätigt', 'vorher edge-2026.10.5'],
+      ['16:05', 'lauf', 'angenommen: edge-2026.10.7', 'Die Box hat das Release geprüft und übernimmt es.'],
+      ['16:04', 'leer', 'angefragt: edge-2026.10.7', 'von alex'],
+      // Ein Wechsel ohne Anfrage seit dem vorigen Stand (Werkstatt, Wartungstunnel) ist keine Bestätigung.
+      ['26.10. 10:31', 'ok', 'läuft jetzt edge-2026.10.5', 'vorher edge-2026.10.1'],
+      ['12.10. 21:40', 'ok', 'erste Meldung: edge-2026.10.1', null],
+    ]);
+    expect(zuletztBestaetigt(verlauf)).toEqual({ release: 'edge-2026.10.7', am: verlauf[0].am });
+    expect(zuletztBestaetigt(verlauf.slice(3))).toBeNull();
+  });
+
+  it('nennt Ablehnung, Zurücknahme und Zurückziehen mit dem Grund der Box', () => {
+    const z = verlaufSicht([
+      e({ quelle: 'box', art: 'abgelehnt', release: 'edge-light-2026.11.4', grund: 'Vertrauens-Set fehlt' }),
+      e({ quelle: 'box', art: 'zurueckgenommen', release: 'edge-2026.11.0', grund: 'Node-RED startete nicht' }),
+      e({ quelle: 'portal', art: 'zurueckgezogen', release: 'edge-2026.11.0', von: 'system' }),
+      e({ quelle: 'box', art: 'neues_wort' }),
+    ], NOW);
+    expect(z.map((x) => [x.ton, text(x.titel), x.text])).toEqual([
+      ['fehler', 'abgelehnt: Vertrauens-Set fehlt', 'Anfrage edge-light-2026.11.4'],
+      ['fehler', 'zurückgenommen: Node-RED startete nicht', 'Anfrage edge-2026.11.0'],
+      ['leer', 'Anfrage zurückgezogen: edge-2026.11.0', 'von automatisch'],
+      ['leer', 'neues_wort', null],
+    ]);
+  });
+
+  it('drei Kästen, nie vermischt - und „noch geladen" ist kein „nie"', () => {
+    const row = box('Herzogau', 'docker', { ...aktuell(R.d107), lastSeenAt: vor(8_000) });
+    expect(boxFakten(row, null, NOW)).toEqual([
+      { wer: 'Läuft · meldet die Box', wert: 'edge-2026.10.7', satz: `Stempel edge-2026.10.7-c39b18d9c2a4 · vor 8${NB}Sek.` },
+      { wer: 'Angefragt · Portal', wert: '–', satz: 'keine Anfrage' },
+      { wer: 'Zuletzt bestätigt · Box', wert: '…', satz: 'Der Verlauf wird geladen.' },
+    ]);
+    expect(boxFakten(row, verlauf, NOW)[2]).toEqual({ wer: 'Zuletzt bestätigt · Box', wert: 'edge-2026.10.7', satz: '16:20' });
+    expect(boxFakten(row, [], NOW)[2]).toEqual({ wer: 'Zuletzt bestätigt · Box', wert: '–', satz: 'keine Bestätigung im Verlauf' });
+    const zuhause = box('Zuhause', 'light', { stand: 'hand', stufe1: true,
+      fakten: fakten({ release: R.l114, am: vor(60 * MIN), angenommen: 'abgelehnt', angenommenGrund: 'Vertrauens-Set fehlt' }) });
+    expect(boxFakten(zuhause, [], NOW)[1]).toEqual({
+      wer: 'Angefragt · Portal', wert: 'edge-light-2026.11.4', satz: '15:50 · von alex · Box lehnt ab: Vertrauens-Set fehlt',
+    });
+  });
+
+  it('Stufe 1: der Grund in einem Satz und woran man das Ende erkennt - je Ursache', () => {
+    expect(stufe1Hinweis(box('Dirolf', 'light', { loader: 'flash' })).grund)
+      .toBe('Ihr Startprogramm startet immer die Fassung aus dem Flash. Das ist kein Defekt.');
+    expect(stufe1Hinweis(box('Zuhause', 'light', {})).fertig)
+      .toBe('Fertig, sobald die Box ihr geprüftes Vertrauens-Set meldet. Das Portal erkennt das selbst.');
+  });
+});
+
+describe('Release-Seite (G7)', () => {
+  const seite = (o: Partial<EdgeReleaseSeite>): EdgeReleaseSeite => ({
+    releaseSeq: 60, version: 'edge-light-2026.11.4', boxArt: 'light', signed: true, signingKeyId: 'rel-2026-a',
+    createdAt: '2026-11-05T14:43:00Z', targetCommit: 'e4a3b957', notes: null, aenderungen: null,
+    erlaubtRueckschritt: false, minFromSeq: null, inhalt: [], programme: [], laeuftAuf: [], boxenDerLinie: 3, verteilt: [], ...o,
+  });
+
+  it('Edge Light: je Programm Gerät, Größe und ob es geprüft im Portal liegt - und was nie im Update ist', () => {
+    const z = releaseInhalt(seite({
+      inhalt: [
+        { typ: 'binary', name: 'vp-edge-light', arch: 'linux/mipsle', groesse: 14614743, gzGroesse: 4679121 },
+        { typ: 'binary', name: 'vp-edge-light', arch: 'linux/arm64', groesse: 13893816, gzGroesse: 4475301 },
+        { typ: 'binary', name: 'vp-edge-light', arch: 'linux/amd64', groesse: 14753976, gzGroesse: 4720556 },
+      ],
+      programme: [
+        { arch: 'linux/mipsle', groesse: 4679121, empfangen: 4679121, fertig: true },
+        { arch: 'linux/arm64', groesse: 4475301, empfangen: 1000000, fertig: false },
+      ],
+    }));
+    expect(z.map((r) => [text(r.teil), r.geraet, r.groesse, r.portal.text])).toEqual([
+      ['vp-edge-light linux/mipsle', 'Mango', `4,7${NB}MB gepackt`, 'geprüft'],
+      ['vp-edge-light linux/arm64', 'Raspberry Pi', `4,5${NB}MB gepackt`, '22 % empfangen'],
+      ['vp-edge-light linux/amd64', 'PC', `4,7${NB}MB gepackt`, 'fehlt im Portal'],
+      ['Loader, Dienst, Tunnel-Skripte', '–', 'nicht im Update', 'nur Werkstatt'],
+    ]);
+  });
+
+  it('Docker: die Bilder für PC und Raspberry Pi aus der Registry', () => {
+    const z = releaseInhalt(seite({ boxArt: 'docker', version: 'edge-2026.10.7', inhalt: [
+      { typ: 'oci-image', name: 'core', arch: null, groesse: null, gzGroesse: null },
+    ] }));
+    expect(z.map((r) => [text(r.teil), r.geraet, r.portal.text])).toEqual([
+      ['Bild core', 'PC und Raspberry Pi', 'aus der Registry'],
+      ['Updater und Betriebssystem', '–', 'nur Werkstatt'],
+    ]);
+  });
+
+  it('Verteilungen neueste zuerst, mit Bestätigungen und Gescheiterten', () => {
+    const z = verteiltSicht(seite({ verteilt: [
+      { rolloutId: 'a', state: 'done', createdBy: 'alex', createdAt: vor(3 * STD), total: 1, confirmed: 1, failed: 0 },
+      { rolloutId: 'b', state: 'active', createdBy: null, createdAt: vor(30 * MIN), total: 3, confirmed: 1, failed: 1 },
+    ] }), NOW);
+    expect(z.map((x) => [x.ton, text(x.titel), x.text])).toEqual([
+      ['fehler', 'an 3 Boxen angefragt · 1 bestätigt · 1 gescheitert', null],
+      ['ok', 'an 1 Box angefragt · 1 bestätigt', 'von alex'],
+    ]);
+    expect(mb(5_200_000)).toBe(`5,2${NB}MB`);
   });
 });
 

@@ -81,6 +81,8 @@ export interface LinienAktionen {
   onNachruesten: (deviceId: string) => void;
   /** E1 A: dasselbe Release an die übrigen Boxen - ein neuer Ein-Schritt-Lauf. */
   onWeiter: (art: BoxArt, releaseSeq: number, uebrige: string[]) => void;
+  /** Die Release-Seite öffnen (G7). */
+  onRelease: (releaseSeq: number) => void;
 }
 
 function LinienKnopf({ karte, a }: { karte: LinieKarte; a: LinienAktionen }) {
@@ -169,7 +171,10 @@ function LinienKartenKarte({ karte, a }: { karte: LinieKarte; a: LinienAktionen 
       {karte.neu ? (
         <div className="vp-gu-neu">
           <span className="vp-gu-etikett">Neuestes Release dieser Linie</span>
-          <span className="vp-gu-version" data-testid="linie-neuestes">{karte.neu.release.version}</span>
+          <button type="button" className="vp-gu-version vp-gu-version-link" data-testid="linie-neuestes"
+            onClick={() => a.onRelease(karte.neu!.release.releaseSeq)}>
+            {karte.neu.release.version}
+          </button>
           {karte.neu.release.signed
             ? <GuBadge ton="ok">signiert</GuBadge>
             : <GuBadge ton="warn">nicht signiert – nicht verteilbar</GuBadge>}
