@@ -181,28 +181,41 @@ Zuweisung desselben Release versucht wieder).
 
 ### Portal
 
-EINE Fläche (`pages/admin/EdgeUpdatesPage.tsx` über der reinen
-`src/adminEdgeUpdates.ts`): Releases-Tabelle → je signiertem Release
-„Aktualisieren ▸" → Drawer mit „Alle Geräte" + Checkbox je Gerät (jedes trägt
-seinen ZUSTAND und ggf. einen **Einwand als HINWEIS, nie als Sperre**) →
-Zusammenfassung „Das passiert jetzt" → **Aktualisieren**. Darunter je AKTUELLER
-Zuweisung eine Karte mit Fortschritts-Rückgrat (über die ERREICHBARE Menge;
-offline/unbekannt stehen DANEBEN, nie im Nenner) und einer Zeile je Gerät
-(Ist · Zustand · Grund · Hebel). `currentRolloutViews` verbindet dafür
-`FleetRow.rolloutId` + `sollSeq` mit der Karte: der Live-Zustand einer neueren
-Zuweisung erscheint NIE unter dem Release-Kopf eines älteren Rollouts; dessen
-Mitgliedschaft bleibt ausschließlich im Journal. Der geteilte `GeraeteDrawer` weist ein
-Einzelgerät zu (`onAssign(releaseSeq)` — kein Kanal, kein Pin). Über der Tabelle
-steht je Linie eine Karte (Docker-Box, Edge Light) mit ihrem neuesten Release und
-ihrem eigenen „Update verteilen". Angeboten werden
-nur zur Box-Art passende Releases, einer Edge-Light-Box mit Stufe 1 keines
+EINE Fläche (`pages/admin/EdgeUpdatesPage.tsx`, Bausteine in
+`pages/admin/GeraeteUpdates.tsx` über der reinen `src/geraeteUpdates.ts`, seit
+Geräte & Updates G5): oben EIN Lage-Satz (das Dringendste zuerst: Fehler >
+Zurückhalten > wartende Anfrage offline > Update läuft > Stufe 1 > älter > alles
+aktuell), dann je Linie eine Karte (Docker-Box, Edge Light) mit ihrem neuesten
+Release, „für welche Geräte gebaut" (Docker aus dem Bau, Edge Light aus der
+Release-Seite mit ✓ je Programm im Portal), Flottenbalken aus `stand`,
+Versionsleiter aus `lines[].versions` und genau EINEM Hauptknopf
+(`Verteilen …` · `Fortschritt` · `Nachrüsten: so geht's` · `Alle aktuell`);
+„Releases (n)" öffnet die Releases DIESER Linie. Darunter „Braucht dich" (Box,
+Grund, nächster Schritt) und die Boxen nach Linie mit Verbindung aus
+`lastSeenAt` (`boxVerbindung`, dieselbe Regel wie die Registrierung; fehlt das
+Feld, „Verbindung unbekannt"), laufendem Stand, Anfrage (Ziel) und den drei
+Schritten angefragt · angenommen · bestätigt aus `fakten`. Fehlt `stand` (älterer
+Server), steht eine Box „ohne Stand", nie „neuestes".
+
+Verteilt wird weiter in EINEM Schritt: Release → „Aktualisieren ▸" → Drawer mit
+„Alle Geräte" + Checkbox je Gerät (jedes trägt seinen ZUSTAND und ggf. einen
+**Einwand als HINWEIS, nie als Sperre**) → Zusammenfassung „Das passiert jetzt" →
+**Aktualisieren**. Unter den Boxen je AKTUELLER Zuweisung eine Karte mit
+Fortschritts-Rückgrat (über die ERREICHBARE Menge; offline/unbekannt stehen
+DANEBEN, nie im Nenner) und einer Zeile je Gerät (Ist · Zustand · Grund · Hebel).
+`currentRolloutViews` verbindet dafür `FleetRow.rolloutId` + `sollSeq` mit der
+Karte: der Live-Zustand einer neueren Zuweisung erscheint NIE unter dem
+Release-Kopf eines älteren Rollouts; dessen Mitgliedschaft bleibt ausschließlich
+im Journal. Der geteilte `GeraeteDrawer` weist ein Einzelgerät zu
+(`onAssign(releaseSeq)` — kein Kanal, kein Pin). Angeboten werden nur zur
+Box-Art passende, SIGNIERTE Releases, einer Edge-Light-Box mit Stufe 1 keines
 (`zuweisbareReleases`, `releaseSperre` braucht `trust`); unpassende Geräte stehen
 im Rollout-Dialog ausgegraut MIT Grund (E10), „Alle passenden Geräte" wählt sie
-nicht mit. Edge Light ohne geprüftes Vertrauens-Set heißt ruhig „Updates von Hand
-(Edge Light, Stufe 1)" (`crossoverState` → `von_hand`), nie „ohne Vertrauens-Set". Es gibt
-**nirgends** einen zweiten Knopf; die Vier-Klassen-Grammatik ist auf `busy`
-(läuft von selbst, pulsiert) · `blocked` · `incident` · `calm` geschrumpft, die
-frühere fünfte Klasse `action` („SIE sind dran") ist entfallen.
+nicht mit. Stufe 1 heißt ruhig „nur von Hand" (`stand = hand`, eigene Farbe), nie
+„ohne Vertrauens-Set" und nie ein Fehler. Es gibt **nirgends** einen zweiten
+Knopf; die Vier-Klassen-Grammatik ist auf `busy` (läuft von selbst, pulsiert) ·
+`blocked` · `incident` · `calm` geschrumpft, die frühere fünfte Klasse `action`
+(„SIE sind dran") ist entfallen.
 
 ### Edge-Seite (Kurzform; Details in `edge-app/AGENTS.md`)
 

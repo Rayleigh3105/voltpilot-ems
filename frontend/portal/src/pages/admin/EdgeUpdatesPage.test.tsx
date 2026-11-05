@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EdgeUpdates } from '../../adminEdgeUpdates';
+import type { EdgeUpdates, FleetRow, UpdateFakten } from '../../adminEdgeUpdates';
 
 const edgeUpdates = vi.fn();
+const edgeRelease = vi.fn();
 const createRollout = vi.fn();
 const setUpdateTarget = vi.fn();
 const revertUpdateTarget = vi.fn();
@@ -11,6 +12,7 @@ const listDevices = vi.fn();
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
     edgeUpdates: (...a: unknown[]) => edgeUpdates(...a),
+    edgeRelease: (...a: unknown[]) => edgeRelease(...a),
     createRollout: (...a: unknown[]) => createRollout(...a),
     setUpdateTarget: (...a: unknown[]) => setUpdateTarget(...a),
     revertUpdateTarget: (...a: unknown[]) => revertUpdateTarget(...a),
@@ -19,6 +21,12 @@ vi.mock('../../admin/adminApi', () => ({
 }));
 
 const { EdgeUpdatesPage } = await import('./EdgeUpdatesPage');
+
+/**
+ * Das geschützte Leerzeichen vor Einheiten („vor 30 Sek.“), wie `format.fmtRelative` es setzt.
+ * `toHaveTextContent` fasst Leerraum samt NBSP zusammen; nur direkte `textContent`-Vergleiche brauchen es.
+ */
+const NB = String.fromCharCode(160);
 
 const data = (over: Partial<EdgeUpdates> = {}): EdgeUpdates => ({
   releases: [
@@ -83,49 +91,90 @@ const data = (over: Partial<EdgeUpdates> = {}): EdgeUpdates => ({
   ...over,
 });
 
+/**
+ * Was die API seit Geräte & Updates G1/G2 je Box mitliefert: Linie,
+ * Linien-Stand, die EINE Uhr und die drei Fakten. Ohne diese Felder (älterer
+ * Server) zeigt die Seite „unbekannt", nie eine geratene Null.
+ */
+const vor = (ms: number) => new Date(Date.now() - ms).toISOString();
+function mitStand(d: EdgeUpdates, extra: Record<string, Partial<FleetRow>> = {}): EdgeUpdates {
+  d.fleet = d.fleet.map((r) => ({
+    ...r,
+    boxArt: r.boxArt ?? 'docker',
+    linie: (r.boxArt ?? 'docker') as 'docker' | 'light',
+    lastSeenAt: vor(30_000),
+    stufe1: false,
+    stand: r.ist ? 'aktuell' : 'unbekannt',
+    istRelease: r.ist ? 'edge-2026.08.0' : null,
+    releasesDahinter: r.ist ? 0 : null,
+    istSeit: null,
+    fakten: null,
+    ...extra[r.deviceId],
+  }));
+  return d;
+}
+const fakten = (o: Partial<{ angenommen: string; bestaetigt: string; schritt: string; grund: string }> = {}): UpdateFakten => ({
+  angefragt: { release: 'edge-2026.08.0', releaseSeq: 12, am: vor(10 * 60_000), von: 'admin' },
+  angenommen: { stand: o.angenommen ?? 'ja', am: vor(9 * 60_000), grund: null },
+  bestaetigt: { stand: o.bestaetigt ?? 'offen', am: null, schritt: o.schritt ?? null, grund: o.grund ?? null },
+});
+const zeile = (name: string) =>
+  within(screen.getByTestId('box-versions')).getAllByTestId('box-zeile').find((r) => r.textContent?.includes(name))!;
+
 describe('EdgeUpdatesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     edgeUpdates.mockResolvedValue(data());
+    edgeRelease.mockRejectedValue(new Error('keine Release-Seite'));
     listDevices.mockResolvedValue([]);
   });
 
-  it('zeigt Releases, die laufende Aktualisierung und den Verlauf', async () => {
+  it('zeigt Lage, Linien, Boxen, die laufende Aktualisierung und den Verlauf', async () => {
     render(<EdgeUpdatesPage />);
-    expect(await screen.findByTestId('releases')).toBeInTheDocument();
+    expect(await screen.findByTestId('lage')).toBeInTheDocument();
+    expect(screen.getByTestId('linie-docker')).toHaveTextContent('edge-2026.08.0');
+    expect(screen.getByTestId('box-versions')).toBeInTheDocument();
     expect(await screen.findByTestId('rollout-card')).toBeInTheDocument();
-    expect(await screen.findByTestId('journal')).toBeInTheDocument();
-  });
-
-  it('zeigt jede Box mit installierter Version und Ziel, auch ohne laufenden Rollout', async () => {
-    const d = data({ rollouts: [] });
-    d.fleet[0].ist = 'edge-2026.08.0-3bf8c038e1d2';
-    d.fleet[0].soll = 'edge-2026.07.2';
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-    const table = await screen.findByTestId('box-versions');
-    const row = within(table).getByText('Pilsting').closest('tr')!;
-    expect(row).toHaveTextContent('edge-2026.08.0');
-    expect(row).toHaveTextContent('Build 3bf8c038');
-    expect(row).toHaveTextContent('edge-2026.07.2');
-    expect(within(table).getByText('Auernheim').closest('tr')).toHaveTextContent('Noch nicht gemeldet');
-    expect(screen.getByRole('button', { name: 'Update verteilen' })).toBeEnabled();
-    expect(screen.getByText('Alle Releases (2)').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByTestId('journal')).toBeInTheDocument();
     expect(screen.getByText('Verlauf').closest('details')).not.toHaveAttribute('open');
+    // Die Online-Uhr kommt mit der Flotte (G2) - kein zweiter Abruf des Inventars.
+    expect(listDevices).not.toHaveBeenCalled();
   });
 
-  it('sucht über Box, Anlage, Kunde und Version und setzt Filter gemeinsam zurück', async () => {
+  it('zeigt je Box die laufende Version, ihre Anfrage und die drei Schritte - getrennt', async () => {
+    edgeUpdates.mockResolvedValue(mitStand(data({ rollouts: [] }), {
+      d1: { ist: 'edge-2026.07.2-665d59b8c0de', istRelease: 'edge-2026.07.2', releasesDahinter: 1, stand: 'laeuft',
+        state: 'laedt', fakten: fakten({ bestaetigt: 'laeuft', schritt: 'laedt' }) },
+    }));
     render(<EdgeUpdatesPage />);
     await screen.findByTestId('box-versions');
-    fireEvent.click(screen.getByText('Suche & Filter'));
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'edge-a1' } });
+    const pilsting = zeile('Pilsting');
+    expect(within(pilsting).getByTestId('box-laeuft')).toHaveTextContent('edge-2026.07.2');
+    expect(within(pilsting).getByTestId('box-ziel')).toHaveTextContent('Anfrage edge-2026.08.0');
+    expect(pilsting).toHaveTextContent('Update läuft');
+    const schritte = within(pilsting).getAllByRole('listitem');
+    expect(schritte.map((s) => [s.textContent, s.getAttribute('data-zustand')])).toEqual([
+      ['angefragt', 'fertig'], ['angenommen', 'fertig'], ['bestätigt', 'aktiv'],
+    ]);
+    expect(pilsting).toHaveTextContent(/angenommen \d\d:\d\d · lädt/);
+    expect(zeile('Auernheim')).toHaveTextContent('Keine Versionsmeldung');
+    expect(zeile('Auernheim')).not.toHaveTextContent('veraltet');
+  });
+
+  it('sucht über Box, Anlage, Kunde und Version und setzt den Filter zurück', async () => {
+    edgeUpdates.mockResolvedValue(mitStand(data()));
+    render(<EdgeUpdatesPage />);
+    await screen.findByTestId('box-versions');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Boxen durchsuchen' }), { target: { value: 'edge-a1' } });
     expect(screen.getByTestId('box-versions')).toHaveTextContent('Pilsting');
     expect(screen.getByTestId('box-versions')).not.toHaveTextContent('Auernheim');
-    fireEvent.click(screen.getByRole('button', { name: /Ohne Versionsmeldung/ }));
-    expect(screen.getByText('Keine passende Box')).toBeInTheDocument();
+    const zustand = screen.getByRole('group', { name: 'Boxen nach Zustand filtern' });
+    fireEvent.click(within(zustand).getByRole('button', { name: 'Offline 0' }));
+    expect(within(zustand).getByRole('button', { name: 'Offline 0' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Keine Box passt zu diesem Filter.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
     expect(screen.getByTestId('box-versions')).toHaveTextContent('Auernheim');
-    expect(screen.getByRole('searchbox')).toHaveValue('');
+    expect(screen.getByRole('searchbox', { name: 'Boxen durchsuchen' })).toHaveValue('');
   });
 
   // Geräte & Updates S0: der Stand vom 05.11. - das jüngste Release ist Edge Light.
@@ -141,48 +190,70 @@ describe('EdgeUpdatesPage', () => {
     ];
     d.fleet = [
       { ...d.fleet[0], ist: 'edge-2026.10.7-c39b18d9c2a4', soll: null, sollSeq: null, state: 'aktuell',
-        rolloutId: null, boxArt: 'docker' },
+        rolloutId: null, boxArt: 'docker', linie: 'docker', stand: 'aktuell', istRelease: 'edge-2026.10.7',
+        releasesDahinter: 0, lastSeenAt: vor(8_000), fakten: null },
       { deviceId: 'gate', label: 'VoltPilotGATE', externalRef: 'edge-h5atkys', siteId: 's4',
         siteName: 'Heizstab-Pilot', tenantId: 't2', tenantName: 'Kunde C', ist: 'edge-light-2026.11.4',
         soll: null, sollSeq: null, state: 'aktuell', reason: null, since: null,
-        reportedAt: '2026-11-05T16:02:00Z', rolloutId: null, boxArt: 'light',
+        reportedAt: '2026-11-05T16:02:00Z', rolloutId: null, boxArt: 'light', linie: 'light', stand: 'aktuell',
+        istRelease: 'edge-light-2026.11.4', releasesDahinter: 0, lastSeenAt: vor(8_000), fakten: null,
         trust: { rootKeyIds: ['root-2026-a'], trustSetKeyIds: ['rel-2026-a'],
           trustSetGeneratedAt: '2026-11-04T10:00:00Z', trustSetError: null } },
       { deviceId: 'zuhause', label: 'Zuhause', externalRef: 'edge-tgjn9gd', siteId: 's5',
         siteName: 'Zuhause', tenantId: 't3', tenantName: 'Werner Schramm', ist: 'edge-light-2026.11.0',
         soll: null, sollSeq: null, state: 'aktuell', reason: null, since: null,
-        reportedAt: '2026-11-05T16:40:00Z', rolloutId: null, boxArt: 'light',
+        reportedAt: '2026-11-05T16:40:00Z', rolloutId: null, boxArt: 'light', linie: 'light', stand: 'hand',
+        stufe1: true, istRelease: 'edge-light-2026.11.0', releasesDahinter: 1, lastSeenAt: vor(10_000), fakten: null,
         trust: { rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
           trustSetError: 'Auf diesem Geraet liegt kein root-signiertes Vertrauens-Set.' } },
     ];
     d.kpi = { known: 3, upToDate: 1, unknown: 0, inRollout: 0, failed: 0, newestRelease: 'edge-light-2026.11.4' };
     d.lines = [
-      { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 58, devices: 1, known: 1, upToDate: 1 },
-      { boxArt: 'light', newestRelease: 'edge-light-2026.11.4', newestReleaseSeq: 60, devices: 2, known: 2, upToDate: 1 },
+      { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 58, devices: 1, known: 1, upToDate: 1, releases: 1,
+        versions: [{ version: 'edge-2026.10.7', releaseSeq: 58, devices: ['d1'] }] },
+      { boxArt: 'light', newestRelease: 'edge-light-2026.11.4', newestReleaseSeq: 60, devices: 2, known: 2, upToDate: 1, releases: 1,
+        versions: [
+          { version: 'edge-light-2026.11.4', releaseSeq: 60, devices: ['gate'] },
+          { version: 'edge-light-2026.11.0', releaseSeq: null, devices: ['zuhause'] },
+        ] },
     ];
     return d;
   };
 
   it('zeigt je Linie eine Karte - das Docker-Release verschwindet nicht hinter Edge Light (S0)', async () => {
     edgeUpdates.mockResolvedValue(stand0511());
+    edgeRelease.mockResolvedValue({ releaseSeq: 60, programme: [
+      { arch: 'linux/mipsle', groesse: 9, empfangen: 9, fertig: true },
+      { arch: 'linux/arm64', groesse: 9, empfangen: 3, fertig: false },
+    ] });
     render(<EdgeUpdatesPage />);
-    const docker = await screen.findByRole('region', { name: 'Neueste Version · Docker-Box' });
-    expect(docker).toHaveTextContent('edge-2026.10.7');
-    expect(docker).toHaveTextContent('1 von 1 Docker-Box meldet diese Version');
-    const light = screen.getByRole('region', { name: 'Neueste Version · Edge Light' });
-    expect(light).toHaveTextContent('edge-light-2026.11.4');
-    expect(light).toHaveTextContent('1 von 2 Edge-Light-Boxen meldet diese Version');
-    expect(within(light).getByTestId('linie-stufe1'))
-      .toHaveTextContent('1 davon nimmt keine Updates aus dem Portal an (Stufe 1, nur von Hand)');
-    expect(screen.getByTestId('resting-line')).toHaveTextContent('Docker-Box: 1/1 auf edge-2026.10.7 ✓');
-    expect(screen.getByTestId('resting-line')).toHaveTextContent('Edge Light: 1/2 auf edge-light-2026.11.4 ✓');
+    const docker = await screen.findByTestId('linie-docker');
+    expect(within(docker).getByTestId('linie-neuestes')).toHaveTextContent('edge-2026.10.7');
+    expect(within(docker).getByTestId('linie-plattformen')).toHaveTextContent('PC · amd64');
+    expect(within(docker).getByRole('button', { name: 'Alle aktuell' })).toBeDisabled();
+    const light = screen.getByTestId('linie-light');
+    expect(within(light).getByTestId('linie-neuestes')).toHaveTextContent('edge-light-2026.11.4');
+    expect(light).toHaveTextContent('1 neuestes');
+    expect(light).toHaveTextContent('1 nur von Hand (Stufe 1)');
+    expect(within(light).getByTestId('linie-leiter')).toHaveTextContent('Zuhause · Stufe 1');
+    // Die Release-Seite sagt, welche Programme fertig im Portal liegen.
+    await waitFor(() => expect(within(light).getByTestId('linie-plattformen')).toHaveTextContent('Mango · mipsle ✓'));
+    expect(within(light).getByTestId('linie-plattformen')).toHaveTextContent('Raspberry Pi · arm64 · noch nicht im Portal');
+    expect(edgeRelease).toHaveBeenCalledWith(60);
+    expect(screen.getByTestId('lage')).toHaveTextContent('1 Edge-Light-Box nimmt keine Updates aus dem Portal an (Stufe 1).');
 
-    // Der Knopf der Edge-Light-Karte verteilt SEIN Release; Zuhause (Stufe 1) ist ausgegraut.
-    fireEvent.click(within(light).getByRole('button', { name: 'Update verteilen' }));
-    const drawer = await screen.findByRole('dialog');
-    expect(drawer).toHaveTextContent('Aktualisieren auf edge-light-2026.11.4');
-    const gesperrt = within(drawer).getAllByTestId('candidate-gesperrt');
-    const zuhause = gesperrt.find((c) => c.textContent?.includes('Zuhause'))!;
+    // Stufe 1: der Knopf führt zur Box, nicht in einen Verteil-Dialog.
+    fireEvent.click(within(light).getByRole('button', { name: 'Nachrüsten: so geht’s' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Zuhause');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    // Die Releases der Linie: das Edge-Light-Release verteilen, Zuhause ist ausgegraut.
+    fireEvent.click(within(light).getByRole('button', { name: 'Releases (1)' }));
+    const releases = await screen.findByRole('dialog', { name: 'Releases · Edge Light' });
+    fireEvent.click(within(releases).getByRole('button', { name: /Aktualisieren/ }));
+    const drawer = await screen.findByRole('dialog', { name: 'Aktualisieren auf edge-light-2026.11.4' });
+    const zuhause = within(drawer).getAllByTestId('candidate-gesperrt').find((c) => c.textContent?.includes('Zuhause'))!;
     expect(zuhause).toHaveTextContent('diese Box hat Stufe 1');
     expect(zuhause.querySelector('input')).toBeDisabled();
     expect(within(drawer).getByTestId('choose-all')).toHaveTextContent('Alle passenden Geräte (1)');
@@ -194,27 +265,26 @@ describe('EdgeUpdatesPage', () => {
     d.fleet[2] = { ...d.fleet[2], geraetModell: 'GL.iNet GL-MT300N-V2', geraetArch: 'mipsle', loader: 'flash' };
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
-    const table = await screen.findByTestId('box-versions');
-    const pilsting = within(table).getByText('Pilsting').closest('tr')!;
-    expect(within(pilsting).getByTestId('box-geraet')).toHaveTextContent('Raspberry Pi 4 Model B Rev 1.4 · arm64');
-    const gate = within(table).getByText('Heizstab-Pilot').closest('tr')!;
-    expect(within(gate).getByTestId('box-geraet')).toHaveTextContent('Gerät nicht gemeldet');
-    fireEvent.click(within(table).getByRole('button', { name: 'Update verwalten für Zuhause · edge-tgjn9gd' }));
+    await screen.findByTestId('box-versions');
+    expect(within(zeile('Pilsting')).getByTestId('box-geraet')).toHaveTextContent('Raspberry Pi 4 Model B Rev 1.4 · arm64');
+    expect(within(zeile('Heizstab-Pilot')).getByTestId('box-geraet')).toHaveTextContent('Gerät nicht gemeldet');
+    fireEvent.click(screen.getByRole('button', { name: 'Update verwalten für Zuhause · edge-tgjn9gd' }));
     const drawer = await screen.findByRole('dialog');
     expect(within(drawer).getByTestId('drawer-geraet')).toHaveTextContent('GL.iNet GL-MT300N-V2 · mipsle');
     expect(within(drawer).getByTestId('drawer-loader'))
       .toHaveTextContent('startet nur die Fassung aus dem Flash (Stufe 1)');
   });
 
-  it('ordnet Releases nach Sequenz und bietet ein unsigniertes neuestes Release nicht an', async () => {
-    const d = data();
+  it('bietet ein unsigniertes neuestes Release nicht zum Verteilen an und sagt es', async () => {
+    const d = mitStand(data(), { d1: { stand: 'aelter', releasesDahinter: 1 } });
     d.releases[1].releaseSeq = 20;
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
-    await screen.findByTestId('box-versions');
-    const newest = screen.getByRole('region', { name: 'Neueste Version · Docker-Box' });
-    expect(newest).toHaveTextContent('edge-2026.07.2');
-    expect(within(newest).getByRole('button', { name: 'Update verteilen' })).toBeDisabled();
+    const docker = await screen.findByTestId('linie-docker');
+    expect(within(docker).getByTestId('linie-neuestes')).toHaveTextContent('edge-2026.07.2');
+    expect(docker).toHaveTextContent('nicht signiert – nicht verteilbar');
+    expect(within(docker).getByRole('button', { name: 'Verteilen …' })).toBeDisabled();
+    expect(within(docker).getByTestId('linie-sperre')).toHaveTextContent('Nicht signiert – nicht verteilbar.');
   });
 
   it('zeigt eine Ablehnung direkt im Box-Dialog und erhält die Auswahl', async () => {
@@ -237,19 +307,10 @@ describe('EdgeUpdatesPage', () => {
     expect(screen.getByTestId('box-versions')).toHaveTextContent('edge-2026.08.0');
   });
 
-  it('behauptet bei einem laufenden Einzelupdate ohne Rollout keinen Ruhezustand', async () => {
-    const d = data({ rollouts: [] });
-    d.fleet[0].state = 'laedt';
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-    await screen.findByTestId('box-versions');
-    expect(screen.queryByTestId('resting-line')).toBeNull();
-  });
-
   it('bietet ein Update NUR für ein signiertes Release an', async () => {
     render(<EdgeUpdatesPage />);
-    const table = await screen.findByTestId('releases');
-    fireEvent.click(screen.getByText('Alle Releases (2)'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Releases (2)' }));
+    const table = within(await screen.findByRole('dialog', { name: 'Releases · Docker-Box' })).getByTestId('releases');
     const rows = within(table).getAllByRole('row');
     // Das signierte Release trägt den Knopf, das unsignierte den Grund.
     expect(within(rows[1]).getByRole('button', { name: /Aktualisieren/ })).toBeEnabled();
@@ -262,11 +323,11 @@ describe('EdgeUpdatesPage', () => {
     // Kanal und keinen zweiten Knopf „Auf Gerät anwenden".
     createRollout.mockResolvedValue({ rolloutId: 'r2' });
     render(<EdgeUpdatesPage />);
-    const table = await screen.findByTestId('releases');
-    fireEvent.click(screen.getByText('Alle Releases (2)'));
-    fireEvent.click(within(table).getAllByRole('button', { name: /Aktualisieren/ })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Releases (2)' }));
+    const releases = await screen.findByRole('dialog', { name: 'Releases · Docker-Box' });
+    fireEvent.click(within(releases).getAllByRole('button', { name: /Aktualisieren/ })[0]);
 
-    const drawer = await screen.findByRole('dialog');
+    const drawer = await screen.findByRole('dialog', { name: 'Aktualisieren auf edge-2026.08.0' });
     fireEvent.click(within(drawer).getByTestId('choose-all').querySelector('input')!);
     // Die Zusammenfassung sagt VOR dem Klick, was passiert.
     expect(within(drawer).getByTestId('start-summary')).toHaveTextContent('niemand muss an ein Gerät');
@@ -278,6 +339,207 @@ describe('EdgeUpdatesPage', () => {
       expect(createRollout).toHaveBeenCalledWith({ releaseSeq: 12, devices: ['d2', 'd1'] }),
     );
   });
+
+  it('verteilt aus der Linien-Karte das neueste Release dieser Linie', async () => {
+    edgeUpdates.mockResolvedValue(mitStand(data({ rollouts: [] }), {
+      d1: { ist: 'edge-2026.07.2-665d59b8c0de', istRelease: 'edge-2026.07.2', releasesDahinter: 1, stand: 'aelter' },
+    }));
+    render(<EdgeUpdatesPage />);
+    const docker = await screen.findByTestId('linie-docker');
+    fireEvent.click(within(docker).getByRole('button', { name: 'Verteilen …' }));
+    expect(await screen.findByRole('dialog', { name: 'Aktualisieren auf edge-2026.08.0' })).toBeInTheDocument();
+  });
+
+  it('nennt in „Braucht dich" Box, Grund und nächsten Schritt - ohne irgendetwas anzuhalten', async () => {
+    const nav = vi.fn();
+    edgeUpdates.mockResolvedValue(mitStand(data(), {
+      d1: { state: 'fehlgeschlagen', stand: 'fehler', reason: 'Selbsttest fehlgeschlagen.',
+        fakten: fakten({ bestaetigt: 'fehlgeschlagen', grund: 'Selbsttest fehlgeschlagen.' }) },
+      d2: { ist: 'edge-2026.07.2-665d59b8c0de', istRelease: 'edge-2026.07.2', releasesDahinter: 1, stand: 'offline',
+        lastSeenAt: vor(3 * 3600_000), fakten: fakten({ angenommen: 'wartet' }) },
+    }));
+    render(<EdgeUpdatesPage onNavigate={nav} />);
+    expect(await screen.findByTestId('lage')).toHaveTextContent('1 Box braucht dich: Pilsting meldet ein fehlgeschlagenes Update.');
+    const aufgaben = within(screen.getByTestId('braucht-dich')).getAllByTestId('aufgabe');
+    expect(aufgaben.map((a) => a.querySelector('h3')?.textContent)).toEqual([
+      'Pilsting: Update fehlgeschlagen', `Auernheim ist seit 3${NB}Std. offline`,
+    ]);
+    expect(aufgaben[0]).toHaveTextContent('Die Anfrage edge-2026.08.0 ist fehlgeschlagen: Selbsttest fehlgeschlagen.');
+    expect(aufgaben[1]).toHaveTextContent('die Box holt es, sobald sie sich wieder meldet');
+    // Der nächste Schritt: Fernwartung für die stumme Box, die Box selbst für den Fehler.
+    fireEvent.click(within(aufgaben[1]).getByRole('button', { name: 'Fernwartung' }));
+    expect(nav).toHaveBeenCalledWith(expect.objectContaining({ page: 'fernwartung' }));
+    fireEvent.click(within(aufgaben[0]).getByRole('button', { name: 'Box ansehen' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Pilsting');
+    // Ein Fehlschlag ist INFORMATION: die Verteilung läuft weiter.
+    expect(screen.getByTestId('rollout-card')).toHaveTextContent('läuft');
+  });
+
+  it('„Fortschritt" zeigt die Boxen mit laufendem Update', async () => {
+    edgeUpdates.mockResolvedValue(mitStand(data({ rollouts: [] }), {
+      d1: { ist: 'edge-2026.07.2-665d59b8c0de', istRelease: 'edge-2026.07.2', releasesDahinter: 1, stand: 'laeuft',
+        state: 'laedt', fakten: fakten({ bestaetigt: 'laeuft', schritt: 'laedt' }) },
+    }));
+    render(<EdgeUpdatesPage />);
+    expect(await screen.findByTestId('lage')).toHaveTextContent('Ein Update läuft: edge-2026.08.0 an 1 Docker-Box · 0 bestätigt.');
+    fireEvent.click(within(screen.getByTestId('linie-docker')).getByRole('button', { name: 'Fortschritt' }));
+    const zustand = screen.getByRole('group', { name: 'Boxen nach Zustand filtern' });
+    expect(within(zustand).getByRole('button', { name: 'Update läuft 1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(screen.getByTestId('box-versions')).getAllByTestId('box-zeile')).toHaveLength(1);
+  });
+
+  it('sagt im Ruhezustand in EINEM Satz, wie die Flotte steht', async () => {
+    const d = mitStand(data({ rollouts: [] }), {
+      d2: { ist: 'edge-2026.08.0-3bf8c038e1d2', istRelease: 'edge-2026.08.0', releasesDahinter: 0, stand: 'aktuell' },
+    });
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+    expect(await screen.findByTestId('lage')).toHaveTextContent('Alle 2 Boxen laufen auf dem neuesten Release ihrer Linie.');
+    expect(within(screen.getByTestId('linie-docker')).getByRole('button', { name: 'Alle aktuell' })).toBeDisabled();
+    expect(screen.queryByTestId('braucht-dich')).toBeNull();
+    expect(screen.queryByTestId('rollout-card')).toBeNull();
+  });
+
+  it('zeigt eine Ablehnung des Servers WÖRTLICH', async () => {
+    const { ApiError } = await import('../../api');
+    createRollout.mockRejectedValue(
+      new ApiError(409, 'Das Release ist nicht signiert und kann nicht verteilt werden.'),
+    );
+    render(<EdgeUpdatesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Releases (2)' }));
+    const releases = await screen.findByRole('dialog', { name: 'Releases · Docker-Box' });
+    fireEvent.click(within(releases).getAllByRole('button', { name: /Aktualisieren/ })[0]);
+    const drawer = await screen.findByRole('dialog', { name: 'Aktualisieren auf edge-2026.08.0' });
+    fireEvent.click(within(drawer).getByTestId('choose-all').querySelector('input')!);
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
+    expect(await screen.findByText(/nicht signiert/)).toBeInTheDocument();
+    // Die Auswahl bleibt stehen: der Betreiber soll den Grund lesen und es
+    // erneut versuchen können, statt von vorn anzufangen.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByTestId('choose-all')
+      .querySelector('input')!).toBeChecked();
+  });
+
+  describe('Box-Art (Edge Light, Stufe 1)', () => {
+    /** Die Pilot-Box: meldet sich am Stempel als Edge Light, ohne Vertrauens-Set. */
+    const mitEdgeLight = () => {
+      const d = mitStand(data({ rollouts: [] }), {
+        d1: { ist: 'edge-2026.07.2-665d59b8c0de', istRelease: 'edge-2026.07.2', releasesDahinter: 1, stand: 'aelter' },
+        d2: { boxArt: null, linie: null },
+      });
+      d.fleet.push({
+        deviceId: 'd3', label: 'Mango Hof', externalRef: 'edge-m4ng0q1', siteId: 's3',
+        siteName: 'Hof Linde', tenantId: 't1', tenantName: 'Kunde B',
+        ist: 'edge-light-g2d2bca1b6', soll: null, sollSeq: null, state: 'aktuell', reason: null,
+        since: null, reportedAt: '2026-08-05T09:00:00Z', rolloutId: null, boxArt: 'light',
+        linie: 'light', stand: 'hand', stufe1: true, istRelease: null, releasesDahinter: null,
+        lastSeenAt: vor(20_000), fakten: null,
+        trust: { rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
+          trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' },
+      });
+      return d;
+    };
+
+    it('zeigt die Linie als Chip, Stufe 1 ruhig als „nur von Hand", und filtert nach Linie', async () => {
+      edgeUpdates.mockResolvedValue(mitEdgeLight());
+      render(<EdgeUpdatesPage />);
+      await screen.findByTestId('box-versions');
+      expect(within(zeile('Hof Linde')).getByTestId('box-art')).toHaveTextContent('Edge Light');
+      expect(within(zeile('Pilsting')).getByTestId('box-art')).toHaveTextContent('Docker-Box');
+      expect(within(zeile('Auernheim')).getByTestId('box-art')).toHaveTextContent('Box-Art unbekannt');
+      // Ruhig benannt statt „ohne Vertrauens-Set" als Warnung.
+      expect(zeile('Hof Linde')).toHaveTextContent('nur von Hand · Stufe 1');
+      expect(zeile('Hof Linde')).not.toHaveTextContent('ohne Vertrauens-Set');
+      expect(within(screen.getByTestId('braucht-dich')).getByTestId('aufgabe'))
+        .toHaveTextContent('Hof Linde: nur von Hand (Stufe 1)');
+
+      const linie = screen.getByRole('group', { name: 'Boxen nach Linie filtern' });
+      fireEvent.click(within(linie).getByRole('button', { name: 'Edge Light 1' }));
+      expect(within(screen.getByTestId('box-versions')).getAllByTestId('box-zeile')).toHaveLength(1);
+      expect(screen.getByTestId('box-versions')).toHaveTextContent('Hof Linde');
+      expect(screen.getByTestId('box-versions')).not.toHaveTextContent('Pilsting');
+    });
+
+    it('graut im Verteil-Dialog die Edge-Light-Box aus und nennt den Grund', async () => {
+      createRollout.mockResolvedValue({ rolloutId: 'r2' });
+      edgeUpdates.mockResolvedValue(mitEdgeLight());
+      render(<EdgeUpdatesPage />);
+      fireEvent.click(within(await screen.findByTestId('linie-docker')).getByRole('button', { name: 'Verteilen …' }));
+      const drawer = await screen.findByRole('dialog');
+      expect(within(drawer).getByTestId('release-box-art')).toHaveTextContent('Docker-Box');
+      expect(within(drawer).getByTestId('release-box-art'))
+        .toHaveTextContent('1 Gerät passt nicht dazu');
+      const gesperrt = within(drawer).getByTestId('candidate-gesperrt');
+      expect(gesperrt).toHaveTextContent('Hof Linde');
+      expect(gesperrt).toHaveTextContent('diese Box ist eine Edge Light');
+      expect(gesperrt.querySelector('input')).toBeDisabled();
+
+      const all = within(drawer).getByTestId('choose-all');
+      expect(all).toHaveTextContent('Alle passenden Geräte (2)');
+      fireEvent.click(all.querySelector('input')!);
+      fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
+      await waitFor(() =>
+        expect(createRollout).toHaveBeenCalledWith({ releaseSeq: 12, devices: ['d2', 'd1'] }),
+      );
+    });
+
+    it('bietet einer Edge-Light-Box kein Docker-Release an und sagt warum', async () => {
+      const d = mitEdgeLight();
+      // Eine Zuweisung aus der Zeit vor der Sperre bleibt zurücknehmbar.
+      d.fleet[2].soll = 'edge-2026.08.0';
+      d.fleet[2].sollSeq = 12;
+      edgeUpdates.mockResolvedValue(d);
+      render(<EdgeUpdatesPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Update verwalten für Hof Linde · edge-m4ng0q1' }));
+      const drawer = await screen.findByRole('dialog');
+      expect(within(drawer).getByTestId('box-art')).toHaveTextContent('Edge Light');
+      expect(within(drawer).getByTestId('drawer-keine-passenden'))
+        .toHaveTextContent('diese Box ist eine Edge Light');
+      expect(within(drawer).queryByRole('combobox', { name: 'Release' })).toBeNull();
+      expect(within(drawer).queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
+      expect(drawer).toHaveTextContent('Diese Box prüft Updates noch nicht gegen die Signaturkette');
+      expect(within(drawer).getByRole('button', { name: 'Zuweisung zurücknehmen' })).toBeEnabled();
+    });
+
+    it('zeigt in den Releases einer Linie nur ihre Releases', async () => {
+      const d = mitEdgeLight();
+      d.releases[0].boxArt = 'docker';
+      d.releases[1].boxArt = 'light';
+      edgeUpdates.mockResolvedValue(d);
+      render(<EdgeUpdatesPage />);
+      fireEvent.click(within(await screen.findByTestId('linie-docker')).getByRole('button', { name: 'Releases (1)' }));
+      const docker = await screen.findByRole('dialog', { name: 'Releases · Docker-Box' });
+      expect(docker).toHaveTextContent('edge-2026.08.0');
+      expect(docker).not.toHaveTextContent('edge-2026.07.2');
+    });
+  });
+
+  describe('Verbindung je Box aus der EINEN Uhr (G2)', () => {
+    it('zeigt je Box die Verbindung nach derselben Regel wie die Registrierung', async () => {
+      const d = mitStand(data(), {
+        d1: { lastSeenAt: vor(30_000) },
+        d2: { lastSeenAt: vor(2 * 3600_000), stand: 'offline' },
+      });
+      d.fleet.push({ ...d.fleet[1], deviceId: 'd3', label: 'edge-c3', externalRef: 'edge-c3', siteName: 'Kirchdorf',
+        lastSeenAt: null, stand: 'unbekannt' });
+      d.fleet.push({ ...d.fleet[1], deviceId: 'd4', label: 'edge-d4', externalRef: 'edge-d4', siteName: 'Alter Server',
+        lastSeenAt: undefined, stand: 'unbekannt' });
+      edgeUpdates.mockResolvedValue(d);
+      render(<EdgeUpdatesPage />);
+      await screen.findByTestId('box-versions');
+      expect(within(zeile('Pilsting')).getByTestId('box-verbindung')).toHaveTextContent('Verbundenvor 30 Sek.');
+      expect(within(zeile('Auernheim')).getByTestId('box-verbindung')).toHaveTextContent('Meldet sich nichtseit 2 Std.');
+      expect(within(zeile('Kirchdorf')).getByTestId('box-verbindung')).toHaveTextContent('Wartet auf erste Meldung');
+      // Ohne Uhr vom Server (älterer Stand) ist die Verbindung unbekannt - nie „noch nie gemeldet".
+      expect(within(zeile('Alter Server')).getByTestId('box-verbindung')).toHaveTextContent('Verbindung unbekannt');
+
+      const zustand = screen.getByRole('group', { name: 'Boxen nach Zustand filtern' });
+      fireEvent.click(within(zustand).getByRole('button', { name: 'Offline 1' }));
+      expect(within(screen.getByTestId('box-versions')).getAllByTestId('box-zeile')).toHaveLength(1);
+      expect(screen.getByTestId('box-versions')).toHaveTextContent('Auernheim');
+    });
+  });
+
 
   it('bietet NIRGENDS einen zweiten Schritt am Gerät an', async () => {
     render(<EdgeUpdatesPage />);
@@ -352,17 +614,6 @@ describe('EdgeUpdatesPage', () => {
     expect(within(journal).queryByText(/bestaetigt/)).toBeNull();
   });
 
-  it('warnt LAUT und benennt die Anlage - ohne irgendetwas anzuhalten', async () => {
-    const d = data();
-    d.fleet[0].state = 'fehlgeschlagen';
-    d.fleet[0].reason = 'Selbsttest fehlgeschlagen.';
-    edgeUpdates.mockResolvedValue(d);
-    render(<EdgeUpdatesPage />);
-    expect(await screen.findByTestId('loud-banner')).toHaveTextContent('Pilsting');
-    // Der Rollout läuft weiter - ein Fehlschlag ist INFORMATION.
-    expect(await screen.findByTestId('rollout-card')).toHaveTextContent('läuft');
-  });
-
   it('weist ein Einzelgerät über die Geräte-Zeile zu - ohne Kanal und ohne Pin', async () => {
     setUpdateTarget.mockResolvedValue(undefined);
     render(<EdgeUpdatesPage />);
@@ -376,26 +627,6 @@ describe('EdgeUpdatesPage', () => {
     await waitFor(() =>
       expect(setUpdateTarget).toHaveBeenCalledWith('d2', { releaseSeq: 12 }),
     );
-  });
-
-  it('zeigt eine Ablehnung des Servers WÖRTLICH', async () => {
-    const { ApiError } = await import('../../api');
-    createRollout.mockRejectedValue(
-      new ApiError(409, 'Das Release ist nicht signiert und kann nicht verteilt werden.'),
-    );
-    render(<EdgeUpdatesPage />);
-    const table = await screen.findByTestId('releases');
-    fireEvent.click(screen.getByText('Alle Releases (2)'));
-    fireEvent.click(within(table).getAllByRole('button', { name: /Aktualisieren/ })[0]);
-    const drawer = await screen.findByRole('dialog');
-    fireEvent.click(within(drawer).getByTestId('choose-all').querySelector('input')!);
-    fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
-    expect(await screen.findByText(/nicht signiert/)).toBeInTheDocument();
-    // Die Auswahl bleibt stehen: der Betreiber soll den Grund lesen und es
-    // erneut versuchen können, statt von vorn anzufangen.
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(within(screen.getByRole('dialog')).getByTestId('choose-all')
-      .querySelector('input')!).toBeChecked();
   });
 
   it('führt aus dem Drawer auf die EINE Geräteseite - mit gesetztem Mandanten', async () => {
@@ -430,15 +661,6 @@ describe('EdgeUpdatesPage', () => {
     }
   });
 
-  it('sagt im Ruhezustand in EINEM Satz, wie die Flotte steht', async () => {
-    edgeUpdates.mockResolvedValue(data({ rollouts: [] }));
-    render(<EdgeUpdatesPage />);
-    const line = await screen.findByTestId('resting-line');
-    expect(line).toHaveTextContent('1/1 Geräte auf edge-2026.08.0');
-    expect(line).toHaveTextContent('unbekannt, nicht veraltet');
-    expect(screen.queryByTestId('rollout-card')).toBeNull();
-  });
-
   it('behandelt reine Rollout-Historie als Ruhezustand', async () => {
     const d = data();
     d.fleet = d.fleet.map((device) => ({
@@ -450,107 +672,9 @@ describe('EdgeUpdatesPage', () => {
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
 
-    expect(await screen.findByTestId('resting-line')).toHaveTextContent(
-      'Gerade wird nichts aktualisiert',
-    );
+    // Ohne heutige Zuweisung läuft nichts: keine Lauf-Karte, kein „läuft" im Lage-Satz.
+    expect(await screen.findByTestId('lage')).not.toHaveTextContent('läuft');
     expect(screen.queryByTestId('rollout-card')).toBeNull();
-  });
-
-  describe('Box-Art (Edge Light, Stufe 1)', () => {
-    /** Die Pilot-Box: meldet sich am Stempel als Edge Light, ohne Vertrauens-Set. */
-    const mitEdgeLight = () => {
-      const d = data({ rollouts: [] });
-      d.fleet[0].boxArt = 'docker';
-      d.fleet.push({
-        deviceId: 'd3', label: 'Mango Hof', externalRef: 'edge-m4ng0q1', siteId: 's3',
-        siteName: 'Hof Linde', tenantId: 't1', tenantName: 'Kunde B',
-        ist: 'edge-light-g2d2bca1b6', soll: null, sollSeq: null, state: 'aktuell', reason: null,
-        since: null, reportedAt: '2026-08-05T09:00:00Z', rolloutId: null, boxArt: 'light',
-        trust: { rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
-          trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' },
-      });
-      return d;
-    };
-
-    it('zeigt die Box-Art als Chip und filtert danach', async () => {
-      edgeUpdates.mockResolvedValue(mitEdgeLight());
-      render(<EdgeUpdatesPage />);
-      const table = await screen.findByTestId('box-versions');
-      const mango = within(table).getByText('Hof Linde').closest('tr')!;
-      expect(within(mango).getByTestId('box-art')).toHaveTextContent('Edge Light');
-      expect(within(table).getByText('Pilsting').closest('tr')).toHaveTextContent('Docker-Box');
-      expect(within(table).getByText('Auernheim').closest('tr'))
-        .toHaveTextContent('Box-Art unbekannt');
-      // Ruhig benannt statt „ohne Vertrauens-Set" als Warnung.
-      expect(mango).toHaveTextContent('Updates von Hand (Edge Light, Stufe 1)');
-      expect(mango).not.toHaveTextContent('ohne Vertrauens-Set');
-      expect(screen.getByTestId('fleet-pointer'))
-        .toHaveTextContent('1 Edge-Light-Box bekommt Updates von Hand (Stufe 1)');
-      expect(screen.getByTestId('fleet-pointer')).not.toHaveTextContent('kein gültiges');
-
-      fireEvent.click(screen.getByText('Suche & Filter'));
-      fireEvent.click(screen.getByRole('combobox', { name: 'Box-Art' }));
-      fireEvent.click(await screen.findByRole('option', { name: 'Edge Light (1)' }));
-      expect(within(table).getAllByRole('row')).toHaveLength(2);
-      expect(table).toHaveTextContent('Hof Linde');
-      expect(table).not.toHaveTextContent('Pilsting');
-    });
-
-    it('graut im Rollout-Dialog die Edge-Light-Box aus und nennt den Grund', async () => {
-      createRollout.mockResolvedValue({ rolloutId: 'r2' });
-      edgeUpdates.mockResolvedValue(mitEdgeLight());
-      render(<EdgeUpdatesPage />);
-      fireEvent.click(await screen.findByRole('button', { name: 'Update verteilen' }));
-      const drawer = await screen.findByRole('dialog');
-      expect(within(drawer).getByTestId('release-box-art')).toHaveTextContent('Docker-Box');
-      expect(within(drawer).getByTestId('release-box-art'))
-        .toHaveTextContent('1 Gerät passt nicht dazu');
-      const gesperrt = within(drawer).getByTestId('candidate-gesperrt');
-      expect(gesperrt).toHaveTextContent('Hof Linde');
-      expect(gesperrt).toHaveTextContent('diese Box ist eine Edge Light');
-      expect(gesperrt.querySelector('input')).toBeDisabled();
-
-      const all = within(drawer).getByTestId('choose-all');
-      expect(all).toHaveTextContent('Alle passenden Geräte (2)');
-      fireEvent.click(all.querySelector('input')!);
-      fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
-      await waitFor(() =>
-        expect(createRollout).toHaveBeenCalledWith({ releaseSeq: 12, devices: ['d2', 'd1'] }),
-      );
-    });
-
-    it('bietet einer Edge-Light-Box kein Docker-Release an und sagt warum', async () => {
-      const d = mitEdgeLight();
-      // Eine Zuweisung aus der Zeit vor der Sperre bleibt zurücknehmbar.
-      d.fleet[2].soll = 'edge-2026.08.0';
-      d.fleet[2].sollSeq = 12;
-      edgeUpdates.mockResolvedValue(d);
-      render(<EdgeUpdatesPage />);
-      const table = await screen.findByTestId('box-versions');
-      fireEvent.click(within(table).getByRole('button', {
-        name: 'Update verwalten für Hof Linde · edge-m4ng0q1',
-      }));
-      const drawer = await screen.findByRole('dialog');
-      expect(within(drawer).getByTestId('box-art')).toHaveTextContent('Edge Light');
-      expect(within(drawer).getByTestId('drawer-keine-passenden'))
-        .toHaveTextContent('diese Box ist eine Edge Light');
-      expect(within(drawer).queryByRole('combobox', { name: 'Release' })).toBeNull();
-      expect(within(drawer).queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
-      expect(drawer).toHaveTextContent('Diese Box prüft Updates noch nicht gegen die Signaturkette');
-      expect(within(drawer).getByRole('button', { name: 'Zuweisung zurücknehmen' })).toBeEnabled();
-    });
-
-    it('zeigt die Box-Art jedes Releases im Register', async () => {
-      const d = mitEdgeLight();
-      d.releases[0].boxArt = 'docker';
-      d.releases[1].boxArt = 'light';
-      edgeUpdates.mockResolvedValue(d);
-      render(<EdgeUpdatesPage />);
-      const table = await screen.findByTestId('releases');
-      const rows = within(table).getAllByRole('row');
-      expect(rows[1]).toHaveTextContent('Docker-Box');
-      expect(rows[2]).toHaveTextContent('Edge Light');
-    });
   });
 
   it('trägt den ruhigen Crossover-Hinweis im Verweis auf die Geräte-Seite', async () => {
@@ -561,62 +685,5 @@ describe('EdgeUpdatesPage', () => {
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
     expect(await screen.findByTestId('fleet-pointer')).toHaveTextContent('Crossover offen');
-  });
-
-  describe('Online-Status im Reiter Updates', () => {
-    const inventar = (lastSeen: Record<string, string | null>) =>
-      Object.entries(lastSeen).map(([deviceId, lastSeenAt]) => ({ deviceId, externalRef: deviceId, lastSeenAt }));
-
-    it('zählt, zeigt je Box und filtert nach derselben Regel wie die Registrierung', async () => {
-      const d = data();
-      d.fleet.push({ ...d.fleet[1], deviceId: 'd3', label: 'edge-c3', externalRef: 'edge-c3', siteName: 'Kirchdorf' });
-      d.fleet.push({ ...d.fleet[1], deviceId: 'd4', label: 'edge-d4', externalRef: 'edge-d4', siteName: 'Ohne Inventar' });
-      edgeUpdates.mockResolvedValue(d);
-      listDevices.mockResolvedValue(inventar({
-        d1: new Date(Date.now() - 30_000).toISOString(),
-        d2: new Date(Date.now() - 2 * 3600_000).toISOString(),
-        d3: null,
-      }));
-      render(<EdgeUpdatesPage />);
-      expect(await screen.findByTestId('online-zaehlung')).toHaveTextContent('1 online · 1 offline · 1 nie gemeldet');
-      const table = screen.getByTestId('box-versions');
-      const zeile = (name: string) => within(table).getAllByRole('row').find((r) => r.textContent?.includes(name))!;
-      expect(zeile('Pilsting')).toHaveTextContent('Verbunden');
-      expect(zeile('Auernheim')).toHaveTextContent('Meldet sich nicht');
-      expect(zeile('Auernheim')).toHaveTextContent('Letzte Meldung: vor 2 Std.');
-      expect(zeile('Kirchdorf')).toHaveTextContent('Letzte Meldung: noch nie');
-      // Unbekannt ist nicht online: ohne Inventarzeile kein Status, keine Zählung.
-      expect(zeile('Ohne Inventar')).not.toHaveTextContent('Verbunden');
-      expect(zeile('Ohne Inventar')).not.toHaveTextContent('Letzte Meldung');
-
-      const gruppe = screen.getByRole('group', { name: 'Boxen nach Online-Status filtern' });
-      fireEvent.click(within(gruppe).getByRole('button', { name: 'Online 1' }));
-      expect(within(screen.getByTestId('box-versions')).getAllByRole('row')).toHaveLength(2);
-      fireEvent.click(within(gruppe).getByRole('button', { name: 'Alle 4' }));
-      expect(within(screen.getByTestId('box-versions')).getAllByRole('row')).toHaveLength(5);
-    });
-
-    it('zählt ohne Inventar keine Box als online und sagt es', async () => {
-      listDevices.mockRejectedValue(new Error('offline'));
-      render(<EdgeUpdatesPage />);
-      expect(await screen.findByTestId('online-unbekannt')).toHaveTextContent('keine Box wird als online gezählt');
-      expect(screen.queryByTestId('online-zaehlung')).toBeNull();
-      expect(within(screen.getByTestId('box-versions')).queryByText('Verbunden')).toBeNull();
-    });
-
-    it('lässt den alten Stand stehen und nennt ihn, wenn die Aktualisierung fehlschlägt', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-      try {
-        listDevices.mockResolvedValue(inventar({ d1: new Date(Date.now() - 30_000).toISOString(), d2: null }));
-        render(<EdgeUpdatesPage />);
-        await waitFor(() => expect(screen.getByTestId('online-zaehlung')).toHaveTextContent('1 online · 0 offline · 1 nie gemeldet'));
-        listDevices.mockRejectedValue(new Error('offline'));
-        await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
-        await waitFor(() => expect(screen.getByTestId('online-zaehlung')).toHaveTextContent('die Aktualisierung schlägt gerade fehl'));
-        expect(screen.getByTestId('online-zaehlung')).toHaveTextContent('1 online');
-      } finally {
-        vi.useRealTimers();
-      }
-    });
   });
 });

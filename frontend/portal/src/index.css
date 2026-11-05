@@ -6561,7 +6561,10 @@ span.vp-swap-out {
   .vp-flow-rev,
   .vp-spinner,
   .vp-flowport.accepts,
-  .vp-ustate-busy .vp-ustate-dot {
+  .vp-ustate-busy .vp-ustate-dot,
+  /* Geräte & Updates G5: derselbe Punkt im Badge „Update läuft" und im laufenden Schritt. */
+  .vp-gu .vp-gu-badge.lauf .p,
+  .vp-gu .vp-gu-tracker .aktiv i {
     animation: none;
   }
 

@@ -242,10 +242,41 @@ export interface EdgeUpdates {
   /**
    * ⚠ `kpi.upToDate`/`kpi.newestRelease` messen am neuesten Release über BEIDE
    * Linien (für ältere Portale unverändert). Das Urteil je Linie steht in
-   * `lines` - fehlt das Feld (älterer Server), leitet `linienSicht` es ab.
+   * `lines` - fehlt das Feld (älterer Server), leitet `linienKarten` (`geraeteUpdates.ts`)
+   * die Linie aus Register und Flotte ab.
    */
   kpi: EdgeUpdatesKpi;
   lines?: EdgeUpdatesLine[];
+}
+
+/**
+ * Die Release-Seite (`GET /admin/edge-updates/releases/{releaseSeq}`, Geräte &
+ * Updates G4): Inhalt aus dem signierten Manifest, bei Edge Light welche
+ * Programme fertig im Portal liegen, „Was ist neu" und wo es läuft.
+ */
+export interface EdgeReleaseSeite {
+  releaseSeq: number;
+  version: string;
+  boxArt: string;
+  signed: boolean;
+  signingKeyId: string | null;
+  createdAt: string;
+  targetCommit: string | null;
+  notes: string | null;
+  /** Die Box-Änderungen seit dem letzten Tag derselben Linie; `null` = keine Angabe, `[]` = keine Änderung. */
+  aenderungen: string[] | null;
+  erlaubtRueckschritt: boolean;
+  minFromSeq: number | null;
+  /** Je Teil des Manifests: Bild (Docker) oder Programm je Plattform (Edge Light). */
+  inhalt: { typ: string; name: string; arch: string | null; groesse: number | null; gzGroesse: number | null }[];
+  /** Nur Edge Light: je Programm, ob es fertig geprüft im Portal liegt. */
+  programme: { arch: string; groesse: number; empfangen: number; fertig: boolean }[];
+  laeuftAuf: string[];
+  boxenDerLinie: number;
+  verteilt: {
+    rolloutId: string; state: string; createdBy: string | null; createdAt: string;
+    total: number; confirmed: number; failed: number;
+  }[];
 }
 
 /** Beschriftung + Ton + Klasse eines Geräte-Zustands (§7.2, §5-Grammatik). */

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -10,29 +10,32 @@ import { MiniShareBar } from '../../components/MiniChart';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { fmtRelative } from '../../format';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
-import type { Route } from '../../nav';
-import { BoxVersions, type OnlineInventar } from './BoxVersions';
+import { pageRoute, type Route } from '../../nav';
 import { BoxArtChip } from './BoxArtChip';
+import './BoxVersions.css';
 import { AdminPageHead } from './AdminPageHead';
 import { GeraeteDrawer, UpdateActionError } from './GeraeteDrawer';
+import { BoxenListe, BrauchtDich, LinienKarten, UpdatesLage } from './GeraeteUpdates';
 import {
+  BOX_ART_LABELS,
   actorLabel,
   blockerLever,
   candidates,
   crossoverHint,
+  crossoverState,
   currentRolloutViews,
   eventLabel,
   freshnessLabel,
-  loudBanner,
   progressBackbone,
   releaseBoxArt,
-  restingLine,
   rolloutDeviceName,
   rolloutStateLabel,
   signatureLabel,
   startSummary,
   stateLabel,
   visibleJournal,
+  type BoxArt,
+  type EdgeReleaseSeite,
   type EdgeUpdates,
   type EdgeUpdatesRelease,
   type FleetRow,
@@ -40,6 +43,9 @@ import {
   type RolloutDevice,
   type UpdateTone,
 } from '../../adminEdgeUpdates';
+import {
+  KEIN_FILTER, aufgaben, boxZeilen, lage, linienKarten, type BoxFilter, type LageZiel,
+} from '../../geraeteUpdates';
 // LIST: eine Verwaltungs-Übersicht bewegt sich nicht sekündlich.
 import { LIST_POLL_MS } from '../../pollCadence';
 
@@ -66,22 +72,40 @@ function StateChip({ state }: { state: string }) {
   );
 }
 
+/** Das neueste Edge-Light-Release: seine Release-Seite sagt, welche Programme fertig im Portal liegen. */
+function neuestesLightRelease(data: EdgeUpdates): number | null {
+  const line = data.lines?.find((l) => l.boxArt === 'light');
+  if (line) return line.newestReleaseSeq;
+  const light = data.releases.filter((r) => releaseBoxArt(r) === 'light').sort((a, b) => b.releaseSeq - a.releaseSeq);
+  return light[0]?.releaseSeq ?? null;
+}
+
+/** Zu einem Abschnitt der Seite springen - ohne Bewegung, die Seite rückt nur. */
+function zeige(id: string) {
+  window.requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView?.({ block: 'start' }));
+}
+
 /**
- * Plattform → **Edge-Updates**: Releases · laufende Aktualisierungen · Verlauf.
+ * Plattform → **Geräte & Updates** (Geräte & Updates G5, Konzept vom 05.11.2026).
  *
- * <b>Der ganze Ablauf ist EIN Schritt:</b> Release wählen, Geräte ankreuzen,
+ * Oben ein Satz zur Lage, dann je Software-Linie eine Karte (Docker-Box und
+ * Edge Light nebeneinander, jede mit ihrem neuesten Release), darunter „Braucht
+ * dich" mit Grund und nächstem Schritt, dann die Boxen nach Linie. Drei Wörter,
+ * nie vermischt: angefragt (Portal) · angenommen (Box) · bestätigt (Box).
+ *
+ * <b>Verteilen bleibt EIN Schritt:</b> Release wählen, Geräte ankreuzen,
  * „Aktualisieren". Danach holen die Geräte ihre Images und tauschen sich
  * selbst aus - es gibt keinen zweiten Knopf, keine Welle, keine Freigabe und
  * keinen Handgriff am Gerät.
  *
  * <b>Diese Seite entscheidet NICHTS.</b> Was ein Gerät gerade tut, sagt der
- * Server (`RolloutStates`) - hier wird es gerendert. Die Ehrlichkeitsregeln
- * gelten unverändert: „unbekannt" ist nie „veraltet", „offline" ist nie
- * „fehlgeschlagen", Quoten laufen über die erreichbare Menge, und jede
- * nicht-grüne Zeile trägt ihren Grund. Ein Fehlschlag ist INFORMATION, keine
- * Sperre - die übrigen Geräte laufen weiter.
+ * Server (`RolloutStates`, `LinienStand`, `UpdateFakten`) - hier wird es
+ * gerendert. „Unbekannt" ist nie „veraltet", „offline" ist nie
+ * „fehlgeschlagen", Stufe 1 ist „nur von Hand" und kein Fehler, und jede
+ * nicht-grüne Zeile trägt ihren Grund.
  */
 export function EdgeUpdatesPage({
+  onNavigate,
   onJumpToTenant,
   tabs,
 }: {
@@ -101,39 +125,39 @@ export function EdgeUpdatesPage({
   const [busy, setBusy] = useState(false);
   const [rolloutFor, setRolloutFor] = useState<EdgeUpdatesRelease | null>(null);
   const [deviceFor, setDeviceFor] = useState<string | null>(null);
+  const [releasesFor, setReleasesFor] = useState<BoxArt | null>(null);
+  const [filter, setFilter] = useState<BoxFilter>(KEIN_FILTER);
   // Zustand UND Bezugszeit werden ZUSAMMEN gesetzt - ein Alter, das gegen eine
   // Uhr über einem stehenden Schnappschuss rechnet, verfällt von selbst.
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   const [tick, setTick] = useState<number>(() => Date.now());
-  // Online-Status je Box: die letzte Meldung kommt aus dem Geräte-Inventar
-  // (dieselbe Quelle wie im Reiter „Registrierung"), nicht aus der
-  // Versionsmeldung. Eigene Bezugszeit; ein Fehlschlag lässt den alten Stand
-  // stehen und SAGT es, ohne die Versionsstände zu berühren.
-  const [inventar, setInventar] = useState<OnlineInventar | null>(null);
-  const [inventarFailed, setInventarFailed] = useState(false);
+  // Die Release-Seiten der neuesten Edge-Light-Releases (welche Programme fertig
+  // im Portal liegen). Nachgeladen, bis jedes Programm fertig ist; ein
+  // Fehlschlag lässt die Chips weg, statt etwas zu behaupten.
+  const [seiten, setSeiten] = useState<Map<number, EdgeReleaseSeite>>(() => new Map());
+  const seitenRef = useRef(seiten);
+  seitenRef.current = seiten;
 
-  async function loadInventar() {
-    try {
-      const rows = await adminApi.listDevices();
-      if (!Array.isArray(rows)) throw new Error('kein Inventar');
-      const lastSeen = new Map<string, string | null>();
-      for (const r of rows) if (r.deviceId) lastSeen.set(r.deviceId, r.lastSeenAt);
-      setInventar({ lastSeen, fetchedAt: Date.now() });
-      setInventarFailed(false);
-    } catch {
-      setInventarFailed(true);
-    }
+  function ladeReleaseSeite(d: EdgeUpdates) {
+    const seq = neuestesLightRelease(d);
+    if (seq == null) return;
+    const alt = seitenRef.current.get(seq);
+    if (alt && alt.programme.every((p) => p.fertig)) return;
+    adminApi.edgeRelease(seq)
+      .then((s) => setSeiten((m) => new Map(m).set(seq, s)))
+      .catch(() => { /* ohne Release-Seite keine Plattform-Chips - keine Behauptung */ });
   }
 
   async function load() {
-    void loadInventar();
     try {
-      setData(await adminApi.edgeUpdates());
+      const d = await adminApi.edgeUpdates();
+      setData(d);
       setFetchedAt(Date.now());
       setTick(Date.now());
       setLoadError(null);
+      ladeReleaseSeite(d);
     } catch (e) {
-      // Ein Fehlschlag ist keine Datenlage: steht schon eine Tabelle, bleibt sie
+      // Ein Fehlschlag ist keine Datenlage: steht schon eine Seite, bleibt sie
       // mit ihrer ALTEN Bezugszeit stehen - der stille Takt darf den Zustand
       // nie kippen.
       setLoadError(
@@ -179,12 +203,16 @@ export function EdgeUpdatesPage({
     }
   }
 
-  const banner = useMemo(() => loudBanner(data?.fleet ?? []), [data]);
+  // Alles Abgeleitete rechnet gegen die Bezugszeit der Daten, nie gegen eine
+  // laufende Uhr über einem stehenden Schnappschuss.
+  const jetzt = useMemo(() => new Date(fetchedAt), [fetchedAt]);
+  const karten = useMemo(() => (data ? linienKarten(data, jetzt, seiten) : []), [data, jetzt, seiten]);
+  const brauchtDich = useMemo(() => (data ? aufgaben(data, jetzt) : []), [data, jetzt]);
+  const lageSatz = useMemo(() => (data ? lage(data, jetzt) : null), [data, jetzt]);
+  const zeilen = useMemo(() => (data ? boxZeilen(data, jetzt) : []), [data, jetzt]);
   const journal = useMemo(() => visibleJournal(data?.journal ?? []), [data]);
-  // Der ruhige TOFU-Hinweis über der Flotte. Er zählt nur BELEGT offene
-  // Crossover; ein Gerät, das nichts meldet, wird getrennt genannt - aus
-  // „unbekannt" lässt sich keine Aufgabe ableiten.
-  const crossover = useMemo(() => crossoverHint(data?.fleet ?? []), [data]);
+  const crossover = useMemo(() => crossoverHint((data?.fleet ?? [])
+    .filter((r) => crossoverState(r.trust, r.boxArt, r.loader).state !== 'von_hand')), [data]);
   // `data.rollouts` enthält bewusst auch jüngere Historie. Live-Zustände
   // gehören aber nur zu der Zuweisung, die das Gerät HEUTE besitzt; sonst
   // würde ein `.26`-Download auch in der alten `.25`-Karte als „lädt" stehen.
@@ -192,9 +220,18 @@ export function EdgeUpdatesPage({
     () => currentRolloutViews(data?.rollouts ?? [], data?.fleet ?? []),
     [data],
   );
-  // Der Ruhezustand richtet sich ebenfalls nach den AKTUELLEN Karten, nicht
-  // nach der im Aggregat mitreisenden Rollout-Historie.
-  const resting = restingLine(data ? { ...data, rollouts } : null);
+
+  const oeffneBox = (deviceId: string) => { setActionError(null); setDeviceFor(deviceId); };
+  // „Fortschritt": die Boxen mit laufendem Update, in ihrer Linie.
+  const fortschritt = (art: BoxArt | null) => {
+    setFilter({ linie: art ?? 'alle', status: 'lauf', suche: '' });
+    zeige('vp-gu-boxen');
+  };
+  const zuZiel = (ziel: LageZiel) => {
+    if (ziel === 'braucht') zeige('vp-gu-braucht');
+    else if (ziel === 'aelter') { setFilter({ ...KEIN_FILTER, status: 'aelter' }); zeige('vp-gu-boxen'); }
+    else fortschritt(null);
+  };
 
   return (
     <div className="vp-edge-updates">
@@ -222,14 +259,6 @@ export function EdgeUpdatesPage({
         }
       />
 
-      {/* Warn-first: was Aufmerksamkeit braucht, steht oben und NENNT die
-          Geräte. Ein Alarm ohne Adresse ist Lärm. Er ist ein HINWEIS, keine
-          Sperre - nichts hält deswegen an. */}
-      {banner && (
-        <div className="vp-alert vp-alert-warn" data-testid="loud-banner">
-          {banner}
-        </div>
-      )}
       {actionError && !rolloutFor && !deviceFor && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
       {loadError && data && <div className="vp-alert vp-alert-warn" role="alert">
         Die Aktualisierung ist fehlgeschlagen. Die zuletzt geladenen Versionsstände bleiben sichtbar.
@@ -242,109 +271,51 @@ export function EdgeUpdatesPage({
           <TableSkeleton rows={5} cols={6} />
         </Card>
       ) : (
-        <>
-          <BoxVersions data={data} busy={busy}
-            online={inventar} onlineFailed={inventarFailed}
-            onUpdate={(release) => { setActionError(null); setRolloutFor(release); }}
-            onOpen={(id) => { setActionError(null); setDeviceFor(id); }} />
+        <div className="vp-gu">
+          {lageSatz && <UpdatesLage lage={lageSatz} onZiel={zuZiel} />}
 
-          {/* ── 1. Releases ─────────────────────────────────────────────── */}
-          {/* Der EINE Einstieg: je Release ein Knopf, der die Geräte-Auswahl
-              öffnet. Mehr braucht dieser Ablauf nicht. */}
-          <Card className="vp-box-secondary" padding="lg" radius="lg">
-            <details>
-            <summary className="vp-sec-summary"><h3 style={{ display: 'inline', margin: 0 }}>Alle Releases ({data.releases.length})</h3></summary>
-            {data.releases.length === 0 ? (
-              <EmptyState
-                title="Noch kein Release registriert"
-                description="Ohne Register ist „veraltet“ keine Aussage. Ein Release trägt sich beim Bau selbst ein (CI signiert und registriert es)."
-              />
-            ) : (
-              <table className="vp-table responsive" data-testid="releases">
-                <thead>
-                  <tr>
-                    <th>Version</th>
-                    <th>Box-Art</th>
-                    <th>Commit</th>
-                    <th>Signatur</th>
-                    <th>Läuft auf</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...data.releases].sort((a, b) => b.releaseSeq - a.releaseSeq).map((r) => {
-                    const sig = signatureLabel(r);
-                    return (
-                      <tr key={r.releaseSeq}>
-                        <td data-label="Version">
-                          <strong>{r.version}</strong>
-                          {r.notes && (
-                            <div className="vp-muted vp-text-sm">{r.notes}</div>
-                          )}
-                        </td>
-                        <td data-label="Box-Art">
-                          <BoxArtChip boxArt={releaseBoxArt(r)} />
-                        </td>
-                        <td data-label="Commit" className="vp-muted">
-                          {r.targetCommit ?? '–'}
-                        </td>
-                        <td data-label="Signatur">
-                          <Badge variant={toneVariant(sig.tone)} dot>
-                            {sig.label}
-                          </Badge>
-                        </td>
-                        <td data-label="Läuft auf">
-                          {r.runningOnDevices === 0
-                            ? '–'
-                            : `${r.runningOnDevices} Gerät${r.runningOnDevices === 1 ? '' : 'e'}`}
-                        </td>
-                        <td>
-                          {/* Nur ein SIGNIERTES Release ist verteilbar: ohne
-                              Manifest-Bytes hat ein Gerät nichts, was es gegen
-                              seine eingebackene Wurzel prüfen könnte. Das ist
-                              das EINZIGE verbliebene Tor - und es hängt am
-                              Release, nie am Zustand eines Geräts. */}
-                          {r.signed ? (
-                            <Button
-                              variant="primary"
-                              onClick={() => { setActionError(null); setRolloutFor(r); }}
-                              disabled={busy || data.fleet.length === 0}
-                            >
-                              Aktualisieren ▸
-                            </Button>
-                          ) : (
-                            <span className="vp-muted vp-text-sm">
-                              Nicht signiert – nicht verteilbar
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-            </details>
-          </Card>
+          {/* Je Software-Linie eine Karte: ein Edge-Light-Release verdrängt das
+              Docker-Release nicht mehr (Geräte & Updates S0/G5). */}
+          <LinienKarten
+            karten={karten}
+            busy={busy || data.fleet.length === 0}
+            onVerteilen={(release) => { setActionError(null); setRolloutFor(release); }}
+            onReleases={setReleasesFor}
+            onFortschritt={fortschritt}
+            onNachruesten={oeffneBox}
+          />
 
-          {/* ── 2. Laufende Aktualisierungen ────────────────────────────── */}
-          {/* Ohne aktuelle Zuweisung gibt es die Karte GAR NICHT: ältere
-              Aufträge bleiben im Verlauf, übernehmen aber nie den Live-Status
-              eines neueren Releases. Parallele aktuelle Zuweisungen dürfen
-              weiter nebeneinander stehen. */}
-          {rollouts.map((r) => (
-            <RolloutCard
-              key={r.id}
-              rollout={r}
-              fleet={data.fleet}
-              onOpenDevice={setDeviceFor}
-            />
-          ))}
+          {/* Warn-first: was Aufmerksamkeit braucht, steht oben und NENNT die
+              Box, den Grund und den nächsten Schritt. Ein Hinweis, keine
+              Sperre - nichts hält deswegen an. */}
+          <BrauchtDich
+            aufgaben={brauchtDich}
+            onBox={oeffneBox}
+            onFernwartung={onNavigate ? () => onNavigate(pageRoute('fernwartung')) : undefined}
+            onNachruesten={oeffneBox}
+          />
 
-          {resting && <p className="vp-muted vp-text-sm" data-testid="resting-line">{resting}</p>}
-          {crossover && <p className="vp-muted vp-text-sm" data-testid="fleet-pointer">{crossover}</p>}
+          <BoxenListe zeilen={zeilen} filter={filter} onFilter={setFilter} onOpen={oeffneBox} />
+          {/* Der ruhige TOFU-Hinweis: zählt nur BELEGT offene Crossover; Stufe 1
+              steht schon in „Braucht dich". Ein Gerät, das nichts meldet, wird
+              getrennt genannt - aus „unbekannt" lässt sich keine Aufgabe ableiten. */}
+          {crossover && <p className="vp-muted vp-text-sm" data-testid="fleet-pointer" style={{ margin: 0 }}>{crossover}</p>}
 
-          {/* ── 3. Verlauf ──────────────────────────────────────────────── */}
+          {/* Laufende Verteilungen: ohne aktuelle Zuweisung gibt es die Karte
+              GAR NICHT; ältere Aufträge bleiben im Verlauf, übernehmen aber nie
+              den Live-Status eines neueren Releases. */}
+          {rollouts.length > 0 && (
+            <section id="vp-gu-laeufe" className="vp-gu-block" aria-labelledby="vp-gu-laeufe-titel" data-testid="laeufe">
+              <div className="vp-gu-block-titel">
+                <h2 id="vp-gu-laeufe-titel">Verteilungen</h2>
+                <span className="vp-gu-leise vp-gu-klein">je Release, mit jeder Box</span>
+              </div>
+              {rollouts.map((r) => (
+                <RolloutCard key={r.id} rollout={r} fleet={data.fleet} onOpenDevice={oeffneBox} />
+              ))}
+            </section>
+          )}
+
           <Card padding="lg" radius="lg">
             <details>
             <summary className="vp-sec-summary"><h3 style={{ margin: 0, display: 'inline' }}>
@@ -365,7 +336,7 @@ export function EdgeUpdatesPage({
             )}
             </details>
           </Card>
-        </>
+        </div>
       )}
 
       {deviceFor && data && (() => {
@@ -406,6 +377,16 @@ export function EdgeUpdatesPage({
         );
       })()}
 
+      {releasesFor && data && (
+        <LinienReleases
+          art={releasesFor}
+          releases={data.releases}
+          busy={busy || data.fleet.length === 0}
+          onClose={() => setReleasesFor(null)}
+          onVerteilen={(release) => { setReleasesFor(null); setActionError(null); setRolloutFor(release); }}
+        />
+      )}
+
       {rolloutFor && data && (
         <StartRolloutDrawer
           release={rolloutFor}
@@ -422,6 +403,77 @@ export function EdgeUpdatesPage({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Die Releases EINER Linie, neueste zuerst: je Release ein Knopf, der die
+ * Geräte-Auswahl öffnet. Nur ein SIGNIERTES Release ist verteilbar - ohne
+ * Manifest-Bytes hat ein Gerät nichts, was es gegen seine eingebackene Wurzel
+ * prüfen könnte. Das ist das EINZIGE Tor am Release, nie am Zustand eines Geräts.
+ */
+function LinienReleases({
+  art, releases, busy, onClose, onVerteilen,
+}: {
+  art: BoxArt;
+  releases: EdgeUpdatesRelease[];
+  busy: boolean;
+  onClose: () => void;
+  onVerteilen: (release: EdgeUpdatesRelease) => void;
+}) {
+  const liste = releases.filter((r) => releaseBoxArt(r) === art).sort((a, b) => b.releaseSeq - a.releaseSeq);
+  return (
+    <Modal open breit title={`Releases · ${BOX_ART_LABELS[art]}`} onClose={onClose}>
+      {liste.length === 0 ? (
+        <EmptyState
+          title="Noch kein Release registriert"
+          description="Ohne Register ist „veraltet“ keine Aussage. Ein Release trägt sich beim Bau selbst ein (CI signiert und registriert es)."
+        />
+      ) : (
+        <table className="vp-table responsive" data-testid="releases">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Commit</th>
+              <th>Signatur</th>
+              <th>Läuft auf</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {liste.map((r) => {
+              const sig = signatureLabel(r);
+              return (
+                <tr key={r.releaseSeq}>
+                  <td data-label="Version">
+                    <strong>{r.version}</strong>
+                    {r.notes && <div className="vp-muted vp-text-sm">{r.notes}</div>}
+                  </td>
+                  <td data-label="Commit" className="vp-muted">{r.targetCommit ?? '–'}</td>
+                  <td data-label="Signatur">
+                    <Badge variant={toneVariant(sig.tone)} dot>{sig.label}</Badge>
+                  </td>
+                  <td data-label="Läuft auf">
+                    {r.runningOnDevices === 0
+                      ? '–'
+                      : `${r.runningOnDevices} Gerät${r.runningOnDevices === 1 ? '' : 'e'}`}
+                  </td>
+                  <td>
+                    {r.signed ? (
+                      <Button variant="primary" size="sm" disabled={busy} onClick={() => onVerteilen(r)}>
+                        Aktualisieren ▸
+                      </Button>
+                    ) : (
+                      <span className="vp-muted vp-text-sm">Nicht signiert – nicht verteilbar</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </Modal>
   );
 }
 

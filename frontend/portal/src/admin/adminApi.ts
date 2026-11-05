@@ -6,7 +6,7 @@ import {
   type PlatformCertVerdict,
   type Site,
 } from '../api';
-import type { DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
+import type { DeviceTrust, EdgeReleaseSeite, EdgeUpdates } from '../adminEdgeUpdates';
 import type { AdminVorlage } from '../adminVorlagen';
 import type { FlottenAnlage } from '../adminKomponentenFlotte';
 import type { PlattformModellWahlZustand } from '../prognose';
@@ -434,6 +434,10 @@ export const adminApi = {
 
   /** Alles, was die Seite „Edge-Updates" zeigt, in EINEM Aufruf. */
   edgeUpdates: () => request<EdgeUpdates>('/api/v1/admin/edge-updates'),
+
+  /** Die Release-Seite: Inhalt je Plattform, Programme im Portal, „Was ist neu" (Geräte & Updates G4). */
+  edgeRelease: (releaseSeq: number) =>
+    request<EdgeReleaseSeite>(`/api/v1/admin/edge-updates/releases/${releaseSeq}`),
 
   /**
    * Das INVENTAR aller Geräte über den ganzen Lebenszyklus (Seite „Geräte") -
