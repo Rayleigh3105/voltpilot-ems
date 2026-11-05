@@ -661,7 +661,7 @@ function satzOhneWiederholung(status: ConsumerRuntimeStatus, word: string): stri
  */
 function laeuft(status: ConsumerRuntimeStatus | undefined): boolean {
   const s = status?.state;
-  return s === 'running_forced' || s === 'running_optimized' || s === 'clamped';
+  return s === 'running_forced' || s === 'running_optimized' || s === 'running_manual' || s === 'clamped';
 }
 
 /** „zuletzt 8:50" - null, wenn kein Zeitpunkt gemeldet wurde. */

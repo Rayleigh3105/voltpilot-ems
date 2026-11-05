@@ -145,6 +145,17 @@ class ConsumerRuntimeStatusListenerTest {
     }
 
     @Test
+    void theManualOverrideStateIsKnownAndNeverDiscarded() {
+        // Teil B (Captain-Befund 05.11.2026): a human's own "Von Hand"
+        // override must survive ingest - dropping it would strand the
+        // honest edge report and fall back to "Zustand nicht bestätigt".
+        List<ConsumerRuntimeStatusRepository.Row> rows = ingest("{\"" + ROD + "\":{"
+                + "\"state\":\"running_manual\"}}");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).state()).isEqualTo("running_manual");
+    }
+
+    @Test
     void theDeadlineFallbackReasonIsKnownAndNeverDiscarded() {
         // Inkrement 6 (§15): the device's own deadline start reports
         // flex_deadline_fallback - the listener must KNOW the word, or the

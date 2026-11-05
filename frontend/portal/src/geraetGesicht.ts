@@ -243,6 +243,20 @@ export interface GesichtInput {
    */
   speicherKnoten?: FlowNode | null;
   /**
+   * Der PV- bzw. NETZ-KNOTEN des Lesemodells - dieselben Anlagen-weiten Knoten,
+   * aus denen das Dashboard seine Energiefluss-Grafik baut. Sie tragen den
+   * Plausibilitätsabgleich des Heizstabs (Teil A, Captain-Befund 05.11.2026):
+   * eine bestätigte Stufe behauptet ≈4,5 kW, während die gemessene Hausbilanz
+   * (PV + Netzbezug − Batterieladung) derselben Minute das nicht hergibt - das
+   * ist der Widerspruch, den die Seite heute verschweigt.
+   *
+   * `null`/absent = die Anlage hat keinen solchen Knoten (oder er wird hier
+   * nicht mitgegeben); dann unterbleibt JEDES Plausibilitätsurteil - unbekannt
+   * bleibt unbekannt, nie „heizt nicht".
+   */
+  pvKnoten?: FlowNode | null;
+  netzKnoten?: FlowNode | null;
+  /**
    * Die Erfüllungs-Zeile eines Verbrauchers - WÖRTLICH die geteilte
    * `fulfilmentSummary(...).headline` (§5.4/§5.7). Leer = keine wiederkehrende
    * Aufgabe; dann steht dort nichts.
@@ -842,6 +856,67 @@ function heldZaehler(input: GesichtInput, eigenbau: boolean): Held {
 }
 
 /**
+ * Ist dieser Anlagen-Knoten FRISCH - trägt jedes seiner Mitglieder eine
+ * aktuelle Messung (`health === 'ok'`, 5-Minuten-Fenster)? Ein Knoten ohne
+ * Mitglieder (die Anlage hat diese Rolle schlicht nicht, z. B. keinen
+ * Speicher) ist dabei kein Problem: er trägt nichts zur Bilanz bei, also
+ * braucht er auch keine Frische.
+ */
+function knotenFrisch(
+  knoten: FlowNode | null | undefined,
+  entities: TopologyEntity[] | null | undefined,
+): boolean {
+  if (!knoten || knoten.members.length === 0) return true;
+  return knoten.members.every(
+    (m) => (entities ?? []).find((e) => e.id === m.entity_id)?.health === 'ok',
+  );
+}
+
+/**
+ * Das Vorzeichen eines Fluss-Knotens für die Hausbilanz: `erzeugendPositiv`
+ * sagt, welche Richtung („in" oder „out") das `+` in `house = pv + grid −
+ * batterie` trägt. Ruht der Fluss (unter der Rausch-Schwelle), ist sein
+ * Beitrag 0 - nicht unbekannt.
+ */
+function signierterFlussKw(knoten: FlowNode | null | undefined, inIstPositiv: boolean): number {
+  if (!knoten?.flow_active || knoten.value_kw == null) return 0;
+  const positiv = knoten.direction === 'in' ? inIstPositiv : !inIstPositiv;
+  return positiv ? knoten.value_kw : -knoten.value_kw;
+}
+
+/**
+ * Die GEMESSENE Hausbilanz einer Anlage - dieselbe Formel wie die
+ * Energiefluss-Grafik des Dashboards (`house = pv + grid − batterie`,
+ * `verbrauchssteuerung.md` „Physik"): PV-Erzeugung plus Netzbezug minus
+ * Batterieladung (eine Entladung zählt also positiv zum Hausverbrauch).
+ *
+ * ⚠ `null` ohne FRISCHE Messung an jedem beteiligten Knoten - eine veraltete
+ * Bilanz zählt nicht als frisch (Captain-Befund 05.11.2026: „Datenalter!").
+ * Eine Anlage ohne PV/Speicher liefert für die fehlende Rolle einfach 0, kein
+ * `null` - das ist kein fehlender Wert, sondern eine belegte Abwesenheit.
+ */
+function gemesseneHausbilanzKw(
+  pv: FlowNode | null | undefined,
+  grid: FlowNode | null | undefined,
+  speicher: FlowNode | null | undefined,
+  entities: TopologyEntity[] | null | undefined,
+): number | null {
+  // ⚠ OHNE das Topologie-Lesemodell selbst (noch nicht geladen, oder eine
+  // Seite, die es nicht mitgibt) ist auch ein fehlender PV-/Speicher-Knoten
+  // keine belegte Abwesenheit, sondern schlicht unbekannt - sonst läse eine
+  // noch ladende Seite jede Anlage als bilanzlos (Hausbilanz 0) und urteilte
+  // auf einer erfundenen Grundlage.
+  if (!entities || entities.length === 0) return null;
+  if (!knotenFrisch(pv, entities) || !knotenFrisch(grid, entities) || !knotenFrisch(speicher, entities)) {
+    return null;
+  }
+  const pvKw = signierterFlussKw(pv, true);
+  const netzKw = signierterFlussKw(grid, true);
+  const batterieKw = signierterFlussKw(speicher, false);
+  return pvKw + netzKw - batterieKw;
+}
+
+/**
  * Der Held der Gattung E (§5.4 Wallbox · §5.7 schaltbarer Verbraucher) - läuft
  * es, mit wie viel, und warum?
  *
@@ -870,7 +945,10 @@ function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
     : relais != null ? relais.wert > 0 : input.ioAusgangAn ?? null;
   const regeln = input.regeln ?? [];
   if (input.heizstab && !freigabe && leistung == null) {
-    return heldHeizstab(input.heizstab.stufe, regeln, (input.erfuellung ?? '').trim());
+    const hausbilanzKw = gemesseneHausbilanzKw(
+      input.pvKnoten, input.netzKnoten, input.speicherKnoten, input.topologie,
+    );
+    return heldHeizstab(input.heizstab.stufe, regeln, (input.erfuellung ?? '').trim(), hausbilanzKw);
   }
   const satz = laeuft == null
     ? (freigabe
@@ -950,28 +1028,59 @@ function heldVerbraucher(input: GesichtInput, eigenbau: boolean): Held {
 }
 
 /**
+ * Ab wann die angenommene Stufenleistung klar über der gemessenen Hausbilanz
+ * liegt, zählt sie als Widerspruch - erst darüber, wegen Messunsicherheit,
+ * Rundung (die Kachel zeigt eine Nachkommastelle) und üblicher Netzgeräusche.
+ */
+const HEIZSTAB_WIDERSPRUCH_PUFFER_KW = 0.5;
+
+/**
  * Der Held eines Heizstabs (Heizstab V1): er misst keine Leistung, er meldet seine BESTÄTIGTE Stufe. Die
  * Zahl ist die Leistung dieser Stufe (Typenschild), darum steht „angenommen“ daran - nie „gemessen“.
  * Unbekannt bleibt unbekannt (keine Stufe gemeldet), nie „aus“.
+ *
+ * ⚠ Teil A (Captain-Befund 05.11.2026): eine bestätigte Stufe beweist nur
+ * geschlossene Relais, kein fließender Strom - der eingebaute Thermostat des
+ * Stabs kann offen sein. Bisher setzte die Seite Annahme und Wirkung gleich
+ * („Heizt gerade." trotz 0 W). Mit einer FRISCHEN Hausbilanz hält sie jetzt die
+ * Probe: liegt die Annahme klar darüber, heißt der ehrliche Satz „eingeschaltet,
+ * aber nichts zu sehen" statt einer behaupteten Wirkung. Ohne frische Bilanz
+ * bleibt die Seite bei der bisherigen Aussage - unbekannt ist kein Widerspruch.
  */
-function heldHeizstab(stufe: StufeMeldung | null, regeln: string[], erfuellung: string): Held {
+function heldHeizstab(
+  stufe: StufeMeldung | null,
+  regeln: string[],
+  erfuellung: string,
+  hausbilanzKw: number | null,
+): Held {
   const bestaetigt = stufe?.confirmed ?? null;
   const laeuft = bestaetigt == null ? null : bestaetigt > 0;
   const kwStufe = bestaetigt != null && bestaetigt > 0 ? num(stufe?.confirmed_kw ?? null) : null;
+  const widerspruch = kwStufe != null && hausbilanzKw != null
+    && kwStufe > Math.max(0, hausbilanzKw) + HEIZSTAB_WIDERSPRUCH_PUFFER_KW;
   const satz = !stufe
     ? 'Die Box hat noch keine Stufe gemeldet.'
     : bestaetigt == null
       ? 'Die Box hat die Stufe noch nicht bestätigt.'
       : bestaetigt === 0
         ? 'Heizt gerade nicht.'
-        // Stufe und Leistung stehen groß in der Kachel daneben - der Satz wiederholt sie nicht.
-        : 'Heizt gerade.';
+        : widerspruch
+          // Die Bilanz widerlegt die Annahme - vermutlich steht das Relais zu,
+          // aber der Thermostat des Stabs hat selbst abgeschaltet (0 W fließen).
+          ? 'Eingeschaltet, aber im Hausverbrauch ist davon nichts zu sehen - vermutlich hat der Thermostat abgeschaltet.'
+          // Stufe und Leistung stehen groß in der Kachel daneben - der Satz wiederholt sie nicht.
+          : 'Heizt gerade.';
   const hinweis = regeln.length === 0
     ? null
     : regeln.length === 1
       ? `Geschaltet von der Regel „${regeln[0]}".`
       : `Geschaltet von den Regeln „${regeln.join('", „')}".`;
-  const zeilen = ['Energie: angenommen aus den bestätigten Stufen'];
+  const zeilen = [widerspruch
+    // Die Tagesenergie zählt diese Stufe unverändert weiter mit - eine saubere
+    // Korrektur bräuchte eine eigene Ableitung (dokumentierter Befund, Teil A);
+    // ehrlich beschriftet statt still gelassen.
+    ? 'Energie: angenommen aus den bestätigten Stufen - für diese Minuten ungenau, der Hausverbrauch widerspricht'
+    : 'Energie: angenommen aus den bestätigten Stufen'];
   if (erfuellung) zeilen.push(erfuellung);
   return {
     titel: 'Zustand',
@@ -980,11 +1089,11 @@ function heldHeizstab(stufe: StufeMeldung | null, regeln: string[], erfuellung: 
       label: 'Stufe',
       wert: bestaetigt == null ? NO_DATA : bestaetigt === 0 ? 'Aus' : stufeText(bestaetigt),
       wort: kwStufe != null ? `≈\u00a0${fmtNum(kwStufe, 'kW')} · angenommen` : bestaetigt == null ? 'nicht bestätigt' : null,
-      ton: laeuft == null ? 'off' : laeuft ? 'ok' : null,
+      ton: laeuft == null ? 'off' : widerspruch ? 'warn' : laeuft ? 'ok' : null,
       gross: true,
     }],
     satz,
-    satzTon: laeuft == null ? 'off' : 'ok',
+    satzTon: laeuft == null ? 'off' : widerspruch ? 'warn' : 'ok',
     hinweis,
     zeilen,
     balken: null,

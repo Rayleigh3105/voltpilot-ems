@@ -73,13 +73,16 @@ public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
 
     /**
      * The §14.13 state vocabulary. The edge today claims a subset
-     * (running_forced/running_optimized/waiting/clamped/offline); the full
-     * customer set is whitelisted so a future edge can grow into it without a
-     * cloud release - but a word OUTSIDE it is discarded, never stored.
+     * (running_forced/running_optimized/running_manual/waiting/clamped/offline);
+     * the full customer set is whitelisted so a future edge can grow into it
+     * without a cloud release - but a word OUTSIDE it is discarded, never
+     * stored. running_manual (Teil B, Captain-Befund 05.11.2026) is the
+     * honest word for a human's own "Von Hand" override - it must never be
+     * confused with running_optimized ("von VoltPilot geplant").
      */
     static final Set<String> STATES = Set.of(
             "disconnected", "offline", "ready", "running_forced", "running_optimized",
-            "waiting", "fulfilled", "clamped", "missed", "unknown");
+            "running_manual", "waiting", "fulfilled", "clamped", "missed", "unknown");
 
     /**
      * The §15 reason vocabulary incl. the Inkrement-3 cycle-guard extension,

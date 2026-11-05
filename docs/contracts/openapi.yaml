@@ -24926,7 +24926,7 @@ components:
         state:
           type: string
           enum: [disconnected, offline, ready, running_forced, running_optimized,
-                 waiting, fulfilled, clamped, missed, unknown]
+                 running_manual, waiting, fulfilled, clamped, missed, unknown]
           description: §14.13 vocabulary; the edge claims only what it can know.
         reasonCode:
           type: string
