@@ -259,6 +259,10 @@
   flex-direction: column;
   gap: var(--vp-space-4, 16px);
   min-width: 0;
+  /* Die Höhen der Platzhalter für Bühne und Zustands-Karte, solange die Übersichts-Zeile noch kommt (Rang 4a):
+     gemessen an der fertigen Landung (1440 px: 763 / 183, 390 px: 711 / 151), damit das Eintreffen nichts rückt. */
+  --vp-platzhalter-buehne: 760px;
+  --vp-platzhalter-zustand: 180px;
 }
 .vp-cockpit-stack > * {
   min-width: 0;
@@ -280,6 +284,8 @@
 @media (max-width: 720px) {
   .vp-cockpit-stack {
     gap: var(--vp-space-3, 12px);
+    --vp-platzhalter-buehne: 710px;
+    --vp-platzhalter-zustand: 150px;
   }
 }
 
@@ -338,7 +344,15 @@
 /* Platzhalter, solange die Bühne nachlädt: etwa die Höhe von Kopf, Satz und
    Fluss, damit die Kacheln darunter nicht springen. */
 .vp-eb-warten {
-  min-height: 420px;
+  /* Die Karte um die Bühne trägt Rand um den Platzhalter (gemessen: 50 px am Telefon, 82 px am Rechner); mit dem Wert
+     des Stapels (`--vp-platzhalter-buehne`, Rang 4a) steht die Karte beim Laden des Bühnen-Stücks schon so hoch wie
+     danach. Ohne die Eigenschaft (Fixtures außerhalb des Stapels) bleibt es bei 420 px. */
+  min-height: calc(var(--vp-platzhalter-buehne, 470px) - 50px);
+}
+@media (min-width: 900px) {
+  .vp-eb-warten {
+    min-height: calc(var(--vp-platzhalter-buehne, 502px) - 82px);
+  }
 }
 
 .vp-hero-side {

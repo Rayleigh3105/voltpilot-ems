@@ -9,6 +9,7 @@ import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from '../s
 import { GELD_UNTERSEITEN, ohneGeld } from '../anlageGeld';
 import { periodLabel } from '../anlage';
 import { readFace, rememberFace } from '../anlageFace';
+import { ReportFirstPaint } from '../bootReady';
 
 /**
  * M3 (#531) — der Cockpit-Beweis, erweitert um die Captain-Nachtrag-Invarianten
@@ -1929,5 +1930,98 @@ describe('Poll-Takte der Anlagen-Seite nach Datenart (Rang 5)', () => {
     expect(overview.mock.calls.length).toBe(start.overview + 3);
     expect(earnings.mock.calls.length).toBe(start.earnings + 1);
     expect(plan.mock.calls.length).toBe(start.plan + 1);
+  });
+});
+
+/**
+ * Rang 4a (Scout `vp-anlagen-cockpit-perf`): das Erstbild hängt nicht mehr an `/overview`.
+ *
+ * Die Übersichts-Zeile entscheidet nur, ob eine Anlage ohne Daten der Einrichtungspfad ist. Hat sie Komponenten oder
+ * Modi, steht der Stapel mit den Stammdaten, und nur die Teile der Zeile (Fluss, Zustand, Frische-Chip) laden mit
+ * Platzhaltern nach. Eine Anlage ohne Komponenten und Modi wartet unverändert (sie könnte der Einrichtungspfad sein).
+ */
+describe('Rang 4a · Erstbild ohne /overview', () => {
+  /** Hält die Übersicht an, bis der Fall sie freigibt. */
+  function overviewHalten() {
+    let frei: (() => void) | null = null;
+    const antwort = {
+      sites: [
+        {
+          id: 's-1', name: 'Hof Lindenberg', plantKind: 'eigenverbrauch', netzladenErlaubt: true, deviceCount: 1,
+          onlineCount: 1, waitingCount: 0, worstStatus: 'online', lastSeenAt: new Date().toISOString(),
+          batteryWithoutDevice: false,
+          live: { ts: new Date().toISOString(), pvKw: 4.2, loadKw: 1.1, gridKw: -2.1, socPct: 60 },
+          plannedSavingsTodayEur: null,
+        },
+      ],
+      totals: {} as never,
+      dailySavings: [],
+    };
+    vi.spyOn(api, 'overview').mockImplementation(
+      () => new Promise((resolve) => { frei = () => resolve(antwort as never); }),
+    );
+    return () => frei?.();
+  }
+
+  it('Anlage mit Komponenten: der Stapel steht, solange /overview noch läuft - mit Platzhaltern', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const freigeben = overviewHalten();
+    const { container } = renderSeite();
+
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-stack')).toBeTruthy());
+    expect(container.querySelector('.vp-anlage-pending')).toBeNull();
+    // Bühne und Zustands-Karte halten ihren Platz, der Frische-Chip auch; die Statuszeile spricht nur für Vorlesegeräte.
+    expect(container.querySelector('.vp-cockpit-stack .vp-skeleton')).toBeTruthy();
+    expect(container.querySelector('.vp-cockpit-health[aria-hidden="true"] .vp-skeleton')).toBeTruthy();
+    expect(container.querySelector('.vp-anlage-badges [aria-hidden="true"][style*="hidden"]')).toBeTruthy();
+    expect(container.querySelector('.vp-anlage-sentence')).toBeNull();
+    // Und es wird NICHTS behauptet, was nur die Zeile weiß: kein Befund, keine Veraltung.
+    expect(container.querySelector('.vp-cockpit-health:not([aria-hidden="true"])')).toBeNull();
+    expect(container.querySelector('.is-stale')).toBeNull();
+
+    await act(async () => { freigeben(); });
+    await waitFor(() => expect(container.querySelector('.vp-hero-flow')).toBeTruthy());
+    expect(container.querySelector('.vp-cockpit-health[aria-hidden="true"]')).toBeNull();
+    expect(container.querySelector('.vp-anlage-badges [aria-hidden="true"][style*="hidden"]')).toBeNull();
+    expect(container.querySelector('.vp-anlage-pending')).toBeNull();
+  });
+
+  it('Anlage ohne Komponenten und Modi wartet auf die Zeile - sie könnte der Einrichtungspfad sein', async () => {
+    mockAdaptive(false);
+    mockSurface(LEER);
+    const freigeben = overviewHalten();
+    const { container } = renderSeite();
+
+    await waitFor(() => expect(api.overview).toHaveBeenCalled());
+    // Ruhiger Zwischenzustand, KEIN Stapel und kein „nicht zugeordnet“ vor der Antwort.
+    expect(container.querySelector('.vp-anlage-pending')).toBeTruthy();
+    expect(container.querySelector('.vp-cockpit-stack')).toBeNull();
+    expect(container.querySelector('.vp-anlage-unassigned')).toBeNull();
+
+    await act(async () => { freigeben(); });
+    await waitFor(() => expect(container.querySelector('.vp-anlage-pending')).toBeNull());
+  });
+
+  it('meldet das erste Bild, ohne auf /overview zu warten - der Boot-Vorhang fällt mit den Stammdaten', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    overviewHalten();
+    const gemeldet = vi.fn();
+    render(
+      <ReportFirstPaint.Provider value={gemeldet}>
+        <AnlageSeite
+          sites={[site]}
+          devices={[]}
+          route={{ page: 'anlagen', siteId: 's-1', sub: null }}
+          onNavigate={() => {}}
+          onReload={() => {}}
+          site={site}
+          onOpenSub={() => {}}
+          onBackToList={null}
+        />
+      </ReportFirstPaint.Provider>,
+    );
+    await waitFor(() => expect(gemeldet).toHaveBeenCalled());
   });
 });
