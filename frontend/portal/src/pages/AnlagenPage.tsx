@@ -279,6 +279,13 @@ const TICK_MS = 5_000;
  * orientiert (`src/boot.ts`).
  */
 const ANLAGE_DECISION_TIMEOUT_MS = 10_000;
+/**
+ * Die Platzhalter der Teile, die die Übersichts-Zeile trägt, solange sie noch kommt (Rang 4a): so hoch wie das, was an
+ * ihre Stelle tritt, damit nichts springt. Die Höhen stehen als Eigenschaften am Stapel (`CockpitBlocks.css`,
+ * `--vp-platzhalter-buehne`/`-zustand`, je Desktop und Telefon), gemessen an der fertigen Landung.
+ */
+const BUEHNE_PLATZHALTER = 'var(--vp-platzhalter-buehne)';
+const ZUSTAND_PLATZHALTER = 'var(--vp-platzhalter-zustand)';
 
 export interface AnlagenPageProps {
   sites: Site[];
@@ -1201,14 +1208,29 @@ export function AnlageSeite({
   // Daten-Takt über `useFreshnessPoll` (holt beim Aufwachen SOFORT nach), Uhr
   // daneben - sonst zeigt das Cockpit dem zurückkehrenden Kunden bis zu 30 s
   // lang die Zahlen von vorhin.
+  //
+  // ⚠ ZWEI Takte nach Datenart (Scout `vp-anlagen-cockpit-perf`, Rang 5; Regel in
+  // `pollCadence.ts`). LIVE (10 s): was GEMESSEN ist oder die Frische bestimmt -
+  // `/overview` trägt `live` (Fluss-Rückfall, Frische-Chip, `liveTs` für die
+  // Rollen), die Steuerungs-Rückmeldung, der Erzeuger-Stand, die Ladepunkte.
+  // LISTE (30 s): `/earnings` (Zeitraum-Summen, die Quelle rechnet sie aus
+  // 15-Minuten-Rollups) und `/schedule` (der Plan, den der Optimierer alle
+  // 15 Minuten neu schreibt) bewegen sich nicht schneller; beide sind mit dem
+  // Datenbestand die teuersten Aufrufe der Seite.
+  useFreshnessPoll(() => {
+    api.siteEarnings(site.id, rangeRef.current, atRef.current).then(
+      (e) => setSiteEarnings(e),
+      () => {},
+    );
+    api.schedule(site.id).then(
+      (p) => setPlan(p),
+      () => {},
+    );
+  }, LIST_POLL_MS);
   useFreshnessPoll(() => {
     setNow(new Date());
     api.overview().then(
       (o) => setOverview(o),
-      () => {},
-    );
-    api.siteEarnings(site.id, rangeRef.current, atRef.current).then(
-      (e) => setSiteEarnings(e),
       () => {},
     );
     api.controlStatus(site.id).then(
@@ -1217,10 +1239,6 @@ export function AnlageSeite({
     );
     api.curtailmentStatus(site.id).then(
       (c) => setCurtailStatus(c),
-      () => {},
-    );
-    api.schedule(site.id).then(
-      (p) => setPlan(p),
       () => {},
     );
     // ⚠ Die Ladepunkte gehören in DENSELBEN Takt wie der Hausverbrauch: ohne
@@ -1264,17 +1282,30 @@ export function AnlageSeite({
   // Portal die alte Ansicht"-Defekts: die frühere Weiche entschied, BEVOR ihre
   // Eingaben geladen waren.
   const overviewPending = overview == null && !overviewFailed;
-  const decisionLoading = surfaceLoading || adaptiveLive.loading || overviewPending;
+  // ⚠ Erstbild nicht an `/overview` hängen (Scout `vp-anlagen-cockpit-perf`, Rang 4a): die Übersichts-Zeile
+  // entscheidet NUR über eine Frage - „noch nie Daten geliefert“ (Einrichtungspfad) oder „noch nicht
+  // geladen“ (`setupPathActive`, Tor 2-4). Hat die Anlage Komponenten oder Modi, ist der Einrichtungspfad
+  // ausgeschlossen, bevor die Zeile gelesen wird; dann steht der Stapel schon mit den Stammdaten
+  // (`/entities`, `/topology`, 20-60 ms), und nur die Teile, die die Zeile selbst trägt (Fluss, Zustand,
+  // Frische-Chip), laden mit Platzhaltern in Zielgröße nach. `/overview` ist der teuerste Aufruf der Landung
+  // (300-1.000 ms nach vier Monaten) und hielt bis hierher den Boot-Vorhang. Eine Anlage OHNE Komponenten
+  // und Modi (neu, leer, nicht zugeordnet) wartet unverändert auf die Zeile: nur sie kann der Einrichtungspfad
+  // sein, und eine falsche erste Fassung wäre genau der Defekt, den diese Weiche abschafft.
+  const einrichtungMoeglich = surface?.base.hasEntities === false && modes.length === 0;
+  const decisionLoading = surfaceLoading || adaptiveLive.loading || (overviewPending && einrichtungMoeglich);
   const decisionFailed = surfaceFailed || adaptiveLive.failed || overviewFailed;
   const [decisionTimedOut, setDecisionTimedOut] = useState(false);
+  // „Kein Dauer-Spinner“: die Frist gilt weiter auch für `/overview`, obwohl die Entscheidung nicht mehr auf sie
+  // wartet (Rang 4a) - eine Antwort, die nie kommt, wird wie bisher zum ehrlichen Fehler mit „Erneut versuchen“.
+  const decisionWartet = decisionLoading || overviewPending;
   useEffect(() => {
-    if (!decisionLoading) {
+    if (!decisionWartet) {
       setDecisionTimedOut(false);
       return undefined;
     }
     const timer = setTimeout(() => setDecisionTimedOut(true), ANLAGE_DECISION_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [decisionLoading, site.id, reloadKey]);
+  }, [decisionWartet, site.id, reloadKey]);
   const decision = anlageDecision({
     loading: decisionLoading,
     failed: decisionFailed,
@@ -1642,7 +1673,8 @@ export function AnlageSeite({
     : fresh
       ? 'live'
       : 'stale';
-  const heroStale = liveSt === 'stale';
+  // Unbekannt ist nicht veraltet: solange die Übersichts-Zeile noch kommt (Rang 4a), dimmt nichts.
+  const heroStale = ovSite != null && liveSt === 'stale';
   const chip = ovSite && !showSetup ? liveChip(liveSt, ovSite.live?.ts ?? null, now) : null;
 
   // Die Kopfsatz-Regel der Bühne (Konzept §6.2): der Prosa-Satz doppelte im
@@ -1732,11 +1764,13 @@ export function AnlageSeite({
     // Die Kacheln (Autarkie, Sonne, Speicher …) gibt es auf jedem Cockpit mit
     // Projektion; eine Kachel ohne Daten rendert sich selbst weg.
     if ((blocks ?? []).length > 0) out.push('kacheln');
-    if (ovSite != null && health.length > 0) out.push('zustand');
+    // Solange die Übersichts-Zeile noch kommt (Rang 4a), hält ein Platzhalter den Platz der Zustands-Karte;
+    // ohne die Zeile gäbe es nur erfundene „noch nicht verbunden“-Befunde.
+    if ((ovSite != null && health.length > 0) || (ovSite == null && overviewPending)) out.push('zustand');
     // UEMS AP-01 IP-8, Geld-Regel je Anlage: eine geldfreie Anlage hat weder
     // Geld-Held noch Steuerungs-Karte noch Marktpreise (`anlageGeld`).
     return bausteineOhneGeld(out, surface);
-  }, [blocks, controlView, guardView, erzeugerJetzt, fahrplanVerfuegbar, strompreisVerfuegbar, ovSite, health, ladenView, surface]);
+  }, [blocks, controlView, guardView, erzeugerJetzt, fahrplanVerfuegbar, strompreisVerfuegbar, ovSite, overviewPending, health, ladenView, surface]);
   // ⚠ Steuerung Stufe 8: es gibt hier KEIN Tor mehr. „Eigene Auswertung" ist
   // die Katalog-Klasse `cockpit` und hat keinen Schalter — der Weg zu einer
   // eigenen Kachel ist der Anpassen-Modus, und wer dort eine anlegt, hat seine
@@ -1991,8 +2025,11 @@ export function AnlageSeite({
       />
     );
   };
-  const jetztWerte = ovSite
-    ? jetztFluss(adaptiveLive.topology, siteSnapshot(ovSite.live), { pvTotalKw: null, loadKanonisch: null })
+  // Die Topologie trägt die Ist-Werte selbst; der Schnappschuss der Übersichts-Zeile ist nur ihr Rückfall. Darum
+  // stehen die Werte der Kacheln (Speicher) schon mit der Topologie da und warten nicht auf `/overview` (Rang 4a):
+  // sonst käme die Kachel erst mit der Zeile und schöbe das Raster auseinander.
+  const jetztWerte = ovSite || adaptiveLive.topology
+    ? jetztFluss(adaptiveLive.topology, siteSnapshot(ovSite?.live ?? null), { pvTotalKw: null, loadKanonisch: null })
     : null;
   const widgetIds = new Set(widgets.map((w) => w.id));
   const geldDa = heroView.money != null || hasBlock(blocks, 'erloes-komposition');
@@ -2177,7 +2214,7 @@ export function AnlageSeite({
   const bausteinNodes: Partial<Record<BausteinId, ReactNode>> = {
     energiefluss:
       ovSite == null ? (
-        <Skeleton height={320} radius="var(--vp-radius-lg)" />
+        <Skeleton height={BUEHNE_PLATZHALTER} radius="var(--vp-radius-lg)" />
       ) : (
         <CockpitHero
           topology={adaptiveLive.topology}
@@ -2292,6 +2329,10 @@ export function AnlageSeite({
             onOpenModus={() => onOpenSub('steuerung')}
           />
         </div>
+      ) : ovSite == null && overviewPending ? (
+        <div className="vp-cockpit-health" id="zustand" aria-hidden="true">
+          <Skeleton height={ZUSTAND_PLATZHALTER} radius="var(--vp-radius-lg)" />
+        </div>
       ) : null,
   };
 
@@ -2363,6 +2404,12 @@ export function AnlageSeite({
             <p className="vp-anlage-sentence tone-off">
               Der Status Ihrer Anlage konnte gerade nicht geladen werden.
             </p>
+          ) : showStack ? (
+            // Der Stapel steht schon, die Statuszeile kommt (Rang 4a). Im Normalfall (Ton „ok“, Fluss mit Werten) spricht
+            // sie gar nicht (`headSentenceVisible`): eine sichtbare Platzhalterzeile würde beim Eintreffen verschwinden
+            // und den ganzen Stapel anheben. Darum nur ein Hinweis für Vorlesegeräte; die Zeile erscheint nur, wenn sie
+            // etwas zu sagen hat.
+            <p className="vp-sr-only" role="status">Status wird geladen …</p>
           ) : (
             <p className="vp-anlage-sentence tone-off">Status wird geladen …</p>
           )}
@@ -2394,11 +2441,17 @@ export function AnlageSeite({
             </span>
           ) : (
             <>
-              {chip && (
+              {chip ? (
                 <Badge variant={chip.tone} dot>
                   {chip.label}
                 </Badge>
-              )}
+              ) : showStack && overviewPending ? (
+                // Der Frische-Chip kommt mit der Übersichts-Zeile (Rang 4a): sein Platz steht von Anfang an da, damit
+                // die Abzeichen daneben beim Eintreffen nicht rücken.
+                <Badge aria-hidden="true" style={{ visibility: 'hidden' }}>
+                  Stand gerade eben
+                </Badge>
+              ) : null}
               {!showSetup && vorgabeBadges}
             </>
           )}

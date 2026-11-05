@@ -85,6 +85,8 @@ API: `GET /metrics`, intern ohne Token. Frontend-nginx veröffentlicht diesen in
 | `voltpilot_metrics_collect_age_seconds` | – | Sekunden seit dem letzten ERFOLGREICHEN Sammel-Lauf |
 | `voltpilot_metrics_collect_duration_seconds` | – | Dauer des letzten Sammel-Laufs |
 
+**Serverzeit je Route:** `http_server_requests_seconds_{count,sum,max,bucket}` mit `uri` (Routen-Vorlage, etwa `/api/v1/overview`, nie die aufgelöste Adresse), `method`, `status`, `outcome`. Die Buckets stehen fest in `application.yml` (`management.metrics.distribution.slo.http.server.requests`: 50 ms, 100 ms, 250 ms, 500 ms, 1 s, 2,5 s, 5 s, 10 s), gesichert durch `HttpLaufzeitMetrikTest`. Anteil langsamer Aufrufe einer Route: `1 - sum(rate(http_server_requests_seconds_bucket{uri="/api/v1/overview",le="0.5"}[5m])) / sum(rate(http_server_requests_seconds_count{uri="/api/v1/overview"}[5m]))`. So ist ohne Labor sichtbar, welche Route langsam ist (Scout `vp-anlagen-cockpit-perf`, Rang 7).
+
 Unbekanntes Alter ist keine Null; dafür existieren Zustandsmetriken. Ein `never` bei einer neuen Anlage ist anders zu behandeln als `older_than_window` nach früheren Plänen. Aggregation über Instanzen verhindert doppelte Alarme.
 
 ```promql

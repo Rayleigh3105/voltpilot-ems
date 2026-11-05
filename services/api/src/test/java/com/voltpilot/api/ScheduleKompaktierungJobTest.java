@@ -108,6 +108,14 @@ class ScheduleKompaktierungJobTest {
         Instant jetzt = Instant.now();
         seedBeginn = jetzt.truncatedTo(ChronoUnit.HOURS).minus(Duration.ofDays(5));
         try (Connection c = superuser()) {
+            // Der Scheduler soll den Bestand nicht hinter dem Rücken der Fälle
+            // verdichten: sein erster Termin wandert weit weg, bis der
+            // Scheduler-Fall ihn selbst ruft. ⚠ VOR dem Seed: der Job ist mit der Migration fällig, und ein Lauf
+            // mitten im Seed verdichtet Slots, die der erste Fall noch voll versioniert erwartet (Rennen unter Last).
+            try (Statement s = c.createStatement()) {
+                s.execute("SELECT alter_job(job_id, next_start => now() + interval '1 day') "
+                        + "FROM timescaledb_information.jobs WHERE proc_name = 'schedule_compaction_job'");
+            }
             stammdaten(c, TENANT_A, SITE_A1, "A1");
             stammdaten(c, TENANT_A, SITE_A2, "A2");
             stammdaten(c, TENANT_A, SITE_A3, "A3");
@@ -116,13 +124,6 @@ class ScheduleKompaktierungJobTest {
             // Bestand des Haupt-Laufs, mandantenübergreifend.
             laeufe(c, TENANT_A, SITE_A1, seedBeginn, jetzt);
             laeufe(c, TENANT_B, SITE_B1, seedBeginn, jetzt);
-            // Der Scheduler soll den Bestand nicht hinter dem Rücken der Fälle
-            // verdichten: sein erster Termin wandert weit weg, bis der
-            // Scheduler-Fall ihn selbst ruft.
-            try (Statement s = c.createStatement()) {
-                s.execute("SELECT alter_job(job_id, next_start => now() + interval '1 day') "
-                        + "FROM timescaledb_information.jobs WHERE proc_name = 'schedule_compaction_job'");
-            }
         }
     }
 

@@ -125,17 +125,17 @@ class ScheduleKompaktierungLeserGleichheitTest {
         jetzt = Instant.now();
         seedBeginn = jetzt.truncatedTo(ChronoUnit.HOURS).minus(Duration.ofDays(5));
         try (Connection c = superuser()) {
+            // Der Scheduler verdichtet nicht hinter dem Rücken des Tests - VOR dem Seed, der Job ist mit der Migration fällig.
+            try (Statement s = c.createStatement()) {
+                s.execute("SELECT alter_job(job_id, next_start => now() + interval '1 day') "
+                        + "FROM timescaledb_information.jobs WHERE proc_name = 'schedule_compaction_job'");
+            }
             stammdaten(c, TENANT_A, SITE_A1, "A1");
             stammdaten(c, TENANT_A, SITE_A2, "A2");
             stammdaten(c, TENANT_B, SITE_B1, "B1");
             laeufe(c, TENANT_A, SITE_A1, seedBeginn, jetzt);
             laeufe(c, TENANT_A, SITE_A2, seedBeginn, jetzt);
             laeufe(c, TENANT_B, SITE_B1, seedBeginn, jetzt);
-            // Der Scheduler verdichtet nicht hinter dem Rücken des Tests.
-            try (Statement s = c.createStatement()) {
-                s.execute("SELECT alter_job(job_id, next_start => now() + interval '1 day') "
-                        + "FROM timescaledb_information.jobs WHERE proc_name = 'schedule_compaction_job'");
-            }
         }
     }
 
