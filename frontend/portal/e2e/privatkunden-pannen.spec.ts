@@ -176,3 +176,34 @@ test('der Link „Erneut laden" in der Fehlerzeile der Wallbox dehnt seine Zeile
   const link = await meldung.getByRole('button', { name: 'Erneut laden' }).boundingBox();
   expect(link?.height ?? 0).toBeGreaterThanOrEqual(44);
 });
+
+test('Dialoge am Telefon: Blatt von unten in Inhaltshöhe, Hauptknopf über „Abbrechen"; am Rechner unverändert', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${HILFE}?state=single#/anlage/help-site/modell?neu=box`);
+  const dialog = page.getByRole('dialog', { name: 'VoltPilot-Box hinzufügen' });
+  await expect(dialog).toBeVisible();
+  await page.waitForTimeout(500); // die Einblendung (translateY) ist durch
+  const m = await dialog.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const body = el.querySelector('.dbody')!;
+    const inhaltEnde = Math.max(...[...body.children].map((c) => c.getBoundingClientRect().bottom));
+    const knoepfe = [...el.querySelectorAll('.dfoot button')].map((b) => ({ text: b.textContent!.trim(), top: b.getBoundingClientRect().top }));
+    return { top: box.top, bottom: box.bottom, vh: innerHeight, luecke: el.querySelector('.dfoot')!.getBoundingClientRect().top - inhaltEnde, knoepfe };
+  });
+  // In Inhaltshöhe, am unteren Rand verankert - kein bildschirmhohes Blatt mit leerem Feld vor dem Fuß.
+  expect(m.top, 'Blatt füllt den Bildschirm').toBeGreaterThan(48);
+  expect(Math.abs(m.bottom - m.vh)).toBeLessThanOrEqual(1);
+  expect(m.luecke, 'toter Raum zwischen Formular und Fußknöpfen').toBeLessThanOrEqual(40);
+  const haupt = m.knoepfe.find((k) => k.text === 'VoltPilot-Box hinzufügen')!;
+  const abbrechen = m.knoepfe.find((k) => k.text === 'Abbrechen')!;
+  expect(haupt.top, 'Hauptknopf steht über „Abbrechen"').toBeLessThan(abbrechen.top);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(100);
+  const rechner = await dialog.evaluate((el) => {
+    const k = [...el.querySelectorAll('.dfoot button')].map((b) => ({ text: b.textContent!.trim(), left: b.getBoundingClientRect().left }));
+    return { zentriert: Math.abs(el.getBoundingClientRect().left + el.getBoundingClientRect().width / 2 - innerWidth / 2) <= 2, k };
+  });
+  expect(rechner.zentriert).toBe(true);
+  expect(rechner.k.find((x) => x.text === 'Abbrechen')!.left).toBeLessThan(rechner.k.find((x) => x.text !== 'Abbrechen')!.left);
+});
