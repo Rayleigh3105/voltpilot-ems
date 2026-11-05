@@ -448,6 +448,8 @@ describe('FernwartungPage', () => {
       expect(within(dialog).getByTestId('fw-ssh-aktuell')).toHaveTextContent('Kein SSH-Schlüssel hinterlegt');
       // Die Befehle zum Erzeugen stehen im Dialog, für Windows und Linux.
       const erzeugen = within(dialog).getByTestId('fw-ssh-erzeugen');
+      // In diesem Dialog ist der Schlüssel die Aufgabe: die Befehle stehen offen, nicht eingeklappt.
+      expect(erzeugen.closest('details')).toBeNull();
       expect(within(erzeugen).getByText('Windows (PowerShell)')).toBeInTheDocument();
       expect(within(erzeugen).getByText('ssh-keygen -t rsa -b 3072 -f ~/.ssh/id_rsa_voltpilot')).toBeInTheDocument();
       expect(
@@ -516,6 +518,8 @@ describe('FernwartungPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Zugang anlegen' }));
       const dialog = await screen.findByRole('dialog');
       expect(within(dialog).getByTestId('fw-ssh-erzeugen')).toBeInTheDocument();
+      // Freiwillig heißt hier auch: die Anleitung steht eingeklappt, der Dialog bleibt kurz.
+      expect(within(dialog).getByTestId('fw-ssh-erzeugen').closest('details')).not.toHaveAttribute('open');
       fireEvent.change(within(dialog).getByLabelText(/Name/), { target: { value: 'Neu (Laptop)' } });
       fireEvent.change(within(dialog).getByLabelText(/Öffentlicher WireGuard-Schlüssel/), {
         target: { value: 'SBsk0U9z6BgB/U8nb+L9PdK/46p7mBvWRQe8I0Vg3C0=' },

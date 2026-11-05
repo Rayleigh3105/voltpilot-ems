@@ -92,8 +92,8 @@ export function Befehl({ text, was, knopf = 'Kopieren' }: { text: string; was: s
 }
 
 /** Die Befehle, mit denen der Techniker sein Schlüsselpaar erzeugt - je System. */
-export function SshErzeugenHinweis() {
-  return (
+export function SshErzeugenHinweis({ eingeklappt = false }: { eingeklappt?: boolean } = {}) {
+  const inhalt = (
     <div className="vp-fw-erzeugen" data-testid="fw-ssh-erzeugen">
       <p className="vp-note" style={{ margin: 0 }}>
         Den Schlüssel erzeugt der Techniker einmal je Gerät. Es muss ein RSA-Schlüssel sein: Die Boxen
@@ -109,6 +109,14 @@ export function SshErzeugenHinweis() {
         </div>
       ))}
     </div>
+  );
+  // Beim Anlegen ist der SSH-Schlüssel freiwillig: die Anleitung steht dort aufklappbar statt als halber Dialog.
+  if (!eingeklappt) return inhalt;
+  return (
+    <details className="vp-fw-erzeugen-auf">
+      <summary>So erzeugt der Techniker den SSH-Schlüssel</summary>
+      {inhalt}
+    </details>
   );
 }
 

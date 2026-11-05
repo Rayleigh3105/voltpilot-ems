@@ -510,7 +510,7 @@ export function TechnikerDialog({
               fehler={geprueft ? sshFehler : null}
               feld={sshFeld}
             />
-            <SshErzeugenHinweis />
+            <SshErzeugenHinweis eingeklappt />
             <Input
               label="Notiz"
               value={notiz}

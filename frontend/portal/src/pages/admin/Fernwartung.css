@@ -376,3 +376,7 @@ tr.vp-fw-gewaehlt > td {
 .vp-fw-ssh-stand { display: block; }
 .vp-fw-ssh-stand details summary { cursor: pointer; width: fit-content; margin-top: 4px; border-radius: var(--vp-radius-sm); }
 .vp-fw-ssh-stand details summary:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
+/* „Techniker-Zugang anlegen“: die Anleitung zum SSH-Schlüssel aufklappbar (der Schlüssel ist dort freiwillig). */
+.vp-fw-erzeugen-auf > summary { cursor: pointer; width: fit-content; font-size: 0.875rem; color: var(--vp-text-muted); border-radius: var(--vp-radius-sm); }
+.vp-fw-erzeugen-auf > summary:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
+.vp-fw-erzeugen-auf[open] > summary { margin-bottom: var(--vp-space-2); }
