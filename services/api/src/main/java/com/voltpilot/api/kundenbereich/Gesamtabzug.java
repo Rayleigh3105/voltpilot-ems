@@ -68,9 +68,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class Gesamtabzug {
 
     /**
-     * Namen von Zugangsdaten ({@link #zugangsdaten}): seit Alerting Scheibe 3 trifft das genau
-     * {@code zustellweg.bestaetigung_token}, das Bearer-Geheimnis des unauthentifizierten
-     * Bestätigungs-Endpunkts.
+     * Namen von Zugangsdaten ({@link #zugangsdaten}): seit Alerting Scheibe 3 ff. trifft das genau die
+     * Bearer-Geheimnisse {@code zustellweg.bestaetigung_token} (unauthentifizierter Bestätigungs-Endpunkt),
+     * {@code telegram_ziel.verbindungs_token} (Start-Link des Telegram-Bots) und
+     * {@code ueberwachung_externer_empfaenger.bestaetigung_token}/{@code abbestellen_token} (Links in der Mail an
+     * einen externen Empfänger).
      */
     static final Pattern ZUGANGSDATEN = Pattern.compile("(?i).*(passw|secret|token|credential|private|psk).*");
     /** Zeilen je Abruf des Cursors: so viel liegt höchstens gleichzeitig im Speicher. */

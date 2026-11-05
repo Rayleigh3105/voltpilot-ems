@@ -25,6 +25,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -216,17 +217,24 @@ public class GesamtabzugApiTest {
         assertThat(String.join("\n", dateien.keySet().stream().map(k -> new String(dateien.get(k),
                 StandardCharsets.UTF_8)).toList())).doesNotContain(fremd.toString());
 
-        // Seit Alerting Scheibe 3 trägt genau EINE Tabelle echte Zugangsdaten: zustellweg.bestaetigung_token, der
-        // unauthentifizierte Bestätigungs-Endpunkt findet seine Zeile einzig über ihn (SecureRandom, 256 Bit) — ein
-        // Bearer-Geheimnis wie jedes andere, das {@link Gesamtabzug#ZUGANGSDATEN} greift. Jede andere Tabelle bleibt
-        // ohne ausgelassene Spalte.
+        // Seit Alerting Scheibe 3 ff. tragen genau DREI Tabellen echte Zugangsdaten - Bearer-Geheimnisse, die
+        // {@link Gesamtabzug#ZUGANGSDATEN} greift: zustellweg.bestaetigung_token (der unauthentifizierte
+        // Bestätigungs-Endpunkt findet seine Zeile einzig über ihn, SecureRandom, 256 Bit), telegram_ziel.verbindungs_token
+        // (der Start-Link des Telegram-Bots) und ueberwachung_externer_empfaenger.bestaetigung_token/abbestellen_token
+        // (die Links in der Mail an einen externen Empfänger). Jede andere Tabelle bleibt ohne ausgelassene Spalte.
+        Map<String, Set<String>> zugangsdaten = Map.of(
+                "bestand/zustellweg.csv", Set.of("bestaetigung_token"),
+                "bestand/telegram_ziel.csv", Set.of("verbindungs_token"),
+                "bestand/ueberwachung_externer_empfaenger.csv", Set.of("bestaetigung_token", "abbestellen_token"));
         manifest.path("dateien").forEach(d -> {
             String pfad = d.path("pfad").asText();
-            if ("bestand/zustellweg.csv".equals(pfad)) {
-                assertThat(d.path("ausgelassen")).as(pfad).hasSize(1);
-                assertThat(d.path("ausgelassen").get(0).path("spalte").asText()).as(pfad)
-                        .isEqualTo("bestaetigung_token");
-                assertThat(d.path("ausgelassen").get(0).path("grund").asText()).as(pfad).isEqualTo("Zugangsdaten");
+            if (zugangsdaten.containsKey(pfad)) {
+                Set<String> ausgelassen = new java.util.TreeSet<>();
+                d.path("ausgelassen").forEach(x -> {
+                    ausgelassen.add(x.path("spalte").asText());
+                    assertThat(x.path("grund").asText()).as(pfad).isEqualTo("Zugangsdaten");
+                });
+                assertThat(ausgelassen).as(pfad).containsExactlyInAnyOrderElementsOf(zugangsdaten.get(pfad));
             } else {
                 assertThat(d.has("ausgelassen")).as(pfad).isFalse();
             }
