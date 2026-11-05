@@ -259,3 +259,22 @@ test('Fahrplan (Sonnen-Erzählung): der Sonnenbogen bleibt im Rahmen, „Aus eig
 
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
 });
+
+/**
+ * „Ihr Sonnenstrom heute": die Wallbox-Hinweiszeile steht nur, wenn die Anlage
+ * einen Ladepunkt hat (`?wallbox=1` legt einen `ev-charger` an `help-site-2`).
+ * Ohne Ladepunkt darf der Satz nie erscheinen, mit ihm muss er stehen.
+ */
+for (const mitWallbox of [false, true]) {
+  test(`Fahrplan (Sonnenstrom): Wallbox-Hinweis ${mitWallbox ? 'steht mit' : 'fehlt ohne'} Ladepunkt`, async ({ page }) => {
+    await oeffnen(page, `/e2e/help.html${mitWallbox ? '?wallbox=1' : ''}#/anlage/help-site-2/fahrplan`);
+    await page.locator('.vp-tb').first().waitFor();
+    const knopf = page.getByRole('button', { name: 'Ihr Sonnenstrom heute' });
+    if (await knopf.count()) await knopf.click();
+    await expect(page.getByText('Ihre Sonne:').first()).toBeVisible();
+    const hinweis = page.getByText(/ein Auto an der Wallbox könnte sie nutzen/);
+    if (mitWallbox) await expect(hinweis.first()).toBeVisible();
+    else await expect(hinweis).toHaveCount(0);
+    expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  });
+}

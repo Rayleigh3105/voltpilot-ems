@@ -337,16 +337,16 @@ function vorhersageZeile(
   };
 }
 
-export function FahrplanSection({ site }: { site: Site }) {
+export function FahrplanSection({ site, ladepunkte = null }: { site: Site; ladepunkte?: number | null }) {
   return (
     <>
       <VerlaufKopf titel="Fahrplan" />
-      <FahrplanInhalt site={site} />
+      <FahrplanInhalt site={site} ladepunkte={ladepunkte} />
     </>
   );
 }
 
-function FahrplanInhalt({ site }: { site: Site }) {
+function FahrplanInhalt({ site, ladepunkte }: { site: Site; ladepunkte: number | null }) {
   const { data: plan, loading, err, reload } = useSiteData<SchedulePlan>(site, (id) => api.schedule(id));
   const [selSlot, setSelSlot] = useState<number | null>(null);
   const [selPhase, setSelPhase] = useState<number | null>(null);
@@ -779,12 +779,14 @@ function FahrplanInhalt({ site }: { site: Site }) {
     () => (sonne ? autarkieHeute(tagHeute, historyTotals) : null),
     [sonne, tagHeute, historyTotals],
   );
-  // Die Wallbox-Hinweiszeile bräuchte eine Geräteliste, die diese Seite heute
-  // nicht lädt - sie bleibt deshalb vorerst aus (`hatWallbox = false`), nie
-  // eine ungeprüfte Behauptung über Geräte, die es vielleicht nicht gibt.
+  // Die Wallbox-Hinweiszeile braucht „hat die Anlage einen Ladepunkt": die
+  // Zahl kommt aus den Entities, die die Schale (`useAnlageSurface`) ohnehin
+  // lädt - kein eigener Abruf. Unbekannt (null) heißt keine Zeile, nie eine
+  // ungeprüfte Behauptung über Geräte, die es vielleicht nicht gibt.
+  const hatWallbox = (ladepunkte ?? 0) > 0;
   const sonnenstrom = useMemo(
-    () => (sonne ? sonnenstromModell(tagHeute, false) : null),
-    [sonne, tagHeute],
+    () => (sonne ? sonnenstromModell(tagHeute, hatWallbox) : null),
+    [sonne, tagHeute, hatWallbox],
   );
   const morgenMs = tagDatum(now, 'morgen').getTime();
   const tagMorgen = useMemo(
