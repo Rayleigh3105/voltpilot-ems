@@ -399,6 +399,13 @@ describe('Steuerung · Reiter Regeln nur mit schaltbarem Gerät', () => {
     expect(window.location.hash).toBe('#/anlage/s-1/steuerung');
   });
 
+  it('ohne Laden und ohne Regeln bleibt EIN Reiter - dann steht keine Leiste da', async () => {
+    ohneSchaltbaresGeraet({ regeln: false });
+    render(<SteuerungSection site={site} reiter="steuerung" tabs={TABS.filter((t) => t.sub !== 'laden')} onOpenSub={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('tablist', { name: 'Reiter der Steuerung' })).toBeNull());
+    expect(screen.getByRole('heading', { level: 1, name: 'Steuerung' })).toBeInTheDocument();
+  });
+
   it('leitet ein Lesezeichen auf den ausgeblendeten Reiter auf den ersten sichtbaren um', async () => {
     ohneSchaltbaresGeraet({ regeln: false });
     window.location.hash = '#/anlage/s-1/regeln';

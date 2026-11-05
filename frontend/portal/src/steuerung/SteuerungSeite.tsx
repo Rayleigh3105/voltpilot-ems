@@ -665,7 +665,8 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
           </button>
         )}
       </div>
-      <div className="stn-reiter" role="tablist" aria-label="Reiter der Steuerung">
+      {/* Eine Leiste mit EINEM Reiter bietet keine Wahl - ohne Laden und Regeln steht die Seite ohne sie. */}
+      {sichtbareTabs.length > 1 && <div className="stn-reiter" role="tablist" aria-label="Reiter der Steuerung">
         {sichtbareTabs.map((t) => (
           <button
             type="button"
@@ -678,7 +679,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
             {zahlen[t.sub] && !ohneZahlen ? <span className="n">{zahlen[t.sub]}</span> : null}
           </button>
         ))}
-      </div>
+      </div>}
       {baender && (
         <div className="stn-baender">
           {funktion.einstieg && (
