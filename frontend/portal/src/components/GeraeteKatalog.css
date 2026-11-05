@@ -14,6 +14,13 @@
  * eines einspaltigen Turms - dieselben Einträge, nur nebeneinander. Am
  * Telefon (≤720 px) bleibt die bisherige einspaltige, geränderte Liste
  * unverändert.
+ *
+ * ⚠ Der Desktop-Umbau von `.vp-kat-liste`/`.vp-kat-eintrag` steht ERST NACH
+ * ihren Telefon-Grundregeln im File (eigener `@media`-Block unten, nicht im
+ * `.vp-kat-arten`-Block oben): bei gleicher Selektor-Spezifität gewinnt die
+ * SPÄTERE Regel - vor den Grundregeln stehend wurde Rand, Radius und die
+ * `li + li`-Trennlinie der Telefon-Fassung immer wieder zurücküberschrieben
+ * (Review 05.11.2026: unsichtbare Karten, Linienreste, Doppelrahmen).
  */
 
 .vp-kat {
@@ -97,39 +104,6 @@
     overflow-x: visible;
     margin: 0;
     padding: 0;
-  }
-
-  /* Der Turm wird ein Raster: dieselben Einträge nebeneinander statt
-     untereinander - `auto-fill`/`minmax` wählt die Spaltenzahl selbst, je
-     nach Breite des `Modal` (640 → 840 px mit `breit`). */
-  .vp-kat-liste {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
-    gap: 8px;
-    border: 0;
-    border-radius: 0;
-    overflow: visible;
-    background: transparent;
-  }
-  .vp-kat-liste > li + li {
-    border-top: 0;
-  }
-  .vp-kat-eintrag {
-    height: 100%;
-    align-items: start;
-    border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
-    border-radius: var(--vp-radius-sm);
-    background: var(--vp-surface);
-  }
-  .vp-kat-eintrag:hover {
-    border-color: var(--vp-action);
-  }
-  .vp-kat-eintrag.is-fund {
-    background: var(--vp-mint-start);
-  }
-  /* „Im Heimnetz suchen" bleibt die EINE breite Zeile oben - kein schmales Kärtchen neben leeren Rasterspalten. */
-  .vp-kat-liste.vp-kat-heimnetz {
-    grid-template-columns: 1fr;
   }
 }
 .vp-kat-art {
@@ -290,6 +264,50 @@
 .vp-kat-eintrag.is-fund:hover {
   background: color-mix(in srgb, var(--vp-mint-end) 50%, var(--vp-mint-start));
 }
+
+/* Ab der Telefon-Grenze wird der Turm ein Karten-Raster: dieselben Einträge
+   nebeneinander statt untereinander. Die Liste trägt eine leise getönte
+   Fläche dahinter, jede Karte ihren eigenen Rand + Schatten (`--vp-shadow-sm`,
+   beim Hover der Marken-Glow `--vp-shadow-hover`) - sonst verschwimmt das
+   Raster auf Weiß zu einer fugenlosen Tabelle (Review 05.11.2026). */
+@media (min-width: 721px) {
+  .vp-kat-liste {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+    gap: 10px;
+    padding: 10px;
+    border: 0;
+    border-radius: var(--vp-radius-sm);
+    overflow: visible;
+    background: var(--vp-bg-light);
+  }
+  .vp-kat-liste > li + li {
+    border-top: 0;
+  }
+  .vp-kat-eintrag {
+    height: 100%;
+    align-items: start;
+    border: 1px solid var(--vp-gray);
+    border-radius: var(--vp-radius-sm);
+    background: var(--vp-surface);
+    box-shadow: var(--vp-shadow-sm);
+    transition:
+      box-shadow var(--vp-motion-fast) var(--vp-ease-inout),
+      border-color var(--vp-motion-fast) var(--vp-ease-inout);
+  }
+  .vp-kat-eintrag:hover {
+    border-color: var(--vp-action);
+    box-shadow: var(--vp-shadow-hover);
+  }
+  .vp-kat-eintrag.is-fund {
+    background: var(--vp-mint-start);
+  }
+  /* „Im Heimnetz suchen" bleibt die EINE breite Karte oben - keine schmale Spalte neben leeren Rasterzellen. */
+  .vp-kat-liste.vp-kat-heimnetz {
+    grid-template-columns: 1fr;
+  }
+}
+
 .vp-kat-text {
   display: grid;
   min-width: 0;

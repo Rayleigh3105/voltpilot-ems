@@ -56,7 +56,10 @@ const TEMPLATES: ComponentTemplate[] = [
     model: 'p30', modelLabel: 'KEBA P30', communication: 'ocpp', communicationLabel: 'OCPP 1.6',
   } as unknown as ComponentTemplate,
   {
-    kind: 'builtin', version: 1, deviceType: 'switch', templateRef: 'builtin:ebyte:m31', brand: 'ebyte', brandLabel: 'Ebyte',
+    // `deviceType: 'io_module'`, NICHT 'switch': ein einzelner Schalter (Shelly) ist im Katalog absichtlich
+    // ausgeschlossen (`alsModellAngeboten` in `geraeteKatalog.ts` - er kommt nur über „Geräte suchen" als Heizstab).
+    // Das I/O-Modul Ebyte M31 ist dagegen ein gewöhnlicher Katalog-Eintrag unter „Schalten" (Auftrags-Screenshot).
+    kind: 'builtin', version: 1, deviceType: 'io_module', templateRef: 'builtin:ebyte:m31', brand: 'ebyte', brandLabel: 'Ebyte',
     model: 'm31', modelLabel: 'Ebyte M31', communication: 'modbus_tcp', communicationLabel: 'Modbus-TCP',
   } as unknown as ComponentTemplate,
   {
