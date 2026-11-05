@@ -31,6 +31,18 @@ const HAUS = {
   genau: 'haus',
 };
 
+const HAUS2 = {
+  text: 'Bahnhofstraße 3, 91710 Gunzenhausen',
+  strasse: 'Bahnhofstraße',
+  hausnummer: '3',
+  plz: '91710',
+  ort: 'Gunzenhausen',
+  land: 'DE',
+  breitengrad: 49.118,
+  laengengrad: 10.718,
+  genau: 'haus',
+};
+
 const ANLAGE = {
   id: '10000000-0000-4000-8000-0000000000a1',
   name: 'Zuhause',
@@ -120,6 +132,8 @@ async function verdrahte(page: Page, cloud: Cloud) {
     const q = new URL(r.request().url()).searchParams.get('q') ?? '';
     return json(r, { treffer: q.length >= 3 ? [HAUS] : [], quelle: '© OpenStreetMap-Mitwirkende' });
   });
+  // Klick/Zug auf die Karte löst sich standardmäßig in dieselbe Hausadresse auf.
+  await page.route('**/api/v1/orte/rueckwaerts**', (r) => json(r, { treffer: [HAUS], quelle: '© OpenStreetMap-Mitwirkende' }));
   await page.route('**/api/v1/standorte', (r) => {
     if (r.request().method() === 'POST') {
       cloud.posts.push({ pfad: 'standorte', body: r.request().postDataJSON(), kennung: r.request().headers()['idempotency-key'] ?? null });
@@ -311,3 +325,83 @@ for (const breite of BREITEN) {
     await expect(page.getByRole('heading', { name: 'Ihre Anlage ist live.' })).toHaveCount(0);
   });
 }
+
+/** Bis zum Adress-Schritt - gemeinsamer Anfang der folgenden Proben (Task vp-anlage-adresse-ux). */
+async function bisAdresse(page: Page, cloud: Cloud) {
+  await verdrahte(page, cloud);
+  await page.goto('/e2e/boot-flow.html');
+  await expect(page.getByRole('heading', { name: 'Wo steht Ihre Anlage?' })).toBeVisible({ timeout: 20_000 });
+}
+
+test('Tastatur: Pfeil wählt den Vorschlag, Enter übernimmt ihn - wie ein Klick', async ({ page }) => {
+  const cloud: Cloud = { sites: [], devices: [], standorte: [], telemetrie: false, gemeldet: [], posts: [] };
+  await bisAdresse(page, cloud);
+  await page.route('**/api/v1/orte/suche**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ treffer: [HAUS, HAUS2], quelle: '© OpenStreetMap-Mitwirkende' }) }),
+  );
+  const feld = page.getByLabel('Adresse');
+  await feld.fill('straße 91710 Gunzenhausen');
+  await expect(page.getByRole('option', { name: HAUS.text })).toBeVisible();
+  await expect(page.getByRole('option', { name: HAUS.text })).toHaveAttribute('aria-selected', 'true');
+  await feld.press('ArrowDown');
+  await expect(page.getByRole('option', { name: HAUS2.text })).toHaveAttribute('aria-selected', 'true');
+  await feld.press('Enter');
+  await expect(feld).toHaveValue(HAUS2.text);
+  await expect(page.getByText('Adresse gefunden')).toBeVisible();
+});
+
+test('Enter ohne Auswahl sucht - und übernimmt sofort den ersten Treffer', async ({ page }) => {
+  const cloud: Cloud = { sites: [], devices: [], standorte: [], telemetrie: false, gemeldet: [], posts: [] };
+  await bisAdresse(page, cloud);
+  const feld = page.getByLabel('Adresse');
+  // Direkt Enter, ohne auf die Vorschlagsliste zu warten oder zu klicken (F5-artiger Weg über die Taste).
+  await feld.fill('Hauptstr 12 gun');
+  await feld.press('Enter');
+  await expect(feld).toHaveValue(HAUS.text);
+  await expect(page.getByText('Adresse gefunden')).toBeVisible();
+});
+
+test('Adresssuche fällt aus: ehrliche Meldung, Hand-Eingabe trägt, kein Geister-Pin aus der vorigen Suche', async ({ page }) => {
+  const cloud: Cloud = { sites: [], devices: [], standorte: [], telemetrie: false, gemeldet: [], posts: [] };
+  await bisAdresse(page, cloud);
+  const feld = page.getByLabel('Adresse');
+
+  // Erst eine erfolgreiche Suche - der Pin steht auf dem Haus.
+  await feld.fill('Hauptstr 12 gun');
+  await page.getByRole('option', { name: HAUS.text }).click();
+  await expect(page.getByText(/49,1159/)).toBeVisible();
+
+  // Jetzt fällt die Suche aus (503, wie beim echten Photon-Timeout) - eine ANDERE Adresse wird getippt.
+  await page.route('**/api/v1/orte/suche**', (r) =>
+    r.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'adresssuche_nicht_erreichbar', message: 'Die Adresssuche ist gerade nicht erreichbar. Sie können den Punkt auf der Karte selbst setzen.' }),
+    }),
+  );
+  await feld.fill('Ganz andere Straße 9');
+  // Befund: der Pin vom Haus darf jetzt nicht mehr so aussehen, als gehöre er zu dieser Eingabe.
+  await expect(page.getByText('Noch kein Standort gesetzt (optional)')).toBeVisible();
+  await expect(page.getByText('Die Adresssuche ist gerade nicht erreichbar.')).toBeVisible();
+  await page.getByRole('button', { name: 'Adresse von Hand eingeben' }).click();
+  await expect(page.getByText('Zurück zur Adresssuche')).toHaveCount(0);
+  await page.getByLabel('Straße und Hausnummer').fill('Ganz andere Straße 9');
+  await page.getByLabel('Ort', { exact: true }).fill('Gunzenhausen');
+  await expect(page.getByText('Den Punkt setzen Sie mit einem Tipp auf die Karte.')).toBeVisible();
+  await page.locator('.vp-map').click({ position: { x: 100, y: 80 } });
+  await expect(page.getByText('Noch kein Standort gesetzt (optional)')).toHaveCount(0);
+});
+
+test('Volle Seite auf dem Desktop: Eingaben links, Karte rechts; ein Kartenklick löst sich in eine Adresse auf', async ({ page }) => {
+  const cloud: Cloud = { sites: [], devices: [], standorte: [], telemetrie: false, gemeldet: [], posts: [] };
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await bisAdresse(page, cloud);
+  const feldBox = await page.getByLabel('Adresse').boundingBox();
+  const karteBox = await page.locator('.vp-map').boundingBox();
+  expect(feldBox && karteBox && karteBox.x > feldBox.x + feldBox.width).toBe(true);
+
+  await page.locator('.vp-map').click({ position: { x: 120, y: 90 } });
+  await expect(page.getByText(HAUS.text)).toBeVisible();
+  // Die Adresse wird aus dem Klick übernommen, OHNE den Punkt auf den Treffer zu verschieben.
+  await expect(page.getByLabel('Adresse')).toHaveValue(HAUS.text);
+});

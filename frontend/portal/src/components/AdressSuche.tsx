@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useId, useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { api, ApiError, type OrtTreffer } from '../api';
-import { adresseAusTreffer, adresseText, SATZ_STRASSE_FEHLT, type Adresse } from '../anlageOrt';
+import { adresseAusTreffer, adresseText, SATZ_NICHT_GEFUNDEN, SATZ_STRASSE_FEHLT, type Adresse } from '../anlageOrt';
 import { LAENDER, type Land } from '../standorte';
 import { VpPicker } from './VpPicker';
 import './AdressSuche.css';
@@ -109,6 +109,36 @@ export const AdressSuche = forwardRef<
     onWahl({ adresse, punkt: { breitengrad: t.breitengrad, laengengrad: t.laengengrad } });
   }
 
+  /** Enter, bevor der Vorschlag steht (noch am Tippen, oder die Liste ist zu) - jetzt sofort suchen. */
+  function sucheJetzt() {
+    const q = suche.trim();
+    if (q.length < 3) return;
+    const meine = ++runde.current;
+    setLaedt(true);
+    api.orteSuche(q).then(
+      (a) => {
+        if (meine !== runde.current) return;
+        setLaedt(false);
+        setQuelle(a.quelle);
+        setAusfall(false);
+        if (a.treffer.length > 0) {
+          setTreffer(a.treffer);
+          setAktiv(0);
+          waehle(a.treffer[0]);
+        } else {
+          setTreffer([]);
+          setEigenerFehler(SATZ_NICHT_GEFUNDEN);
+        }
+      },
+      (e) => {
+        if (meine !== runde.current) return;
+        setTreffer([]);
+        setLaedt(false);
+        setAusfall(!(e instanceof ApiError) || e.status >= 500);
+      },
+    );
+  }
+
   if (vonHand) {
     return (
       <VonHand
@@ -153,6 +183,16 @@ export const AdressSuche = forwardRef<
         onFocus={() => setOffen(true)}
         onBlur={() => setTimeout(() => setOffen(false), 150)}
         onKeyDown={(e: React.KeyboardEvent) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (listeOffen && aktiv >= 0) {
+              waehle(treffer[aktiv]);
+            } else {
+              // Enter ohne Auswahl sucht - und übernimmt sofort den ersten Treffer.
+              sucheJetzt();
+            }
+            return;
+          }
           if (!listeOffen) return;
           if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -160,9 +200,6 @@ export const AdressSuche = forwardRef<
           } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             setAktiv((a) => Math.max(a - 1, 0));
-          } else if (e.key === 'Enter' && aktiv >= 0) {
-            e.preventDefault();
-            waehle(treffer[aktiv]);
           } else if (e.key === 'Escape') {
             // Nur die Liste - der Dialog darüber bleibt offen.
             e.preventDefault();

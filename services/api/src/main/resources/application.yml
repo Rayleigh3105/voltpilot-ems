@@ -163,10 +163,21 @@ voltpilot:
   # Photon-Geocoder mit OpenStreetMap-Adressen (Vorgabe: der oeffentliche Dienst von komoot, fair use
   # ohne Zusage). Fuer Produktion einen eigenen Photon mit OSM-Auszug DE/AT/CH betreiben und hier
   # eintragen; die api braucht dorthin ausgehenden Zugang. Namensnennung zeigt das Portal.
+  #
+  # Befund (Task vp-anlage-adresse-ux): die oeffentliche Photon-Demo antwortet im Mittel 4-10s -
+  # der alte Timeout von drei Sekunden warf deshalb praktisch bei jeder echten Anfrage. Timeout
+  # angehoben UND ein zweiter, unabhaengiger OSM-Dienst (Nominatim) als Rueckfall, wenn Photon nicht
+  # fristgerecht antwortet - Nominatim bleibt bewusst nur Rueckfall, nie Primaerdienst fuer die
+  # Autocomplete-Last jedes Tastendrucks (siehe Javadoc OrteSuche).
   orte:
     suche:
       url: ${VOLTPILOT_ORTE_SUCHE_URL:https://photon.komoot.io/api}
-      timeout: ${VOLTPILOT_ORTE_SUCHE_TIMEOUT:PT3S}
+      rueckwaerts-url: ${VOLTPILOT_ORTE_SUCHE_RUECKWAERTS_URL:https://photon.komoot.io/reverse}
+      timeout: ${VOLTPILOT_ORTE_SUCHE_TIMEOUT:PT5S}
+      ausweich:
+        url: ${VOLTPILOT_ORTE_SUCHE_AUSWEICH_URL:https://nominatim.openstreetmap.org/search}
+        rueckwaerts-url: ${VOLTPILOT_ORTE_SUCHE_AUSWEICH_RUECKWAERTS_URL:https://nominatim.openstreetmap.org/reverse}
+        timeout: ${VOLTPILOT_ORTE_SUCHE_AUSWEICH_TIMEOUT:PT4S}
   registration:
     enabled: ${VOLTPILOT_REGISTRATION_ENABLED:true}
     # Abuse guard for the public endpoint: sliding-window limits per client

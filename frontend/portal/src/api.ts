@@ -12019,6 +12019,13 @@ export const api = {
   orteSuche: (q: string, signal?: AbortSignal) =>
     request<OrteSuchAntwort>(`/api/v1/orte/suche?q=${encodeURIComponent(q)}`, signal ? { signal } : {}),
 
+  /**
+   * Die Adresse zu einem Kartenpunkt (`GET /api/v1/orte/rueckwaerts`, Task vp-anlage-adresse-ux):
+   * ein Klick oder ein gezogener Pin löst sich damit in eine lesbare Adresse auf, wenn erreichbar.
+   */
+  orteRueckwaerts: (breitengrad: number, laengengrad: number, signal?: AbortSignal) =>
+    request<OrteSuchAntwort>(`/api/v1/orte/rueckwaerts?lat=${breitengrad}&lon=${laengengrad}`, signal ? { signal } : {}),
+
   /** Schreibt die Stammdaten eines Standorts — die GANZE Menge, ein fehlendes Feld ist leer. */
   standortBearbeiten: (id: string, body: StandortStammdaten) =>
     request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}`, {

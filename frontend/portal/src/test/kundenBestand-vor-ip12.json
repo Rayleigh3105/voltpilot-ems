@@ -1984,6 +1984,13 @@
       "nachher": "ebabd260dec868b20d975bcc0c3b15ad4c0bc00815e1fdac23893bfe088909eb",
       "commit": "822aaaee73d66348ce6f5a108e1ce3651aed70a4",
       "grund": "Der Knopf „Fertig“ benennt den Zug („Zuordnen“ bzw. „Wieder verbinden“, #1666); Handler, Sperre und Recht bleiben. Der Wächter war seit dem Merge von #1666 auf main rot."
+    },
+    {
+      "datei": "components/LocationMap.tsx",
+      "vorher": "2978b0c36e9a3bf70a4dd0cf42bc7a9003034aef43aaf16f9e8b5d7a86a2de9d",
+      "nachher": "e044153ff7f62f53674265deacede131cf83c33ba6a401cd4da51a417a0456c5",
+      "commit": "fm/vp-anlage-adresse-ux",
+      "grund": "Task vp-anlage-adresse-ux: der Knopf „Entfernen“ räumt jetzt auch eine stehende Rückwärts-Auflösung des Pins ab (Zustand ehrlich machen, Geister-Pin-Befund) - Beschriftung, Recht und das eigentliche Entfernen (`onChange(null, null)`) bleiben unverändert."
     }
   ],
   "assistentZusammenfuehrung": {

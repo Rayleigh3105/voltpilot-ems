@@ -2,6 +2,8 @@ package com.voltpilot.api.orte;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -39,6 +41,15 @@ import org.springframework.stereotype.Service;
  * {@link #GEMERKT} lang gemerkt (höchstens {@link #MERKEN_HOECHSTENS} Anfragen), der Client nennt
  * sich ({@code User-Agent}) und wartet höchstens {@code timeout}. Die Anfrage (eine Adresse) wird
  * nie protokolliert. Namensnennung: jede Antwort trägt {@link #QUELLE}, das Portal zeigt sie.
+ *
+ * <p>Befund (Task vp-anlage-adresse-ux, {@code bericht.md}): die öffentliche Photon-Demo antwortet
+ * im Mittel 4-10s - deutlich über dem alten Timeout von drei Sekunden, also schlug praktisch jede
+ * echte Anfrage mit {@link NichtErreichbar} fehl, nicht nur gelegentlich. Antwortet Photon nicht
+ * fristgerecht, fragt {@link #suchen(String)} (und {@link #rueckwaerts(double, double)}) deshalb
+ * zusätzlich einen zweiten, unabhängigen OSM-Dienst (Vorgabe: Nominatim, {@code
+ * voltpilot.orte.suche.ausweich.url}). Nominatim bleibt bewusst nur Rückfall: seine Nutzungsregeln
+ * verbieten dauerhafte Autocomplete-Last auf jeden Tastendruck, dafür ist Photon gebaut - bei einer
+ * Photon-Antwort innerhalb des Timeouts wird Nominatim nie gerufen.
  */
 @Service
 public class OrteSuche {
@@ -83,6 +94,10 @@ public class OrteSuche {
 
     private final URI basis;
     private final Abruf abruf;
+    private final URI ausweichBasis;
+    private final Abruf ausweichAbruf;
+    private final URI rueckwaertsBasis;
+    private final URI ausweichRueckwaertsBasis;
     private final ObjectMapper json;
     private final Clock uhr;
     private final Map<String, Gemerkt> gemerkt = new LinkedHashMap<>(256, 0.75f, true) {
@@ -94,13 +109,29 @@ public class OrteSuche {
 
     @Autowired
     public OrteSuche(@Value("${voltpilot.orte.suche.url:https://photon.komoot.io/api}") String url,
-            @Value("${voltpilot.orte.suche.timeout:PT3S}") Duration timeout, ObjectMapper json) {
-        this(URI.create(url), jdk(timeout), json, Clock.systemUTC());
+            @Value("${voltpilot.orte.suche.rueckwaerts-url:https://photon.komoot.io/reverse}") String rueckwaertsUrl,
+            @Value("${voltpilot.orte.suche.timeout:PT5S}") Duration timeout,
+            @Value("${voltpilot.orte.suche.ausweich.url:https://nominatim.openstreetmap.org/search}")
+                    String ausweichUrl,
+            @Value("${voltpilot.orte.suche.ausweich.rueckwaerts-url:https://nominatim.openstreetmap.org/reverse}")
+                    String ausweichRueckwaertsUrl,
+            @Value("${voltpilot.orte.suche.ausweich.timeout:PT4S}") Duration ausweichTimeout, ObjectMapper json) {
+        this(URI.create(url), jdk(timeout), URI.create(rueckwaertsUrl), URI.create(ausweichUrl), jdk(ausweichTimeout),
+                URI.create(ausweichRueckwaertsUrl), json, Clock.systemUTC());
     }
 
     OrteSuche(URI basis, Abruf abruf, ObjectMapper json, Clock uhr) {
+        this(basis, abruf, null, null, null, null, json, uhr);
+    }
+
+    OrteSuche(URI basis, Abruf abruf, URI rueckwaertsBasis, URI ausweichBasis, Abruf ausweichAbruf,
+            URI ausweichRueckwaertsBasis, ObjectMapper json, Clock uhr) {
         this.basis = basis;
         this.abruf = abruf;
+        this.rueckwaertsBasis = rueckwaertsBasis;
+        this.ausweichBasis = ausweichBasis;
+        this.ausweichAbruf = ausweichAbruf;
+        this.ausweichRueckwaertsBasis = ausweichRueckwaertsBasis;
         this.json = json;
         this.uhr = uhr;
     }
@@ -122,19 +153,69 @@ public class OrteSuche {
                 return g.antwort();
             }
         }
-        Antwort a = new Antwort(lies(abrufen(q)), QUELLE);
+        Antwort a = sucheMitAusweich(q);
         synchronized (gemerkt) {
             gemerkt.put(schluessel, new Gemerkt(jetzt, a));
         }
         return a;
     }
 
-    private JsonNode abrufen(String q) {
+    private Antwort sucheMitAusweich(String q) {
         URI uri = URI.create(basis + "?q=" + URLEncoder.encode(q, StandardCharsets.UTF_8).replace("+", "%20")
                 + "&lang=de&limit=15&bbox=" + RAHMEN);
+        try {
+            return new Antwort(lies(abrufen(uri, abruf)), QUELLE);
+        } catch (NichtErreichbar primaer) {
+            if (ausweichBasis == null) {
+                throw primaer;
+            }
+            URI ausweichUri = URI.create(ausweichBasis + "?q="
+                    + URLEncoder.encode(q, StandardCharsets.UTF_8).replace("+", "%20")
+                    + "&format=jsonv2&limit=15&addressdetails=1&accept-language=de&countrycodes=de,at,ch");
+            try {
+                return new Antwort(liesNominatim(abrufen(ausweichUri, ausweichAbruf)), QUELLE);
+            } catch (NichtErreichbar zweite) {
+                zweite.addSuppressed(primaer);
+                throw zweite;
+            }
+        }
+    }
+
+    /** Die Adresse zu einem Kartenpunkt - leer, wenn kein Dienst etwas Passendes findet. */
+    public Antwort rueckwaerts(double breitengrad, double laengengrad) {
+        if (rueckwaertsBasis == null) {
+            return new Antwort(List.of(), QUELLE);
+        }
+        URI uri = URI.create(rueckwaertsBasis + "?lat=" + breitengrad + "&lon=" + laengengrad + "&lang=de");
+        try {
+            return new Antwort(lies(abrufen(uri, abruf)), QUELLE);
+        } catch (NichtErreichbar primaer) {
+            if (ausweichRueckwaertsBasis == null) {
+                throw primaer;
+            }
+            URI ausweichUri = URI.create(ausweichRueckwaertsBasis + "?lat=" + breitengrad + "&lon=" + laengengrad
+                    + "&format=jsonv2&addressdetails=1&accept-language=de");
+            try {
+                return new Antwort(liesNominatim(wrapAlsArray(abrufen(ausweichUri, ausweichAbruf))), QUELLE);
+            } catch (NichtErreichbar zweite) {
+                zweite.addSuppressed(primaer);
+                throw zweite;
+            }
+        }
+    }
+
+    private static JsonNode wrapAlsArray(JsonNode einzeln) {
+        ArrayNode a = JsonNodeFactory.instance.arrayNode();
+        if (einzeln != null && !einzeln.isMissingNode() && einzeln.has("address")) {
+            a.add(einzeln);
+        }
+        return a;
+    }
+
+    private JsonNode abrufen(URI uri, Abruf mit) {
         Ergebnis e;
         try {
-            e = abruf.holen(uri);
+            e = mit.holen(uri);
         } catch (IOException ex) {
             throw new NichtErreichbar("Adresssuche nicht erreichbar", ex);
         }
@@ -194,6 +275,74 @@ public class OrteSuche {
         alle.addAll(strassen);
         alle.addAll(orte);
         return List.copyOf(alle.subList(0, Math.min(HOECHSTENS, alle.size())));
+    }
+
+    private static final Set<String> ORT_TYPEN = Set.of("city", "town", "village", "hamlet", "municipality",
+            "administrative", "suburb", "postcode");
+
+    /** Die Treffer aus einer Nominatim-Antwort (jsonv2, {@code addressdetails=1}) - nur der Rückfall. */
+    static List<Treffer> liesNominatim(JsonNode antwort) {
+        List<Treffer> haeuser = new ArrayList<>();
+        List<Treffer> strassen = new ArrayList<>();
+        List<Treffer> orte = new ArrayList<>();
+        Set<String> gesehen = new LinkedHashSet<>();
+        for (JsonNode top : antwort) {
+            JsonNode a = top.path("address");
+            String land = text(a, "country_code");
+            if (land == null) {
+                continue;
+            }
+            land = land.toUpperCase(Locale.ROOT);
+            if (!LAENDER.contains(land)) {
+                continue;
+            }
+            Double lat = zahl(top, "lat");
+            Double lon = zahl(top, "lon");
+            if (lat == null || lon == null) {
+                continue;
+            }
+            String typ = text(top, "addresstype");
+            String plz = text(a, "postcode");
+            String ort = erster(text(a, "city"), text(a, "town"), text(a, "village"), text(a, "municipality"),
+                    text(a, "hamlet"));
+            String hausnummer = text(a, "house_number");
+            String strasse = text(a, "road");
+            Treffer t;
+            if (hausnummer != null && strasse != null) {
+                t = new Treffer(zeile(strasse + " " + hausnummer, plz, ort), strasse, hausnummer, plz, ort, land, lat,
+                        lon, "haus");
+                if (gesehen.add(t.text())) haeuser.add(t);
+            } else if (strasse != null) {
+                // Reverse-Treffer nennen oft eine Straße ohne Hausnummer (nächstes POI, nächster
+                // Straßenabschnitt) - der addresstype ist dann z.B. "amenity", nicht "road".
+                t = new Treffer(zeile(strasse, plz, ort), strasse, null, plz, ort, land, lat, lon, "strasse");
+                if (gesehen.add(t.text())) strassen.add(t);
+            } else if (ort != null || ORT_TYPEN.contains(typ)) {
+                String name = erster(ort, text(top, "name"));
+                if (name == null) {
+                    continue;
+                }
+                String o = plz == null ? name : plz + " " + name;
+                t = new Treffer(o + laenderzusatz(land), null, null, plz, name, land, lat, lon, "ort");
+                if (gesehen.add(t.text())) orte.add(t);
+            }
+        }
+        List<Treffer> alle = new ArrayList<>(haeuser);
+        alle.addAll(strassen);
+        alle.addAll(orte);
+        return List.copyOf(alle.subList(0, Math.min(HOECHSTENS, alle.size())));
+    }
+
+    private static Double zahl(JsonNode p, String feld) {
+        String v = text(p, feld);
+        if (v == null) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(v);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private static String zeile(String vorne, String plz, String ort) {
