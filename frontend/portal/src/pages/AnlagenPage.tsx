@@ -1201,14 +1201,29 @@ export function AnlageSeite({
   // Daten-Takt über `useFreshnessPoll` (holt beim Aufwachen SOFORT nach), Uhr
   // daneben - sonst zeigt das Cockpit dem zurückkehrenden Kunden bis zu 30 s
   // lang die Zahlen von vorhin.
+  //
+  // ⚠ ZWEI Takte nach Datenart (Scout `vp-anlagen-cockpit-perf`, Rang 5; Regel in
+  // `pollCadence.ts`). LIVE (10 s): was GEMESSEN ist oder die Frische bestimmt -
+  // `/overview` trägt `live` (Fluss-Rückfall, Frische-Chip, `liveTs` für die
+  // Rollen), die Steuerungs-Rückmeldung, der Erzeuger-Stand, die Ladepunkte.
+  // LISTE (30 s): `/earnings` (Zeitraum-Summen, die Quelle rechnet sie aus
+  // 15-Minuten-Rollups) und `/schedule` (der Plan, den der Optimierer alle
+  // 15 Minuten neu schreibt) bewegen sich nicht schneller; beide sind mit dem
+  // Datenbestand die teuersten Aufrufe der Seite.
+  useFreshnessPoll(() => {
+    api.siteEarnings(site.id, rangeRef.current, atRef.current).then(
+      (e) => setSiteEarnings(e),
+      () => {},
+    );
+    api.schedule(site.id).then(
+      (p) => setPlan(p),
+      () => {},
+    );
+  }, LIST_POLL_MS);
   useFreshnessPoll(() => {
     setNow(new Date());
     api.overview().then(
       (o) => setOverview(o),
-      () => {},
-    );
-    api.siteEarnings(site.id, rangeRef.current, atRef.current).then(
-      (e) => setSiteEarnings(e),
       () => {},
     );
     api.controlStatus(site.id).then(
@@ -1217,10 +1232,6 @@ export function AnlageSeite({
     );
     api.curtailmentStatus(site.id).then(
       (c) => setCurtailStatus(c),
-      () => {},
-    );
-    api.schedule(site.id).then(
-      (p) => setPlan(p),
       () => {},
     );
     // ⚠ Die Ladepunkte gehören in DENSELBEN Takt wie der Hausverbrauch: ohne

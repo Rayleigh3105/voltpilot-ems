@@ -46,5 +46,10 @@ export const LIVE_POLL_MS = 10_000;
  * Der Takt der Flächen ohne sekündliche Bewegung: Listen, die
  * Geräte-Lebendigkeit, die Plattform-Übersicht, Edge-Aktualisierungen, der
  * Flow-Editor und Zeitraum-Aggregate (Historie-Summen).
+ *
+ * Auch INNERHALB des Cockpits gilt die Zuordnung je Datenart, nicht je Seite:
+ * `/earnings` (Summen aus 15-Minuten-Rollups) und `/schedule` (der Plan, den
+ * der Optimierer alle 15 Minuten neu schreibt) laufen hier; `/overview` bleibt
+ * beim Live-Takt, weil es den Live-Schnappschuss und die Frische trägt.
  */
 export const LIST_POLL_MS = 30_000;
