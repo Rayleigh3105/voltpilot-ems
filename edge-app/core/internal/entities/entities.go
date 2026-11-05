@@ -415,6 +415,14 @@ type Commands struct {
 	LimitPct   *float64 `json:"limit_pct,omitempty"`
 	OnOff      *bool    `json:"on_off,omitempty"`
 	Mode       string   `json:"mode,omitempty"`
+
+	// Outputs is the explicit output set of a heating rod's manual
+	// per-phase switch (heizstab-shelly.md "Handeingriff je Phase"): the
+	// channel numbers to run, riding ONLY with a setpoint_kw that stays the
+	// power ceiling every guard clamps. A driver that knows no output set
+	// ignores it; the stage path honours it only while it fits the granted
+	// setpoint (restrict-only). Absent = the stage choice from the setpoint.
+	Outputs []int `json:"outputs,omitempty"`
 }
 
 // Empty reports whether no command is set.
@@ -582,6 +590,11 @@ func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolar
 			v := consumerCap(*c.SetpointKw, e.capMax(CmdSetpointKw), e.Guards.Limits.MaxConsumptionKw)
 			noteLimit(guards.StageRatedBand, *c.SetpointKw, v)
 			out.SetpointKw = &v
+			// The output set rides with the setpoint and only with it: the
+			// setpoint stays the ceiling the driver judges the set against.
+			if len(c.Outputs) > 0 {
+				out.Outputs = append([]int(nil), c.Outputs...)
+			}
 		}
 		if c.LimitKw != nil && e.allows(CmdLimitKw) {
 			v := consumerCap(*c.LimitKw, e.capMax(CmdLimitKw), e.Guards.Limits.MaxConsumptionKw)

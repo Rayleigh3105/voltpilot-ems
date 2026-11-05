@@ -365,3 +365,99 @@ func TestShellyStageSourcePollReadsEveryOutput(t *testing.T) {
 		t.Fatalf("a bare relay set must never claim a load: %v", m)
 	}
 }
+
+// overrideEnvelope is the manual override exactly as the API publishes it on
+// .../v2/desired (ConsumerOverridePublisher), with the explicit output set of
+// a per-phase switch (heizstab-shelly.md "Handeingriff je Phase").
+func overrideEnvelope(id string, kw float64, outputs string) []byte {
+	return []byte(fmt.Sprintf(`{"schema_version":"1.0","entity_id":%q,"request_id":"override:%s:1",`+
+		`"source":{"kind":"local-ui"},"priority":"flow","override":true,"ttl_s":3600,"issued_at":%q,`+
+		`"command":{"type":"setpoint_kw","value":%v,"outputs":%s}}`,
+		id, id, time.Now().UTC().Format(time.RFC3339), kw, outputs))
+}
+
+// A manual switch of L1 and L3 runs exactly those two outputs - not the two
+// the rotation would pick - and the heartbeat reports them as confirmed.
+func TestShellyStageOverrideRunsTheChosenOutputs(t *testing.T) {
+	dev := newPro3Stage()
+	srv := httptest.NewServer(dev.handler())
+	defer srv.Close()
+	host, port := splitHostPort(t, srv.URL)
+	id := "rod-pro3"
+	reg := stageRodRegistry(id, host, port)
+	arb := minimalArbiter(reg)
+	arb.Submit(id, overrideEnvelope(id, 4.0, "[0,2]"))
+	arb.Tick()
+
+	a := shellyAgent(t, reg, arb, srv.Client())
+	a.runShellyControlPass(context.Background(), a.shellyDoer, map[string]string{}, map[string]time.Time{}, time.Now())
+
+	on, _ := dev.snapshot()
+	if on != [3]bool{true, false, true} {
+		t.Fatalf("L1 and L3 must run, got %v", on)
+	}
+	hb := a.consumersSummary()[id]
+	if hb.Stage == nil || *hb.Stage.Confirmed != 2 || fmt.Sprint(hb.Stage.OutputsOn) != "[0 2]" {
+		t.Fatalf("heartbeat stage = %+v", hb.Stage)
+	}
+
+	// The next switch moves the run to L2 alone: the chosen output, not the
+	// one already running (a manual switch may swap the phase).
+	arb.Submit(id, overrideEnvelope(id, 2.0, "[1]"))
+	arb.Tick()
+	a.runShellyControlPass(context.Background(), a.shellyDoer, map[string]string{}, map[string]time.Time{}, time.Now())
+	if on, _ := dev.snapshot(); on != [3]bool{false, true, false} {
+		t.Fatalf("only L2 must run, got %v", on)
+	}
+}
+
+// The protection limits stay in force: max_consumption_kw of 2.0 kW clamps the
+// setpoint of a three-phase wish, the set no longer fits, and the box runs the
+// stage the clamped setpoint allows - one phase, never more than granted.
+func TestShellyStageOverrideOutputsYieldToTheGuard(t *testing.T) {
+	dev := newPro3Stage()
+	srv := httptest.NewServer(dev.handler())
+	defer srv.Close()
+	host, port := splitHostPort(t, srv.URL)
+	id := "rod-pro3"
+	reg := stageRodRegistry(id, host, port)
+	cap := 2.0
+	reg.Entities[0].Guards.Limits.MaxConsumptionKw = &cap
+	arb := minimalArbiter(reg)
+	arb.Submit(id, overrideEnvelope(id, 6.0, "[0,1,2]"))
+	arb.Tick()
+
+	a := shellyAgent(t, reg, arb, srv.Client())
+	a.runShellyControlPass(context.Background(), a.shellyDoer, map[string]string{}, map[string]time.Time{}, time.Now())
+
+	on, _ := dev.snapshot()
+	count := 0
+	for _, o := range on {
+		if o {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("the guard allows one phase, got %v", on)
+	}
+}
+
+// Kill switch: with consumer control off nothing is written, explicit set or not.
+func TestShellyStageOverrideOutputsRespectKillSwitch(t *testing.T) {
+	dev := newPro3Stage()
+	srv := httptest.NewServer(dev.handler())
+	defer srv.Close()
+	host, port := splitHostPort(t, srv.URL)
+	id := "rod-pro3"
+	reg := stageRodRegistry(id, host, port)
+	arb := minimalArbiter(reg)
+	arb.Submit(id, overrideEnvelope(id, 2.0, "[1]"))
+	arb.Tick()
+
+	a := shellyAgent(t, reg, arb, srv.Client())
+	a.Cfg.ConsumerControlEnabled = false
+	a.runShellyControlPass(context.Background(), a.shellyDoer, map[string]string{}, map[string]time.Time{}, time.Now())
+	if _, sets := dev.snapshot(); len(sets) != 0 {
+		t.Fatalf("kill switch must write nothing, got %v", sets)
+	}
+}

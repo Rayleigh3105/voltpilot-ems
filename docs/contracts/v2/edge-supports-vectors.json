@@ -87,6 +87,12 @@
       "meaning": "Die Box führt die Verbraucherregeln der Cloud aus, wie die Steuerarten sie schreiben: die reaktive Regel mit lokalem Signal (Überschuss, Ladestand, Fahrzeug, Verfügbarkeit) als generiertes Regel-Artefakt mit dem Knoten vp-consumer-policy - in der Docker-Box über die Palette, in Edge Light über den Go-Zwilling im Programm (internal/verbraucherregel, gemeinsame Vektoren verbraucherregel-vectors.json) - und Zeitfenster, Preisfenster und Fristen aus Fahrplan und Registry-Push im Core. Erst dann gibt das Portal einer Edge Light die Steuerarten frei, die daran hängen.",
       "advertised": true,
       "evidence": "edge-app/core/internal/verbraucherregel/laufzeit_test.go"
+    },
+    {
+      "name": "heizstab_phasen",
+      "meaning": "Ein Wunsch setpoint_kw darf eine ausdrückliche Ausgangsmenge outputs (Kanalnummern) tragen; der Stufenweg eines Shelly-Heizstabs schaltet genau diese Ausgänge, solange ihre Zahl eine erlaubte Stufe ist und ihre kW in den gewährten Sollwert nach allen Schutzgrenzen passen (heizstab-shelly.md, Handeingriff je Phase). Sonst wählt die Box die Stufe aus dem Sollwert wie bisher. Erst dann zeigt das Portal Schalter je Phase und die Cloud sendet outputs; eine ältere Box überliest das Feld.",
+      "advertised": true,
+      "evidence": "edge-app/core/internal/shelly/group_vectors_test.go"
     }
   ],
   "cases": [

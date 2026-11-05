@@ -290,6 +290,83 @@ func SelectOutputs(cfg Config, stage int, prev GroupPrev, day int) (targets, cou
 	return targets, counted
 }
 
+// ExplicitOutputs resolves a manual per-phase switch (Command.Outputs) onto
+// output indices (into Config.Channels). ok=false = no usable explicit set,
+// and the stage path decides from the setpoint as always. The set is honoured
+// only when it can never deliver more than commanded:
+//
+//   - a fresh run command with a setpoint (stale/off/no setpoint: never);
+//   - every channel belongs to the set, none twice;
+//   - its count is an allowed stage ("alle zusammen" stays all together);
+//   - its elements' kW fit the GRANTED setpoint, i.e. after every guard.
+func ExplicitOutputs(cfg Config, cmd Command) (idx []int, ok bool) {
+	if len(cmd.Outputs) == 0 || !cfg.IsGroup() || cfg.GroupError() != "" || cmd.Stale {
+		return nil, false
+	}
+	if cmd.OnOff != nil && !*cmd.OnOff {
+		return nil, false
+	}
+	if cmd.SetpointKw == nil || math.IsNaN(*cmd.SetpointKw) || math.IsInf(*cmd.SetpointKw, 0) {
+		return nil, false
+	}
+	pos := map[int]int{}
+	for i, ch := range cfg.Channels {
+		pos[ch] = i
+	}
+	seen := map[int]bool{}
+	kw := 0.0
+	for _, ch := range cmd.Outputs {
+		i, in := pos[ch]
+		if !in || seen[i] {
+			return nil, false
+		}
+		seen[i] = true
+		idx = append(idx, i)
+		kw += cfg.OutputKw[i]
+	}
+	allowed := false
+	for _, s := range cfg.stages() {
+		allowed = allowed || s == len(idx)
+	}
+	if !allowed || kw > *cmd.SetpointKw*(1+1e-6)+1e-9 {
+		return nil, false
+	}
+	return idx, true
+}
+
+// selectExplicit turns an explicit set into targets: the chosen outputs, in
+// the order given, as long as they and every output stuck on (counted, HZ-4
+// B) stay within the setpoint - a stuck output takes the place of the last
+// chosen ones, never adds on top.
+func selectExplicit(cfg Config, idx []int, prev GroupPrev, setpointKw float64) (targets, counted []bool, stage int) {
+	n := len(cfg.Channels)
+	targets, counted = make([]bool, n), make([]bool, n)
+	sum := 0.0
+	for i := 0; i < n; i++ {
+		if prev.disobeying(i) {
+			chosen := false
+			for _, j := range idx {
+				chosen = chosen || j == i
+			}
+			if !chosen {
+				counted[i] = true
+				sum += cfg.OutputKw[i]
+				stage++
+			}
+		}
+	}
+	limit := setpointKw*(1+1e-6) + 1e-9
+	for _, i := range idx {
+		if sum+cfg.OutputKw[i] > limit {
+			break
+		}
+		targets[i] = true
+		sum += cfg.OutputKw[i]
+		stage++
+	}
+	return targets, counted, stage
+}
+
 // PlanGroupFor maps config + command (+ what the last pass wrote and read)
 // onto the pure stage plan.
 func PlanGroupFor(cfg Config, cmd Command, prev GroupPrev, day int) GroupPlan {
@@ -303,6 +380,10 @@ func PlanGroupFor(cfg Config, cmd Command, prev GroupPrev, day int) GroupPlan {
 	controlEnabled := cmd.ControlEnabled && certified
 	stage, reason := GroupStage(cfg, cmd)
 	targets, counted := SelectOutputs(cfg, stage, prev, day)
+	if idx, ok := ExplicitOutputs(cfg, cmd); ok {
+		targets, counted, stage = selectExplicit(cfg, idx, prev, *cmd.SetpointKw)
+		reason = ""
+	}
 	p := GroupPlan{
 		Adapter: Communication, Target: cfg.HostPort(), Certified: certified,
 		ControlEnabled: controlEnabled, Channels: append([]int(nil), cfg.Channels...),

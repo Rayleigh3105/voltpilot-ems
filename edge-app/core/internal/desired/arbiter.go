@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
@@ -882,7 +883,13 @@ func (a *Arbiter) holderRef(st *entState) *SourceRef {
 // picks the echoed entry for multi-entry (plan) sets; empty = dominance order
 // setpoint > limit_kw > limit_pct > on_off > mode.
 func commandJSON(c entities.Commands, preferred string) map[string]any {
-	entry := func(t string, v any) map[string]any { return map[string]any{"type": t, "value": v} }
+	entry := func(t string, v any) map[string]any {
+		m := map[string]any{"type": t, "value": v}
+		if t == entities.CmdSetpointKw && len(c.Outputs) > 0 {
+			m["outputs"] = c.Outputs // the explicit output set rides with its setpoint
+		}
+		return m
+	}
 	if preferred != "" {
 		switch preferred {
 		case entities.CmdSetpointKw:
@@ -957,7 +964,7 @@ func grantedMatchesWish(d *Desired, granted entities.Commands) bool {
 	if (c.OnOff == nil) != (granted.OnOff == nil) || (c.OnOff != nil && *c.OnOff != *granted.OnOff) {
 		return false
 	}
-	return c.Mode == granted.Mode
+	return c.Mode == granted.Mode && slices.Equal(c.Outputs, granted.Outputs)
 }
 
 // fingerprint identifies a DECISION (holder + source + granted) for event

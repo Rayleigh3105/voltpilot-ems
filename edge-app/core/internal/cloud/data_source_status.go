@@ -69,6 +69,13 @@ type StatusExtension struct {
 // builds carry it; the portal unlocks those Steuerarten on an Edge Light only
 // for a box that reports it.
 //
+// heizstab_phasen (Handeingriff je Phase, heizstab-shelly.md): a setpoint_kw
+// desired may carry an explicit output set (`outputs`) and the stage path of
+// a Shelly output set switches exactly those outputs while they fit the
+// granted setpoint (shelly.ExplicitOutputs). The core runs the stage path in
+// both builds, so both carry it; the portal offers per-phase switches only
+// for a box reporting it.
+//
 // EACH BOX TYPE REPORTS FROM ITS OWN BUILD (edge-supports.md "Je Box-Art").
 // Edge Light has no Node-RED palette, so the words whose way ends in the
 // palette - the shared point read once per target, the Erzeuger image reader
@@ -80,7 +87,7 @@ func BuiltSupports(boxArt string) []string {
 	if boxArt != geraetesuche.BoxArtEdgeLight {
 		out = append(out, "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle")
 	}
-	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln")
+	return append(out, "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen")
 }
 
 // UpdateBackend is the apply backend a box type reports in update.backend and

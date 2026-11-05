@@ -60,6 +60,27 @@ Ein Heizstab, der vor dem 02.11.2026 ohne Schreibfähigkeit angelegt wurde, beko
   - Ein Ausgang, der nicht eingeschaltet hat, wird beim nächsten Re-Assert erneut geschrieben.
   - Ein Ausgang, der an ist, obwohl er aus sein soll, bekommt sofort AUS, noch im selben Durchlauf. Bis dahin zählt er zur Stufe; die übrigen Ausgänge halten die Summe ≤ befohlen.
 
+## Handeingriff je Phase
+
+Seit dem 05.11.2026 kann ein Handeingriff einzelne Phasen schalten statt nur eine Stufe. Der Wunsch bleibt `setpoint_kw` und trägt zusätzlich `outputs`, die Kanalnummern der gewählten Ausgänge ([edge-desired.schema.json](edge-desired.schema.json), additiv):
+
+```json
+{"type": "setpoint_kw", "value": 4.0, "outputs": [0, 2]}
+```
+
+- **Der Sollwert bleibt die Obergrenze.** Die Cloud setzt ihn auf die Summe der kW der gewählten Elemente. Jede Schutzgrenze der Box kürzt ihn wie bisher, zum Beispiel `max_consumption_kw`, Mindestlauf und Mindestpause oder die Netzladen-Sperre. `outputs` geht nur mit einem gewährten Sollwert durch die Kette; fällt der Sollwert weg, fällt auch die Menge weg.
+- **Die Box schaltet genau diese Ausgänge** (`shelly.ExplicitOutputs`), wenn alle vier Bedingungen gelten:
+  - Der Befehl ist frisch und nicht „aus“.
+  - Jeder Kanal gehört zur Ausgangsmenge des Stabs, keiner steht doppelt.
+  - Die Zahl der gewählten Ausgänge ist eine erlaubte Stufe (`stages`). Ein Stab „nur alle zusammen“ schaltet weiter nur alle zusammen.
+  - Die kW der gewählten Elemente passen in den gewährten Sollwert.
+- **Sonst gilt die Stufenwahl** aus dem Sollwert wie oben, mit allen Regeln: nie mehr als befohlen, ohne frischen Befehl alles aus.
+- **Ein Handeingriff darf die Phase wechseln.** Anders als die Rotation wechselt die Box hier auch mitten im Lauf auf die gewählten Ausgänge.
+- **Ein klebender Ausgang** (an, obwohl aus befohlen) zählt zuerst. Die Box nimmt gewählte Ausgänge von hinten weg, bis die Summe wieder in den Sollwert passt.
+- **Totmann je Ausgang** (`toggle_after`), Re-Assert, Rücklesung und `mismatch_since` bleiben unverändert. Der Not-Aus (`VP_CONTROL_ENABLED`, `VP_CONSUMER_CONTROL_ENABLED`) schreibt weiter nichts.
+
+Die Box meldet das im Herzschlag als `supports: heizstab_phasen` ([edge-supports.md](edge-supports.md)); beide Box-Arten tragen es, der Stufenweg steckt im Core. Die Cloud sendet `outputs` nur an eine solche Box. Eine ältere Box überliest das Feld und wählt die Stufe aus dem Sollwert. Vektoren: der Block `plan` in [heizstab-stufen-vectors.json](heizstab-stufen-vectors.json), Fälle „Handeingriff je Phase: …“.
+
 ## Rücklesung `edge/entities/{id}/readback`
 
 Eine Anfrage liest alle Ausgänge: Gen2 `Shelly.GetStatus`, Gen1 `/status`. Die v1-Form bleibt, mit drei Zusätzen:

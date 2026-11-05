@@ -34,6 +34,11 @@ type Command struct {
 	OnOff          *bool    // the authoritative relay command when present
 	ControlEnabled bool     // the core kill-switch verdict
 	Stale          bool     // no arbiter decision at all -> fail-safe OFF
+
+	// Outputs is the explicit output set of a manual per-phase switch
+	// (channel numbers, heizstab-shelly.md "Handeingriff je Phase"). Only
+	// the stage path reads it, and only while it fits SetpointKw.
+	Outputs []int
 }
 
 // onKwThreshold separates "commanded to run" from "commanded off" on a bare

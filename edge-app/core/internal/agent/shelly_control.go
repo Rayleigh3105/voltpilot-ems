@@ -128,6 +128,7 @@ func (a *Agent) shellyCommandFor(entityID string) shelly.Command {
 	if dec.Granted.SetpointKw != nil {
 		v := *dec.Granted.SetpointKw
 		cmd.SetpointKw = &v
+		cmd.Outputs = append([]int(nil), dec.Granted.Outputs...)
 	}
 	if dec.Granted.OnOff != nil {
 		v := *dec.Granted.OnOff

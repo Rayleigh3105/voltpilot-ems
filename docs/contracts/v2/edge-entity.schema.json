@@ -614,6 +614,18 @@
             "setpoint_kw": {
               "type": "number"
             },
+            "outputs": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              },
+              "description": "Additive (heizstab-shelly.md, Handeingriff je Phase): the explicit output set that rides with the granted setpoint_kw of a heating rod; never without setpoint_kw."
+            },
             "limit_kw": {
               "type": "number",
               "minimum": 0

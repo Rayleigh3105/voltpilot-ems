@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle", "geraetesuche", "heizstab_regler", "verbraucherregeln", "heizstab_phasen"]` (Docker-Box; Edge Light ohne die drei Palette-Wörter, siehe „Je Box-Art“) steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -102,6 +102,12 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   Fristen („Feste Zeiten“, „Günstige Stunden“, „Fertig bis“) laufen ohnehin über Fahrplan und Registry-Push im Core
   beider Box-Arten. Beide Box-Arten melden das Wort. Das Portal gibt einer Edge Light die Steuerarten, die daran
   hängen, nur frei, wenn sie es meldet; eine Docker-Box hat die Palette immer und wird nie gesperrt.
+- `heizstab_phasen` (Handeingriff je Phase, 05.11.2026): ein Wunsch `setpoint_kw` darf eine ausdrückliche
+  Ausgangsmenge `outputs` tragen, und der Stufenweg eines Shelly-Heizstabs schaltet genau diese Ausgänge, solange sie in
+  den gewährten Sollwert passen ([Heizstab über eine Ausgangsmenge](heizstab-shelly.md#handeingriff-je-phase);
+  `shelly.ExplicitOutputs`, Beleg `shelly/group_vectors_test.go`). Beide Box-Arten melden es, der Stufenweg steckt im
+  Core. Das Portal zeigt die Schalter je Phase nur einer Box mit diesem Wort, sonst die Stufenwahl; die Cloud sendet
+  `outputs` nur an eine solche Box. Eine ältere Box überliest das Feld und wählt die Stufe aus dem Sollwert.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

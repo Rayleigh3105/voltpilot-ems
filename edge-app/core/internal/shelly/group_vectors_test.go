@@ -29,6 +29,7 @@ type stufenDoc struct {
 			SetpointKw     *float64 `json:"setpoint_kw"`
 			Stale          bool     `json:"stale"`
 			ControlEnabled bool     `json:"control_enabled"`
+			Outputs        []int    `json:"outputs"`
 		} `json:"command"`
 		Day  int `json:"day"`
 		Prev *struct {
@@ -88,7 +89,7 @@ func TestStufenVectorsValidate(t *testing.T) {
 func TestStufenVectorsPlan(t *testing.T) {
 	for _, v := range loadStufen(t).Plan {
 		cmd := Command{OnOff: v.Command.OnOff, SetpointKw: v.Command.SetpointKw,
-			Stale: v.Command.Stale, ControlEnabled: v.Command.ControlEnabled}
+			Stale: v.Command.Stale, ControlEnabled: v.Command.ControlEnabled, Outputs: v.Command.Outputs}
 		var prev GroupPrev
 		if v.Prev != nil {
 			prev = GroupPrev{Commanded: v.Prev.Commanded, Read: v.Prev.Read}
