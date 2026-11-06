@@ -3,7 +3,8 @@ import './rollen-fixture';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppShell } from '../src/shell/AppShell';
-import { GeraeteBereich } from '../src/pages/admin/GeraeteBereich';
+import { PlattformBereich } from '../src/pages/admin/PlattformBereich';
+import { GeraeteRegistryPage } from '../src/pages/admin/GeraeteRegistryPage';
 import { adminApi } from '../src/admin/adminApi';
 import { keycloak } from '../src/auth';
 import {
@@ -199,7 +200,9 @@ function Fixture() {
   const [page, setPage] = useState<PageId>('edge-updates');
   return <AppShell page={page} onNavigate={setPage} isAdmin showOverview={false} showAddAnlage={false}
     counts={{ sites: 8, devices: 8 }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
-    <GeraeteBereich page={page} onNavigate={(r) => setPage(typeof r === 'string' ? r : r.page)} />
+    {page === 'geraete-registry'
+      ? <GeraeteRegistryPage />
+      : <PlattformBereich page={page} onNavigate={(r) => setPage(typeof r === 'string' ? r : r.page)} />}
   </AppShell>;
 }
 ReactDOM.createRoot(document.getElementById('root')!).render(<Fixture />);

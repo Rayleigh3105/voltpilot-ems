@@ -20,8 +20,10 @@ import { currentUser, logout } from '../auth';
 import type { Tenant } from '../admin/adminApi';
 import {
   MAIN_PAGES,
-  PLATFORM_GROUPS,
+  PLATTFORM_ROOMS,
+  PLATFORM_PAGES,
   navPageFor,
+  isPlattformBereich,
   PORTFOLIO_PAGE,
   pageLabel,
   STANDORT_PAGE,
@@ -263,16 +265,6 @@ export function AppShell({
   const labelSichtbar = useIsDesktop();
   const navTitel = (label: string, zusatz?: string | null, trenner = ' – '): string | undefined =>
     zusatz ? `${label}${trenner}${zusatz}` : labelSichtbar ? undefined : label;
-  /**
-   * S8 · „Plattform ▸" ist EINGEKLAPPT, solange ein Mandant gewählt ist — der
-   * Admin ist dann in der Rolle des Kunden unterwegs. Ohne Mandant bleibt sie
-   * aufgeklappt wie bisher. Der Zustand ist bedienbar (der Betreiber darf sie
-   * jederzeit öffnen); die WAHL des Mandanten setzt ihn nur neu.
-   */
-  const [platformOpen, setPlatformOpen] = useState(!tenantOverride);
-  useEffect(() => {
-    setPlatformOpen(!tenantOverride);
-  }, [tenantOverride]);
 
   // Alerting Scheibe 1 (Entscheid 4A): "N Meldungen dieser Anlage" im Popover der
   // Zustands-Anzeige - die Anzahl ihrer nicht erledigten Meldungen (§6.2).
@@ -389,6 +381,12 @@ export function AppShell({
       ? ebenen.aktivKey === kachel.key
       : ebenen?.aktiv != null && kachel.bereiche.includes(ebenen.aktiv);
 
+  // Scheibe S1 §4.2: auf einer Seite der drei Räume (Plattform/Geräte/Benutzer),
+  // ohne offene Anlage - die Telefon-Leiste trägt dann dieselben drei Räume
+  // wie die Seitenleiste, statt der Ebenen-Kacheln eines Kunden.
+  const aufPlattformRaum =
+    isAdmin && !anlage && (isPlattformBereich(page) || PLATTFORM_ROOMS.some((r) => r.page === page));
+
   /**
    * Die Telefon-Leiste: in einer Anlage ihre fünf Bereiche (E4), auf der
    * Unternehmens- oder Standort-Ebene deren Bereiche mit Seite, erst ab drei
@@ -405,19 +403,32 @@ export function AppShell({
           aktiv: anlage.activeKey === item.key,
           oeffnen: () => openTarget(item.target),
         }))
-      : (ebenen?.kacheln ?? []).map((kachel) => ({
-          key: kachel.key,
-          label: kachel.kurz ?? kachel.label,
-          icon: kachel.icon,
-          badge: null,
-          aktiv: eintragAktiv(kachel),
-          oeffnen: () => ebenen?.onOpen(kachel.ziel),
-        }));
+      : aufPlattformRaum
+        ? PLATTFORM_ROOMS.map((room) => ({
+            key: room.key,
+            label: room.label,
+            icon: room.icon,
+            badge: null,
+            aktiv: navPageFor(page) === room.page,
+            oeffnen: () => onNavigate(room.page),
+          }))
+        : (ebenen?.kacheln ?? []).map((kachel) => ({
+            key: kachel.key,
+            label: kachel.kurz ?? kachel.label,
+            icon: kachel.icon,
+            badge: null,
+            aktiv: eintragAktiv(kachel),
+            oeffnen: () => ebenen?.onOpen(kachel.ziel),
+          }));
   /** Hält die Seitenleiste/Telefon-Leiste den Platz des zweiten Bereichs frei, bis die Oberfläche der Anlage da ist? */
   const platzFuerBereich =
     !!anlage?.bereicheLaden &&
     !anlage.sidebar.bereiche.some((b) => b.key === 'fahrplan' || b.key === 'ladevorgaenge');
-  const barName = anlage ? `Bereiche der Anlage ${anlage.siteName ?? ''}`.trim() : ebenen?.titel ?? '';
+  const barName = anlage
+    ? `Bereiche der Anlage ${anlage.siteName ?? ''}`.trim()
+    : aufPlattformRaum
+      ? 'Räume der Plattform'
+      : ebenen?.titel ?? '';
   /** 2+ Anlagen or a fleet level to return to = there is something to switch. */
   const canSwitchAnlage =
     !!anlage && (anlage.sites.length > 1 || !!anlage.onOpenFleet || (anlage.pfad?.length ?? 0) > 0);
@@ -563,47 +574,25 @@ export function AppShell({
         {anlageNav}
         {ebenenEintraege && <div className="vp-ebenennav">{ebenenEintraege.map(ebenenNavEintrag)}</div>}
         {isAdmin && (
-          // Admin-Umbau Stufe 1 „Ordnung": die elf flachen Punkte sind vier
-          // benannte Gruppen hinter der LANDUNG (Plattform-Übersicht). Seit S8
-          // ist der ganze Block ZUSAMMENKLAPPBAR und startet eingeklappt,
-          // solange ein Mandant gewählt ist.
-          <>
-            <button
-              type="button"
-              className="vp-nav-group-label vp-nav-fold"
-              aria-expanded={platformOpen}
-              onClick={() => setPlatformOpen((v) => !v)}
-            >
-              <Icon name={platformOpen ? 'chevron-down' : 'chevron-right'} size={14} />
-              <span className="vp-nav-lbl">Plattform</span>
-            </button>
-            {platformOpen &&
-              PLATFORM_GROUPS.map((group) => (
-                <div className="vp-navgroup" key={group.key}>
-                  {/* Die Landung trägt keine eigene Überschrift - sie steht schon
-                      unter „Plattform" und braucht keine zweite Zeile. */}
-                  {group.label && (
-                    <div className="vp-nav-group-label vp-nav-sublabel">
-                      <span className="vp-nav-lbl">{group.label}</span>
-                    </div>
-                  )}
-                  {group.pages.map((p) => (
-                    <NavItem
-                      key={p.id}
-                      icon={<Icon name={p.icon} size={18} />}
-                      label={<span className="vp-nav-lbl">{p.label}</span>}
-                      title={navTitel(p.label)}
-                      // Seit Stufe 3 leuchtet der BEREICH, nicht die Seite: der
-                      // Tab „Updates" gehört zu „Geräte", also darf die Leiste
-                      // dort nicht ins Nichts zeigen.
-                      active={navPageFor(page) === p.id}
-                      count={p.id === 'mandanten' && tenants.length ? tenants.length : null}
-                      onClick={() => onNavigate(p.id)}
-                    />
-                  ))}
-                </div>
-              ))}
-          </>
+          // Scheibe S1 (Konzept `vp-adminview-konzept-k1` §4.1/4.2): drei
+          // Räume statt vier Aufgaben-Gruppen hinter einer Landung - Plattform
+          // (mit ihren Reitern), Geräte, Benutzer. Kein Falten mehr: die
+          // Räume sind IMMER sichtbar, auch mit gewähltem Mandanten.
+          <div className="vp-navgroup vp-plattform-raeume">
+            {PLATTFORM_ROOMS.map((room) => (
+              <NavItem
+                key={room.key}
+                icon={<Icon name={room.icon} size={18} />}
+                label={<span className="vp-nav-lbl">{room.label}</span>}
+                title={navTitel(room.label)}
+                // Ein Reiter des Raums „Plattform" (oder ein Katalog-Unter-Reiter)
+                // lässt den Raum-Punkt leuchten, nicht nichts.
+                active={navPageFor(page) === room.page}
+                count={room.key === 'benutzer' && tenants.length ? tenants.length : null}
+                onClick={() => onNavigate(room.page)}
+              />
+            ))}
+          </div>
         )}
       </nav>
       <div className="side-foot">
@@ -733,24 +722,26 @@ export function AppShell({
           )}
 
           {isAdmin && (
-            // Admin: the context chip is a real tenant SWITCHER - the operator's
-            // core cross-tenant tool. Picking a tenant renders the customer
-            // pages for that tenant (RLS-scoped via the X-Tenant-Id header, see
-            // api.ts). The leading building icon + trailing caret make it
-            // unmistakably THE Mandanten control and clearly a dropdown.
-            // Customers get no chip: their tenant is fixed by the login.
-            <span className="vp-context" title="Mandanten-Umschalter">
-              <Icon name="building" size={16} className="vp-context-ic" />
+            // Scheibe S1 (E3 = A, Konzept §4.2): die Suche ersetzt den
+            // Mandanten-Umschalter - sie sucht über die bereits geladenen
+            // Listen (zunächst Kunden und die Plattform-Seiten selbst).
+            // Ein Kunde öffnet seine Kundenansicht ("Wie der Kunde es sieht");
+            // das Rückweg-Band darunter führt zurück, solange sie offen ist.
+            <span className="vp-context vp-admin-suche" title="Box, Kunde, Anlage, Person suchen">
+              <Icon name="search" size={16} className="vp-context-ic" />
               <VpPicker
                 className="vp-context-picker"
-                ariaLabel="Mandanten-Umschalter"
+                ariaLabel="Box, Kunde, Anlage, Person suchen"
                 options={[
-                  { value: '', label: 'Alle Mandanten' },
-                  ...tenants.map((t) => ({ value: t.id, label: t.name })),
+                  ...tenants.map((t) => ({ value: `kunde:${t.id}`, label: t.name, sub: 'Kunde' })),
+                  ...PLATFORM_PAGES.map((p) => ({ value: `seite:${p.id}`, label: p.label, sub: 'Plattform' })),
                 ]}
-                value={tenantOverride ?? ''}
-                onChange={(v) => onTenantChange(v || null)}
-                searchPlaceholder="Mandant suchen …"
+                value=""
+                onChange={(v) => {
+                  if (v.startsWith('kunde:')) onTenantChange(v.slice('kunde:'.length));
+                  else if (v.startsWith('seite:')) onNavigate(v.slice('seite:'.length) as PageId);
+                }}
+                searchPlaceholder="Box, Kunde, Anlage, Person suchen …"
               />
             </span>
           )}
@@ -845,26 +836,6 @@ export function AppShell({
                   <Icon name="help-circle" size={18} />
                   Hilfe &amp; Kontakt
                 </button>
-                {isAdmin && (
-                  // Nur am Telefon eingeblendet (CSS): am Rechner steht die
-                  // Plattform-Gruppe in der Seitenleiste, ein zweiter Ort für
-                  // dieselben Punkte wäre eine Doppelung.
-                  <div className="vp-avatarmenu-phone">
-                    <div className="vp-avatarmenu-head">Plattform</div>
-                    {PLATFORM_GROUPS.flatMap((g) => g.pages).map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        role="menuitem"
-                        className="vp-avatarmenu-item"
-                        onClick={() => openTarget({ kind: 'page', page: p.id })}
-                      >
-                        <Icon name={p.icon} size={18} />
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
                 <button
                   type="button"
                   role="menuitem"
@@ -878,6 +849,20 @@ export function AppShell({
             )}
           </div>
         </header>
+
+        {isAdmin && tenantOverride && (
+          // E3 (Konzept §4.2/§4.6): "Wie der Kunde es sieht" - ein sichtbares
+          // Rückweg-Band, solange die Suche einen Kunden geöffnet hat.
+          <div className="vp-kundenansicht-band" role="status">
+            <Icon name="eye" size={16} />
+            <span>
+              Wie der Kunde es sieht: <strong>{tenants.find((t) => t.id === tenantOverride)?.name ?? tenantOverride}</strong>
+            </span>
+            <button type="button" className="vp-kundenansicht-zurueck" onClick={() => onTenantChange(null)}>
+              Zur Plattform zurück
+            </button>
+          </div>
+        )}
 
         <main className="vp-main has-bottombar">
           {helpArticle && <div className="vp-context-help"><HelpLink article={helpArticle} /></div>}

@@ -55,39 +55,41 @@ for (const [breite, breit] of [[1440, true], [375, false]] as const) {
       await expect(leiste.filter({ hasText: new RegExp(`^${name}$`) }), name).toHaveAttribute('aria-current', 'page');
       // Weiter im Mandanten: derselbe Kundenbereich, der Umschalter nennt ihn.
       expect(await page.evaluate(() => sessionStorage.getItem('vp-tenant-override')), name).toBe(MANDANT_ID);
-      await expect(page.locator('.vp-context')).toContainText(MIT);
+      // Scheibe S1 (E3 = A): die Suche zeigt keinen gewählten Wert mehr - das
+      // Rückweg-Band nennt stattdessen den Mandanten der Kundenansicht.
+      await expect(page.locator('.vp-kundenansicht-band')).toContainText(MIT);
       if (name === 'Fahrplan' || name === 'Steuerung') await foto(page, `mandantensicht-${name.toLowerCase()}-${breite}`);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), name).toBeLessThanOrEqual(1);
     }
   });
 }
 
-test('1440 px: der Rückweg in die Betreiber-Sicht bleibt - Mandanten-Umschalter, ADMIN-Zeichen, Gruppe „Plattform“', async ({ page }) => {
-  // Die Seitenleiste mit der Gruppe „Plattform“ gibt es nur am Rechner; das Telefon-Projekt bringt sonst 393 px mit.
+test('1440 px: der Rückweg in die Betreiber-Sicht bleibt - Suche, ADMIN-Zeichen, Raum „Plattform“', async ({ page }) => {
+  // Die Seitenleiste mit den drei Räumen gibt es nur am Rechner; das Telefon-Projekt bringt sonst 393 px mit.
   await page.setViewportSize({ width: 1440, height: 900 });
   await springe(page, MIT);
   await expect(page).toHaveURL(new RegExp(`#/anlage/${ANLAGE}$`));
   await expect(page.locator('.vp-usermenu .n')).toContainText('ADMIN');
-  // Der Umschalter nennt den Mandanten; „Alle Mandanten“ verlässt ihn und führt in die Betreiber-Sicht.
-  const umschalter = page.locator('.vp-context');
-  await expect(umschalter).toContainText(MIT);
-  // Die Plattform-Gruppe steht unter den Bereichen (eingeklappt, solange ein Mandant gewählt ist) und öffnet sich.
-  await page.getByRole('button', { name: 'Plattform', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Plattform-Übersicht' })).toBeVisible();
+  // Scheibe S1 (E3 = A): das Rückweg-Band nennt den Mandanten, statt des Umschalter-Chips.
+  await expect(page.locator('.vp-kundenansicht-band')).toContainText(MIT);
+  // Die Räume stehen UNGEFALTET unter den Bereichen der Anlage.
+  await expect(page.getByRole('button', { name: 'Plattform', exact: true })).toBeVisible();
   await foto(page, 'mandantensicht-rueckweg-1440');
-  await umschalter.getByRole('combobox').or(umschalter.getByRole('button')).first().click();
-  await page.getByRole('option', { name: 'Alle Mandanten' }).click();
+  await page.getByRole('button', { name: 'Zur Plattform zurück' }).click();
   expect(await page.evaluate(() => sessionStorage.getItem('vp-tenant-override'))).toBeNull();
   await expect(page.getByRole('button', { name: 'Fahrplan', exact: true })).toHaveCount(0);
 });
 
-test('375 px: der Rückweg bleibt im Konto-Menü - Plattform steht dort', async ({ page }) => {
+test('375 px: der Rückweg bleibt sichtbar - das Band, nicht mehr das Konto-Menü', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await springe(page, MIT);
   await expect(page).toHaveURL(new RegExp(`#/anlage/${ANLAGE}$`));
-  await page.getByRole('button', { name: /Konto-Menü/ }).click();
-  await expect(page.getByRole('menu', { name: 'Konto-Menü' })).toContainText('Plattform');
+  // Scheibe S1: „Plattform" steht nicht mehr im Avatar-Menü (die drei Räume
+  // gelten nur ausserhalb einer offenen Anlage) - das Band bleibt der Weg zurück.
+  await expect(page.locator('.vp-kundenansicht-band')).toContainText(MIT);
   await foto(page, 'mandantensicht-rueckweg-375');
+  await page.getByRole('button', { name: 'Zur Plattform zurück' }).click();
+  expect(await page.evaluate(() => sessionStorage.getItem('vp-tenant-override'))).toBeNull();
 });
 
 test('mehrere Anlagen: wie beim Kunden das Portfolio, in jeder geöffneten Anlage stehen die Bereiche', async ({ page }) => {

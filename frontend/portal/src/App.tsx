@@ -44,7 +44,7 @@ import {
   canonicalStandortHash,
   canonicalVerbrauchHash,
   canonicalPlatformHash,
-  isGeraeteBereich,
+  isPlattformBereich,
   hashForRoute,
   isBootHash,
   pageRoute,
@@ -250,15 +250,15 @@ const PortfolioErloese = lazy(() =>
 const MandantenPage = lazy(() =>
   PAGE_CHUNK.mandanten().then((m) => ({ default: m.MandantenPage })),
 );
-const PlattformUebersichtPage = lazy(() =>
-  PAGE_CHUNK['plattform-uebersicht']().then((m) => ({
-    default: m.PlattformUebersichtPage,
-  })),
+// Scheibe S1: der Raum „Plattform" mit seinen fünf Reitern (Übersicht ·
+// Software · Werkstatt · Fernwartung · Katalog) rendert über EINEN
+// Lade-Einstieg - alle fünf Routen teilen sich den Wirt.
+const PlattformBereich = lazy(() =>
+  PAGE_CHUNK['plattform-uebersicht']().then((m) => ({ default: m.PlattformBereich })),
 );
-// Stufe 3: EIN Nav-Punkt „Geräte" mit zwei Tabs - beide Routen rendern denselben
-// Bereich, also gibt es auch nur einen Lade-Einstieg.
-const GeraeteBereich = lazy(() =>
-  PAGE_CHUNK['geraete-registry']().then((m) => ({ default: m.GeraeteBereich })),
+// Der Raum „Geräte": bis zur Geräteakte (S2) die bestehende Registrierung, allein.
+const GeraeteRegistryPage = lazy(() =>
+  PAGE_CHUNK['geraete-registry']().then((m) => ({ default: m.GeraeteRegistryPage })),
 );
 const OptimizerPage = lazy(() =>
   PAGE_CHUNK.optimizer().then((m) => ({ default: m.OptimizerPage })),
@@ -1942,8 +1942,8 @@ function UnifiedPortal() {
               ladepunktAnzahl={ladepunktAnzahl}
             />
           )}
-          {page === 'plattform-uebersicht' && isAdmin && (
-            <PlattformUebersichtPage onJumpToTenant={jumpToTenant} onNavigate={navigate} />
+          {isPlattformBereich(page) && isAdmin && (
+            <PlattformBereich page={page} onNavigate={navigate} onJumpToTenant={jumpToTenant} />
           )}
           {page === 'mandanten' && isAdmin && (
             <MandantenPage
@@ -1954,8 +1954,8 @@ function UnifiedPortal() {
               onJumpToTenant={jumpToTenant}
             />
           )}
-          {isGeraeteBereich(page) && isAdmin && (
-            <GeraeteBereich page={page} onNavigate={navigate} onJumpToTenant={jumpToTenant} />
+          {page === 'geraete-registry' && isAdmin && (
+            <GeraeteRegistryPage onJumpToTenant={jumpToTenant} />
           )}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
           {page === 'steuerungs-freigabe' && isAdmin && <SteuerungsFreigabePage />}

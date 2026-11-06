@@ -21,7 +21,8 @@ test('Updates: Lage, Linien, Braucht dich und Boxen - Fortschritt, Box-Dialog un
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/e2e/box-updates.html');
-  await expect(page.getByRole('tab', { name: 'Updates', exact: true })).toHaveAttribute('aria-selected', 'true');
+  // Scheibe S1 (N5): die Seite trägt seither EINEN Namen - „Software" (Reiter des Raums „Plattform").
+  await expect(page.getByRole('tab', { name: 'Software', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('lage')).toContainText('1 Box hält ein Update zurück: Gewerbepark West.');
   const docker = page.getByTestId('linie-docker');
   await expect(docker.getByTestId('linie-neuestes')).toHaveText('edge-2026.09.10');
@@ -67,7 +68,8 @@ test('Updates: Lage, Linien, Braucht dich und Boxen - Fortschritt, Box-Dialog un
   await expect(boxes.getByTestId('box-zeile')).toHaveCount(1);
   await expect(boxes).toContainText('Solarpark Sonnenhof');
 
-  await page.getByRole('tab', { name: 'Registrierung' }).click();
+  // Scheibe S1: Registrierung ist kein Reiter des Raums „Plattform" mehr - sie ist der eigene Raum „Geräte".
+  await page.getByRole('button', { name: 'Geräte', exact: true }).click();
   const support = page.locator('details').filter({ hasText: '1 Box ohne Kundenkonto' });
   await expect(support).not.toHaveAttribute('open');
   await support.locator('summary').click();
@@ -256,7 +258,8 @@ test('Registrierung: Online-Status je Box mit Zählung und Filter, ohne Überlau
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto('/e2e/box-updates.html');
-  await page.getByRole('tab', { name: 'Registrierung' }).click();
+  // Scheibe S1: Registrierung ist kein Reiter des Raums „Plattform" mehr - sie ist der eigene Raum „Geräte".
+  await page.getByRole('button', { name: 'Geräte', exact: true }).click();
   const devices = page.getByTestId('devices');
   await expect(devices).toBeVisible();
   await expect(page.getByTestId('online-zaehlung')).toHaveText('6 online · 1 offline · 1 nie gemeldet');

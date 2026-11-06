@@ -69,13 +69,13 @@ describe('AppShell "＋ Anlage hinzufügen" header action', () => {
   });
 });
 
-describe('AppShell admin tenant switcher', () => {
+describe('AppShell Suche statt Mandanten-Umschalter (Scheibe S1, E3 = A)', () => {
   const tenants = [
     { id: 't-1', name: 'Stadtwerke Musterstadt', segment: 'CI', plan: 'basic', betriebsart: null, betriebsartEffective: 'betreiber' as const, createdAt: '2026-01-01T00:00:00Z' },
     { id: 't-2', name: 'Familie Kaiser', segment: 'B2C', plan: 'basic', betriebsart: null, betriebsartEffective: 'endkunde' as const, createdAt: '2026-01-01T00:00:00Z' },
   ];
 
-  it('renders the tenant switcher with an "Alle Mandanten" default for admins', () => {
+  it('sucht über die geladenen Kunden; die Wahl öffnet die Kundenansicht', () => {
     const onTenantChange = vi.fn();
     render(
       <AppShell
@@ -90,22 +90,58 @@ describe('AppShell admin tenant switcher', () => {
         <div>content</div>
       </AppShell>,
     );
-    // Seit dem Picker-System ist der Umschalter der Haus-Picker, kein `select`.
-    const trigger = screen.getByRole('combobox', { name: 'Mandanten-Umschalter' });
-    expect(trigger).toHaveTextContent('Alle Mandanten');
+    const trigger = screen.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' });
     fireEvent.click(trigger);
-    expect(screen.getByRole('option', { name: 'Alle Mandanten' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('option', { name: 'Familie Kaiser' }));
+    expect(screen.getByRole('option', { name: /Familie Kaiser/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: /Familie Kaiser/ }));
     expect(onTenantChange).toHaveBeenCalledWith('t-2');
   });
 
-  it('shows no tenant switcher for a customer', () => {
+  it('sucht auch über die Plattform-Seiten und navigiert dorthin', () => {
+    const onNavigate = vi.fn();
+    render(
+      <AppShell
+        {...baseProps}
+        isAdmin
+        showOverview
+        showAddAnlage={false}
+        onAddAnlage={vi.fn()}
+        onNavigate={onNavigate}
+        tenants={tenants}
+      >
+        <div>content</div>
+      </AppShell>,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' }));
+    fireEvent.click(screen.getByRole('option', { name: /^Werkstatt/ }));
+    expect(onNavigate).toHaveBeenCalledWith('werkstatt');
+  });
+
+  it('zeigt keine Suche für einen Kunden', () => {
     render(
       <AppShell {...baseProps} isAdmin={false} showAddAnlage={false} onAddAnlage={vi.fn()} tenants={[]}>
         <div>content</div>
       </AppShell>,
     );
-    expect(screen.queryByRole('combobox', { name: 'Mandanten-Umschalter' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' })).toBeNull();
+  });
+
+  it('zeigt das Rückweg-Band "Wie der Kunde es sieht" nur mit gewähltem Kunden', () => {
+    const onTenantChange = vi.fn();
+    const { rerender } = render(
+      <AppShell {...baseProps} isAdmin showAddAnlage={false} onAddAnlage={vi.fn()} tenants={tenants} onTenantChange={onTenantChange}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(screen.queryByText('Zur Plattform zurück')).toBeNull();
+    rerender(
+      <AppShell {...baseProps} isAdmin showAddAnlage={false} onAddAnlage={vi.fn()} tenants={tenants} tenantOverride="t-2" onTenantChange={onTenantChange}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(screen.getByText('Familie Kaiser')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Zur Plattform zurück' }));
+    expect(onTenantChange).toHaveBeenCalledWith(null);
   });
 });
 
@@ -493,32 +529,6 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     setSelbstauskunft(null);
   });
 
-  it('führt die Plattform-Punkte im Avatar-Menü mit (der Telefon-Weg des Admins)', () => {
-    render(
-      <AppShell
-        {...baseProps}
-        isAdmin
-        showAddAnlage={false}
-        onAddAnlage={vi.fn()}
-        anlage={anlage}
-      >
-        <div>content</div>
-      </AppShell>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
-    const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
-    expect(menu.textContent).toContain('Plattform');
-    // Seit Stufe 3 ist „Edge-Updates" ein TAB von „Geräte" - im Menü steht der
-    // Bereich, nicht sein Tab (der wäre ein zweiter Weg zum selben Ort).
-    expect(menu.textContent).toContain('Geräte');
-    expect(menu.textContent).not.toContain('Edge-Updates');
-    // Und ein Kunde bekommt die Gruppe gar nicht erst.
-    cleanup();
-    renderShell();
-    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
-    expect(screen.getByRole('menu', { name: 'Konto-Menü' }).textContent).not.toContain('Plattform');
-  });
-
   it('das Avatar-Menü schließt mit Escape', () => {
     renderShell();
     fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
@@ -621,7 +631,7 @@ describe('AppShell: die Flotten-Ebene navigiert ohne Leiste', () => {
  * Gruppen. Geprüft wird die ORDNUNG in der Schale - die Mengen-Invarianten
  * liegen in `nav.test.ts`.
  */
-describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
+describe('AppShell: die drei Räume (Scheibe S1, Konzept vp-adminview-konzept-k1 §4.2)', () => {
   const adminProps = {
     ...baseProps,
     isAdmin: true,
@@ -630,55 +640,18 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
     onAddAnlage: vi.fn(),
   };
 
-  function sidebarLabels() {
-    const nav = screen.getByLabelText('Hauptnavigation');
-    return [...nav.querySelectorAll('.vp-nav-group-label .vp-nav-lbl')].map((n) => n.textContent);
-  }
-
-  /**
-   * S8: die Gruppe ist ZUSAMMENKLAPPBAR und startet EINGEKLAPPT, solange ein
-   * Mandant gewählt ist - dort arbeitet der Admin in der Kundensicht, und elf
-   * Plattform-Punkte darüber sind dann Rauschen. Ohne Mandant ist sie offen.
-   */
-  function oeffnePlattform() {
-    // Exakt „Plattform" - `/Plattform/` träfe auch „Plattform-Übersicht".
-    const knopf = screen.getByRole('button', { name: 'Plattform' });
-    if (knopf.getAttribute('aria-expanded') === 'false') fireEvent.click(knopf);
-  }
-
-  it('rendert „Plattform" plus die vier Gruppen-Überschriften in Arbeits-Reihenfolge', () => {
+  it('rendert die drei Räume Plattform · Geräte · Benutzer, ungefaltet', () => {
     render(
       <AppShell {...adminProps}>
         <div>content</div>
       </AppShell>,
     );
-    oeffnePlattform();
-    expect(sidebarLabels()).toEqual([
-      'Plattform',
-      'Flotte',
-      'Anlagen-Werkzeuge',
-      'Katalog',
-      'Kunden',
-    ]);
+    for (const label of ['Plattform', 'Geräte', 'Benutzer']) {
+      expect(navEintrag(label)).not.toBeNull();
+    }
   });
 
-  it('stellt die Landung OHNE eigene Überschrift an die Spitze', () => {
-    render(
-      <AppShell {...adminProps}>
-        <div>content</div>
-      </AppShell>,
-    );
-    oeffnePlattform();
-    const nav = screen.getByLabelText('Hauptnavigation');
-    const gruppen = [...nav.querySelectorAll('.vp-navgroup')];
-    // Die erste Gruppe ist die Landung: ein Eintrag, keine Zwischenüberschrift.
-    expect(gruppen[0].querySelector('.vp-nav-sublabel')).toBeNull();
-    expect(gruppen[0].textContent).toContain('Plattform-Übersicht');
-    // Und die Gruppen darunter tragen ihre Überschrift.
-    expect(gruppen[1].querySelector('.vp-nav-sublabel')?.textContent).toBe('Flotte');
-  });
-
-  it('behält jeden Punkt bedienbar und den Mandanten-Zähler', () => {
+  it('behält jeden Raum bedienbar, mit dem Mandanten-Zähler am Raum "Benutzer"', () => {
     const onNavigate = vi.fn();
     render(
       <AppShell
@@ -691,90 +664,47 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
         <div>content</div>
       </AppShell>,
     );
-    oeffnePlattform();
-    for (const label of ['Geräte', 'Steuerungs-Freigabe',
-      'Optimizer', 'Flows', 'Gerätevorlagen', 'Komponenten', 'Mandanten']) {
-      expect(navEintrag(label)).not.toBeNull();
-    }
-    // Die drei gefalteten Punkte sind aus der LEISTE verschwunden - ihre
-    // Flächen leben als Tab (Updates), als Sektion (Gerätetypen) bzw. im
-    // Mandanten-Drawer (Benutzer) weiter.
-    expect(navEintrag('Edge-Updates')).toBeNull();
-    expect(navEintrag('Gerätetypen')).toBeNull();
-    expect(navEintrag('Benutzer')).toBeNull();
     fireEvent.click(navEintrag('Geräte')!);
-    expect(onNavigate).toHaveBeenCalledWith('edge-updates');
-    expect(navEintrag('Mandanten')!.textContent).toContain('1');
+    expect(onNavigate).toHaveBeenCalledWith('geraete-registry');
+    expect(navEintrag('Benutzer')!.textContent).toContain('1');
+    fireEvent.click(navEintrag('Benutzer')!);
+    expect(onNavigate).toHaveBeenCalledWith('mandanten');
+    fireEvent.click(navEintrag('Plattform')!);
+    expect(onNavigate).toHaveBeenCalledWith('plattform-uebersicht');
   });
 
-  it('lässt „Geräte" auch auf dem Tab Updates leuchten', () => {
-    render(
-      <AppShell {...adminProps} page="edge-updates">
-        <div>content</div>
-      </AppShell>,
-    );
-    oeffnePlattform();
-    // Ein Tab darf die Leiste nie ins Nichts zeigen lassen: der Bereich ist
-    // aktiv, sonst wüsste der Betreiber nicht, wo er steht.
-    expect(navEintrag('Geräte')!.className).toContain('active');
+  it('lässt "Plattform" auch auf jedem seiner Reiter leuchten (Software, Werkstatt, …)', () => {
+    for (const page of ['edge-updates', 'werkstatt', 'fernwartung', 'katalog'] as const) {
+      const { unmount } = render(
+        <AppShell {...adminProps} page={page}>
+          <div>content</div>
+        </AppShell>,
+      );
+      expect(navEintrag('Plattform')!.className).toContain('active');
+      unmount();
+    }
   });
 
-  it('S8: die Gruppe startet EINGEKLAPPT, solange ein Mandant gewählt ist', () => {
+  it('bleibt mit gewähltem Mandanten unverändert sichtbar - kein Falten mehr', () => {
     render(
       <AppShell {...adminProps} tenantOverride="t-1">
         <div>content</div>
       </AppShell>,
     );
-    const knopf = screen.getByRole('button', { name: 'Plattform' });
-    expect(knopf.getAttribute('aria-expanded')).toBe('false');
-    // Eingeklappt heißt EINGEKLAPPT: die Punkte stehen nicht im DOM.
-    expect(navEintrag('Mandanten')).toBeNull();
-    // Ein Klick öffnet sie - der Weg ist da, er drängt sich nur nicht auf.
-    fireEvent.click(knopf);
-    expect(navEintrag('Mandanten')).not.toBeNull();
-
-    // Und ohne gewählten Mandanten steht sie von sich aus offen.
-    cleanup();
-    render(
-      <AppShell {...adminProps} tenantOverride={null}>
-        <div>content</div>
-      </AppShell>,
-    );
-    expect(
-      screen.getByRole('button', { name: 'Plattform' }).getAttribute('aria-expanded'),
-    ).toBe('true');
+    expect(navEintrag('Benutzer')).not.toBeNull();
+    expect(navEintrag('Geräte')).not.toBeNull();
+    expect(navEintrag('Plattform')).not.toBeNull();
   });
 
-  it('S8: die Wahl eines Mandanten klappt sie zu, das Zurücksetzen wieder auf', () => {
-    const { rerender } = render(
-      <AppShell {...adminProps} tenantOverride={null}>
-        <div>content</div>
-      </AppShell>,
-    );
-    expect(navEintrag('Mandanten')).not.toBeNull();
-    rerender(
-      <AppShell {...adminProps} tenantOverride="t-1">
-        <div>content</div>
-      </AppShell>,
-    );
-    expect(navEintrag('Mandanten')).toBeNull();
-    rerender(
-      <AppShell {...adminProps} tenantOverride={null}>
-        <div>content</div>
-      </AppShell>,
-    );
-    expect(navEintrag('Mandanten')).not.toBeNull();
-  });
-
-  it('zeigt einem Kunden keine einzige Plattform-Gruppe', () => {
+  it('zeigt einem Kunden keinen einzigen Raum', () => {
     render(
       <AppShell {...baseProps} showAddAnlage={false} onAddAnlage={vi.fn()}>
         <div>content</div>
       </AppShell>,
     );
-    expect(sidebarLabels()).not.toContain('Plattform');
-    expect(screen.queryByRole('button', { name: 'Plattform' })).toBeNull();
+    expect(navEintrag('Plattform')).toBeNull();
     expect(navEintrag('Geräte')).toBeNull();
+    expect(navEintrag('Benutzer')).toBeNull();
   });
 });
 

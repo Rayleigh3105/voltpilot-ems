@@ -47,7 +47,8 @@ export type PageId =
   | 'vorlagen'
   | 'komponenten-flotte'
   | 'steuerungs-freigabe'
-  | 'flows';
+  | 'flows'
+  | 'katalog';
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
 export type AnlagenSub =
@@ -336,163 +337,136 @@ export function isPortfolioPage(page: PageId): boolean {
 }
 
 /**
- * Eine benannte Gruppe der Plattform-Navigation (Admin-Umbau Stufe 1
- * „Ordnung", Konzept `vp-admin-neu-konzept-a9` §3.1, Captain-Entscheid F1).
+ * Ein RAUM der Plattform-Navigation (Admin-Umbau Scheibe S1, Konzept
+ * `vp-adminview-konzept-k1` §4.1/4.2, Captain-Freigabe „alle Empfehlungen",
+ * E3 = A). Die vier Gruppen aus Stufe 1 waren selbst noch elf Seiten unter
+ * EINEM Dach - der neue Schnitt ist nach dem, was der Admin IST (Plattform ·
+ * Geräte · Benutzer), nicht mehr nach dem, was er TUT.
  *
- * Die Plattform-Gruppe war auf ELF flache Punkte gewachsen, weil jede
- * Ausbaustufe einen Punkt ANGEHÄNGT statt eingeordnet hat - die Reihenfolge
- * erzählte die Baugeschichte statt der Arbeit. Die Gruppen leiten sich aus den
- * belegten Abläufen ab (§2), nicht aus der Datenmodell-Nachbarschaft.
- *
- * `label: null` heißt „führt die Gruppe an, ohne eigene Überschrift" - das ist
- * die LANDUNG (Plattform-Übersicht), die schon unter dem „Plattform"-Label der
- * Schale steht und keine zweite Zeile über sich braucht.
+ * `page` nennt die LANDUNG des Raums - dort öffnet ein Klick auf den
+ * Raum-Punkt und dort leuchtet der Punkt, solange irgendeine Seite des Raums
+ * offen ist (siehe {@link navPageFor}).
  */
-export interface PlatformGroup {
-  key: string;
-  label: string | null;
-  pages: PageDef[];
+export interface PlattformRoom {
+  key: 'plattform' | 'geraete' | 'benutzer';
+  label: string;
+  icon: IconName;
+  page: PageId;
 }
 
 /**
- * Die Plattform-Navigation, gruppiert nach dem, was ein Betreiber TUT.
- *
- * Sie führt mit der **Plattform-Übersicht** - dem Flotten-Puls über ALLE
- * Mandanten (Captain-Entscheid Q1: ein eigener Nav-Punkt, die Mandanten-Seite
- * bleibt reine Verwaltung) und seit Stufe 1 auch die LANDUNG eines
- * Admin-Boots. Darunter vier Gruppen: die Flotte betreiben · eine Anlage tief
- * diagnostizieren · den Katalog pflegen · Kunden verwalten.
- *
- * **Zwei Punkte stehen hier bewusst schon an ihrem KÜNFTIGEN Platz, obwohl sie
- * eigene Nav-Punkte bleiben:** „Edge-Updates" neben „Geräte" (in Stufe 3 wird
- * es dessen zweiter Tab) und „Gerätetypen" neben „Steuerungs-Freigabe" (in
- * Stufe 3 wird es dessen dritte Sektion). Damit ist Stufe 3 ein reines
- * Entfernen dieser zwei Einträge und kein zweites Umsortieren.
- *
- * **Icons sind entdoppelt** (§1.5 B2): innerhalb dieser Liste trägt jeder Punkt
- * ein eigenes Icon - wer die Leiste scannt, konnte vorher vier Punkte nicht
- * unterscheiden (`settings` zweimal, `cpu` zweimal).
+ * Die drei Räume (§4.2): **Plattform** (alles Geräteübergreifende, mit
+ * Reitern - {@link PLATTFORM_BEREICH}), **Geräte** (die Liste aller Boxen -
+ * bis zur Geräteakte in S2 bleibt das die bestehende Registrierung) und
+ * **Benutzer** (bis zur Kundenakte in S5 die bestehende Mandanten-Seite).
  */
-export const PLATFORM_GROUPS: PlatformGroup[] = [
-  {
-    key: 'landing',
-    label: null,
-    pages: [
-      {
-        id: 'plattform-uebersicht',
-        label: 'Plattform-Übersicht',
-        icon: 'dashboard',
-        adminOnly: true,
-      },
-    ],
-  },
-  {
-    key: 'flotte',
-    label: 'Flotte',
-    pages: [
-      // Updates are the default device workspace; registration keeps its
-      // existing route and device deep links as the secondary tab.
-      { id: 'edge-updates', label: 'Geräte', icon: 'cpu', adminOnly: true },
-      // Das PLATTFORM-Gedaechtnis der Steuerungs-Freigabe: ein Modell wird
-      // EINMAL am Pruefstand freigegeben, jede Anlage wird einzeln
-      // scharfgeschaltet. Seit Stufe 3 wohnen die steuerbaren GERÄTETYPEN als
-      // dritte Sektion hier - dieselbe Frage („was dürfen wir steuern?"), nur
-      // für die andere Geräteklasse.
-      { id: 'steuerungs-freigabe', label: 'Steuerungs-Freigabe', icon: 'shield', adminOnly: true },
-    ],
-  },
-  {
-    key: 'anlagen-werkzeuge',
-    label: 'Anlagen-Werkzeuge',
-    pages: [
-      { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
-      { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
-    ],
-  },
-  {
-    key: 'katalog',
-    label: 'Katalog',
-    pages: [
-      // Einheitsmodell Stufe 6: eine geprüfte Gerätevorlage entsteht als
-      // DATENSATZ (kein Software-Release), und die Komponenten-Welt der Flotte
-      // ist an EINER Stelle sichtbar statt nur je Anlage.
-      { id: 'vorlagen', label: 'Gerätevorlagen', icon: 'layers', adminOnly: true },
-      { id: 'komponenten-flotte', label: 'Komponenten', icon: 'list', adminOnly: true },
-    ],
-  },
-  {
-    key: 'kunden',
-    label: 'Kunden',
-    pages: [
-      // Seit Stufe 4 „Feinschliff" trägt der Mandanten-Drawer die VOLLE
-      // Benutzer-Verwaltung (inkl. Passwort-Reset), deshalb ist „Benutzer"
-      // kein eigener Punkt mehr - die alte Route bleibt als Legacy gültig.
-      { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
-    ],
-  },
+export const PLATTFORM_ROOMS: PlattformRoom[] = [
+  { key: 'plattform', label: 'Plattform', icon: 'dashboard', page: 'plattform-uebersicht' },
+  { key: 'geraete', label: 'Geräte', icon: 'cpu', page: 'geraete-registry' },
+  { key: 'benutzer', label: 'Benutzer', icon: 'users', page: 'mandanten' },
 ];
 
-/** Ein Tab eines Plattform-BEREICHS (Stufe 3): eine eigene Route, ein Ort. */
+/** Ein Tab eines Plattform-BEREICHS: eine eigene Route, ein Ort. */
 export interface BereichTab {
   id: PageId;
   label: string;
 }
 
-/** Devices opens on Updates, with Registration as the secondary tab.
- * Both PageIds stay routable; navPageFor highlights the shared sidebar entry. */
-export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
-  host: 'edge-updates',
+/**
+ * Der Raum „Plattform" trägt fünf Reiter (§4.2/§4.3): die Landung
+ * (Plattform-Übersicht), **Software** (N5, Abschnitt 9 - EIN Name für die
+ * Seite, die bisher fünf trug: „Geräte", „Updates", „Geräte & Updates",
+ * „Edge-Updates" und die Route `edge-updates`), Werkstatt, Fernwartung und
+ * Katalog (Gerätevorlagen, Steuerungs-Freigabe, Komponenten - zusammengefasst
+ * hinter {@link KATALOG_TABS}).
+ */
+export const PLATTFORM_BEREICH: { host: PageId; tabs: BereichTab[] } = {
+  host: 'plattform-uebersicht',
   tabs: [
-    { id: 'edge-updates', label: 'Updates' },
-    { id: 'geraete-registry', label: 'Registrierung' },
-    // Wartungstunnel der Boxen (Entscheid E5): Fenster, Techniker-Zugänge,
-    // Protokoll. Nur Plattform-Admins; der Kunde sieht davon nichts (O3).
-    { id: 'fernwartung', label: 'Fernwartung' },
-    // Boxen vor dem Versand (Entscheid vom 26.10.2026): der Ablauf als
-    // geführte Schritte, das Register und die Abnahme nach der Werkstatt-Regel.
+    { id: 'plattform-uebersicht', label: 'Übersicht' },
+    { id: 'edge-updates', label: 'Software' },
     { id: 'werkstatt', label: 'Werkstatt' },
+    { id: 'fernwartung', label: 'Fernwartung' },
+    { id: 'katalog', label: 'Katalog' },
   ],
 };
+
+/** Ein Unter-Reiter des Raums „Katalog" (§4.3): je eine bestehende Seite, ungeändert. */
+export type KatalogSektion = 'vorlagen' | 'modelle' | 'komponenten';
+
+export const KATALOG_TABS: { id: KatalogSektion; label: string }[] = [
+  { id: 'vorlagen', label: 'Gerätevorlagen' },
+  { id: 'modelle', label: 'Steuerungs-Freigabe' },
+  { id: 'komponenten', label: 'Komponenten' },
+];
+
+/** Die bestehende Seite hinter einem Katalog-Unter-Reiter. */
+export function katalogSektionPage(sektion: KatalogSektion): PageId {
+  if (sektion === 'vorlagen') return 'vorlagen';
+  if (sektion === 'komponenten') return 'komponenten-flotte';
+  return 'steuerungs-freigabe';
+}
 
 /**
  * Plattform-Seiten, die als TAB eines Bereichs leben statt als eigener
  * Nav-Punkt. Sie sind vollwertige Routen (Lesezeichen, Deep-Links, der
  * Admin-Zaun in `App.tsx`) und stehen deshalb in {@link PLATFORM_PAGES} - nur
- * eben nicht in {@link PLATFORM_GROUPS}, das die NAVIGATION beschreibt.
+ * eben nicht als eigener Raum-Punkt.
  */
 export const PLATFORM_TAB_PAGES: PageDef[] = [
-  // Existing registration links remain valid, including ?geraet= references.
-  { id: 'geraete-registry', label: 'Registrierung', icon: 'plus', adminOnly: true },
-  { id: 'fernwartung', label: 'Fernwartung', icon: 'lock', adminOnly: true },
+  { id: 'edge-updates', label: 'Software', icon: 'refresh-cw', adminOnly: true },
   { id: 'werkstatt', label: 'Werkstatt', icon: 'sliders', adminOnly: true },
+  { id: 'fernwartung', label: 'Fernwartung', icon: 'lock', adminOnly: true },
+  { id: 'katalog', label: 'Katalog', icon: 'archive', adminOnly: true },
+  // Nicht mehr in der Navigation (Scheibe S1 hält sich an Schale + Umhängen),
+  // aber als Route gültig bis Scheibe S3 ihnen einen Ort in der Geräteakte gibt.
+  { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
+  { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
+  { id: 'steuerungs-freigabe', label: 'Steuerungs-Freigabe', icon: 'shield', adminOnly: true },
+  { id: 'vorlagen', label: 'Gerätevorlagen', icon: 'layers', adminOnly: true },
+  { id: 'komponenten-flotte', label: 'Komponenten', icon: 'list', adminOnly: true },
 ];
 
 /**
- * Die flache Liste aller Plattform-Seiten: die Nav-Gruppen PLUS die Tab-Seiten.
- * Sie ist die EINE Wahrheit über die MENGE der Plattform-Routen und trägt
- * jeden Bestandsleser (den Admin-Zaun in `App.tsx`, `ALL_PAGES`); die Gruppen
- * beschreiben davon nur die PRÄSENTATION.
- *
- * **Admin boundary:** secondary tabs must stay in this list even though
- * they do not appear as separate sidebar entries.
+ * Die LANDUNG jedes Raums (die Punkte, die die Schale zeigt) - nur
+ * {@link PLATTFORM_ROOMS} selbst, keine Tab-Seite steht hier zusätzlich.
+ */
+const PLATFORM_LANDING_PAGES: PageDef[] = PLATTFORM_ROOMS.map((r) => ({
+  id: r.page,
+  label: r.label,
+  icon: r.icon,
+  adminOnly: true,
+}));
+
+/**
+ * Die flache Liste aller Plattform-Seiten: die Raum-Landungen PLUS die
+ * Tab-Seiten. Sie ist die EINE Wahrheit über die MENGE der Plattform-Routen
+ * und trägt jeden Bestandsleser (den Admin-Zaun in `App.tsx`, `ALL_PAGES`).
  */
 export const PLATFORM_PAGES: PageDef[] = [
-  ...PLATFORM_GROUPS.flatMap((g) => g.pages),
+  ...PLATFORM_LANDING_PAGES,
   ...PLATFORM_TAB_PAGES,
 ];
 
 /**
  * Der Nav-Punkt, unter dem eine Seite WOHNT - für die Hervorhebung in der
- * Schale. Für jede Seite sie selbst; für einen Tab sein Bereich (Tab Updates
- * lässt „Geräte" leuchten, nicht nichts).
+ * Schale. Für jede Seite sie selbst; für einen Reiter des Raums „Plattform"
+ * dessen Landung, für eine Katalog-Unterseite „Katalog".
  */
 export function navPageFor(page: PageId): PageId {
-  return GERAETE_BEREICH.tabs.some((t) => t.id === page) ? GERAETE_BEREICH.host : page;
+  if (PLATTFORM_BEREICH.tabs.some((t) => t.id === page)) return PLATTFORM_BEREICH.host;
+  if (KATALOG_TABS.some((t) => katalogSektionPage(t.id) === page)) return 'katalog';
+  return page;
 }
 
-/** Gehört diese Seite in den Geräte-Bereich (= ist sie einer seiner Tabs)? */
-export function isGeraeteBereich(page: PageId): boolean {
-  return GERAETE_BEREICH.tabs.some((t) => t.id === page);
+/**
+ * Gehört diese Seite in den WRAPPER des Raums „Plattform" (= rendert sie die
+ * äußere Reiterleiste)? Nur die fünf Reiter selbst - eine Katalog-Unterseite
+ * über ihre EIGENE, alte Adresse (`#/vorlagen`, …) bleibt bewusst ungerahmt,
+ * damit sie nicht zweimal rendert.
+ */
+export function isPlattformBereich(page: PageId): boolean {
+  return PLATTFORM_BEREICH.tabs.some((t) => t.id === page);
 }
 
 /** "Meine Anlage" for 0-1 Anlagen, "Meine Anlagen" from 2 (the fleet list). */
@@ -550,41 +524,84 @@ const LEGACY_ROUTES: Record<string, AnlagenSub | null> = {
 };
 
 /**
- * Stillgelegte PLATTFORM-Seiten, die in eine andere Seite GEFALTET wurden -
- * das `LEGACY_ROUTES`-Muster auf Seiten-Ebene (Admin-Umbau Stufe 3/4, §6.3).
- *
- * **Der Unterschied zu einem TAB:** `edge-updates` bleibt eine ECHTE `PageId`
- * (sie rendert den Geräte-Bereich mit ihrem Tab), weil auch programmatische
- * Sprünge - der Flotten-Puls ruft `onNavigate('edge-updates')` - unverändert
- * funktionieren müssen. Eine Seite HIER dagegen existiert nicht mehr; ihr
- * Hash wird auf die aufnehmende Seite umgeschrieben, mitsamt dem
- * SEKTIONS-Anker, damit ein Lesezeichen genau dort landet, wo sein Inhalt
- * jetzt wohnt.
+ * Das Segment hinter `#/plattform/…` je Seite des Raums (leer = die Landung
+ * selbst, `#/plattform`). Nur die drei Raum-Landungen und die Reiter des
+ * Raums „Plattform" stehen hier - Katalog-Unterseiten (Vorlagen,
+ * Steuerungs-Freigabe, Komponenten) bleiben bei ihrer EIGENEN, flachen
+ * Adresse (`#/vorlagen`, …), denn der Katalog-Reiter adressiert sie über
+ * `?sektion=`, nicht über eine eigene Zeile dieser Tabelle.
  */
-const LEGACY_PLATFORM_PAGES: Record<string, { page: PageId; sektion?: string }> = {
-  // Stufe 3: dieselbe Betreiber-Frage („was dürfen wir steuern?"), nur für die
-  // andere Geräteklasse - deshalb eine Sektion der Steuerungs-Freigabe.
-  geraetetypen: { page: 'steuerungs-freigabe', sektion: 'geraetetypen' },
-  // Stufe 4 (F5): die Benutzer wohnen im Mandanten-Drawer. Es gibt hier
-  // ausdrücklich KEINEN Sektions-Anker - die alte Seite begann mit einer
-  // Mandanten-AUSWAHL, und welchen der Betreiber gemeint hat, weiß der Hash
-  // nicht; er landet deshalb auf der Liste, wo er ihn wählt.
-  benutzer: { page: 'mandanten' },
+const PLATTFORM_HASH_SEGMENT: Partial<Record<PageId, string>> = {
+  'plattform-uebersicht': '',
+  'edge-updates': 'software',
+  werkstatt: 'werkstatt',
+  fernwartung: 'fernwartung',
+  katalog: 'katalog',
+  'geraete-registry': 'geraete',
+  mandanten: 'benutzer',
+};
+
+/** Die Seite hinter einem `#/plattform/<segment>`-Pfad (umgekehrt zu {@link PLATTFORM_HASH_SEGMENT}). */
+const PLATTFORM_SEGMENT_PAGE: Record<string, PageId> = Object.fromEntries(
+  Object.entries(PLATTFORM_HASH_SEGMENT)
+    .filter(([, seg]) => seg !== '')
+    .map(([page, seg]) => [seg as string, page as PageId]),
+);
+
+/**
+ * Stillgelegte PLATTFORM-Seiten, die in eine andere Seite GEFALTET wurden -
+ * das `LEGACY_ROUTES`-Muster auf Seiten-Ebene. Anders als ein Tab existiert
+ * eine Seite HIER nicht mehr unter eigenem Namen; ihr Hash wird auf die
+ * aufnehmende Seite umgeschrieben, die ihrerseits KEINE eigene `PageId` ist
+ * (`geraetetypen`, `benutzer`) - {@link PAGE_IDS} kennt sie nicht, darum
+ * braucht `parseRoute` diese direkte Abbildung, nicht nur `canonicalPlatformHash`.
+ */
+const LEGACY_FOLDED_PLATFORM_PAGES: Record<string, PageId> = {
+  // Dieselbe Betreiber-Frage („was dürfen wir steuern?"), nur für die andere
+  // Geräteklasse - eine Sektion der Steuerungs-Freigabe, seit S1 im Katalog.
+  geraetetypen: 'steuerungs-freigabe',
+  // Die Benutzer wohnen im Mandanten-Drawer, seit S1 im Raum „Benutzer".
+  benutzer: 'mandanten',
 };
 
 /**
- * Die kanonische Adresse einer stillgelegten PLATTFORM-Seite, sonst null.
- * Der Aufrufer schreibt sie per `history.replaceState` (kein Verlaufseintrag,
- * kein `hashchange` - die geparste Route ist ohnehin identisch), genau wie
- * bei {@link canonicalAnlageHash}.
+ * Bestehende Seiten, die seit Scheibe S1 keine eigene Raum-Landung mehr sind,
+ * sondern ein UNTER-Reiter des Raums „Plattform › Katalog" (§4.3) - ihr Inhalt
+ * und ihre eigene Adresse bleiben unverändert gültig, die KANONISCHE Adresse
+ * zeigt aber auf den Katalog-Reiter.
+ */
+const LEGACY_KATALOG_PAGES: Record<string, KatalogSektion> = {
+  vorlagen: 'vorlagen',
+  'komponenten-flotte': 'komponenten',
+  'steuerungs-freigabe': 'modelle',
+};
+
+/**
+ * Die kanonische Adresse einer STILLGELEGTEN oder UMGEHÄNGTEN Plattform-Seite
+ * (Scheibe S1, Umzugstabelle §4.7), sonst null. Der Aufrufer schreibt sie per
+ * `history.replaceState` (kein Verlaufseintrag, kein `hashchange` - die
+ * geparste Route ist ohnehin identisch), genau wie bei {@link canonicalAnlageHash}.
+ * Vorhandene Parameter (`?geraet=`, `?box=`, `?werkbank=1`, `?sektion=`) reisen mit.
  */
 export function canonicalPlatformHash(hash: string): string | null {
-  const head = hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean)[0] ?? '';
-  const target = LEGACY_PLATFORM_PAGES[head];
-  if (!target) return null;
-  return target.sektion
-    ? `#/${target.page}?sektion=${encodeURIComponent(target.sektion)}`
-    : `#/${target.page}`;
+  const [pathPart, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  const query = rest.length > 0 ? `?${rest.join('?')}` : '';
+  const head = pathPart.split('/').filter(Boolean)[0] ?? '';
+
+  if (head in LEGACY_FOLDED_PLATFORM_PAGES) {
+    const sektion = head === 'geraetetypen' ? 'geraetetypen' : null;
+    return sektion ? `#/plattform/katalog?sektion=${encodeURIComponent(sektion)}` : '#/plattform/benutzer';
+  }
+  if (head in LEGACY_KATALOG_PAGES) {
+    // Ein vorhandenes `?sektion=` (die alte Gerätetypen-Sektion der Steuerungs-Freigabe) bleibt
+    // erhalten statt vom Standard-Reiter des Katalogs überschrieben zu werden.
+    return query ? `#/plattform/katalog${query}` : `#/plattform/katalog?sektion=${LEGACY_KATALOG_PAGES[head]}`;
+  }
+  const segment = PLATTFORM_HASH_SEGMENT[head as PageId];
+  if (segment !== undefined) {
+    return `${segment ? `#/plattform/${segment}` : '#/plattform'}${query}`;
+  }
+  return null;
 }
 
 /**
@@ -815,11 +832,18 @@ export function parseRoute(hash: string): Route {
   if (head in LEGACY_ROUTES) {
     return { page: 'anlagen', siteId: null, sub: LEGACY_ROUTES[head] };
   }
+  // Die drei Räume (§4.2): `#/plattform[/software|werkstatt|fernwartung|katalog|geraete|benutzer]`.
+  // Ein unbekanntes oder fehlendes Segment ist die Landung (die Übersicht).
+  if (head === 'plattform') {
+    const segment = segments[1] ?? '';
+    const page = PLATTFORM_SEGMENT_PAGE[segment] ?? 'plattform-uebersicht';
+    return { page, siteId: null, sub: null };
+  }
   // Eine gefaltete Plattform-Seite landet auf ihrer AUFNEHMENDEN Seite - der
   // Anker reist über `canonicalPlatformHash` in die Adresse (die Route selbst
   // trägt ihn nicht, sie ist ja dieselbe Seite).
-  if (head in LEGACY_PLATFORM_PAGES) {
-    return { page: LEGACY_PLATFORM_PAGES[head].page, siteId: null, sub: null };
+  if (head in LEGACY_FOLDED_PLATFORM_PAGES) {
+    return { page: LEGACY_FOLDED_PLATFORM_PAGES[head], siteId: null, sub: null };
   }
   if (PAGE_IDS.has(head)) {
     return { page: head as PageId, siteId: null, sub: null };
@@ -952,6 +976,11 @@ export function hashForRoute(route: Route): string {
     return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bezugsgroesse}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
+  // Die drei Räume (§4.2): die Plattform-Landung und ihre Reiter/Unterräume
+  // schreiben sich zweistufig unter `#/plattform/…`, Geräte und Benutzer je
+  // mit einem Wort hinter dem Raum.
+  const plattformPfad = PLATTFORM_HASH_SEGMENT[route.page];
+  if (plattformPfad !== undefined) return plattformPfad ? `#/plattform/${plattformPfad}` : '#/plattform';
   return `#/${route.page}`;
 }
 
