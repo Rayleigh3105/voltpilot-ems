@@ -8,9 +8,12 @@ const updateUser = vi.fn();
 const deleteUser = vi.fn();
 const disableUser = vi.fn();
 const enableUser = vi.fn();
+const createUser = vi.fn();
 const selbstauskunft = vi.fn();
 const beendenMandant = vi.fn();
 const wiederaufnehmenMandant = vi.fn();
+const benutzerListe = vi.fn();
+const fleet = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -21,14 +24,24 @@ vi.mock('../../admin/adminApi', () => ({
     deleteUser: (...a: unknown[]) => deleteUser(...a),
     disableUser: (...a: unknown[]) => disableUser(...a),
     enableUser: (...a: unknown[]) => enableUser(...a),
-    createUser: vi.fn(),
+    createUser: (...a: unknown[]) => createUser(...a),
     createSite: vi.fn(),
+    createTenant: vi.fn(),
     updateTenant: vi.fn(),
     deleteTenant: vi.fn(),
     beendenMandant: (...a: unknown[]) => beendenMandant(...a),
     wiederaufnehmenMandant: (...a: unknown[]) => wiederaufnehmenMandant(...a),
   },
 }));
+
+vi.mock('../../admin/fleetApi', () => ({
+  fleetApi: { fleet: (...a: unknown[]) => fleet(...a) },
+}));
+
+vi.mock('../../benutzer', async () => {
+  const actual = await vi.importActual<typeof import('../../benutzer')>('../../benutzer');
+  return { ...actual, benutzerApi: { ...actual.benutzerApi, liste: (...a: unknown[]) => benutzerListe(...a) } };
+});
 
 vi.mock('../../api', async () => {
   const actual = await vi.importActual<typeof import('../../api')>('../../api');
@@ -37,9 +50,11 @@ vi.mock('../../api', async () => {
 
 const { MandantenPage, mandantAusHash, mandantHash } = await import('./MandantenPage');
 
-// Die Mandanten-Seite steht in der Adresse; jeder Fall beginnt auf der Liste.
+// Die Benutzer-Seite steht in der Adresse; jeder Fall beginnt auf der Liste.
 beforeEach(() => {
   window.location.hash = '';
+  fleet.mockReset().mockResolvedValue({ sites: [], unterstuetzungBis: {}, unterstuetzungStandorte: [], releases: [] });
+  benutzerListe.mockReset().mockResolvedValue([]);
 });
 
 const TENANT = {
@@ -69,11 +84,11 @@ function openDetail() {
 }
 
 /**
- * Admin-Umbau Stufe 4 „Feinschliff" (Captain-Entscheid F5): die
- * Benutzer-Verwaltung wohnt im Mandanten-Drawer - inklusive des
- * Passwort-Resets, denn zwei halbe Wahrheiten sind schlechter als eine ganze.
+ * Admin-Umbau Scheibe S5 (Konzept `vp-adminview-konzept-k1` §4.5, E5 = A): die
+ * Kundenakte zeigt Konto UND Rolle einer Person in EINER Liste statt in zwei
+ * (Mandanten-Fenster und Benutzerseite der Kundenansicht).
  */
-describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
+describe('MandantenPage - die Kundenakte', () => {
   beforeEach(() => {
     listUsers.mockResolvedValue([USER]);
     listSites.mockResolvedValue([]);
@@ -95,33 +110,58 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
     }
   });
 
-  it('überlässt weitere Benutzer und Startpasswörter dem Kundenadministrator', async () => {
+  it('fügt Konto und Rolle einer Person in EINER Zeile zusammen (E5)', async () => {
+    benutzerListe.mockResolvedValue([
+      { sub: 'u-1', anzeigename: 'Anna Berg', email: 'anna@example.com', zustand: 'aktiv',
+        zuweisungen: [{ id: 'z-1', rolle: 'kundenadministrator', standort_id: null, standort_name: null, gueltig_ab: '2026-01-01', gueltig_bis: null }] },
+    ]);
     openDetail();
-    fireEvent.click(await screen.findByRole('button', { name: 'Aktionen für anna' }));
-    expect(screen.queryByRole('menuitem', { name: 'Passwort zurücksetzen' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Benutzer anlegen' })).toBeDisabled();
-    // Der Grund steht sichtbar daneben, nicht nur ein grauer Knopf.
-    expect(screen.getByRole('button', { name: 'Benutzer anlegen' })).toHaveAccessibleDescription(
-      /Weitere Benutzer und Startpasswörter vergibt der Kundenadministrator im Portal/,
-    );
+    const zeile = (await screen.findByText('Anna Berg')).closest('tr');
+    expect(zeile).not.toBeNull();
+    // Dieselbe Zeile trägt sowohl die Konto-Aktionen (RowMenu) als auch die Rolle - keine zweite Liste.
+    expect(within(zeile!).getByRole('button', { name: 'Aktionen für anna' })).toBeInTheDocument();
+    expect(zeile!.textContent).toContain('Kundenadministrator');
   });
 
-  it('öffnet den Mandanten als Seite mit Adresse, nicht als Dialog, und führt zurück zur Liste', async () => {
+  it('überlässt weitere Personen dem Kundenadministrator und bietet keinen Benutzer-Modal mehr an', async () => {
+    openDetail();
+    await screen.findByRole('button', { name: 'Aktionen für anna' });
+    expect(screen.getByText(/Weitere Personen lädt der Kundenadministrator ein/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Benutzer anlegen' })).toBeNull();
+  });
+
+  it('öffnet den ersten Kundenadministrator INLINE in der Personen-Karte, ohne Benutzer', async () => {
+    listUsers.mockResolvedValue([]);
+    openDetail();
+    const knopf = await screen.findByRole('button', { name: 'Ersten Kundenadministrator anlegen' });
+    fireEvent.click(knopf);
+    // Inline, kein Fenster (E1 = A).
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Benutzername *'), { target: { value: 'kunde-01' } });
+    fireEvent.change(screen.getByLabelText('E-Mail'), { target: { value: 'kunde@example.com' } });
+    createUser.mockResolvedValue({ benutzer: { sub: 'u-2', anzeigename: 'kunde-01', email: 'kunde@example.com', zustand: 'angelegt' }, startpasswort: 'geheim123' });
+    fireEvent.click(screen.getByRole('button', { name: 'Kundenadministrator anlegen' }));
+    await waitFor(() => expect(createUser).toHaveBeenCalledWith('t-1', { username: 'kunde-01', email: 'kunde@example.com', firstName: undefined, lastName: undefined }));
+    expect(await screen.findByLabelText('Startpasswort')).toHaveTextContent('geheim123');
+  });
+
+  it('öffnet den Kunden als Seite mit Adresse im Raum Benutzer, nicht als Dialog, und führt zurück zur Liste', async () => {
     openDetail();
     expect(await screen.findByRole('region', { name: TENANT.name })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(window.location.hash).toBe('#/mandanten?mandant=t-1');
+    expect(window.location.hash).toBe('#/plattform/benutzer/t-1');
     expect(screen.queryByRole('button', { name: `Details zu ${TENANT.name}` })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Alle Mandanten' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Alle Kunden' }));
     expect(screen.getByRole('button', { name: `Details zu ${TENANT.name}` })).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/mandanten');
+    expect(window.location.hash).toBe('#/plattform/benutzer');
   });
 
-  it('liest den Mandanten nur aus der eigenen Adresse', () => {
+  it('liest den Kunden nur aus der eigenen Pfad-Adresse', () => {
     expect(mandantAusHash(mandantHash('a b'))).toBe('a b');
-    expect(mandantAusHash('#/mandanten')).toBeNull();
+    expect(mandantAusHash('#/plattform/benutzer')).toBeNull();
+    expect(mandantAusHash('#/mandanten?mandant=t-1')).toBeNull();
     expect(mandantAusHash('#/werkstatt?mandant=x')).toBeNull();
-    expect(mandantHash(null)).toBe('#/mandanten');
+    expect(mandantHash(null)).toBe('#/plattform/benutzer');
   });
 
   it('bearbeitet einen Benutzer, ohne den Anmeldenamen anzufassen', async () => {
@@ -155,7 +195,7 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
     const dlg = await screen.findByRole('dialog', { name: /Benutzer löschen/ });
     expect(dlg.textContent).toContain('lässt sich nicht rückgängig machen');
     // Und er sagt, was NICHT passiert.
-    expect(dlg.textContent).toContain('Anlagen und Daten des Mandanten bleiben unberührt');
+    expect(dlg.textContent).toContain('Anlagen und Daten des Kunden bleiben unberührt');
 
     fireEvent.click(within(dlg).getByRole('button', { name: 'Benutzer löschen' }));
     await waitFor(() => expect(deleteUser).toHaveBeenCalledWith('t-1', 'u-1'));
@@ -195,26 +235,33 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
     expect(document.body.textContent).not.toContain('B2C → Endkunde');
   });
 
-  it('spricht durchgehend von der Mandanten-Ansicht (F7, keine Umbenennung)', async () => {
-    openDetail();
-    const drawer = await screen.findByRole('region', { name: TENANT.name });
-    expect(
-      within(drawer).getByRole('button', { name: /In Mandanten-Ansicht springen/ }),
-    ).toBeInTheDocument();
-    // Die drei früheren Wörter für DIESELBE Sache kommen nicht mehr vor.
-    expect(document.body.textContent).not.toContain('Portal-Ansicht');
-    expect(document.body.textContent).not.toContain('Kundensicht');
-    expect(document.body.textContent).not.toContain('Kontext-Umschalter');
+  /**
+   * Scheibe S5 (E3 = A, bereits in S1 umgesetzt): der Mandanten-Umschalter
+   * weicht der Suche, und „Wie der Kunde es sieht" ersetzt „In
+   * Mandanten-Ansicht springen" - die wortgleiche Formulierung des
+   * Rückweg-Bands (`AppShell.tsx`). Der frühere F7-Wächter („keine
+   * Umbenennung") galt der ALTEN Konzeptlage vor diesem Umbau und ist damit
+   * überholt.
+   */
+  it('nennt den Sprung in die Kundenansicht „Wie der Kunde es sieht" (E3/E4, wortgleich zum Rückweg-Band)', async () => {
+    const onJumpToTenant = vi.fn();
+    render(<MandantenPage tenants={[TENANT]} onReloadTenants={vi.fn()} onJumpToTenant={onJumpToTenant} />);
+    fireEvent.click(screen.getByRole('button', { name: `Details zu ${TENANT.name}` }));
+    const akte = await screen.findByRole('region', { name: TENANT.name });
+    const knopf = within(akte).getByRole('button', { name: 'Wie der Kunde es sieht' });
+    expect(knopf).toBeEnabled();
+    fireEvent.click(knopf);
+    expect(onJumpToTenant).toHaveBeenCalledWith('t-1', 'uebersicht');
   });
 
   it('N1: beendet den Vertrag mit Frist und schließt die Gefahrenzone bis zu deren Ablauf', async () => {
     openDetail();
-    const drawer = await screen.findByRole('region', { name: TENANT.name });
+    const akte = await screen.findByRole('region', { name: TENANT.name });
     // Solange der Vertrag aktiv ist, ist Löschen nur möglich, wenn man zuerst beendet.
-    expect(within(drawer).getByText(/erst, nachdem der Vertrag beendet wurde/)).toBeInTheDocument();
-    expect(within(drawer).queryByRole('button', { name: 'Mandant löschen (Offboarding)' })).not.toBeInTheDocument();
+    expect(within(akte).getByText(/erst, nachdem der Vertrag beendet wurde/)).toBeInTheDocument();
+    expect(within(akte).queryByRole('button', { name: 'Mandant löschen (Offboarding)' })).not.toBeInTheDocument();
 
-    fireEvent.click(within(drawer).getByRole('button', { name: 'Vertrag beenden' }));
+    fireEvent.click(within(akte).getByRole('button', { name: 'Kundenbereich beenden …' }));
     const dlg = await screen.findByRole('dialog', { name: /Vertrag beenden/ });
     fireEvent.change(within(dlg).getByLabelText('Auftrag'), { target: { value: 'TICKET-1' } });
     fireEvent.change(within(dlg).getByLabelText('Begründung'), { target: { value: 'Kunde hat gekündigt' } });
@@ -238,23 +285,10 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
         fristTage: 90,
       }),
     );
-    expect(await within(drawer).findByText(/am 01.01.2029 beendet/)).toBeInTheDocument();
+    expect(await within(akte).findByText(/am 01.01.2029 beendet/)).toBeInTheDocument();
     // Gelöscht wird erst nach der Frist (hier: in der Zukunft) - der Knopf bleibt deshalb aus.
-    expect(within(drawer).queryByRole('button', { name: 'Mandant löschen (Offboarding)' })).not.toBeInTheDocument();
-    expect(within(drawer).getByText(/Die Frist läuft noch bis 01.04.2029/)).toBeInTheDocument();
-  });
-
-  it('verspricht den Sprung wieder ohne Bedingung: Seite und Dialog nennen den Umschalter, keine Unterstützung', async () => {
-    render(<MandantenPage tenants={[TENANT]} onReloadTenants={vi.fn()} onJumpToTenant={vi.fn()} />);
-    // Seit dem 26.10.2026 ist der Umschalter wieder offen: die Plattform springt ohne Unterstützung hinein.
-    expect(screen.getByText(/oben über den Mandanten-Umschalter in die Ansicht eines Mandanten springen/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: `Details zu ${TENANT.name}` }));
-    const drawer = await screen.findByRole('region', { name: TENANT.name });
-    expect(within(drawer).getByText(/„In Mandanten-Ansicht springen“ zeigt Anlagen, Geräte und Übersicht wie der Kunde/)).toBeInTheDocument();
-    expect(within(drawer).getByText(/Eine Unterstützung oder ein Notfall-Zugriff ist dafür\s+nicht nötig/)).toBeInTheDocument();
-    expect(document.body.textContent).not.toContain('öffnet sich nur');
-    expect(document.body.textContent).not.toContain('beschränkt auf die Standorte Ihrer Unterstützung');
-    expect(within(drawer).getByRole('button', { name: /In Mandanten-Ansicht springen/ })).toBeEnabled();
+    expect(within(akte).queryByRole('button', { name: 'Mandant löschen (Offboarding)' })).not.toBeInTheDocument();
+    expect(within(akte).getByText(/Die Frist läuft noch bis 01.04.2029/)).toBeInTheDocument();
   });
 });
 
@@ -280,7 +314,7 @@ describe('MandantenPage - Mandanten-Abruf gescheitert', () => {
       screen.getByText(/Die Mandantenliste ließ sich gerade nicht laden/),
     ).toBeInTheDocument();
     // Weder das Lade-Skelett (aria-busy) noch der ehrliche Leer-Zustand.
-    expect(screen.queryByText('Noch keine Mandanten')).toBeNull();
+    expect(screen.queryByText('Noch keine Kunden')).toBeNull();
     expect(document.querySelector('[aria-busy="true"]')).toBeNull();
   });
 
@@ -297,5 +331,43 @@ describe('MandantenPage - Mandanten-Abruf gescheitert', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /Erneut versuchen/ }));
     expect(onReloadTenants).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('MandantenPage - die Kundenliste', () => {
+  beforeEach(() => {
+    listUsers.mockResolvedValue([USER]);
+    selbstauskunft.mockResolvedValue({ kundenbereich: { id: 't-1', name: TENANT.name, beendet: null } });
+  });
+
+  it('zählt Personen, Anlagen und Boxen je Kunde, sobald die Listen geladen sind', async () => {
+    fleet.mockResolvedValue({
+      sites: [{ siteId: 's-1', siteName: 'Werk West', tenantId: 't-1', tenantName: TENANT.name, deviceCount: 3, worstStatus: 'online', boxes: [] }],
+      unterstuetzungBis: {},
+      unterstuetzungStandorte: [],
+      releases: [],
+    });
+    render(<MandantenPage tenants={[TENANT]} onReloadTenants={vi.fn()} onJumpToTenant={vi.fn()} />);
+    const zeile = (await screen.findByText(TENANT.name)).closest('tr')!;
+    await waitFor(() => expect(zeile.querySelector('td[data-label="Personen"]')).toHaveTextContent('1'));
+    expect(zeile.querySelector('td[data-label="Anlagen"]')).toHaveTextContent('1');
+    expect(zeile.querySelector('td[data-label="Boxen"]')).toHaveTextContent('3');
+    expect(zeile.querySelector('td[data-label="Zustand"]')).toHaveTextContent('aktiv');
+  });
+
+  it('fügt „Neuer Kunde" als Eingabezeile ein, ohne ein Fenster zu öffnen', async () => {
+    render(<MandantenPage tenants={[TENANT]} onReloadTenants={vi.fn()} onJumpToTenant={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Neuer Kunde' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByLabelText('Name des neuen Kunden')).toBeInTheDocument();
+  });
+
+  it('findet eine Person über die bereits geladenen Konten (zunächst-Suche vor S6)', async () => {
+    render(<MandantenPage tenants={[TENANT]} onReloadTenants={vi.fn()} onJumpToTenant={vi.fn()} />);
+    await screen.findByText(TENANT.name);
+    await waitFor(() => expect(listUsers).toHaveBeenCalledWith('t-1'));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Kunde oder Person suchen' }), { target: { value: 'anna@example.com' } });
+    await waitFor(() => expect(screen.getByText(TENANT.name)).toBeInTheDocument());
+    expect(screen.queryByText(/Kein Kunde und keine Person passt/)).toBeNull();
   });
 });

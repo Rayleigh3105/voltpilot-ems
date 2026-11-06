@@ -358,7 +358,8 @@ export interface PlattformRoom {
  * Die drei Räume (§4.2): **Plattform** (alles Geräteübergreifende, mit
  * Reitern - {@link PLATTFORM_BEREICH}), **Geräte** (die Liste aller Boxen -
  * bis zur Geräteakte in S2 bleibt das die bestehende Registrierung) und
- * **Benutzer** (bis zur Kundenakte in S5 die bestehende Mandanten-Seite).
+ * **Benutzer** (Kundenliste und Kundenakte, Scheibe S5 - `MandantenPage`
+ * trägt beide weiter unter der PageId `mandanten`).
  */
 export const PLATTFORM_ROOMS: PlattformRoom[] = [
   { key: 'plattform', label: 'Plattform', icon: 'dashboard', page: 'plattform-uebersicht' },
@@ -596,6 +597,14 @@ export function canonicalPlatformHash(hash: string): string | null {
     // Ein vorhandenes `?sektion=` (die alte Gerätetypen-Sektion der Steuerungs-Freigabe) bleibt
     // erhalten statt vom Standard-Reiter des Katalogs überschrieben zu werden.
     return query ? `#/plattform/katalog${query}` : `#/plattform/katalog?sektion=${LEGACY_KATALOG_PAGES[head]}`;
+  }
+  // Scheibe S5: der geöffnete Mandant stand bis dahin als `?mandant=<id>` in der
+  // Adresse (`MandantenPage.mandantHash`), die Kundenakte adressiert ihn seitdem
+  // als PFAD-Segment (`#/plattform/geraete/{ref}`-Muster). Der Parameter reist
+  // mit, nur eben ins Segment umgeschrieben statt angehängt.
+  if (head === 'mandanten') {
+    const id = query ? new URLSearchParams(query.slice(1)).get('mandant') : null;
+    return id && id.trim() ? `#/plattform/benutzer/${encodeURIComponent(id.trim())}` : '#/plattform/benutzer';
   }
   const segment = PLATTFORM_HASH_SEGMENT[head as PageId];
   if (segment !== undefined) {

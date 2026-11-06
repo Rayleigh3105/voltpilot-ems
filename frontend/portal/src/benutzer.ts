@@ -26,7 +26,13 @@ export interface BenutzerAngelegt { benutzer: BenutzerKonto; startpasswort: stri
 
 // Nur der aufrufende Dialog hält diese Antwort bis zum Schließen. Kein Cache und kein Speicher.
 export const benutzerApi = {
-  liste: () => request<BenutzerEintrag[]>('/api/v1/benutzer'),
+  /**
+   * `tenantId` stampft den `X-Tenant-Id`-Kopf NUR für diesen Aufruf (wie
+   * `api.selbstauskunft`) - die Kundenakte liest damit die Rollen EINES
+   * Mandanten, ohne den globalen Mandanten-Umschalter zu verstellen. Kein
+   * neuer Endpoint: dieselbe Liste, die der Kundenadministrator selbst sieht.
+   */
+  liste: (tenantId?: string) => request<BenutzerEintrag[]>('/api/v1/benutzer', tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : {}),
   protokoll: (von: string, bis: string) => request<ZugriffProtokoll[]>(`/api/v1/benutzer/protokoll?von=${encodeURIComponent(von)}&bis=${encodeURIComponent(bis)}`),
   /** `gueltigBis` nur bei „Einsicht“ (AP-19 Folge IP-13): letzter Tag, einschließlich; ohne ihn der bisherige Wechsel. */
   wechseln: (sub: string, bisher: string[], rolle: string, standorte: string[], gueltigBis?: string | null) => request<void>(`/api/v1/benutzer/${encodeURIComponent(sub)}/zugriff`, {

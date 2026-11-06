@@ -1,7 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 /**
- * Plattform-Administrator › Mandanten › Mandant öffnen › „In Mandanten-Ansicht springen", OHNE Unterstützung.
+ * Plattform-Administrator › Benutzer › Kunde öffnen › „Wie der Kunde es sieht" (vormals „In Mandanten-Ansicht
+ * springen"), OHNE Unterstützung.
  * Seit dem 26.10.2026 ist der Mandanten-Umschalter wieder offen (Entscheidung des Betreibers): die API nimmt den
  * Mandanten an, der Sprung landet in seiner Ansicht - auch bei einem Mandanten ohne Standort und beim gemerkten
  * Mandanten nach dem Neuladen. Ist der Schalter aus (Not-Aus, `?schalter=aus`), nennt die Karte Grund und Weg statt
@@ -39,7 +40,7 @@ test('ohne Unterstützung: der Sprung landet in der Ansicht des Mandanten', asyn
   await expect(dialog.getByText(/Eine Unterstützung oder ein Notfall-Zugriff ist dafür nicht nötig/)).toBeVisible();
   await passt(page, dialog, 'p, h3, button, .vp-alert');
 
-  await dialog.getByRole('button', { name: /In Mandanten-Ansicht springen/ }).click();
+  await dialog.getByRole('button', { name: 'Wie der Kunde es sieht' }).click();
   await expect(page.getByRole('heading', { name: 'Solarhof Dach' }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Kein Zugriff auf diesen Kundenbereich' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Kein Standort zugewiesen' })).toHaveCount(0);
@@ -60,7 +61,7 @@ test('Mandant ohne Standort: die Mandanten-Seite sagt, warum keine Unterstützun
   await expect(dialog.getByRole('button', { name: 'Unterstützung anfragen' })).toBeEnabled();
   await passt(page, dialog, 'p, h3, button, .vp-alert');
 
-  await dialog.getByRole('button', { name: /In Mandanten-Ansicht springen/ }).click();
+  await dialog.getByRole('button', { name: 'Wie der Kunde es sieht' }).click();
   // Zwei Anlagen, kein Standort: dieselbe Landung wie für den Kunden selbst, das Portfolio.
   await expect(page.getByRole('heading', { name: 'Portfolio' })).toBeVisible();
   await expect(page).toHaveURL(/#\/portfolio$/);
@@ -91,6 +92,56 @@ test('Not-Aus: bei abgeschaltetem Sprung endet er auf der Karte mit Grund und We
   await karte.getByRole('button', { name: 'Zu den Mandanten' }).click();
   await expect(page.getByRole('button', { name: 'Details zu Musterwerk Nord GmbH' })).toBeVisible();
   expect(await page.evaluate(() => sessionStorage.getItem('vp-tenant-override'))).toBeNull();
+});
+
+/** Wörter im ersten Bildschirm (ohne zu scrollen) - dasselbe Zählmuster wie `erloese-minus.spec.ts`. */
+async function woerterErsterBildschirm(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const h = window.innerHeight;
+    let text = '';
+    const lauf = (el: Element) => {
+      for (const kind of Array.from(el.children)) {
+        const r = (kind as HTMLElement).getBoundingClientRect();
+        if (r.bottom <= 0 || r.top >= h) continue;
+        if (r.top >= 0 && r.bottom <= h && (kind as HTMLElement).children.length === 0) {
+          text += ` ${kind.textContent ?? ''}`;
+        } else {
+          lauf(kind);
+        }
+      }
+    };
+    lauf(document.body);
+    return text.split(/\s+/).filter((w) => /[\p{L}\d]/u.test(w)).length;
+  });
+}
+
+/**
+ * Scheibe S5 (Prüfregel §8): Kundenliste und Kundenakte ohne waagrechten Überlauf bei 1440 und 390 px; die
+ * Kundenakte hält am Telefon das Wort-Budget ihres ersten Bildschirms (≤ 60 Wörter).
+ */
+for (const breite of [1440, 390] as const) {
+  test(`${breite} px: Kundenliste und Kundenakte rollen nicht quer`, async ({ page }) => {
+    await page.setViewportSize({ width: breite, height: breite === 1440 ? 900 : 844 });
+    await page.goto('/e2e/mandantensprung.html#/mandanten');
+    const liste = page.locator('main');
+    await expect(page.getByRole('button', { name: 'Details zu Solarhof Beispiel' })).toBeVisible();
+    await passt(page, liste, 'table, button, h1, h2, td, th, .vp-badge, span');
+
+    await page.getByRole('button', { name: 'Details zu Solarhof Beispiel' }).click();
+    const akte = page.getByRole('region', { name: 'Solarhof Beispiel' });
+    await expect(akte.getByRole('heading', { name: 'Unterstützung' })).toBeVisible();
+    await passt(page, akte, 'table, button, h1, h2, td, th, .vp-badge, span, p');
+  });
+}
+
+test('390 px: der erste Bildschirm der Kundenakte hält das Wort-Budget (≤ 60 Wörter)', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/e2e/mandantensprung.html#/mandanten');
+  await page.getByRole('button', { name: 'Details zu Solarhof Beispiel' }).click();
+  await expect(page.getByRole('region', { name: 'Solarhof Beispiel' })).toBeVisible();
+  const n = await woerterErsterBildschirm(page);
+  test.info().annotations.push({ type: 'woerter', description: `kundenakte-telefon=${n}` });
+  expect(n).toBeLessThanOrEqual(60);
 });
 
 /**

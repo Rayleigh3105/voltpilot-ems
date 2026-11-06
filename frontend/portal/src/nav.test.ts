@@ -519,6 +519,8 @@ describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-ko
     expect(canonicalPlatformHash('#/werkstatt?werkbank=1')).toBe('#/plattform/werkstatt?werkbank=1');
     expect(canonicalPlatformHash('#/mandanten')).toBe('#/plattform/benutzer');
     expect(canonicalPlatformHash('#/benutzer')).toBe('#/plattform/benutzer');
+    // Scheibe S5: der geöffnete Mandant (`?mandant=<id>`) zieht ins Pfad-Segment der Kundenakte um.
+    expect(canonicalPlatformHash('#/mandanten?mandant=t-1')).toBe('#/plattform/benutzer/t-1');
     // Vorlagen/Steuerungs-Freigabe/Komponenten sind seit S1 Katalog-Unter-Reiter.
     expect(canonicalPlatformHash('#/vorlagen')).toBe('#/plattform/katalog?sektion=vorlagen');
     expect(canonicalPlatformHash('#/komponenten-flotte')).toBe('#/plattform/katalog?sektion=komponenten');
