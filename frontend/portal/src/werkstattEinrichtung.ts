@@ -1,42 +1,44 @@
 /**
  * Die Einrichtungs-Detailseite einer Box in der Werkstatt (`#/werkstatt?box=<referenz>`):
  * die reine Schicht dahinter. Sie sagt, was zur Box gehört (Hardware, Fassungen,
- * Netz, Bindung) und welche Gehäuse-Druckdatei das Portal anbietet.
+ * Netz, Bindung) und welchen Stand die Box-Druckdatei des Gehäuses hat.
  *
- * Die Druckdatei (Gehäuse komplett) ist die eingecheckte des Gehäuse-Programms (v0.4,
- * `edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/`), als Kopie im Portal, weil
- * das Portal-Image nur diesen Ordner kennt; `werkstattEinrichtung.test.ts`
- * vergleicht die Kopie mit `SHA256SUMS` des Gehäuses. Das Gehäuse MIT Referenz
- * und QR-Code dieser Box baut der Werkstatt-Dienst nach der Übergabe in seine
- * Ablage; ans Portal reicht es noch nicht.
+ * Die Druckdatei (mit Referenz in Klarschrift und QR-Code dieser Box im Unterteil)
+ * baut der Werkstatt-Dienst nach einem Auftrag ohne Fehler selbst und lädt sie zur
+ * API hoch (vp-mango-3mf-pro-box); die Karte bietet NUR diese Box-Datei an, nie eine
+ * allgemeine ohne Referenz.
  *
  * Reines Modul: kein React, kein Netzwerk.
  */
-import gehaeuseUrl from './assets/gehaeuse/gehaeuse-v04.3mf?url';
 import { boxOrt, type FernwartungBox } from './adminFernwartung';
-import { beschriftung, type WerkstattAbnahme, type WerkstattBox } from './werkstatt';
+import { beschriftung, type WerkstattAbnahme, type WerkstattBox, type WerkstattGehaeuseDatei } from './werkstatt';
 import type { WerkstattFreigabe } from './werkstattBank';
 
 /** Die Hardware der Mango, wie das Gehäuse-Programm sie nennt. */
 export const MANGO_HARDWARE = 'GL.iNet GL-MT300N-V2 („Mango“)';
 
-export interface GehaeuseDatei {
-  /** Dateiname beim Herunterladen. */
-  name: string;
-  /** Adresse im Bündel (Vite hasht sie). */
-  url: string;
+/**
+ * Der Stand der Box-Druckdatei für die Karte: `bereit` bietet den Download an;
+ * `wartet` (noch kein Lauf ohne Fehler) und `alt` (schon abgenommen, aber noch
+ * in der alten internen Ablage des Dienstes - vor vp-mango-3mf-pro-box) sagen
+ * beide ehrlich, warum (noch) kein Download da ist - kein toter Knopf, kein
+ * Rückfall auf eine allgemeine Datei.
+ */
+export type GehaeuseStand =
+  | ({ art: 'bereit' } & WerkstattGehaeuseDatei)
+  | { art: 'wartet' }
+  | { art: 'alt' };
+
+export function gehaeuseStand(box: WerkstattBox | null): GehaeuseStand {
+  if (box?.gehaeuse) return { art: 'bereit', ...box.gehaeuse };
+  if (box && box.abnahmen.length > 0) return { art: 'alt' };
+  return { art: 'wartet' };
 }
 
-/** Die generische Druckdatei v0.4 (Gehäuse komplett), ohne Kennung und QR-Code einer Box. */
-export const GEHAEUSE_DATEIEN: readonly GehaeuseDatei[] = [
-  {
-    name: 'gehaeuse-v04.3mf',
-    url: gehaeuseUrl,
-  },
-];
-
-/** Der Satz über die Dateien: Sie sind nicht die Datei dieser Box. */
-export const GEHAEUSE_OHNE_KENNUNG = 'Allgemeine Datei, ohne Referenz und QR-Code dieser Box.';
+export const GEHAEUSE_WARTET_SATZ =
+  'Die Box-Druckdatei (mit Referenz und QR-Code dieser Box) wird nach einem Werkstatt-Lauf ohne Fehler hier abgelegt.';
+export const GEHAEUSE_ALT_SATZ =
+  'Diese Box wurde vor dieser Funktion abgenommen; die Druckdatei liegt noch in der alten internen Ablage des Dienstes. Sie wird beim nächsten Werkstatt-Lauf hier abgelegt.';
 
 export interface EinrichtungZeile {
   /** Stabiler Schlüssel, auch für Tests. */

@@ -162,6 +162,45 @@ func (c Client) AbnahmeSchreiben(ctx context.Context, edgeRef string, a Abnahme)
 	return out, err
 }
 
+// GehaeuseHochladen lädt die fertige Box-Druckdatei hoch (PUT …/gehaeuse/{edgeRef},
+// vp-mango-3mf-pro-box): mit Referenz in Klarschrift und QR-Code dieser Box. Ein
+// wiederholter Upload (Nachdruck, neuer Bau) überschreibt mit dem neueren Stand.
+func (c Client) GehaeuseHochladen(ctx context.Context, edgeRef, name string, daten []byte, sha256 string) error {
+	tok, err := c.Token.Token(ctx)
+	if err != nil {
+		return err
+	}
+	pfad := "/gehaeuse/" + url.PathEscape(edgeRef) + "?name=" + url.QueryEscape(name) + "&sha256=" + url.QueryEscape(sha256)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		strings.TrimRight(c.URL, "/")+"/api/v1/werkstatt-dienst"+pfad, bytes.NewReader(daten))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/octet-stream")
+	cl := c.Client
+	if cl == nil {
+		cl = &http.Client{Timeout: 30 * time.Second}
+	}
+	resp, err := cl.Do(req)
+	if err != nil {
+		return fmt.Errorf("Portal nicht erreicht: %s", geheim.Schwaerze(err.Error()))
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		var m struct {
+			Message string `json:"message"`
+		}
+		_ = json.Unmarshal(raw, &m)
+		if m.Message == "" {
+			m.Message = http.StatusText(resp.StatusCode)
+		}
+		return Abgelehnt{Status: resp.StatusCode, Message: geheim.Schwaerze(m.Message)}
+	}
+	return nil
+}
+
 func (c Client) rufe(ctx context.Context, methode, pfad string, rein any, erwartet int, raus any) error {
 	_, err := c.rufeMit(ctx, methode, pfad, rein, raus, erwartet)
 	return err

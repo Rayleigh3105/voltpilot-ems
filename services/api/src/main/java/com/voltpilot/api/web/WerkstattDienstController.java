@@ -9,13 +9,19 @@ import com.voltpilot.api.werkstatt.EinloesungRepository;
 import com.voltpilot.api.werkstatt.EinloesungService;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Freigabe;
 import com.voltpilot.api.werkstatt.FreigabeService;
+import com.voltpilot.api.werkstatt.WerkstattGehaeuseRepository;
 import com.voltpilot.api.werkstatt.WerkstattRepository;
 import com.voltpilot.api.werkstatt.WerkstattService;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -138,14 +144,17 @@ public class WerkstattDienstController {
     private final WerkstattService werkstatt;
     private final DienstAnsichtService ansichten;
     private final LaufSeiteService laufSeite;
+    private final WerkstattGehaeuseRepository gehaeuseDateien;
 
     public WerkstattDienstController(FreigabeService freigaben, EinloesungService einloesung,
-            WerkstattService werkstatt, DienstAnsichtService ansichten, LaufSeiteService laufSeite) {
+            WerkstattService werkstatt, DienstAnsichtService ansichten, LaufSeiteService laufSeite,
+            WerkstattGehaeuseRepository gehaeuseDateien) {
         this.freigaben = freigaben;
         this.einloesung = einloesung;
         this.werkstatt = werkstatt;
         this.ansichten = ansichten;
         this.laufSeite = laufSeite;
+        this.gehaeuseDateien = gehaeuseDateien;
     }
 
     /** Ein Auftrag des Portals, wie der Dienst ihn abholt. */
@@ -224,6 +233,55 @@ public class WerkstattDienstController {
                 Akteur.aus(caller));
         return ResponseEntity.status(HttpStatus.CREATED).body(new AbnahmeDto(a.id(), a.edgeRef(), a.freigabeId(),
                 a.einloesungId(), a.lanNetz(), a.tunnelAdresse(), a.erfasstAm()));
+    }
+
+    private static final Pattern DATEINAME = Pattern.compile("^[a-z0-9][a-z0-9._-]{2,119}\\.3mf$");
+    private static final Pattern SHA256 = Pattern.compile("^[0-9a-f]{64}$");
+
+    /** Was der Dienst nach dem Hochladen der Box-Druckdatei zurückbekommt. */
+    public record GehaeuseDto(String edgeRef, String name, String sha256, long bytes, Instant hochgeladenAm) {
+    }
+
+    /**
+     * Die Box-Druckdatei (3MF, mit Referenz und QR-Code dieser Box) hochladen (vp-mango-3mf-pro-box):
+     * 201 neu, 200 überschrieben (Nachdruck, neuer Bau); 404 keine Box dieser Referenz im Register;
+     * 422 Dateiname oder die mitgeschickte Prüfsumme passt nicht zu den Bytes. Ein Fehlschlag blockiert
+     * den Werkstatt-Lauf nicht - der Dienst holt ihn mit dem nächsten Anlauf nach.
+     */
+    @PutMapping(value = "/gehaeuse/{edgeRef}", consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public ResponseEntity<GehaeuseDto> gehaeuseHochladen(@PathVariable String edgeRef,
+            @RequestParam String name, @RequestParam String sha256, @RequestBody(required = false) byte[] daten,
+            @AuthenticationPrincipal Jwt caller) {
+        if (!DATEINAME.matcher(name).matches()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Kein Dateiname einer Gehäuse-Druckdatei: " + name);
+        }
+        if (!SHA256.matcher(sha256).matches()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Keine SHA-256-Prüfsumme.");
+        }
+        if (daten == null || daten.length == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Die Datei ist leer.");
+        }
+        String ist = sha256(daten);
+        if (!ist.equals(sha256)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die Prüfsumme passt nicht zu den Bytes.");
+        }
+        UUID boxId = werkstatt.box(edgeRef).box().id();
+        boolean neu = gehaeuseDateien.stand(edgeRef).isEmpty();
+        gehaeuseDateien.hochladen(boxId, edgeRef, name, ist, daten.length, daten,
+                caller == null ? null : caller.getSubject());
+        WerkstattGehaeuseRepository.Stand stand = gehaeuseDateien.stand(edgeRef).orElseThrow();
+        return ResponseEntity.status(neu ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(new GehaeuseDto(edgeRef, stand.name(), stand.sha256(), stand.bytes(), stand.hochgeladenAm()));
+    }
+
+    private static String sha256(byte[] daten) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(daten));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @ExceptionHandler(ResponseStatusException.class)

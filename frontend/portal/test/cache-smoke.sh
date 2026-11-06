@@ -38,9 +38,6 @@
 #      carries text/css. nginx's `types` REPLACES the inherited map when it is
 #      declared on an inner level; the config adds the one mapping at the http
 #      level so it only ACCUMULATES - this check is the guard for that trap.
-#  11. the Werkstatt's 3MF downloads (Gehaeuse-Druckdatei, src/assets/gehaeuse)
-#      are hashed assets like the bundles AND carry `model/3mf` - without the
-#      mapping nginx would send application/octet-stream.
 #
 # Usage: test/cache-smoke.sh [image]
 #   Without an image argument, builds the portal Dockerfile first.
@@ -159,18 +156,6 @@ for a in $ASSETS; do
   esac
 done
 
-# Check 11: the 3MF downloads. They are only referenced from a lazy chunk, so
-# the file names come from the image, not from index.html.
-THREEMF="$(docker run --rm --entrypoint ls "$IMAGE" /usr/share/nginx/html/assets | grep -E '\.3mf$' || true)"
-[ -n "$THREEMF" ] || fail "no .3mf in the built /assets - did werkstattEinrichtung.ts stop importing the Gehaeuse files?"
-for f in $THREEMF; do
-  assert_immutable "/assets/$f"
-  F_TYPE="$(header_of content-type "$(hdrs "/assets/$f")")"
-  case "$F_TYPE" in
-    model/3mf*) pass "/assets/$f -> Content-Type: $F_TYPE" ;;
-    *) fail "/assets/$f: expected model/3mf, got '${F_TYPE:-<none>}'" ;;
-  esac
-done
 
 # A vanished hashed bundle is a hard 404 (check 8). hdrs() cannot be reused
 # here - its curl -f fails on 4xx - so the status and headers are read without -f.

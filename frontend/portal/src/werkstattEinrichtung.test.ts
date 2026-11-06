@@ -1,34 +1,25 @@
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { FernwartungBox } from './adminFernwartung';
 import type { WerkstattAbnahme, WerkstattBox } from './werkstatt';
-import { bindung, einrichtung, freigabeDerBox, fruehereAbnahmen, GEHAEUSE_DATEIEN } from './werkstattEinrichtung';
+import { bindung, einrichtung, freigabeDerBox, fruehereAbnahmen, gehaeuseStand } from './werkstattEinrichtung';
 import type { WerkstattFreigabe } from './werkstattBank';
 
-const DRUCK = resolve(__dirname, '../../../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck');
-
-describe('Gehäuse-Druckdateien im Portal', () => {
-  const summen = new Map(
-    readFileSync(resolve(DRUCK, 'SHA256SUMS'), 'utf8')
-      .trim()
-      .split('\n')
-      .map((z) => z.split(/\s+/) as [string, string])
-      .map(([sha, name]) => [name, sha]),
-  );
-
-  it.each(GEHAEUSE_DATEIEN.map((d) => [d.name]))('%s ist byte-gleich der eingecheckten Druckdatei des Gehäuses', (name) => {
-    const kopie = readFileSync(resolve(__dirname, 'assets/gehaeuse', name));
-    expect(createHash('sha256').update(kopie).digest('hex')).toBe(summen.get(name));
-    expect(kopie.equals(readFileSync(resolve(DRUCK, name)))).toBe(true);
+describe('gehaeuseStand (vp-mango-3mf-pro-box)', () => {
+  it('ohne Register-Eintrag: wartet (nie erfunden)', () => {
+    expect(gehaeuseStand(null)).toEqual({ art: 'wartet' });
   });
 
-  it('jede Datei ist ein ZIP-Archiv (3MF) und hat eine Adresse im Bündel', () => {
-    for (const d of GEHAEUSE_DATEIEN) {
-      expect(readFileSync(resolve(__dirname, 'assets/gehaeuse', d.name)).subarray(0, 2).toString('latin1')).toBe('PK');
-      expect(d.url).toMatch(/\.3mf/);
-    }
+  it('ohne Abnahme und ohne Datei: wartet auf den Werkstatt-Lauf', () => {
+    expect(gehaeuseStand(box({ abnahmen: [] }))).toEqual({ art: 'wartet' });
+  });
+
+  it('mit Abnahme, aber ohne Datei im Portal: die alte interne Ablage', () => {
+    expect(gehaeuseStand(box({ abnahmen: [abnahme()] }))).toEqual({ art: 'alt' });
+  });
+
+  it('mit Datei: bereit zum Download, mit ihren Feldern - unabhängig von der Abnahme', () => {
+    const datei = { name: 'gehaeuse-edge-x.3mf', sha256: '0'.repeat(64), bytes: 4_700_000, hochgeladenAm: '2026-11-05T08:00:00Z' };
+    expect(gehaeuseStand(box({ gehaeuse: datei }))).toEqual({ art: 'bereit', ...datei });
   });
 });
 

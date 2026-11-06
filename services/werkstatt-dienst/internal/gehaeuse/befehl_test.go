@@ -29,7 +29,7 @@ func TestBefehlBautMitDemProgrammAufDiesemRechner(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(prog, "bauen.sh"), []byte(bauenSh), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	w, err := Neu(t.TempDir(), Befehl{Programm: prog}, time.Minute, stumm)
+	w, err := Neu(t.TempDir(), Befehl{Programm: prog}, nil, time.Minute, stumm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestBefehlBautMitDemProgrammAufDiesemRechner(t *testing.T) {
 func TestBefehlEndetMitDerFrist(t *testing.T) {
 	prog := t.TempDir()
 	_ = os.WriteFile(filepath.Join(prog, "bauen.sh"), []byte("#!/bin/sh\nsleep 30\n"), 0o755)
-	w, _ := Neu(t.TempDir(), Befehl{Programm: prog}, 100*time.Millisecond, stumm)
+	w, _ := Neu(t.TempDir(), Befehl{Programm: prog}, nil, 100*time.Millisecond, stumm)
 	starte(t, w)
 	start := time.Now()
 	_, _ = w.Bestelle(refA, "", false)

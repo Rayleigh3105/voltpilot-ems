@@ -51,16 +51,17 @@ type Datei struct {
 
 // Auftrag ist das Gehäuse einer Box.
 type Auftrag struct {
-	Referenz string    `json:"referenz"`
-	Lauf     string    `json:"lauf,omitempty"` // der Lauf, der ihn bestellt hat
-	Zustand  Zustand   `json:"zustand"`
-	Bestellt time.Time `json:"bestellt"`
-	Beginn   time.Time `json:"beginn,omitzero"`
-	Ende     time.Time `json:"ende,omitzero"`
-	Grund    string    `json:"grund,omitempty"`
-	Beleg    string    `json:"beleg,omitempty"` // aus dem Prüfbericht
-	Job      string    `json:"job,omitempty"`   // Name des Kubernetes-Jobs
-	Dateien  []Datei   `json:"dateien,omitempty"`
+	Referenz    string    `json:"referenz"`
+	Lauf        string    `json:"lauf,omitempty"` // der Lauf, der ihn bestellt hat
+	Zustand     Zustand   `json:"zustand"`
+	Bestellt    time.Time `json:"bestellt"`
+	Beginn      time.Time `json:"beginn,omitzero"`
+	Ende        time.Time `json:"ende,omitzero"`
+	Grund       string    `json:"grund,omitempty"`
+	Beleg       string    `json:"beleg,omitempty"` // aus dem Prüfbericht
+	Job         string    `json:"job,omitempty"`   // Name des Kubernetes-Jobs
+	Dateien     []Datei   `json:"dateien,omitempty"`
+	Hochgeladen bool      `json:"hochgeladen,omitempty"` // die Box-Druckdatei liegt im Portal
 }
 
 // Bauer baut das Gehäuse einer Referenz. Danach liegt die Ausgabe des
@@ -69,6 +70,14 @@ type Auftrag struct {
 // die Werkstatt selbst. job meldet den Namen des Jobs, sobald er feststeht.
 type Bauer interface {
 	Baue(ctx context.Context, ref, ziel string, job func(string)) error
+}
+
+// Hochlader lädt die fertige Box-Druckdatei zur API hoch (vp-mango-3mf-pro-box):
+// die Werkstatt-Box-Seite im Portal bietet danach genau SIE zum Download an.
+// nil: kein Portal (Datei-Freigabe V1a), die Druckdatei bleibt nur in der
+// internen Ablage.
+type Hochlader interface {
+	GehaeuseHochladen(ctx context.Context, edgeRef, name string, daten []byte, sha256 string) error
 }
 
 // Name der Ausgabe des Programms je Auftrag (stdout und stderr).
@@ -82,11 +91,12 @@ var fehlerZeile = regexp.MustCompile(`(?m)^- \*\*Fehler:\*\* (.+)$`)
 
 // Werkstatt hält die Aufträge, ihre Ablage und die Schlange.
 type Werkstatt struct {
-	ablage string
-	bauer  Bauer
-	frist  time.Duration
-	log    *slog.Logger
-	jetzt  func() time.Time
+	ablage    string
+	bauer     Bauer
+	hochlader Hochlader
+	frist     time.Duration
+	log       *slog.Logger
+	jetzt     func() time.Time
 
 	mu        sync.Mutex
 	auftraege map[string]*Auftrag
@@ -95,12 +105,13 @@ type Werkstatt struct {
 }
 
 // Neu liest die Ablage. Was vor einem Neustart wartete oder baute, kommt
-// wieder in die Schlange (ein Bau ist wiederholbar und baut gleich).
-func Neu(ablage string, b Bauer, frist time.Duration, log *slog.Logger) (*Werkstatt, error) {
+// wieder in die Schlange (ein Bau ist wiederholbar und baut gleich). h: nil
+// ohne Portal (Datei-Freigabe V1a) - die Druckdatei bleibt dann nur lokal.
+func Neu(ablage string, b Bauer, h Hochlader, frist time.Duration, log *slog.Logger) (*Werkstatt, error) {
 	if err := os.MkdirAll(ablage, 0o750); err != nil {
 		return nil, fmt.Errorf("Ablage der Gehäuse: %w", err)
 	}
-	w := &Werkstatt{ablage: ablage, bauer: b, frist: frist, log: log, jetzt: time.Now,
+	w := &Werkstatt{ablage: ablage, bauer: b, hochlader: h, frist: frist, log: log, jetzt: time.Now,
 		auftraege: map[string]*Auftrag{}, wecken: make(chan struct{}, 1)}
 	eintraege, err := os.ReadDir(ablage)
 	if err != nil {
@@ -169,7 +180,11 @@ func (w *Werkstatt) Bestelle(ref, lauf string, neu bool) (Auftrag, error) {
 }
 
 // Laufe arbeitet die Schlange ab, einen Auftrag zur Zeit, bis ctx endet.
+// Vor der Schlange holt es Uploads nach, die beim letzten Anlauf scheiterten
+// (Fehlschlag blockiert den Werkstatt-Lauf nicht - nachholen beim nächsten
+// Anlauf genügt).
 func (w *Werkstatt) Laufe(ctx context.Context) {
+	w.hochladenNachholen(ctx)
 	for {
 		ref, ok := w.naechster()
 		if !ok {
@@ -222,6 +237,69 @@ func (w *Werkstatt) baue(ctx context.Context, ref string) {
 	// Bauordner nicht mehr vor.
 	_ = os.RemoveAll(bau)
 	w.ende(ref, zustand, grund, beleg, dateien)
+	if zustand == Fertig {
+		w.hochladenVersuch(ctx, ref)
+	}
+}
+
+// hochladenVersuch lädt die Box-Druckdatei (gehaeuse-<ref>.3mf) zur API hoch,
+// wenn ein Portal eingerichtet ist. Ein Fehlschlag ist nur eine Warnung: der
+// Lauf an der Box wartet nicht darauf, und der nächste Anlauf des Dienstes
+// holt ihn nach (hochladenNachholen).
+func (w *Werkstatt) hochladenVersuch(ctx context.Context, ref string) {
+	if w.hochlader == nil {
+		return
+	}
+	name := "gehaeuse-" + ref + ".3mf"
+	var sha string
+	w.mu.Lock()
+	if a, ok := w.auftraege[ref]; ok {
+		for _, d := range a.Dateien {
+			if d.Name == name {
+				sha = d.Sha256
+			}
+		}
+	}
+	w.mu.Unlock()
+	if sha == "" {
+		w.log.Warn("Gehäuse: Druckdatei nicht abgelegt, kein Hochladen", "referenz", ref, "datei", name)
+		return
+	}
+	daten, err := os.ReadFile(filepath.Join(w.ordner(ref), name))
+	if err != nil {
+		w.log.Warn("Gehäuse: Druckdatei nicht lesbar, kein Hochladen", "referenz", ref, "fehler", err)
+		return
+	}
+	if err := w.hochlader.GehaeuseHochladen(ctx, ref, name, daten, sha); err != nil {
+		w.log.Warn("Gehäuse: Hochladen zur API gescheitert, nächster Anlauf holt es nach",
+			"referenz", ref, "fehler", err)
+		return
+	}
+	w.aendere(ref, func(a *Auftrag) { a.Hochgeladen = true })
+	w.log.Info("Gehäuse: Box-Druckdatei im Portal", "referenz", ref)
+}
+
+// hochladenNachholen versucht jeden fertigen, noch nicht hochgeladenen
+// Auftrag genau einmal (Start des Dienstes, aus Laufe).
+func (w *Werkstatt) hochladenNachholen(ctx context.Context) {
+	if w.hochlader == nil {
+		return
+	}
+	w.mu.Lock()
+	var offen []string
+	for ref, a := range w.auftraege {
+		if a.Zustand == Fertig && !a.Hochgeladen {
+			offen = append(offen, ref)
+		}
+	}
+	w.mu.Unlock()
+	sort.Strings(offen)
+	for _, ref := range offen {
+		if ctx.Err() != nil {
+			return
+		}
+		w.hochladenVersuch(ctx, ref)
+	}
 }
 
 // sammle legt ab, was der Bau ergeben hat. Druckdateien nur bei einem Bau

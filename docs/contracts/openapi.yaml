@@ -7409,6 +7409,25 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Nicht im Register. }
         "422": { description: Netz abgelehnt, mit Grund. }
+  /api/v1/admin/werkstatt/boxen/{ref}/gehaeuse:
+    get:
+      tags: [werkstatt]
+      summary: Die Box-Druckdatei des Gehäuses herunterladen (vp-mango-3mf-pro-box).
+      description: >
+        Mit Referenz in Klarschrift und QR-Code dieser Box (im Unterteil);
+        der Werkstatt-Dienst lädt sie nach einem Auftrag ohne Fehler zur API
+        hoch (`PUT /api/v1/werkstatt-dienst/gehaeuse/{edgeRef}`). 404, solange
+        das noch nicht geschehen ist - kein Rückfall auf eine allgemeine Datei
+        ohne Referenz.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Die Box-Druckdatei (model/3mf), Content-Disposition mit ihrem Namen.
+          content: { model/3mf: { schema: { type: string, format: binary } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Liegt noch nicht im Portal. }
   /api/v1/admin/werkstatt/boxen/{ref}/abnahme:
     post:
       tags: [werkstatt]
@@ -7773,6 +7792,34 @@ paths:
         "404": { description: Nicht im Register. }
         "409": { description: Ohne Einlösung, anderer Host-Schlüssel, andere Fassung, anderer Tunnel-Schlüssel oder Probe-Fenster noch offen. }
         "422": { description: Beleg fehlt oder zu lang, Passwort nicht mit age verschlüsselt, LAN-Netz abgelehnt, keine Edge-Light-Box. }
+  /api/v1/werkstatt-dienst/gehaeuse/{edgeRef}:
+    put:
+      tags: [werkstatt-dienst]
+      summary: Die fertige Box-Druckdatei hochladen (vp-mango-3mf-pro-box).
+      description: >
+        Nach einem Gehäuse-Auftrag ohne Fehler (Zustand `fertig`, Beleg des
+        Bauprogramms; services/werkstatt-dienst/internal/gehaeuse). Name und
+        Prüfsumme gehen als Query mit; die API bildet die Prüfsumme selbst aus
+        den Bytes und weist sie bei einer Abweichung zurück. Wiederholbar: ein
+        Nachdruck (gleiche Referenz) überschreibt mit dem neueren Stand. Ein
+        Fehlschlag blockiert den Werkstatt-Lauf an der Box nicht - der nächste
+        Anlauf des Dienstes holt ihn nach.
+      parameters:
+        - { name: edgeRef, in: path, required: true, schema: { type: string } }
+        - { name: name, in: query, required: true, schema: { type: string, example: gehaeuse-edge-k7m2xq3.3mf } }
+        - { name: sha256, in: query, required: true, schema: { type: string, pattern: "^[0-9a-f]{64}$" } }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream: { schema: { type: string, format: binary } }
+      responses:
+        "201": { description: Neu abgelegt., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattDienstGehaeuse" } } } }
+        "200": { description: Überschrieben (Nachdruck)., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattDienstGehaeuse" } } } }
+        "400": { description: Die Datei ist leer. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Keine Box dieser Referenz im Register. }
+        "422": { description: Kein gültiger Dateiname oder die Prüfsumme passt nicht zu den Bytes. }
   /api/v1/werkstatt-dienst/ansicht:
     put:
       tags: [werkstatt-dienst]
@@ -28093,6 +28140,27 @@ components:
             mandant: { type: string }
             anlage: { type: string, nullable: true }
             seit: { type: string, format: date-time }
+        gehaeuse:
+          type: object
+          nullable: true
+          description: >
+            Die Box-Druckdatei des Gehäuses (vp-mango-3mf-pro-box), vom
+            Werkstatt-Dienst hochgeladen; null = noch keine Datei im Portal
+            (kein Werkstatt-Lauf ohne Fehler, oder sie liegt noch in der alten
+            internen Ablage des Dienstes).
+          properties:
+            name: { type: string, example: gehaeuse-edge-k7m2xq3.3mf }
+            sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+            bytes: { type: integer, format: int64 }
+            hochgeladenAm: { type: string, format: date-time }
+    WerkstattDienstGehaeuse:
+      type: object
+      properties:
+        edgeRef: { type: string }
+        name: { type: string }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        bytes: { type: integer, format: int64 }
+        hochgeladenAm: { type: string, format: date-time }
     FernwartungSoll:
       type: object
       required: [version, erzeugtAm, boxNetz, technikerNetz, peers, fenster]

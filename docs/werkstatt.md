@@ -57,15 +57,20 @@ Zertifikatsanfrage prüft die API jetzt auch das Prüfzeichen einer erzeugten Ke
 
 ## Gehäuse-Druckdatei zum Herunterladen
 
-Die Detailseite einer Mango bietet eine 3MF an: `gehaeuse-v04.3mf` (Gehäuse komplett, Unterteil und Deckel auf einer Platte).
-Es ist die eingecheckte Datei des Gehäuse-Programms (`edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/`, Stand v0.4), als Kopie in `frontend/portal/src/assets/gehaeuse/`, weil das Portal-Image nur seinen Ordner kennt.
-`werkstattEinrichtung.test.ts` vergleicht die Kopie mit `SHA256SUMS` des Gehäuses; wer die Druckdateien dort neu übernimmt (`abgleich uebernehmen`), kopiert `gehaeuse-v04.3mf` auch ins Portal.
-nginx liefert sie als gehashte Assets mit `Content-Type: model/3mf` (`test/cache-smoke.sh`, Prüfung 11).
+Die Detailseite einer Mango bietet GENAU die Druckdatei dieser Box an, mit Referenz in Klarschrift und
+QR-Code im Unterteil (vp-mango-3mf-pro-box) - nie eine allgemeine Datei ohne Kennung.
+Der Werkstatt-Dienst baut sie nach der Übergabe (`gehaeuse-<referenz>.3mf`,
+[Runbook](../services/werkstatt-dienst/docs/runbook.md#gehäuse-druckdatei)) und lädt sie, sobald der Auftrag ohne
+Fehler fertig ist, zur API hoch (`PUT /api/v1/werkstatt-dienst/gehaeuse/{edgeRef}`, Prüfsumme serverseitig
+geprüft, Nachdruck überschreibt). Die API legt sie in `werkstatt_gehaeuse_datei` ab; die Karte lädt sie über
+`GET /api/v1/admin/werkstatt/boxen/{ref}/gehaeuse` (platform-admin, `model/3mf`).
+Ein Fehlschlag beim Hochladen blockiert den Werkstatt-Lauf an der Box nicht; der nächste Anlauf des Dienstes
+holt ihn nach.
 
-**Das ist nicht die Datei dieser Box.**
-Das Unterteil mit Referenz und QR-Code der einzelnen Box baut der Werkstatt-Dienst nach der Übergabe in seine Ablage (`gehaeuse-<referenz>.3mf`, [Runbook](../services/werkstatt-dienst/docs/runbook.md#gehäuse-druckdatei)).
-Er reicht sie nur über seine Loopback-Anzeige aus (`kubectl port-forward`); an Portal und API gibt er sie nicht weiter.
-Die Seite sagt das beim Download.
+Liegt noch keine Datei vor (kein Werkstatt-Lauf ohne Fehler), sagt die Karte das ehrlich statt eines toten
+Knopfs. Für eine Box, die schon vor dieser Funktion abgenommen wurde, liegt die Datei noch in der alten
+internen Ablage des Dienstes (`kubectl port-forward`, keine API) - die Karte nennt das; ein Rück-Import ist
+keine Aufgabe dieser Funktion, sie kommt beim nächsten Werkstatt-Lauf der Box nach.
 Was von den Teilen gedruckt und bestätigt ist, steht in [druck/README.md](../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/README.md), die Seite wiederholt es nur.
 
 ## Die Abnahme
@@ -164,7 +169,6 @@ Ansprechpartner), und bei einer Box eines anderen Kontos eine eigene Seite, die 
 
 | Was | Warum noch nicht |
 |---|---|
-| Die 3MF mit Kennung dieser Box im Portal | Sie liegt nur in der Ablage des Werkstatt-Dienstes. Soll das Portal sie anbieten, lädt der Dienst sie nach dem Bau in die API hoch (neue Dienst-Route, Tabelle, Admin-Download, Vertrag); das ändert den Dienst und ist ein eigener Auftrag. |
 | Probedruck der Kennung | Die Druckdatei je Box gibt es (`bauen.sh --referenz <referenz>`, [Kennung](../edge-light/gehaeuse/glinet-gl-mt300n-v2/docs/kennung.md)); geprüft ist sie bis zum G-Code, gedruckt nicht. Ob ein Telefon den gedruckten Code liest, zeigt erst der Probedruck des Betreibers. |
 | Werkbank-Bildschirme für den Raspberry Pi | Der Dienst richtet in V1 nur die Mango ein; die Kachel „Raspberry Pi“ ist gesperrt, bis V2 den Ablauf bringt. |
 | Zweiter Faktor am Portal | Entscheid 10b: später |

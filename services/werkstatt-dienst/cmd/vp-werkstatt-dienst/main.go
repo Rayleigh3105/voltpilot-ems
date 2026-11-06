@@ -243,7 +243,11 @@ func dienstLaufen(log *slog.Logger) error {
 	if ptl != nil && k.TechnikerSSH != nil {
 		probe = wartung.Probe{Zugang: wartung.Zugang{Privat: k.TechnikerWG, Adresse: k.TechnikerAdresse}, SSH: k.TechnikerSSH}
 	}
-	gh, err := gehaeuseWerkstatt(k, log.With("logger", "gehaeuse"))
+	var hochlader gehaeuse.Hochlader
+	if c, ok := ptl.(portal.Client); ok {
+		hochlader = c
+	}
+	gh, err := gehaeuseWerkstatt(k, hochlader, log.With("logger", "gehaeuse"))
 	if err != nil {
 		return err
 	}
@@ -339,8 +343,8 @@ func dienstLaufen(log *slog.Logger) error {
 }
 
 // gehaeuseWerkstatt richtet die Schlange der Druckdateien ein (P10); nil ohne
-// VP_GEHAEUSE_BAU.
-func gehaeuseWerkstatt(k konfig.Konfig, log *slog.Logger) (*gehaeuse.Werkstatt, error) {
+// VP_GEHAEUSE_BAU. h: der Hochlader zur API (vp-mango-3mf-pro-box), nil ohne Portal.
+func gehaeuseWerkstatt(k konfig.Konfig, h gehaeuse.Hochlader, log *slog.Logger) (*gehaeuse.Werkstatt, error) {
 	g := k.Gehaeuse
 	var b gehaeuse.Bauer
 	switch g.Bau {
@@ -359,7 +363,7 @@ func gehaeuseWerkstatt(k konfig.Konfig, log *slog.Logger) (*gehaeuse.Werkstatt, 
 		}
 		b = kb
 	}
-	w, err := gehaeuse.Neu(g.Ablage, b, g.Frist, log)
+	w, err := gehaeuse.Neu(g.Ablage, b, h, g.Frist, log)
 	if err != nil {
 		return nil, err
 	}

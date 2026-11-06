@@ -88,6 +88,12 @@ export interface WerkstattBox {
    * einer API vor diesem Feld: dann ist es unbekannt, nicht „kein Kunde“.
    */
   kunde?: WerkstattKunde | null;
+  /**
+   * Die Box-Druckdatei des Gehäuses (vp-mango-3mf-pro-box, mit Referenz und QR-Code
+   * dieser Box), vom Werkstatt-Dienst hochgeladen; null = noch keine Datei im Portal.
+   * Fehlt bei einer API vor diesem Feld.
+   */
+  gehaeuse?: WerkstattGehaeuseDatei | null;
 }
 
 /** Der Kunde einer Box: Mandant, Anlage (null = ohne Anlage), seit wann (ISO). */
@@ -95,6 +101,14 @@ export interface WerkstattKunde {
   mandant: string;
   anlage: string | null;
   seit: string;
+}
+
+/** Die Box-Druckdatei des Gehäuses, wie die API sie nennt. */
+export interface WerkstattGehaeuseDatei {
+  name: string;
+  sha256: string;
+  bytes: number;
+  hochgeladenAm: string;
 }
 
 /**
