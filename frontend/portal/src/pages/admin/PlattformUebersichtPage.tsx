@@ -74,30 +74,29 @@ export function PlattformUebersichtPage({
       adminApi.listPendingEnrollments(),
       adminApi.plattformDienste(),
     ]);
+    // Ein Fehlschlag ist keine Datenlage (§5.2/`liveness.ts`): ein Block, den
+    // dieser Abruf nicht lieferte, bleibt mit seinem alten Stand stehen -
+    // nie still auf „nichts" zurückgesetzt, solange schon etwas gezeigt wird.
     if (fleetR.status === 'fulfilled') {
       setSites(fleetR.value.sites);
       setReleases(fleetR.value.releases ?? []);
-      setLoadError(null);
-    } else {
-      // Ein Fehlschlag ist keine Datenlage - steht schon etwas, bleibt es mit
-      // seiner alten Bezugszeit stehen (der stille Takt kippt den Zustand nie).
-      setLoadError('Die Plattform-Übersicht konnte nicht geladen werden.');
     }
     if (edgeR.status === 'fulfilled') {
       setEdgeFleet(edgeR.value.fleet);
       setEdgeLines(edgeR.value.lines ?? []);
       setEdgeKpi(edgeR.value.kpi);
-    } else {
-      setEdgeFleet([]);
-      setEdgeLines([]);
-      setEdgeKpi(null);
     }
-    setFernwartung(fwR.status === 'fulfilled' ? fwR.value : null);
-    setFernwartungBoxen(fwBoxenR.status === 'fulfilled' ? fwBoxenR.value : []);
-    setWerkstatt(wsR.status === 'fulfilled' ? wsR.value : null);
-    setPending(pendR.status === 'fulfilled' ? pendR.value : []);
-    setPlattformDienste(diensteR.status === 'fulfilled' ? diensteR.value : null);
-    setFetchedAt(Date.now());
+    if (fwR.status === 'fulfilled') setFernwartung(fwR.value);
+    if (fwBoxenR.status === 'fulfilled') setFernwartungBoxen(fwBoxenR.value);
+    if (wsR.status === 'fulfilled') setWerkstatt(wsR.value);
+    if (pendR.status === 'fulfilled') setPending(pendR.value);
+    if (diensteR.status === 'fulfilled') setPlattformDienste(diensteR.value);
+    if (fleetR.status === 'fulfilled') {
+      setLoadError(null);
+      setFetchedAt(Date.now());
+    } else {
+      setLoadError('Die Plattform-Übersicht konnte nicht geladen werden.');
+    }
   }, []);
 
   useEffect(() => {
@@ -142,7 +141,9 @@ export function PlattformUebersichtPage({
         title="Plattform"
         actions={
           <span className="vp-muted vp-text-sm" data-testid="ueb-stand">
-            {sites ? freshnessLabel(fetchedAt, tick) : 'Wird geladen …'} · alle 30 s
+            {!sites ? 'Wird geladen …'
+              : loadError ? freshnessLabel(fetchedAt, tick, true)
+                : `${freshnessLabel(fetchedAt, tick)} · alle 30 s`}
           </span>
         }
       />
@@ -328,6 +329,7 @@ function FlottenbildKarte({
 function Legende() {
   const EINTRAEGE: { ton: FlottenbildTon; label: string }[] = [
     { ton: 'ok', label: 'verbunden' },
+    { ton: 'verzoegert', label: 'verzögert' },
     { ton: 'aus', label: 'meldet sich nicht' },
     { ton: 'nie', label: 'nie gemeldet' },
     { ton: 'lauf', label: 'Update läuft' },

@@ -267,3 +267,49 @@ test('Geräteakte am Telefon: Überblick einer nicht verbundenen Box bleibt unte
   });
   expect(woerter).toBeLessThanOrEqual(60);
 });
+
+// ---------------------------------------------------------------------------
+// Scheibe S7 (Konzept §5): die fünf Zustände nach Tabelle 5.3, dazu der
+// L2-Sonderfall - alle sichtbar in der Geräteakte, ohne Überlauf.
+// ---------------------------------------------------------------------------
+
+test('Geräteakte: alle fünf Zustände nach §5.3 plus der L2-Sonderfall, ohne Überlauf bei 1440 und 390 px', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  const zumZustand = async (box: string) => {
+    await page.getByRole('button', { name: 'Geräte', exact: true }).click();
+    await page.getByTestId('geraete-liste').getByText(box).first().click();
+  };
+
+  // Verbunden (Solarpark Sonnenhof) - und der L2-Sonderfall: Herzschlag in
+  // Ordnung, Messwerte seit einer Weile aus, der Kopf bleibt „Verbunden".
+  await page.goto('/e2e/box-updates.html');
+  await zumZustand('Solarpark Sonnenhof');
+  await expect(page.getByTestId('akte-zustand')).toContainText('Verbunden');
+  await expect(page.getByTestId('akte-messwert-luecke')).toContainText('Messwerte seit');
+  await expect(page.getByTestId('akte-messwert-luecke')).toContainText('Datenannahme');
+
+  // Verzögert (E6) - Werkstatt am Bach: drei ausgebliebene Herzschläge, reine Anzeige.
+  await zumZustand('Werkstatt am Bach');
+  await expect(page.getByTestId('akte-zustand')).toContainText('Verzögert');
+
+  // Meldet sich nicht - Hof Lindenallee.
+  await zumZustand('Hof Lindenallee');
+  await expect(page.getByTestId('akte-zustand')).toContainText('Meldet sich nicht');
+
+  // Wartet auf erste Meldung - Neubau am Feldrain (nie ein Strich-Platzhalter).
+  await zumZustand('Neubau am Feldrain');
+  await expect(page.getByTestId('akte-zustand')).toContainText('Wartet auf erste Meldung');
+
+  // Unbekannt - Gewerbepark West (ein älterer Serverstand liefert das Feld gar nicht).
+  await zumZustand('Gewerbepark West');
+  await expect(page.getByTestId('akte-zustand')).toContainText('Stand unbekannt');
+
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    expect(overflow, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
+  }
+  expect(errors).toEqual([]);
+});

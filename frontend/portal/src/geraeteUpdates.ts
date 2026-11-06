@@ -239,7 +239,7 @@ export interface ZeilenBadge { ton: BadgeTon; text: string }
 
 export interface BoxVerbindungSicht {
   /** `unbekannt`: der Server liefert keine Uhr (älterer Stand) - nie still „nie gemeldet". */
-  zustand: 'online' | 'offline' | 'nie' | 'unbekannt';
+  zustand: 'online' | 'verzoegert' | 'offline' | 'nie' | 'unbekannt';
   text: string;
   gesehen: string | null;
 }
@@ -278,7 +278,11 @@ export interface BoxZeile {
 export function verbindungSicht(row: FleetRow, now: Date): BoxVerbindungSicht {
   if (row.lastSeenAt === undefined) return { zustand: 'unbekannt', text: 'Verbindung unbekannt', gesehen: null };
   const v = boxVerbindung(row.lastSeenAt, now);
-  if (v.zustand === 'online') return { zustand: 'online', text: v.text, gesehen: fmtRelative(row.lastSeenAt, now) };
+  // E6: „verzögert" ist reine Anzeige - sie trägt dieselbe Alters-Uhr wie
+  // „online", nicht den „seit HH:MM"-Satz von „meldet sich nicht".
+  if (v.zustand === 'online' || v.zustand === 'verzoegert') {
+    return { zustand: v.zustand, text: v.text, gesehen: fmtRelative(row.lastSeenAt, now) };
+  }
   if (v.zustand === 'offline') {
     const seit = seitDauer(row.lastSeenAt, now);
     const zuletzt = uhr(row.lastSeenAt, now);
@@ -288,6 +292,32 @@ export function verbindungSicht(row: FleetRow, now: Date): BoxVerbindungSicht {
     };
   }
   return { zustand: 'nie', text: v.text, gesehen: null };
+}
+
+/**
+ * Ab wann gilt der Messwert als „aus" (§5.3-Sonderfall L2) - deutlich über dem
+ * normalen Messtakt (die Box sendet spätestens alle 5 s), damit eine einzelne
+ * ausgefallene Runde nicht sofort als Lücke behauptet wird.
+ */
+export const MESSWERT_LUECKE_MS = 60_000;
+
+/**
+ * Der L2-Sonderfall: der Herzschlag kommt an, aber die Messwerte stehen -
+ * Herzschlag und Messwert laufen über getrennte Wege (API-Listener bzw.
+ * Datenannahme → Redpanda → Writer), einer kann ausfallen, während der
+ * andere läuft. Der Kopf bleibt dabei „Verbunden" (das ist er ja); diese
+ * Funktion trägt nur, OB „Jetzt" trotzdem die Lücke nennen muss, statt sie
+ * stumm zu überspringen. Aufrufer prüfen den Herzschlag-Zustand selbst -
+ * diese Funktion kennt ihn nicht und behauptet ihn nie mit.
+ */
+export function messwerteLuecke(
+  messwertAm: string | null | undefined,
+  now: Date,
+): { seit: string } | null {
+  if (!messwertAm) return null;
+  const alter = now.getTime() - Date.parse(messwertAm);
+  if (!Number.isFinite(alter) || alter <= MESSWERT_LUECKE_MS) return null;
+  return { seit: seitDauer(messwertAm, now) ?? 'seit wenigen Sekunden' };
 }
 
 function urteil(row: FleetRow, verbindung: BoxVerbindungSicht, now: Date): ZeilenBadge | null {

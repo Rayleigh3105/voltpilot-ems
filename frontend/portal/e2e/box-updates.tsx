@@ -12,6 +12,7 @@ import { keycloak } from '../src/auth';
 import {
   GRUND_LIGHT_AUF_UNBEKANNT, GRUND_LIGHT_STUFE_1_LOADER, type EdgeUpdates, type FleetRow,
 } from '../src/adminEdgeUpdates';
+import type { AdminGeraeteAkte } from '../src/admin/adminApi';
 import { type AnlageWerkzeug, type GeraeteAkteReiter, type PageId, type Route } from '../src/nav';
 import type { WerkstattBox } from '../src/werkstatt';
 import type { WerkstattDienst, WerkstattFreigabe } from '../src/werkstattBank';
@@ -51,12 +52,14 @@ const aelter = { ist: 'edge-2026.09.02-73486bab2980', istRelease: 'edge-2026.09.
 const fleet: FleetRow[] = [
   // Geräte & Updates G8: was die Box über ihr Gerät meldet (fiktiv).
   { ...base, geraetModell: 'Raspberry Pi 4 Model B Rev 1.4', geraetArch: 'arm64' },
+  // E6 (S7): drei ausgebliebene Herzschläge, läuft trotzdem ein Update - „Verzögert" bleibt reine Anzeige.
   { ...base, ...aelter, deviceId: 'd2', externalRef: 'edge-abcdefj', label: 'Box Werkstatt', siteName: 'Werkstatt am Bach',
     geraetModell: 'Intel(R) Client Systems NUC11TNHi5', geraetArch: 'amd64',
-    state: 'laedt', reason: 'Das Update wird heruntergeladen.', stand: 'laeuft',
+    state: 'laedt', reason: 'Das Update wird heruntergeladen.', stand: 'laeuft', lastSeenAt: vor(2 * MIN),
     fakten: anfrage({ am: vor(20 * MIN), angenommen: 'ja', angenommenAm: vor(18 * MIN), bestaetigt: 'laeuft', schritt: 'laedt' }) },
+  // §5.3 „Unbekannt": ein älterer Serverstand liefert das Feld gar nicht (kein `null`, keine Zahl).
   { ...base, ...aelter, deviceId: 'd3', externalRef: 'VP-BOX-1003', label: 'VP-BOX-1003', siteName: 'Gewerbepark West',
-    tenantName: 'Muster Solar GmbH', state: 'blockiert', stand: 'gehalten',
+    tenantName: 'Muster Solar GmbH', state: 'blockiert', stand: 'gehalten', lastSeenAt: undefined,
     blocker: 'platte', reason: 'Zu wenig freier Speicherplatz auf der Box.',
     fakten: anfrage({ am: vor(20 * MIN), angenommen: 'zurueckgestellt', grund: 'Zu wenig freier Speicherplatz auf der Box.' }) },
   { ...base, ...aelter, deviceId: 'd4', externalRef: 'VP-BOX-1004', label: 'VP-BOX-1004', siteName: 'Hof Lindenallee',
@@ -209,9 +212,27 @@ const fernwartungBoxen: Record<string, FernwartungBox> = {
     laufendeFenster: [],
   },
 };
+// L3/L2 (S6/S7): die Akte-in-einer-Antwort, herzschlagAm und messwertAm getrennt.
+// VP-BOX-1001 demonstriert den §5.3-Sonderfall: Herzschlag in Ordnung, Messwerte seit 8 Min. aus.
+const geraeteAkteVon = (ref: string): AdminGeraeteAkte => {
+  const r = fleet.find((f) => f.externalRef === ref);
+  if (!r) return { externalRef: ref, lebensabschnitt: 'gedruckt', lebensabschnittSeit: null, kopf: null, software: null, verbindung: null, einrichtung: null };
+  const herzschlagAm = r.lastSeenAt ?? null;
+  const messwertAm = ref === 'VP-BOX-1001' ? vor(8 * MIN) : herzschlagAm;
+  return {
+    externalRef: ref, lebensabschnitt: 'kunde', lebensabschnittSeit: null,
+    kopf: {
+      deviceId: r.deviceId, name: r.label, siteId: r.siteId, siteName: r.siteName,
+      tenantId: r.tenantId, tenantName: r.tenantName, herzschlagAm, messwertAm,
+      lastSeenAt: r.lastSeenAt ?? null, ausgebautAm: null,
+    },
+    software: null, verbindung: null, einrichtung: null,
+  };
+};
 Object.assign(keycloak, { tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } } });
 Object.assign(adminApi, {
   edgeUpdates: async () => data,
+  geraeteAkte: async (ref: string) => geraeteAkteVon(ref),
   edgeRelease: async (releaseSeq: number) => releaseSeite(releaseSeq),
   edgeEignung: async (releaseSeq: number) => eignung(releaseSeq),
   boxVerlauf: async (deviceId: string) => verlauf(deviceId),

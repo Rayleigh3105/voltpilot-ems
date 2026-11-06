@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EdgeUpdates } from '../../adminEdgeUpdates';
 
@@ -121,5 +121,41 @@ describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnit
     await waitFor(() => expect(liste).toHaveTextContent('Pilsting'));
     expect(liste).not.toHaveTextContent('Ahrenberg');
     window.location.hash = '';
+  });
+
+  describe('S7: Live-Feinschliff (§5 des Konzepts)', () => {
+    it('zeigt oben die Bezugszeit mit Takt (§5.2)', async () => {
+      edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [boxRow()] });
+      render(<GeraeteListePage onOpen={vi.fn()} />);
+      await screen.findByText('Pilsting');
+      expect(screen.getByTestId('geraete-liste-stand')).toHaveTextContent('Stand');
+      expect(screen.getByTestId('geraete-liste-stand')).toHaveTextContent('alle 30 s');
+    });
+
+    it('zeigt eine verzögerte Box als „Verzögert", nicht als „Meldet sich nicht" (E6)', async () => {
+      edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [boxRow({ lastSeenAt: new Date(Date.now() - 2 * 60_000).toISOString() })] });
+      render(<GeraeteListePage onOpen={vi.fn()} />);
+      const liste = await screen.findByTestId('geraete-liste');
+      expect(liste).toHaveTextContent('Verzögert');
+    });
+
+    it('Fehlerzeile bei gescheiterter Abfrage - die Liste bleibt stehen statt sich zu leeren (§5.2)', async () => {
+      vi.useFakeTimers();
+      try {
+        edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [boxRow()] });
+        render(<GeraeteListePage onOpen={vi.fn()} />);
+        await act(async () => { await Promise.resolve(); });
+        expect(screen.getByTestId('geraete-liste')).toHaveTextContent('Pilsting');
+
+        edgeUpdates.mockRejectedValue(new Error('netz weg'));
+        listDevices.mockRejectedValue(new Error('netz weg'));
+        await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+
+        expect(screen.getByTestId('geraete-liste-stand')).toHaveTextContent('Aktualisierung schlägt fehl');
+        expect(screen.getByTestId('geraete-liste')).toHaveTextContent('Pilsting');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

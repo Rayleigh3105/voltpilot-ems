@@ -29,3 +29,20 @@
 .vp-akte-menu-liste button:focus-visible {
   background: var(--vp-surface-hover, #f3f3f3);
 }
+
+/*
+ * Der Herzschlag-Punkt (§5.4): schlägt GENAU EINMAL, wenn eine Antwort einen
+ * neueren Herzschlag trägt als die vorige - ein Beleg, keine Dauer-Animation
+ * wie `vp-ustate-busy` ("hier bewegt sich etwas ohne Sie"). Läuft mit einer
+ * festen Dauer von 0 % bis 100 % ab (kein `infinite`) und braucht deshalb
+ * keinen Eintrag im `prefers-reduced-motion`-Block von `index.css`: unter
+ * `--vp-motion-scale: 0` steht sie sofort auf ihrem Endzustand.
+ */
+.vp-badge-dot-puls {
+  animation: vp-badge-dot-puls var(--vp-motion-chart) var(--vp-ease, ease-in-out) 1;
+}
+@keyframes vp-badge-dot-puls {
+  0% { transform: scale(1); opacity: 1; }
+  35% { transform: scale(1.7); opacity: 0.55; }
+  100% { transform: scale(1); opacity: 1; }
+}

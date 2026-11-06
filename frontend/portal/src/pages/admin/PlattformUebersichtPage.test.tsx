@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminFleetSite } from '../../admin/fleetApi';
 import type { EdgeUpdates } from '../../adminEdgeUpdates';
@@ -140,5 +140,28 @@ describe('PlattformUebersichtPage', () => {
     listPendingEnrollments.mockRejectedValue(new Error('kaputt'));
     render(<PlattformUebersichtPage />);
     expect(await screen.findByText('Verbindung')).toBeInTheDocument();
+  });
+
+  describe('S7: Live-Feinschliff (§5.2) - eine fehlgeschlagene Aktualisierung ist keine Datenlage', () => {
+    it('eine spätere gescheiterte Abfrage blendet die Übersicht nicht leer - die Fehlerzeile erscheint oben', async () => {
+      vi.useFakeTimers();
+      try {
+        fleet.mockResolvedValue({ sites: [site('s1', 'Anlage A')] });
+        render(<PlattformUebersichtPage />);
+        await act(async () => { await Promise.resolve(); });
+        expect(screen.getByText('Verbindung')).toBeInTheDocument();
+        expect(screen.queryByText(/Noch keine Anlage/)).toBeNull();
+
+        fleet.mockRejectedValue(new Error('netz weg'));
+        await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+
+        expect(screen.getByTestId('ueb-stand')).toHaveTextContent('Aktualisierung schlägt fehl');
+        // Die Kacheln und die Flotte bleiben stehen - keine leere Übersicht.
+        expect(screen.getByText('Verbindung')).toBeInTheDocument();
+        expect(screen.queryByText(/Noch keine Anlage/)).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

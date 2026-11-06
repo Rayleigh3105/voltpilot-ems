@@ -5,7 +5,7 @@ import ReactDOM from 'react-dom/client';
 import { AppShell } from '../src/shell/AppShell';
 import { PlattformBereich } from '../src/pages/admin/PlattformBereich';
 import { GeraeteRegistryPage } from '../src/pages/admin/GeraeteRegistryPage';
-import { adminApi } from '../src/admin/adminApi';
+import { adminApi, type AdminGeraeteAkte } from '../src/admin/adminApi';
 import { fleetApi, type AdminFleetSite } from '../src/admin/fleetApi';
 import { keycloak } from '../src/auth';
 import type { EdgeUpdates, FleetRow } from '../src/adminEdgeUpdates';
@@ -76,6 +76,9 @@ const fleet: FleetRow[] = [
     tenantName: 'Kunststoffwerk Ahrenberg', lastSeenAt: vor(8_000) },
   { ...base, deviceId: 'd8', externalRef: 'VP-BOX-AH-02', label: 'Box Halle 2', siteName: 'Werk Ahrenberg',
     tenantName: 'Kunststoffwerk Ahrenberg', lastSeenAt: vor(9_000) },
+  // E6 (S7): drei ausgebliebene Herzschläge - „Verzögert", reine Anzeige, zählt nicht als Ausnahme.
+  { ...base, deviceId: 'd9', externalRef: 'VP-BOX-AH-03', label: 'Box Halle 3', siteName: 'Werk Ahrenberg',
+    tenantName: 'Kunststoffwerk Ahrenberg', lastSeenAt: vor(2 * MIN) },
 ];
 
 const data: EdgeUpdates = {
@@ -164,10 +167,26 @@ const werkstattDienst: WerkstattDienst = {
 
 const pending = [{ externalRef: 'edge-q7xk2p9', deviceInfo: 'Box im Lager', csrUpdatedAt: vor(2 * 24 * STD), everIssued: false, issuedAt: null }];
 
+// L3/L2 (S6/S7): die Akte-in-einer-Antwort, herzschlagAm und messwertAm getrennt.
+const geraeteAkteVon = (ref: string): AdminGeraeteAkte => {
+  const r = fleet.find((f) => f.externalRef === ref);
+  if (!r) return { externalRef: ref, lebensabschnitt: 'gedruckt', lebensabschnittSeit: null, kopf: null, software: null, verbindung: null, einrichtung: null };
+  const herzschlagAm = r.lastSeenAt ?? null;
+  return {
+    externalRef: ref, lebensabschnitt: 'kunde', lebensabschnittSeit: null,
+    kopf: {
+      deviceId: r.deviceId, name: r.label, siteId: r.siteId, siteName: r.siteName,
+      tenantId: r.tenantId, tenantName: r.tenantName, herzschlagAm, messwertAm: herzschlagAm,
+      lastSeenAt: r.lastSeenAt ?? null, ausgebautAm: null,
+    },
+    software: null, verbindung: null, einrichtung: null,
+  };
+};
 Object.assign(keycloak, { tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } } });
 Object.assign(fleetApi, { fleet: async () => ({ sites, releases: data.releases, unterstuetzungBis: {} }) });
 Object.assign(adminApi, {
   edgeUpdates: async () => data,
+  geraeteAkte: async (ref: string) => geraeteAkteVon(ref),
   fernwartung: async () => fernwartungUebersicht,
   fernwartungBoxen: async () => fernwartungBoxenListe,
   fernwartungBox: async (ref: string) => fernwartungBoxenNachRef[ref],

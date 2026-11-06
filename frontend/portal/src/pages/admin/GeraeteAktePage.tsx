@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -6,15 +6,22 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { VpPicker } from '../../components/VpPicker';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ApiError } from '../../api';
-import { adminApi, type AdminDeviceRow, type ControlCandidate, type PendingEnrollment, type Tenant } from '../../admin/adminApi';
+import {
+  adminApi, type AdminDeviceRow, type AdminGeraeteAkte, type ControlCandidate, type PendingEnrollment, type Tenant,
+} from '../../admin/adminApi';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import {
-  BOX_ART_LABELS, BOX_ART_UNBEKANNT, crossoverState, releaseBoxArt,
+  BOX_ART_LABELS, BOX_ART_UNBEKANNT, crossoverState, freshnessLabel, releaseBoxArt,
   type BoxVerlauf, type EdgeUpdates, type EdgeUpdatesRelease, type FleetRow,
 } from '../../adminEdgeUpdates';
-import { boxFakten, linieDerBox, stufe1Hinweis, verbindungSicht, verlaufSicht } from '../../geraeteUpdates';
+import {
+  boxFakten, linieDerBox, messwerteLuecke, stufe1Hinweis, verbindungSicht, verlaufSicht,
+  type BoxVerbindungSicht,
+} from '../../geraeteUpdates';
 import { pendingRows } from '../../onboardingFunnel';
 import { fmtRelative } from '../../format';
+import { useFreshnessPoll } from '../../useFreshnessPoll';
+import { LIVE_POLL_MS } from '../../pollCadence';
 import { FernwartungKarte } from '../../components/FernwartungKarte';
 import { ProtokollListe } from './FernwartungPage';
 import { type FernwartungProtokollEintrag } from '../../adminFernwartung';
@@ -77,17 +84,28 @@ export function GeraeteAktePage({
   const [werkstattFreigaben, setWerkstattFreigaben] = useState<WerkstattFreigabe[] | null>(null);
   const [verlauf, setVerlauf] = useState<BoxVerlauf | null>(null);
   const [fwProtokoll, setFwProtokoll] = useState<FernwartungProtokollEintrag[] | null>(null);
+  const [akte, setAkte] = useState<AdminGeraeteAkte | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [jetzt, setJetzt] = useState(() => new Date());
+  // Beobachtungswerkzeug (§5.2): Bezugszeit des letzten ERFOLGS, nie eine
+  // laufende Uhr über einem stehenden Schnappschuss (`liveness.ts`).
+  const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
+  const [tick, setTick] = useState<number>(() => Date.now());
+  const [pollFehler, setPollFehler] = useState(false);
+  // §5.4: der Herzschlag-Punkt schlägt EINMAL, wenn eine Antwort einen
+  // NEUEREN Herzschlag trägt als die vorige - ein Beleg, keine Dauer-Animation.
+  const [pulsiert, setPulsiert] = useState(false);
+  const letzterHerzschlag = useRef<string | null>(null);
+  const hatteDaten = useRef(false);
 
   async function laden() {
-    const [eu, dv, pe, wb, wd, wf, fw] = await Promise.allSettled([
+    const [eu, dv, pe, wb, wd, wf, fw, ak] = await Promise.allSettled([
       adminApi.edgeUpdates(), adminApi.listDevices(), adminApi.listPendingEnrollments(),
       adminApi.werkstattBoxen(), adminApi.werkstattDienst(), adminApi.werkstattFreigaben(),
-      adminApi.fernwartungProtokoll({ box: boxRef, limit: 100 }),
+      adminApi.fernwartungProtokoll({ box: boxRef, limit: 100 }), adminApi.geraeteAkte(boxRef),
     ]);
     if (eu.status === 'fulfilled') setEdgeUpdates(eu.value);
     if (dv.status === 'fulfilled') setDevices(dv.value);
@@ -96,16 +114,54 @@ export function GeraeteAktePage({
     if (wd.status === 'fulfilled') setWerkstattDienst(liesDienst(wd.value));
     if (wf.status === 'fulfilled') setWerkstattFreigaben(wf.value);
     if (fw.status === 'fulfilled') setFwProtokoll(fw.value);
-    setLoadError(eu.status === 'rejected' && dv.status === 'rejected' ? 'Diese Box ließ sich nicht laden.' : null);
-    setJetzt(new Date());
+    if (ak.status === 'fulfilled') {
+      const neu = ak.value.kopf?.herzschlagAm ?? null;
+      if (neu && letzterHerzschlag.current != null && neu !== letzterHerzschlag.current) setPulsiert(true);
+      if (neu) letzterHerzschlag.current = neu;
+      setAkte(ak.value);
+    }
+    const erfolg = eu.status === 'fulfilled' || dv.status === 'fulfilled' || ak.status === 'fulfilled';
+    if (erfolg) {
+      hatteDaten.current = true;
+      setPollFehler(false);
+      setLoadError(null);
+      setFetchedAt(Date.now());
+      setJetzt(new Date());
+    } else if (hatteDaten.current) {
+      // Ein fehlgeschlagener Abruf ist keine Datenlage (§5.2/`liveness.ts`):
+      // die Werte und ihre Bezugszeit bleiben stehen, nur die Fehlerzeile
+      // erscheint - die Seite blendet sich nie auf eine leere Fehlerseite um,
+      // sobald sie einmal etwas zu zeigen hatte.
+      setPollFehler(true);
+    } else {
+      setLoadError('Diese Box ließ sich nicht laden.');
+    }
     setLoading(false);
   }
 
   useEffect(() => {
     setLoading(true);
+    hatteDaten.current = false;
+    letzterHerzschlag.current = null;
     void laden();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boxRef]);
+  // Tabelle 5.1 nennt für Software/Verbindung/Einrichtung eigene, LANGSAMERE
+  // Takte (30 s, 20 s, 5 s nur während eines Werkstatt-Laufs) - `laden()` holt
+  // aber ohnehin alle Reiter in EINER Runde, also bekommt die ganze Akte den
+  // schnellsten Takt (Kopf/Überblick, 10 s). Das ist immer MINDESTENS so
+  // frisch wie die Tabelle verspricht, nie weniger - ein eigener, langsamerer
+  // Takt je Reiter wäre ein zweiter Lauf über dieselbe Antwort.
+  useFreshnessPoll(() => void laden(), LIVE_POLL_MS, !loading);
+  useEffect(() => {
+    const t = window.setInterval(() => setTick(Date.now()), 5_000);
+    return () => window.clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (!pulsiert) return;
+    const t = window.setTimeout(() => setPulsiert(false), 650);
+    return () => window.clearTimeout(t);
+  }, [pulsiert]);
 
   const row = useMemo(() => edgeUpdates?.fleet.find((r) => r.externalRef === boxRef) ?? null, [edgeUpdates, boxRef]);
   const deviceRow = useMemo(() => devices?.find((d) => d.externalRef === boxRef) ?? null, [devices, boxRef]);
@@ -154,7 +210,8 @@ export function GeraeteAktePage({
   return (
     <div className="vp-admin-page vp-geraete-akte" data-testid="geraete-akte">
       <AktenKopf boxRef={boxRef} row={row} deviceRow={deviceRow} pendingRow={pendingRow} jetzt={jetzt}
-        reiter={reiter} onReiter={nav} onNavigate={onNavigate} />
+        reiter={reiter} onReiter={nav} onNavigate={onNavigate} pulsiert={pulsiert}
+        stand={pollFehler ? freshnessLabel(fetchedAt, tick, true) : `${freshnessLabel(fetchedAt, tick)} · alle 10 s`} />
       {actionError && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
 
       {reiter === 'software' ? (
@@ -162,7 +219,7 @@ export function GeraeteAktePage({
           releases={edgeUpdates?.releases ?? []} onAssign={(seq) => act(() => adminApi.setUpdateTarget(row!.deviceId, { releaseSeq: seq }))}
           onRevert={() => act(() => adminApi.revertUpdateTarget(row!.deviceId))} />
       ) : reiter === 'verbindung' ? (
-        <VerbindungReiter boxRef={boxRef} row={row} jetzt={jetzt} />
+        <VerbindungReiter boxRef={boxRef} row={row} jetzt={jetzt} akte={akte} />
       ) : reiter === 'anlage' ? (
         <AnlageReiter boxRef={boxRef} row={row} tenants={tenants} jetzt={jetzt} onNavigate={onNavigate}
           onJumpToTenant={onJumpToTenant} werkzeug={werkzeug}
@@ -174,7 +231,7 @@ export function GeraeteAktePage({
       ) : reiter === 'verlauf' ? (
         <VerlaufReiter verlauf={verlauf} jetzt={jetzt} fwProtokoll={fwProtokoll ?? []} />
       ) : (
-        <UeberblickReiter row={row} ersterLeerLauf={ersterLeerLauf} jetzt={jetzt} onReiter={nav} />
+        <UeberblickReiter row={row} ersterLeerLauf={ersterLeerLauf} jetzt={jetzt} onReiter={nav} akte={akte} />
       )}
     </div>
   );
@@ -191,8 +248,24 @@ const REITER: { id: GeraeteAkteReiter | null; label: string }[] = [
   { id: 'verlauf', label: 'Verlauf' },
 ];
 
+/**
+ * Die fünf Zustände aus Konzept §5.3, EIN Ort für ihren Wortlaut und ihre
+ * Farbe (`Badge`-Varianten; der Punkt übernimmt dieselbe Farbe über
+ * `currentColor`). „Verzögert" (E6) und „Meldet sich nicht" sind zwei
+ * verschiedene Ernste - zwei verschiedene Töne, nie derselbe wie ein Fehler.
+ */
+function zustandBadgeAusVerbindung(v: BoxVerbindungSicht): { variant: 'ok' | 'warn' | 'offline' | 'off'; text: string } {
+  switch (v.zustand) {
+    case 'online': return { variant: 'ok', text: `Verbunden${v.gesehen ? ` · ${v.gesehen}` : ''}` };
+    case 'verzoegert': return { variant: 'warn', text: `Verzögert${v.gesehen ? ` · ${v.gesehen}` : ''}` };
+    case 'offline': return { variant: 'offline', text: `Meldet sich nicht${v.gesehen ? ` · ${v.gesehen}` : ''}` };
+    case 'nie': return { variant: 'off', text: 'Wartet auf erste Meldung' };
+    default: return { variant: 'off', text: 'Stand unbekannt' };
+  }
+}
+
 function AktenKopf({
-  boxRef, row, deviceRow, pendingRow, jetzt, reiter, onReiter, onNavigate,
+  boxRef, row, deviceRow, pendingRow, jetzt, reiter, onReiter, onNavigate, pulsiert, stand,
 }: {
   boxRef: string;
   row: FleetRow | null;
@@ -202,15 +275,19 @@ function AktenKopf({
   reiter: GeraeteAkteReiter | null;
   onReiter: (r: GeraeteAkteReiter | null) => void;
   onNavigate?: (target: Route) => void;
+  /** §5.4: der Punkt schlägt einmal, wenn eine Antwort einen neueren Herzschlag trägt. */
+  pulsiert: boolean;
+  /** §5.2: „Stand vor 3 s · alle 10 s", bei gescheiterter Abfrage „Aktualisierung schlägt fehl · Stand 14:02". */
+  stand: string;
 }) {
   const [menuOffen, setMenuOffen] = useState(false);
   const verbindung = row ? verbindungSicht(row, jetzt) : null;
   const name = row?.siteName?.trim() || deviceRow?.label || boxRef;
   const zustandBadge = verbindung
-    ? { ok: verbindung.zustand === 'online', text: verbindung.zustand === 'online' ? `Verbunden · ${verbindung.gesehen ?? ''}` : verbindung.zustand === 'offline' ? `Meldet sich nicht · ${verbindung.gesehen ?? ''}` : 'Wartet auf erste Meldung' }
+    ? zustandBadgeAusVerbindung(verbindung)
     : pendingRow
-      ? { ok: false, text: 'Meldet sich, wartet auf Zuordnung' }
-      : { ok: false, text: 'Noch nicht verbunden' };
+      ? { variant: 'off' as const, text: 'Meldet sich, wartet auf Zuordnung' }
+      : { variant: 'off' as const, text: 'Noch nicht verbunden' };
 
   return (
     <>
@@ -231,7 +308,8 @@ function AktenKopf({
         }
         actions={
           <div className="vp-row-gap" style={{ alignItems: 'center' }}>
-            <Badge variant={zustandBadge.ok ? 'ok' : 'off'} dot data-testid="akte-zustand">
+            <span className="vp-muted vp-text-sm" data-testid="akte-stand">{stand}</span>
+            <Badge variant={zustandBadge.variant} dot pulse={pulsiert} data-testid="akte-zustand">
               {zustandBadge.text}
             </Badge>
             {row && (
@@ -272,11 +350,13 @@ function AktenKopf({
 
 // ── Überblick ───────────────────────────────────────────────────────────────
 
-function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter }: {
+function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte }: {
   row: FleetRow | null;
   ersterLeerLauf: boolean;
   jetzt: Date;
   onReiter: (r: GeraeteAkteReiter) => void;
+  /** §5.3-Sonderfall L2: Herzschlag und Messwert getrennt, aus der Akte-in-einer-Antwort (L3). */
+  akte: AdminGeraeteAkte | null;
 }) {
   if (ersterLeerLauf) {
     return (
@@ -291,6 +371,10 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter }: {
   const verbindung = verbindungSicht(row!, jetzt);
   const brauchtDich = row!.state === 'fehlgeschlagen' || row!.state === 'zurueckgerollt' || row!.state === 'blockiert'
     || (verbindung.zustand === 'offline' && row!.rolloutId != null);
+  // L2-Sonderfall (§5.3): der Herzschlag ist in Ordnung, aber die Messwerte
+  // stehen - das bleibt eine Aussage über die DATENANNAHME, nicht über die
+  // Box, also kippt der Kopf dafür nicht auf „Meldet sich nicht".
+  const luecke = verbindung.zustand === 'online' ? messwerteLuecke(akte?.kopf?.messwertAm, jetzt) : null;
 
   return (
     <div className="vp-geraet-grid">
@@ -303,9 +387,15 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter }: {
       )}
       <Card padding="lg" radius="lg" className="vp-geraet-sek">
         <h2><Icon name="activity" size={18} /> Jetzt</h2>
-        <p className="vp-muted">
-          Live-Messwerte dieser Anlage (PV, Netz, Speicher, Haus) stehen in der Kundenansicht dieser Box - „Wie der Kunde es sieht“ im Menü „⋯“ des Kopfes.
-        </p>
+        {luecke ? (
+          <p className="vp-alert vp-alert-warn" data-testid="akte-messwert-luecke">
+            Messwerte {luecke.seit} aus - die Datenannahme braucht einen Blick, nicht die Box.
+          </p>
+        ) : (
+          <p className="vp-muted">
+            Live-Messwerte dieser Anlage (PV, Netz, Speicher, Haus) stehen in der Kundenansicht dieser Box - „Wie der Kunde es sieht“ im Menü „⋯“ des Kopfes.
+          </p>
+        )}
       </Card>
       <Card padding="lg" radius="lg" className="vp-geraet-sek">
         <h2>Reiter dieser Box</h2>
@@ -427,29 +517,25 @@ function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, o
 
 // ── Verbindung ────────────────────────────────────────────────────────────
 
-function VerbindungReiter({ boxRef, row, jetzt }: { boxRef: string; row: FleetRow | null; jetzt: Date }) {
+function VerbindungReiter({ boxRef, row, jetzt, akte }: {
+  boxRef: string;
+  row: FleetRow | null;
+  jetzt: Date;
+  /** Lücke L4 (S6): das Zertifikats-Ablaufdatum - aus der Akte-in-einer-Antwort (L3), vom Wirt geladen. */
+  akte: AdminGeraeteAkte | null;
+}) {
   const verbindung = row ? verbindungSicht(row, jetzt) : null;
-  // Lücke L4 (S6): das Zertifikats-Ablaufdatum stand bisher nirgends - ein
-  // eigener, kleiner Abruf der Akte-in-einer-Antwort (L3) statt sechs Felder
-  // der ohnehin schon riesigen Reiter-Zusammensetzung dieser Seite anzufassen.
-  const [zertifikat, setZertifikat] = useState<{ ausgestelltAm: string | null; gueltigBis: string | null } | null>(null);
-  useEffect(() => {
-    let live = true;
-    adminApi.geraeteAkte(boxRef).then((akte) => {
-      if (live) setZertifikat(akte.einrichtung ? {
-        ausgestelltAm: akte.einrichtung.zertifikatAusgestelltAm,
-        gueltigBis: akte.einrichtung.zertifikatGueltigBis,
-      } : null);
-    }).catch(() => { if (live) setZertifikat(null); });
-    return () => { live = false; };
-  }, [boxRef]);
+  const zertifikat = akte?.einrichtung ? {
+    ausgestelltAm: akte.einrichtung.zertifikatAusgestelltAm,
+    gueltigBis: akte.einrichtung.zertifikatGueltigBis,
+  } : null;
   return (
     <div className="vp-geraet-grid">
       <Card padding="lg" radius="lg" className="vp-geraet-sek">
         <h2><Icon name="link" size={18} /> Herzschlag zur Cloud</h2>
         {verbindung ? (
           <p>
-            <Badge variant={verbindung.zustand === 'online' ? 'ok' : 'off'} dot>{verbindung.text}</Badge>
+            <Badge variant={zustandBadgeAusVerbindung(verbindung).variant} dot>{verbindung.text}</Badge>
             {verbindung.gesehen && <span className="vp-cell-sub"> {verbindung.gesehen}</span>}
           </p>
         ) : <p className="vp-muted">Diese Box hat sich der Cloud noch nie gemeldet.</p>}

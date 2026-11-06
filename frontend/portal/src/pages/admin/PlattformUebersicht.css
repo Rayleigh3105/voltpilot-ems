@@ -113,6 +113,8 @@
   cursor: pointer;
 }
 .vp-ueb-flotte-feld.ok { background: var(--vp-color-ok, #22c55e); }
+/* E6: eine Stufe heller als „aus" - verzögert ist noch keine Störung. */
+.vp-ueb-flotte-feld.verzoegert { background: #fbbf24; }
 .vp-ueb-flotte-feld.aus { background: var(--vp-color-warn, #f59e0b); }
 .vp-ueb-flotte-feld.nie { background: var(--vp-border-subtle, #cbd5e1); }
 .vp-ueb-flotte-feld.lauf { background: #3b82f6; }
@@ -123,6 +125,7 @@
 .vp-ueb-flotte-legende span { display: inline-flex; align-items: center; gap: 4px; }
 .vp-ueb-flotte-legende i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
 .vp-ueb-flotte-legende i.ok { background: var(--vp-color-ok, #22c55e); }
+.vp-ueb-flotte-legende i.verzoegert { background: #fbbf24; }
 .vp-ueb-flotte-legende i.aus { background: var(--vp-color-warn, #f59e0b); }
 .vp-ueb-flotte-legende i.nie { background: var(--vp-border-subtle, #cbd5e1); }
 .vp-ueb-flotte-legende i.lauf { background: #3b82f6; }

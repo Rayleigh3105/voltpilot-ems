@@ -7,8 +7,15 @@ import React from 'react';
  */
 export function Badge({
   children,
-  variant = 'tint', // tint | gradient | solid | ok | warn | off
+  variant = 'tint', // tint | gradient | solid | ok | warn | offline | off
   dot = false,
+  // Schlägt den Punkt EINMAL (keine Dauer-Animation) - der Beleg, dass eine
+  // Antwort gerade einen neueren Herzschlag getragen hat (Adminview-Konzept
+  // §5.4). Nie mit `pulse` als Dauerzustand verwechseln: der endet nach einem
+  // Lauf von selbst und braucht deshalb KEINEN Eintrag im
+  // `prefers-reduced-motion`-Block von `index.css` (eine einmalige Animation
+  // steht unter `--vp-motion-scale: 0` sofort auf ihrem Endzustand).
+  pulse = false,
   style = {},
   ...props
 }) {
@@ -35,6 +42,13 @@ export function Badge({
       background: '#FFF3E0',
       color: 'var(--vp-warn-ink, #b45309)',
     },
+    // Eine Stufe dunkler als `warn` (Adminview-Konzept §5.3: „verzögert" ist
+    // bernstein, „meldet sich nicht" ist orange - zwei verschiedene Ernste,
+    // zwei verschiedene Töne, nie derselbe wie ein Fehler (`fehler`).
+    offline: {
+      background: '#FDE9D3',
+      color: '#9A4A0A',
+    },
     off: {
       background: 'var(--vp-bg-light)',
       color: '#57606A',
@@ -60,6 +74,7 @@ export function Badge({
     >
       {dot && (
         <span
+          className={pulse ? 'vp-badge-dot-puls' : undefined}
           style={{
             width: 7,
             height: 7,

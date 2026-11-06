@@ -621,15 +621,23 @@ describe('controlMatrixRows (B2 - die Pilsting-Sicht)', () => {
   });
 });
 
-describe('boxVerbindung - die EINE Online-Regel', () => {
-  it('online innerhalb des 5-Minuten-Fensters, an der Grenze noch online', () => {
+describe('boxVerbindung - die EINE Online-Regel (E6: drei Stufen)', () => {
+  it('online bis zum 45-Sekunden-Fenster, an der Grenze noch online', () => {
     expect(boxVerbindung(ago(20_000), NOW)).toEqual({
       zustand: 'online', tone: 'ok', text: 'Verbunden', lastSeenText: 'vor 20 Sek.',
     });
-    expect(boxVerbindung(ago(5 * 60_000), NOW).zustand).toBe('online');
+    expect(boxVerbindung(ago(45_000), NOW).zustand).toBe('online');
   });
 
-  it('veraltet ist nicht aktuell: hinter dem Fenster meldet sie sich nicht', () => {
+  it('verzögert zwischen 45 Sekunden und 5 Minuten - reine Anzeige, kein Alarmton', () => {
+    expect(boxVerbindung(ago(45_000 + 1), NOW)).toMatchObject({
+      zustand: 'verzoegert', tone: 'warn', text: 'Verzögert',
+    });
+    expect(boxVerbindung(ago(2 * 60_000), NOW).zustand).toBe('verzoegert');
+    expect(boxVerbindung(ago(5 * 60_000), NOW).zustand).toBe('verzoegert');
+  });
+
+  it('veraltet ist nicht aktuell: hinter dem 5-Minuten-Fenster meldet sie sich nicht', () => {
     expect(boxVerbindung(ago(5 * 60_000 + 1), NOW)).toMatchObject({
       zustand: 'offline', tone: 'warn', text: 'Meldet sich nicht',
     });
@@ -661,5 +669,18 @@ describe('boxVerbindung - die EINE Online-Regel', () => {
     expect(verbindungZaehlung(['online', 'online', 'offline', 'nie']).text)
       .toBe('2 online · 1 offline · 1 nie gemeldet');
     expect(verbindungZaehlung([]).text).toBe('0 online · 0 offline · 0 nie gemeldet');
+  });
+
+  it('zählt „verzögert" getrennt, ohne den Wortlaut der übrigen Zählung zu ändern', () => {
+    const z = verbindungZaehlung(['online', 'verzoegert', 'verzoegert', 'offline']);
+    expect(z).toMatchObject({ online: 1, verzoegert: 2, offline: 1, nie: 0 });
+    expect(z.text).toBe('1 online · 1 offline · 0 nie gemeldet');
+  });
+
+  it('trägt den genauen Zustand auch an `connectionZustand` - verzögert ist kein offline', () => {
+    const [group] = fleetBoxGroups([site({
+      boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-0003', name: 'Box', fuehrtAnlage: true, lastSeenAt: ago(2 * 60_000), edge: null, update: null }],
+    })], NOW, []);
+    expect(group.boxes[0]).toMatchObject({ connectionZustand: 'verzoegert', connectionTone: 'warn' });
   });
 });

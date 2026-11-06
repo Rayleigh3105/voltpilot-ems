@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EdgeUpdates } from '../../adminEdgeUpdates';
 
@@ -216,6 +216,79 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
       expect(jump).toHaveBeenCalledWith('t1', expect.objectContaining({ sub: 'prognose' }));
       fireEvent.click(screen.getByRole('button', { name: 'Gemeinsame Steuerung' }));
       expect(jump).toHaveBeenCalledWith('t1', expect.objectContaining({ sub: 'technik' }));
+    });
+  });
+
+  describe('S7: Live-Feinschliff (§5 des Konzepts)', () => {
+    const vorher = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+    it('zeigt oben die Bezugszeit mit Takt (§5.2)', async () => {
+      edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [connectedRow] });
+      render(<GeraeteAktePage boxRef="edge-a1" reiter={null} />);
+      expect(await screen.findByTestId('akte-stand')).toHaveTextContent('Stand');
+      expect(screen.getByTestId('akte-stand')).toHaveTextContent('alle 10 s');
+    });
+
+    it('E6: Verzögert zwischen 45 Sekunden und 5 Minuten - reine Anzeige', async () => {
+      edgeUpdates.mockResolvedValue({
+        ...emptyEdgeUpdates(), fleet: [{ ...connectedRow, lastSeenAt: vorher(2 * 60_000) }],
+      });
+      render(<GeraeteAktePage boxRef="edge-a1" reiter={null} />);
+      expect(await screen.findByTestId('akte-zustand')).toHaveTextContent('Verzögert');
+    });
+
+    it('Meldet sich nicht nach 5 Minuten - ein anderer Ton als Verzögert', async () => {
+      edgeUpdates.mockResolvedValue({
+        ...emptyEdgeUpdates(), fleet: [{ ...connectedRow, lastSeenAt: vorher(10 * 60_000) }],
+      });
+      render(<GeraeteAktePage boxRef="edge-a1" reiter={null} />);
+      expect(await screen.findByTestId('akte-zustand')).toHaveTextContent('Meldet sich nicht');
+    });
+
+    it('Unbekannt bei fehlendem Feld - keine Zahl, nie eine Null', async () => {
+      edgeUpdates.mockResolvedValue({
+        ...emptyEdgeUpdates(), fleet: [{ ...connectedRow, lastSeenAt: undefined }],
+      });
+      render(<GeraeteAktePage boxRef="edge-a1" reiter={null} />);
+      expect(await screen.findByTestId('akte-zustand')).toHaveTextContent('Stand unbekannt');
+    });
+
+    it('L2-Sonderfall: Herzschlag in Ordnung, Messwerte alt - Kopf bleibt Verbunden', async () => {
+      edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [connectedRow] });
+      geraeteAkte.mockResolvedValue({
+        externalRef: 'edge-a1', lebensabschnitt: 'kunde', lebensabschnittSeit: null,
+        kopf: {
+          deviceId: 'd1', name: 'edge-a1', siteId: 's1', siteName: 'Pilsting', tenantId: 't1', tenantName: 'Kunde A',
+          herzschlagAm: new Date().toISOString(), messwertAm: vorher(8 * 60_000), lastSeenAt: new Date().toISOString(), ausgebautAm: null,
+        },
+        software: null, verbindung: null, einrichtung: null,
+      });
+      render(<GeraeteAktePage boxRef="edge-a1" reiter={null} />);
+      expect(await screen.findByTestId('akte-zustand')).toHaveTextContent('Verbunden');
+      expect(await screen.findByTestId('akte-messwert-luecke')).toHaveTextContent('Messwerte seit');
+      expect(screen.getByTestId('akte-messwert-luecke')).toHaveTextContent('Datenannahme');
+    });
+
+    it('Fehlerzeile bei gescheiterter Abfrage - die Werte bleiben mit ihrem alten Alter stehen (§5.2)', async () => {
+      vi.useFakeTimers();
+      try {
+        edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [connectedRow] });
+        render(<GeraeteAktePage boxRef="edge-a1" reiter={null} />);
+        await act(async () => { await Promise.resolve(); });
+        expect(screen.getByTestId('akte-zustand')).toHaveTextContent('Verbunden');
+
+        edgeUpdates.mockRejectedValue(new Error('netz weg'));
+        listDevices.mockRejectedValue(new Error('netz weg'));
+        geraeteAkte.mockRejectedValue(new Error('netz weg'));
+        await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+
+        expect(screen.getByTestId('akte-stand')).toHaveTextContent('Aktualisierung schlägt fehl');
+        // Die Seite blendet sich nicht auf eine leere Fehlerseite um - die alte Box steht weiter.
+        expect(screen.getByTestId('akte-zustand')).toHaveTextContent('Verbunden');
+        expect(screen.queryByTestId('geraete-akte')).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

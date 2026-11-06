@@ -936,8 +936,17 @@ const NBSP = '\u00a0';
  * unterscheiden, ob sich nichts bewegt oder ob nur niemand nachgesehen hat.
  * Gerechnet wird gegen die ANTWORTZEIT, nie gegen eine Uhr über einem
  * stehenden Schnappschuss (die Lebendigkeits-Lehre aus `liveness.ts`).
+ *
+ * `fehlgeschlagen` (Adminview-Konzept §5.2): schlägt die Abfrage fehl, steht
+ * hier „Aktualisierung schlägt fehl · Stand HH:MM" statt eines wachsenden
+ * Alters - die Werte selbst bleiben mit ihrem alten Alter stehen, nur DIESE
+ * Zeile sagt, dass sie gerade nicht mehr nachgezogen werden.
  */
-export function freshnessLabel(fetchedAt: number, now: number): string {
+export function freshnessLabel(fetchedAt: number, now: number, fehlgeschlagen = false): string {
+  if (fehlgeschlagen) {
+    const uhrzeit = new Date(fetchedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    return `Aktualisierung schlägt fehl${NBSP}· Stand ${uhrzeit}`;
+  }
   const secs = Math.max(0, Math.round((now - fetchedAt) / 1000));
   if (secs < 5) return 'Stand: gerade eben';
   if (secs < 60) return `Stand: vor ${secs}${NBSP}Sek.`;
