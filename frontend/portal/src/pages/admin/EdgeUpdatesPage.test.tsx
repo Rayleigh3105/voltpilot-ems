@@ -228,7 +228,7 @@ describe('EdgeUpdatesPage', () => {
     // Stufe 1: der Knopf führt zur Box-Akte, nicht in einen Verteil-Dialog.
     fireEvent.click(within(light).getByRole('button', { name: 'Nachrüsten: so geht’s' }));
     expect(nav).toHaveBeenCalledWith(expect.objectContaining({
-      page: 'geraete-registry', geraeteAkte: { ref: 'edge-tgjn9gd', reiter: 'software' },
+      page: 'geraete-registry', geraeteAkte: { ref: 'edge-tgjn9gd', reiter: 'software', werkzeug: null },
     }));
     nav.mockClear();
 
@@ -255,7 +255,7 @@ describe('EdgeUpdatesPage', () => {
     fireEvent.click(within(kannNicht).getByRole('button', { name: 'Nachrüsten' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Update verteilen · Edge Light' })).toBeNull());
     expect(nav).toHaveBeenCalledWith(expect.objectContaining({
-      page: 'geraete-registry', geraeteAkte: { ref: 'edge-tgjn9gd', reiter: 'software' },
+      page: 'geraete-registry', geraeteAkte: { ref: 'edge-tgjn9gd', reiter: 'software', werkzeug: null },
     }));
   });
 
@@ -416,7 +416,7 @@ describe('EdgeUpdatesPage', () => {
     // „Box ansehen" führt seit Scheibe S2 in die Geräteakte statt in ein Fenster.
     fireEvent.click(within(neu[0]).getByRole('button', { name: 'Box ansehen' }));
     expect(nav).toHaveBeenCalledWith(expect.objectContaining({
-      page: 'geraete-registry', geraeteAkte: { ref: 'edge-a1', reiter: 'software' },
+      page: 'geraete-registry', geraeteAkte: { ref: 'edge-a1', reiter: 'software', werkzeug: null },
     }));
   });
 

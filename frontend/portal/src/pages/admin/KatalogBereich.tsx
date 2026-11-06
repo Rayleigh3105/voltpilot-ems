@@ -2,13 +2,15 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { KATALOG_TABS, parseSektion, sektionHash, type KatalogSektion } from '../../nav';
 import { VorlagenPage } from './VorlagenPage';
 import { SteuerungsFreigabePage } from './SteuerungsFreigabePage';
-import { KomponentenFlottePage } from './KomponentenFlottePage';
+import { PrognoseKatalogSektion } from './PrognoseKatalogSektion';
 
 /**
  * Plattform › Katalog (Konzept `vp-adminview-konzept-k1` §4.3, Umzugstabelle
  * §4.7): EIN Ort für Gerätevorlagen, die steuerbaren Modelle (das Register der
- * Steuerungs-Freigabe) und die Komponenten-Welt der Flotte - drei bestehende
- * Seiten, ungeändert, hinter einem gemeinsamen Unter-Reiter.
+ * Steuerungs-Freigabe) und - seit Scheibe S3 (N8) - die Plattform-Vorgabe der
+ * Prognosemodelle (Server und Portal-Funktion gab es, nur keine Fläche). Die
+ * Komponenten-Welt der Flotte ist mit S3 entfallen: ihre Fakten wohnen jetzt
+ * in der Akte › Anlage jeder Box.
  *
  * `?sektion=` wählt den Unter-Reiter (Default „Vorlagen"); `geraetetypen`
  * bleibt als WERT gültig (die alte Sektion der Steuerungs-Freigabe) und zeigt
@@ -17,8 +19,8 @@ import { KomponentenFlottePage } from './KomponentenFlottePage';
  */
 export function KatalogBereich({ tabs }: { tabs?: ReactNode } = {}) {
   const sektion = parseSektion(window.location.hash);
-  const aktiv: KatalogSektion = sektion === 'komponenten'
-    ? 'komponenten'
+  const aktiv: KatalogSektion = sektion === 'prognose'
+    ? 'prognose'
     : sektion === 'modelle' || sektion === 'geraetetypen'
       ? 'modelle'
       : 'vorlagen';
@@ -30,7 +32,7 @@ export function KatalogBereich({ tabs }: { tabs?: ReactNode } = {}) {
       {innenTabs}
       {aktiv === 'vorlagen' && <VorlagenPage />}
       {aktiv === 'modelle' && <SteuerungsFreigabePage />}
-      {aktiv === 'komponenten' && <KomponentenFlottePage />}
+      {aktiv === 'prognose' && <PrognoseKatalogSektion />}
     </>
   );
 }

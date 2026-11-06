@@ -36,8 +36,8 @@ export interface RohZeile {
 }
 
 export type GeraeteListeZeile =
-  | { lebensabschnitt: 'verbunden'; zeile: BoxZeile }
-  | RohZeile;
+  | { lebensabschnitt: 'verbunden'; zeile: BoxZeile; fassungAbweichung: boolean }
+  | (RohZeile & { fassungAbweichung: boolean });
 
 const key = (z: GeraeteListeZeile): string => (z.lebensabschnitt === 'verbunden' ? z.zeile.ref : z.ref);
 
@@ -46,16 +46,23 @@ const key = (z: GeraeteListeZeile): string => (z.lebensabschnitt === 'verbunden'
  * `/admin/devices`, `/admin/enrollments/pending`, `/admin/werkstatt/boxen`).
  * Jede Referenz steht GENAU EINMAL - die Rangfolge löst eine Überschneidung
  * auf (verbunden vor wartet vor Werkstatt vor gedruckt).
+ *
+ * `fassungRefs` (Scheibe S3, Umzugstabelle §4.7): Box-Referenzen, deren
+ * Anlage eine Komponenten-Fassung noch nicht angewandt hat
+ * (`/admin/component-fleet`, `syncStatus === 'pending'`) - der Chip „Fassung
+ * weicht ab" der stillgelegten Komponenten-Flotte.
  */
 export function geraeteListeZeilen(args: {
   fleet: readonly FleetRow[];
   devices: readonly AdminDeviceRow[];
   pending: readonly PendingEnrollment[];
   werkstattBoxen: readonly WerkstattBox[];
-}, now: Date): GeraeteListeZeile[] {
+}, now: Date, fassungRefs: ReadonlySet<string> = new Set()): GeraeteListeZeile[] {
   const { fleet, devices, pending, werkstattBoxen } = args;
   const verbunden = new Set(fleet.map((r) => r.externalRef));
-  const rows: GeraeteListeZeile[] = fleet.map((r) => ({ lebensabschnitt: 'verbunden', zeile: boxZeile(r, now) }));
+  const rows: GeraeteListeZeile[] = fleet.map((r) => ({
+    lebensabschnitt: 'verbunden', zeile: boxZeile(r, now), fassungAbweichung: fassungRefs.has(r.externalRef),
+  }));
 
   const wartend = new Set<string>();
   for (const p of pendingRows(pending.filter((p) => !verbunden.has(p.externalRef)), now)) {
@@ -68,6 +75,7 @@ export function geraeteListeZeilen(args: {
       seit: p.csrUpdatedAt,
       suspect: p.suspect,
       suchtext: [p.externalRef, p.deviceInfo].filter(Boolean).join(' ').toLocaleLowerCase('de'),
+      fassungAbweichung: false,
     });
   }
 
@@ -84,6 +92,7 @@ export function geraeteListeZeilen(args: {
       seit: b.angelegtAm,
       suspect: false,
       suchtext: [b.edgeRef, geraet, b.notiz].filter(Boolean).join(' ').toLocaleLowerCase('de'),
+      fassungAbweichung: false,
     });
   }
 
@@ -98,6 +107,7 @@ export function geraeteListeZeilen(args: {
       seit: d.provisionedAt,
       suspect: false,
       suchtext: [d.externalRef, d.label, d.note].filter(Boolean).join(' ').toLocaleLowerCase('de'),
+      fassungAbweichung: false,
     });
   }
 
@@ -119,7 +129,7 @@ const RANG: Record<Lebensabschnitt, number> = { verbunden: 0, wartet: 1, werksta
 
 export type ListeChip =
   | 'braucht' | 'offline' | 'lauf' | 'aelter'
-  | 'gedruckt' | 'ohne_kunde' | 'werkstatt';
+  | 'gedruckt' | 'ohne_kunde' | 'werkstatt' | 'fassung';
 
 export interface ListeFilter {
   chip: ListeChip | null;
@@ -138,6 +148,7 @@ const chipPasst = (z: GeraeteListeZeile, chip: ListeChip): boolean => {
     case 'gedruckt': return z.lebensabschnitt === 'gedruckt';
     case 'werkstatt': return z.lebensabschnitt === 'werkstatt';
     case 'ohne_kunde': return z.lebensabschnitt === 'gedruckt' || z.lebensabschnitt === 'wartet';
+    case 'fassung': return z.fassungAbweichung;
     default: return false;
   }
 };
@@ -151,7 +162,7 @@ export interface ListeChipZahl { chip: ListeChip; label: string; n: number }
 export function listeChipZahlen(zeilen: GeraeteListeZeile[]): ListeChipZahl[] {
   const LABEL: Record<ListeChip, string> = {
     braucht: 'Braucht dich', offline: 'Offline', lauf: 'Update läuft', aelter: 'Älter',
-    gedruckt: 'Gedruckt', ohne_kunde: 'Ohne Kunde', werkstatt: 'Werkstatt',
+    gedruckt: 'Gedruckt', ohne_kunde: 'Ohne Kunde', werkstatt: 'Werkstatt', fassung: 'Fassung weicht ab',
   };
   return (Object.keys(LABEL) as ListeChip[])
     .map((chip) => ({ chip, label: LABEL[chip], n: zeilen.filter((z) => chipPasst(z, chip)).length }))

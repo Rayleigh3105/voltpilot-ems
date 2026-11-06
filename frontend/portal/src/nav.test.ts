@@ -49,6 +49,7 @@ import {
   geraeteAkteRoute,
   geraeteListeHash,
   parseGeraeteListeFilter,
+  parseGeraeteListeWerkzeug,
   aufbauHash,
   parseAufbauRef,
   ohneAufbauNeu,
@@ -507,11 +508,12 @@ describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-ko
     expect(PLATTFORM_BEREICH.tabs.some((t) => t.id === PLATTFORM_BEREICH.host)).toBe(true);
   });
 
-  it('zeigt Katalog als drei Unter-Reiter über bestehenden, ungeänderten Seiten', () => {
-    expect(KATALOG_TABS.map((t) => t.id)).toEqual(['vorlagen', 'modelle', 'komponenten']);
+  it('zeigt Katalog als drei Unter-Reiter (Scheibe S3: Prognosemodelle statt Komponenten)', () => {
+    expect(KATALOG_TABS.map((t) => t.id)).toEqual(['vorlagen', 'modelle', 'prognose']);
     expect(katalogSektionPage('vorlagen')).toBe('vorlagen');
     expect(katalogSektionPage('modelle')).toBe('steuerungs-freigabe');
-    expect(katalogSektionPage('komponenten')).toBe('komponenten-flotte');
+    // „Prognose" lebt als Sektion IN der Katalog-Seite selbst, keine eigene `PageId`.
+    expect(katalogSektionPage('prognose')).toBe('katalog');
   });
 
   it('Scheibe S1 §4.2: jede alte Plattform-Adresse leitet auf ihren neuen Raum, mit Parametern', () => {
@@ -528,10 +530,13 @@ describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-ko
     expect(canonicalPlatformHash('#/benutzer')).toBe('#/plattform/benutzer');
     // Scheibe S5: der geöffnete Mandant (`?mandant=<id>`) zieht ins Pfad-Segment der Kundenakte um.
     expect(canonicalPlatformHash('#/mandanten?mandant=t-1')).toBe('#/plattform/benutzer/t-1');
-    // Vorlagen/Steuerungs-Freigabe/Komponenten sind seit S1 Katalog-Unter-Reiter.
+    // Vorlagen/Steuerungs-Freigabe sind seit S1 Katalog-Unter-Reiter.
     expect(canonicalPlatformHash('#/vorlagen')).toBe('#/plattform/katalog?sektion=vorlagen');
-    expect(canonicalPlatformHash('#/komponenten-flotte')).toBe('#/plattform/katalog?sektion=komponenten');
     expect(canonicalPlatformHash('#/steuerungs-freigabe')).toBe('#/plattform/katalog?sektion=modelle');
+    // Scheibe S3 (Umzugstabelle §4.7): die alten Anlagen-Werkzeuge lösen sich auf.
+    expect(canonicalPlatformHash('#/optimizer')).toBe('#/plattform/geraete?werkzeug=plan');
+    expect(canonicalPlatformHash('#/flows')).toBe('#/plattform/geraete?werkzeug=flows');
+    expect(canonicalPlatformHash('#/komponenten-flotte')).toBe('#/plattform/geraete?filter=fassung');
     // Ein vorhandenes `?sektion=` (die alte Gerätetypen-Sektion) bleibt erhalten.
     expect(canonicalPlatformHash('#/steuerungs-freigabe?sektion=geraetetypen'))
       .toBe('#/plattform/katalog?sektion=geraetetypen');
@@ -557,17 +562,17 @@ describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-ko
 
   it('Scheibe S2 §4.2/4.4: die Geräteakte adressiert die Box-Referenz statt der UUID, Reiter als Pfad-Abschnitt', () => {
     expect(parseRoute('#/plattform/geraete/edge-k2m4pqj')).toEqual({
-      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-k2m4pqj', reiter: null },
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-k2m4pqj', reiter: null, werkzeug: null },
     });
     expect(parseRoute('#/plattform/geraete/edge-k2m4pqj/software')).toEqual({
-      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-k2m4pqj', reiter: 'software' },
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-k2m4pqj', reiter: 'software', werkzeug: null },
     });
     expect(parseRoute('#/plattform/geraete/VP-DEMO-0001/verbindung')).toEqual({
-      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'VP-DEMO-0001', reiter: 'verbindung' },
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'VP-DEMO-0001', reiter: 'verbindung', werkzeug: null },
     });
     // Ein unbekannter Reiter fällt auf den Überblick zurück, statt ins Leere zu zeigen.
-    expect(parseRoute('#/plattform/geraete/edge-1/anlage')).toEqual({
-      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: null },
+    expect(parseRoute('#/plattform/geraete/edge-1/unbekannt')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: null, werkzeug: null },
     });
     expect(hashForRoute(geraeteAkteRoute('edge-k2m4pqj'))).toBe('#/plattform/geraete/edge-k2m4pqj');
     expect(hashForRoute(geraeteAkteRoute('edge-k2m4pqj', 'einrichtung'))).toBe('#/plattform/geraete/edge-k2m4pqj/einrichtung');
@@ -576,6 +581,29 @@ describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-ko
     expect(geraeteListeHash()).toBe('#/plattform/geraete');
     expect(parseGeraeteListeFilter(geraeteListeHash('offline'))).toBe('offline');
     expect(parseGeraeteListeFilter('#/plattform/geraete')).toBeNull();
+  });
+
+  it('Scheibe S3 §4.2/4.4: der Reiter „Anlage" trägt ein Werkzeug mit vorgewählter Anlage', () => {
+    expect(parseRoute('#/plattform/geraete/edge-1/anlage')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: 'anlage', werkzeug: null },
+    });
+    expect(parseRoute('#/plattform/geraete/edge-1/anlage/plan')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: 'anlage', werkzeug: 'plan' },
+    });
+    expect(parseRoute('#/plattform/geraete/edge-1/anlage/flows')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: 'anlage', werkzeug: 'flows' },
+    });
+    // Ein Werkzeug gilt nur unter `anlage` - an einem anderen Reiter wird es ignoriert.
+    expect(parseRoute('#/plattform/geraete/edge-1/software/plan')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: 'software', werkzeug: null },
+    });
+    expect(hashForRoute(geraeteAkteRoute('edge-1', 'anlage', 'plan'))).toBe('#/plattform/geraete/edge-1/anlage/plan');
+    expect(hashForRoute(geraeteAkteRoute('edge-1', 'anlage'))).toBe('#/plattform/geraete/edge-1/anlage');
+    // `#/optimizer`/`#/flows` landen auf der Geräte-Liste mit dem Werkzeug im Gepäck - „Box wählen, dann Werkzeug".
+    expect(geraeteListeHash(null, 'plan')).toBe('#/plattform/geraete?werkzeug=plan');
+    expect(parseGeraeteListeWerkzeug('#/plattform/geraete?werkzeug=plan')).toBe('plan');
+    expect(parseGeraeteListeWerkzeug('#/plattform/geraete?werkzeug=unbekannt')).toBeNull();
+    expect(parseGeraeteListeWerkzeug('#/plattform/geraete')).toBeNull();
   });
 
   it('faltet die Gerätetypen in den Katalog - MIT ihrem Anker', () => {

@@ -4,8 +4,9 @@ import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import { VpPicker } from '../../components/VpPicker';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ApiError } from '../../api';
-import { adminApi, type AdminDeviceRow, type PendingEnrollment } from '../../admin/adminApi';
+import { adminApi, type AdminDeviceRow, type ControlCandidate, type PendingEnrollment, type Tenant } from '../../admin/adminApi';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import {
   BOX_ART_LABELS, BOX_ART_UNBEKANNT, crossoverState, releaseBoxArt,
@@ -19,7 +20,18 @@ import { ProtokollListe } from './FernwartungPage';
 import { type FernwartungProtokollEintrag } from '../../adminFernwartung';
 import { liesDienst, uebersicht, type UebersichtZeile, type WerkstattDienst, type WerkstattFreigabe } from '../../werkstattBank';
 import type { WerkstattBox } from '../../werkstatt';
-import { pageRoute, type GeraeteAkteReiter, type Route } from '../../nav';
+import { fleetApi, type AdminFleetSite } from '../../admin/fleetApi';
+import { controlMatrixRow, planCell } from '../../adminFleet';
+import {
+  activateConsequences, certSourceLabel, deactivateConsequences, plantCertView,
+} from '../../controlCertification';
+import { ablehnung, pflegeOrt, quellenText, sollIst, type FlottenAnlage } from '../../adminKomponentenFlotte';
+import { OptimizerPage } from './OptimizerPage';
+import { FlowsPage } from './FlowsPage';
+import {
+  anlageRoute, geraeteAkteRoute, pageRoute,
+  type AnlageWerkzeug, type GeraeteAkteReiter, type Route,
+} from '../../nav';
 import { BoxArtChip } from './BoxArtChip';
 import { AdminPageHead } from './AdminPageHead';
 import { Zeitleiste } from './Zeitleiste';
@@ -30,15 +42,12 @@ import './Fernwartung.css';
 import './GeraeteAkte.css';
 
 /**
- * Die GERÄTEAKTE (Konzept `vp-adminview-konzept-k1` §4.4, Scheibe S2): EIN
- * Ort für alles, was zu einer Box gehört. Sie adressiert die Box-KENNUNG
+ * Die GERÄTEAKTE (Konzept `vp-adminview-konzept-k1` §4.4, Scheiben S2/S3):
+ * EIN Ort für alles, was zu einer Box gehört. Sie adressiert die Box-KENNUNG
  * (nicht die UUID, §4.2) und setzt sich aus vorhandenen Antworten zusammen -
  * keine neue Schnittstelle (`/admin/edge-updates`, `/admin/devices`,
- * `/admin/enrollments/pending`, `/admin/fernwartung*`, `/admin/werkstatt/*`).
- *
- * Der Reiter „Anlage" fehlt bewusst - er kommt erst mit S3 (Plan, Steuerung,
- * Fassung, Werkzeuge); diese Scheibe reserviert nur seinen Platz in der
- * Reiterleiste nicht, um keinen leeren Reiter zu zeigen.
+ * `/admin/enrollments/pending`, `/admin/fernwartung*`, `/admin/werkstatt/*`,
+ * `/admin/fleet`, `/admin/control-candidates`, `/admin/component-fleet`).
  *
  * E1 = A: bearbeitet wird inline, auf dieser Seite - kein Fenster.
  * E4 = A: die Kundenseiten verlinken nur noch hierher.
@@ -46,11 +55,19 @@ import './GeraeteAkte.css';
 export function GeraeteAktePage({
   boxRef,
   reiter,
+  werkzeug = null,
   onNavigate,
+  onJumpToTenant,
+  tenants = [],
 }: {
   boxRef: string;
   reiter: GeraeteAkteReiter | null;
+  /** Nur unter `reiter === 'anlage'` (§4.4, Scheibe S3): öffnet das Werkzeug direkt. */
+  werkzeug?: AnlageWerkzeug | null;
   onNavigate?: (target: Route) => void;
+  /** Reiter „Anlage": „Prognose"/„Gemeinsame Steuerung" öffnen „Wie der Kunde es sieht". */
+  onJumpToTenant?: (tenantId: string, target: Route) => void;
+  tenants?: Tenant[];
 }) {
   const [edgeUpdates, setEdgeUpdates] = useState<EdgeUpdates | null>(null);
   const [devices, setDevices] = useState<AdminDeviceRow[] | null>(null);
@@ -146,6 +163,10 @@ export function GeraeteAktePage({
           onRevert={() => act(() => adminApi.revertUpdateTarget(row!.deviceId))} />
       ) : reiter === 'verbindung' ? (
         <VerbindungReiter boxRef={boxRef} row={row} jetzt={jetzt} />
+      ) : reiter === 'anlage' ? (
+        <AnlageReiter boxRef={boxRef} row={row} tenants={tenants} jetzt={jetzt} onNavigate={onNavigate}
+          onJumpToTenant={onJumpToTenant} werkzeug={werkzeug}
+          onWerkzeug={(w) => onNavigate?.(geraeteAkteRoute(boxRef, 'anlage', w))} />
       ) : reiter === 'einrichtung' ? (
         <EinrichtungReiter boxRef={boxRef} deviceRow={deviceRow} pendingRow={pendingRow} werkstattZeile={werkstattZeile}
           werkstattBoxen={werkstattBoxen ?? []} werkstattFreigaben={werkstattFreigaben ?? []} jetzt={jetzt}
@@ -165,6 +186,7 @@ const REITER: { id: GeraeteAkteReiter | null; label: string }[] = [
   { id: null, label: 'Überblick' },
   { id: 'software', label: 'Software' },
   { id: 'verbindung', label: 'Verbindung' },
+  { id: 'anlage', label: 'Anlage' },
   { id: 'einrichtung', label: 'Einrichtung' },
   { id: 'verlauf', label: 'Verlauf' },
 ];
@@ -297,6 +319,10 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter }: {
             <dd><button type="button" className="vp-linklike" onClick={() => onReiter('verbindung')}>{verbindung.text}{verbindung.gesehen ? ` · ${verbindung.gesehen}` : ''}</button></dd>
           </div>
           <div className="vp-kv-row">
+            <dt>Anlage</dt>
+            <dd><button type="button" className="vp-linklike" onClick={() => onReiter('anlage')}>Plan, Steuerung, Fassung ansehen</button></dd>
+          </div>
+          <div className="vp-kv-row">
             <dt>Einrichtung</dt>
             <dd><button type="button" className="vp-linklike" onClick={() => onReiter('einrichtung')}>ansehen</button></dd>
           </div>
@@ -417,6 +443,273 @@ function VerbindungReiter({ boxRef, row, jetzt }: { boxRef: string; row: FleetRo
       <Card padding="lg" radius="lg" className="vp-geraet-sek vp-geraet-breit" data-testid="akte-wartung">
         <FernwartungKarte edgeRef={boxRef} />
       </Card>
+    </div>
+  );
+}
+
+// ── Anlage (§4.4, Scheibe S3) ────────────────────────────────────────────
+
+/**
+ * Reiter „Anlage": Plan, Steuerung & Abregelung mit Beleg, Scharfschalten/
+ * Zurücknehmen, Pflege-Hinweise, Komponenten-Fassung Soll/Ist, Werkzeuge
+ * (Plan erklären/Optimizer, Flows, Prognose, Gemeinsame Steuerung) - alles aus
+ * vorhandenen Antworten (`/admin/fleet`, `/admin/control-candidates`,
+ * `/admin/component-fleet`), keine neue Schnittstelle.
+ *
+ * E2 = A: steht diese Box NICHT an der Spitze ihrer Anlage (`fuehrtAnlage ===
+ * false`), zeigt der Reiter nur einen Satz und den Weg zur führenden Box -
+ * der Fakt bleibt an EINEM Ort.
+ */
+function AnlageReiter({
+  boxRef, row, tenants, jetzt, werkzeug, onWerkzeug, onNavigate, onJumpToTenant,
+}: {
+  boxRef: string;
+  row: FleetRow | null;
+  tenants: Tenant[];
+  jetzt: Date;
+  werkzeug: AnlageWerkzeug | null;
+  onWerkzeug: (w: AnlageWerkzeug | null) => void;
+  onNavigate?: (target: Route) => void;
+  onJumpToTenant?: (tenantId: string, target: Route) => void;
+}) {
+  const [site, setSite] = useState<AdminFleetSite | null>(null);
+  const [candidate, setCandidate] = useState<ControlCandidate | null>(null);
+  const [komponenten, setKomponenten] = useState<FlottenAnlage | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [arming, setArming] = useState(false);
+  const [disarming, setDisarming] = useState(false);
+
+  useEffect(() => {
+    if (!row) return;
+    let active = true;
+    setLoadError(false);
+    Promise.all([fleetApi.fleet(), adminApi.controlCandidates(), adminApi.componentFleet()]).then(
+      ([fleet, candidates, komponentenFlotte]) => {
+        if (!active) return;
+        setSite(fleet.sites.find((s) => s.siteId === row.siteId) ?? null);
+        setCandidate((candidates ?? []).find((c) => c.deviceId === row.deviceId) ?? null);
+        setKomponenten((komponentenFlotte ?? []).find((k) => k.siteId === row.siteId) ?? null);
+      },
+      () => { if (active) setLoadError(true); },
+    );
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row?.siteId, row?.deviceId, reloadKey]);
+
+  async function run(action: () => Promise<unknown>): Promise<void> {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await action();
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Die Aktion ist fehlgeschlagen.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!row) {
+    return (
+      <Card padding="lg" radius="lg">
+        <p className="vp-muted" style={{ marginTop: 0 }}>
+          Diese Box ist noch nicht mit einem Kundenkonto verbunden - eine Anlage gibt es erst danach.
+        </p>
+      </Card>
+    );
+  }
+
+  // Werkzeuge öffnen mit vorgewählter Anlage - die Auswahl Mandant → Anlage entfällt (E2 = A).
+  if (werkzeug === 'plan') {
+    return (
+      <OptimizerPage tenants={tenants} onBack={() => onWerkzeug(null)}
+        preselect={{ tenantId: row.tenantId, siteId: row.siteId, siteName: row.siteName }} />
+    );
+  }
+  if (werkzeug === 'flows') {
+    return (
+      <FlowsPage tenants={tenants} onBack={() => onWerkzeug(null)}
+        preselect={{ tenantId: row.tenantId, siteId: row.siteId, siteName: row.siteName }} />
+    );
+  }
+
+  // E2 = A: eine weitere Box derselben Anlage zeigt nur einen Satz und den Weg zur führenden Box.
+  const dieseBox = site?.boxes?.find((b) => b.externalRef === boxRef) ?? null;
+  const fuehrendeBox = site?.boxes?.find((b) => b.fuehrtAnlage === true) ?? null;
+  if (dieseBox?.fuehrtAnlage === false && fuehrendeBox) {
+    return (
+      <Card padding="lg" radius="lg">
+        <p style={{ marginTop: 0 }}>
+          Die Anlage führt Box{' '}
+          <button type="button" className="vp-linklike"
+            onClick={() => onNavigate?.(geraeteAkteRoute(fuehrendeBox.externalRef, 'anlage'))}>
+            {fuehrendeBox.name ?? fuehrendeBox.externalRef} ›
+          </button>
+        </p>
+      </Card>
+    );
+  }
+
+  if (loadError) {
+    return <ErrorState message="Die Anlage ließ sich nicht laden." onRetry={() => setReloadKey((k) => k + 1)} />;
+  }
+  if (!site) {
+    return <TableSkeleton rows={4} cols={1} />;
+  }
+
+  const plan = planCell(site.lastPlanGeneratedAt, jetzt);
+  const matrix = controlMatrixRow(
+    { siteId: site.siteId, siteName: site.siteName, tenantId: site.tenantId, tenantName: site.tenantName, control: site.control, curtailment: site.curtailment },
+    jetzt,
+  );
+  const certView = candidate ? plantCertView(candidate.activated, candidate.platformCertVerdict) : null;
+  const ort = komponenten ? pflegeOrt(komponenten.componentAuthority) : null;
+  const soll = komponenten ? sollIst(komponenten.syncStatus) : null;
+
+  return (
+    <div className="vp-geraet-grid">
+      {actionError && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
+
+      <Card padding="lg" radius="lg" className="vp-geraet-sek">
+        <h2><Icon name="calendar" size={18} /> Plan</h2>
+        <p><Badge variant={plan.tone} dot>{plan.text}</Badge></p>
+        <p className="vp-muted vp-text-sm">Letzter Lauf des Optimierers für diese Anlage.</p>
+      </Card>
+
+      <Card padding="lg" radius="lg" className="vp-geraet-sek">
+        <h2><Icon name="sliders" size={18} /> Steuerung und Abregelung</h2>
+        <dl className="vp-kv-list">
+          <div className="vp-kv-row">
+            <dt>Batterie-Steuerung</dt>
+            <dd>
+              <Badge variant={matrix.battery.tone} dot>{matrix.battery.text}</Badge>
+              {matrix.battery.detail && <span className="vp-cell-sub">{matrix.battery.detail}</span>}
+            </dd>
+          </div>
+          <div className="vp-kv-row">
+            <dt>Abregelung</dt>
+            <dd>
+              <Badge variant={matrix.curtail.tone} dot>{matrix.curtail.text}</Badge>
+              {matrix.curtail.detail && <span className="vp-cell-sub">{matrix.curtail.detail}</span>}
+            </dd>
+          </div>
+          <div className="vp-kv-row"><dt>Ausführung jetzt</dt><dd>{matrix.executionText}</dd></div>
+          <div className="vp-kv-row">
+            <dt>Beleg</dt>
+            <dd>{matrix.belegText}{matrix.belegStale && <span className="vp-cell-sub"> · zu alt für eine Aussage</span>}</dd>
+          </div>
+        </dl>
+      </Card>
+
+      <Card padding="lg" radius="lg" className="vp-geraet-sek">
+        <h2><Icon name="shield" size={18} /> Scharfschalten</h2>
+        {candidate && certView ? (
+          <>
+            <p><Badge variant={certView.tone} dot>{certView.label}</Badge></p>
+            {certView.hint && <p className="vp-muted vp-text-sm">{certView.hint}</p>}
+            {candidate.activated && candidate.activatedBy && (
+              <p className="vp-muted vp-text-sm">aktiviert durch {candidate.activatedBy}</p>
+            )}
+            {certSourceLabel(candidate.certSource) && (
+              <p className="vp-muted vp-text-sm">Freigabe: {certSourceLabel(candidate.certSource)}</p>
+            )}
+            {candidate.activated ? (
+              <Button variant="ghost" disabled={busy} onClick={() => setDisarming(true)}>Zurücknehmen</Button>
+            ) : (
+              certView.canActivate && (
+                <Button variant={certView.state === 'bereit' ? 'primary' : 'outline'} disabled={busy} onClick={() => setArming(true)}>
+                  Steuerung aktivieren
+                </Button>
+              )
+            )}
+          </>
+        ) : (
+          <p className="vp-muted">Für dieses Gerät steht noch keine Steuerungs-Freigabe an.</p>
+        )}
+      </Card>
+
+      {site.pflege.length > 0 && (
+        <Card padding="lg" radius="lg" className="vp-geraet-sek">
+          <h2><Icon name="alert-triangle" size={18} /> Pflege-Hinweise</h2>
+          <ul className="vp-komp-hinweise">
+            {site.pflege.map((p) => (
+              <li key={p.code}>
+                <strong>{p.label}</strong>
+                {p.detail && <div className="vp-muted vp-text-sm">{p.detail}</div>}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      <Card padding="lg" radius="lg" className="vp-geraet-sek">
+        <h2><Icon name="cpu" size={18} /> Komponenten-Fassung</h2>
+        {komponenten && ort && soll ? (
+          <dl className="vp-kv-list">
+            <div className="vp-kv-row"><dt>Gepflegt</dt><dd><Badge variant={ort.ton} dot>{ort.label}</Badge></dd></div>
+            <div className="vp-kv-row">
+              <dt>Soll/Ist</dt>
+              <dd>
+                <Badge variant={soll.ton}>{soll.label}</Badge>
+                {ablehnung(komponenten) && <div className="vp-cell-sub">{ablehnung(komponenten)}</div>}
+              </dd>
+            </div>
+            <div className="vp-kv-row"><dt>Herkunft</dt><dd className="vp-muted">{quellenText(komponenten.sources)}</dd></div>
+          </dl>
+        ) : (
+          <p className="vp-muted">Noch keine Komponenten gemeldet.</p>
+        )}
+      </Card>
+
+      <Card padding="lg" radius="lg" className="vp-geraet-sek vp-geraet-breit">
+        <h2>Werkzeuge</h2>
+        <div className="vp-row-gap">
+          <Button variant="outline" size="sm" onClick={() => onWerkzeug('plan')}>Plan erklären (Optimizer)</Button>
+          <Button variant="outline" size="sm" onClick={() => onWerkzeug('flows')}>Flows</Button>
+          {onJumpToTenant && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => onJumpToTenant(site.tenantId, anlageRoute(site.siteId, 'prognose'))}>
+                Prognose
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onJumpToTenant(site.tenantId, anlageRoute(site.siteId, 'technik'))}>
+                Gemeinsame Steuerung
+              </Button>
+            </>
+          )}
+        </div>
+      </Card>
+
+      <ConfirmDialog
+        open={arming}
+        title="Steuerung für diese Anlage aktivieren?"
+        intro={`VoltPilot darf danach den Wechselrichter von „${site.siteName}" ansteuern.`}
+        consequences={activateConsequences(site.siteName)}
+        confirmLabel="Steuerung aktivieren"
+        busy={busy}
+        onCancel={() => setArming(false)}
+        onConfirm={() => {
+          setArming(false);
+          if (candidate) void run(() => adminApi.activateControl(candidate.deviceId));
+        }}
+      />
+
+      <ConfirmDialog
+        open={disarming}
+        title="Steuerung dieser Anlage zurücknehmen?"
+        intro={`„${site.siteName}" wird danach nur noch ausgelesen.`}
+        consequences={deactivateConsequences(site.siteName)}
+        confirmLabel="Zurücknehmen"
+        tone="danger"
+        busy={busy}
+        onCancel={() => setDisarming(false)}
+        onConfirm={() => {
+          setDisarming(false);
+          if (candidate) void run(() => adminApi.deactivateControl(candidate.deviceId));
+        }}
+      />
     </div>
   );
 }
