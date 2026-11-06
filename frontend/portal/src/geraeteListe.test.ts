@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  filterGeraeteListe, geraeteListeLinien, geraeteListeZeilen, listeChipZahlen, LEERER_LISTE_FILTER,
+  filterGeraeteListe, geraeteListeLinien, geraeteListeZeilen, listeChipZahlen, loeschKandidat, LEERER_LISTE_FILTER,
 } from './geraeteListe';
 import type { AdminDeviceRow, PendingEnrollment } from './admin/adminApi';
 import type { FleetRow } from './adminEdgeUpdates';
@@ -159,5 +159,42 @@ describe('Chips und Filter: kein leerer Chip, Lebensabschnitte zusammen als „O
     const linien = geraeteListeLinien(zeilen);
     expect(linien.find((l) => l.wert === 'docker')?.n).toBe(1);
     expect(linien.find((l) => l.wert === 'alle')?.n).toBe(2);
+  });
+});
+
+describe('loeschKandidat: Lösch-Handlung nur ohne aktive Kunden-/Anlagen-Bindung', () => {
+  it('gedruckt und wartet sind löschbar, jeweils mit dem passenden Hinweis, was mitgeht', () => {
+    const [gedruckt] = geraeteListeZeilen({ fleet: [], devices: [deviceRow()], pending: [], werkstattBoxen: [] }, now);
+    expect(loeschKandidat(gedruckt, [])).toMatchObject({ ref: 'VP-0001', art: 'gedruckt' });
+    expect(loeschKandidat(gedruckt, [])?.loeschtMit).not.toHaveLength(0);
+
+    const [wartet] = geraeteListeZeilen({ fleet: [], devices: [], pending: [pending()], werkstattBoxen: [] }, now);
+    expect(loeschKandidat(wartet, [])).toMatchObject({ ref: 'edge-wartend', art: 'wartet' });
+  });
+
+  it('eine Werkstatt-Box ohne Abnahme/Kopplung ist löschbar und trägt die Folgen der API (`loeschtMit`)', () => {
+    const box = werkstattBox({ inGebrauch: [], loeschtMit: ['Tunnel-Schlüssel mit Adresse 10.90.4.12'] });
+    const [werkstatt] = geraeteListeZeilen({ fleet: [], devices: [], pending: [], werkstattBoxen: [box] }, now);
+    expect(loeschKandidat(werkstatt, [box])).toMatchObject({
+      ref: 'edge-werkstatt', art: 'werkstatt', loeschtMit: ['Tunnel-Schlüssel mit Adresse 10.90.4.12'],
+    });
+  });
+
+  it('eine abgenommene oder gekoppelte Werkstatt-Box bekommt KEINE Lösch-Handlung', () => {
+    const box = werkstattBox({ inGebrauch: ['Abgenommen'] });
+    const [werkstatt] = geraeteListeZeilen({ fleet: [], devices: [], pending: [], werkstattBoxen: [box] }, now);
+    expect(loeschKandidat(werkstatt, [box])).toBeNull();
+  });
+
+  it('eine verbundene (aktive Bindung) oder ausgebaute Box bekommt KEINE Lösch-Handlung', () => {
+    const [verbunden] = geraeteListeZeilen({ fleet: [fleetRow()], devices: [], pending: [], werkstattBoxen: [] }, now);
+    expect(loeschKandidat(verbunden, [])).toBeNull();
+
+    const ref = 'edge-ausgebaut-1';
+    const [ausgebaut] = geraeteListeZeilen({
+      fleet: [], devices: [], pending: [], werkstattBoxen: [],
+      geraeteListe: [{ externalRef: ref, lebensabschnitt: 'ausgebaut', seit: vor(1000), deviceId: null, siteId: null, tenantId: null, tenantName: null, name: null }],
+    }, now);
+    expect(loeschKandidat(ausgebaut, [])).toBeNull();
   });
 });

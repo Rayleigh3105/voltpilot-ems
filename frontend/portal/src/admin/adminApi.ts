@@ -503,6 +503,12 @@ export const adminApi = {
   listPendingEnrollments: () =>
     request<PendingEnrollment[]>('/api/v1/admin/enrollments/pending'),
 
+  // 404 wenn unbekannt oder inzwischen von einem Kunden beansprucht.
+  deletePendingEnrollment: (externalRef: string) =>
+    request<void>(`/api/v1/admin/enrollments/pending/${encodeURIComponent(externalRef)}`, {
+      method: 'DELETE',
+    }),
+
   /**
    * Die steuerbaren Gerätetypen mit ihrem plattformweiten Freigabe-Stand
    * (Inkrement 5 / D11). Wahrheitsquelle ist der entitytypes-Katalog; die Liste

@@ -22,7 +22,7 @@ import type { BoxArt, FleetRow } from './adminEdgeUpdates';
 import { BOX_ART_LABELS, BOX_ART_UNBEKANNT } from './adminEdgeUpdates';
 import { boxZeile, LINIEN, type BoxZeile } from './geraeteUpdates';
 import { pendingRows } from './onboardingFunnel';
-import type { WerkstattBox } from './werkstatt';
+import { loeschbar, type WerkstattBox } from './werkstatt';
 
 export type Lebensabschnitt = 'gedruckt' | 'wartet' | 'werkstatt' | 'verbunden' | 'ausgebaut';
 
@@ -220,4 +220,41 @@ export function filterGeraeteListe(zeilen: GeraeteListeZeile[], f: ListeFilter):
     (f.linie === 'alle' || (f.linie === 'unbekannt' ? linieVon(z) == null : linieVon(z) === f.linie))
     && (f.chip == null || chipPasst(z, f.chip))
     && (!q || suchtextVon(z).includes(q)));
+}
+
+// ── Löschen ohne aktive Kunden-/Anlagen-Bindung ─────────────────────────────
+
+export type LoeschArt = 'gedruckt' | 'wartet' | 'werkstatt';
+
+export interface LoeschKandidat {
+  ref: string;
+  name: string;
+  art: LoeschArt;
+  /** Was beim Löschen mitgeht, in Worten - für den Bestätigungs-Dialog. */
+  loeschtMit: string[];
+}
+
+/**
+ * Ob eine Zeile eine Lösch-Handlung bekommt: nur Boxen OHNE aktive Kunden-/
+ * Anlagen-Bindung (gedruckt, wartet, werkstatt - und dort nur, wenn die
+ * Werkstatt-Regel sie freigibt). `verbunden` (aktive Bindung) und `ausgebaut`
+ * (ein für immer eingefrorener `device`-Datensatz, siehe
+ * `V20260913150000__uems_loeschwege.sql`) bekommen absichtlich keine.
+ */
+export function loeschKandidat(z: GeraeteListeZeile, werkstattBoxen: readonly WerkstattBox[]): LoeschKandidat | null {
+  if (z.lebensabschnitt === 'gedruckt') {
+    return { ref: z.ref, name: z.name, art: 'gedruckt', loeschtMit: ['Der Registrierungs-Eintrag dieser Aufkleber-ID.'] };
+  }
+  if (z.lebensabschnitt === 'wartet') {
+    return { ref: z.ref, name: z.name, art: 'wartet', loeschtMit: ['Die Zertifikatsanfrage dieser Box im Register.'] };
+  }
+  if (z.lebensabschnitt === 'werkstatt') {
+    const box = werkstattBoxen.find((b) => b.edgeRef === z.ref);
+    if (!box || !loeschbar(box)) return null;
+    return {
+      ref: z.ref, name: z.name, art: 'werkstatt',
+      loeschtMit: box.loeschtMit?.length ? box.loeschtMit : ['Nur der Eintrag im Register.'],
+    };
+  }
+  return null;
 }

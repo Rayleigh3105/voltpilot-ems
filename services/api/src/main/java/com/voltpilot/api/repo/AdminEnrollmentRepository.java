@@ -38,6 +38,21 @@ public class AdminEnrollmentRepository {
                 AdminEnrollmentRepository::map);
     }
 
+    /**
+     * Remove a dead enrollment (mistyped reference, or a box that was once
+     * issued a certificate and is now disconnected without a re-claim) from
+     * the registry. Re-checks the claim at delete time - {@link #findPending}
+     * can be stale by the time the operator clicks - so a race that claims it
+     * first makes this a no-op (0 rows) rather than an error.
+     */
+    public boolean delete(String externalRef) {
+        return jdbc.update(
+                "DELETE FROM device_enrollment e WHERE e.external_ref = ? "
+                        + "AND NOT EXISTS (SELECT 1 FROM device d "
+                        + "WHERE d.external_ref = e.external_ref AND d.ausgebaut_am IS NULL)",
+                externalRef) > 0;
+    }
+
     private static PendingEnrollmentDto map(java.sql.ResultSet rs, int rowNum)
             throws java.sql.SQLException {
         java.sql.Timestamp issuedAt = rs.getTimestamp("issued_at");

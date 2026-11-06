@@ -365,6 +365,41 @@ class AdminApiTest {
                 .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    @Test
+    void deletePendingEnrollmentRemovesADeadRegistryRowButNeverAClaimedOne() {
+        String admin = token("admin", "admin");
+        exec("INSERT INTO device_enrollment (external_ref, csr_pem) "
+                + "VALUES ('edge-typo-99', 'dummy-csr') ON CONFLICT DO NOTHING");
+        // Claimed (demo-inverter-01 has a matching device row) - not a dead end.
+        exec("INSERT INTO device_enrollment (external_ref, csr_pem) "
+                + "VALUES ('demo-inverter-01', 'dummy-csr') ON CONFLICT DO NOTHING");
+
+        // A customer may never delete through the operator route.
+        assertThat(rest.exchange(url("/api/v1/admin/enrollments/pending/edge-typo-99"), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        // A claimed ref refuses - the box is not an unclaimed dead end.
+        assertThat(rest.exchange(url("/api/v1/admin/enrollments/pending/demo-inverter-01"), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        // The dead registry row deletes cleanly...
+        assertThat(rest.exchange(url("/api/v1/admin/enrollments/pending/edge-typo-99"), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(admin)), Void.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+
+        // ...and a second delete (already gone) answers 404, not a silent 204.
+        assertThat(rest.exchange(url("/api/v1/admin/enrollments/pending/edge-typo-99"), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        ResponseEntity<List<Map<String, Object>>> pending = rest.exchange(
+                url("/api/v1/admin/enrollments/pending"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(pending.getBody()).extracting(e -> e.get("externalRef")).doesNotContain("edge-typo-99");
+    }
+
     // ---- (b4) support password reset -----------------------------------------
 
     /**

@@ -316,6 +316,23 @@ public class AdminController {
     }
 
     /**
+     * Remove a dead enrollment from the Geräte-Liste: a mistyped reference
+     * that never got claimed, or a box that was once issued a certificate and
+     * is now disconnected without a re-claim. 404 if the ref is unknown or a
+     * customer claimed it in the meantime - the operator's list can be a few
+     * seconds stale.
+     */
+    @DeleteMapping("/enrollments/pending/{externalRef}")
+    public ResponseEntity<Void> deletePendingEnrollment(@PathVariable String externalRef) {
+        String canonical = DeviceController.canonicalExternalRef(externalRef);
+        if (!enrollments.delete(canonical)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Enrollment '" + canonical + "' not found or claimed by a customer");
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * Personensuche über ALLE Kunden (Lücke L6, Adminview-Konzept Abschnitt
      * 3.4/4.5): die Suche im Raum Benutzer findet damit Personen SERVERSEITIG
      * statt nur über die geladenen Listen eines einzelnen Mandanten.
