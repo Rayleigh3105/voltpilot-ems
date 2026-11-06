@@ -470,6 +470,16 @@
     border-radius: var(--vp-radius-sm);
     box-shadow: 0 0 0 3px var(--vp-focus-ring);
   }
+  /* Mit der TASTATUR derselbe Rahmen wie an jedem Knopf (`.vp-btn:focus-visible`): der weiche
+     Schein allein war auf Weiß kaum zu sehen (UI-Runde Kundenseiten, Befund #42). */
+  .vp-crumb-anlage:has(.vp-tb-switch:focus-visible) {
+    /* Nach innen: der Kopf schneidet oben und unten ab, was über den Namen hinausragt.
+       4 px Luft links/rechts, ohne den Namen zu verschieben (Polster gegen Rand). */
+    outline: 2px solid var(--vp-focus-ring-color);
+    outline-offset: -2px;
+    padding-inline: 6px;
+    margin-inline: -6px;
+  }
 }
 
 /* ---------- Phone bottom bar: up to four areas + Mehr ---------- */
@@ -493,6 +503,10 @@
   .vp-app .vp-topbar-anlage:focus-within {
     border-radius: var(--vp-radius-sm);
     box-shadow: 0 0 0 3px var(--vp-focus-ring);
+  }
+  .vp-app .vp-topbar-anlage:has(.vp-tb-switch:focus-visible) {
+    outline: 2px solid var(--vp-focus-ring-color);
+    outline-offset: -2px;
   }
   /* An admin phone hides the breadcrumb to make room for the tenant switcher
      (index.css). The plant NAME is not a breadcrumb though - it is the thing
