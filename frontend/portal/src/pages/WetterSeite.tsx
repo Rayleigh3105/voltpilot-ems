@@ -133,14 +133,20 @@ export function WetterSeite({ site }: { site: Site }) {
   } else if (!m || !tag) {
     inhalt = (
       <div className="vp-c-card">
-        <VerlaufLeer
-          label="Vorhersage"
-          satz="Noch keine Vorhersage. Sie wird automatisch geladen - Ihre Anlage braucht dafür einen Standort auf der Karte."
-          weg="Standort in den Einstellungen ergänzen ›"
-          onWeg={() => {
-            window.location.hash = einstellungenHash(site.id);
-          }}
-        />
+        {/* Den Weg „Standort ergänzen“ gibt es nur, wenn wirklich keiner hinterlegt ist - mit
+            Koordinaten war der Satz eine falsche Anweisung (UI-Runde Kundenseiten, Befund #30). */}
+        {site.latitude != null && site.longitude != null ? (
+          <VerlaufLeer label="Vorhersage" satz="Noch keine Vorhersage. Sie erscheint hier, sobald der Wetterdienst Werte für Ihren Standort liefert." />
+        ) : (
+          <VerlaufLeer
+            label="Vorhersage"
+            satz="Noch keine Vorhersage. Sie wird automatisch geladen - Ihre Anlage braucht dafür einen Standort auf der Karte."
+            weg="Standort in den Einstellungen ergänzen ›"
+            onWeg={() => {
+              window.location.hash = einstellungenHash(site.id);
+            }}
+          />
+        )}
       </div>
     );
   } else {

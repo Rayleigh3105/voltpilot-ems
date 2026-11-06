@@ -188,6 +188,15 @@ describe('Wetter-Seite · Fassung 3', () => {
     expect(screen.getByRole('button', { name: /Standort in den Einstellungen/ })).toBeInTheDocument();
   });
 
+  it('mit Standort auf der Karte: kein Weg „Standort ergänzen“, nur der ehrliche Satz', async () => {
+    setzeBreite('telefon');
+    weatherMock.mockResolvedValue({ runAt: null, points: [] });
+    render(<WetterSection site={{ ...(SITE as object), latitude: 48.137, longitude: 11.575 } as never} />);
+    expect(await screen.findByText(/sobald der Wetterdienst Werte für Ihren Standort liefert/)).toBeInTheDocument();
+    expect(screen.queryByText(/braucht dafür einen Standort/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Standort in den Einstellungen/ })).toBeNull();
+  });
+
   it('zeigt einen Ladefehler als Fehler-Zustand mit dem Weg zurück', async () => {
     setzeBreite('telefon');
     weatherMock.mockRejectedValueOnce(new Error('kaputt'));
