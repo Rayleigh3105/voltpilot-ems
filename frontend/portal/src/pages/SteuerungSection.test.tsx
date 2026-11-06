@@ -424,6 +424,13 @@ describe('Steuerung · Reiter Regeln nur mit schaltbarem Gerät', () => {
 });
 
 describe('Steuerung · Reiter Laden', () => {
+  it('ohne Ladekarte: ein Satz, keine Erklärung über „diese Karte“', async () => {
+    zeige('laden');
+    const karte = await screen.findByRole('region', { name: 'Fahrzeuge' });
+    await waitFor(() => expect(karte).toHaveTextContent('Noch hat keine Ladekarte hier geladen.'));
+    expect(karte).not.toHaveTextContent('Wer mit dieser Karte lädt');
+  });
+
   it('stellt „Womit laden" über die Steuerart des Ladepunkts', async () => {
     const setze = vi.spyOn(api, 'setzeSteuerart').mockResolvedValue({ steuerart: { quelle: 'guenstig', herkunft: 'policy' }, aktiv: true });
     zeige('laden');

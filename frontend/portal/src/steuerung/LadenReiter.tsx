@@ -487,9 +487,12 @@ function FahrzeugKarte({ fahrzeuge, oeffne, bild }: { fahrzeuge: SiteFahrzeuge |
           ))}
         </div>
       ) : (
-        <p className="leise">Noch hat keine Ladekarte hier geladen.</p>
+        // Ohne Ladekarte gibt es noch nichts einzustellen - der Satz über „diese Karte“ hatte keinen Bezug.
+        <p className="leise">Noch hat keine Ladekarte hier geladen. Sobald jemand mit einer Karte lädt, erscheint sie hier.</p>
       )}
-      <p className="leise">Wer mit dieser Karte lädt, bekommt diese Einstellung. Den Ladestand des Autos kennt VoltPilot nicht; ein Ziel ist deshalb eine Menge in kWh.</p>
+      {zeilen.length > 0 && (
+        <p className="leise">Wer mit dieser Karte lädt, bekommt diese Einstellung. Den Ladestand des Autos kennt VoltPilot nicht; ein Ziel ist deshalb eine Menge in kWh.</p>
+      )}
     </section>
   );
 }
