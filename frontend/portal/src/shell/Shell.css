@@ -874,7 +874,8 @@
   top: calc(100% + 8px);
   right: 0;
   z-index: 1200;
-  min-width: 15rem;
+  /* 16.5rem: „Kundenadministrator" passt neben den Avatar, statt beim letzten Buchstaben umzubrechen. */
+  min-width: 16.5rem;
   max-width: min(20rem, calc(100vw - 24px));
   max-height: min(70vh, 34rem);
   overflow-y: auto;
@@ -934,7 +935,9 @@
 .vp-avatarmenu-person-r {
   font-size: var(--vp-text-sm);
   color: var(--vp-text-muted);
-  overflow-wrap: anywhere;
+  /* Ein Rollenwort trennt an der Silbe, nie mitten im Buchstaben („Kundenadministrato|r"). */
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 /* Am Rechner steht die Plattform-Gruppe in der Seitenleiste - ein zweiter Ort
    für dieselben Punkte wäre eine Doppelung. */

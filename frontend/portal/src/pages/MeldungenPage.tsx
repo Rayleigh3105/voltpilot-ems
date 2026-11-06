@@ -5,7 +5,7 @@ import { api, ladeMeldungenVerlaufCsv, type Anlagensteuerung } from '../api';
 import { boxRefOf } from '../geraetAdresse';
 import { useBoxen } from '../useBoxRef';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { EmptyState } from '../components/States';
+import { EmptyState, ErrorState } from '../components/States';
 import { NeueUeberwachung } from '../components/NeueUeberwachung';
 import { UeberwachenBlatt } from '../components/UeberwachenBlatt';
 import { VpPicker } from '../components/VpPicker';
@@ -93,6 +93,7 @@ export function MeldungenPage() {
   const [meldungen, setMeldungen] = useState<Meldung[] | null>(null);
   const [regeln, setRegeln] = useState<UeberwachungsRegel[] | null>(null);
   const [fehler, setFehler] = useState('');
+  const [neuLaden, setNeuLaden] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [csvPeriode, setCsvPeriode] = useState('monat');
   const [csvLaedt, setCsvLaedt] = useState(false);
@@ -125,7 +126,7 @@ export function MeldungenPage() {
     return () => {
       aktiv = false;
     };
-  }, [reiter]);
+  }, [reiter, neuLaden]);
 
   const gefiltert = (meldungen ?? []).filter((m) => !anlageFilter || m.anlageId === anlageFilter);
   const liste = reiter === 'verlauf' ? sortiereVerlauf(gefiltert) : sortiereJetzt(gefiltert);
@@ -240,7 +241,7 @@ export function MeldungenPage() {
         ))}
       </div>
 
-      {fehler && <p role="alert">{fehler}</p>}
+      {fehler && <ErrorState message={fehler} onRetry={() => setNeuLaden((n) => n + 1)} />}
 
       {reiter === 'verlauf' && (
         <div className="vp-meldungen-csv" data-testid="verlauf-csv">
@@ -266,14 +267,15 @@ export function MeldungenPage() {
       )}
 
       {reiter === 'regeln' ? (
-        <RegelListe
+        fehler && regeln === null ? null : <RegelListe
           regeln={regeln}
           busy={busy}
           onScharfSchalten={scharfSchalten}
           onLoeschenAnfragen={setLoeschenZiel}
         />
       ) : (
-        <MeldungListe
+        // Fehlgeschlagen ist nicht „wird geladen": ohne Antwort steht nur der Fehlerzustand darüber.
+        fehler && meldungen === null ? null : <MeldungListe
           meldungen={meldungen === null ? null : liste}
           reiter={reiter}
           busy={busy}
