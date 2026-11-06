@@ -4,6 +4,52 @@
   grid-column: 1 / -1;
 }
 
+/* Mobil-Durchgang (vp-adminview-mobile-rework): am Telefon klebt die
+   Reiterleiste unter der 68 px hohen Kopfzeile (`index.css` `.vp-topbar`,
+   GEMESSEN wie im Vorbild `components/BereichTabs.css` S1) - ein Reiter-
+   Wechsel braucht sonst jedes Mal den Rücksprung zum Seitenanfang, um die
+   Reiter wieder zu sehen. Nur am Telefon: am Rechner bleibt die Leiste im
+   normalen Fluss (Desktop darf nicht schlechter werden). */
+@media (max-width: 720px) {
+  .vp-geraete-akte .vp-bereich-tabs {
+    position: sticky;
+    top: 68px;
+    z-index: 10;
+    background: var(--vp-bg-light, #f7f9fc);
+  }
+
+  /* Die Kante, hinter der noch Reiter liegen, blendet weich aus - derselbe
+     Griff wie `components/BereichTabs.css` (`reiterRand.ts` setzt
+     `data-rand`), hier auf die Segment-Pillen dieser Leiste gemünzt statt auf
+     den Unterstrich-Stil. Nur am Telefon: am Rechner passen alle sechs Reiter
+     ohnehin nebeneinander. */
+  .vp-geraete-akte .vp-bereich-tabs[data-rand]::before,
+  .vp-geraete-akte .vp-bereich-tabs[data-rand]::after {
+    content: '';
+    position: sticky;
+    z-index: 1;
+    flex: 0 0 24px;
+    pointer-events: none;
+    visibility: hidden;
+  }
+  .vp-geraete-akte .vp-bereich-tabs[data-rand]::before {
+    left: 0;
+    margin-right: -24px;
+    background: linear-gradient(to right, var(--vp-bg-light, #f7f9fc) 20%, transparent);
+  }
+  .vp-geraete-akte .vp-bereich-tabs[data-rand]::after {
+    right: 0;
+    margin-left: -24px;
+    background: linear-gradient(to left, var(--vp-bg-light, #f7f9fc) 20%, transparent);
+  }
+  .vp-geraete-akte .vp-bereich-tabs[data-rand='links']::before,
+  .vp-geraete-akte .vp-bereich-tabs[data-rand='beide']::before,
+  .vp-geraete-akte .vp-bereich-tabs[data-rand='rechts']::after,
+  .vp-geraete-akte .vp-bereich-tabs[data-rand='beide']::after {
+    visibility: visible;
+  }
+}
+
 .vp-akte-menu-liste {
   display: flex;
   flex-direction: column;

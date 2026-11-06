@@ -211,6 +211,71 @@ tr.vp-fw-gewaehlt > td {
   white-space: normal;
 }
 
+/* Die Fernwartungs-Tabellen tragen mehr je Zeile als andere (Boxen: Verbindung
+   und die Anmeldung je offenem Fenster als Fließtext; Techniker-Zugänge: SSH-
+   Fingerabdrücke) - bei 720 px (der Haus-Grenze `.vp-table.responsive`) passen
+   ihre Spalten noch knapp nebeneinander, bei 768-900 px (Tablet, Befund
+   `vp-adminview-mobile-rework`) nicht mehr: eine Spalte wird schmaler als ihr
+   Inhalt braucht, die Zeile läuft über den Rand. Diese zwei Tabellen stapeln
+   deshalb schon ab 900 px - dieselben Regeln wie `.vp-table.responsive` in
+   `index.css`, nur unter einer höheren Grenze. */
+@media (max-width: 900px) {
+  .vp-table.vp-fw-tabelle-breit thead {
+    display: none;
+  }
+  .vp-table.vp-fw-tabelle-breit,
+  .vp-table.vp-fw-tabelle-breit tbody,
+  .vp-table.vp-fw-tabelle-breit tr,
+  .vp-table.vp-fw-tabelle-breit td {
+    display: block;
+    width: 100%;
+  }
+  .vp-table.vp-fw-tabelle-breit tr {
+    border: 1px solid var(--vp-border);
+    border-radius: var(--vp-radius-md);
+    margin-bottom: var(--vp-space-3);
+    padding: var(--vp-space-2) var(--vp-space-3);
+  }
+  .vp-table.vp-fw-tabelle-breit tr.vp-fw-hat-unterzeile,
+  .vp-table.vp-fw-tabelle-breit tr.vp-fw-unterzeile {
+    border-radius: 0;
+    margin-bottom: 0;
+  }
+  .vp-table.vp-fw-tabelle-breit tr.vp-fw-hat-unterzeile {
+    border-bottom: 0;
+    margin-bottom: 0;
+    border-radius: var(--vp-radius-md) var(--vp-radius-md) 0 0;
+  }
+  .vp-table.vp-fw-tabelle-breit tr.vp-fw-unterzeile {
+    border-top: 0;
+    border-radius: 0 0 var(--vp-radius-md) var(--vp-radius-md);
+    margin-bottom: var(--vp-space-3);
+  }
+  .vp-table.vp-fw-tabelle-breit tr:last-child td {
+    border-bottom: none;
+  }
+  .vp-table.vp-fw-tabelle-breit td {
+    border: none;
+    padding: var(--vp-space-2) 0;
+    min-width: 0;
+  }
+  .vp-table.vp-fw-tabelle-breit td::before {
+    content: attr(data-label);
+    display: block;
+    font-family: var(--vp-font-body);
+    font-size: var(--vp-text-meta);
+    text-transform: uppercase;
+    letter-spacing: var(--vp-tracking-wide);
+    color: var(--vp-text-muted);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .vp-table.vp-fw-tabelle-breit td.vp-fw-zelle-verbindung {
+    min-width: 0;
+    max-width: none;
+  }
+}
+
 /* Die Unterzeile gehört zur Box-Zeile darüber: kein Strich dazwischen. */
 .vp-table tr.vp-fw-hat-unterzeile > td {
   border-bottom: none;

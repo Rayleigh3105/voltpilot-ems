@@ -532,3 +532,29 @@ test('Fernwartung: nach dem Öffnen ist der Stand erst unbekannt und folgt dann 
   await expect(zeile).toContainText('Alles bereit');
   expect(errors).toEqual([]);
 });
+
+// Mobil-Durchgang vp-adminview-mobile-rework: 390 px ist die Haupt-Breite, 768 px die
+// Stichprobe (genau die Lücke, in der eine Tabellen-Spalte am Container vorbei breiter werden
+// kann als sie darf - gefunden bei 834 px, Fix in Fernwartung.css), 1440 px die Regressionsprobe.
+for (const breite of [390, 768, 1440]) {
+  test(`Fernwartung bei ${breite} px: nichts ragt über den Rand, „Protokoll" beginnt zu`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.setViewportSize({ width: breite, height: breite < 720 ? 1400 : 1100 });
+    await page.goto('/e2e/fernwartung.html');
+
+    const boxen = page.getByTestId('fw-boxen');
+    await nichtAbgeschnitten(boxen.locator('[data-testid="fw-anmeldung"] li'));
+    await nichtAbgeschnitten(boxen.locator('.vp-fw-fall-satz'));
+
+    const protokoll = page.getByTestId('fw-protokoll-aufklapp');
+    await expect(protokoll).not.toHaveAttribute('open', '');
+    await expect(protokoll).toContainText(/\d+ Einträge/);
+    await protokoll.locator('summary').click();
+    await expect(page.getByTestId('fw-protokoll')).toContainText('Fenster geöffnet');
+
+    const ueberlauf = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(ueberlauf).toBeLessThanOrEqual(1);
+    expect(errors).toEqual([]);
+  });
+}

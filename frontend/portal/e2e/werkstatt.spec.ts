@@ -38,7 +38,10 @@ function wache(page: Page): string[] {
   return fehler;
 }
 
-for (const breite of [1440, 375]) {
+// 390 px ist die Haupt-Breite des Mobil-Durchgangs vp-adminview-mobile-rework
+// (die Boxen-Übersicht stapelt seither über `.vp-table.responsive` statt
+// seitlich zu scrollen); 375 bleibt als bestehende Probe daneben.
+for (const breite of [1440, 390, 375]) {
   test(`Werkstatt bei ${breite} px: Übersicht mit Freigabe, Brücke, Boxen und Belegen, dann an die Werkbank`, async ({ page }) => {
     const fehler = wache(page);
     await page.setViewportSize({ width: breite, height: 900 });
@@ -64,6 +67,17 @@ for (const breite of [1440, 375]) {
     const detail = page.getByTestId('ws-detail');
     await expect(page.getByTestId('ws-boxen')).toHaveCount(0);
     await expect(detail.getByTestId('ws-stand')).toHaveText('abgenommen');
+    if (breite <= 720) {
+      // Sekundäre Karten beginnen zu, mit der Urteilszeile als Beleg; „Ablauf der
+      // Einrichtung" (die Phasenliste) bleibt die offene, primäre Karte.
+      const einrichtung = detail.locator('details', { hasText: 'Einrichtung' }).first();
+      await expect(einrichtung).not.toHaveAttribute('open', '');
+      await expect(einrichtung).toContainText('GL.iNet GL-MT300N-V2');
+      const bindung = detail.locator('details', { hasText: 'Bindung und Fernwartung' });
+      await expect(bindung).not.toHaveAttribute('open', '');
+      await expect(page.getByText('Ablauf der Einrichtung')).toBeVisible();
+      await expect(detail.locator('details', { hasText: 'Ablauf der Einrichtung' })).toHaveCount(0);
+    }
     await expect(detail.getByTestId('ws-zeile-hardware')).toContainText('GL-MT300N-V2');
     await expect(detail.getByTestId('ws-zeile-edge-light')).toHaveText('edge-light-2026.11.1');
     await expect(detail.getByTestId('ws-zeile-openwrt')).toHaveText('25.12.5');
@@ -71,6 +85,9 @@ for (const breite of [1440, 375]) {
     await expect(detail.getByTestId('ws-zeile-ort')).toHaveText('Halle 1 · Beispiel GmbH');
     await expect(detail.getByTestId('ws-belege')).toContainText('Schritt probe: Anmeldung über den Tunnel');
     await expect(detail.getByTestId('ws-abnahme-protokoll')).toContainText('vom Werkstatt-Dienst');
+    // Am Telefon (vp-adminview-mobile-rework) beginnt „Beschriftung des Gehäuses" - wie andere
+    // sekundäre Karten dieser Seite - als Aufklapper zu; am Rechner bleibt sie offen.
+    if (breite <= 720) await detail.locator('details > summary').filter({ hasText: 'Beschriftung des Gehäuses' }).click();
     await expect(detail.getByTestId('ws-qr')).toBeVisible();
     await expect(detail.getByTestId('ws-gehaeuse')).toContainText('Box-Druckdatei (3MF) laden');
     await expect(detail.getByTestId('ws-gehaeuse-stand')).toContainText('gehaeuse-edge-5t2dcy6.3mf');

@@ -3,6 +3,8 @@ import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
+import { AufklapperKarte } from '../../components/AufklapperKarte';
+import { useReiterRand } from '../../reiterRand';
 import { VpPicker } from '../../components/VpPicker';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ApiError } from '../../api';
@@ -281,6 +283,7 @@ function AktenKopf({
   stand: string;
 }) {
   const [menuOffen, setMenuOffen] = useState(false);
+  const reiterRand = useReiterRand<HTMLDivElement>();
   const verbindung = row ? verbindungSicht(row, jetzt) : null;
   const name = row?.siteName?.trim() || deviceRow?.label || boxRef;
   const zustandBadge = verbindung
@@ -336,7 +339,7 @@ function AktenKopf({
           </div>
         }
       />
-      <div className="vp-seg vp-bereich-tabs" role="tablist" aria-label="Geräteakte" data-testid="akte-reiter">
+      <div ref={reiterRand} className="vp-seg vp-bereich-tabs" role="tablist" aria-label="Geräteakte" data-testid="akte-reiter">
         {REITER.map((t) => (
           <button key={t.id ?? 'ueberblick'} type="button" role="tab" aria-selected={reiter === t.id}
             className={reiter === t.id ? 'active' : ''} onClick={() => onReiter(t.id)}>
@@ -495,14 +498,13 @@ function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, o
         </Card>
       )}
 
-      <Card padding="lg" radius="lg" className="vp-geraet-sek">
-        <h2><Icon name="shield" size={18} /> Vertrauen</h2>
+      <AufklapperKarte icon="shield" titel="Vertrauen" urteil={vertrauen.label} className="vp-geraet-sek">
         <p><Badge variant={vertrauen.tone === 'ok' ? 'ok' : vertrauen.tone === 'warn' ? 'warn' : 'off'} dot>{vertrauen.label}</Badge></p>
         {vertrauen.detail && <p className="vp-muted vp-text-sm">{vertrauen.detail}</p>}
-      </Card>
+      </AufklapperKarte>
 
-      <Card padding="lg" radius="lg" className="vp-geraet-sek">
-        <h2><Icon name="history" size={18} /> Update-Verlauf</h2>
+      <AufklapperKarte icon="history" titel="Update-Verlauf" className="vp-geraet-sek"
+        urteil={verlauf == null ? 'wird geladen' : verlauf.eintraege.length === 0 ? 'nichts verzeichnet' : `${verlauf.eintraege.length} Einträge`}>
         {verlauf == null ? (
           <p className="vp-muted vp-text-sm">Der Verlauf wird geladen …</p>
         ) : verlauf.eintraege.length === 0 ? (
@@ -510,7 +512,7 @@ function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, o
         ) : (
           <Zeitleiste zeilen={verlaufSicht(verlauf.eintraege, jetzt)} testId="akte-software-verlauf" />
         )}
-      </Card>
+      </AufklapperKarte>
     </div>
   );
 }
@@ -679,11 +681,10 @@ function AnlageReiter({
     <div className="vp-geraet-grid">
       {actionError && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
 
-      <Card padding="lg" radius="lg" className="vp-geraet-sek">
-        <h2><Icon name="calendar" size={18} /> Plan</h2>
+      <AufklapperKarte icon="calendar" titel="Plan" urteil={plan.text} className="vp-geraet-sek">
         <p><Badge variant={plan.tone} dot>{plan.text}</Badge></p>
         <p className="vp-muted vp-text-sm">Letzter Lauf des Optimierers für diese Anlage.</p>
-      </Card>
+      </AufklapperKarte>
 
       <Card padding="lg" radius="lg" className="vp-geraet-sek">
         <h2><Icon name="sliders" size={18} /> Steuerung und Abregelung</h2>
@@ -738,8 +739,7 @@ function AnlageReiter({
       </Card>
 
       {site.pflege.length > 0 && (
-        <Card padding="lg" radius="lg" className="vp-geraet-sek">
-          <h2><Icon name="alert-triangle" size={18} /> Pflege-Hinweise</h2>
+        <AufklapperKarte icon="alert-triangle" titel="Pflege-Hinweise" urteil={`${site.pflege.length} Hinweis${site.pflege.length === 1 ? '' : 'e'}`} className="vp-geraet-sek">
           <ul className="vp-komp-hinweise">
             {site.pflege.map((p) => (
               <li key={p.code}>
@@ -748,11 +748,10 @@ function AnlageReiter({
               </li>
             ))}
           </ul>
-        </Card>
+        </AufklapperKarte>
       )}
 
-      <Card padding="lg" radius="lg" className="vp-geraet-sek">
-        <h2><Icon name="cpu" size={18} /> Komponenten-Fassung</h2>
+      <AufklapperKarte icon="cpu" titel="Komponenten-Fassung" urteil={soll?.label ?? 'Noch nichts gemeldet'} className="vp-geraet-sek">
         {komponenten && ort && soll ? (
           <dl className="vp-kv-list">
             <div className="vp-kv-row"><dt>Gepflegt</dt><dd><Badge variant={ort.ton} dot>{ort.label}</Badge></dd></div>
@@ -768,10 +767,9 @@ function AnlageReiter({
         ) : (
           <p className="vp-muted">Noch keine Komponenten gemeldet.</p>
         )}
-      </Card>
+      </AufklapperKarte>
 
-      <Card padding="lg" radius="lg" className="vp-geraet-sek vp-geraet-breit">
-        <h2>Werkzeuge</h2>
+      <AufklapperKarte icon="settings" titel="Werkzeuge" className="vp-geraet-sek vp-geraet-breit">
         <div className="vp-row-gap">
           <Button variant="outline" size="sm" onClick={() => onWerkzeug('plan')}>Plan erklären (Optimizer)</Button>
           <Button variant="outline" size="sm" onClick={() => onWerkzeug('flows')}>Flows</Button>
@@ -786,7 +784,7 @@ function AnlageReiter({
             </>
           )}
         </div>
-      </Card>
+      </AufklapperKarte>
 
       <ConfirmDialog
         open={arming}

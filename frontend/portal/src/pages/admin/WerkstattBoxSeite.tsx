@@ -8,10 +8,12 @@
  * Referenz und Mitgehendes nennt. Nur für VoltPilot-Admins (wie die ganze
  * Werkstatt); das Root-Passwort steht, wie an der Abnahme, nur verschlüsselt da.
  */
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
+import { Aufklapper } from '../../components/Aufklapper';
+import { useIsPhone } from '../../useIsPhone';
 import { adminApi } from '../../admin/adminApi';
 import { boxVerbindung, zeitpunkt, type FernwartungBox, type FernwartungUebersicht } from '../../adminFernwartung';
 import { ApiError, ladeWerkstattGehaeuse } from '../../api';
@@ -59,6 +61,39 @@ function GehaeuseDownloadKnopf({ edgeRef }: { edgeRef: string }) {
       </Button>
       {fehler && <p role="alert" className="vp-alert vp-alert-err" data-testid="ws-gehaeuse-fehler">{fehler}</p>}
     </div>
+  );
+}
+
+/**
+ * Eine SEKUNDÄRE Karte der Einrichtungs-Detailseite (`vp-adminview-mobile-rework`):
+ * am Telefon ein {@link Aufklapper} - zu, mit der Urteilszeile als Beleg; am
+ * Rechner die unveränderte offene Karte mit `<h3>` (das Haus-Muster dieser
+ * Seite, kein Icon wie bei `AufklapperKarte`). „Ablauf der Einrichtung" und
+ * „Löschen" bleiben bewusst plaine Karten, nie durch diese ersetzt.
+ */
+function WsKarte({ titel, urteil, breit, testId, children }: {
+  titel: string;
+  urteil?: ReactNode;
+  breit?: boolean;
+  testId: string;
+  children: ReactNode;
+}) {
+  const isPhone = useIsPhone();
+  const klasse = `vp-ws-karte${breit ? ' vp-ws-breit' : ''}`;
+  if (!isPhone) {
+    return (
+      <Card padding="md" radius="lg" className={klasse} data-testid={testId}>
+        <h3 className="vp-ws-kartenkopf">{titel}</h3>
+        {children}
+      </Card>
+    );
+  }
+  return (
+    <Card padding="md" radius="lg" className={klasse} data-testid={testId}>
+      <Aufklapper titel={titel} sub={urteil}>
+        {children}
+      </Aufklapper>
+    </Card>
   );
 }
 
@@ -221,8 +256,7 @@ export function WerkstattBoxSeite({
           </Card>
         )}
 
-        <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-einrichtung">
-          <h3 className="vp-ws-kartenkopf">Einrichtung</h3>
+        <WsKarte titel="Einrichtung" testId="ws-einrichtung" urteil={box ? einrichtung(box, freigabe)[0]?.wert ?? undefined : 'ohne Eintrag'}>
           {box ? (
             <>
               <Zeilen zeilen={einrichtung(box, freigabe)} />
@@ -235,11 +269,11 @@ export function WerkstattBoxSeite({
           ) : (
             <p className="vp-muted" style={{ margin: 0 }}>Diese Box steht nicht im Register der Werkstatt, nur ein Lauf des Dienstes kennt sie.</p>
           )}
-        </Card>
+        </WsKarte>
 
         <div className="vp-ws-stapel">
-          <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-bindung">
-            <h3 className="vp-ws-kartenkopf">Bindung und Fernwartung</h3>
+          <WsKarte titel="Bindung und Fernwartung" testId="ws-bindung"
+            urteil={verb.art === 'laedt' ? 'lädt' : verb.art === 'fehler' ? 'Fehler' : verb.art === 'keine' ? 'ohne Kopplung' : verbindung?.titel}>
             {verb.art === 'laedt' && <p className="vp-muted" style={{ margin: 0 }}>Lädt …</p>}
             {verb.art === 'fehler' && <p className="vp-alert vp-alert-warn" style={{ margin: 0 }}>{verb.text}</p>}
             {verb.art === 'keine' && (
@@ -262,7 +296,7 @@ export function WerkstattBoxSeite({
             <p style={{ margin: 0 }}>
               <a href={fernwartungHash(ref)}>Fernwartung dieser Box</a>
             </p>
-          </Card>
+          </WsKarte>
 
           <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-ablauf">
             <h3 className="vp-ws-kartenkopf">Ablauf der Einrichtung</h3>
@@ -274,8 +308,7 @@ export function WerkstattBoxSeite({
           </Card>
         </div>
 
-        <Card padding="md" radius="lg" className="vp-ws-karte vp-ws-breit" data-testid="ws-abnahme">
-          <h3 className="vp-ws-kartenkopf">Abnahme und Belege</h3>
+        <WsKarte titel="Abnahme und Belege" testId="ws-abnahme" breit urteil={abnahme ? `abgenommen ${zeitpunkt(abnahme.erfasstAm, jetzt)}` : 'noch keine Abnahme'}>
           {abnahme ? (
             <>
               <AbnahmeAnzeige a={abnahme} jetzt={jetzt} />
@@ -296,13 +329,12 @@ export function WerkstattBoxSeite({
           ) : (
             <p className="vp-muted" style={{ margin: 0 }}>Noch keine Abnahme.</p>
           )}
-        </Card>
+        </WsKarte>
 
         {mango && (
-          <Card padding="md" radius="lg" className="vp-ws-karte" data-testid="ws-karte-beschriftung">
-            <h3 className="vp-ws-kartenkopf">Beschriftung des Gehäuses</h3>
+          <WsKarte titel="Beschriftung des Gehäuses" testId="ws-karte-beschriftung">
             <BeschriftungKarte edgeRef={ref} />
-          </Card>
+          </WsKarte>
         )}
       </div>
 

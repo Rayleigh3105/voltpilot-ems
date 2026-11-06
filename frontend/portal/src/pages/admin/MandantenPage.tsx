@@ -9,6 +9,7 @@ import { Input } from '../../../designsystem/components/forms/Input';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { VpPicker } from '../../components/VpPicker';
 import { StartpasswortAnzeige } from '../../components/StartpasswortAnzeige';
+import { AufklapperKarte } from '../../components/AufklapperKarte';
 import { benutzerApi, benutzerFehler, type BenutzerEintrag } from '../../benutzer';
 import { ApiError, api, type SelbstauskunftKundenbereichBeendet, type Site } from '../../api';
 import {
@@ -769,15 +770,13 @@ function KundenaktePage({
           </Card>
 
           <div className="vp-kundenakte-nebenspalte">
-            <Card padding="lg" radius="lg" className="vp-mandant-karte">
-              <div className="vp-section-head">
-                <h2>Anlagen und Boxen {anlagenZeilen ? `(${anlagenZeilen.length})` : ''}</h2>
-                <span className="actions">
-                  <Button variant="ghost" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setSiteDrawer(true)}>
-                    Anlage anlegen
-                  </Button>
-                </span>
-              </div>
+            <AufklapperKarte icon="cpu" titel="Anlagen und Boxen" className="vp-mandant-karte"
+              urteil={anlagenZeilen ? `${anlagenZeilen.length} Anlage${anlagenZeilen.length === 1 ? '' : 'n'}` : undefined}
+              aktionen={
+                <Button variant="ghost" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setSiteDrawer(true)}>
+                  Anlage anlegen
+                </Button>
+              }>
               {loadError ? null : anlagenZeilen == null ? (
                 <TextSkeleton lines={3} />
               ) : anlagenZeilen.length === 0 ? (
@@ -794,14 +793,12 @@ function KundenaktePage({
                   ))}
                 </ul>
               )}
-            </Card>
+            </AufklapperKarte>
 
             <UnterstuetzungAdmin tenantId={tenant.id} name={tenant.name} />
 
-            <Card padding="lg" radius="lg" className="vp-mandant-karte">
-              <div className="vp-section-head">
-                <h2>Vertrag</h2>
-              </div>
+            <AufklapperKarte icon="file-text" titel="Vertrag" className="vp-mandant-karte"
+              urteil={vertragsende === undefined ? undefined : vertragsende ? 'beendet' : 'aktiv'}>
               {vertragsende === undefined ? (
                 <TextSkeleton lines={1} />
               ) : vertragsende ? (
@@ -828,7 +825,7 @@ function KundenaktePage({
                   </Button>
                 </>
               )}
-            </Card>
+            </AufklapperKarte>
           </div>
         </div>
 

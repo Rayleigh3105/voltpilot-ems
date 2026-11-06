@@ -217,7 +217,9 @@ test('Geräte-Liste: EINE Filterzeile statt zweier Grau-Balken, ohne Überlauf b
   const liste = page.getByTestId('geraete-liste');
   await expect(liste).toBeVisible();
 
-  for (const width of [1440, 390]) {
+  // 768 px ist die Stichprobe des Mobil-Durchgangs vp-adminview-mobile-rework (Tablet-Lücke
+  // zwischen Telefon und Rechner).
+  for (const width of [1440, 768, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     const kopf = page.locator('.vp-admin-sec-head');
     await expect(kopf.locator('.vp-gu-filterzeile')).toBeVisible();
@@ -243,6 +245,9 @@ test('Geräteakte: Kopf mit Zustand, fünf Reiter, Fernwartung inline - ohne Üb
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  // Die Inhalts-Zusicherungen unten erwarten die Rechner-Fassung (offene Karten statt
+  // Aufklapper) - ohne das setzt `mobile-webkit`s Standard-Ansicht (390 px) sie zu.
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/e2e/box-updates.html#');
   await page.getByRole('button', { name: 'Geräte', exact: true }).click();
   await page.getByTestId('geraete-liste').getByText('Solarpark Sonnenhof').first().click();
