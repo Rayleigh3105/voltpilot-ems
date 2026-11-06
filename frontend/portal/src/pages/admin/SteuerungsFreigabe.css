@@ -20,3 +20,7 @@
 }
 .vp-cert-nachweis summary:focus-visible { outline: 2px solid var(--vp-focus, var(--vp-primary)); outline-offset: 2px; }
 .vp-cert-nachweis[open] summary { margin-bottom: 0.25rem; }
+/* Die Abschnittsköpfe stehen hier frei auf der Seite, nicht in einer Tabellenkarte: ohne deren
+   Innenabstand, sonst stehen sie eingerückt über ihrem eigenen Text. */
+.vp-cert-page .vp-admin-sec-head { padding: 0 0 var(--vp-space-2); }
+.vp-cert-page .vp-admin-sec + .vp-admin-sec { margin-top: var(--vp-space-6); }

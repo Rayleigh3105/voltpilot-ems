@@ -108,7 +108,7 @@ export function SteuerungsFreigabePage(): JSX.Element {
   const gemeinsam = new Set(gemeinsameGruende.map((g) => g.hint));
 
   return (
-    <div className="vp-admin-page">
+    <div className="vp-admin-page vp-cert-page">
       <AdminPageHead
         icon="settings"
         title="Steuerungs-Freigabe"

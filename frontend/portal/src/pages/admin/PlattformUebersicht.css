@@ -11,3 +11,5 @@
   /* `!important` nur gegen die Inline-Größe der Symbolkachel. */
   .vp-fleet-pulse .vp-kpi > :first-child:not(:only-child) { display: none !important; }
 }
+/* Eine Box-Referenz bricht nie mitten im Wort um („VP-BOX-2024-“ / „0117“). */
+.vp-fleet-box .vp-cell-main > .vp-linklike { white-space: nowrap; }
