@@ -396,6 +396,10 @@ describe('Steuerung · Reiter Regeln nur mit schaltbarem Gerät', () => {
     // Der Knopf wird erst frei, wenn die schaltbaren Geräte geladen sind.
     await waitFor(() => expect(screen.getByRole('button', { name: /Neue Regel/ })).toBeEnabled());
     expect(reiterNamen()).toEqual(['Geräte', 'Laden', 'Regeln']);
+    // Ohne Regel keine „0 von 0 an“-Zahl; der Vorlagen-Hinweis steht, weil es Vorlagen gibt.
+    const regeln = screen.getByRole('region', { name: 'Ihre Regeln' });
+    expect(regeln).not.toHaveTextContent('0 von 0 an');
+    expect(regeln).toHaveTextContent('Noch keine Regel. Eine Vorlage ist der schnellste Anfang.');
     expect(window.location.hash).toBe('#/anlage/s-1/steuerung');
   });
 
