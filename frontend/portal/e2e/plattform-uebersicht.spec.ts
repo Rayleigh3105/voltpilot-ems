@@ -43,6 +43,11 @@ test('Plattform › Übersicht: vier Kacheln, Braucht dich, Flotte, Dienste - An
   await page.goto('/e2e/plattform-uebersicht.html');
   const flotte = page.getByTestId('ueb-flotte');
   await expect(flotte).toBeVisible();
+  // Eine auffällige Box ist ein beschriftetes Element (Name sichtbar, nicht
+  // nur im Tooltip) - „ich brauch ewig, bis ich da was erkenne" (Captain).
+  const ersterChip = flotte.locator('.vp-ueb-flotte-chip').first();
+  await expect(ersterChip).toBeVisible();
+  await expect(ersterChip).toContainText(/Hof Lindenallee|Kleingarten Ostend|Pumpwerk Ost|Box Halle 3/);
   await flotte.locator('button').first().click();
   await expect(page.getByTestId('akte-zustand')).toBeVisible();
 
@@ -58,6 +63,25 @@ test('Plattform › Übersicht: vier Kacheln, Braucht dich, Flotte, Dienste - An
   expect(text).not.toMatch(/verdient|gespart|Erlös/i);
 
   expect(errors).toEqual([]);
+});
+
+test('Plattform › Übersicht: Braucht dich - erledigen, einklappbar wieder ansehen, zurückholen', async ({ page }) => {
+  await page.goto('/e2e/plattform-uebersicht.html');
+  const zeilen = page.getByTestId('ueb-braucht-zeile');
+  const vorher = await zeilen.count();
+  await expect(page.getByTestId('ueb-braucht-dich')).toBeVisible();
+
+  const erste = zeilen.first();
+  await erste.getByRole('button', { name: /als erledigt markieren/i }).click();
+  await expect(zeilen).toHaveCount(vorher - 1);
+
+  const auf = page.getByRole('button', { name: /Erledigte anzeigen/ });
+  await expect(auf).toContainText('(1)');
+  await auf.click();
+  await expect(page.locator('.vp-ueb-braucht-erledigte-zeile')).toHaveCount(1);
+
+  await page.getByRole('button', { name: /zurückholen/ }).click();
+  await expect(zeilen).toHaveCount(vorher);
 });
 
 test('Plattform › Übersicht: Software-Kachel führt auf die Software-Seite', async ({ page }) => {

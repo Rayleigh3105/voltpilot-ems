@@ -1,24 +1,35 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { adminApi, type AdminPlattformDienste, type PendingEnrollment } from '../../admin/adminApi';
+import {
+  adminApi,
+  type AdminBrauchtDichErledigt,
+  type AdminPlattformDienste,
+  type PendingEnrollment,
+} from '../../admin/adminApi';
 import { fleetApi, type AdminFleetRelease, type AdminFleetSite } from '../../admin/fleetApi';
 import type { EdgeUpdatesKpi, EdgeUpdatesLine, FleetRow as EdgeFleetRow } from '../../adminEdgeUpdates';
 import { fleetBoxGroups } from '../../adminFleet';
 import type { FernwartungBox, FernwartungUebersicht } from '../../adminFernwartung';
 import type { WerkstattDienst } from '../../werkstattBank';
+import { relAge } from '../../adminFleet';
 import {
+  brauchtDichMitErledigt,
   uebersichtAuffaellig,
   uebersichtBrauchtDich,
   uebersichtDienste,
   uebersichtFlottenbild,
   uebersichtKacheln,
+  BRAUCHT_DICH_ART_LABEL,
+  type BrauchtDichArt,
+  type BrauchtDichErledigtZeile,
   type BrauchtDichZeile,
   type FlottenbildTon,
   type UebersichtKachel,
 } from '../../plattformUebersicht';
 import { EmptyState, ErrorState } from '../../components/States';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
+import { useIsPhone } from '../../useIsPhone';
 import { freshnessLabel } from '../../adminEdgeUpdates';
 import { geraeteAkteRoute, PLATFORM_TAB_PAGES, pageRoute, type PageId, type Route } from '../../nav';
 import { AdminPageHead } from './AdminPageHead';
@@ -58,6 +69,7 @@ export function PlattformUebersichtPage({
   const [werkstatt, setWerkstatt] = useState<WerkstattDienst | null>(null);
   const [pending, setPending] = useState<PendingEnrollment[]>([]);
   const [plattformDienste, setPlattformDienste] = useState<AdminPlattformDienste | null>(null);
+  const [erledigt, setErledigt] = useState<AdminBrauchtDichErledigt[]>([]);
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   const [loadError, setLoadError] = useState<string | null>(null);
   // Treibt nur die ANZEIGE des Alters weiter - die Bezugszeit der Daten
@@ -65,7 +77,7 @@ export function PlattformUebersichtPage({
   const [tick, setTick] = useState<number>(() => Date.now());
 
   const load = useCallback(async () => {
-    const [fleetR, edgeR, fwR, fwBoxenR, wsR, pendR, diensteR] = await Promise.allSettled([
+    const [fleetR, edgeR, fwR, fwBoxenR, wsR, pendR, diensteR, erledigtR] = await Promise.allSettled([
       fleetApi.fleet(),
       adminApi.edgeUpdates(),
       adminApi.fernwartung(),
@@ -73,6 +85,7 @@ export function PlattformUebersichtPage({
       adminApi.werkstattDienst(),
       adminApi.listPendingEnrollments(),
       adminApi.plattformDienste(),
+      adminApi.brauchtDichErledigt(),
     ]);
     // Ein Fehlschlag ist keine Datenlage (§5.2/`liveness.ts`): ein Block, den
     // dieser Abruf nicht lieferte, bleibt mit seinem alten Stand stehen -
@@ -91,6 +104,7 @@ export function PlattformUebersichtPage({
     if (wsR.status === 'fulfilled') setWerkstatt(wsR.value);
     if (pendR.status === 'fulfilled') setPending(pendR.value);
     if (diensteR.status === 'fulfilled') setPlattformDienste(diensteR.value);
+    if (erledigtR.status === 'fulfilled') setErledigt(erledigtR.value.erledigt);
     if (fleetR.status === 'fulfilled') {
       setLoadError(null);
       setFetchedAt(Date.now());
@@ -114,9 +128,13 @@ export function PlattformUebersichtPage({
     () => (sites && edgeKpi ? uebersichtKacheln({ sites, releases, edgeLines, edgeKpi }, jetzt) : null),
     [sites, releases, edgeLines, edgeKpi, jetzt],
   );
-  const brauchtDich = useMemo(
+  const brauchtDichAlle = useMemo(
     () => uebersichtBrauchtDich({ edgeFleet, fernwartungBoxen, werkstatt, pending }, jetzt),
     [edgeFleet, fernwartungBoxen, werkstatt, pending, jetzt],
+  );
+  const { aktiv: brauchtDich, erledigt: brauchtDichErledigt } = useMemo(
+    () => brauchtDichMitErledigt(brauchtDichAlle, erledigt),
+    [brauchtDichAlle, erledigt],
   );
   const groups = useMemo(() => (sites ? fleetBoxGroups(sites, jetzt, releases) : []), [sites, jetzt, releases]);
   const flotte = useMemo(() => uebersichtFlottenbild(groups, edgeFleet), [groups, edgeFleet]);
@@ -131,6 +149,34 @@ export function PlattformUebersichtPage({
   const gesamtBoxen = useMemo(() => groups.reduce((n, g) => n + g.boxes.length, 0), [groups]);
 
   const openRoute = (route: Route) => onNavigate?.(route);
+
+  // Optimistisch: die Ablage antwortet asynchron, aber die Zeile soll
+  // SOFORT verschwinden bzw. zurückkommen - ein erneutes `load()` holt den
+  // serverseitigen Stand danach ohnehin nach (Poll, 30 s).
+  const erledigen = useCallback(async (eintraege: { schluessel: string; stand: string }[]) => {
+    if (eintraege.length === 0) return;
+    setErledigt((prev) => {
+      const next = new Map(prev.map((e) => [e.schluessel, e]));
+      const jetztIso = new Date().toISOString();
+      // Platzhalter bis `load()` den echten Namen aus der Ablage nachträgt.
+      for (const e of eintraege) next.set(e.schluessel, { ...e, erledigtAm: jetztIso, erledigtVon: '…' });
+      return [...next.values()];
+    });
+    try {
+      await adminApi.brauchtDichErledigen(eintraege);
+    } finally {
+      void load();
+    }
+  }, [load]);
+
+  const wiederherstellen = useCallback(async (schluessel: string) => {
+    setErledigt((prev) => prev.filter((e) => e.schluessel !== schluessel));
+    try {
+      await adminApi.brauchtDichWiederherstellen(schluessel);
+    } finally {
+      void load();
+    }
+  }, [load]);
 
   return (
     <div className="vp-plattform-uebersicht">
@@ -147,6 +193,8 @@ export function PlattformUebersichtPage({
           </span>
         }
       />
+
+      <DiensteLeiste dienste={dienste} />
 
       {loadError && sites != null && <div className="vp-alert vp-alert-warn">{loadError}</div>}
 
@@ -171,15 +219,22 @@ export function PlattformUebersichtPage({
 
           <div className="vp-ueb-spalten">
             <div className="vp-ueb-spalte">
-              <BrauchtDichKarte zeilen={brauchtDich} onOpen={openRoute} />
+              <BrauchtDichKarte
+                zeilen={brauchtDich}
+                erledigte={brauchtDichErledigt}
+                onOpen={openRoute}
+                onErledigen={(schluessel, stand) => void erledigen([{ schluessel, stand }])}
+                onErledigenArt={(art) => void erledigen(
+                  brauchtDich.filter((z) => z.art === art).map((z) => ({ schluessel: z.key, stand: z.grund })),
+                )}
+                onWiederherstellen={(schluessel) => void wiederherstellen(schluessel)}
+              />
               <AuffaelligKarte zeilen={auffaellig} />
             </div>
             <div className="vp-ueb-spalte">
               <FlottenbildKarte gruppen={flotte} gesamt={gesamtBoxen} onOpen={openRoute} />
             </div>
           </div>
-
-          <DiensteKarte dienste={dienste} />
 
           <ReiterZeilen onNavigate={onNavigate} fernwartung={fernwartung} werkstatt={werkstatt} software={kacheln.find((k) => k.id === 'software') ?? null} />
         </>
@@ -243,12 +298,45 @@ function Kachel({ kachel, onNavigate }: { kachel: UebersichtKachel; onNavigate?:
 
 // ── Braucht dich ────────────────────────────────────────────────────────────
 
-function BrauchtDichKarte({ zeilen, onOpen }: { zeilen: BrauchtDichZeile[]; onOpen: (route: Route) => void }) {
+function BrauchtDichKarte({
+  zeilen,
+  erledigte,
+  onOpen,
+  onErledigen,
+  onErledigenArt,
+  onWiederherstellen,
+}: {
+  zeilen: BrauchtDichZeile[];
+  erledigte: BrauchtDichErledigtZeile[];
+  onOpen: (route: Route) => void;
+  onErledigen: (schluessel: string, stand: string) => void;
+  onErledigenArt: (art: BrauchtDichArt) => void;
+  onWiederherstellen: (schluessel: string) => void;
+}) {
+  const [erledigteOffen, setErledigteOffen] = useState(false);
+
+  // Eine Sammel-Handlung nur, wo sie unmissverständlich ist: mindestens zwei
+  // Zeilen derselben Art.
+  const artenMitMehreren = useMemo(() => {
+    const anzahl = new Map<BrauchtDichArt, number>();
+    for (const z of zeilen) anzahl.set(z.art, (anzahl.get(z.art) ?? 0) + 1);
+    return [...anzahl.entries()].filter(([, n]) => n >= 2);
+  }, [zeilen]);
+
   return (
     <Card style={{ padding: 0, overflow: 'hidden' }}>
       <div className="vp-admin-sec-head">
         <h2>Braucht dich{zeilen.length > 0 ? ` (${zeilen.length})` : ''}</h2>
       </div>
+      {artenMitMehreren.length > 0 && (
+        <div className="vp-ueb-braucht-sammel">
+          {artenMitMehreren.map(([art, n]) => (
+            <button key={art} type="button" onClick={() => onErledigenArt(art)}>
+              alle {n} „{BRAUCHT_DICH_ART_LABEL[art]}" erledigen
+            </button>
+          ))}
+        </div>
+      )}
       {zeilen.length === 0 ? (
         <div style={{ padding: '0 16px 16px' }}>
           <span className="vp-muted">Keine Box braucht dich gerade.</span>
@@ -256,22 +344,53 @@ function BrauchtDichKarte({ zeilen, onOpen }: { zeilen: BrauchtDichZeile[]; onOp
       ) : (
         <div className="vp-ueb-braucht-liste" data-testid="ueb-braucht-dich">
           {zeilen.map((z) => (
-            <button
-              key={z.key}
-              type="button"
-              className="vp-ueb-braucht-zeile"
-              data-testid="ueb-braucht-zeile"
-              onClick={() => onOpen(z.route)}
-            >
-              <span className="vp-ueb-braucht-kreis"><Icon name={z.icon} size={16} /></span>
-              <span className="vp-ueb-braucht-haupt">
-                <b>{z.box}{z.kunde && <span className="vp-ueb-braucht-kunde">{z.kunde}</span>}</b>
-                <small>{z.grund}</small>
-              </span>
-              <span className="vp-ueb-braucht-schritt">{z.schrittLabel}</span>
-              <Icon name="chevron-right" size={16} />
-            </button>
+            <div key={z.key} className="vp-ueb-braucht-zeile" data-testid="ueb-braucht-zeile">
+              <button type="button" className="vp-ueb-braucht-zeile-knopf" onClick={() => onOpen(z.route)}>
+                <span className="vp-ueb-braucht-kreis"><Icon name={z.icon} size={16} /></span>
+                <span className="vp-ueb-braucht-haupt">
+                  <b>{z.box}{z.kunde && <span className="vp-ueb-braucht-kunde">{z.kunde}</span>}</b>
+                  <small>{z.grund}</small>
+                </span>
+                <span className="vp-ueb-braucht-schritt">{z.schrittLabel}</span>
+                <Icon name="chevron-right" size={16} />
+              </button>
+              <button
+                type="button"
+                className="vp-ueb-braucht-erledigt-knopf"
+                title="Als erledigt markieren"
+                aria-label={`${z.box} als erledigt markieren`}
+                onClick={(e) => { e.stopPropagation(); onErledigen(z.key, z.grund); }}
+              >
+                <Icon name="check" size={16} />
+              </button>
+            </div>
           ))}
+        </div>
+      )}
+      {erledigte.length > 0 && (
+        <div className="vp-ueb-braucht-erledigte">
+          <button
+            type="button"
+            className="vp-ueb-braucht-erledigte-knopf"
+            onClick={() => setErledigteOffen((v) => !v)}
+            aria-expanded={erledigteOffen}
+          >
+            <Icon name={erledigteOffen ? 'chevron-down' : 'chevron-right'} size={14} />
+            Erledigte anzeigen ({erledigte.length})
+          </button>
+          {erledigteOffen && (
+            <div className="vp-ueb-braucht-erledigte-liste">
+              {erledigte.map((z) => (
+                <div key={z.key} className="vp-ueb-braucht-erledigte-zeile">
+                  <span className="vp-ueb-braucht-erledigte-haupt">
+                    <b>{z.box}</b>
+                    <small>{z.grund} · erledigt {relAge(Date.now() - Date.parse(z.erledigtAm))} von {z.erledigtVon}</small>
+                  </span>
+                  <button type="button" onClick={() => onWiederherstellen(z.key)}>zurückholen</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </Card>
@@ -302,22 +421,41 @@ function FlottenbildKarte({
       ) : (
         <>
           <div className="vp-ueb-flotte" data-testid="ueb-flotte">
-            {gruppen.map((g) => (
-              <div className="vp-ueb-flotte-gruppe" key={g.kunde}>
-                <small>{g.kunde} · {g.felder.length}</small>
-                <div className="vp-ueb-flotte-felder">
-                  {g.felder.map((f) => (
-                    <button
-                      key={f.ref}
-                      type="button"
-                      className={`vp-ueb-flotte-feld ${f.ton}`}
-                      title={`${f.name}: ${f.title}`}
-                      onClick={() => onOpen(geraeteAkteRoute(f.ref))}
-                    />
-                  ))}
+            {gruppen.map((g) => {
+              const auffaellig = g.felder.filter((f) => f.ton !== 'ok');
+              const ok = g.felder.filter((f) => f.ton === 'ok');
+              return (
+                <div className={`vp-ueb-flotte-gruppe${auffaellig.length > 0 ? ' vp-ueb-flotte-gruppe--stoerung' : ''}`} key={g.kunde}>
+                  <small>
+                    {g.kunde} · {g.felder.length}
+                    {auffaellig.length > 0 && <span className="vp-ueb-flotte-gruppe-warn"> · {auffaellig.length} auffällig</span>}
+                  </small>
+                  <div className="vp-ueb-flotte-felder">
+                    {auffaellig.map((f) => (
+                      <button
+                        key={f.ref}
+                        type="button"
+                        className={`vp-ueb-flotte-chip ${f.ton}`}
+                        title={`${f.name}: ${f.title}`}
+                        onClick={() => onOpen(geraeteAkteRoute(f.ref))}
+                      >
+                        <i className={`vp-ueb-flotte-chip-punkt ${f.ton}`} />
+                        {f.name}
+                      </button>
+                    ))}
+                    {ok.map((f) => (
+                      <button
+                        key={f.ref}
+                        type="button"
+                        className={`vp-ueb-flotte-feld ${f.ton}`}
+                        title={`${f.name}: ${f.title}`}
+                        onClick={() => onOpen(geraeteAkteRoute(f.ref))}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <Legende />
         </>
@@ -346,23 +484,39 @@ function Legende() {
 
 // ── Dienste ─────────────────────────────────────────────────────────────────
 
-function DiensteKarte({ dienste }: { dienste: ReturnType<typeof uebersichtDienste> }) {
+/**
+ * Keine Karte mehr, keine Überschrift „Dienste": eine schmale, ruhige Leiste
+ * am Seitenkopf (Punkt + Name + Alter, einzeilig). Nur ein auffälliger Dienst
+ * darf hier Ton zeigen - sonst bleibt die Leiste leise. Am Telefon bündelt
+ * sie sich auf eine kurze Zeile statt alle Dienste auszuschreiben (echte
+ * Verzweigung in JS, nicht nur CSS-`display:none` - die Struktur ändert sich,
+ * {@link useIsPhone}).
+ */
+function DiensteLeiste({ dienste }: { dienste: ReturnType<typeof uebersichtDienste> }) {
+  const istTelefon = useIsPhone();
   if (dienste.length === 0) return null;
+  const auffaellig = dienste.filter((d) => d.ton === 'warn');
+
+  if (istTelefon) {
+    return (
+      <div className="vp-ueb-dienste-leiste vp-ueb-dienste-leiste--kurz" data-testid="ueb-dienste">
+        <i className={`vp-ueb-dienst-punkt ${auffaellig.length > 0 ? 'warn' : 'ok'}`} />
+        {auffaellig.length === 0
+          ? <span>alle Dienste ok</span>
+          : <span>{auffaellig.length} {auffaellig.length === 1 ? 'Dienst' : 'Dienste'} auffällig</span>}
+      </div>
+    );
+  }
   return (
-    <Card style={{ marginBottom: 'var(--vp-space-6)' }}>
-      <div className="vp-admin-sec-head" style={{ padding: 0, marginBottom: 10 }}>
-        <h2>Dienste</h2>
-      </div>
-      <div className="vp-ueb-dienste" data-testid="ueb-dienste">
-        {dienste.map((d) => (
-          <span className="vp-ueb-dienst" key={d.id}>
-            <i className={`vp-ueb-dienst-punkt ${d.ton}`} />
-            <b>{d.label}</b>
-            <small>{d.text}</small>
-          </span>
-        ))}
-      </div>
-    </Card>
+    <div className={`vp-ueb-dienste-leiste${auffaellig.length > 0 ? ' vp-ueb-dienste-leiste--warn' : ''}`} data-testid="ueb-dienste">
+      {dienste.map((d) => (
+        <span className="vp-ueb-dienst" key={d.id}>
+          <i className={`vp-ueb-dienst-punkt ${d.ton}`} />
+          <b>{d.label}</b>
+          <small>{d.text}</small>
+        </span>
+      ))}
+    </div>
   );
 }
 
