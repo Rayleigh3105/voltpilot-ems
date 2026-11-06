@@ -53,9 +53,10 @@ export function SiteMeasurementComparison({ siteId }: { siteId: string }) {
   };
   return (
     <section className="vp-site-measure-compare" aria-labelledby="vp-site-measure-title">
-      <div className="vp-site-measure-head"><div><h3 id="vp-site-measure-title">Zusätzliche Messwerte</h3><p>Bis zu drei semantisch gleiche Punkte. Einheiten erhalten getrennte Achsen.</p></div><VpPicker label="Zeitraum" value={range} options={[['24h', '24 Stunden'], ['7d', '7 Tage'], ['30d', '30 Tage'], ['90d', '90 Tage'], ['year', 'Jahr']].map(([value, label]) => ({ value, label }))} onChange={(value) => setRange(value as MeasurementRange)} /></div>
+      <div className="vp-site-measure-head"><div><h3 id="vp-site-measure-title">Zusätzliche Messwerte</h3><p>Bis zu drei gleichartige Werte nebeneinander, z. B. die Temperatur mehrerer Geräte.</p></div><VpPicker label="Zeitraum" value={range} options={[['24h', '24 Stunden'], ['7d', '7 Tage'], ['30d', '30 Tage'], ['90d', '90 Tage'], ['year', 'Jahr']].map(([value, label]) => ({ value, label }))} onChange={(value) => setRange(value as MeasurementRange)} /></div>
       {error && <p role="alert" className="vp-assist-error">{error}</p>}
-      {!options ? <p role="status">Vergleichspunkte werden geladen …</p> : options.length === 0 ? <p className="vp-measure-empty">Noch keine aufgezeichneten, semantisch bekannten Zusatzmesswerte. Die Bibliothek auf einer Geräteseite startet deren Aufzeichnung.</p> : <>
+      {/* Fehlgeschlagen ist nicht „lädt noch“: ohne Antwort steht nur die Fehlermeldung. */}
+      {!options ? (error ? null : <p role="status">Vergleichspunkte werden geladen …</p>) : options.length === 0 ? <p className="vp-measure-empty">Noch keine zusätzlichen Messwerte aufgezeichnet. Auf der Seite eines Geräts lassen sich weitere Werte aufzeichnen.</p> : <>
         <div className="vp-site-measure-options" aria-label="Vergleichspunkte">{visible.map((option) => {
           const checked = selected.some((p) => p.deviceId === option.deviceId && p.pointKey === option.pointKey);
           return <Button key={`${option.deviceId}-${option.pointKey}`} variant={checked ? 'primary' : 'outline'} size="sm" aria-pressed={checked} disabled={!checked && selected.length >= 3} onClick={() => toggle(option)}>{option.deviceLabel} · {option.label} ({option.unit})</Button>;
