@@ -26,3 +26,57 @@
   /* `!important` nur gegen die Inline-Größe der Symbolkachel. */
   .vp-mandanten-pulse .vp-kpi > :first-child:not(:only-child) { display: none !important; }
 }
+
+/* Die Eingabezeile „Neuer Kunde" (Scheibe S5, E1 = A): keine Zebra-/Klick-Optik der übrigen Zeilen. */
+.vp-kunden-neu-zeile { background: var(--vp-bg-light); }
+.vp-kunden-neu-zeile td { vertical-align: middle; }
+
+/* Kundenakte-Kopf (§4.5): Kachel, Name/Segment + Bearbeiten in der Zeile, Zustand + „Wie der Kunde es sieht" rechts. */
+.vp-kundenakte-kopf {
+  display: flex;
+  gap: var(--vp-space-4);
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.vp-kundenakte-kopf-mitte { flex: 1; min-width: 0; }
+.vp-kundenakte-kopf-mitte h1 { font-size: 1.3rem; margin: 0 0 0.3rem; display: flex; align-items: center; gap: var(--vp-space-2); flex-wrap: wrap; }
+.vp-kundenakte-unter {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  flex-wrap: wrap;
+  color: var(--vp-text-muted);
+  margin: 0;
+}
+.vp-kundenakte-kopf-rechts {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  flex-wrap: wrap;
+}
+.vp-kundenakte-unter-hinweis { margin: 0; font-size: 0.85rem; }
+
+/* Die zwei Spalten: Personen breit, Anlagen/Zugriff/Vertrag gestapelt daneben - am Telefon untereinander. */
+.vp-kundenakte-spalten {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--vp-space-5);
+  align-items: start;
+}
+.vp-kundenakte-nebenspalte { display: flex; flex-direction: column; gap: var(--vp-space-5); min-width: 0; }
+@media (max-width: 900px) {
+  .vp-kundenakte-spalten { grid-template-columns: 1fr; }
+}
+
+.vp-kundenakte-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--vp-space-2); }
+.vp-kundenakte-liste li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-2) 0;
+  border-bottom: 1px solid var(--vp-border);
+  min-width: 0;
+}
+.vp-kundenakte-liste li:last-child { border-bottom: none; }
+.vp-kundenakte-liste-haupt { min-width: 0; overflow-wrap: anywhere; }

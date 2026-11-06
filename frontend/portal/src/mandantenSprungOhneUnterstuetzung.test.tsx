@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
-// Plattform-Administrator › Mandanten › Mandant öffnen › „In Mandanten-Ansicht springen", OHNE Unterstützung.
+// Plattform-Administrator › Benutzer › Kunde öffnen › „Wie der Kunde es sieht" (Scheibe S5 §4.6; vormals „In
+// Mandanten-Ansicht springen"), OHNE Unterstützung.
 // Gefälscht ist nur der Server (`fetch`); `api.ts` wählt die Köpfe selbst (auf Kundenrouten `X-Kundenbereich`).
 // Seit dem 26.10.2026 ist der Mandanten-Umschalter wieder offen (Entscheidung des Betreibers): die API nimmt den
 // Kundenbereich einer Plattform dann auch ohne Unterstützung an - `/api/v1/me` mit `zugang` „umschalter“, ganzer
@@ -84,7 +85,7 @@ async function springe(m: { name: string }) {
   // Die Mandanten-Seite und ihr API-Modul werden nachgeladen - die erste Zeile braucht länger als die Vorgabe.
   fireEvent.click(await screen.findByRole('button', { name: `Details zu ${m.name}` }, { timeout: 15000 }));
   const dialog = await screen.findByRole('region', { name: m.name });
-  fireEvent.click(within(dialog).getByRole('button', { name: /In Mandanten-Ansicht springen/ }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Wie der Kunde es sieht' }));
 }
 
 describe('Plattform springt ohne Unterstützung in die Mandanten-Ansicht', () => {

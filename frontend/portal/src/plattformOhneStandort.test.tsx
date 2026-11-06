@@ -56,7 +56,8 @@ describe('Plattform-Konto ohne Standort', () => {
   });
 
   for (const [hash, titel] of [
-    ['#/mandanten', 'Mandanten'],
+    // Scheibe S5: der Raum „Benutzer" (vormals „Mandanten").
+    ['#/mandanten', 'Benutzer'],
     ['#/plattform-uebersicht', 'Plattform-Übersicht'],
   ] as const) {
     it(`${hash} zeigt die Plattform-Seite, nicht „Kein Standort zugewiesen“`, async () => {
