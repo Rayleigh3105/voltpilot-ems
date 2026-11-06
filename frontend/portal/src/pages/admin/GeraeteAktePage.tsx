@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
-import { Icon, type IconName } from '../../../designsystem/components/core/Icon';
-import { Aufklapper } from '../../components/Aufklapper';
-import { useIsPhone } from '../../useIsPhone';
+import { Icon } from '../../../designsystem/components/core/Icon';
+import { AufklapperKarte } from '../../components/AufklapperKarte';
 import { useReiterRand } from '../../reiterRand';
 import { VpPicker } from '../../components/VpPicker';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -352,40 +351,6 @@ function AktenKopf({
   );
 }
 
-/**
- * Eine Sektion, die am Telefon als {@link Aufklapper} beginnt - zu, mit der
- * Urteilszeile als Beleg (`vp-adminview-mobile-rework`: „einklappbare
- * Sektionen mit sprechenden Urteilszeilen" statt endloser Kartenstapel). Am
- * Rechner bleibt sie die unveränderte offene Karte - diese Sektionen sind
- * bewusst die SEKUNDÄREN je Reiter, nicht die, die der Techniker als Erstes
- * braucht (die bleiben eine plaine `Card`, nie durch sie ersetzt).
- */
-function Sektion({ icon, titel, urteil, breit, children }: {
-  icon: IconName;
-  titel: string;
-  urteil?: ReactNode;
-  breit?: boolean;
-  children: ReactNode;
-}) {
-  const isPhone = useIsPhone();
-  const klasse = `vp-geraet-sek${breit ? ' vp-geraet-breit' : ''}`;
-  if (!isPhone) {
-    return (
-      <Card padding="lg" radius="lg" className={klasse}>
-        <h2><Icon name={icon} size={18} /> {titel}</h2>
-        {children}
-      </Card>
-    );
-  }
-  return (
-    <Card padding="md" radius="lg" className={klasse}>
-      <Aufklapper titel={<><Icon name={icon} size={16} /> {titel}</>} sub={urteil}>
-        {children}
-      </Aufklapper>
-    </Card>
-  );
-}
-
 // ── Überblick ───────────────────────────────────────────────────────────────
 
 function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte }: {
@@ -533,12 +498,12 @@ function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, o
         </Card>
       )}
 
-      <Sektion icon="shield" titel="Vertrauen" urteil={vertrauen.label}>
+      <AufklapperKarte icon="shield" titel="Vertrauen" urteil={vertrauen.label} className="vp-geraet-sek">
         <p><Badge variant={vertrauen.tone === 'ok' ? 'ok' : vertrauen.tone === 'warn' ? 'warn' : 'off'} dot>{vertrauen.label}</Badge></p>
         {vertrauen.detail && <p className="vp-muted vp-text-sm">{vertrauen.detail}</p>}
-      </Sektion>
+      </AufklapperKarte>
 
-      <Sektion icon="history" titel="Update-Verlauf"
+      <AufklapperKarte icon="history" titel="Update-Verlauf" className="vp-geraet-sek"
         urteil={verlauf == null ? 'wird geladen' : verlauf.eintraege.length === 0 ? 'nichts verzeichnet' : `${verlauf.eintraege.length} Einträge`}>
         {verlauf == null ? (
           <p className="vp-muted vp-text-sm">Der Verlauf wird geladen …</p>
@@ -547,7 +512,7 @@ function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, o
         ) : (
           <Zeitleiste zeilen={verlaufSicht(verlauf.eintraege, jetzt)} testId="akte-software-verlauf" />
         )}
-      </Sektion>
+      </AufklapperKarte>
     </div>
   );
 }
@@ -716,10 +681,10 @@ function AnlageReiter({
     <div className="vp-geraet-grid">
       {actionError && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
 
-      <Sektion icon="calendar" titel="Plan" urteil={plan.text}>
+      <AufklapperKarte icon="calendar" titel="Plan" urteil={plan.text} className="vp-geraet-sek">
         <p><Badge variant={plan.tone} dot>{plan.text}</Badge></p>
         <p className="vp-muted vp-text-sm">Letzter Lauf des Optimierers für diese Anlage.</p>
-      </Sektion>
+      </AufklapperKarte>
 
       <Card padding="lg" radius="lg" className="vp-geraet-sek">
         <h2><Icon name="sliders" size={18} /> Steuerung und Abregelung</h2>
@@ -774,7 +739,7 @@ function AnlageReiter({
       </Card>
 
       {site.pflege.length > 0 && (
-        <Sektion icon="alert-triangle" titel="Pflege-Hinweise" urteil={`${site.pflege.length} Hinweis${site.pflege.length === 1 ? '' : 'e'}`}>
+        <AufklapperKarte icon="alert-triangle" titel="Pflege-Hinweise" urteil={`${site.pflege.length} Hinweis${site.pflege.length === 1 ? '' : 'e'}`} className="vp-geraet-sek">
           <ul className="vp-komp-hinweise">
             {site.pflege.map((p) => (
               <li key={p.code}>
@@ -783,10 +748,10 @@ function AnlageReiter({
               </li>
             ))}
           </ul>
-        </Sektion>
+        </AufklapperKarte>
       )}
 
-      <Sektion icon="cpu" titel="Komponenten-Fassung" urteil={soll?.label ?? 'Noch nichts gemeldet'}>
+      <AufklapperKarte icon="cpu" titel="Komponenten-Fassung" urteil={soll?.label ?? 'Noch nichts gemeldet'} className="vp-geraet-sek">
         {komponenten && ort && soll ? (
           <dl className="vp-kv-list">
             <div className="vp-kv-row"><dt>Gepflegt</dt><dd><Badge variant={ort.ton} dot>{ort.label}</Badge></dd></div>
@@ -802,9 +767,9 @@ function AnlageReiter({
         ) : (
           <p className="vp-muted">Noch keine Komponenten gemeldet.</p>
         )}
-      </Sektion>
+      </AufklapperKarte>
 
-      <Sektion icon="settings" titel="Werkzeuge" breit>
+      <AufklapperKarte icon="settings" titel="Werkzeuge" className="vp-geraet-sek vp-geraet-breit">
         <div className="vp-row-gap">
           <Button variant="outline" size="sm" onClick={() => onWerkzeug('plan')}>Plan erklären (Optimizer)</Button>
           <Button variant="outline" size="sm" onClick={() => onWerkzeug('flows')}>Flows</Button>
@@ -819,7 +784,7 @@ function AnlageReiter({
             </>
           )}
         </div>
-      </Sektion>
+      </AufklapperKarte>
 
       <ConfirmDialog
         open={arming}
