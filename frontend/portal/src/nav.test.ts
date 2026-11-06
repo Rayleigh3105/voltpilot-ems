@@ -28,10 +28,12 @@ import {
   PLATFORM_PAGES,
   PLATFORM_TAB_PAGES,
   PLATTFORM_BEREICH,
+  GERAETE_BEREICH,
   KATALOG_TABS,
   katalogSektionPage,
   navPageFor,
   isPlattformBereich,
+  isGeraeteBereich,
   canonicalPlatformHash,
   sektionHash,
   parseSektion,
@@ -466,6 +468,7 @@ describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-ko
     expect(new Set(ids).size).toBe(ids.length);
     for (const room of PLATTFORM_ROOMS) expect(ids).toContain(room.page);
     for (const t of PLATTFORM_BEREICH.tabs) expect(ids).toContain(t.id);
+    for (const t of GERAETE_BEREICH.tabs) expect(ids).toContain(t.id);
   });
 
   it('hält jede Plattform-Route gültig (kein Lesezeichen bricht)', () => {
@@ -481,31 +484,44 @@ describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-ko
     expect(new Set(icons).size).toBe(icons.length);
   });
 
-  it('lässt jeden Reiter des Raums „Plattform" dessen Landung leuchten', () => {
+  it('lässt jeden Reiter des Raums „Plattform" dessen Landung leuchten, jeden Reiter „Geräte" seine', () => {
     // Der Raum ist EIN Ort; ein Reiter darf die Leiste nicht ins Nichts zeigen
-    // lassen. Jede andere Seite bleibt sie selbst.
-    expect(navPageFor('edge-updates')).toBe('plattform-uebersicht');
-    expect(navPageFor('werkstatt')).toBe('plattform-uebersicht');
-    expect(navPageFor('fernwartung')).toBe('plattform-uebersicht');
+    // lassen. Jede andere Seite bleibt sie selbst. Software/Werkstatt/Fernwartung
+    // sind vom Raum „Plattform" in den Raum „Geräte" umgehängt (gerätebezogene
+    // Flächen) - ihre Landung ist seither die Geräte-Liste, nicht die Plattform-Übersicht.
+    expect(navPageFor('edge-updates')).toBe('geraete-registry');
+    expect(navPageFor('werkstatt')).toBe('geraete-registry');
+    expect(navPageFor('fernwartung')).toBe('geraete-registry');
     expect(navPageFor('katalog')).toBe('plattform-uebersicht');
     expect(navPageFor('geraete-registry')).toBe('geraete-registry');
     expect(navPageFor('mandanten')).toBe('mandanten');
-    expect(isPlattformBereich('edge-updates')).toBe(true);
-    expect(isPlattformBereich('fernwartung')).toBe(true);
+    expect(isPlattformBereich('edge-updates')).toBe(false);
+    expect(isPlattformBereich('fernwartung')).toBe(false);
     expect(isPlattformBereich('geraete-registry')).toBe(false);
+    expect(isPlattformBereich('katalog')).toBe(true);
     expect(isPlattformBereich('optimizer')).toBe(false);
+    expect(isGeraeteBereich('edge-updates')).toBe(true);
+    expect(isGeraeteBereich('werkstatt')).toBe(true);
+    expect(isGeraeteBereich('fernwartung')).toBe(true);
+    expect(isGeraeteBereich('geraete-registry')).toBe(true);
+    expect(isGeraeteBereich('katalog')).toBe(false);
+    expect(isGeraeteBereich('plattform-uebersicht')).toBe(false);
   });
 
-  it('nennt die fünf Reiter des Raums „Plattform" in Lese-Reihenfolge und führt mit der Landung', () => {
+  it('nennt die zwei Reiter des Raums „Plattform" und die vier des Raums „Geräte" in Lese-Reihenfolge, jeweils mit der Landung', () => {
     expect(PLATTFORM_BEREICH.tabs.map((t) => [t.id, t.label])).toEqual([
       ['plattform-uebersicht', 'Übersicht'],
+      ['katalog', 'Katalog'],
+    ]);
+    expect(GERAETE_BEREICH.tabs.map((t) => [t.id, t.label])).toEqual([
+      ['geraete-registry', 'Geräte'],
       ['edge-updates', 'Software'],
       ['werkstatt', 'Werkstatt'],
       ['fernwartung', 'Fernwartung'],
-      ['katalog', 'Katalog'],
     ]);
     // Der Wirt IST einer der Reiter - sonst wäre der Raum ohne Auswahl leer.
     expect(PLATTFORM_BEREICH.tabs.some((t) => t.id === PLATTFORM_BEREICH.host)).toBe(true);
+    expect(GERAETE_BEREICH.tabs.some((t) => t.id === GERAETE_BEREICH.host)).toBe(true);
   });
 
   it('zeigt Katalog als drei Unter-Reiter (Scheibe S3: Prognosemodelle statt Komponenten)', () => {
@@ -685,13 +701,13 @@ describe('parseGeraetRef (der Deep-Link-Vertrag)', () => {
     expect(parseRoute('#/fernwartung?box=edge-k7m2xq3')).toEqual(route('fernwartung'));
   });
 
-  it('trägt die Box der Werkstatt als ?box= wie die Fernwartung; die Werkstatt ist ein Reiter des Raums „Plattform"', () => {
+  it('trägt die Box der Werkstatt als ?box= wie die Fernwartung; die Werkstatt ist ein Reiter des Raums „Geräte"', () => {
     expect(werkstattHash('edge-wrk7abg')).toBe('#/werkstatt?box=edge-wrk7abg');
     expect(werkstattHash(' ')).toBe('#/werkstatt');
     expect(parseFernwartungBox(werkstattHash('edge-wrk7abg'))).toBe('edge-wrk7abg');
     expect(parseRoute('#/werkstatt?box=edge-wrk7abg')).toEqual(route('werkstatt'));
-    expect(isPlattformBereich('werkstatt')).toBe(true);
-    expect(navPageFor('werkstatt')).toBe('plattform-uebersicht');
+    expect(isGeraeteBereich('werkstatt')).toBe(true);
+    expect(navPageFor('werkstatt')).toBe('geraete-registry');
     expect(PLATFORM_TAB_PAGES.find((p) => p.id === 'werkstatt')?.adminOnly).toBe(true);
   });
 

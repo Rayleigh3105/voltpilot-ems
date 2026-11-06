@@ -4,12 +4,12 @@ import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppShell } from '../src/shell/AppShell';
 import { PlattformBereich } from '../src/pages/admin/PlattformBereich';
-import { GeraeteRegistryPage } from '../src/pages/admin/GeraeteRegistryPage';
+import { GeraeteBereich } from '../src/pages/admin/GeraeteRegistryPage';
 import { adminApi, type AdminGeraeteAkte } from '../src/admin/adminApi';
 import { fleetApi, type AdminFleetSite } from '../src/admin/fleetApi';
 import { keycloak } from '../src/auth';
 import type { EdgeUpdates, FleetRow } from '../src/adminEdgeUpdates';
-import { type GeraeteAkteReiter, type PageId, type Route } from '../src/nav';
+import { isGeraeteBereich, type GeraeteAkteReiter, type PageId, type Route } from '../src/nav';
 import type { WerkstattBox } from '../src/werkstatt';
 import type { WerkstattDienst, WerkstattFreigabe } from '../src/werkstattBank';
 import type { FernwartungBox, FernwartungUebersicht } from '../src/adminFernwartung';
@@ -221,8 +221,8 @@ function Fixture() {
 
   return <AppShell page={page} onNavigate={(p) => navigate(p)} isAdmin showOverview={false} showAddAnlage={false}
     counts={{ sites: sites.length, devices: fleet.length }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
-    {page === 'geraete-registry'
-      ? <GeraeteRegistryPage geraeteAkte={geraeteAkte} onNavigate={navigate} />
+    {isGeraeteBereich(page)
+      ? <GeraeteBereich page={page} geraeteAkte={geraeteAkte} onNavigate={navigate} />
       : <PlattformBereich page={page} onNavigate={navigate} />}
   </AppShell>;
 }

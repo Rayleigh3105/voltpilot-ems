@@ -396,21 +396,39 @@ export interface BereichTab {
 }
 
 /**
- * Der Raum „Plattform" trägt fünf Reiter (§4.2/§4.3): die Landung
- * (Plattform-Übersicht), **Software** (N5, Abschnitt 9 - EIN Name für die
- * Seite, die bisher fünf trug: „Geräte", „Updates", „Geräte & Updates",
- * „Edge-Updates" und die Route `edge-updates`), Werkstatt, Fernwartung und
- * Katalog (Gerätevorlagen, Steuerungs-Freigabe, Komponenten - zusammengefasst
- * hinter {@link KATALOG_TABS}).
+ * Der Raum „Plattform" trägt zwei Reiter (§4.2/§4.3): die Landung
+ * (Plattform-Übersicht) und Katalog (Gerätevorlagen, Steuerungs-Freigabe,
+ * Komponenten - zusammengefasst hinter {@link KATALOG_TABS}). Software,
+ * Werkstatt und Fernwartung sind GERÄTEBEZOGENE Flächen und seit dem
+ * Umhängen (Captain-Entscheid „Ich finde auch das bei den Geräten … viel
+ * sinnvoller wäre") Reiter des Raums „Geräte" ({@link GERAETE_BEREICH}).
  */
 export const PLATTFORM_BEREICH: { host: PageId; tabs: BereichTab[] } = {
   host: 'plattform-uebersicht',
   tabs: [
     { id: 'plattform-uebersicht', label: 'Übersicht' },
+    { id: 'katalog', label: 'Katalog' },
+  ],
+};
+
+/**
+ * Der Raum „Geräte" trägt seit dem Umhängen vier Reiter: die Landung
+ * (Geräte-Liste/-Akte) sowie **Software** (N5, Abschnitt 9 - EIN Name für die
+ * Seite, die bisher fünf trug: „Geräte", „Updates", „Geräte & Updates",
+ * „Edge-Updates" und die Route `edge-updates`), Werkstatt und Fernwartung -
+ * vom Raum „Plattform" umgehängt, weil sie gerätebezogene Flächen sind, nicht
+ * geräteübergreifende. Die Hash-Adressen bleiben unverändert
+ * (`#/plattform/software`, `#/plattform/werkstatt`, `#/plattform/fernwartung`) -
+ * nur die Reiterleiste, unter der sie rendern, und der Raum-Punkt, der dabei
+ * leuchtet, ändern sich.
+ */
+export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
+  host: 'geraete-registry',
+  tabs: [
+    { id: 'geraete-registry', label: 'Geräte' },
     { id: 'edge-updates', label: 'Software' },
     { id: 'werkstatt', label: 'Werkstatt' },
     { id: 'fernwartung', label: 'Fernwartung' },
-    { id: 'katalog', label: 'Katalog' },
   ],
 };
 
@@ -488,18 +506,24 @@ export const PLATFORM_PAGES: PageDef[] = [
  */
 export function navPageFor(page: PageId): PageId {
   if (PLATTFORM_BEREICH.tabs.some((t) => t.id === page)) return PLATTFORM_BEREICH.host;
+  if (GERAETE_BEREICH.tabs.some((t) => t.id === page)) return GERAETE_BEREICH.host;
   if (KATALOG_TABS.some((t) => katalogSektionPage(t.id) === page)) return 'katalog';
   return page;
 }
 
 /**
  * Gehört diese Seite in den WRAPPER des Raums „Plattform" (= rendert sie die
- * äußere Reiterleiste)? Nur die fünf Reiter selbst - eine Katalog-Unterseite
+ * äußere Reiterleiste)? Nur die zwei Reiter selbst - eine Katalog-Unterseite
  * über ihre EIGENE, alte Adresse (`#/vorlagen`, …) bleibt bewusst ungerahmt,
  * damit sie nicht zweimal rendert.
  */
 export function isPlattformBereich(page: PageId): boolean {
   return PLATTFORM_BEREICH.tabs.some((t) => t.id === page);
+}
+
+/** Gehört diese Seite in den WRAPPER des Raums „Geräte" (die vier Reiter Liste/Software/Werkstatt/Fernwartung)? */
+export function isGeraeteBereich(page: PageId): boolean {
+  return GERAETE_BEREICH.tabs.some((t) => t.id === page);
 }
 
 /** "Meine Anlage" for 0-1 Anlagen, "Meine Anlagen" from 2 (the fleet list). */

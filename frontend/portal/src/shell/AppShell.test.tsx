@@ -673,14 +673,22 @@ describe('AppShell: die drei Räume (Scheibe S1, Konzept vp-adminview-konzept-k1
     expect(onNavigate).toHaveBeenCalledWith('plattform-uebersicht');
   });
 
-  it('lässt "Plattform" auch auf jedem seiner Reiter leuchten (Software, Werkstatt, …)', () => {
-    for (const page of ['edge-updates', 'werkstatt', 'fernwartung', 'katalog'] as const) {
+  it('lässt "Plattform" auf seinem Reiter Katalog leuchten, "Geräte" auf Software/Werkstatt/Fernwartung (umgehängt)', () => {
+    const { unmount: unmountKatalog } = render(
+      <AppShell {...adminProps} page="katalog">
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(navEintrag('Plattform')!.className).toContain('active');
+    unmountKatalog();
+
+    for (const page of ['edge-updates', 'werkstatt', 'fernwartung'] as const) {
       const { unmount } = render(
         <AppShell {...adminProps} page={page}>
           <div>content</div>
         </AppShell>,
       );
-      expect(navEintrag('Plattform')!.className).toContain('active');
+      expect(navEintrag('Geräte')!.className).toContain('active');
       unmount();
     }
   });

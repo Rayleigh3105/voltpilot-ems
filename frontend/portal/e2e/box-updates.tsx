@@ -3,8 +3,7 @@ import './rollen-fixture';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppShell } from '../src/shell/AppShell';
-import { PlattformBereich } from '../src/pages/admin/PlattformBereich';
-import { GeraeteRegistryPage } from '../src/pages/admin/GeraeteRegistryPage';
+import { GeraeteBereich } from '../src/pages/admin/GeraeteRegistryPage';
 import { adminApi } from '../src/admin/adminApi';
 import { fleetApi } from '../src/admin/fleetApi';
 import { ApiError } from '../src/api';
@@ -322,9 +321,7 @@ function Fixture() {
 
   return <AppShell page={page} onNavigate={(p) => navigate(p)} isAdmin showOverview={false} showAddAnlage={false}
     counts={{ sites: 8, devices: 8 }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
-    {page === 'geraete-registry'
-      ? <GeraeteRegistryPage geraeteAkte={geraeteAkte} onNavigate={navigate} />
-      : <PlattformBereich page={page} onNavigate={navigate} />}
+    <GeraeteBereich page={page} geraeteAkte={geraeteAkte} onNavigate={navigate} />
   </AppShell>;
 }
 ReactDOM.createRoot(document.getElementById('root')!).render(<Fixture />);

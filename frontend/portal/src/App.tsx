@@ -45,6 +45,7 @@ import {
   canonicalVerbrauchHash,
   canonicalPlatformHash,
   isPlattformBereich,
+  isGeraeteBereich,
   hashForRoute,
   isBootHash,
   pageRoute,
@@ -250,15 +251,16 @@ const PortfolioErloese = lazy(() =>
 const MandantenPage = lazy(() =>
   PAGE_CHUNK.mandanten().then((m) => ({ default: m.MandantenPage })),
 );
-// Scheibe S1: der Raum „Plattform" mit seinen fünf Reitern (Übersicht ·
-// Software · Werkstatt · Fernwartung · Katalog) rendert über EINEN
-// Lade-Einstieg - alle fünf Routen teilen sich den Wirt.
+// Scheibe S1 (seither umgehängt): der Raum „Plattform" mit seinen zwei
+// Reitern (Übersicht · Katalog) rendert über EINEN Lade-Einstieg.
 const PlattformBereich = lazy(() =>
   PAGE_CHUNK['plattform-uebersicht']().then((m) => ({ default: m.PlattformBereich })),
 );
-// Der Raum „Geräte": bis zur Geräteakte (S2) die bestehende Registrierung, allein.
-const GeraeteRegistryPage = lazy(() =>
-  PAGE_CHUNK['geraete-registry']().then((m) => ({ default: m.GeraeteRegistryPage })),
+// Der Raum „Geräte" mit seinen vier Reitern (Liste/Akte · Software ·
+// Werkstatt · Fernwartung) - Software/Werkstatt/Fernwartung sind vom Raum
+// „Plattform" umgehängt.
+const GeraeteBereich = lazy(() =>
+  PAGE_CHUNK['geraete-registry']().then((m) => ({ default: m.GeraeteBereich })),
 );
 const OptimizerPage = lazy(() =>
   PAGE_CHUNK.optimizer().then((m) => ({ default: m.OptimizerPage })),
@@ -1954,8 +1956,8 @@ function UnifiedPortal() {
               onJumpToTenant={jumpToTenant}
             />
           )}
-          {page === 'geraete-registry' && isAdmin && (
-            <GeraeteRegistryPage geraeteAkte={route.geraeteAkte ?? null} onNavigate={navigate}
+          {isGeraeteBereich(page) && isAdmin && (
+            <GeraeteBereich page={page} geraeteAkte={route.geraeteAkte ?? null} onNavigate={navigate}
               onJumpToTenant={jumpToTenant} tenants={tenants} />
           )}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}

@@ -1,18 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { PLATTFORM_BEREICH, pageRoute, type PageId, type Route } from '../../nav';
 import { PlattformUebersichtPage } from './PlattformUebersichtPage';
-import { EdgeUpdatesPage } from './EdgeUpdatesPage';
-import { FernwartungPage } from './FernwartungPage';
-import { WerkstattPage } from './WerkstattPage';
 import { KatalogBereich } from './KatalogBereich';
 
 /**
  * Der Raum „Plattform" (Konzept `vp-adminview-konzept-k1` §4.2/4.3, Scheibe
- * S1): Übersicht · Software (N5) · Werkstatt · Fernwartung · Katalog, EINE
- * gemeinsame Reiterleiste über fünf bestehenden Seiten. Dasselbe Haus wie der
- * frühere Geräte-Bereich (Updates/Registrierung/Fernwartung/Werkstatt) -
- * Registrierung ist seit S1 der eigene Raum „Geräte" und steht hier nicht
- * mehr.
+ * S1; seither umgehängt): Übersicht · Katalog, EINE gemeinsame Reiterleiste
+ * über zwei bestehenden Seiten. Software, Werkstatt und Fernwartung sind
+ * gerätebezogene Flächen und wohnen seit dem Umhängen im Raum „Geräte"
+ * (`GeraeteBereich`, `GeraeteRegistryPage.tsx`).
  */
 export function PlattformBereich({
   page,
@@ -23,12 +19,7 @@ export function PlattformBereich({
 }) {
   const tabs = <PlattformTabs active={page} onSelect={(id) => onNavigate(pageRoute(id))} />;
 
-  if (page === 'fernwartung') return <FernwartungPage tabs={tabs} />;
-  if (page === 'werkstatt') return <WerkstattPage tabs={tabs} />;
   if (page === 'katalog') return <KatalogBereich tabs={tabs} />;
-  if (page === 'edge-updates') {
-    return <EdgeUpdatesPage onNavigate={(r) => onNavigate(r)} tabs={tabs} />;
-  }
   // Die Übersicht springt seit Scheibe S4 direkt in die Geräteakte
   // (`geraeteAkteRoute`, mandantenunabhängig) - sie braucht den
   // Mandanten-Umschalter nicht mehr.
