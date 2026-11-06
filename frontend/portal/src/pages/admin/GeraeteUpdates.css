@@ -97,6 +97,12 @@
 
 .vp-gu-karte { background: #fff; border: 1px solid var(--vp-border); border-radius: 16px; box-shadow: var(--vp-shadow-sm); overflow: hidden; }
 .vp-gu-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--vp-border); }
+/* Eine Filterzeile statt zweier gestapelter Grau-Balken (Geräte-Liste, S8):
+   dieselben `.vp-gu-seg`-Chips wie bei „Geräte & Updates", nur ohne das
+   eigene Polster/Rand von `.vp-gu-filter` - sie sitzt bereits im Polster
+   von `.vp-admin-sec-head`. */
+.vp-gu-filterzeile { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: var(--vp-space-3); }
+.vp-gu-filterzeile .vp-gu-such { margin-left: auto; }
 .vp-gu-seg { display: inline-flex; background: var(--vp-bg-light); border: 1px solid var(--vp-border); border-radius: 12px; padding: 3px; gap: 2px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .vp-gu-seg button { flex: none; padding: 6px 11px; border-radius: 9px; font: inherit; font-weight: 600; font-size: 0.86rem; color: var(--vp-text-gray); white-space: nowrap; background: none; border: 0; cursor: pointer; }
 .vp-gu-seg button.an { background: #fff; color: var(--vp-primary-deep); box-shadow: var(--vp-shadow-sm); }
@@ -144,6 +150,7 @@
 .vp-gu-satz { font-size: 0.8rem; color: var(--vp-text-gray); }
 .vp-gu-ziel { font-size: 0.8rem; color: #3E4A57; }
 .vp-gu-pfeil-zelle { text-align: right; }
+.vp-gu-zeile-aktionen { display: inline-flex; align-items: center; gap: 2px; }
 .vp-gu-pfeil { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 0; background: none; color: #9AA5B1; cursor: pointer; }
 .vp-gu-pfeil:hover { background: var(--vp-bg-light); color: var(--vp-navy-2); }
 .vp-gu-pfeil:focus-visible { outline: 3px solid var(--vp-focus-ring, #5A8DE8); outline-offset: 1px; }

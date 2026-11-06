@@ -200,11 +200,38 @@ test('Geräte-Liste: jede Box in jedem Lebensabschnitt, eine Zeile führt in die
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await page.goBack();
-  for (const width of [375, 1440]) {
+  for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     expect(overflow, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
   }
+  expect(errors).toEqual([]);
+});
+
+test('Geräte-Liste: EINE Filterzeile statt zweier Grau-Balken, ohne Überlauf bei 1440 und 390 px', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('/e2e/box-updates.html');
+  await page.getByRole('button', { name: 'Geräte', exact: true }).click();
+  const liste = page.getByTestId('geraete-liste');
+  await expect(liste).toBeVisible();
+
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const kopf = page.locator('.vp-admin-sec-head');
+    await expect(kopf.locator('.vp-gu-filterzeile')).toBeVisible();
+    // Beide Segmente teilen dieselbe Chip-Sprache (`.vp-gu-seg`) statt zweier roher `.vp-seg`-Balken.
+    expect(await kopf.locator('.vp-gu-seg').count()).toBeGreaterThanOrEqual(2);
+    const { raus } = await ueberlauf(page, '.vp-admin-sec-head');
+    expect(raus, `Überlauf im Filterkopf bei ${width}px`).toEqual([]);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    expect(overflow, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
+  }
+
+  // Ein Chip bleibt bedienbar - kein Totholz durch die neue Auszeichnung.
+  await page.getByRole('button', { name: /^Werkstatt \d/ }).click();
+  await expect(liste.locator('tbody tr')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 

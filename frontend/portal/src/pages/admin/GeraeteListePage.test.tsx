@@ -9,6 +9,9 @@ const werkstattBoxen = vi.fn();
 const provisionDevice = vi.fn();
 const componentFleet = vi.fn();
 const geraeteListe = vi.fn();
+const deleteProvisionedDevice = vi.fn();
+const deletePendingEnrollment = vi.fn();
+const werkstattBoxLoeschen = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -19,6 +22,9 @@ vi.mock('../../admin/adminApi', () => ({
     provisionDevice: (...a: unknown[]) => provisionDevice(...a),
     componentFleet: (...a: unknown[]) => componentFleet(...a),
     geraeteListe: (...a: unknown[]) => geraeteListe(...a),
+    deleteProvisionedDevice: (...a: unknown[]) => deleteProvisionedDevice(...a),
+    deletePendingEnrollment: (...a: unknown[]) => deletePendingEnrollment(...a),
+    werkstattBoxLoeschen: (...a: unknown[]) => werkstattBoxLoeschen(...a),
   },
 }));
 
@@ -61,16 +67,10 @@ describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnit
     expect(onOpen).toHaveBeenCalledWith('edge-a1');
   });
 
-  it('„Geräte-ID registrieren" öffnet eine Eingabezeile - kein Fenster (E1 = A)', async () => {
+  it('bietet keinen Registrieren-Einstieg mehr an - die Werkstatt registriert Boxen selbst', async () => {
     render(<GeraeteListePage onOpen={vi.fn()} />);
     await screen.findByText('Noch kein Gerät');
-    fireEvent.click(screen.getByRole('button', { name: 'Geräte-ID registrieren' }));
-    expect(screen.getByTestId('geraete-registrier-zeile')).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).toBeNull();
-    provisionDevice.mockResolvedValue(undefined);
-    fireEvent.change(screen.getByLabelText('Geräte-ID *'), { target: { value: 'VP-1234-ABCD' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Registrieren' }));
-    await waitFor(() => expect(provisionDevice).toHaveBeenCalledWith(expect.objectContaining({ externalRef: 'VP-1234-ABCD' })));
+    expect(screen.queryByRole('button', { name: 'Geräte-ID registrieren' })).toBeNull();
   });
 
   it('zeigt eine gedruckte, unverbundene ID als eigenen Lebensabschnitt', async () => {
@@ -121,6 +121,91 @@ describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnit
     await waitFor(() => expect(liste).toHaveTextContent('Pilsting'));
     expect(liste).not.toHaveTextContent('Ahrenberg');
     window.location.hash = '';
+  });
+
+  describe('Boxen löschen (nur ohne aktive Kunden-/Anlagen-Bindung)', () => {
+    it('löscht eine gedruckte, unverbundene Aufkleber-ID nach Rückfrage, mit Grund im Fehlerfall', async () => {
+      listDevices.mockResolvedValue([{
+        deviceId: null, externalRef: 'VP-0001', label: null, siteId: null, siteName: null, tenantId: null,
+        tenantName: null, kind: 'inverter', ist: null, soll: null, sollSeq: null, state: null, reason: null,
+        blocker: null, lastSeenAt: null, reportedAt: null, provisioned: true, note: null,
+        provisionedAt: new Date().toISOString(),
+      }]);
+      render(<GeraeteListePage onOpen={vi.fn()} />);
+      await screen.findAllByText('VP-0001');
+
+      fireEvent.click(screen.getByRole('button', { name: /Aktionen für VP-0001/ }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Box löschen' }));
+      expect(await screen.findByRole('heading', { name: 'VP-0001 löschen?' })).toBeInTheDocument();
+
+      deleteProvisionedDevice.mockRejectedValueOnce(new Error('netz weg'));
+      fireEvent.click(screen.getByRole('button', { name: 'Box löschen' }));
+      await waitFor(() => expect(deleteProvisionedDevice).toHaveBeenCalledWith('VP-0001'));
+      expect(await screen.findByText(/ließ sich nicht löschen/)).toBeInTheDocument();
+
+      deleteProvisionedDevice.mockResolvedValueOnce(undefined);
+      listDevices.mockResolvedValue([]);
+      fireEvent.click(screen.getByRole('button', { name: 'Box löschen' }));
+      await waitFor(() => expect(screen.queryByRole('heading', { name: 'VP-0001 löschen?' })).toBeNull());
+      expect(await screen.findByText('Noch kein Gerät')).toBeInTheDocument();
+    });
+
+    it('eine verbundene Box bekommt kein Aktionen-Menü (keine aktive Bindung lässt sich löschen)', async () => {
+      edgeUpdates.mockResolvedValue({
+        ...emptyEdgeUpdates(),
+        fleet: [{
+          deviceId: 'd1', label: 'edge-a1', externalRef: 'edge-a1', siteId: 's1', siteName: 'Pilsting',
+          tenantId: 't1', tenantName: 'Kunde A', ist: 'edge-2026.08.0', soll: 'edge-2026.08.0', sollSeq: 12,
+          state: 'bestaetigt', reason: null, since: null, reportedAt: null, rolloutId: null,
+          lastSeenAt: new Date().toISOString(), boxArt: 'docker', linie: 'docker',
+        }],
+      });
+      render(<GeraeteListePage onOpen={vi.fn()} />);
+      await screen.findByText('Pilsting');
+      expect(screen.queryByRole('button', { name: /^Aktionen für/ })).toBeNull();
+    });
+
+    it('eine abgenommene Werkstatt-Box bekommt kein Aktionen-Menü (per Werkstatt-Regel in Gebrauch)', async () => {
+      werkstattBoxen.mockResolvedValue([{
+        id: 'w1', edgeRef: 'edge-werkstatt', boxArt: 'edge-light', lanNetz: null, schritte: {},
+        notiz: null, angelegtAm: new Date().toISOString(), angelegtVon: 'admin', geaendertAm: new Date().toISOString(),
+        abnahmen: [], inGebrauch: ['Abgenommen'],
+      }]);
+      render(<GeraeteListePage onOpen={vi.fn()} />);
+      await screen.findAllByText('edge-werkstatt');
+      expect(screen.queryByRole('button', { name: /^Aktionen für/ })).toBeNull();
+    });
+
+    it('löscht eine wartende Anmeldung über den eigenen Lösch-Weg', async () => {
+      listPendingEnrollments.mockResolvedValue([
+        { externalRef: 'edge-typo-1', deviceInfo: null, csrUpdatedAt: new Date().toISOString(), everIssued: false, issuedAt: null },
+      ]);
+      deletePendingEnrollment.mockResolvedValue(undefined);
+      render(<GeraeteListePage onOpen={vi.fn()} />);
+      await screen.findAllByText('edge-typo-1');
+
+      fireEvent.click(screen.getByRole('button', { name: /Aktionen für edge-typo-1/ }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Box löschen' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Box löschen' }));
+      await waitFor(() => expect(deletePendingEnrollment).toHaveBeenCalledWith('edge-typo-1'));
+    });
+
+    it('löscht eine löschbare Werkstatt-Box über ihren eigenen Lösch-Weg', async () => {
+      werkstattBoxen.mockResolvedValue([{
+        id: 'w1', edgeRef: 'edge-werkstatt', boxArt: 'edge-light', lanNetz: null, schritte: {},
+        notiz: null, angelegtAm: new Date().toISOString(), angelegtVon: 'admin', geaendertAm: new Date().toISOString(),
+        abnahmen: [], inGebrauch: [], loeschtMit: ['Tunnel-Schlüssel'],
+      }]);
+      werkstattBoxLoeschen.mockResolvedValue(undefined);
+      render(<GeraeteListePage onOpen={vi.fn()} />);
+      await screen.findAllByText('edge-werkstatt');
+
+      fireEvent.click(screen.getByRole('button', { name: /Aktionen für edge-werkstatt/ }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Box löschen' }));
+      expect(await screen.findByTestId('confirm-consequences')).toHaveTextContent('Tunnel-Schlüssel');
+      fireEvent.click(screen.getByRole('button', { name: 'Box löschen' }));
+      await waitFor(() => expect(werkstattBoxLoeschen).toHaveBeenCalledWith('edge-werkstatt'));
+    });
   });
 
   describe('S7: Live-Feinschliff (§5 des Konzepts)', () => {
