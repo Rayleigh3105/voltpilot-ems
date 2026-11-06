@@ -1,298 +1,141 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminFleetSite } from '../../admin/fleetApi';
+import type { EdgeUpdates } from '../../adminEdgeUpdates';
 
+/**
+ * Scheibe S4 (Konzept `vp-adminview-konzept-k1` §4.3): die neue Landung von
+ * `#/plattform`. Geprüft wird hier nur die SEITE - laden, Fail-soft,
+ * Navigation und das Fehlen von Geld; die Zahlen selbst prüft
+ * `plattformUebersicht.test.ts`.
+ */
 const fleet = vi.fn();
+const edgeUpdates = vi.fn();
+const fernwartung = vi.fn();
+const fernwartungBoxen = vi.fn();
+const werkstattDienst = vi.fn();
+const listPendingEnrollments = vi.fn();
 
 vi.mock('../../admin/fleetApi', () => ({
   fleetApi: { fleet: (...a: unknown[]) => fleet(...a) },
+}));
+vi.mock('../../admin/adminApi', () => ({
+  adminApi: {
+    edgeUpdates: (...a: unknown[]) => edgeUpdates(...a),
+    fernwartung: (...a: unknown[]) => fernwartung(...a),
+    fernwartungBoxen: (...a: unknown[]) => fernwartungBoxen(...a),
+    werkstattDienst: (...a: unknown[]) => werkstattDienst(...a),
+    listPendingEnrollments: (...a: unknown[]) => listPendingEnrollments(...a),
+  },
 }));
 
 const { PlattformUebersichtPage } = await import('./PlattformUebersichtPage');
 
 function site(id: string, name: string, extra: Partial<AdminFleetSite> = {}): AdminFleetSite {
   return {
-    siteId: id,
-    siteName: name,
-    tenantId: 't1',
-    tenantName: 'Demo C&I',
-    plantKind: 'eigenverbrauch',
-    netzladenErlaubt: false,
-    tarifArt: 'fest',
-    deviceCount: 1,
-    onlineCount: 1,
-    waitingCount: 0,
-    worstStatus: 'online',
-    lastSeenAt: new Date().toISOString(),
-    lastPlanGeneratedAt: new Date().toISOString(),
-    hasStorage: false,
-    batteryWithoutDevice: false,
-    sources: null,
-    edge: null,
-    update: null,
-    control: null,
-    curtailment: null,
+    siteId: id, siteName: name, tenantId: 't1', tenantName: 'Demo C&I',
+    plantKind: 'eigenverbrauch', netzladenErlaubt: false, tarifArt: 'fest',
+    deviceCount: 1, onlineCount: 1, waitingCount: 0, worstStatus: 'online',
+    lastSeenAt: new Date().toISOString(), lastPlanGeneratedAt: new Date().toISOString(),
+    hasStorage: false, batteryWithoutDevice: false, sources: null, edge: null, update: null,
+    control: null, curtailment: null,
     kwp: { configuredKwp: null, observedPeakKw: null, buckets: 0, verdict: 'unbekannt', reason: '-' },
-    forecast: [],
-    pflege: [],
+    forecast: [], pflege: [],
+    boxes: [{ deviceId: `${id}-d1`, externalRef: `VP-${id}`, name: null, fuehrtAnlage: true, lastSeenAt: new Date().toISOString(), edge: null, update: null }],
     ...extra,
   };
 }
 
+const LEERE_EDGE_UPDATES: EdgeUpdates = {
+  fleet: [], rollouts: [], journal: [], kpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, lines: [],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   fleet.mockResolvedValue({ sites: [] });
+  edgeUpdates.mockResolvedValue(LEERE_EDGE_UPDATES);
+  fernwartung.mockResolvedValue(null);
+  fernwartungBoxen.mockResolvedValue([]);
+  werkstattDienst.mockResolvedValue(null);
+  listPendingEnrollments.mockResolvedValue([]);
 });
 
 describe('PlattformUebersichtPage', () => {
-  it('shows one row per site across ALL tenants - from ONE request', async () => {
-    fleet.mockResolvedValue({
-      sites: [
-        site('s1', 'Solarpark Dachau'),
-        site('s2', 'PV-Park Pilsting', { tenantId: 't2', tenantName: 'Energiehof P.' }),
-      ],
-    });
-    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
-
-    expect(await screen.findByText('Solarpark Dachau')).toBeInTheDocument();
-    expect(screen.getByText('PV-Park Pilsting')).toBeInTheDocument();
-    expect(screen.getByText('Anlagen gesamt')).toBeInTheDocument();
-    // Die Mandanten-Schleife ist entfallen: EIN Aufruf trägt die ganze Seite.
-    expect(fleet).toHaveBeenCalledTimes(1);
-  });
-
-  it('shows one row per box, grouped by site, with role, version and capabilities', async () => {
-    fleet.mockResolvedValue({
-      releases: [{ releaseSeq: 1, version: 'edge-2026.09.0' }],
-      sites: [site('s1', 'Werk Ahrenberg', {
-        deviceCount: 2,
-        onlineCount: 1,
-        boxes: [
-          {
-            deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box Leitstand', fuehrtAnlage: true,
-            lastSeenAt: new Date().toISOString(), edge: null,
-            update: { version: 'edge-2026.09.0', backend: 'compose', current: null, target: null, state: 'idle', reason: null, lastKnownGood: null, reportedAt: new Date().toISOString() },
-          },
-          {
-            deviceId: 'd2', externalRef: 'VP-BOX-0002', name: 'Box Halle 2', fuehrtAnlage: false,
-            lastSeenAt: null, edge: null, update: null,
-          },
-        ],
-      })],
-    });
-    const jump = vi.fn();
-    render(<PlattformUebersichtPage onJumpToTenant={jump} />);
-
-    const table = await screen.findByTestId('admin-fleet');
-    expect(table).toHaveTextContent('Werk Ahrenberg');
-    expect(table).toHaveTextContent('Box Leitstand');
-    expect(table).toHaveTextContent('Box Halle 2');
-    expect(table).toHaveTextContent('Führende Box');
-    expect(table).toHaveTextContent('Weitere Box');
-    expect(table).toHaveTextContent('edge-2026.09.0');
-    expect(table).toHaveTextContent('Rückmeldung je Datenquelle fehlt');
-    // UI-Runde Admin: eine fehlende Fähigkeit ist grau, keine Störung; ohne Unterstützung keine Zeile dazu.
-    const faehigkeit = screen.getAllByText(/Rückmeldung je Datenquelle fehlt/)[0].closest('span') as HTMLElement;
-    expect(faehigkeit.style.background).toBe('var(--vp-bg-light)');
-    // N4: eine VORHANDENE Fähigkeit bekommt kein Abzeichen - nur die fehlende verhindert etwas.
-    expect(table).not.toHaveTextContent('vorhanden');
-    expect(table).not.toHaveTextContent('Keine aktive Unterstützung');
-    expect(table).not.toHaveTextContent('Unterstützung nicht verfügbar');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Box Halle 2' }));
-    expect(jump).toHaveBeenCalledWith('t1', {
-      page: 'anlagen', siteId: 's1', sub: 'box', geraet: { ref: 'VP-BOX-0002', geraetId: null },
-    });
-  });
-
-  it('carries NO money at all - a pure technical view (Captain Q2)', async () => {
+  it('lädt alle Antworten EINMAL und zeigt die vier Kacheln', async () => {
     fleet.mockResolvedValue({ sites: [site('s1', 'Anlage A')] });
-    const { container } = render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
-    await screen.findByText('Anlage A');
-    expect(container.textContent).not.toContain('€');
-    expect(container.textContent).not.toMatch(/verdient|gespart|Erlös/i);
+    render(<PlattformUebersichtPage />);
+    const kacheln = within(await screen.findByTestId('ueb-kacheln'));
+    expect(kacheln.getByText('Verbindung')).toBeInTheDocument();
+    expect(kacheln.getByText('Software')).toBeInTheDocument();
+    expect(kacheln.getByText('Steuerung')).toBeInTheDocument();
+    expect(kacheln.getByText('Plan')).toBeInTheDocument();
+    await waitFor(() => expect(fleet).toHaveBeenCalledTimes(1));
+    expect(edgeUpdates).toHaveBeenCalledTimes(1);
   });
 
-  it('names a failed load instead of claiming an empty fleet', async () => {
+  it('zeigt eine leere Flotte als ehrlichen Leerstand, keine erfundene Zahl', async () => {
+    render(<PlattformUebersichtPage />);
+    expect(await screen.findByText(/Noch keine Anlage/)).toBeInTheDocument();
+  });
+
+  it('nennt einen Fehlschlag, statt eine leere Flotte zu behaupten', async () => {
     fleet.mockRejectedValue(new Error('kaputt'));
-    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
+    render(<PlattformUebersichtPage />);
     expect(await screen.findByText(/nicht geladen werden/)).toBeInTheDocument();
     expect(screen.queryByText(/Noch keine Anlage/)).toBeNull();
   });
 
-  it('opens the Anlage in ITS tenant context', async () => {
-    fleet.mockResolvedValue({ sites: [site('s1', 'Solarpark Dachau')] });
-    const jump = vi.fn();
-    render(<PlattformUebersichtPage onJumpToTenant={jump} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Solarpark Dachau' }));
-    expect(jump).toHaveBeenCalledWith('t1', { page: 'anlagen', siteId: 's1', sub: null });
-  });
-
-  it('shows the control matrix from the SAME response - no extra request', async () => {
+  it('eine Box, die sich nicht meldet, braucht dich und führt in ihre Geräteakte', async () => {
     fleet.mockResolvedValue({
-      sites: [
-        site('s1', 'Speicheranlage', {
-          hasStorage: true,
-          curtailment: {
-            deviceId: 'd1',
-            units: 2,
-            certifiedUnits: 0,
-            controlEnabled: true,
-            active: false,
-            appliedCapKw: null,
-            allMatch: null,
-            possibleOverride: false,
-            checkedAt: new Date().toISOString(),
-          },
-        }),
-      ],
-    });
-    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
-
-    const toggle = await screen.findByRole('button', { name: /Steuerung & Abregelung/ });
-    fireEvent.click(toggle);
-    // Die Pilsting-Sicht steht prominent in der Zeile.
-    expect(await screen.findByText('0 von 2 Wechselrichtern freigegeben')).toBeInTheDocument();
-    await waitFor(() => expect(fleet).toHaveBeenCalledTimes(1));
-  });
-
-  it('offers no control matrix at all when no plant has a battery', async () => {
-    fleet.mockResolvedValue({ sites: [site('s1', 'PV ohne Speicher')] });
-    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
-    await screen.findByText('PV ohne Speicher');
-    expect(screen.queryByRole('button', { name: /Steuerung & Abregelung/ })).toBeNull();
-  });
-
-  it('shows a B4 finding as a chip that carries its reason', async () => {
-    fleet.mockResolvedValue({
-      sites: [
-        site('s1', 'Skalierungsfall', {
-          kwp: {
-            configuredKwp: 30,
-            observedPeakKw: 420,
-            buckets: 2000,
-            verdict: 'zu_hoch',
-            reason: 'Gemessene PV-Spitze 420,0 kW über 30,0 kWp installiert.',
-          },
-          pflege: [
-            {
-              code: 'kwp-unplausibel',
-              label: 'kWp unplausibel',
-              detail: 'Gemessene PV-Spitze 420,0 kW über 30,0 kWp installiert.',
-            },
-          ],
-        }),
-      ],
-    });
-    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
-    const chip = await screen.findByText('kWp unplausibel');
-    expect(chip.closest('[title]')?.getAttribute('title')).toContain('420,0 kW');
-  });
-
-  /**
-   * Die Edge-Stand-Spalte ist Soll-gegen-Ist (OTA Stufe 0). Sie darf ein
-   * Gerät nur „veraltet" nennen, wenn das Register es BELEGT - alles andere
-   * bleibt ruhig, mit seinem Grund am `title`.
-   */
-  it('renders the Edge-Stand as Soll-gegen-Ist from the register', async () => {
-    const ota = (version: string) => ({
-      version,
-      backend: 'compose',
-      current: version,
-      target: null,
-      state: 'idle',
-      reason: null,
-      lastKnownGood: null,
-      reportedAt: new Date().toISOString(),
-    });
-    fleet.mockResolvedValue({
-      sites: [
-        site('s1', 'Aktuell', {
-          update: ota('edge-2026.08.0'),
-          boxes: [{ deviceId: 'd1', externalRef: 'box-1', name: null, fuehrtAnlage: true, lastSeenAt: null, edge: null, update: ota('edge-2026.08.0') }],
-        }),
-        site('s2', 'Hinterher', {
-          update: ota('edge-2026.07.2'),
-          boxes: [{ deviceId: 'd2', externalRef: 'box-2', name: null, fuehrtAnlage: true, lastSeenAt: null, edge: null, update: ota('edge-2026.07.2') }],
-        }),
-        // Nur eine SHA gemeldet: nicht im Register - und deshalb ausdrücklich
-        // nicht veraltet.
-        site('s3', 'Bestandsbau', {
-          update: ota('665d59b80000'),
-          boxes: [{ deviceId: 'd3', externalRef: 'box-3', name: null, fuehrtAnlage: true, lastSeenAt: null, edge: null, update: ota('665d59b80000') }],
-        }),
-        // Nie gemeldet.
-        site('s4', 'Stumm', {
-          boxes: [{ deviceId: 'd4', externalRef: 'box-4', name: null, fuehrtAnlage: true, lastSeenAt: null, edge: null, update: null }],
-        }),
-      ],
-      releases: [
-        { releaseSeq: 12, version: 'edge-2026.08.0' },
-        { releaseSeq: 11, version: 'edge-2026.07.2' },
-      ],
-    });
-    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
-
-    expect(await screen.findByText('edge-2026.08.0 ✓')).toBeInTheDocument();
-    expect(screen.getByText('edge-2026.07.2 → edge-2026.08.0')).toBeInTheDocument();
-    expect(screen.getByText('665d59b80000 · nicht registriert')).toBeInTheDocument();
-    expect(screen.getByText('unbekannt')).toBeInTheDocument();
-
-    // Genau EINE Zeile ist veraltet - der SHA-Stand und das stumme Gerät nicht.
-    expect(screen.getAllByText('Edge veraltet')).toHaveLength(1);
-    expect(
-      screen.getByText('665d59b80000 · nicht registriert').getAttribute('title'),
-    ).toContain('nicht im Release-Register');
-  });
-
-  it('claims nothing while the release register is empty', async () => {
-    fleet.mockResolvedValue({
-      sites: [
-        site('s1', 'Anlage A', {
-          update: {
-            version: 'edge-2026.07.2',
-            backend: 'compose',
-            current: 'edge-2026.07.2',
-            target: null,
-            state: 'idle',
-            reason: null,
-            lastKnownGood: null,
-            reportedAt: new Date().toISOString(),
-          },
-          boxes: [{
-            deviceId: 'd1', externalRef: 'box-1', name: null, fuehrtAnlage: true,
-            lastSeenAt: null, edge: null,
-            update: {
-              version: 'edge-2026.07.2', backend: 'compose', current: 'edge-2026.07.2',
-              target: null, state: 'idle', reason: null, lastKnownGood: null,
-              reportedAt: new Date().toISOString(),
-            },
-          }],
-        }),
-      ],
-      releases: [],
-    });
-    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
-    expect(await screen.findByText('edge-2026.07.2')).toBeInTheDocument();
-    expect(screen.queryByText('Edge veraltet')).toBeNull();
-  });
-});
-
-describe('PlattformUebersichtPage - Box-Referenz nicht doppelt', () => {
-  it('zeigt die Referenz unter dem Namen nur, wenn die Box einen eigenen Namen hat', async () => {
-    fleet.mockResolvedValue({
-      releases: [],
-      sites: [site('s1', 'Werk Ahrenberg', {
-        boxes: [
-          { deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box Leitstand', fuehrtAnlage: true, lastSeenAt: null, edge: null, update: null },
-          { deviceId: 'd2', externalRef: 'VP-BOX-0002', name: null, fuehrtAnlage: false, lastSeenAt: null, edge: null, update: null },
-        ],
+      sites: [site('s1', 'Anlage A', {
+        boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-9', name: 'Box 9', fuehrtAnlage: true, lastSeenAt: null, edge: null, update: null }],
       })],
     });
-    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
-    await screen.findByTestId('admin-fleet');
-    expect(screen.getAllByText('VP-BOX-0001')).toHaveLength(1);
-    expect(screen.getAllByText('VP-BOX-0002')).toHaveLength(1);
+    edgeUpdates.mockResolvedValue({
+      ...LEERE_EDGE_UPDATES,
+      fleet: [{
+        deviceId: 'd1', label: 'Box 9', externalRef: 'VP-BOX-9', siteId: 's1', siteName: 'Anlage A',
+        tenantId: 't1', tenantName: 'Demo C&I', ist: null, soll: null, sollSeq: null, state: 'unbekannt',
+        reason: null, since: null, reportedAt: null, rolloutId: null, boxArt: null, linie: null,
+        stand: 'fehler', lastSeenAt: null, istRelease: null, releasesDahinter: null, istSeit: null, fakten: null,
+      }],
+    });
+    const onNavigate = vi.fn();
+    render(<PlattformUebersichtPage onNavigate={onNavigate} />);
+    const zeile = await screen.findByTestId('ueb-braucht-zeile');
+    expect(zeile).toHaveTextContent('Anlage A');
+    fireEvent.click(zeile);
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'VP-BOX-9', reiter: 'software' } });
+  });
+
+  it('die Software-Kachel führt auf die Software-Seite', async () => {
+    fleet.mockResolvedValue({ sites: [site('s1', 'Anlage A')] });
+    edgeUpdates.mockResolvedValue({
+      ...LEERE_EDGE_UPDATES,
+      kpi: { known: 2, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: 'edge-2026.09.0' },
+    });
+    const onNavigate = vi.fn();
+    render(<PlattformUebersichtPage onNavigate={onNavigate} />);
+    const kacheln = within(await screen.findByTestId('ueb-kacheln'));
+    fireEvent.click(kacheln.getByRole('button', { name: /Software/ }));
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'edge-updates', siteId: null, sub: null });
+  });
+
+  it('trägt kein Geld - ein reiner Technik-Blick (Captain-Entscheid Q2)', async () => {
+    fleet.mockResolvedValue({ sites: [site('s1', 'Anlage A')] });
+    const { container } = render(<PlattformUebersichtPage />);
+    await screen.findByText('Verbindung');
+    expect(container.textContent).not.toContain('€');
+    expect(container.textContent).not.toMatch(/verdient|gespart|Erlös/i);
+  });
+
+  it('bleibt fail-soft: eine gescheiterte Fernwartungs- oder Werkstatt-Antwort behauptet nie eine fehlende Box', async () => {
+    fleet.mockResolvedValue({ sites: [site('s1', 'Anlage A')] });
+    fernwartung.mockRejectedValue(new Error('kaputt'));
+    fernwartungBoxen.mockRejectedValue(new Error('kaputt'));
+    werkstattDienst.mockRejectedValue(new Error('kaputt'));
+    listPendingEnrollments.mockRejectedValue(new Error('kaputt'));
+    render(<PlattformUebersichtPage />);
+    expect(await screen.findByText('Verbindung')).toBeInTheDocument();
   });
 });

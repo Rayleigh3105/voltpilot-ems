@@ -17,11 +17,9 @@ import { KatalogBereich } from './KatalogBereich';
 export function PlattformBereich({
   page,
   onNavigate,
-  onJumpToTenant,
 }: {
   page: PageId;
   onNavigate: (target: Route | PageId) => void;
-  onJumpToTenant?: (tenantId: string, route: Route) => void;
 }) {
   const tabs = <PlattformTabs active={page} onSelect={(id) => onNavigate(pageRoute(id))} />;
 
@@ -31,13 +29,10 @@ export function PlattformBereich({
   if (page === 'edge-updates') {
     return <EdgeUpdatesPage onNavigate={(r) => onNavigate(r)} tabs={tabs} />;
   }
-  return (
-    <PlattformUebersichtPage
-      onJumpToTenant={onJumpToTenant ?? (() => {})}
-      onNavigate={(r) => onNavigate(r)}
-      tabs={tabs}
-    />
-  );
+  // Die Übersicht springt seit Scheibe S4 direkt in die Geräteakte
+  // (`geraeteAkteRoute`, mandantenunabhängig) - sie braucht den
+  // Mandanten-Umschalter nicht mehr.
+  return <PlattformUebersichtPage onNavigate={(r) => onNavigate(r)} tabs={tabs} />;
 }
 
 /** Die Tab-Leiste des Raums - das Haus-Segment (`.vp-seg`), wie der frühere Geräte-Bereich. */

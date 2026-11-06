@@ -1943,7 +1943,7 @@ function UnifiedPortal() {
             />
           )}
           {isPlattformBereich(page) && isAdmin && (
-            <PlattformBereich page={page} onNavigate={navigate} onJumpToTenant={jumpToTenant} />
+            <PlattformBereich page={page} onNavigate={navigate} />
           )}
           {page === 'mandanten' && isAdmin && (
             <MandantenPage

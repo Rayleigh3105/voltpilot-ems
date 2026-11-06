@@ -875,6 +875,9 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'werkstattLauf',
       // Die Geräte-Liste (Scheibe S2): eine Zeile je Box in jedem Lebensabschnitt.
       'geraeteListe',
+      // Plattform › Übersicht (Scheibe S4): bündelt die anderen reinen
+      // Admin-Schichten zu Kacheln, „Braucht dich", Flottenbild und Dienste.
+      'plattformUebersicht',
     ];
     // Installateur-Ansicht (M7-Muster): die technische Sicht wohnt ADDITIV
     // auf der Kunden-Geräteseite, hinter dem EINEN Rollen-Tor
