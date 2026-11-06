@@ -618,6 +618,11 @@ type Agent struct {
 
 	// wake signals the publisher that new telemetry or connectivity arrived.
 	wake chan struct{}
+	// statusKickCh asks the status heartbeat for an early beat (a charge point
+	// changed visibly, ocpp_status_kick.go). Lazily made: tests build Agents
+	// by literal.
+	statusKickCh   chan struct{}
+	statusKickOnce sync.Once
 	// reconcileNow nudges the identity-reconcile loop to re-check ahead of its
 	// tick (e.g. right after a cloud disconnect, which is how a broker rejects
 	// a device whose identity has drifted).
@@ -1510,38 +1515,33 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 	a.linkMu.Unlock()
 	link.Connect()
 
-	// Status heartbeat.
+	// Status heartbeat: every statusHeartbeatEvery, and early when a charge
+	// point changed visibly (ocpp_status_kick.go).
 	a.done.Add(1)
 	go func() {
 		defer a.done.Done()
-		t := time.NewTicker(15 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-t.C:
-				if !link.Connected() {
-					continue
-				}
-				snap := a.State.Get()
-				src := "default"
-				if snap.Mode == state.ModeSchedule {
-					src = "schedule"
-				}
-				a.mu.Lock()
-				soc := a.lastRawSoc
-				a.mu.Unlock()
-				a.logControlGateDivergence(snap)
-				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
-					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
-					a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
-					a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now()), Supports: cloud.BuiltSupports(a.boxArt()),
-						GemeinsameSteuerung: a.gemeinsameSteuerung()}); err != nil {
-					slog.Warn("status publish failed", "err", err)
-				}
-			case <-linkCtx.Done():
-				return
+		statusHeartbeatLoop(linkCtx, statusHeartbeatEvery, statusKickMinGap, a.statusKick(), func() bool {
+			if !link.Connected() {
+				return false
 			}
-		}
+			snap := a.State.Get()
+			src := "default"
+			if snap.Mode == state.ModeSchedule {
+				src = "schedule"
+			}
+			a.mu.Lock()
+			soc := a.lastRawSoc
+			a.mu.Unlock()
+			a.logControlGateDivergence(snap)
+			if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
+				a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
+				a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
+				a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now()), Supports: cloud.BuiltSupports(a.boxArt()),
+					GemeinsameSteuerung: a.gemeinsameSteuerung()}); err != nil {
+				slog.Warn("status publish failed", "err", err)
+			}
+			return true
+		})
 	}()
 	return nil
 }

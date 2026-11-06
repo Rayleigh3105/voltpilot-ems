@@ -119,6 +119,10 @@ type Server struct {
 	// notification, never a queue (the OTA-blocker lesson: a per-tick signal
 	// is noise the real signal drowns in).
 	changed chan struct{}
+	// observed is the same signal for a SECOND reader: the status heartbeat
+	// (agent/ocpp_status_kick.go). The allocator drains `changed`, so the two
+	// cannot share one channel without stealing each other's wake-ups.
+	observed chan struct{}
 
 	// transport is the ocpp-go half. It is created in Start and is the ONLY
 	// place the library is touched besides ocppmap.go.
@@ -180,6 +184,7 @@ func New(opts Options) (*Server, error) {
 		clockResyncAt:      map[string]time.Time{},
 		nextTxID:           saved.NextTransactionID,
 		changed:            make(chan struct{}, 1),
+		observed:           make(chan struct{}, 1),
 		measurementDesired: measurementDesired,
 	}
 	journal.RestoreCommandMappings(commands.wireMappings())
@@ -247,9 +252,18 @@ func (s *Server) Enabled() bool { return s.opts.Enabled }
 // "re-decide", never "here is what happened".
 func (s *Server) Changed() <-chan struct{} { return s.changed }
 
+// Observed is Changed for the status heartbeat: a coalescing wake-up on every
+// station report and every registry change. A receive means "look again",
+// never "here is what happened".
+func (s *Server) Observed() <-chan struct{} { return s.observed }
+
 func (s *Server) notifyChanged() {
 	select {
 	case s.changed <- struct{}{}:
+	default:
+	}
+	select {
+	case s.observed <- struct{}{}:
 	default:
 	}
 }
