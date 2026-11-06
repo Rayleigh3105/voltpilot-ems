@@ -24,6 +24,7 @@ import {
   PLATFORM_PAGES,
   navPageFor,
   isPlattformBereich,
+  isGeraeteBereich,
   PORTFOLIO_PAGE,
   pageLabel,
   STANDORT_PAGE,
@@ -385,7 +386,8 @@ export function AppShell({
   // ohne offene Anlage - die Telefon-Leiste trägt dann dieselben drei Räume
   // wie die Seitenleiste, statt der Ebenen-Kacheln eines Kunden.
   const aufPlattformRaum =
-    isAdmin && !anlage && (isPlattformBereich(page) || PLATTFORM_ROOMS.some((r) => r.page === page));
+    isAdmin && !anlage &&
+    (isPlattformBereich(page) || isGeraeteBereich(page) || PLATTFORM_ROOMS.some((r) => r.page === page));
 
   /**
    * Die Telefon-Leiste: in einer Anlage ihre fünf Bereiche (E4), auf der

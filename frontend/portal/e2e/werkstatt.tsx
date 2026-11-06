@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppShell } from '../src/shell/AppShell';
-import { PlattformBereich } from '../src/pages/admin/PlattformBereich';
+import { GeraeteBereich } from '../src/pages/admin/GeraeteRegistryPage';
 import { adminApi } from '../src/admin/adminApi';
 import { ApiError } from '../src/api';
 import { keycloak } from '../src/auth';
@@ -256,7 +256,7 @@ function Fixture() {
   const [page, setPage] = useState<PageId>('werkstatt');
   return <AppShell page={page} onNavigate={setPage} isAdmin showOverview={false} showAddAnlage={false}
     counts={{ sites: 3, devices: 3 }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
-    <PlattformBereich page={page} onNavigate={(r) => setPage(typeof r === 'string' ? r : r.page)} />
+    <GeraeteBereich page={page} onNavigate={(r) => setPage(typeof r === 'string' ? r : r.page)} />
   </AppShell>;
 }
 ReactDOM.createRoot(document.getElementById('root')!).render(<Fixture />);

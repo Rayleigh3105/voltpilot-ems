@@ -127,16 +127,18 @@ export function showPortfolioNav(i: ShellInput): boolean {
 /**
  * Whether the "Übersicht" nav item renders in the sidebar. Wer eine
  * Flotten-Ebene hat, bekommt `Portfolio` STATTDESSEN (siehe
- * {@link showPortfolioNav}); Admins behalten sonst ihr heutiges
- * Immer-Übersicht-Verhalten, und ein Kunde ohne Flotten-Ebene hat gar keinen
+ * {@link showPortfolioNav}); ein Kunde ohne Flotten-Ebene hat gar keinen
  * Punkt (seine Welt IST die eine Anlage).
+ *
+ * Für einen Plattform-Admin ist der Punkt seit dem Umhängen der Geräte-Reiter
+ * überflüssig (die Kunden-Übersicht des GERADE gewählten Mandanten war nie
+ * seine Heimat - die ist Plattform › Übersicht, der eigene Weg in eine
+ * Kundensicht bleibt „Wie der Kunde es sieht"): die Adresse (`#/uebersicht`)
+ * bleibt für ihn gültig, nur der Navigationspunkt entfällt.
  */
 export function showOverviewNav(i: ShellInput): boolean {
+  if (i.isAdmin) return false;
   if (showPortfolioNav(i)) return false;
-  // Ein Admin in einer Mandantensicht mit EINER Anlage landet in ihr wie der Kunde (`canonicalShellRoute`): die
-  // Übersicht wäre dort ein Rückweg, der sofort wieder in dieselbe Anlage führt. Sonst bleibt sie (kein Mandant,
-  // keine Anlage, Anlagen noch nicht geladen).
-  if (i.isAdmin) return !(i.loaded && i.tenantReady && i.siteCount === 1);
   if (!i.loaded || !i.tenantReady) return false;
   return isFleetShell(i.betriebsart, i.siteCount);
 }

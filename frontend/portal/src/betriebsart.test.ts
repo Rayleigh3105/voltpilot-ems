@@ -74,20 +74,17 @@ describe('showPortfolioNav', () => {
 });
 
 describe('showOverviewNav', () => {
-  it('admins keep the Übersicht (today\'s behavior) - unless a betreiber tenant is selected', () => {
-    expect(showOverviewNav({ isAdmin: true, loaded: false, tenantReady: false, betriebsart: null, siteCount: 0 })).toBe(true);
-    // A betreiber tenant swaps Übersicht for Portfolio, even for an admin.
+  it('ein Plattform-Admin bekommt den Punkt nie - seine Heimat ist Plattform › Übersicht, egal welcher Mandant gewählt ist', () => {
+    // Umhängen der Geräte-Reiter (Captain-Entscheid „Übersicht völlig hinfällig"): der separate
+    // Kunden-Übersicht-Punkt entfällt für Admins GANZ, nicht mehr nur bei einem gewählten
+    // Ein-Anlagen-Mandanten. Die Adresse `#/uebersicht` bleibt gültig, nur der Nav-Punkt verschwindet.
+    expect(showOverviewNav({ isAdmin: true, loaded: false, tenantReady: false, betriebsart: null, siteCount: 0 })).toBe(false);
     expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: 'betreiber', siteCount: 2 })).toBe(false);
-  });
-
-  it('an admin in a one-Anlage tenant view gets no Übersicht: the Anlage is the landing, as for the customer', () => {
-    // Sonst wäre „Meine Anlagen" in der Anlage ein Rückweg, der sofort wieder in dieselbe Anlage führt.
     expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: 'endkunde', siteCount: 1 })).toBe(false);
     expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: null, siteCount: 1 })).toBe(false);
-    // Ohne Anlage (leere Übersicht), ohne Mandant oder vor dem Laden bleibt der Punkt, wie er war.
-    expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: 'endkunde', siteCount: 0 })).toBe(true);
-    expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: false, betriebsart: null, siteCount: 1 })).toBe(true);
-    expect(showOverviewNav({ isAdmin: true, loaded: false, tenantReady: true, betriebsart: 'endkunde', siteCount: 1 })).toBe(true);
+    expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: true, betriebsart: 'endkunde', siteCount: 0 })).toBe(false);
+    expect(showOverviewNav({ isAdmin: true, loaded: true, tenantReady: false, betriebsart: null, siteCount: 1 })).toBe(false);
+    expect(showOverviewNav({ isAdmin: true, loaded: false, tenantReady: true, betriebsart: 'endkunde', siteCount: 1 })).toBe(false);
   });
 
   it('a betreiber gets Portfolio INSTEAD of Übersicht', () => {
