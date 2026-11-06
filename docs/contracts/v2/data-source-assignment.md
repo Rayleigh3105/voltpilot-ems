@@ -56,7 +56,7 @@ Datenquelle, Gerät, Komponente, Anlage) gelten unverändert. Dazu:
 |---|---|---|
 | Kennzeichen | `DQ-n`, eindeutig je Kundenbereich, automatisch vergeben; ändert sich nie durch Technik | `kennzeichen` |
 | Anlage | wo die Geräte verdrahtet sind — darf von der Heimat der lesenden Box abweichen | `anlage` |
-| Protokoll | geschlossenes Vokabular: `modbus_tcp` Modbus TCP · `sunspec_modbus` SunSpec-Modbus · `mqtt` MQTT-Themen · `http` HTTP-Auskunft · `ocpp` OCPP-Station · `solarman_v5` Solarman-Datenlogger (seit IP-4, nach AP-06 Soll-Regel 8) · `kaco_serial` Serieller RS485-Wandler (KACO Powador-Altgeräte); neue nur über den Katalog | `protokoll` |
+| Protokoll | geschlossenes Vokabular: `modbus_tcp` Modbus TCP · `sunspec_modbus` SunSpec-Modbus · `mqtt` MQTT-Themen · `http` HTTP-Auskunft · `ocpp` OCPP-Station · `solarman_v5` Solarman-Datenlogger (seit IP-4, nach AP-06 Soll-Regel 8) · `kaco_serial` Serieller RS485-Wandler (KACO Powador-Altgeräte) · `kostal_piko_rtu` Modbus RTU über Wandler (KOSTAL PIKO, Ausweg neben `http`); neue nur über den Katalog | `protokoll` |
 | Adresse | Host:Port · Themenfilter · URL · Stations-Kennung · Host:Port/Seriennummer des Solarman-Datenloggers — ein Parameter, nie die Identität | `adresse` |
 | Geräte hinter der Quelle | Geräte-ID je Gerät (Steckplatz bei Energiekarten, AP-05 E4) | `geraete_ids` |
 | Netzlage | dokumentiertes Netz oder `null` | `netz` |
@@ -332,7 +332,8 @@ IP-6 sie ihr zustellt): gelesen wird `measurement_point.communication` + `connec
 | `sunspec_tcp`, `fronius_sunspec` | `sunspec_modbus` | `ip:port` | `unit_id` |
 | `solarman_v5` (Deye über den Datenlogger) | `solarman_v5` | `ip:port/serial` — die Seriennummer des Datenloggers trägt jeder Solarman-V5-Rahmen; ohne sie keine Adresse | `mb_slave_id` |
 | `kaco_serial` (KACO Powador über RS485-zu-Ethernet-Wandler) | `kaco_serial` | `ip:port` des Wandlers (Port 8899) | RS485-Busadresse `address` (1-32; 0 oder außerhalb: Vorgabe 1) |
-| `kaco_http`, `fronius_solar_api`, `goe_http_api`, `shelly_http`, Shelly-Zähler `shelly_em_http` | `http` | `schema://host:port[/pfad]` — `https`, wo der Treiber es nimmt (`scheme: https`, `insecure_tls`) | — |
+| `kaco_http`, `fronius_solar_api`, `goe_http_api`, `shelly_http`, Shelly-Zähler `shelly_em_http`, KOSTAL PIKO `kostal_dxs` | `http` | `schema://host:port[/pfad]` — `https`, wo der Treiber es nimmt (`scheme: https`, `insecure_tls`) | — |
+| `kostal_piko_rtu` (KOSTAL PIKO über Modbus RTU auf einem RS485-zu-Ethernet-Wandler, der dokumentierte Ausweg neben `kostal_dxs`) | `kostal_piko_rtu` | `ip:port` des Wandlers (Port 8899) | `unit_id` |
 | Ladestation (`device_charge_point`) | `ocpp` | die Stations-Kennung | — |
 | jedes andere Wort (die Rückwand) | das Wort selbst → `protokoll_unbekannt` | — | — |
 

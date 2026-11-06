@@ -129,6 +129,31 @@ const (
 	// documented remote-control register at all. See
 	// nodered/kaco/kaco-serial-decode.js + nodered/KACO.md.
 	CommKacoSerial = "kaco_serial"
+	// CommKostalDxs reads a classic KOSTAL PIKO (3.0-20 / 10-20, web UI from
+	// UI 06) over its local HTTP-JSON API `/api/dxs.json` (port 80, no
+	// authentication for measurement values - same device class/discipline as
+	// kaco_http). This is the VORGABE-weg (report data/vp-kostal-piko20-anbindung
+	// §0/§2.4): it runs already (the field precedent reads one id every 5 s
+	// without a login), needs no hardware and no intervention at the inverter.
+	// String device, no battery. See nodered/kostal/kostal-dxs-decode.js.
+	CommKostalDxs = "kostal_dxs"
+	// CommKostalPikoRtu reads the SAME PIKO line over Modbus RTU on its RS485
+	// terminal, protocol switched to "Modbus" at the device, through a
+	// TRANSPARENT RS485-to-Ethernet gateway (the kaco_serial hardware class -
+	// VoltPilot already runs a Waveshare "RS485 TO ETH (B)" for the Powador
+	// serial path, nodered/KACO.md:249-264). 19200 Baud, 8E1, function 03
+	// (read holding registers) from register 30001.
+	//
+	// ⚠ DIE REGISTERKARTE IST NICHT HERSTELLERDOKUMENTIERT. KOSTAL gibt sie nur
+	// über den Service heraus (siehe nodered/KOSTAL.md Abschnitt 7.2); die hier
+	// genutzte Karte stammt aus einem Community-Treiber (thenebu/dbus-kostal-piko,
+	// „reverse-engineered and verified against the Piko's HTTP API"), siehe
+	// Scout-Bericht §3.2. Deshalb ist dieser Weg der AUSWEG, nie die Vorgabe
+	// (Model.Transports[0] bleibt kostal_dxs), und „Verbindung testen" führt auf
+	// diesem Weg zusaetzlich die Gegenprobe gegen die Web-API, wenn beide Adressen
+	// erreichbar sind (Connection.CrossCheckIP) - die eingebaute Absicherung
+	// gegen eine unbelegte Registerzuordnung.
+	CommKostalPikoRtu = "kostal_piko_rtu"
 )
 
 // IsSunSpecTCP reports whether a communication id names the SunSpec-live read
@@ -221,6 +246,9 @@ const (
 	defaultHuaweiUnitID       = 0    // Huawei factory slave id (direct WLAN/LAN); a Smart Dongle commonly uses 1
 	defaultKacoSerialPort     = 8899 // common TCP-server-mode port of RS485-to-Ethernet converters (not a KACO norm - the converter sets its own)
 	defaultKacoSerialAddress  = 1    // the lowest valid bus address (KACO operating manual 31001135-06: addresses are 1-32, never 0)
+	defaultKostalDxsPort      = 80   // KOSTAL PIKO local HTTP-JSON API (/api/dxs.json)
+	defaultKostalRtuPort      = 8899 // same converter hardware class as kaco_serial (RS485-to-Ethernet gateway, transparent TCP-server mode)
+	defaultKostalRtuUnitID    = 1    // the Modbus device address is set at the inverter (Kommunikation -> RS485); 1 is the common field default, not a KOSTAL factory value
 )
 
 // Control tiers - the battery-control PRIMITIVE a brand exposes, decoupled from
@@ -351,6 +379,19 @@ type Model struct {
 	// der der Marke). Vorgesehen fuer eine Marke, die mehrere Typen baut; heute
 	// nutzt es kein eingebautes Modell.
 	DeviceType string `json:"device_type,omitempty"`
+
+	// ControlTierOverride uebersteuert den Steuer-Tier der Marke fuer DIESES
+	// Modell (nil = der der Marke). Ein Zeiger, weil ControlTierReadOnly (0)
+	// selbst ein gueltiger, ausdruecklicher Tier ist - "kein Feld gesetzt" muss
+	// von "Tier 0 gesetzt" unterscheidbar bleiben.
+	//
+	// ⚠ WOFUER ES EXISTIERT: die PIKO-Plattform der Marke KOSTAL hat UEBER DIE
+	// WEB-API/RTU-WEGE KEINEN Schreibweg (Report Abschnitt 2.8), waehrend
+	// dieselbe Marke fuer die PLENTICORE-BI-Linie Tier 2 (Vendor-EMS) traegt.
+	// Ohne diese Uebersteuerung erbte ein PIKO den PLENTICORE-Tier und
+	// behauptete damit faelschlich eine Steuerfaehigkeit, die es nicht hat -
+	// genau der Fehler, den `TestNormalizeKostalPikoDxs` nagelt.
+	ControlTierOverride *int `json:"-"`
 
 	// Aliases sind weitere TYPENSCHILD-Namen DESSELBEN Produkts - die
 	// Varianten-Bezeichnungen, unter denen der Kunde sein Geraet wiederfindet
@@ -614,6 +655,17 @@ const (
 	// Speicher, die AC-Ausgangsleistung IST die Erzeugung (dieselbe Lehre wie
 	// FamKacoHTTP). Siehe nodered/kaco/kaco-serial-decode.js.
 	FamKacoSerial = "kaco_serial"
+	// FamKostalPiko is the decode profile of the classic KOSTAL PIKO 3.0-20 /
+	// 10-20 line read over the Web-API (`/api/dxs.json`): no battery, the
+	// AC-Ausgangsleistung IST die Erzeugung (dieselbe Lehre wie FamKacoHTTP).
+	// See nodered/kostal/kostal-dxs-decode.js.
+	FamKostalPiko = "kostal_piko"
+	// FamKostalPikoRtu is the SAME device line's Modbus-RTU decode profile
+	// (community register map, report §3.2) - a SEPARATE family from
+	// FamKostalPiko because the wire format differs (registers, not dxs ids),
+	// even though both resolve the same physical channels. See
+	// nodered/kostal/kostal-piko-rtu-decode.js.
+	FamKostalPikoRtu = "kostal_piko_rtu"
 )
 
 // deyeFamilies is the register-map reference list (what each Model decodes with).
@@ -982,15 +1034,147 @@ func kostalFamilies() []Family {
 // kostalModels offers the PLENTICORE BI models individually (the captain's
 // per-model rule). RatedKw is the nameplate AC power (S_ac,r) - the physical
 // envelope bound; the generic entry has none.
+//
+// ⚠ `Transports` ist seit der PIKO-Plattform PFLICHT: die Marke hat jetzt DREI
+// Wege (kostal_modbus, kostal_dxs, kostal_piko_rtu); ohne eigene Angabe wuerde
+// ein PLENTICORE-Modell den ERSTEN Markenweg erben, der nicht mehr zwangslaeufig
+// kostal_modbus ist (siehe DefaultCatalog, familyFor).
 func kostalModels() []Model {
+	t := []string{CommKostalModbus}
 	return []Model{
-		{ID: "plenticore-bi-10-26", Label: "PLENTICORE BI 10/26", Family: FamKostalPlenticore, RatedKw: 10,
+		{ID: "plenticore-bi-10-26", Label: "PLENTICORE BI 10/26", Family: FamKostalPlenticore, Transports: t, RatedKw: 10,
 			Note: "10 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 26 A)"},
-		{ID: "plenticore-bi-5.5-13", Label: "PLENTICORE BI 5.5/13", Family: FamKostalPlenticore, RatedKw: 5.5,
+		{ID: "plenticore-bi-5.5-13", Label: "PLENTICORE BI 5.5/13", Family: FamKostalPlenticore, Transports: t, RatedKw: 5.5,
 			Note: "5,5 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 13 A)"},
-		{ID: "kostal-plenticore-bi-generic", Label: "Anderes PLENTICORE-BI-Modell", Family: FamKostalPlenticore,
+		{ID: "kostal-plenticore-bi-generic", Label: "Anderes PLENTICORE-BI-Modell", Family: FamKostalPlenticore, Transports: t,
 			Note: "Weiteres Modell der Baureihe, auch G2 (Nennleistung unbekannt)"},
 	}
+}
+
+// --- KOSTAL PIKO (klassische Baureihe mit Weboberflaeche ab UI 06) -------------
+//
+// Zweite Plattform der Marke KOSTAL, neben der PLENTICORE BI: die dreiphasigen
+// String-Wechselrichter PIKO 10-20 (und die kleinere PIKO 3.0-20, dieselbe
+// Baureihe unter aelterer Bezeichnung) - kein Speicher, die AC-Leistung IST die
+// Erzeugung. Scout-Bericht data/vp-kostal-piko20-anbindung.
+//
+// ⚠ ZWEI WEGE, BEIDE GEBAUT (Captain-Entscheid E2 = C): Web-API `dxs.json`
+// (`kostal_dxs`) ist die Vorgabe - sie laeuft beim Kunden schon, ohne Anmeldung,
+// ohne Eingriff am Geraet (fuenf unabhaengige Feldprojekte, Bericht §2.4). Modbus
+// RTU ueber einen RS485-zu-Ethernet-Wandler (`kostal_piko_rtu`) ist der Ausweg:
+// die Registerkarte ist NICHT herstellerdokumentiert (nur Community, Bericht
+// §3.2), deshalb bleibt sie der zweite Weg und die Verbindungstest-Gegenprobe
+// gegen die Web-API ist eingebaut (siehe testKostalPikoRtu).
+//
+// ⚠ BEWUSST NICHT AUFGENOMMEN (Captain-Entscheid E3, ehrlich begruendet statt
+// stumm ausgelassen):
+//   - PIKO BA (Batterie-Variante): die Community-Quellen widersprechen sich
+//     ueber die Batterie-Registerbedeutung, und ein Hybrid meldet seine
+//     AC-Leistung als PV + Entladung - Ladung (dieselbe Lehre wie FamKacoHTTPHybrid) -
+//     ohne ein belegtes Vorzeichen liesse sich die PV eines BA NICHT zuverlaessig
+//     von der Batteriewirkung trennen, und eine falsche PV-Zahl ist schlimmer als
+//     keine. Mit dieser Fassung noch nicht anbindbar.
+//   - Altgeraete mit Weboberflaeche vor UI 06 (HTML `index.fhtml`, Login
+//     `pvserver`): kein stabiles Kennungs-Schema wie dxs.json, Platzhalterwerte
+//     „x x x" bei fehlenden Feldern, HTML-Struktur nicht vertraglich stabil - das
+//     Wartungsrisiko eines Scrapers steht in keinem Verhaeltnis zum Nutzen eines
+//     Altgeraets. Mit dieser Fassung noch nicht anbindbar.
+
+// kostalDxsFields beschreibt die Web-API-Verbindung: nur Host + Port, keine
+// Anmeldung, keine Unit-ID (dieselbe Form wie kacoHTTPFields/froniusFields -
+// die Messwerte von `/api/dxs.json` brauchen laut Bericht §2.4 keinen Login).
+func kostalDxsFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des Wechselrichters", Type: "text", Required: true,
+			Help: "Die IP des PIKO im lokalen Netz (z. B. 192.168.1.122). Die Web-API antwortet ohne Anmeldung, es ist keine Einrichtung am Gerät nötig."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultKostalDxsPort,
+			Help: "HTTP-Port der Web-API, üblicherweise 80."},
+	}
+}
+
+// kostalRtuFields beschreibt den Ausweg ueber einen RS485-zu-Ethernet-Wandler:
+// die Adresse DES WANDLERS (nicht des Wechselrichters, wie bei kacoSerialFields)
+// plus die Modbus-Geraeteadresse (am Wechselrichter unter Kommunikation -> RS485
+// eingestellt) plus die OPTIONALE IP des Wechselrichters selbst fuer die
+// eingebaute Gegenprobe des Verbindungstests gegen die Web-API (Bericht §7/§9 -
+// „die Werte-Zuordnung muss beim Verbindungstest gegen die Web-API gegengeprueft
+// werden koennen").
+func kostalRtuFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des RS485-zu-Ethernet-Wandlers", Type: "text", Required: true,
+			Help: "Die IP des Wandlers im lokalen Netz - NICHT die des Wechselrichters. Der Wandler muss im transparenten TCP-Server-Modus laufen (19200 Baud, 8E1, keine Protokoll-Umsetzung); am Wechselrichter muss unter Kommunikation -> RS485 das Protokoll auf \"Modbus\" gestellt sein."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultKostalRtuPort,
+			Help: "TCP-Port des Wandlers im Server-Modus. Herstellerabhängig (z. B. 8899) - am Wandler selbst nachsehen."},
+		{Key: "unit_id", Label: "Modbus-Geräteadresse (RS485)", Type: "number", Default: defaultKostalRtuUnitID,
+			Help: "Die Adresse, auf die der Wechselrichter unter Kommunikation -> RS485 eingestellt ist."},
+		{Key: "cross_check_ip", Label: "IP-Adresse des Wechselrichters (für die Gegenprobe, optional)", Type: "text",
+			Help: "Wenn der PIKO zusätzlich über sein eigenes Netzwerk erreichbar ist (Web-API, Port 80), vergleicht \"Verbindung testen\" die über Modbus gelesenen Werte damit - die Registerkarte dieses Wegs ist nicht herstellerdokumentiert. Leer lassen, wenn keine Gegenprobe möglich ist."},
+	}
+}
+
+// kostalPikoFamilies ist die Registerkarten-Referenz der PIKO-Plattform: zwei
+// Decode-Profile, eines je Weg (siehe kostalPikoTransports) - keine Karte je
+// Modell, dieselbe Dekodierung bedient PIKO 10 bis 20.
+func kostalPikoFamilies() []Family {
+	return []Family{
+		{ID: FamKostalPiko, Label: "PIKO (Web-API)",
+			Note: "Lokale HTTP/JSON-Schnittstelle `/api/dxs.json`, ohne Anmeldung (Port 80)"},
+		{ID: FamKostalPikoRtu, Label: "PIKO (Modbus RTU, Ausweg)",
+			Note: "Community-Registerkarte über Modbus RTU (19200 Baud, 8E1, FC03 ab Register 30001), per RS485-zu-Ethernet-Wandler - nicht herstellerdokumentiert"},
+	}
+}
+
+// kostalPikoTransports sind die zwei Wege der PIKO-Plattform. dxs ist die
+// Vorgabe (Transports[0]) - RTU ist der benannte Ausweg (Bericht §0, §5.5).
+func kostalPikoTransports() []Transport {
+	return []Transport{
+		{Communication: CommKostalDxs, Label: "Web-API (HTTP, Port 80)", Family: FamKostalPiko,
+			Note:   "Läuft ohne Anmeldung und ohne Eingriff am Gerät - der Vorgabeweg.",
+			Fields: kostalDxsFields()},
+		{Communication: CommKostalPikoRtu, Label: "Modbus RTU über einen RS485-zu-Ethernet-Wandler", Family: FamKostalPikoRtu,
+			Note:   "Ausweg: zusätzliche Hardware nötig, Protokoll am Gerät auf \"Modbus\" umstellen. Die Registerkarte ist nicht herstellerdokumentiert - \"Verbindung testen\" prüft sie deshalb gegen die Web-API gegen, wenn beide erreichbar sind.",
+			Fields: kostalRtuFields()},
+	}
+}
+
+// kostalPikoModels ist die Modell-Liste der klassischen PIKO-Baureihe
+// (dreiphasig, Weboberflaeche ab UI 06) - jedes Modell einzeln waehlbar, mit
+// beiden Wegen. RatedKw folgt der KOSTAL-Modellbezeichnung (PIKO <kW>).
+func kostalPikoModels() []Model {
+	t := []string{CommKostalDxs, CommKostalPikoRtu}
+	// ⚠ Tier-UEBERSTEUERUNG: die Marke KOSTAL traegt Tier 2 (Vendor-EMS) fuer
+	// die PLENTICORE-BI-Linie - ueber die PIKO-Web-API/RTU-Wege gibt es aber
+	// KEINEN Schreibweg (Bericht Abschnitt 2.8). Ohne diese Uebersteuerung
+	// erbte jedes PIKO-Modell faelschlich den PLENTICORE-Tier.
+	readOnly := ControlTierReadOnly
+	m := func(id, label string, kw float64) Model {
+		return Model{ID: id, Label: label, Transports: t, RatedKw: kw, ControlTierOverride: &readOnly,
+			Note: fmt.Sprintf("%g kW · String · 3-phasig · nur Erzeugung · Weboberfläche ab UI 06", kw)}
+	}
+	return []Model{
+		m("piko-10", "PIKO 10", 10),
+		m("piko-12", "PIKO 12", 12),
+		m("piko-15", "PIKO 15", 15),
+		m("piko-17", "PIKO 17", 17),
+		m("piko-20", "PIKO 20", 20),
+		{ID: "piko-generic", Label: "Anderes PIKO-Modell (dreiphasig, Weboberfläche ab UI 06)", Transports: t,
+			ControlTierOverride: &readOnly,
+			Note:                "Weiteres dreiphasiges PIKO-Modell mit Weboberfläche ab UI 06, Nennleistung unbekannt"},
+	}
+}
+
+// kostalTransports sind ALLE Verbindungswege der Marke KOSTAL ueber beide
+// Plattformen. `kostal_modbus` (PLENTICORE) steht ZUERST, damit der
+// Marken-Spiegel (Brand.Communication/CommLabel/Fields, siehe
+// resolveCatalog/transportField) unveraendert bleibt - diese Reihenfolge ist
+// kein Vorgabeweg-Signal fuer die PIKO-Modelle, die ihre eigenen Transports
+// nennen (kostalPikoModels: kostal_dxs zuerst).
+func kostalTransports() []Transport {
+	return append([]Transport{{
+		Communication: CommKostalModbus,
+		Label:         "Modbus TCP (TCP 1502, Unit-ID 71)",
+		Fields:        kostalFields(),
+	}}, kostalPikoTransports()...)
 }
 
 // --- Huawei --------------------------------------------------------------------
@@ -1487,14 +1671,10 @@ func DefaultCatalog() Catalog {
 				ID:         BrandKostal,
 				Label:      "KOSTAL",
 				DeviceType: DeviceTypeInverter,
-				Note:       "KOSTAL PLENTICORE BI (Batterie-Wechselrichter). Modbus muss im Webserver des Wechselrichters aktiviert sein.",
-				Models:     kostalModels(),
-				Families:   kostalFamilies(),
-				Transports: []Transport{{
-					Communication: CommKostalModbus,
-					Label:         "Modbus TCP (TCP 1502, Unit-ID 71)",
-					Fields:        kostalFields(),
-				}},
+				Note:       "KOSTAL PLENTICORE BI (Batterie-Wechselrichter, Modbus TCP) oder die klassische PIKO-Baureihe 10-20 (String, Weboberfläche ab UI 06, Web-API ohne Anmeldung oder Modbus RTU als Ausweg). Der Verbindungsweg ergibt sich aus dem Modell.",
+				Models:     append(kostalModels(), kostalPikoModels()...),
+				Families:   append(kostalFamilies(), kostalPikoFamilies()...),
+				Transports: kostalTransports(),
 				// Tier 2: the PLENTICORE's external battery management is a true
 				// forced-watts RAM setpoint (register 1034) behind the inverter's own
 				// configurable watchdog - the vendor external-EMS primitive. The Tier-2
@@ -1720,6 +1900,18 @@ func (b Brand) DeviceTypeOf(m Model) string {
 	return b.DeviceType
 }
 
+// ControlTierOf ist der Steuer-Tier EINES Modells: seine eigene Uebersteuerung
+// (siehe Model.ControlTierOverride), sonst der der Marke. Jeder Abnehmer
+// (Normalize, Backfill, der Vorlagen-Export) fragt hier, damit eine Marke mit
+// mehreren Plattformen unterschiedlicher Steuerfaehigkeit (KOSTAL: PLENTICORE
+// Tier 2, PIKO Tier 0) nie den falschen Tier erbt.
+func (b Brand) ControlTierOf(m Model) int {
+	if m.ControlTierOverride != nil {
+		return *m.ControlTierOverride
+	}
+	return b.ControlTier
+}
+
 // resolveTransport waehlt den Verbindungsweg eines Modells: den ausdruecklich
 // gewuenschten (nur aus der Liste DIESES Modells - ein Weg, den das Modell nicht
 // nennt, ist keine Auswahl, sondern ein Fehler) oder den Vorgabeweg.
@@ -1812,7 +2004,7 @@ func FamilyHasBattery(family string) bool {
 // reading there means "unknown", never a fabricated 0.
 func FamilyBatteryless(family string) bool {
 	switch family {
-	case FamString, FamMicro, FamSunSpecLive:
+	case FamString, FamMicro, FamSunSpecLive, FamKostalPiko, FamKostalPikoRtu:
 		return true
 	default:
 		return false
@@ -2008,6 +2200,13 @@ type Connection struct {
 	// cycle), or an explicit "little" (CDAB, the factory default) / "big"
 	// (ABCD) override for when the auto-detect cannot be read.
 	ByteOrder string `json:"byte_order,omitempty"`
+
+	// kostal_piko_rtu: the PIKO's OWN LAN IP (dxs.json, port 80), OPTIONAL and
+	// used ONLY by "Verbindung testen" for its built-in cross-check against the
+	// Web-API Vorgabeweg - never by the regular poll, which reads the RS485
+	// gateway named by IP/Port above. Empty = no cross-check (still a valid,
+	// honestly-labelled test). See CommKostalPikoRtu.
+	CrossCheckIP string `json:"cross_check_ip,omitempty"`
 }
 
 // SelectionRequest is what the web form POSTs: the client picks brand + the
@@ -2067,6 +2266,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	// (Deye/KOSTAL - dort ist sie eine Produkt-Eigenschaft).
 	var modelID, registerFamily, typeLabel string
 	var ratedKw float64
+	controlTier := b.ControlTier
 	transport := Transport{}
 	wantTransport := strings.TrimSpace(req.Connection.Transport)
 	if m := strings.TrimSpace(req.Model); m != "" {
@@ -2083,6 +2283,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		registerFamily = familyFor(mod, t)
 		typeLabel = mod.Label
 		ratedKw = mod.RatedKw
+		controlTier = b.ControlTierOf(mod)
 	} else if fID := strings.TrimSpace(req.Family); fID != "" {
 		fam, ok := b.family(fID)
 		if !ok {
@@ -2125,7 +2326,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		Family:        registerFamily,
 		Communication: transport.Communication,
 		UpdatedAt:     now.UTC(),
-		ControlTier:   b.ControlTier,
+		ControlTier:   controlTier,
 		RatedKw:       ratedKw,
 	}
 
@@ -2386,6 +2587,50 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.ByteOrder = ""
 		conn.Channel = 0
 		conn.MAC = ""
+	case CommKostalDxs:
+		// KOSTAL PIKO Web-API: host + port only, no auth, no unit id, no sign
+		// hatch (a string device's AC output is unsigned generation). Same
+		// shape as CommFroniusSolarAPI/CommKacoHTTP.
+		if conn.Port == 0 {
+			conn.Port = defaultKostalDxsPort
+		}
+		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
+		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
+		conn.InvertControlSign, conn.InvertBattSign = false, false
+		conn.ControlWriteFc, conn.CurtailWriteFc = 0, 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
+		conn.Channel, conn.Channels, conn.MAC = 0, "", ""
+		conn.Address = 0
+		conn.CrossCheckIP = "" // the cross-check address belongs to kostal_piko_rtu only
+	case CommKostalPikoRtu:
+		// KOSTAL PIKO Modbus RTU over a transparent RS485-to-Ethernet gateway:
+		// host + port OF THE GATEWAY, the Modbus device address (UnitID, set at
+		// the inverter) and the optional cross-check IP (the inverter's OWN
+		// network address, used only by "Verbindung testen" - see
+		// Connection.CrossCheckIP).
+		if conn.Port == 0 {
+			conn.Port = defaultKostalRtuPort
+		}
+		if conn.UnitID == 0 {
+			conn.UnitID = defaultKostalRtuUnitID
+		}
+		if conn.UnitID < 1 || conn.UnitID > 247 {
+			return Selection{}, invalid("Die Modbus-Geräteadresse muss zwischen 1 und 247 liegen.")
+		}
+		conn.CrossCheckIP = strings.TrimSpace(conn.CrossCheckIP)
+		if strings.ContainsAny(conn.CrossCheckIP, " \t") {
+			return Selection{}, invalid("Die IP-Adresse für die Gegenprobe darf keine Leerzeichen enthalten.")
+		}
+		conn.Profile = registerFamily // kostal_piko_rtu
+		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
+		conn.InsecureTLS, conn.ModelType = false, ""
+		conn.InvertControlSign, conn.InvertBattSign = false, false
+		conn.ControlWriteFc, conn.CurtailWriteFc = 0, 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
+		conn.Channel, conn.Channels, conn.MAC = 0, "", ""
+		conn.Address = 0
 	case CommGoeHTTP:
 		// go-e HTTP API v2: host + port only. No serial, unit id, auth or sign
 		// escape hatch (charging power is unsigned load).
@@ -2500,27 +2745,34 @@ func (c Catalog) Backfill(sel Selection) (out Selection, changed bool, resolved 
 	if !ok {
 		return sel, false, false
 	}
-	// RatedKw comes from the concrete MODEL. A legacy family-only selection (no
-	// model) has no rating to derive - that is correct, not a failure, so it still
-	// resolves and ControlTier is backfilled from the brand.
+	// RatedKw AND ControlTier (since a model may override it, see
+	// Model.ControlTierOverride) come from the concrete MODEL. A legacy
+	// family-only selection (no model) has no rating to derive and inherits
+	// the brand's tier as before - that is correct, not a failure, so it
+	// still resolves.
+	var mod Model
+	hasModel := false
 	if mID := strings.TrimSpace(sel.Model); mID != "" {
-		if _, mok := b.model(mID); !mok {
+		m, mok := b.model(mID)
+		if !mok {
 			// Brand known but the model was renamed/removed: leave EVERYTHING
 			// untouched (the "brand+model no longer resolve" case).
 			return sel, false, false
 		}
+		mod, hasModel = m, true
 	}
 	out = sel
-	if out.ControlTier != b.ControlTier {
-		out.ControlTier = b.ControlTier
+	wantTier := b.ControlTier
+	if hasModel {
+		wantTier = b.ControlTierOf(mod)
+	}
+	if out.ControlTier != wantTier {
+		out.ControlTier = wantTier
 		changed = true
 	}
-	if mID := strings.TrimSpace(sel.Model); mID != "" {
-		m, _ := b.model(mID) // presence verified above
-		if out.RatedKw != m.RatedKw {
-			out.RatedKw = m.RatedKw
-			changed = true
-		}
+	if hasModel && out.RatedKw != mod.RatedKw {
+		out.RatedKw = mod.RatedKw
+		changed = true
 	}
 	return out, changed, true
 }
@@ -2646,6 +2898,15 @@ func (s Selection) BusPayload() []byte {
 		// this platform (no Modbus unit id, no serial, no sign hatch: the
 		// device has no battery and no control path).
 		conn["address"] = s.Connection.Address
+	case CommKostalDxs:
+		// host + port only - no auth, no unit id, no sign hatch.
+	case CommKostalPikoRtu:
+		// host + port of the GATEWAY, the Modbus device address and the
+		// optional cross-check IP - without it the self-wiring reader could
+		// never reach the Verbindungstest's built-in Gegenprobe.
+		conn["unit_id"] = s.Connection.UnitID
+		conn["profile"] = s.Connection.Profile
+		conn["cross_check_ip"] = s.Connection.CrossCheckIP
 	}
 	payload := map[string]any{
 		"schema_version": SchemaVersion,

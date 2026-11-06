@@ -26,13 +26,18 @@ import java.util.Map;
  *       des Datenloggers gehört zum Weg (ohne sie liest der Treiber nicht), die Geräte-ID ist die
  *       Slave-ID {@code mb_slave_id}.</li>
  *   <li>HTTP-Auskunft ({@code kaco_http}, {@code fronius_solar_api}, {@code goe_http_api},
- *       {@code shelly_http}, Shelly-Zähler {@code shelly_em_http}): {@code schema://host:port} —
+ *       {@code shelly_http}, Shelly-Zähler {@code shelly_em_http}, KOSTAL PIKO
+ *       {@code kostal_dxs}): {@code schema://host:port} —
  *       {@code https}, wo der Treiber es nimmt ({@code scheme: https} oder {@code insecure_tls}),
  *       sonst {@code http}.</li>
  *   <li>KACO seriell über einen RS485-zu-Ethernet-Wandler ({@code kaco_serial}): {@code ip:port}
  *       — des WANDLERS, nicht des Wechselrichters —, die Geräte-ID ist die RS485-Busadresse
  *       (1-32, {@code address}; KEINE Modbus-Unit-ID, dieses Protokoll kennt kein Modbus). 0 ist
  *       hier NIE gültig und wird — wie bei {@code unit_id} — als „fehlt" gelesen.</li>
+ *   <li>KOSTAL PIKO über Modbus RTU auf einem RS485-zu-Ethernet-Wandler ({@code kostal_piko_rtu},
+ *       der dokumentierte Ausweg neben {@code kostal_dxs}): {@code ip:port} des WANDLERS, die
+ *       Geräte-ID ist eine echte Modbus-Unit-ID ({@code unit_id}) — anders als bei
+ *       {@code kaco_serial}, dessen Protokoll kein Modbus kennt.</li>
  *   <li>OCPP-Station ({@link #ocpp}): die Stations-Kennung.</li>
  *   <li>Die Tabelle ist VOLLSTÄNDIG: jedes Transport-Wort, das eine Bestandsanlage tragen kann
  *       (Vorlagen des Katalogs und des Admin-Werkzeugs, Selbstbau, die
@@ -91,7 +96,9 @@ public final class BestandAnschluss {
             Map.entry("shelly_http", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("shelly_em_http", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("ebyte_modbus_tcp", new Transport("modbus_tcp", 502, 1, Weg.MODBUS)),
-            Map.entry("kaco_serial", new Transport("kaco_serial", 8899, 1, Weg.KACO_SERIAL)));
+            Map.entry("kaco_serial", new Transport("kaco_serial", 8899, 1, Weg.KACO_SERIAL)),
+            Map.entry("kostal_dxs", new Transport("http", 80, null, Weg.HTTP)),
+            Map.entry("kostal_piko_rtu", new Transport("kostal_piko_rtu", 8899, 1, Weg.MODBUS)));
 
     /**
      * @param communication  {@code measurement_point.communication}

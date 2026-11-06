@@ -364,6 +364,8 @@ const COMM_WORT: Record<string, string> = {
   shelly_http: 'Shelly über das Netzwerk',
   shelly_em_http: 'Shelly-Zähler über das Netzwerk',
   ebyte_modbus_tcp: 'Modbus über das Netzwerk',
+  kostal_dxs: 'Web-API über das Netzwerk',
+  kostal_piko_rtu: 'Modbus RTU über einen RS485-zu-Ethernet-Wandler',
   ocpp: 'OCPP 1.6J — die Säule wählt VoltPilot an',
   self_build: 'Modbus über das Netzwerk (selbst eingerichtet)',
 };
