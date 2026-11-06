@@ -67,8 +67,10 @@ export function BenutzerPage() {
       {schreiben && <Button onClick={e => { e.currentTarget.focus(); setAnlegen(true); }}>Benutzer anlegen</Button>}
     </header>
     {!schreiben && <p className="vp-note">Sie lesen die Benutzerliste. Änderungen übernimmt Ihr Kundenadministrator.</p>}
-    {schreiben && <div className="vp-benutzer-aktionen"><Button variant={protokoll ? 'outline' : 'primary'} onClick={() => setProtokoll(false)}>Benutzerliste</Button>
-      <Button variant={protokoll ? 'primary' : 'outline'} onClick={() => setProtokoll(true)}>Zugriffsprotokoll</Button></div>}
+    {/* Eine Umschaltung der Ansicht, keine zweite Hauptaktion: „Benutzer anlegen“ bleibt der eine volle Knopf. */}
+    {schreiben && <div className="vp-benutzer-aktionen vp-benutzer-umschalter" role="group" aria-label="Ansicht">
+      <Button variant="outline" size="sm" className={protokoll ? undefined : 'is-aktiv'} aria-pressed={!protokoll} onClick={() => setProtokoll(false)}>Benutzerliste</Button>
+      <Button variant="outline" size="sm" className={protokoll ? 'is-aktiv' : undefined} aria-pressed={protokoll} onClick={() => setProtokoll(true)}>Zugriffsprotokoll</Button></div>}
     {fehler && !entzug && <p role="alert" className="vp-alert vp-alert-err">{fehler}</p>}
     {!protokoll && <>
       {!liste && !fehler && <p role="status">Benutzer werden geladen…</p>}
