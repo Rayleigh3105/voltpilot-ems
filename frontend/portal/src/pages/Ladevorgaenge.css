@@ -55,6 +55,13 @@
   min-width: 0;
   font-size: 0.85rem;
 }
+/* Die Handlungen einer Zeile („Jetzt voll laden“, „Automatik fortsetzen“) stehen unter dem Text,
+   nie in der 12-px-Spalte des Zustandspunkts - dort wurde der Knopf auf 39 px gequetscht und lag
+   über dem Text (UI-Runde Kundenseiten, Befund #40). */
+.vp-lade-row > .vp-btn {
+  grid-column: 2 / -1;
+  justify-self: start;
+}
 .vp-lade-row-fahrzeug-text {
   color: var(--vp-muted, #64748b);
   overflow-wrap: anywhere;
