@@ -396,6 +396,11 @@ describe('OcppWallboxPage integration', () => {
     render(<OcppWallboxPage siteId="s" chargePointId="CP-1" fallbackTitle="Garage" backHref="#back" />);
     expect(await screen.findByText(/OCPP-Gerätedaten konnten nicht geladen/)).toBeVisible();
     expect(screen.getByRole('button', { name: 'Erneut laden' })).toBeVisible();
+    // Unbekannt ist nicht „noch nichts eingetroffen": kein Leerzustand unter der Fehlermeldung.
+    expect(screen.queryByText(/Sobald die erste OCPP-Nachricht eintrifft/)).toBeNull();
+    expect(screen.getByText('Der Zustand ist gerade nicht abrufbar.')).toBeVisible();
+    expect(screen.queryByText(/Noch keine abgeschlossene Sitzung/)).toBeNull();
+    expect(screen.getByText('Die Ladevorgänge sind gerade nicht abrufbar.')).toBeVisible();
   });
 
   it('does not present unsupported or unauthorized actions as executable', async () => {

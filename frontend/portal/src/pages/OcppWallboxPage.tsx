@@ -123,6 +123,10 @@ export function OcppWallboxPage({
 }) {
   const [data, setData] = useState<OcppData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Alle Abrufe sind fehlgeschlagen: was die Wallbox meldet, ist dann UNBEKANNT - nicht „noch nichts eingetroffen".
+  const [allesFehlt, setAllesFehlt] = useState(false);
+  // Die Ladevorgänge selbst kamen nicht an: „noch keine Sitzung" wäre dann eine Behauptung.
+  const [vorgaengeFehlen, setVorgaengeFehlen] = useState(false);
   const rollen = useRollen();
   // Plattformbefehle behalten die bestehende serverseitige OCPP-Freigabe.
   const darfOcpp = (d: OcppActionDefinition) => d.role === 'platform-admin'
@@ -155,6 +159,8 @@ export function OcppWallboxPage({
     let active = true;
     const controller = new AbortController();
     setError(null);
+    setAllesFehlt(false);
+    setVorgaengeFehlen(false);
     Promise.allSettled([
       api.ocppStations(siteId, controller.signal), api.ocppEvents(siteId, 200, controller.signal),
       api.ocppGaps(siteId, 200, controller.signal), api.ocppTransactions(siteId, 200, controller.signal),
@@ -170,7 +176,11 @@ export function OcppWallboxPage({
         actions: value(7, []),
       });
       const failed = result.filter((item) => item.status === 'rejected').length;
-      if (failed === result.length) setError('Die OCPP-Gerätedaten konnten nicht geladen werden.');
+      setVorgaengeFehlen(result[3].status === 'rejected');
+      if (failed === result.length) {
+        setError('Die OCPP-Gerätedaten konnten nicht geladen werden.');
+        setAllesFehlt(true);
+      }
       else if (failed) {
         const names = result.flatMap((item, index) => item.status === 'rejected' ? [DATA_AREAS[index]] : []);
         setError(`${names.join(', ')} ${names.length === 1 ? 'ist' : 'sind'} gerade nicht erreichbar. Die übrigen Daten bleiben sichtbar.`);
@@ -230,7 +240,12 @@ export function OcppWallboxPage({
   const connection = stationConnection(station, now, charger);
   const connectorSnapshot = wallboxConnectorSnapshot(station, hero.transaction, now);
   const connectorCurrent = connection.sendable && connectorSnapshot.fresh;
-  const state = wallboxState(station, hero, now, charger);
+  const stateRoh = wallboxState(station, hero, now, charger);
+  // Ohne einen einzigen geladenen Bereich behauptete der Leerzustand „Noch keine aktuellen Gerätedaten -
+  // sobald die erste OCPP-Nachricht eintrifft …" unter der Fehlermeldung. Er sagt dann, was stimmt.
+  const state = allesFehlt && stateRoh.kind === 'unknown'
+    ? { ...stateRoh, badge: 'Zustand unbekannt', sentence: 'Der Zustand ist gerade nicht abrufbar.', detail: '' }
+    : stateRoh;
   const connectorEvidenceCurrent = connectorCurrent || (connection.source === 'edge' && connection.online);
   const chargerConnector = connectorEvidenceCurrent
     ? charger?.connectors?.find((item) => item.connectorId === state.connectorId) ?? null
@@ -389,7 +404,11 @@ export function OcppWallboxPage({
               </li>
             ))}
           </ol>
-        ) : <p className="vp-note">Noch keine abgeschlossene Sitzung aufgezeichnet.</p>}
+        ) : (
+          <p className="vp-note">
+            {vorgaengeFehlen ? 'Die Ladevorgänge sind gerade nicht abrufbar.' : 'Noch keine abgeschlossene Sitzung aufgezeichnet.'}
+          </p>
+        )}
       </>
     ),
   };
