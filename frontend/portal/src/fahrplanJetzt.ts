@@ -823,7 +823,9 @@ function statusLine(
         ? `Der Wechselrichter meldet ${kw(confirmedKw)} statt ${kw(executedKw)} — bitte im Blick behalten`
         : 'Der Wechselrichter meldet einen anderen Wert als angefordert — bitte im Blick behalten';
     case 'veraltet':
-      return 'Dieser Fahrplan ist nicht mehr aktuell — Ihr Gerät regelt eigenständig weiter';
+      // „… regelt eigenständig weiter" sagt die Zeile darunter („Ihre Batterie regelt gerade
+      // eigenständig weiter") - hier stand es wortgleich ein zweites Mal.
+      return 'Dieser Fahrplan ist nicht mehr aktuell';
     case 'nur_plan':
       return 'So ist es geplant — Ihr Gerät meldet dazu keine Bestätigung';
     default:

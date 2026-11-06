@@ -150,6 +150,8 @@ describe('jetztHeld · die drei Wahrheiten im Jetzt', () => {
     expect(v.tone).toBe('warn');
     expect(v.status).not.toContain('nichts zu tun');
     expect(v.lead).toContain('eigenständig');
+    // Das „eigenständig" sagt die Zeile darunter - der Status nennt es kein zweites Mal.
+    expect(v.status).toBe('Dieser Fahrplan ist nicht mehr aktuell');
     // Ein toter Plan erklärt über das Jetzt nichts mehr.
     expect(v.why).toBeNull();
     expect(v.value).toBeNull();
