@@ -300,6 +300,15 @@ describe('Steuerung · Reiter Geräte', () => {
   });
 });
 
+describe('Steuerung · Was immer gilt', () => {
+  it('„Wer gewinnt?" sagt in Worten, worum es geht - keine Zeichenkette', async () => {
+    zeige();
+    const zeile = await screen.findByRole('button', { name: /Wer gewinnt\?/ });
+    expect(zeile).toHaveTextContent('Wenn sich zwei Wünsche widersprechen');
+    expect(zeile.textContent).not.toContain('›');
+  });
+});
+
 describe('Steuerung · Reiter Regeln', () => {
   it('zeigt eine Regel als Satz und schaltet sie ohne Rückfrage aus', async () => {
     zeige('regeln');

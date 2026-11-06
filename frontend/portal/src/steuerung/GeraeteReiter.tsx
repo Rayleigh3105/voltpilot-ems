@@ -995,7 +995,8 @@ function ImmerKarte({ bild, oeffne, netzanschlussKw, plantKind, netzladenErlaubt
   rolle: PreisRolle;
 }) {
   const rows: [string, string, string, BlattZustand][] = [
-    ['shield', 'Wer gewinnt?', 'Schutz › Ihr Eingriff › Regel › Frist › Reihenfolge', { art: 'vorrang' }],
+    // Worte statt einer Zeichenkette („Schutz › Ihr Eingriff › …“): die Rangfolge selbst steht im Blatt.
+    ['shield', 'Wer gewinnt?', 'Wenn sich zwei Wünsche widersprechen', { art: 'vorrang' }],
   ];
   if (bild.speicher) {
     rows.push(['battery', `Speicher: ${bild.betriebsmodell}`, `Betriebsmodell${bild.speicher.reservePct != null ? ` · Reserve ${fPct(bild.speicher.reservePct)}` : ''}`, { art: 'speicher' }]);
