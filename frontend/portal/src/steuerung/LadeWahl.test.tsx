@@ -51,6 +51,15 @@ beforeEach(() => { telefon = true; setSelbstauskunft(rechteSeed().me); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); setSelbstauskunft(null); });
 
 describe('Womit laden? - erst sehen, dann „So laden“', () => {
+  it('ohne wählbare Ladeart: ein Satz und „Schließen“ - kein leeres Blatt mit „So laden“', () => {
+    const { onSoLaden } = oeffnen(geraet({ quelle: 'ueberschuss' }, []));
+    expect(screen.getByText('Für diesen Ladepunkt lässt sich die Ladeart gerade nicht wählen.')).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: 'Womit laden' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /So laden/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
+    expect(onSoLaden).not.toHaveBeenCalled();
+  });
+
   it('Antippen ändert nur die Vorschau; erst „So laden“ schickt die ganze Steuerart', () => {
     const { onSoLaden, dialog } = oeffnen(geraet({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' }));
     expect(within(dialog).getByRole('radio', { name: /Nur Sonne/ })).toBeChecked();

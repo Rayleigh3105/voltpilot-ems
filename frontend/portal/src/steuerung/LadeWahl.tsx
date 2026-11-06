@@ -308,6 +308,21 @@ function LadeWahlInhalt({ k, g, anlage, rahmenMinKw, onSoLaden }: Omit<LadeWahlB
   );
   const unter = `${g.name} · Schätzung aus Prognose und Preis`;
 
+  // Meldet der Ladepunkt keine wählbare Ladeart, gibt es nichts zu wählen und nichts zu senden: kein
+  // leeres Blatt mit „So laden“, sondern ein Satz; geschlossen wird über das × des Blatts (UI-Runde Kundenseiten, Befund #38).
+  if (quellen.length === 0) {
+    return (
+      <Blatt
+        symbol="sun"
+        titel="Womit laden?"
+        unter={g.name}
+        onClose={k.zu}
+      >
+        <p className="leise">Für diesen Ladepunkt lässt sich die Ladeart gerade nicht wählen.</p>
+      </Blatt>
+    );
+  }
+
   if (!telefon) {
     return (
       <Blatt symbol="sun" titel="Womit laden?" unter={unter} breit onClose={k.zu} fuss={fuss}>
