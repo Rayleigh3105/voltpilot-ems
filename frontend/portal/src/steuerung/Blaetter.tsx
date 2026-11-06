@@ -852,7 +852,7 @@ export function SpeicherBlatt({ k }: { k: BlattKontext }) {
   const busy = k.busy === SPEICHER;
   const geaendert = wahl !== laufend;
   const modelle: { id: string | null; t: string; s: string; ok: boolean; grund: string | null }[] = [
-    { id: null, t: 'Eigenverbrauch', s: 'Möglichst viel eigener Strom im Haus. Grundform, ohne Betriebsmodell.', ok: true, grund: null },
+    { id: null, t: 'Eigenverbrauch', s: 'Möglichst viel eigener Strom im Haus – die Grundform, wenn kein anderes Modell gewählt ist.', ok: true, grund: null },
     ...gruppe.map((p) => {
       const fehlend = liste(p.requirements).filter((x) => !x.met).map((x) => x.label);
       const ok = !fehlend.length && !p.blockedReason;
