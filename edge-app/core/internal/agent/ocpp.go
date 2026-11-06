@@ -208,6 +208,8 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 	}
 	a.done.Add(1)
 	go a.ocppLoop(ctx)
+	a.done.Add(1)
+	go a.ocppStatusWatch(ctx, srv)
 	a.publishOcppState()
 	return nil
 }
