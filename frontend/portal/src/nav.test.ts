@@ -45,6 +45,10 @@ import {
   fernwartungHash,
   parseFernwartungBox,
   werkstattHash,
+  geraeteAkteHash,
+  geraeteAkteRoute,
+  geraeteListeHash,
+  parseGeraeteListeFilter,
   aufbauHash,
   parseAufbauRef,
   ohneAufbauNeu,
@@ -514,8 +518,11 @@ describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-ko
     expect(canonicalPlatformHash('#/plattform-uebersicht')).toBe('#/plattform');
     expect(canonicalPlatformHash('#/edge-updates')).toBe('#/plattform/software');
     expect(canonicalPlatformHash('#/geraete-registry')).toBe('#/plattform/geraete');
-    expect(canonicalPlatformHash('#/geraete-registry?geraet=edge-1')).toBe('#/plattform/geraete?geraet=edge-1');
-    expect(canonicalPlatformHash('#/fernwartung?box=edge-1')).toBe('#/plattform/fernwartung?box=edge-1');
+    // Scheibe S2 (Umzugstabelle §4.7): eine Adresse MIT Box-Referenz führt
+    // direkt in die Geräteakte, nicht mehr auf die alte Seite.
+    expect(canonicalPlatformHash('#/geraete-registry?geraet=edge-1')).toBe('#/plattform/geraete/edge-1');
+    expect(canonicalPlatformHash('#/fernwartung?box=edge-1')).toBe('#/plattform/geraete/edge-1/verbindung');
+    expect(canonicalPlatformHash('#/werkstatt?box=edge-1')).toBe('#/plattform/geraete/edge-1/einrichtung');
     expect(canonicalPlatformHash('#/werkstatt?werkbank=1')).toBe('#/plattform/werkstatt?werkbank=1');
     expect(canonicalPlatformHash('#/mandanten')).toBe('#/plattform/benutzer');
     expect(canonicalPlatformHash('#/benutzer')).toBe('#/plattform/benutzer');
@@ -544,6 +551,29 @@ describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-ko
     expect(hashForRoute(route('plattform-uebersicht'))).toBe('#/plattform');
     expect(hashForRoute(route('edge-updates'))).toBe('#/plattform/software');
     expect(hashForRoute(route('mandanten'))).toBe('#/plattform/benutzer');
+  });
+
+  it('Scheibe S2 §4.2/4.4: die Geräteakte adressiert die Box-Referenz statt der UUID, Reiter als Pfad-Abschnitt', () => {
+    expect(parseRoute('#/plattform/geraete/edge-k2m4pqj')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-k2m4pqj', reiter: null },
+    });
+    expect(parseRoute('#/plattform/geraete/edge-k2m4pqj/software')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-k2m4pqj', reiter: 'software' },
+    });
+    expect(parseRoute('#/plattform/geraete/VP-DEMO-0001/verbindung')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'VP-DEMO-0001', reiter: 'verbindung' },
+    });
+    // Ein unbekannter Reiter fällt auf den Überblick zurück, statt ins Leere zu zeigen.
+    expect(parseRoute('#/plattform/geraete/edge-1/anlage')).toEqual({
+      page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'edge-1', reiter: null },
+    });
+    expect(hashForRoute(geraeteAkteRoute('edge-k2m4pqj'))).toBe('#/plattform/geraete/edge-k2m4pqj');
+    expect(hashForRoute(geraeteAkteRoute('edge-k2m4pqj', 'einrichtung'))).toBe('#/plattform/geraete/edge-k2m4pqj/einrichtung');
+    expect(geraeteAkteHash('edge-a b', 'verlauf')).toBe('#/plattform/geraete/edge-a%20b/verlauf');
+    expect(geraeteListeHash('offline')).toBe('#/plattform/geraete?filter=offline');
+    expect(geraeteListeHash()).toBe('#/plattform/geraete');
+    expect(parseGeraeteListeFilter(geraeteListeHash('offline'))).toBe('offline');
+    expect(parseGeraeteListeFilter('#/plattform/geraete')).toBeNull();
   });
 
   it('faltet die Gerätetypen in den Katalog - MIT ihrem Anker', () => {

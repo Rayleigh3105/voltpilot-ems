@@ -221,7 +221,19 @@ export interface Route {
   bezugsgroesseId?: string;
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
+  /**
+   * Nur bei `page === 'geraete-registry'` MIT Referenz: die GERÄTEAKTE einer
+   * Box statt der Geräte-Liste (Konzept `vp-adminview-konzept-k1` §4.2/4.4,
+   * Scheibe S2) - `#/plattform/geraete/{ref}[/software|verbindung|einrichtung|verlauf]`.
+   * Absent = die Liste. Der Reiter „Anlage" kommt erst mit S3.
+   */
+  geraeteAkte?: { ref: string; reiter: GeraeteAkteReiter | null };
 }
+
+/** Ein Reiter der Geräteakte (§4.4). „Anlage" fehlt bewusst - er kommt erst mit S3. */
+export type GeraeteAkteReiter = 'software' | 'verbindung' | 'einrichtung' | 'verlauf';
+
+const GERAETE_AKTE_REITER = new Set<string>(['software', 'verbindung', 'einrichtung', 'verlauf']);
 
 /**
  * Das Ziel einer Geräte-Detailseite: die REFERENZ der VoltPilot-Box, dahinter
@@ -588,6 +600,23 @@ export function canonicalPlatformHash(hash: string): string | null {
   const query = rest.length > 0 ? `?${rest.join('?')}` : '';
   const head = pathPart.split('/').filter(Boolean)[0] ?? '';
 
+  // Scheibe S2 (Umzugstabelle §4.7): eine Adresse mit Box-Referenz führt nicht
+  // mehr auf die alte Seite, sondern direkt in die Geräteakte - genau DORT
+  // wohnen die Fakten jetzt. Ohne Referenz bleibt es bei der Raum-Landung
+  // (unten, über {@link PLATTFORM_HASH_SEGMENT}).
+  if (head === 'geraete-registry') {
+    const ref = parseGeraetRef(hash);
+    if (ref) return geraeteAkteHash(ref);
+  }
+  if (head === 'fernwartung') {
+    const ref = parseFernwartungBox(hash);
+    if (ref) return geraeteAkteHash(ref, 'verbindung');
+  }
+  if (head === 'werkstatt' && !istWerkstattWerkbank(hash)) {
+    const ref = parseFernwartungBox(hash);
+    if (ref) return geraeteAkteHash(ref, 'einrichtung');
+  }
+
   if (head in LEGACY_FOLDED_PLATFORM_PAGES) {
     const sektion = head === 'geraetetypen' ? 'geraetetypen' : null;
     return sektion ? `#/plattform/katalog?sektion=${encodeURIComponent(sektion)}` : '#/plattform/benutzer';
@@ -836,6 +865,14 @@ export function parseRoute(hash: string): Route {
   // Ein unbekanntes oder fehlendes Segment ist die Landung (die Übersicht).
   if (head === 'plattform') {
     const segment = segments[1] ?? '';
+    // Die GERÄTEAKTE (Scheibe S2): `#/plattform/geraete/{ref}[/{reiter}]`. Ohne
+    // Referenz bleibt es die Liste (`geraete-registry` ohne `geraeteAkte`).
+    if (segment === 'geraete' && segments[2]) {
+      const ref = decodeURIComponent(segments[2]);
+      const reiterRaw = segments[3];
+      const reiter = reiterRaw && GERAETE_AKTE_REITER.has(reiterRaw) ? (reiterRaw as GeraeteAkteReiter) : null;
+      return { page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref, reiter } };
+    }
     const page = PLATTFORM_SEGMENT_PAGE[segment] ?? 'plattform-uebersicht';
     return { page, siteId: null, sub: null };
   }
@@ -976,6 +1013,10 @@ export function hashForRoute(route: Route): string {
     return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bezugsgroesse}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
+  // Die Geräteakte (Scheibe S2): `#/plattform/geraete/{ref}[/{reiter}]`.
+  if (route.page === 'geraete-registry' && route.geraeteAkte) {
+    return geraeteAkteHash(route.geraeteAkte.ref, route.geraeteAkte.reiter);
+  }
   // Die drei Räume (§4.2): die Plattform-Landung und ihre Reiter/Unterräume
   // schreiben sich zweistufig unter `#/plattform/…`, Geräte und Benutzer je
   // mit einem Wort hinter dem Raum.
@@ -1466,14 +1507,15 @@ export function parseKomponente(hash: string): string | null {
  *
  * ⚠ **Diese Adresse wird seit der Anlagen-Zentrale Stufe 3 (PR 3b) nur noch
  * GELESEN, nie mehr geschrieben.** `#/geraete-registry?geraet=<referenz>` war
- * die Adresse der zweiten, plattform-seitigen Vollansicht desselben Geräts;
- * die ist entfallen, ein verbundenes Gerät hat genau EINEN Ort
- * ({@link geraetSeiteHash}). Der Parameter bleibt der Deep-Link-VERTRAG:
- * jedes alte Lesezeichen leitet auf die Geräteseite weiter, und was nicht
- * weiterleitbar ist, bekommt einen ehrlichen Satz statt einer leeren Seite
- * (`adminGeraet.geraetLinkAusgang`). Der frühere Schreiber `geraetHash` ist
- * deshalb ERSATZLOS entfallen - eine Funktion, die eine Adresse erzeugt, auf
- * der nichts mehr wohnt, wäre eine Einladung, sie wieder zu benutzen.
+ * die Adresse der zweiten, plattform-seitigen Vollansicht desselben Geräts.
+ * Seit der Geräteakte (Konzept `vp-adminview-konzept-k1` §4.2, Scheibe S2)
+ * führt sie dorthin ({@link canonicalPlatformHash}, {@link geraeteAkteHash}) -
+ * nicht mehr auf die Geräteseite der Kundenansicht ({@link geraetSeiteHash}):
+ * die Akte ist der EINE Ort für PLATTFORM-Fakten einer Box, die Geräteseite
+ * bleibt der eine Ort für die Fakten, die der Kunde selbst sieht. Der frühere
+ * Schreiber `geraetHash` ist ERSATZLOS entfallen - eine Funktion, die eine
+ * Adresse erzeugt, auf der nichts mehr wohnt, wäre eine Einladung, sie wieder
+ * zu benutzen.
  *
  * **Der Schlüssel ist die REFERENZ, nicht die Geräte-UUID** - sie überlebt
  * Unclaim/Re-Claim (der dokumentierte Identitäts-Drift), also überlebt auch
@@ -1516,6 +1558,34 @@ export function parseGeraetRef(hash: string): string | null {
   const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
   if (rest.length === 0) return null;
   const value = new URLSearchParams(rest.join('?')).get('geraet');
+  return value && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Die Adresse der GERÄTEAKTE (§4.2/4.4, Scheibe S2): `#/plattform/geraete/{ref}[/{reiter}]`.
+ * Die Referenz ist die Box-Kennung, nicht die Geräte-UUID - dasselbe
+ * Lesezeichen-Argument wie bei {@link geraetSeiteHash}.
+ */
+export function geraeteAkteHash(ref: string, reiter?: GeraeteAkteReiter | null): string {
+  const base = `#/plattform/geraete/${encodeURIComponent(ref)}`;
+  return reiter ? `${base}/${reiter}` : base;
+}
+
+/** Die Route der Geräteakte, zum Aufrufen über `onNavigate`. */
+export function geraeteAkteRoute(ref: string, reiter: GeraeteAkteReiter | null = null): Route {
+  return { page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref, reiter } };
+}
+
+/** Die Adresse der GERÄTE-LISTE, auf Wunsch mit einem vorgewählten Filter-Chip. */
+export function geraeteListeHash(filter?: string | null): string {
+  return filter && filter.trim() ? `#/plattform/geraete?filter=${encodeURIComponent(filter.trim())}` : '#/plattform/geraete';
+}
+
+/** Der vorgewählte Filter aus einem `?filter=`-Hash der Geräte-Liste, oder null. */
+export function parseGeraeteListeFilter(hash: string): string | null {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  if (rest.length === 0) return null;
+  const value = new URLSearchParams(rest.join('?')).get('filter');
   return value && value.trim() ? value.trim() : null;
 }
 

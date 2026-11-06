@@ -1955,7 +1955,7 @@ function UnifiedPortal() {
             />
           )}
           {page === 'geraete-registry' && isAdmin && (
-            <GeraeteRegistryPage onJumpToTenant={jumpToTenant} />
+            <GeraeteRegistryPage geraeteAkte={route.geraeteAkte ?? null} onNavigate={navigate} />
           )}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
           {page === 'steuerungs-freigabe' && isAdmin && <SteuerungsFreigabePage />}

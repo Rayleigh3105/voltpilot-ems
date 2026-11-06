@@ -3346,6 +3346,17 @@
           "wohin": "kein Nachfolger: der Gerätetyp ist entfernt (die Migration löscht den Bestand), der Katalog nennt für „Batterie“ den Weg über den Wechselrichter"
         }
       }
+    },
+    {
+      "entscheid": "Konzept vp-adminview-konzept-k1 §4.6, Scheibe S2, Captain-Freigabe 'Bitte mit allen Empfehlungen umsetzen' (E4 = A): die Admin-Karten der Kunden-Geräte- und Box-Seite loesen sich auf - jeder Box-Fakt bekommt die Geraeteakte als EINEN Ort statt der additiven Plattform-Sicht.",
+      "commit": "fm/vp-adminview-s2-geraeteakte",
+      "ersetzt": "die additive Plattform-Sicht in GeraetSeiteSection.tsx und BoxSeiteSection.tsx (Software, Vertrauen, Steuerung, Grenzen, Verbindung, Verlauf)",
+      "dateien": {
+        "components/AdminGeraetKarten.tsx": {
+          "entfaellt": true,
+          "wohin": "pages/admin/GeraeteAktePage.tsx (Reiter Software, Verbindung, Einrichtung, Verlauf)"
+        }
+      }
     }
   ]
 }

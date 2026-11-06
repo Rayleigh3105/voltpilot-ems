@@ -317,7 +317,8 @@ const EXCLUDED = [
   '/onboardingFunnel.ts',
   '/adminVorlagen.ts',
   '/adminKomponentenFlotte.ts',
-  '/adminGeraet.ts',
+  // Die reine Schicht der Geräte-Liste (Scheibe S2, `pages/admin/GeraeteListePage`).
+  '/geraeteListe.ts',
   // Die reine Schicht der Admin-Seite „Geräte › Werkstatt" (`pages/admin/Werkstatt*`): Sie nennt die
   // Box-Arten beim technischen Namen („Edge Light", „Docker-Box") und spricht Werkstatt-Vokabular.
   '/werkstatt.ts',
@@ -858,7 +859,6 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'onboardingFunnel',
       'adminVorlagen',
       'adminKomponentenFlotte',
-      'adminGeraet',
       // `geraeteUpdates` ist die reine Schicht der Admin-Seite „Geräte & Updates"
       // (G5); sie darf die anderen Admin-Schichten importieren (nur die Admin-Seite
       // rendert sie).
@@ -873,21 +873,20 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'werkstattEinrichtung',
       // Die Lauf-Seite der Werkbank.
       'werkstattLauf',
+      // Die Geräte-Liste (Scheibe S2): eine Zeile je Box in jedem Lebensabschnitt.
+      'geraeteListe',
     ];
-    // PR 1f (Anlagen-Zentrale Stufe 1): die Plattform-Sicht wohnt seither
-    // ADDITIV auf der KUNDEN-Geräteseite - hinter dem EINEN Rollen-Tor
-    // `showTechnicalLayer()` (das M7-Muster der Installateur-Ansicht). Genau
-    // diese zwei Dateien dürfen die reinen Schichten deshalb hereinziehen;
-    // damit die Ausnahme kein Loch wird, wird das Tor GEPRÜFT statt geglaubt.
+    // Installateur-Ansicht (M7-Muster): die technische Sicht wohnt ADDITIV
+    // auf der Kunden-Geräteseite, hinter dem EINEN Rollen-Tor
+    // `showTechnicalLayer()`. Admin-GERÄTE-Fakten (Software, Vertrauen,
+    // Fernwartung) stehen seit der Geräteakte (Konzept
+    // `vp-adminview-konzept-k1` §4.6, Scheibe S2, E4 = A) NICHT MEHR additiv
+    // auf den Kundenseiten - dort führt nur noch ein Link
+    // (`geraeteAkteHash`) in die Akte; `GeraetSeiteSection.tsx` und
+    // `BoxSeiteSection.tsx` importieren deshalb keine der reinen
+    // Admin-Schichten mehr und stehen nicht mehr in dieser Liste.
     const GATE = 'showTechnicalLayer(';
-    const ADMIN_BLOCK = 'components/AdminGeraetKarten.tsx';
-    const rollenGehostet = [
-      ADMIN_BLOCK,
-      'pages/GeraetSeiteSection.tsx',
-      // Geräteseiten Stufe 1: die BOX hat ihre eigene Gattung - und trägt die
-      // Plattform-Sicht nach demselben Muster (dasselbe Tor, derselbe Block).
-      'pages/BoxSeiteSection.tsx',
-    ];
+    const rollenGehostet: string[] = [];
     const offenders: string[] = [];
     for (const file of walk(SRC)) {
       const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
@@ -901,14 +900,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       const gated = stripComments(code).includes(GATE);
       for (const m of adminOnly) {
         if (!new RegExp(`from '[^']*\\b${m}'`).test(code)) continue;
-        // Der Block SELBST ist die Plattform-Sicht; seine Wirte tragen das Tor.
-        if (rel === ADMIN_BLOCK) continue;
         if (rollenGehostet.includes(rel) && gated) continue;
         offenders.push(`${rel} importiert ${m}`);
-      }
-      // Und wer die Plattform-Sicht RENDERT, muss das Tor tragen.
-      if (/from '[^']*\bAdminGeraetKarten'/.test(code) && !gated) {
-        offenders.push(`${rel} rendert die Plattform-Sicht OHNE ${GATE})`);
       }
       // Dasselbe für die aufgelöste Installateur-Ansicht (Stufe 3): sie ist
       // vom Copy-Wächter ausgenommen, also darf sie nur hinter dem Tor
@@ -919,6 +912,37 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       // UEMS AP-15 IP-24: das Betreiber-Blatt (auch lazy geladen) nur hinter dem Tor.
       if (/['/]admin\/GemeinsameSteuerungBetreiberBlatt'/.test(code) && !gated) {
         offenders.push(`${rel} rendert das Betreiber-Blatt OHNE ${GATE})`);
+      }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+
+  /**
+   * Die Geräteakte (Konzept `vp-adminview-konzept-k1` §4.4/§8, Scheibe S2):
+   * EIN Ort je Box-Fakt. Software-, Verbindungs- und Einrichtungs-Fakten
+   * dürfen nur noch innerhalb von `pages/admin/GeraeteAktePage.tsx` (bzw. den
+   * Bausteinen, die sie dort einbettet: `FernwartungKarte`,
+   * `WerkstattBoxSeite`, `Zeitleiste`) gerendert werden - keine Kundenfläche
+   * und keine andere Admin-Seite darf dieselben Fakten ein zweites Mal zeigen.
+   */
+  it('Geräteakte: kein Box-Fakt an einem zweiten Ort (Scheibe S2, kein doppeltes Urteil)', () => {
+    const AKTE = 'pages/admin/GeraeteAktePage.tsx';
+    const HEIMAT = new Set([
+      AKTE,
+      'components/FernwartungKarte.tsx',
+      'pages/admin/WerkstattBoxSeite.tsx',
+      'pages/admin/Zeitleiste.tsx',
+    ]);
+    const offenders: string[] = [];
+    for (const file of walk(SRC)) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      if (rel.includes('.test.') || HEIMAT.has(rel)) continue;
+      const code = readFileSync(file, 'utf8');
+      if (/from '[^']*\/AdminGeraetKarten'/.test(code)) {
+        offenders.push(`${rel} importiert die aufgelöste AdminGeraetKarten - ihre Fakten wohnen jetzt in der Geräteakte`);
+      }
+      if (/<FernwartungKarte\b/.test(code) && rel !== AKTE) {
+        offenders.push(`${rel} rendert die Fernwartungs-Karte außerhalb der Geräteakte`);
       }
     }
     expect(offenders, offenders.join('\n')).toEqual([]);

@@ -4,9 +4,6 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { BoxSeiteSection } from './BoxSeiteSection';
 import { BAUSTEIN_ORDNUNG } from '../geraetRahmen';
 import * as auth from '../auth';
-import { adminApi } from '../admin/adminApi';
-import { ApiError } from '../api';
-import { fleetApi } from '../admin/fleetApi';
 import {
   api,
   type CommandHistory,
@@ -437,71 +434,17 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
     window.location.hash = '';
   });
 
-  function stubAdmin() {
-    vi.spyOn(adminApi, 'fernwartungBox').mockRejectedValue(
-      new ApiError(404, 'Für edge-45gz7da ist kein Tunnel-Schlüssel hinterlegt.'),
-    );
-    vi.spyOn(adminApi, 'fernwartung').mockRejectedValue(new Error('nicht gebraucht'));
-    vi.spyOn(adminApi, 'fernwartungTechniker').mockResolvedValue([]);
-    vi.spyOn(adminApi, 'listDevices').mockResolvedValue([
-      {
-        deviceId: 'gw',
-        externalRef: 'edge-45gz7da',
-        label: 'Pilsting',
-        siteId: 's-1',
-        siteName: 'Pilsting',
-        tenantId: 't-1',
-        tenantName: 'Kunde',
-        kind: 'inverter',
-        ist: 'edge-2026.08.1-9b37439a02c1',
-        soll: 'edge-2026.08.1',
-        sollSeq: 14,
-        channel: 'stable',
-        pinned: false,
-        state: 'bestaetigt',
-        reason: null,
-        blocker: null,
-        lastSeenAt: FRISCH,
-        reportedAt: FRISCH,
-        provisioned: false,
-        note: null,
-        provisionedAt: null,
-      },
-    ]);
-    vi.spyOn(fleetApi, 'fleet').mockResolvedValue({
-      sites: [],
-      releases: [],
-      journal: [],
-      kpi: null,
-    } as never);
-    vi.spyOn(adminApi, 'controlCandidates').mockResolvedValue([]);
-    vi.spyOn(adminApi, 'edgeUpdates').mockResolvedValue({
-      releases: [],
-      journal: [],
-      rollout: null,
-      fleet: [],
-      kpi: null,
-    } as never);
-  }
-
   it('zeigt dem KUNDEN keine Plattform-Sicht', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
-    stubAdmin();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByTestId('box-admin')).toBeNull();
-    // Und die Admin-Reads werden gar nicht erst geholt - auch die
-    // Fernwartung nicht (O3: der Kunde sieht die Fenster nicht).
-    expect(adminApi.listDevices).not.toHaveBeenCalled();
-    expect(adminApi.fernwartungBox).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('fw-karte')).toBeNull();
   });
 
-  it('zeigt dem PLATTFORM-ADMIN dieselbe Seite PLUS die Plattform-Sicht', async () => {
+  it('zeigt dem PLATTFORM-ADMIN nur noch den Weg in die Geräteakte (E4 = A, Scheibe S2)', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
     stub();
-    stubAdmin();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
     // Sie ist der LETZTE Teil von „Technik & Diagnose" (E1 a) - eine eigene
@@ -511,21 +454,9 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
     const technik = await screen.findByTestId('geraet-technik');
     const teil = within(technik).getByText('Plattform-Sicht (Admin)').closest('[data-technik]') as HTMLElement;
     expect(teil.getAttribute('data-technik')).toBe('plattform');
-    expect(within(teil).getByTestId('box-admin')).toBeTruthy();
-    // Die Fernwartung dieser Box: ohne hinterlegten Schlüssel sagt sie das.
-    expect(await within(teil).findByText(/kein Tunnel-Schlüssel hinterlegt/)).toBeTruthy();
-    expect(adminApi.fernwartungBox).toHaveBeenCalledWith('edge-45gz7da');
-  });
-
-  it('bleibt ohne Admin-Daten stehen - eine gescheiterte Plattform-Sicht kippt die Seite nicht', async () => {
-    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
-    stub();
-    vi.spyOn(adminApi, 'listDevices').mockRejectedValue(new Error('down'));
-    vi.spyOn(fleetApi, 'fleet').mockRejectedValue(new Error('down'));
-    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
-    await screen.findByRole('heading', { level: 1 });
-    await waitFor(() => expect(adminApi.listDevices).toHaveBeenCalled());
-    expect(screen.queryByTestId('box-admin')).toBeNull();
+    const link = within(teil).getByTestId('box-admin').querySelector('a') as HTMLAnchorElement;
+    expect(link).toHaveTextContent(/In der Geräteakte öffnen/);
+    expect(link.getAttribute('href')).toBe('#/plattform/geraete/edge-45gz7da');
   });
 });
 

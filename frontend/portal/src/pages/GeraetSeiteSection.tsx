@@ -64,12 +64,12 @@ import {
   anlageRoute,
   befehleGeraetHash,
   befehleHash,
+  geraeteAkteHash,
   geraetBearbeitenKomponente,
   geraetSeiteHash,
   hashForRoute,
   istGeraetBearbeitenHash,
   ohneGeraetBearbeiten,
-  pageRoute,
 } from '../nav';
 import {
   ABRUF_HINWEIS,
@@ -135,13 +135,9 @@ import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE: die Geräteseite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
 import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
-import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
 import { AnlegenFlow } from '../components/AnlegenFlow';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UmbenennenDialog, type RenameTarget } from '../components/UmbenennenDialog';
-import { geraetView, type GeraetView } from '../adminGeraet';
-import { adminApi } from '../admin/adminApi';
-import { fleetApi } from '../admin/fleetApi';
 import { NO_DATA } from '../nodata';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { OcppWallboxPage } from './OcppWallboxPage';
@@ -323,11 +319,6 @@ function GeraetSeiteKern({
    */
   const [pvZugeordnet, setPvZugeordnet] = useState(false);
   const [pvReload, setPvReload] = useState(0);
-  // Die PLATTFORM-Sicht: vier zusätzliche Reads, die es NUR hinter dem einen
-  // Tor überhaupt gibt (M7 `showTechnicalLayer`) - ein Kunde holt sie nie.
-  const [adminView, setAdminView] = useState<GeraetView | null>(null);
-  const [adminBusy, setAdminBusy] = useState(false);
-  const [adminFehler, setAdminFehler] = useState<string | null>(null);
   // GE-2 „Anbindung": die Wege der Anlage und die UEMS-Geräte, deren `data_source_id` der einzige Verweis
   // Weg → Gerät ist (dieselbe Zuordnung wie der Aufbau, GE-1). null = nicht geladen — dann kein Abschnitt.
   const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
@@ -443,54 +434,10 @@ function GeraetSeiteKern({
       },
     );
     setNow(Date.now());
-    if (showTechnicalLayer()) {
-      // Fail-soft und ALLES-ODER-NICHTS: ohne die Geräte-Zeile gibt es keine
-      // Admin-Sicht - eine halbe Sicht wäre eine Aussage über ein Gerät, das
-      // wir nicht vollständig kennen.
-      void Promise.all([
-        adminApi.listDevices(),
-        fleetApi.fleet(),
-        adminApi.controlCandidates().catch(() => null),
-        adminApi.edgeUpdates().catch(() => null),
-      ]).then(
-        ([devs, flotte, candidates, updates]) => {
-          if (!active) return;
-          setAdminView(geraetView({
-            ref: geraeteRef,
-            devices: devs,
-            sites: flotte.sites,
-            candidates,
-            releases: updates?.releases ?? [],
-            journal: updates?.journal ?? [],
-          }, new Date()));
-        },
-        () => {
-          if (active) setAdminView(null);
-        },
-      );
-    }
     return () => {
       active = false;
     };
   }, [site.id, geraeteRef, geraetId, boxDevice?.id, reloadKey, pageRequest]);
-
-  /**
-   * Eine Admin-Handlung: ausführen, dann die Seite neu laden. Ein Fehlschlag
-   * wird BENANNT - eine Handlung, die still nichts tut, ist die schlechteste
-   * Rückmeldung.
-   */
-  async function adminAktion(fn: () => Promise<unknown>) {
-    setAdminBusy(true);
-    setAdminFehler(null);
-    try {
-      await fn();
-      setReloadKey((k) => k + 1);
-    } catch (e) {
-      setAdminFehler(e instanceof ApiError ? e.message : 'Die Aktion ist fehlgeschlagen.');
-    } finally {
-      setAdminBusy(false);
-    }
-  }
 
   // Der stille Takt: Zustand UND Bezugszeit werden ZUSAMMEN gesetzt, ein
   // Fehlschlag lässt beides unberührt (die `liveness.ts`-Lehre).
@@ -1741,27 +1688,17 @@ function GeraetSeiteKern({
         if (view.diagnose.length > 0) {
           technik.push({ id: 'rohdaten', inhalt: <ZeilenListe zeilen={view.diagnose} /> });
         }
-        if (showTechnicalLayer() && adminView) {
+        {/* E4 = A (Konzept `vp-adminview-konzept-k1` §4.6, Scheibe S2): die
+            Admin-Karten entfallen hier - jeder Box-Fakt hat seither genau
+            EINEN Ort, die Geräteakte. Für Admins steht nur noch der Weg hin. */}
+        if (showTechnicalLayer()) {
           technik.push({
             id: 'plattform',
             inhalt: (
               <div data-testid="geraet-admin">
-                <AdminGeraetKarten
-                  view={adminView}
-                  busy={adminBusy}
-                  onNavigateSteuerung={() => {
-                    window.location.hash = hashForRoute(pageRoute('steuerungs-freigabe'));
-                  }}
-                  onAssign={adminView.device.deviceId ? async (releaseSeq: number) => {
-                    await adminAktion(() => adminApi.setUpdateTarget(
-                      adminView.device.deviceId as string, { releaseSeq }));
-                  } : undefined}
-                  onRevert={adminView.device.deviceId && adminView.device.soll ? async () => {
-                    await adminAktion(() => adminApi.revertUpdateTarget(
-                      adminView.device.deviceId as string));
-                  } : undefined}
-                />
-                {adminFehler && <p className="vp-alert vp-alert-err">{adminFehler}</p>}
+                <a className="vp-box-oberflaeche" href={geraeteAkteHash(geraeteRef)}>
+                  In der Geräteakte öffnen <Icon name="chevron-right" size={14} />
+                </a>
               </div>
             ),
           });

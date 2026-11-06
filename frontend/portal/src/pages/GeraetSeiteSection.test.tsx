@@ -7,10 +7,8 @@ import * as auth from '../auth';
 import { BAUSTEIN_ORDNUNG, type BausteinId } from '../geraetRahmen';
 import { NUR_LESEN } from '../befehle';
 import { SEITE } from '../befehleVerlauf';
-import { adminApi } from '../admin/adminApi';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
-import { fleetApi } from '../admin/fleetApi';
 import { entitiesApi } from '../entitiesApi';
 import { requestNavigation } from '../navigationBlocker';
 import {
@@ -1427,63 +1425,17 @@ describe('GeraetSeiteSection · Plattform-Sicht', () => {
     window.location.hash = '';
   });
 
-  function stubAdmin() {
-    vi.spyOn(adminApi, 'listDevices').mockResolvedValue([
-      {
-        deviceId: 'gw',
-        externalRef: 'edge-45gz7da',
-        label: 'Pilsting',
-        siteId: 's-1',
-        siteName: 'Pilsting',
-        tenantId: 't-1',
-        tenantName: 'Kunde',
-        kind: 'inverter',
-        ist: 'edge-2026.08.1-9b37439a02c1',
-        soll: 'edge-2026.08.1',
-        sollSeq: 14,
-        channel: 'stable',
-        pinned: false,
-        state: 'bestaetigt',
-        reason: null,
-        blocker: null,
-        lastSeenAt: FRISCH,
-        reportedAt: FRISCH,
-        provisioned: false,
-        note: null,
-        provisionedAt: null,
-      },
-    ]);
-    vi.spyOn(fleetApi, 'fleet').mockResolvedValue({
-      sites: [],
-      releases: [],
-      journal: [],
-      kpi: null,
-    } as never);
-    vi.spyOn(adminApi, 'controlCandidates').mockResolvedValue([]);
-    vi.spyOn(adminApi, 'edgeUpdates').mockResolvedValue({
-      releases: [],
-      journal: [],
-      rollout: null,
-      fleet: [],
-      kpi: null,
-    } as never);
-  }
-
   it('zeigt dem KUNDEN keine Plattform-Sicht', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
-    stubAdmin();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByTestId('geraet-admin')).toBeNull();
-    // Und die Admin-Reads werden gar nicht erst geholt.
-    expect(adminApi.listDevices).not.toHaveBeenCalled();
   });
 
-  it('zeigt dem PLATTFORM-ADMIN dieselbe Seite PLUS die Plattform-Sicht', async () => {
+  it('zeigt dem PLATTFORM-ADMIN nur noch den Weg in die Geräteakte (E4 = A, Scheibe S2)', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
     stub();
-    stubAdmin();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
     // Sie ist der LETZTE Teil von „Technik & Diagnose" - nie ein Kasten auf der
@@ -1491,18 +1443,10 @@ describe('GeraetSeiteSection · Plattform-Sicht', () => {
     await waitFor(() => expect(screen.getByTestId('geraet-technik-oeffnen')).toHaveTextContent(/Plattform-Sicht/));
     const teil = await technikTeil('plattform');
     expect(within(teil).getByText('Plattform-Sicht (Admin)')).toBeTruthy();
-    expect(within(teil).getByTestId('geraet-admin')).toBeTruthy();
-  });
-
-  it('bleibt ohne Admin-Daten stehen - eine gescheiterte Plattform-Sicht kippt die Seite nicht', async () => {
-    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
-    stub();
-    vi.spyOn(adminApi, 'listDevices').mockRejectedValue(new Error('down'));
-    vi.spyOn(fleetApi, 'fleet').mockRejectedValue(new Error('down'));
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    await screen.findByRole('heading', { level: 1 });
-    await waitFor(() => expect(adminApi.listDevices).toHaveBeenCalled());
-    expect(screen.queryByTestId('geraet-admin')).toBeNull();
+    const link = within(teil).getByTestId('geraet-admin').querySelector('a') as HTMLAnchorElement;
+    expect(link).toHaveTextContent(/In der Geräteakte öffnen/);
+    // Die Box der Anlage, nicht das hier offene Gerät dahinter (`boxRef`).
+    expect(link.getAttribute('href')).toBe('#/plattform/geraete/edge-45gz7da');
   });
 });
 

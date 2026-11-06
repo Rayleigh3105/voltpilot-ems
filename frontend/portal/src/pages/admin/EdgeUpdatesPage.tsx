@@ -8,12 +8,11 @@ import { ApiError } from '../../api';
 import { adminApi } from '../../admin/adminApi';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
-import { pageRoute, type Route } from '../../nav';
+import { geraeteAkteRoute, pageRoute, type Route } from '../../nav';
 import './BoxVersions.css';
 import { AdminPageHead } from './AdminPageHead';
-import { BoxSeite } from './BoxSeite';
 import { ReleaseSeite } from './ReleaseSeite';
-import { BoxenListe, BrauchtDich, LinienKarten, UpdatesLage } from './GeraeteUpdates';
+import { BrauchtDich, LinienKarten, UpdatesLage } from './GeraeteUpdates';
 import { VerteilDialog, type VerteilStart } from './VerteilDialog';
 import {
   BOX_ART_LABELS,
@@ -31,9 +30,7 @@ import {
   type EdgeUpdatesRelease,
   type UpdateTone,
 } from '../../adminEdgeUpdates';
-import {
-  KEIN_FILTER, aufgaben, boxZeilen, lage, linieDerBox, linienKarten, type BoxFilter, type LageZiel,
-} from '../../geraeteUpdates';
+import { aufgaben, lage, linienKarten, type LageZiel } from '../../geraeteUpdates';
 // LIST: eine Verwaltungs-Übersicht bewegt sich nicht sekündlich.
 import { LIST_POLL_MS } from '../../pollCadence';
 
@@ -77,16 +74,10 @@ function zeige(id: string) {
  */
 export function EdgeUpdatesPage({
   onNavigate,
-  onJumpToTenant,
   tabs,
 }: {
+  /** Auch für den Sprung in die Geräteakte einer Box (`geraeteAkteRoute`, Scheibe S2). */
   onNavigate?: (target: Route) => void;
-  /**
-   * Der Weg auf die EINE Geräteseite: sie liegt hinter dem RLS-Zaun, also muss
-   * der Mandant gesetzt sein, bevor die Adresse gilt. Ohne diesen Rückruf
-   * bietet der Drawer den Weg gar nicht erst an.
-   */
-  onJumpToTenant?: (tenantId: string, target: Route) => void;
   /** Die Tab-Leiste des Geräte-Bereichs - sie kommt vom Wirt und wird hier nur PLATZIERT. */
   tabs?: ReactNode;
 } = {}) {
@@ -95,10 +86,8 @@ export function EdgeUpdatesPage({
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [verteilen, setVerteilen] = useState<VerteilStart | null>(null);
-  const [deviceFor, setDeviceFor] = useState<string | null>(null);
   const [releasesFor, setReleasesFor] = useState<BoxArt | null>(null);
   const [releaseFor, setReleaseFor] = useState<number | null>(null);
-  const [filter, setFilter] = useState<BoxFilter>(KEIN_FILTER);
   // Zustand UND Bezugszeit werden ZUSAMMEN gesetzt - ein Alter, das gegen eine
   // Uhr über einem stehenden Schnappschuss rechnet, verfällt von selbst.
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
@@ -181,21 +170,24 @@ export function EdgeUpdatesPage({
   const karten = useMemo(() => (data ? linienKarten(data, jetzt, seiten) : []), [data, jetzt, seiten]);
   const brauchtDich = useMemo(() => (data ? aufgaben(data, jetzt) : []), [data, jetzt]);
   const lageSatz = useMemo(() => (data ? lage(data, jetzt) : null), [data, jetzt]);
-  const zeilen = useMemo(() => (data ? boxZeilen(data, jetzt) : []), [data, jetzt]);
   const journal = useMemo(() => visibleJournal(data?.journal ?? []), [data]);
   const crossover = useMemo(() => crossoverHint((data?.fleet ?? [])
     .filter((r) => crossoverState(r.trust, r.boxArt, r.loader).state !== 'von_hand')), [data]);
 
-  const oeffneBox = (deviceId: string) => { setActionError(null); setDeviceFor(deviceId); };
-  // „Fortschritt": die Boxen mit laufendem Update, in ihrer Linie.
-  const fortschritt = (art: BoxArt | null) => {
-    setFilter({ linie: art ?? 'alle', status: 'lauf', suche: '' });
-    zeige('vp-gu-boxen');
+  /**
+   * Die Boxenliste entfällt hier (§4.3, Scheibe S2) - jede Box-Zeile führt
+   * seither in ihre Geräteakte (`geraeteAkteRoute`), nie mehr in ein Fenster.
+   */
+  const oeffneBox = (deviceId: string) => {
+    setActionError(null);
+    const ref = data?.fleet.find((r) => r.deviceId === deviceId)?.externalRef;
+    if (ref && onNavigate) onNavigate(geraeteAkteRoute(ref, 'software'));
   };
+  // „Fortschritt" und „Älter": die Boxenliste wohnt seither in der Geräte-Liste (Chips „Update läuft"/„Älter").
+  const fortschritt = (_art?: BoxArt | null) => onNavigate?.({ page: 'geraete-registry', siteId: null, sub: null });
   const zuZiel = (ziel: LageZiel) => {
     if (ziel === 'braucht') zeige('vp-gu-braucht');
-    else if (ziel === 'aelter') { setFilter({ ...KEIN_FILTER, status: 'aelter' }); zeige('vp-gu-boxen'); }
-    else fortschritt(null);
+    else fortschritt();
   };
 
   return (
@@ -227,7 +219,7 @@ export function EdgeUpdatesPage({
         }
       />
 
-      {actionError && !verteilen && !deviceFor && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
+      {actionError && !verteilen && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
       {loadError && data && <div className="vp-alert vp-alert-warn" role="alert">
         Die Aktualisierung ist fehlgeschlagen. Die zuletzt geladenen Versionsstände bleiben sichtbar.
       </div>}
@@ -274,7 +266,6 @@ export function EdgeUpdatesPage({
             onNachruesten={oeffneBox}
           />
 
-          <BoxenListe zeilen={zeilen} filter={filter} onFilter={setFilter} onOpen={oeffneBox} />
           {/* Der ruhige TOFU-Hinweis: zählt nur BELEGT offene Crossover; Stufe 1
               steht schon in „Braucht dich". Ein Gerät, das nichts meldet, wird
               getrennt genannt - aus „unbekannt" lässt sich keine Aufgabe ableiten. */}
@@ -302,47 +293,6 @@ export function EdgeUpdatesPage({
           </Card>
         </div>
       )}
-
-      {deviceFor && data && (() => {
-        const row = data.fleet.find((r) => r.deviceId === deviceFor);
-        if (!row) return null;
-        const art = linieDerBox(row);
-        const neu = karten.find((k) => k.boxArt === art)?.neu?.release ?? null;
-        const stufe1 = row.stand === 'hand' || row.stufe1 === true;
-        return (
-          <BoxSeite
-            key={`${row.deviceId}-${fetchedAt}`}
-            row={row}
-            neuesterDerLinie={neu}
-            ladeVerlauf={(id) => adminApi.boxVerlauf(id)}
-            busy={busy}
-            error={actionError}
-            onClose={() => { setDeviceFor(null); setActionError(null); }}
-            onAnfragen={art && !stufe1 ? () => {
-              setDeviceFor(null);
-              setActionError(null);
-              setVerteilen({ art, releaseSeq: neu?.releaseSeq ?? null, nur: [row.deviceId], reihenfolge: 'alle' });
-            } : undefined}
-            onZurueckziehen={row.fakten || row.soll
-              ? () => void act(() => adminApi.revertUpdateTarget(row.deviceId))
-              : undefined}
-            onFernwartung={onNavigate ? () => onNavigate(pageRoute('fernwartung')) : undefined}
-            onGeraeteseite={
-              onJumpToTenant
-                ? () => {
-                    setDeviceFor(null);
-                    onJumpToTenant(row.tenantId, {
-                      page: 'anlagen',
-                      siteId: row.siteId,
-                      sub: 'geraet',
-                      geraet: { ref: row.externalRef, geraetId: null },
-                    });
-                  }
-                : undefined
-            }
-          />
-        );
-      })()}
 
       {releaseFor != null && data && (
         <ReleaseSeite

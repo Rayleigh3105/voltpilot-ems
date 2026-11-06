@@ -6,11 +6,15 @@ import { AppShell } from '../src/shell/AppShell';
 import { PlattformBereich } from '../src/pages/admin/PlattformBereich';
 import { GeraeteRegistryPage } from '../src/pages/admin/GeraeteRegistryPage';
 import { adminApi } from '../src/admin/adminApi';
+import { ApiError } from '../src/api';
 import { keycloak } from '../src/auth';
 import {
   GRUND_LIGHT_AUF_UNBEKANNT, GRUND_LIGHT_STUFE_1_LOADER, type EdgeUpdates, type FleetRow,
 } from '../src/adminEdgeUpdates';
-import { type PageId } from '../src/nav';
+import { type GeraeteAkteReiter, type PageId, type Route } from '../src/nav';
+import type { WerkstattBox } from '../src/werkstatt';
+import type { WerkstattDienst, WerkstattFreigabe } from '../src/werkstattBank';
+import type { FernwartungBox, FernwartungUebersicht } from '../src/adminFernwartung';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -174,6 +178,36 @@ const LETZTE_MELDUNG: Record<string, string | null> = {
   d4: new Date(Date.now() - 4 * 3600_000).toISOString(),
   d5: null,
 };
+// Scheibe S2 (Geräteakte, Geräte-Liste): eine Box in der Werkstatt (noch nicht
+// verbunden), eine gedruckte Aufkleber-ID ohne jedes Gerät dahinter.
+const werkstattBoxen: WerkstattBox[] = [
+  { id: 'w1', edgeRef: 'VP-WRK-0007', boxArt: 'edge-light', lanNetz: null, schritte: {}, notiz: null,
+    angelegtAm: vor(3 * 3600_000), angelegtVon: 'werkstatt', geaendertAm: vor(10 * MIN), abnahmen: [] },
+];
+const werkstattDienst: WerkstattDienst = {
+  ansicht: null, gemeldetAm: vor(5_000), dienstZeit: vor(5_000), alterSekunden: 5, aktuell: true, laeufe: [],
+};
+const gedrucktOhneGeraet = 'VP-5566-ZQTF';
+// Fernwartung je Box (Akte › Verbindung): d1 hat einen offenen Tunnel, der Rest sagt ehrlich, dass kein Schlüssel hinterlegt ist.
+const fernwartungUebersicht: FernwartungUebersicht = {
+  server: {
+    endpunkt: 'wartung.voltpilot.example', port: 51820, publicKey: 'srv-pub-key', eingerichtet: true,
+    boxNetz: '10.90.4.0/24', technikerNetz: '10.90.9.0/24',
+    boxServerAdresse: '10.90.4.1', technikerServerAdresse: '10.90.9.1',
+  },
+  maxFensterMinuten: 60, abrufe: [{ dienst: 'tunnel-dienst', zuletztAm: vor(20_000), peers: 1, fenster: 0 }],
+  boxenAktiv: 1, boxenGesperrt: 0, technikerAktiv: 0, technikerGesperrt: 0, fensterOffen: 0, fensterGeplant: 0,
+  stand: vor(20_000),
+};
+const fernwartungBoxen: Record<string, FernwartungBox> = {
+  'VP-BOX-1001': {
+    id: 'fw1', edgeRef: 'VP-BOX-1001', publicKey: 'box-pub-key', publicKeyKurz: 'box-pub…',
+    adresse: '10.90.4.12', status: 'aktiv', notiz: null,
+    angelegtAm: vor(90 * 24 * 3600_000), geaendertAm: vor(10 * MIN),
+    siteId: 's1', siteName: 'Solarpark Sonnenhof', tenantId: 't1', tenantName: 'Stadtwerke Musterstadt',
+    laufendeFenster: [],
+  },
+};
 Object.assign(keycloak, { tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } } });
 Object.assign(adminApi, {
   edgeUpdates: async () => data,
@@ -181,28 +215,56 @@ Object.assign(adminApi, {
   edgeEignung: async (releaseSeq: number) => eignung(releaseSeq),
   boxVerlauf: async (deviceId: string) => verlauf(deviceId),
   // Online-Status der Registrierung: je Box eine eigene letzte Meldung - zwei
-  // frisch, eine seit 4 Std. still, eine hat sich noch nie gemeldet.
-  listDevices: async () => fleet.map((d) => ({
-    ...d, provisioned: true, provisionedAt: now, kind: 'inverter', note: null,
-    lastSeenAt: d.deviceId! in LETZTE_MELDUNG
-      ? LETZTE_MELDUNG[d.deviceId!]
-      : new Date(Date.now() - 40_000).toISOString(),
-  })),
+  // frisch, eine seit 4 Std. still, eine hat sich noch nie gemeldet; dazu eine
+  // gedruckte Aufkleber-ID ohne jedes Gerät dahinter (Geräte-Liste, S2).
+  listDevices: async () => [
+    ...fleet.map((d) => ({
+      ...d, provisioned: true, provisionedAt: now, kind: 'inverter', note: null,
+      lastSeenAt: d.deviceId! in LETZTE_MELDUNG
+        ? LETZTE_MELDUNG[d.deviceId!]
+        : new Date(Date.now() - 40_000).toISOString(),
+    })),
+    { deviceId: null, externalRef: gedrucktOhneGeraet, label: null, siteId: null, siteName: null, tenantId: null,
+      tenantName: null, kind: 'inverter', ist: null, soll: null, sollSeq: null, state: null, reason: null,
+      blocker: null, lastSeenAt: null, reportedAt: null, provisioned: true, note: 'Charge 2026-09',
+      provisionedAt: vor(5 * 24 * 3600_000) },
+  ],
   listPendingEnrollments: async () => [{ externalRef: 'edge-xyz234q', deviceInfo: 'Box im Lager', csrUpdatedAt: now, everIssued: false, issuedAt: null }],
   createRollout: async () => { throw new Error('Vorschau: Es werden keine Updates an echte Boxen gesendet.'); },
   setUpdateTarget: async () => { throw new Error('Vorschau: Es werden keine Updates an echte Boxen gesendet.'); },
   revertUpdateTarget: async () => { throw new Error('Vorschau: Keine Änderung an echten Boxen.'); },
   provisionDevice: async () => { throw new Error('Vorschau: Es wird keine Geräte-ID registriert.'); },
   deleteProvisionedDevice: async () => { throw new Error('Vorschau: Es wird keine Geräte-ID gelöscht.'); },
+  // Geräteakte (S2): Werkstatt, Fernwartung und ihr Protokoll - dieselben Antworten wie die Plattform-Seiten.
+  werkstattBoxen: async () => werkstattBoxen,
+  werkstattDienst: async () => werkstattDienst,
+  werkstattFreigaben: async () => [] as WerkstattFreigabe[],
+  fernwartungProtokoll: async () => [],
+  fernwartung: async () => fernwartungUebersicht,
+  fernwartungTechniker: async () => [],
+  fernwartungBox: async (ref: string) => {
+    const box = fernwartungBoxen[ref];
+    if (!box) throw new ApiError(404, `Für ${ref} ist kein Tunnel-Schlüssel hinterlegt.`);
+    return box;
+  },
+  fernwartungFensterSchliessen: async () => { throw new Error('Vorschau: Keine Änderung an echten Fenstern.'); },
 });
 
 function Fixture() {
   const [page, setPage] = useState<PageId>('edge-updates');
-  return <AppShell page={page} onNavigate={setPage} isAdmin showOverview={false} showAddAnlage={false}
+  const [geraeteAkte, setGeraeteAkte] = useState<{ ref: string; reiter: GeraeteAkteReiter | null } | null>(null);
+
+  function navigate(target: Route | PageId) {
+    if (typeof target === 'string') { setPage(target); setGeraeteAkte(null); return; }
+    setPage(target.page);
+    setGeraeteAkte(target.geraeteAkte ?? null);
+  }
+
+  return <AppShell page={page} onNavigate={(p) => navigate(p)} isAdmin showOverview={false} showAddAnlage={false}
     counts={{ sites: 8, devices: 8 }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
     {page === 'geraete-registry'
-      ? <GeraeteRegistryPage />
-      : <PlattformBereich page={page} onNavigate={(r) => setPage(typeof r === 'string' ? r : r.page)} />}
+      ? <GeraeteRegistryPage geraeteAkte={geraeteAkte} onNavigate={navigate} />
+      : <PlattformBereich page={page} onNavigate={navigate} />}
   </AppShell>;
 }
 ReactDOM.createRoot(document.getElementById('root')!).render(<Fixture />);
