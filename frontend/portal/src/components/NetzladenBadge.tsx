@@ -13,7 +13,8 @@ export function NetzladenBadge({ erlaubt, small = false }: { erlaubt: boolean; s
   const badge = netzladenBadge(erlaubt);
   const style: React.CSSProperties = {
     ...(badge.kind === 'netzladen'
-      ? { background: '#E0F7FA', color: '#00838F' }
+      // #00737D statt #00838F: 5,0:1 statt 4,1:1 auf dem Türkis-Grund (WCAG AA, kleine Schrift).
+      ? { background: '#E0F7FA', color: '#00737D' }
       : {}),
     ...(small ? { padding: '0.2rem 0.55rem' } : {}),
     whiteSpace: 'nowrap',

@@ -13,13 +13,15 @@ export function Badge({
   ...props
 }) {
   const variants = {
+    // Text in --vp-action (Navy): --vp-primary-deep erreichte auf dem hellen Tint nur ~3,1:1
+    // (WCAG AA verlangt 4,5:1 für diese kleine Schrift).
     tint: {
       background: 'var(--vp-tint)',
-      color: 'var(--vp-primary-deep)',
+      color: 'var(--vp-action)',
     },
     gradient: {
       background: 'var(--vp-grad-badge)',
-      color: 'var(--vp-primary-deep)',
+      color: 'var(--vp-action)',
     },
     solid: {
       background: 'var(--vp-primary-deep)',

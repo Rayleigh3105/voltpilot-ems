@@ -2740,7 +2740,8 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 .vp-seg button.active {
   background: var(--vp-surface);
-  color: var(--vp-primary-deep);
+  /* --vp-action statt --vp-primary-deep: die gewählte Wahl lag auf Weiß bei ~3,3:1 (AA: 4,5:1). */
+  color: var(--vp-action);
   box-shadow: var(--vp-shadow-sm);
 }
 
