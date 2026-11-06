@@ -13,12 +13,17 @@ import { useIsPhone } from '../useIsPhone';
  *
  * Bewusst nur für die SEKUNDÄREN Sektionen einer Fläche - was der Techniker
  * als Erstes braucht, bleibt eine plaine `Card`, nie durch diese ersetzt.
+ *
+ * `aktionen` (eine Kopf-Handlung wie „Anlage anlegen") steht zugeklappt nicht
+ * zur Verfügung - sie gehört an dieselbe Fläche wie ihre Liste, nicht in die
+ * Zeile, die nur zusammenfasst.
  */
-export function AufklapperKarte({ icon, titel, urteil, className, children }: {
+export function AufklapperKarte({ icon, titel, urteil, aktionen, className, children }: {
   icon: IconName;
   titel: string;
   /** Die Urteilszeile - sichtbar auch zugeklappt, Beleg statt Blindflug. */
   urteil?: ReactNode;
+  aktionen?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
@@ -26,7 +31,10 @@ export function AufklapperKarte({ icon, titel, urteil, className, children }: {
   if (!isPhone) {
     return (
       <Card padding="lg" radius="lg" className={className}>
-        <h2><Icon name={icon} size={18} /> {titel}</h2>
+        <div className="vp-section-head">
+          <h2><Icon name={icon} size={18} /> {titel}</h2>
+          {aktionen && <span className="actions">{aktionen}</span>}
+        </div>
         {children}
       </Card>
     );
@@ -34,6 +42,7 @@ export function AufklapperKarte({ icon, titel, urteil, className, children }: {
   return (
     <Card padding="md" radius="lg" className={className}>
       <Aufklapper titel={<><Icon name={icon} size={16} /> {titel}</>} sub={urteil}>
+        {aktionen && <div className="vp-row-gap" style={{ marginBottom: 'var(--vp-space-3)' }}>{aktionen}</div>}
         {children}
       </Aufklapper>
     </Card>
