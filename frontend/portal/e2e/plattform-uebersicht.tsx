@@ -167,6 +167,9 @@ const werkstattDienst: WerkstattDienst = {
 
 const pending = [{ externalRef: 'edge-q7xk2p9', deviceInfo: 'Box im Lager', csrUpdatedAt: vor(2 * 24 * STD), everIssued: false, issuedAt: null }];
 
+// ── „Braucht dich" erledigt: eine winzige In-Memory-Ablage für die Bühne ──
+const brauchtDichErledigtAblage = new Map<string, { schluessel: string; stand: string; erledigtAm: string; erledigtVon: string }>();
+
 // L3/L2 (S6/S7): die Akte-in-einer-Antwort, herzschlagAm und messwertAm getrennt.
 const geraeteAkteVon = (ref: string): AdminGeraeteAkte => {
   const r = fleet.find((f) => f.externalRef === ref);
@@ -207,6 +210,17 @@ Object.assign(adminApi, {
       { name: 'messwerte', zuletztAm: vor(8_000) },
     ],
   }),
+  // „Braucht dich" einzeln auf erledigt setzen - ein winziger In-Memory-Stand
+  // für die Bühne, genau wie die echte Ablage am Schlüssel + Grund.
+  brauchtDichErledigt: async () => ({ erledigt: [...brauchtDichErledigtAblage.values()] }),
+  brauchtDichErledigen: async (eintraege: { schluessel: string; stand: string }[]) => {
+    for (const e of eintraege) {
+      brauchtDichErledigtAblage.set(e.schluessel, { ...e, erledigtAm: new Date().toISOString(), erledigtVon: 'Alex Beispiel' });
+    }
+  },
+  brauchtDichWiederherstellen: async (schluessel: string) => {
+    brauchtDichErledigtAblage.delete(schluessel);
+  },
 });
 
 function Fixture() {

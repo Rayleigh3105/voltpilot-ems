@@ -17,6 +17,23 @@ const werkstattDienst = vi.fn();
 const listPendingEnrollments = vi.fn();
 const plattformDienste = vi.fn(() => Promise.resolve({ dienste: [] }));
 
+// Eine winzige, persistente In-Memory-Ablage statt eines statischen Mocks:
+// `erledigen`/`wiederherstellen` wirken sich wirklich auf die nächste
+// `erledigt`-Antwort aus - genau wie beim echten Server, den `load()` nach
+// jedem Schreiben erneut abruft.
+let brauchtDichAblage = new Map<string, { schluessel: string; stand: string; erledigtAm: string; erledigtVon: string }>();
+const brauchtDichErledigt = vi.fn(() => Promise.resolve({ erledigt: [...brauchtDichAblage.values()] }));
+const brauchtDichErledigen = vi.fn((eintraege: { schluessel: string; stand: string }[]) => {
+  for (const e of eintraege) {
+    brauchtDichAblage.set(e.schluessel, { ...e, erledigtAm: new Date().toISOString(), erledigtVon: 'admin' });
+  }
+  return Promise.resolve();
+});
+const brauchtDichWiederherstellen = vi.fn((schluessel: string) => {
+  brauchtDichAblage.delete(schluessel);
+  return Promise.resolve();
+});
+
 vi.mock('../../admin/fleetApi', () => ({
   fleetApi: { fleet: (...a: unknown[]) => fleet(...a) },
 }));
@@ -28,6 +45,9 @@ vi.mock('../../admin/adminApi', () => ({
     werkstattDienst: (...a: unknown[]) => werkstattDienst(...a),
     listPendingEnrollments: (...a: unknown[]) => listPendingEnrollments(...a),
     plattformDienste: (...a: unknown[]) => plattformDienste(...a),
+    brauchtDichErledigt: (...a: unknown[]) => brauchtDichErledigt(...a),
+    brauchtDichErledigen: (...a: Parameters<typeof brauchtDichErledigen>) => brauchtDichErledigen(...a),
+    brauchtDichWiederherstellen: (...a: Parameters<typeof brauchtDichWiederherstellen>) => brauchtDichWiederherstellen(...a),
   },
 }));
 
@@ -54,6 +74,7 @@ const LEERE_EDGE_UPDATES: EdgeUpdates = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  brauchtDichAblage = new Map();
   fleet.mockResolvedValue({ sites: [] });
   edgeUpdates.mockResolvedValue(LEERE_EDGE_UPDATES);
   fernwartung.mockResolvedValue(null);
@@ -107,8 +128,70 @@ describe('PlattformUebersichtPage', () => {
     render(<PlattformUebersichtPage onNavigate={onNavigate} />);
     const zeile = await screen.findByTestId('ueb-braucht-zeile');
     expect(zeile).toHaveTextContent('Anlage A');
-    fireEvent.click(zeile);
+    fireEvent.click(within(zeile).getByText('Anlage A'));
     expect(onNavigate).toHaveBeenCalledWith({ page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'VP-BOX-9', reiter: 'software', werkzeug: null } });
+  });
+
+  describe('Braucht dich: gelesen/erledigt (Nachbesserung)', () => {
+    function mitFehlerbox() {
+      fleet.mockResolvedValue({
+        sites: [site('s1', 'Anlage A', {
+          boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-9', name: 'Box 9', fuehrtAnlage: true, lastSeenAt: null, edge: null, update: null }],
+        })],
+      });
+      edgeUpdates.mockResolvedValue({
+        ...LEERE_EDGE_UPDATES,
+        fleet: [{
+          deviceId: 'd1', label: 'Box 9', externalRef: 'VP-BOX-9', siteId: 's1', siteName: 'Anlage A',
+          tenantId: 't1', tenantName: 'Demo C&I', ist: null, soll: null, sollSeq: null, state: 'unbekannt',
+          reason: null, since: null, reportedAt: null, rolloutId: null, boxArt: null, linie: null,
+          stand: 'fehler', lastSeenAt: null, istRelease: null, releasesDahinter: null, istSeit: null, fakten: null,
+        }],
+      });
+    }
+
+    it('erledigt eine Zeile serverseitig, sie verschwindet, und lässt sich einklappbar zurückholen', async () => {
+      mitFehlerbox();
+      render(<PlattformUebersichtPage />);
+      const zeile = await screen.findByTestId('ueb-braucht-zeile');
+      fireEvent.click(within(zeile).getByRole('button', { name: /als erledigt markieren/i }));
+      await waitFor(() => expect(brauchtDichErledigen).toHaveBeenCalledTimes(1));
+      const [[eintraege]] = brauchtDichErledigen.mock.calls;
+      expect(eintraege).toHaveLength(1);
+      expect(eintraege[0].schluessel).toMatch(/^fehler-/);
+      await waitFor(() => expect(screen.queryByTestId('ueb-braucht-zeile')).toBeNull());
+      expect(screen.getByText(/Keine Box braucht dich gerade/)).toBeInTheDocument();
+
+      const auf = screen.getByRole('button', { name: /Erledigte anzeigen \(1\)/ });
+      fireEvent.click(auf);
+      expect(await screen.findByText('Box 9')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /zurückholen/ }));
+      await waitFor(() => expect(brauchtDichWiederherstellen).toHaveBeenCalledWith(eintraege[0].schluessel));
+      await waitFor(() => expect(screen.getByTestId('ueb-braucht-zeile')).toBeInTheDocument());
+    });
+
+    it('bietet eine Sammel-Handlung, wenn mindestens zwei Zeilen dieselbe Art tragen', async () => {
+      fleet.mockResolvedValue({
+        sites: [
+          site('s1', 'Anlage A', { boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-9', name: 'Box 9', fuehrtAnlage: true, lastSeenAt: null, edge: null, update: null }] }),
+          site('s2', 'Anlage B', { tenantId: 't2', tenantName: 'Demo C&I 2', boxes: [{ deviceId: 'd2', externalRef: 'VP-BOX-10', name: 'Box 10', fuehrtAnlage: true, lastSeenAt: null, edge: null, update: null }] }),
+        ],
+      });
+      edgeUpdates.mockResolvedValue({
+        ...LEERE_EDGE_UPDATES,
+        fleet: [
+          { deviceId: 'd1', label: 'Box 9', externalRef: 'VP-BOX-9', siteId: 's1', siteName: 'Anlage A', tenantId: 't1', tenantName: 'Demo C&I', ist: null, soll: null, sollSeq: null, state: 'unbekannt', reason: null, since: null, reportedAt: null, rolloutId: null, boxArt: null, linie: null, stand: 'fehler', lastSeenAt: null, istRelease: null, releasesDahinter: null, istSeit: null, fakten: null },
+          { deviceId: 'd2', label: 'Box 10', externalRef: 'VP-BOX-10', siteId: 's2', siteName: 'Anlage B', tenantId: 't2', tenantName: 'Demo C&I 2', ist: null, soll: null, sollSeq: null, state: 'unbekannt', reason: null, since: null, reportedAt: null, rolloutId: null, boxArt: null, linie: null, stand: 'fehler', lastSeenAt: null, istRelease: null, releasesDahinter: null, istSeit: null, fakten: null },
+        ],
+      });
+      render(<PlattformUebersichtPage />);
+      await screen.findAllByTestId('ueb-braucht-zeile');
+      fireEvent.click(screen.getByRole('button', { name: /alle 2 .Fehler. erledigen/ }));
+      await waitFor(() => expect(brauchtDichErledigen).toHaveBeenCalledTimes(1));
+      const [[eintraege]] = brauchtDichErledigen.mock.calls;
+      expect(eintraege).toHaveLength(2);
+      await waitFor(() => expect(screen.queryByTestId('ueb-braucht-zeile')).toBeNull());
+    });
   });
 
   it('die Software-Kachel führt auf die Software-Seite', async () => {

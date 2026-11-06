@@ -186,6 +186,19 @@ const RANG = {
   anmeldung: 6,
 } as const;
 
+export type BrauchtDichArt = keyof typeof RANG;
+
+/** Beschriftung einer Art für die Sammel-Handlung „alle dieser Art erledigen". */
+export const BRAUCHT_DICH_ART_LABEL: Record<BrauchtDichArt, string> = {
+  fehler: 'Fehler',
+  halt: 'Zurückgehalten',
+  offlineAnfrage: 'Offline mit Anfrage',
+  stufe1: 'Nur von Hand',
+  fensterOhneSchluessel: 'Fenster ohne Schlüssel',
+  werkstattNichtBereit: 'Werkstatt nicht bereit',
+  anmeldung: 'Ohne Kunde',
+};
+
 export interface BrauchtDichZeile {
   key: string;
   icon: IconName;
@@ -198,6 +211,45 @@ export interface BrauchtDichZeile {
   schrittLabel: string;
   route: Route;
   rang: number;
+  art: BrauchtDichArt;
+}
+
+/** Ein serverseitig abgelegter „erledigt"-Stand (Lücke: `/admin/plattform/braucht-dich`). */
+export interface BrauchtDichErledigtEintrag {
+  schluessel: string;
+  stand: string;
+  erledigtAm: string;
+  erledigtVon: string;
+}
+
+export interface BrauchtDichErledigtZeile extends BrauchtDichZeile {
+  erledigtAm: string;
+  erledigtVon: string;
+}
+
+/**
+ * Trennt aktive von erledigten Zeilen: erledigt gilt, solange der mitgegebene
+ * Grund (`stand`) genau dem aktuellen `grund` der Zeile entspricht - trägt ein
+ * Eintrag einen neueren Zustand/Text, erscheint er wieder in `aktiv`. Keine
+ * zweite Wahrheit: die Anzeige-Felder (Box, Kunde, Route, …) kommen immer aus
+ * der aktuellen Ableitung, nie aus der Ablage.
+ */
+export function brauchtDichMitErledigt(
+  zeilen: readonly BrauchtDichZeile[],
+  erledigt: readonly BrauchtDichErledigtEintrag[],
+): { aktiv: BrauchtDichZeile[]; erledigt: BrauchtDichErledigtZeile[] } {
+  const byKey = new Map(erledigt.map((e) => [e.schluessel, e]));
+  const aktiv: BrauchtDichZeile[] = [];
+  const erledigtZeilen: BrauchtDichErledigtZeile[] = [];
+  for (const z of zeilen) {
+    const e = byKey.get(z.key);
+    if (e && e.stand === z.grund) {
+      erledigtZeilen.push({ ...z, erledigtAm: e.erledigtAm, erledigtVon: e.erledigtVon });
+    } else {
+      aktiv.push(z);
+    }
+  }
+  return { aktiv, erledigt: erledigtZeilen };
 }
 
 export interface BrauchtDichEingabe {
@@ -218,25 +270,26 @@ export function uebersichtBrauchtDich(input: BrauchtDichEingabe, now: Date): Bra
       out.push({
         key: `fehler-${z.ref}`, icon: 'alert-triangle', ton: 'warn', box: z.name, kunde: z.ort,
         grund: satzText(z) ?? 'Update braucht dich', kurz: 'Fehler', schrittLabel: 'Software',
-        route: akte('software'), rang: RANG.fehler,
+        route: akte('software'), rang: RANG.fehler, art: 'fehler',
       });
     } else if (segment === 'halt') {
       out.push({
         key: `halt-${z.ref}`, icon: 'alert-triangle', ton: 'warn', box: z.name, kunde: z.ort,
         grund: satzText(z) ?? 'Update zurückgehalten', kurz: 'hält zurück', schrittLabel: 'Software',
-        route: akte('software'), rang: RANG.halt,
+        route: akte('software'), rang: RANG.halt, art: 'halt',
       });
     } else if (z.offline && z.ziel) {
       out.push({
         key: `offline-anfrage-${z.ref}`, icon: 'wifi', ton: 'warn', box: z.name, kunde: z.ort,
         grund: `Meldet sich nicht, Update wartet${z.verbindung.gesehen ? ` · ${z.verbindung.gesehen}` : ''}`,
         kurz: 'offline', schrittLabel: 'Software', route: akte('software'), rang: RANG.offlineAnfrage,
+        art: 'offlineAnfrage',
       });
     } else if (segment === 'hand') {
       out.push({
         key: `hand-${z.ref}`, icon: 'hand', ton: 'warn', box: z.name, kunde: z.ort,
         grund: 'Nur von Hand (Stufe 1)', kurz: 'nur von Hand', schrittLabel: 'Software',
-        route: akte('software'), rang: RANG.stufe1,
+        route: akte('software'), rang: RANG.stufe1, art: 'stufe1',
       });
     }
   }
@@ -250,7 +303,7 @@ export function uebersichtBrauchtDich(input: BrauchtDichEingabe, now: Date): Bra
         kunde: box.siteName ? (box.tenantName ? `${box.siteName} · ${box.tenantName}` : box.siteName) : null,
         grund: `Fenster offen seit ${zeitpunkt(fenster.geoeffnetAm, now)} · Schlüssel nicht abgeholt`,
         kurz: 'Fenster ohne Schlüssel', schrittLabel: 'Verbindung', route: geraeteAkteRoute(box.edgeRef, 'verbindung'),
-        rang: RANG.fensterOhneSchluessel,
+        rang: RANG.fensterOhneSchluessel, art: 'fensterOhneSchluessel',
       });
     }
   }
@@ -263,7 +316,7 @@ export function uebersichtBrauchtDich(input: BrauchtDichEingabe, now: Date): Bra
       key: `werkstatt-${lauf.kennung}`, icon: 'sliders', ton: 'warn', box: ref, kunde: null,
       grund: lauf.grund ?? 'Einrichtung angehalten, braucht einen Handgriff',
       kurz: 'Werkstatt nicht bereit', schrittLabel: 'Einrichtung', route: geraeteAkteRoute(ref, 'einrichtung'),
-      rang: RANG.werkstattNichtBereit,
+      rang: RANG.werkstattNichtBereit, art: 'werkstattNichtBereit',
     });
   }
 
@@ -272,7 +325,7 @@ export function uebersichtBrauchtDich(input: BrauchtDichEingabe, now: Date): Bra
     out.push({
       key: `anmeldung-${p.externalRef}`, icon: 'link', ton: 'warn', box: p.externalRef, kunde: 'ohne Kunde',
       grund: p.hint, kurz: 'ohne Kunde', schrittLabel: 'Akte', route: geraeteAkteRoute(p.externalRef),
-      rang: RANG.anmeldung,
+      rang: RANG.anmeldung, art: 'anmeldung',
     });
   }
 
@@ -320,7 +373,13 @@ export function uebersichtFlottenbild(
     }
     byKunde.set(kunde, felder);
   }
-  const out: FlottenbildGruppe[] = [...byKunde.entries()].map(([kunde, felder]) => ({ kunde, felder }));
+  // Innerhalb einer Kunden-Gruppe die auffälligen Boxen zuerst - „auf einen
+  // Blick erkennbar, wo es klemmt" gilt genauso innerhalb einer Zeile.
+  const TON_RANG: Record<FlottenbildTon, number> = { aus: 0, nie: 1, hand: 2, lauf: 3, verzoegert: 4, ok: 5 };
+  const out: FlottenbildGruppe[] = [...byKunde.entries()].map(([kunde, felder]) => ({
+    kunde,
+    felder: [...felder].sort((a, b) => TON_RANG[a.ton] - TON_RANG[b.ton] || a.name.localeCompare(b.name, 'de')),
+  }));
   return out.sort((a, b) => {
     const stoerA = a.felder.some((f) => f.ton !== 'ok');
     const stoerB = b.felder.some((f) => f.ton !== 'ok');

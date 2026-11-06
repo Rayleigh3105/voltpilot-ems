@@ -68,22 +68,90 @@
 }
 .vp-ueb-spalte { display: flex; flex-direction: column; gap: var(--vp-space-6); }
 
+.vp-ueb-braucht-sammel { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 10px; }
+.vp-ueb-braucht-sammel button {
+  border: 1px solid var(--vp-border-subtle, #e5e7eb);
+  background: var(--vp-bg-light);
+  color: var(--vp-text-muted);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.vp-ueb-braucht-sammel button:hover { color: inherit; border-color: var(--vp-color-warn, #f59e0b); }
+
 .vp-ueb-braucht-liste { display: flex; flex-direction: column; }
 .vp-ueb-braucht-zeile {
   display: flex;
   align-items: center;
-  gap: 10px;
   width: 100%;
-  padding: 10px 16px;
-  border: none;
   border-top: 1px solid var(--vp-border-subtle, #e5e7eb);
+}
+.vp-ueb-braucht-zeile:first-child { border-top: none; }
+.vp-ueb-braucht-zeile-knopf {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 8px 10px 16px;
+  border: none;
   background: none;
   text-align: left;
   cursor: pointer;
   font: inherit;
   color: inherit;
 }
-.vp-ueb-braucht-zeile:first-child { border-top: none; }
+.vp-ueb-braucht-erledigt-knopf {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  margin-right: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--vp-border-subtle, #e5e7eb);
+  background: none;
+  color: var(--vp-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.vp-ueb-braucht-erledigt-knopf:hover { color: var(--vp-color-ok, #15803d); border-color: var(--vp-color-ok, #15803d); }
+
+.vp-ueb-braucht-erledigte { border-top: 1px solid var(--vp-border-subtle, #e5e7eb); padding: 8px 16px; }
+.vp-ueb-braucht-erledigte-knopf {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  color: var(--vp-text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.vp-ueb-braucht-erledigte-liste { display: flex; flex-direction: column; margin-top: 6px; }
+.vp-ueb-braucht-erledigte-zeile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--vp-border-subtle, #e5e7eb);
+}
+.vp-ueb-braucht-erledigte-zeile:first-child { border-top: none; }
+.vp-ueb-braucht-erledigte-haupt { display: flex; flex-direction: column; min-width: 0; opacity: 0.75; }
+.vp-ueb-braucht-erledigte-haupt b { font-size: 0.86rem; }
+.vp-ueb-braucht-erledigte-haupt small { color: var(--vp-text-muted); font-size: 0.75rem; }
+.vp-ueb-braucht-erledigte-zeile button {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  color: var(--vp-link, #2563eb);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 2px 4px;
+}
 .vp-ueb-braucht-kreis {
   flex: 0 0 auto;
   width: 30px;
@@ -102,8 +170,18 @@
 .vp-ueb-braucht-schritt { flex: 0 0 auto; font-size: 0.78rem; color: var(--vp-text-muted); }
 
 .vp-ueb-flotte { display: flex; flex-direction: column; gap: 10px; }
-.vp-ueb-flotte-gruppe small { display: block; color: var(--vp-text-muted); font-size: 0.75rem; margin-bottom: 4px; }
-.vp-ueb-flotte-felder { display: flex; flex-wrap: wrap; gap: 4px; }
+.vp-ueb-flotte-gruppe {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+.vp-ueb-flotte-gruppe--stoerung {
+  background: color-mix(in srgb, var(--vp-color-warn, #f59e0b) 7%, transparent);
+  border-color: color-mix(in srgb, var(--vp-color-warn, #f59e0b) 25%, transparent);
+}
+.vp-ueb-flotte-gruppe small { display: block; color: var(--vp-text-muted); font-size: 0.75rem; margin-bottom: 6px; }
+.vp-ueb-flotte-gruppe-warn { color: var(--vp-color-warn, #b45309); font-weight: 600; }
+.vp-ueb-flotte-felder { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .vp-ueb-flotte-feld {
   width: 14px;
   height: 14px;
@@ -112,6 +190,35 @@
   padding: 0;
   cursor: pointer;
 }
+/* Auffällige Boxen werden erkennbare, beschriftete Elemente statt reiner
+   Farbflächen - „ich brauch ewig, bis ich da was erkenne" (Captain). */
+.vp-ueb-flotte-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--vp-border-subtle, #e5e7eb);
+  background: var(--vp-bg-light);
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: inherit;
+  max-width: 220px;
+}
+.vp-ueb-flotte-chip span,
+.vp-ueb-flotte-chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-ueb-flotte-chip-punkt { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
+.vp-ueb-flotte-chip-punkt.verzoegert, .vp-ueb-flotte-chip.verzoegert { border-color: #fbbf24; }
+.vp-ueb-flotte-chip-punkt.verzoegert { background: #fbbf24; }
+.vp-ueb-flotte-chip-punkt.aus, .vp-ueb-flotte-chip.aus { border-color: var(--vp-color-warn, #f59e0b); }
+.vp-ueb-flotte-chip-punkt.aus { background: var(--vp-color-warn, #f59e0b); }
+.vp-ueb-flotte-chip-punkt.nie, .vp-ueb-flotte-chip.nie { border-color: var(--vp-border-subtle, #cbd5e1); }
+.vp-ueb-flotte-chip-punkt.nie { background: var(--vp-border-subtle, #cbd5e1); }
+.vp-ueb-flotte-chip-punkt.lauf, .vp-ueb-flotte-chip.lauf { border-color: #3b82f6; }
+.vp-ueb-flotte-chip-punkt.lauf { background: #3b82f6; }
+.vp-ueb-flotte-chip-punkt.hand, .vp-ueb-flotte-chip.hand { border-color: #a855f7; }
+.vp-ueb-flotte-chip-punkt.hand { background: #a855f7; }
 .vp-ueb-flotte-feld.ok { background: var(--vp-color-ok, #22c55e); }
 /* E6: eine Stufe heller als „aus" - verzögert ist noch keine Störung. */
 .vp-ueb-flotte-feld.verzoegert { background: #fbbf24; }
@@ -131,11 +238,26 @@
 .vp-ueb-flotte-legende i.lauf { background: #3b82f6; }
 .vp-ueb-flotte-legende i.hand { background: #a855f7; }
 
-.vp-ueb-dienste { display: flex; flex-wrap: wrap; gap: var(--vp-space-5); }
-.vp-ueb-dienst { display: flex; align-items: baseline; gap: 6px; font-size: 0.85rem; }
-.vp-ueb-dienst b { font-weight: 700; }
+/* Dienste: keine Karte mehr, eine unauffällige Leiste am Seitenkopf. Ruhig,
+   solange alles ok ist; nur ein auffälliger Dienst darf hier Ton zeigen. */
+.vp-ueb-dienste-leiste {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: baseline;
+  gap: var(--vp-space-5);
+  padding: 6px 2px;
+  margin-bottom: var(--vp-space-4);
+  border-bottom: 1px solid var(--vp-border-subtle, #e5e7eb);
+  font-size: 0.8rem;
+  color: var(--vp-text-muted);
+}
+.vp-ueb-dienste-leiste--warn { border-bottom-color: color-mix(in srgb, var(--vp-color-warn, #f59e0b) 40%, transparent); }
+.vp-ueb-dienste-leiste--kurz { gap: 6px; overflow: visible; }
+.vp-ueb-dienst { display: flex; align-items: baseline; gap: 6px; flex: 0 0 auto; white-space: nowrap; }
+.vp-ueb-dienst b { font-weight: 700; color: var(--vp-text); }
 .vp-ueb-dienst small { color: var(--vp-text-muted); }
-.vp-ueb-dienst-punkt { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.vp-ueb-dienst-punkt { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
 .vp-ueb-dienst-punkt.ok { background: var(--vp-color-ok, #22c55e); }
 .vp-ueb-dienst-punkt.warn { background: var(--vp-color-warn, #f59e0b); }
 

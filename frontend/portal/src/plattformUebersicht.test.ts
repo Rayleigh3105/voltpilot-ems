@@ -5,6 +5,7 @@ import type { PendingEnrollment } from './admin/adminApi';
 import type { FernwartungBox, FernwartungUebersicht } from './adminFernwartung';
 import type { WerkstattDienst } from './werkstattBank';
 import {
+  brauchtDichMitErledigt,
   uebersichtAuffaellig,
   uebersichtBrauchtDich,
   uebersichtDienste,
@@ -171,6 +172,38 @@ describe('uebersichtBrauchtDich', () => {
   });
 });
 
+describe('brauchtDichMitErledigt', () => {
+  const leer = { edgeFleet: [], fernwartungBoxen: [], werkstatt: null, pending: [] };
+
+  it('verbirgt eine Zeile, deren Grund zum erledigten Stand passt', () => {
+    const zeilen = uebersichtBrauchtDich({ ...leer, edgeFleet: [edgeRow({ externalRef: 'fehler', siteName: 'fehler', stand: 'fehler' })] }, NOW);
+    expect(zeilen).toHaveLength(1);
+    const { aktiv, erledigt } = brauchtDichMitErledigt(zeilen, [
+      { schluessel: zeilen[0].key, stand: zeilen[0].grund, erledigtAm: ago(0), erledigtVon: 'admin' },
+    ]);
+    expect(aktiv).toHaveLength(0);
+    expect(erledigt).toHaveLength(1);
+    expect(erledigt[0]).toMatchObject({ erledigtVon: 'admin' });
+  });
+
+  it('eine Zeile mit NEUEREM Grund erscheint wieder, obwohl derselbe Schlüssel schon erledigt war', () => {
+    const zeilen = uebersichtBrauchtDich({ ...leer, edgeFleet: [edgeRow({ externalRef: 'fehler', siteName: 'fehler', stand: 'fehler' })] }, NOW);
+    const { aktiv, erledigt } = brauchtDichMitErledigt(zeilen, [
+      { schluessel: zeilen[0].key, stand: 'ein ganz anderer, älterer Grund', erledigtAm: ago(0), erledigtVon: 'admin' },
+    ]);
+    expect(aktiv).toHaveLength(1);
+    expect(erledigt).toHaveLength(0);
+  });
+
+  it('ein erledigter Schlüssel ohne passende aktuelle Zeile verschwindet einfach (kein Ghost)', () => {
+    const { aktiv, erledigt } = brauchtDichMitErledigt([], [
+      { schluessel: 'fehler-weg', stand: 'x', erledigtAm: ago(0), erledigtVon: 'admin' },
+    ]);
+    expect(aktiv).toHaveLength(0);
+    expect(erledigt).toHaveLength(0);
+  });
+});
+
 describe('uebersichtFlottenbild', () => {
   it('gruppiert nach Kunde und setzt gestörte Gruppen zuerst', () => {
     const groups = fleetBoxGroups([
@@ -190,6 +223,20 @@ describe('uebersichtFlottenbild', () => {
     const groups = fleetBoxGroups([site()], NOW);
     const bild = uebersichtFlottenbild(groups, [edgeRow({ stand: 'laeuft' })]);
     expect(bild[0].felder[0].ton).toBe('lauf');
+  });
+
+  it('sortiert innerhalb EINER Kunden-Gruppe die auffälligen Boxen zuerst', () => {
+    const groups = fleetBoxGroups([
+      site({
+        tenantName: 'Ein Kunde',
+        boxes: [
+          { deviceId: 'd1', externalRef: 'VP-BOX-A', name: 'A (ok)', fuehrtAnlage: true, lastSeenAt: ago(10_000), edge: null, update: null },
+          { deviceId: 'd2', externalRef: 'VP-BOX-B', name: 'B (aus)', fuehrtAnlage: true, lastSeenAt: ago(3600_000), edge: null, update: null },
+        ],
+      }),
+    ], NOW);
+    const bild = uebersichtFlottenbild(groups, []);
+    expect(bild[0].felder.map((f) => f.ton)).toEqual(['aus', 'ok']);
   });
 
   it('E6/S7: eine verzögerte Box bekommt ihren eigenen Ton - nicht „aus"', () => {

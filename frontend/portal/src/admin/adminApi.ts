@@ -316,6 +316,17 @@ export interface AdminPlattformDienste {
   dienste: AdminPlattformDienst[];
 }
 
+/** „Braucht dich" einzeln auf erledigt setzen (Plattform-Übersicht, Scheibe S4). */
+export interface AdminBrauchtDichErledigt {
+  schluessel: string;
+  stand: string;
+  erledigtAm: string;
+  erledigtVon: string;
+}
+export interface AdminBrauchtDichErledigtListe {
+  erledigt: AdminBrauchtDichErledigt[];
+}
+
 /** L5 Meldungen plattformweit - dieselben Felder wie `MeldungDto`, plus Mandant. */
 export interface AdminMeldung {
   id: string;
@@ -798,6 +809,23 @@ export const adminApi = {
 
   /** L1: die Dienste-Zeile der Übersicht. */
   plattformDienste: () => request<AdminPlattformDienste>('/api/v1/admin/plattform/dienste'),
+
+  /** „Braucht dich" einzeln auf erledigt setzen - serverseitig, plattformweit. */
+  brauchtDichErledigt: () =>
+    request<AdminBrauchtDichErledigtListe>('/api/v1/admin/plattform/braucht-dich/erledigt'),
+
+  /** Eine oder mehrere Zeilen erledigen (z. B. „alle dieser Art"). */
+  brauchtDichErledigen: (eintraege: { schluessel: string; stand: string }[]) =>
+    request<void>('/api/v1/admin/plattform/braucht-dich/erledigen', {
+      method: 'POST',
+      body: JSON.stringify({ eintraege }),
+    }),
+
+  /** Einen erledigten Eintrag zurückholen. */
+  brauchtDichWiederherstellen: (schluessel: string) =>
+    request<void>(`/api/v1/admin/plattform/braucht-dich/${encodeURIComponent(schluessel)}`, {
+      method: 'DELETE',
+    }),
 
   /** L3: die Geräteakte in einer Antwort. */
   geraeteAkte: (ref: string) =>
