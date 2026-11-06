@@ -620,16 +620,6 @@
   .vp-app .vp-add-anlage-btn {
     display: none;
   }
-  /* Die Plattform-Punkte gibt es NUR hier: die Seitenleiste rendert am Telefon
-     nicht, und einen Hamburger gibt es seit Mobil-Umbau Stufe 1 nicht mehr.
-     ⚠ Einen Spezifitäts-SCHRITT höher, weil die Basis-Regel (`display: none`)
-     weiter UNTEN in derselben Datei steht: bei gleicher Spezifität gewinnt die
-     spätere, und der Block blieb am Telefon unsichtbar — im Browser bei 375 px
-     gemessen. Dieselbe Klippe wie beim Telefon-Wechsler. */
-  .vp-app .vp-avatarmenu-phone {
-    display: block;
-  }
-
   .vp-bottombar {
     display: grid;
     /* The slot count is DERIVED (3 at fleet level, up to 5 in an Anlage), so
@@ -919,12 +909,6 @@
 .vp-avatarmenu-item:hover {
   background: var(--vp-bg-light, #f1f3f5);
 }
-.vp-avatarmenu-head {
-  padding: var(--vp-space-3) var(--vp-space-3) var(--vp-space-1);
-  font-size: var(--vp-text-badge, 0.75rem);
-  font-weight: 700;
-  color: var(--vp-text-muted);
-}
 /* Einstellungen Scheibe 1 (behebt M8): Name, Anmelde-E-Mail und Rolle stehen im Kopf des
    Avatar-Menüs - auf JEDER Breite, anders als die ab 1280 px sichtbare `.meta` der Kopfzeile. */
 .vp-avatarmenu-person {
@@ -953,12 +937,6 @@
   overflow-wrap: break-word;
   hyphens: auto;
 }
-/* Am Rechner steht die Plattform-Gruppe in der Seitenleiste - ein zweiter Ort
-   für dieselben Punkte wäre eine Doppelung. */
-.vp-avatarmenu-phone {
-  display: none;
-}
-
 /* ---------- Der Ortspfad einer Seite ohne Anlage (UEMS AP-01 IP-5) ----------
    Standort- und Unternehmens-Übersicht: „Ahrenberg › Werk Ahrenberg". Anders
    als in einer Anlage gibt es dort am Telefon weder die Leiste noch den
@@ -984,3 +962,37 @@
 /* Die Leiste trägt höchstens fünf Kacheln (`ebenenNav.LEISTE_HOECHSTENS`): am Unternehmen Gruppen, am
    Standort „Anschlüsse“ statt „Netzanschlüsse“. Das frühere Umbruch-Pflaster für sechs und mehr Kacheln brach
    „Messstell|en“ mitten im Wort und ist entfallen; eine Beschriftung bleibt einzeilig. */
+
+/* Scheibe S1 (Konzept `vp-adminview-konzept-k1` §4.2/§4.6, E3): das Rückweg-Band
+   der Kundenansicht - sichtbar, solange ein Admin über die Suche einen Kunden
+   geöffnet hat ("Wie der Kunde es sieht"). Nennt den Kunden und führt zurück. */
+.vp-kundenansicht-band {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2, 0.5rem);
+  padding: var(--vp-space-2, 0.5rem) var(--vp-space-4, 1rem);
+  background: var(--vp-c-primary-bg, #eff6ff);
+  color: var(--vp-c-primary, #2563eb);
+  font-size: 0.875rem;
+  flex-wrap: wrap;
+}
+.vp-kundenansicht-band strong {
+  font-weight: 600;
+}
+.vp-kundenansicht-zurueck {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  min-height: 44px;
+  padding: 0 var(--vp-space-2, 0.5rem);
+}
+
+/* Scheibe S1 §4.2: die drei Räume der Plattform-Navigation - keine
+   Gruppen-Überschrift mehr, die Räume stehen gleichrangig untereinander. */
+.vp-plattform-raeume {
+  margin-top: var(--vp-space-2, 0.5rem);
+}

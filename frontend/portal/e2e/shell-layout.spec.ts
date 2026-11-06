@@ -21,11 +21,14 @@ for (const scene of ['long', 'admin&long', 'admin&fleet', 'ok', 'unknown']) {
         const rect = (selector: string) => document.querySelector(selector)?.getBoundingClientRect().toJSON();
         return { pageWidth: document.documentElement.scrollWidth, header: rect('.vp-topbar')!,
           avatar: rect('.vp-avatar-btn')!, title: rect('.vp-topbar .here')!,
-          status: rect('.vp-healthbadge'), tenant: rect('.vp-context'), main: rect('.vp-main')! };
+          status: rect('.vp-healthbadge'), tenant: rect('.vp-context'), main: rect('.vp-main')!,
+          // Scheibe S1 (E3 = A): mit gewähltem Mandanten steht das Rückweg-Band
+          // „Wie der Kunde es sieht" zwischen Kopfzeile und Inhalt.
+          band: rect('.vp-kundenansicht-band') };
       });
       expect(bounds.pageWidth, `${scene} @ ${width}: document overflow`).toBeLessThanOrEqual(width);
       expect(bounds.avatar.right).toBeLessThanOrEqual(width);
-      expect(bounds.main.top).toBeCloseTo(bounds.header.bottom, 1);
+      expect(bounds.main.top).toBeCloseTo(bounds.band ? bounds.band.bottom : bounds.header.bottom, 1);
       if (width <= 1279) {
         expect(bounds.avatar.width).toBeGreaterThanOrEqual(44);
         expect(bounds.avatar.height).toBeGreaterThanOrEqual(44);
@@ -63,9 +66,10 @@ test('plant, health, tenant and account controls stay independently reachable', 
     await page.getByRole('button', { name: /Zustand der Anlage:/ }).click();
     await expect(page.getByRole('dialog', { name: 'Zustand der Anlage' })).toBeVisible();
     await page.keyboard.press('Escape');
-    await page.getByRole('combobox', { name: 'Mandanten-Umschalter' }).click();
-    await page.getByRole('option', { name: 'Alle Mandanten', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: 'Mandanten-Umschalter' })).toHaveText('Alle Mandanten');
+    // Scheibe S1 (E3 = A): die Suche ersetzt den Mandanten-Umschalter.
+    await page.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' }).click();
+    await expect(page.getByRole('listbox', { name: 'Box, Kunde, Anlage, Person suchen' })).toBeVisible();
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: /Konto-Menü/ }).click();
     await expect(page.getByRole('menu')).toBeVisible();
     await page.keyboard.press('Escape');

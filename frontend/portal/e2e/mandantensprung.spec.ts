@@ -113,7 +113,8 @@ test('im Sprung bedient die Plattform die Karte „Wer bekommt Sonnenstrom zuers
   await page.getByRole('button', { name: 'Poolpumpe nach oben' }).click();
   await expect(page.getByText(/Poolpumpe Platz 4 statt 5/)).toBeVisible();
   await page.getByRole('button', { name: 'Reihenfolge speichern' }).click();
-  await expect(page.getByRole('status')).toContainText('Reihenfolge gespeichert');
+  // Scheibe S1: das Rückweg-Band "Wie der Kunde es sieht" trägt ebenfalls role="status" - der Toast ist gemeint.
+  await expect(page.getByRole('status').filter({ hasText: 'Reihenfolge gespeichert' })).toContainText('Reihenfolge gespeichert');
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
 
   for (const reiter of ['laden', 'regeln']) {

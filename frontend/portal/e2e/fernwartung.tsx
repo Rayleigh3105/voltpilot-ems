@@ -18,7 +18,7 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppShell } from '../src/shell/AppShell';
-import { GeraeteBereich } from '../src/pages/admin/GeraeteBereich';
+import { PlattformBereich } from '../src/pages/admin/PlattformBereich';
 import { FernwartungKarte } from '../src/components/FernwartungKarte';
 import { adminApi } from '../src/admin/adminApi';
 import { ApiError } from '../src/api';
@@ -328,7 +328,7 @@ function Fixture() {
   if (parameter.get('ansicht') === 'box') return <BoxKarte />;
   return <AppShell page={page} onNavigate={setPage} isAdmin showOverview={false} showAddAnlage={false}
     counts={{ sites: 3, devices: 3 }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
-    <GeraeteBereich page={page} onNavigate={(r) => setPage(typeof r === 'string' ? r : r.page)} />
+    <PlattformBereich page={page} onNavigate={(r) => setPage(typeof r === 'string' ? r : r.page)} />
   </AppShell>;
 }
 ReactDOM.createRoot(document.getElementById('root')!).render(<Fixture />);

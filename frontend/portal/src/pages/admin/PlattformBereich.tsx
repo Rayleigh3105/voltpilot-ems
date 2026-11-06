@@ -1,16 +1,20 @@
 import { useEffect, useRef } from 'react';
-import { GERAETE_BEREICH, pageRoute, type PageId, type Route } from '../../nav';
-import { GeraeteRegistryPage } from './GeraeteRegistryPage';
+import { PLATTFORM_BEREICH, pageRoute, type PageId, type Route } from '../../nav';
+import { PlattformUebersichtPage } from './PlattformUebersichtPage';
 import { EdgeUpdatesPage } from './EdgeUpdatesPage';
 import { FernwartungPage } from './FernwartungPage';
 import { WerkstattPage } from './WerkstattPage';
-import './GeraeteBereich.css';
+import { KatalogBereich } from './KatalogBereich';
 
-/** Geräte opens on Updates: version overview and rollout actions. Registration
- * is the secondary tab, Fernwartung (Wartungstunnel, E5) the third, Werkstatt
- * (Boxen vor dem Versand, 26.10.2026) the fourth. All existing routes and
- * device deep links survive. */
-export function GeraeteBereich({
+/**
+ * Der Raum „Plattform" (Konzept `vp-adminview-konzept-k1` §4.2/4.3, Scheibe
+ * S1): Übersicht · Software (N5) · Werkstatt · Fernwartung · Katalog, EINE
+ * gemeinsame Reiterleiste über fünf bestehenden Seiten. Dasselbe Haus wie der
+ * frühere Geräte-Bereich (Updates/Registrierung/Fernwartung/Werkstatt) -
+ * Registrierung ist seit S1 der eigene Raum „Geräte" und steht hier nicht
+ * mehr.
+ */
+export function PlattformBereich({
   page,
   onNavigate,
   onJumpToTenant,
@@ -19,33 +23,31 @@ export function GeraeteBereich({
   onNavigate: (target: Route | PageId) => void;
   onJumpToTenant?: (tenantId: string, route: Route) => void;
 }) {
-  const tabs = (
-    <GeraeteTabs active={page} onSelect={(id) => onNavigate(pageRoute(id))} />
-  );
+  const tabs = <PlattformTabs active={page} onSelect={(id) => onNavigate(pageRoute(id))} />;
 
   if (page === 'fernwartung') return <FernwartungPage tabs={tabs} />;
   if (page === 'werkstatt') return <WerkstattPage tabs={tabs} />;
-  return page === 'edge-updates' ? (
-    <EdgeUpdatesPage onNavigate={(r) => onNavigate(r)} onJumpToTenant={onJumpToTenant} tabs={tabs} />
-  ) : (
-    <GeraeteRegistryPage onJumpToTenant={onJumpToTenant} tabs={tabs} />
+  if (page === 'katalog') return <KatalogBereich tabs={tabs} />;
+  if (page === 'edge-updates') {
+    return <EdgeUpdatesPage onNavigate={(r) => onNavigate(r)} onJumpToTenant={onJumpToTenant} tabs={tabs} />;
+  }
+  return (
+    <PlattformUebersichtPage
+      onJumpToTenant={onJumpToTenant ?? (() => {})}
+      onNavigate={(r) => onNavigate(r)}
+      tabs={tabs}
+    />
   );
 }
 
-/**
- * Die Tab-Leiste des Bereichs - das Haus-Segment (`.vp-seg`, dieselbe Form wie
- * der Zeitraum-Umschalter der Historie), damit die Konsole keine zweite
- * Umschalt-Sprache lernt.
- */
-export function GeraeteTabs({
+/** Die Tab-Leiste des Raums - das Haus-Segment (`.vp-seg`), wie der frühere Geräte-Bereich. */
+function PlattformTabs({
   active,
   onSelect,
 }: {
   active: PageId;
   onSelect: (id: PageId) => void;
 }) {
-  // Vier Reiter passen am Telefon nicht nebeneinander; die Leiste scrollt in sich. Der gewählte
-  // Reiter steht beim Öffnen im sichtbaren Teil, sonst ist „Werkstatt“ halb verdeckt.
   const gewaehlt = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const zeigen = () => {
@@ -56,7 +58,6 @@ export function GeraeteTabs({
       leiste.scrollLeft = Math.max(0, links - (leiste.clientWidth - knopf.offsetWidth) / 2);
     };
     zeigen();
-    // Die Breiten stehen erst mit der geladenen Schrift fest.
     let aktiv = true;
     void document.fonts?.ready.then(() => aktiv && zeigen());
     return () => {
@@ -64,8 +65,8 @@ export function GeraeteTabs({
     };
   }, [active]);
   return (
-    <div className="vp-seg vp-bereich-tabs vp-geraete-tabs" role="tablist" aria-label="Geräte-Bereich">
-      {GERAETE_BEREICH.tabs.map((t) => (
+    <div className="vp-seg vp-bereich-tabs vp-plattform-tabs" role="tablist" aria-label="Plattform">
+      {PLATTFORM_BEREICH.tabs.map((t) => (
         <button
           key={t.id}
           ref={active === t.id ? gewaehlt : undefined}

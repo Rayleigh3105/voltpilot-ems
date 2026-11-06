@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -49,12 +49,15 @@ import { LIST_POLL_MS } from '../../pollCadence';
 export function PlattformUebersichtPage({
   onJumpToTenant,
   onNavigate,
+  tabs,
 }: {
   onJumpToTenant: (tenantId: string, target: Route) => void;
   // Die Edge-Updates-Seite ist mandanten-UNABHÄNGIG - der Sprung dorthin darf
   // den Mandanten-Umschalter deshalb nicht anfassen (onJumpToTenant würde ihn
   // umstellen, und ein leerer Mandant löschte die Auswahl des Betreibers).
   onNavigate?: (target: Route) => void;
+  /** Die Reiter-Leiste des Raums „Plattform" (Scheibe S1), vom Wirt `PlattformBereich`. */
+  tabs?: ReactNode;
 }) {
   const [unterstuetzungBis, setUnterstuetzungBis] = useState<Record<string, string> | null>(null);
   const [sites, setSites] = useState<AdminFleetSite[] | null>(null);
@@ -112,6 +115,7 @@ export function PlattformUebersichtPage({
 
   return (
     <>
+      {tabs}
       <AdminPageHead
         icon="dashboard"
         category="primary"
@@ -170,13 +174,14 @@ export function PlattformUebersichtPage({
               type="button"
               className="vp-kpi-link"
               onClick={() => onNavigate?.(pageRoute('edge-updates'))}
-              title={kpiUnknownNote(updates.kpi) ?? 'Zur Seite Edge-Updates'}
+              title={kpiUnknownNote(updates.kpi) ?? 'Zur Seite Software'}
             >
               <KpiCard
                 icon={<Icon name="refresh-cw" size={20} />}
                 category={kpiTone(updates.kpi) === 'warn' ? 'industry' : 'primary'}
                 value={kpiText(updates.kpi, updates.lines)}
-                label="Edge-Updates"
+                // N5: EIN Name für die Seite (siehe EdgeUpdatesPage).
+                label="Software"
               />
             </button>
           )}

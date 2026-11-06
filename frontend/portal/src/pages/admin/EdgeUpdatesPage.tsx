@@ -204,7 +204,10 @@ export function EdgeUpdatesPage({
       <AdminPageHead
         icon="refresh-cw"
         category="primary"
-        title="Geräte & Updates"
+        // N5 (Scheibe S1, Abschnitt 9): EIN Name für die Seite - vorher fünf
+        // („Geräte", „Updates", „Geräte & Updates", „Edge-Updates", die Route
+        // `edge-updates`). Die Route bleibt (Lesezeichen), der Name ist „Software".
+        title="Software"
         actions={
           <div className="vp-row-gap" style={{ alignItems: 'center' }}>
             {/* Die Bezugszeit der gezeigten Daten - ohne sie ist „nichts
