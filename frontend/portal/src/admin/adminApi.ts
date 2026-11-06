@@ -173,6 +173,27 @@ export interface UpdateUserInput {
   lastName?: string | null;
 }
 
+/** Eingabe von `POST …/beenden` (§5.6: Auftrag, Begründung, Name eintippen, Frist in Tagen). */
+export interface BeendenMandantInput {
+  auftrag: string;
+  begruendung: string;
+  confirmName: string;
+  fristTage?: number | null;
+}
+
+export interface WiederaufnehmenMandantInput {
+  auftrag: string;
+  begruendung: string;
+}
+
+/** Die Antwort von `POST …/beenden` bzw. `…/wiederaufnehmen` - die neuen Vertragsdaten. */
+export interface VertragsendeUebergang {
+  zustand: 'beendet' | 'aktiv';
+  beendet_am?: string;
+  frist_tage?: number;
+  loeschung_fruehestens?: string;
+}
+
 /** Report of what the tenant offboarding removed (DB transactional, Keycloak best-effort). */
 export interface TenantOffboardingReport {
   tenantId: string;
@@ -305,6 +326,21 @@ export const adminApi = {
     request<TenantOffboardingReport>(`/api/v1/admin/tenants/${tenantId}/delete`, {
       method: 'POST',
       body: JSON.stringify({ confirmName }),
+    }),
+
+  // Vertragsende I (N1, UEMS AP-20 IP-16): beenden mit Frist, wiederaufnehmen -
+  // derselbe Kundenbereich, kein neuer. Der Löschweg (deleteTenant) bleibt
+  // der einzige Löschweg; diese zwei sind nur der Übergang davor.
+  beendenMandant: (tenantId: string, input: BeendenMandantInput) =>
+    request<VertragsendeUebergang>(`/api/v1/admin/tenants/${tenantId}/beenden`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  wiederaufnehmenMandant: (tenantId: string, input: WiederaufnehmenMandantInput) =>
+    request<VertragsendeUebergang>(`/api/v1/admin/tenants/${tenantId}/wiederaufnehmen`, {
+      method: 'POST',
+      body: JSON.stringify(input),
     }),
 
   listUsers: (tenantId: string) =>
