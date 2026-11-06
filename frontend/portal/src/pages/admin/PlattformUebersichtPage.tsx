@@ -1,204 +1,155 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Badge } from '../../../designsystem/components/core/Badge';
-import { Button } from '../../../designsystem/components/core/Button';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
-import { adminApi } from '../../admin/adminApi';
+import { adminApi, type PendingEnrollment } from '../../admin/adminApi';
 import { fleetApi, type AdminFleetRelease, type AdminFleetSite } from '../../admin/fleetApi';
+import type { EdgeUpdatesKpi, EdgeUpdatesLine, FleetRow as EdgeFleetRow } from '../../adminEdgeUpdates';
+import { fleetBoxGroups } from '../../adminFleet';
+import type { FernwartungBox, FernwartungUebersicht } from '../../adminFernwartung';
+import type { WerkstattDienst } from '../../werkstattBank';
 import {
-  kpiText,
-  kpiTone,
-  kpiUnknownNote,
-  loudBanner,
-  type EdgeUpdates,
-} from '../../adminEdgeUpdates';
-import {
-  controlMatrixInputs,
-  controlMatrixRows,
-  fleetBoxGroups,
-  fleetPulse,
-  type FleetBoxGroup,
-} from '../../adminFleet';
-import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
+  uebersichtAuffaellig,
+  uebersichtBrauchtDich,
+  uebersichtDienste,
+  uebersichtFlottenbild,
+  uebersichtKacheln,
+  type BrauchtDichZeile,
+  type FlottenbildTon,
+  type UebersichtKachel,
+} from '../../plattformUebersicht';
+import { EmptyState, ErrorState } from '../../components/States';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
-import { anlageRoute, pageRoute, type Route } from '../../nav';
+import { freshnessLabel } from '../../adminEdgeUpdates';
+import { geraeteAkteRoute, PLATFORM_TAB_PAGES, pageRoute, type PageId, type Route } from '../../nav';
 import { AdminPageHead } from './AdminPageHead';
 import './PlattformUebersicht.css';
-// LIST: eine Verwaltungs-Übersicht bewegt sich nicht sekündlich.
 import { LIST_POLL_MS } from '../../pollCadence';
 
 /**
- * Plattform → Übersicht: der FLOTTEN-PULS (Bausteine B1 + B2 + B4).
+ * Plattform › Übersicht (Konzept `vp-adminview-konzept-k1` §4.3, Scheibe S4):
+ * die neue Landung von `#/plattform`. Antwort zuerst, Ausnahmen zählen statt
+ * Ganzheiten - vier Kacheln, „Braucht dich", Flottenbild, Dienste, Auffällig.
  *
- * Die tägliche erste Frage eines EMS-Betreibers - „welche Anlage braucht heute
- * meine Aufmerksamkeit?" - hatte im Portal keinen Ort: alles Operative lag
- * hinter dem Mandanten-Umschalter, ein Mandant nach dem anderen. Diese Seite
- * ist genau dieser Ort: Anlagen gruppieren je eine Zeile pro Box über ALLE
- * Mandanten, Störungen zuerst; eine Box-Zeile öffnet genau diese Box.
+ * Ersetzt die frühere Seite (Kacheln, Puls-Tabelle, Steuerungs-Matrix): die
+ * Anlagen-Fakten wohnen jetzt in Akte › Anlage (S3), die Puls-Tabelle entfällt
+ * ersatzlos zugunsten von Kacheln, „Braucht dich" und Flottenbild.
  *
- * **Bewusst ohne Geld** (Captain-Entscheid Q2): reiner Technik-Blick. Eine
- * Plattform-Summe über die absichtlich hold-last-veränderte Messreihe und eine
- * gemischte Flotte wäre schief und röche nach Abrechnung.
- *
- * **Seit Stufe 2 speist EIN Aufruf die ganze Seite** (`GET /api/v1/admin/fleet`)
- * - die Mandanten-Schleife und die Nachlade-Wellen der Stufe 1 sind entfallen,
- * die Ableitungen und die Oberfläche sind dieselben geblieben. Alle Ableitung
- * ist weiterhin das reine `adminFleet.ts`; hier wird nur geladen und gerendert.
+ * **Keine neuen Endpunkte.** Diese Seite lädt nur Antworten, die andere
+ * Plattform-Seiten ohnehin laden (`/admin/fleet`, `/admin/edge-updates`,
+ * `/admin/fernwartung[/boxen]`, `/admin/werkstatt/dienst`,
+ * `/admin/enrollments/pending`) und reicht sie an das reine Modul
+ * `plattformUebersicht.ts` weiter - jede Zahl bleibt EIN Ort, EIN Fakt.
  */
 export function PlattformUebersichtPage({
-  onJumpToTenant,
   onNavigate,
   tabs,
 }: {
-  onJumpToTenant: (tenantId: string, target: Route) => void;
-  // Die Edge-Updates-Seite ist mandanten-UNABHÄNGIG - der Sprung dorthin darf
-  // den Mandanten-Umschalter deshalb nicht anfassen (onJumpToTenant würde ihn
-  // umstellen, und ein leerer Mandant löschte die Auswahl des Betreibers).
   onNavigate?: (target: Route) => void;
   /** Die Reiter-Leiste des Raums „Plattform" (Scheibe S1), vom Wirt `PlattformBereich`. */
   tabs?: ReactNode;
 }) {
-  const [unterstuetzungBis, setUnterstuetzungBis] = useState<Record<string, string> | null>(null);
   const [sites, setSites] = useState<AdminFleetSite[] | null>(null);
-  // Das Release-Register aus derselben Antwort - der Maßstab für „veraltet".
-  // Leer heißt kein Maßstab, und dann wird nichts als veraltet behauptet.
   const [releases, setReleases] = useState<AdminFleetRelease[]>([]);
-  // Der Bezugszeitpunkt der Daten - jedes Alter wird DAGEGEN gerechnet, nie
-  // gegen eine Uhr über einem stehenden Schnappschuss (die Lebendigkeits-Lehre).
+  const [edgeFleet, setEdgeFleet] = useState<EdgeFleetRow[]>([]);
+  const [edgeLines, setEdgeLines] = useState<EdgeUpdatesLine[]>([]);
+  const [edgeKpi, setEdgeKpi] = useState<EdgeUpdatesKpi | null>(null);
+  const [fernwartung, setFernwartung] = useState<FernwartungUebersicht | null>(null);
+  const [fernwartungBoxen, setFernwartungBoxen] = useState<FernwartungBox[]>([]);
+  const [werkstatt, setWerkstatt] = useState<WerkstattDienst | null>(null);
+  const [pending, setPending] = useState<PendingEnrollment[]>([]);
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   const [loadError, setLoadError] = useState<string | null>(null);
-  // OTA Stufe 2: der Update-Puls. FAIL-SOFT und in einem EIGENEN Zustand -
-  // fällt er aus, fehlt die Karte, statt „0 fehlgeschlagen" zu behaupten.
-  const [updates, setUpdates] = useState<EdgeUpdates | null>(null);
+  // Treibt nur die ANZEIGE des Alters weiter - die Bezugszeit der Daten
+  // bleibt `fetchedAt` (die Lebendigkeits-Lehre, `liveness.ts`).
+  const [tick, setTick] = useState<number>(() => Date.now());
 
   const load = useCallback(async () => {
-    try {
-      const fleet = await fleetApi.fleet();
-      setSites(fleet.sites);
-      setUnterstuetzungBis(fleet.unterstuetzungBis ?? null);
-      setReleases(fleet.releases ?? []);
-      setFetchedAt(Date.now());
+    const [fleetR, edgeR, fwR, fwBoxenR, wsR, pendR] = await Promise.allSettled([
+      fleetApi.fleet(),
+      adminApi.edgeUpdates(),
+      adminApi.fernwartung(),
+      adminApi.fernwartungBoxen(),
+      adminApi.werkstattDienst(),
+      adminApi.listPendingEnrollments(),
+    ]);
+    if (fleetR.status === 'fulfilled') {
+      setSites(fleetR.value.sites);
+      setReleases(fleetR.value.releases ?? []);
       setLoadError(null);
-    } catch {
-      // Ein Fehlschlag ist keine Datenlage: die Seite sagt, dass sie nichts
-      // weiß, statt eine leere Flotte zu behaupten. Steht schon eine Tabelle,
-      // bleibt sie mit ihrer alten Bezugszeit stehen (der stille Takt darf den
-      // Zustand nie kippen).
+    } else {
+      // Ein Fehlschlag ist keine Datenlage - steht schon etwas, bleibt es mit
+      // seiner alten Bezugszeit stehen (der stille Takt kippt den Zustand nie).
       setLoadError('Die Plattform-Übersicht konnte nicht geladen werden.');
     }
-    try {
-      setUpdates(await adminApi.edgeUpdates());
-    } catch {
-      // Ein älteres Backend kennt die Route noch nicht - dann gibt es keine
-      // Update-Karte, und das ist ehrlicher als eine erfundene Null.
-      setUpdates(null);
+    if (edgeR.status === 'fulfilled') {
+      setEdgeFleet(edgeR.value.fleet);
+      setEdgeLines(edgeR.value.lines ?? []);
+      setEdgeKpi(edgeR.value.kpi);
+    } else {
+      setEdgeFleet([]);
+      setEdgeLines([]);
+      setEdgeKpi(null);
     }
+    setFernwartung(fwR.status === 'fulfilled' ? fwR.value : null);
+    setFernwartungBoxen(fwBoxenR.status === 'fulfilled' ? fwBoxenR.value : []);
+    setWerkstatt(wsR.status === 'fulfilled' ? wsR.value : null);
+    setPending(pendR.status === 'fulfilled' ? pendR.value : []);
+    setFetchedAt(Date.now());
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  // Stiller 30-s-Takt: eine erfolgreiche Antwort setzt Zustand UND Bezugszeit,
-  // ein Fehlschlag lässt beides unberührt (er kann den Zustand nicht kippen).
   useFreshnessPoll(() => void load(), LIST_POLL_MS, true);
+  useEffect(() => {
+    const t = window.setInterval(() => setTick(Date.now()), 5_000);
+    return () => window.clearInterval(t);
+  }, []);
 
-  const groups = useMemo(
-    () => (sites ? fleetBoxGroups(sites, new Date(fetchedAt), releases) : null),
-    [sites, fetchedAt, releases],
+  const jetzt = useMemo(() => new Date(fetchedAt), [fetchedAt]);
+
+  const kacheln = useMemo(
+    () => (sites && edgeKpi ? uebersichtKacheln({ sites, releases, edgeLines, edgeKpi }, jetzt) : null),
+    [sites, releases, edgeLines, edgeKpi, jetzt],
   );
-  const rows = groups?.map((group) => group.site) ?? null;
+  const brauchtDich = useMemo(
+    () => uebersichtBrauchtDich({ edgeFleet, fernwartungBoxen, werkstatt, pending }, jetzt),
+    [edgeFleet, fernwartungBoxen, werkstatt, pending, jetzt],
+  );
+  const groups = useMemo(() => (sites ? fleetBoxGroups(sites, jetzt, releases) : []), [sites, jetzt, releases]);
+  const flotte = useMemo(() => uebersichtFlottenbild(groups, edgeFleet), [groups, edgeFleet]);
+  const dienste = useMemo(() => uebersichtDienste(fernwartung, werkstatt, jetzt), [fernwartung, werkstatt, jetzt]);
+  const auffaellig = useMemo(
+    () => (sites ? uebersichtAuffaellig(sites, edgeFleet, jetzt) : []),
+    [sites, edgeFleet, jetzt],
+  );
+  const gesamtBoxen = useMemo(() => groups.reduce((n, g) => n + g.boxes.length, 0), [groups]);
 
-  const pulse = rows ? fleetPulse(rows) : null;
-  const updateBanner = updates ? loudBanner(updates.fleet) : null;
+  const openRoute = (route: Route) => onNavigate?.(route);
 
   return (
-    <>
+    <div className="vp-plattform-uebersicht">
       {tabs}
       <AdminPageHead
         icon="dashboard"
         category="primary"
-        title="Plattform-Übersicht"
-        description="Alle Boxen aller Mandanten - nach Anlage gruppiert, Störungen zuerst. Eine Box-Zeile öffnet genau diese Box."
+        title="Plattform"
         actions={
-          <Button
-            variant="ghost"
-            iconLeft={<Icon name="refresh-cw" size={18} />}
-            onClick={() => void load()}
-          >
-            Aktualisieren
-          </Button>
+          <span className="vp-muted vp-text-sm" data-testid="ueb-stand">
+            {sites ? freshnessLabel(fetchedAt, tick) : 'Wird geladen …'} · alle 30 s
+          </span>
         }
       />
 
-      {loadError && rows != null && <div className="vp-alert vp-alert-warn">{loadError}</div>}
+      {loadError && sites != null && <div className="vp-alert vp-alert-warn">{loadError}</div>}
 
-      {pulse && (
-        <div className="vp-kpis vp-admin-pulse vp-fleet-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
-          <KpiCard
-            icon={<Icon name="sun" size={20} />}
-            category="primary"
-            value={String(pulse.sites)}
-            label="Anlagen gesamt"
-          />
-          <KpiCard
-            icon={<Icon name="alert-triangle" size={20} />}
-            category={pulse.gestoert > 0 ? 'industry' : 'primary'}
-            value={String(pulse.gestoert)}
-            label="Gestört / meldet sich nicht"
-          />
-          <KpiCard
-            icon={<Icon name="history" size={20} />}
-            category={pulse.planAlt > 0 ? 'dynamic' : 'primary'}
-            value={String(pulse.planAlt)}
-            label="Plan älter als 2 Std."
-          />
-          <KpiCard
-            icon={<Icon name="wifi" size={20} />}
-            category="primary"
-            value={String(pulse.wartet)}
-            label="Wartet auf erste Daten"
-          />
-          <KpiCard
-            icon={<Icon name="settings" size={20} />}
-            category={pulse.pflegeOffen > 0 ? 'dynamic' : 'primary'}
-            value={String(pulse.pflegeOffen)}
-            label="Offene Pflege-Punkte"
-          />
-          {/* OTA Stufe 2: der Update-Puls. Der Zähler läuft über die
-              ERREICHBARE Menge - ein Gerät ohne Meldung steht weder im Zähler
-              noch im Nenner, und die Zusatzzeile sagt das. */}
-          {updates && (
-            <button
-              type="button"
-              className="vp-kpi-link"
-              onClick={() => onNavigate?.(pageRoute('edge-updates'))}
-              title={kpiUnknownNote(updates.kpi) ?? 'Zur Seite Software'}
-            >
-              <KpiCard
-                icon={<Icon name="refresh-cw" size={20} />}
-                category={kpiTone(updates.kpi) === 'warn' ? 'industry' : 'primary'}
-                value={kpiText(updates.kpi, updates.lines)}
-                // N5: EIN Name für die Seite (siehe EdgeUpdatesPage).
-                label="Software"
-              />
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Warn-first wie überall im Puls: eine rote Zeile trägt ihren Grund und
-          NENNT die betroffene Anlage. */}
-      {updateBanner && <div className="vp-alert vp-alert-warn">{updateBanner}</div>}
-
-      {loadError && rows == null ? (
+      {loadError && sites == null ? (
         <ErrorState message={loadError} onRetry={() => void load()} />
-      ) : rows == null ? (
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <TableSkeleton rows={5} cols={7} />
-        </Card>
-      ) : rows.length === 0 ? (
+      ) : kacheln == null ? (
+        <div className="vp-ueb-kacheln" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => <Card key={i} style={{ height: 110 }} />)}
+        </div>
+      ) : sites && sites.length === 0 ? (
         <Card padding="lg" radius="lg">
           <EmptyState
             icon="sun"
@@ -209,239 +160,268 @@ export function PlattformUebersichtPage({
         </Card>
       ) : (
         <>
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="vp-table responsive vp-fleetpuls" data-testid="admin-fleet">
-              <thead>
-                <tr>
-                  <th>Box</th>
-                  <th>Rolle</th>
-                  <th>Verbindung</th>
-                  <th>Letzte Meldung</th>
-                  <th>Software</th>
-                  <th>Fähigkeiten</th>
-                </tr>
-              </thead>
-              {groups?.map((group) => (
-                <FleetSiteGroup
-                  key={`${group.site.tenantId}:${group.site.siteId}`}
-                  group={group}
-                  unterstuetzungBis={unterstuetzungBis === null ? undefined : unterstuetzungBis[group.site.tenantId] ?? null}
-                  onOpen={onJumpToTenant}
-                />
-              ))}
-            </table>
-          </Card>
+          <Kacheln kacheln={kacheln} onNavigate={onNavigate} />
 
-          <ControlMatrixSection
-            sites={sites ?? []}
-            fetchedAt={fetchedAt}
-            onOpen={onJumpToTenant}
-          />
+          <div className="vp-ueb-spalten">
+            <div className="vp-ueb-spalte">
+              <BrauchtDichKarte zeilen={brauchtDich} onOpen={openRoute} />
+              <AuffaelligKarte zeilen={auffaellig} />
+            </div>
+            <div className="vp-ueb-spalte">
+              <FlottenbildKarte gruppen={flotte} gesamt={gesamtBoxen} onOpen={openRoute} />
+            </div>
+          </div>
+
+          <DiensteKarte dienste={dienste} />
+
+          <ReiterZeilen onNavigate={onNavigate} fernwartung={fernwartung} werkstatt={werkstatt} software={kacheln.find((k) => k.id === 'software') ?? null} />
         </>
       )}
-    </>
+    </div>
   );
 }
 
-function FleetSiteGroup({
-  unterstuetzungBis,
-  group,
-  onOpen,
+// ── Kacheln ─────────────────────────────────────────────────────────────────
+
+function Kacheln({
+  kacheln,
+  onNavigate,
 }: {
-  group: FleetBoxGroup;
-  unterstuetzungBis?: string | null;
-  onOpen: (tenantId: string, target: Route) => void;
+  kacheln: UebersichtKachel[];
+  onNavigate?: (target: Route) => void;
 }) {
-  const { site, boxes } = group;
-  const openSite = () => onOpen(site.tenantId, anlageRoute(site.siteId));
-  // Nur eine laufende Unterstützung ist eine Nachricht; „keine“ stünde sonst an jeder Anlage.
-  const support = unterstuetzungBis
-    ? `Unterstützung bis ${new Date(unterstuetzungBis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`
-    : null;
   return (
-    <tbody className="vp-fleet-group">
-      <tr className="vp-fleet-group-head">
-        <td colSpan={6} data-label="Anlage">
-          <div className="vp-fleet-group-title">
-            <button
-              type="button"
-              className="vp-linklike"
-              onClick={openSite}
-            >
-              {site.siteName}
-            </button>
-            <span>{site.tenantName}</span>
-          </div>
-          <div className="vp-fleet-group-facts">
-            {support && <span>{support}</span>}
-            <Badge variant={site.deviceTone} dot>{site.deviceText}</Badge>
-            <span>Plan {site.planText}</span>
-            <span>Quellen {site.sources?.text ?? '—'}</span>
-            <div className="vp-fleet-signals">
-              {site.signals.map((signal) => (
-                <span key={signal.id} title={signal.title}>
-                  <Badge variant={signal.tone} dot>{signal.label}</Badge>
-                </span>
-              ))}
-            </div>
-          </div>
-        </td>
-      </tr>
-      {boxes.length === 0 ? (
-        <tr className="vp-fleet-box-empty">
-          <td colSpan={6} data-label="Box">Keine Box angemeldet</td>
-        </tr>
-      ) : boxes.map((box) => {
-        const openBox = () => onOpen(site.tenantId, {
-          page: 'anlagen', siteId: site.siteId, sub: 'box',
-          geraet: { ref: box.externalRef, geraetId: null },
-        });
-        return (
-          <tr className="clickable vp-fleet-box" key={box.deviceId} onClick={openBox}>
-            <td data-label="Box">
-              <div className="vp-cell-main">
-                <button type="button" className="vp-linklike" onClick={(event) => {
-                  event.stopPropagation();
-                  openBox();
-                }}>{box.name}</button>
-                {/* Die Referenz nur, wenn die Box einen eigenen Namen hat - sonst stünde sie doppelt. */}
-                {box.name !== box.externalRef && <span className="vp-cell-sub vp-mono">{box.externalRef}</span>}
-              </div>
-            </td>
-            <td data-label="Rolle">{box.roleText}</td>
-            <td data-label="Verbindung"><Badge variant={box.connectionTone} dot>{box.connectionText}</Badge></td>
-            <td data-label="Letzte Meldung"><span className={box.connectionTone === 'ok' ? undefined : 'vp-muted'}>{box.lastSeenText}</span></td>
-            <td data-label="Software">
-              <span className={box.software.tone === 'warn' ? 'vp-mono vp-edge-stand-warn' : 'vp-mono vp-muted'} title={box.software.title}>
-                {box.software.text}
-              </span>
-            </td>
-            <td data-label="Fähigkeiten">
-              {/* N4: eine VORHANDENE Fähigkeit braucht keine Ansage - nur eine
-                  fehlende verhindert etwas und ist deshalb den Blick wert.
-                  Zwei graue Abzeichen an jeder Box waren reine Kulisse. */}
-              {(() => {
-                const fehlend = box.capabilities.filter((c) => c.status !== 'vorhanden');
-                return fehlend.length === 0 ? (
-                  <span className="vp-muted">—</span>
-                ) : (
-                  <div className="vp-fleet-capabilities">
-                    {fehlend.map((capability) => (
-                      <Badge key={capability.code} variant="off" dot>
-                        {capability.name} fehlt
-                      </Badge>
-                    ))}
-                  </div>
-                );
-              })()}
-            </td>
-          </tr>
-        );
-      })}
-    </tbody>
+    <div className="vp-ueb-kacheln" data-testid="ueb-kacheln">
+      {kacheln.map((k) => (
+        <Kachel key={k.id} kachel={k} onNavigate={onNavigate} />
+      ))}
+    </div>
   );
 }
 
 /**
- * B2 - die Steuerungs-/Abregel-Matrix als Sektion des Pulses.
- *
- * Sie beantwortet die Pilsting-Frage: „wo ist Steuerung frei UND zertifiziert,
- * wo klafft geplant gegen ausgeführt?" `certifiedUnits < units` („0 von 2
- * Wechselrichtern freigegeben") war wochenlang unsichtbar, obwohl der Beleg in
- * der DB lag.
- *
- * Nur Anlagen MIT Speicher - und seit Stufe 2 ohne eigenen Abruf: die beiden
- * Belege reisen im Flotten-Aggregat mit, das Aufklappen ist damit reine
- * Anzeige. Das Beleg-ALTER rechnet gegen dieselbe Bezugszeit wie der Puls
- * darüber; ein einfrierendes Alter wäre genau die Halbwahrheit, die diese
- * Matrix beenden soll.
+ * Nur die Software-Kachel führt irgendwohin (zur Software-Seite, die diese
+ * Zahl selbst führt). Verbindung, Steuerung und Plan wohnen (noch) in keiner
+ * eigenen gefilterten Fläche - Steuerung und Plan ziehen mit S3 in die Akte ›
+ * Anlage, eine eigene Zählung hier vorzugreifen widerspräche „Ein Ort je
+ * Fakt".
  */
-function ControlMatrixSection({
-  sites,
-  fetchedAt,
-  onOpen,
-}: {
-  sites: AdminFleetSite[];
-  fetchedAt: number;
-  onOpen: (tenantId: string, target: Route) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const candidates = useMemo(() => controlMatrixInputs(sites), [sites]);
+function Kachel({ kachel, onNavigate }: { kachel: UebersichtKachel; onNavigate?: (target: Route) => void }) {
+  const klickbar = kachel.id === 'software' && onNavigate != null;
+  const inhalt = (
+    <>
+      <span className="vp-ueb-kachel-kopf"><Icon name={kachel.icon} size={15} />{kachel.label}</span>
+      {klickbar && <span className="vp-ueb-kachel-pfeil"><Icon name="chevron-right" size={16} /></span>}
+      <span className={`vp-ueb-kachel-zahl ${kachel.ton}`}>{kachel.zahl}</span>
+      <span className="vp-ueb-kachel-wort">{kachel.wort}</span>
+      {kachel.kontext && <span className="vp-ueb-kachel-kontext">{kachel.kontext}</span>}
+    </>
+  );
+  return klickbar ? (
+    <Card
+      className="vp-ueb-kachel vp-ueb-kachel--klick"
+      role="button"
+      tabIndex={0}
+      onClick={() => onNavigate?.(pageRoute('edge-updates'))}
+      onKeyDown={(e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate?.(pageRoute('edge-updates')); }
+      }}
+    >
+      {inhalt}
+    </Card>
+  ) : (
+    <Card className="vp-ueb-kachel">{inhalt}</Card>
+  );
+}
 
-  if (candidates.length === 0) return null;
+// ── Braucht dich ────────────────────────────────────────────────────────────
 
-  const matrix = controlMatrixRows(candidates, new Date(fetchedAt));
-
+function BrauchtDichKarte({ zeilen, onOpen }: { zeilen: BrauchtDichZeile[]; onOpen: (route: Route) => void }) {
   return (
-    <Card style={{ padding: 0, overflow: 'hidden', marginTop: 'var(--vp-space-6)' }}>
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
       <div className="vp-admin-sec-head">
-        <h2>
-          <button
-            type="button"
-            className="vp-linklike"
-            aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
-          >
-            Steuerung &amp; Abregelung ({candidates.length})
-            <Icon name={open ? 'chevron-down' : 'chevron-right'} size={16} />
-          </button>
-        </h2>
-        <p>
-          Nur Anlagen mit Speicher. Der Beleg-Stand je Zeile - eine Begrenzung
-          gilt erst als ausgeführt, wenn der Wechselrichter sie bestätigt hat.
-        </p>
+        <h2>Braucht dich{zeilen.length > 0 ? ` (${zeilen.length})` : ''}</h2>
       </div>
-      {open && (
-        <table className="vp-table responsive">
-          <thead>
-            <tr>
-              <th>Anlage</th>
-              <th>Batterie-Steuerung</th>
-              <th>Abregelung</th>
-              <th>Ausführung jetzt</th>
-              <th>Beleg</th>
-            </tr>
-          </thead>
-          <tbody>
-            {matrix.map((m) => (
-              <tr key={m.siteId}>
-                <td data-label="Anlage">
-                  <div className="vp-cell-main">
-                    <button
-                      type="button"
-                      className="vp-linklike"
-                      onClick={() => onOpen(m.tenantId, anlageRoute(m.siteId))}
-                    >
-                      {m.siteName}
-                    </button>
-                    <span className="vp-cell-sub">{m.tenantName}</span>
-                  </div>
-                </td>
-                <td data-label="Batterie-Steuerung">
-                  <div className="vp-cell-main">
-                    <Badge variant={m.battery.tone} dot>
-                      {m.battery.text}
-                    </Badge>
-                    {m.battery.detail && <span className="vp-cell-sub">{m.battery.detail}</span>}
-                  </div>
-                </td>
-                <td data-label="Abregelung">
-                  <div className="vp-cell-main">
-                    <Badge variant={m.curtail.tone} dot>
-                      {m.curtail.text}
-                    </Badge>
-                    {m.curtail.detail && <span className="vp-cell-sub">{m.curtail.detail}</span>}
-                  </div>
-                </td>
-                <td data-label="Ausführung jetzt">{m.executionText}</td>
-                <td data-label="Beleg">
-                  <span className={m.belegStale ? 'vp-muted' : undefined}>{m.belegText}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {zeilen.length === 0 ? (
+        <div style={{ padding: '0 16px 16px' }}>
+          <span className="vp-muted">Keine Box braucht dich gerade.</span>
+        </div>
+      ) : (
+        <div className="vp-ueb-braucht-liste" data-testid="ueb-braucht-dich">
+          {zeilen.map((z) => (
+            <button
+              key={z.key}
+              type="button"
+              className="vp-ueb-braucht-zeile"
+              data-testid="ueb-braucht-zeile"
+              onClick={() => onOpen(z.route)}
+            >
+              <span className="vp-ueb-braucht-kreis"><Icon name={z.icon} size={16} /></span>
+              <span className="vp-ueb-braucht-haupt">
+                <b>{z.box}{z.kunde && <span className="vp-ueb-braucht-kunde">{z.kunde}</span>}</b>
+                <small>{z.grund}</small>
+              </span>
+              <span className="vp-ueb-braucht-schritt">{z.schrittLabel}</span>
+              <Icon name="chevron-right" size={16} />
+            </button>
+          ))}
+        </div>
       )}
     </Card>
   );
 }
+
+// ── Flottenbild ─────────────────────────────────────────────────────────────
+
+function FlottenbildKarte({
+  gruppen,
+  gesamt,
+  onOpen,
+}: {
+  gruppen: ReturnType<typeof uebersichtFlottenbild>;
+  gesamt: number;
+  onOpen: (route: Route) => void;
+}) {
+  return (
+    <Card>
+      <div className="vp-admin-sec-head" style={{ padding: 0, marginBottom: 12 }}>
+        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span>Flotte</span>
+          <span className="vp-muted vp-text-sm">{gesamt} {gesamt === 1 ? 'Box' : 'Boxen'}</span>
+        </h2>
+      </div>
+      {gruppen.length === 0 ? (
+        <span className="vp-muted">Noch keine Box verbunden.</span>
+      ) : (
+        <>
+          <div className="vp-ueb-flotte" data-testid="ueb-flotte">
+            {gruppen.map((g) => (
+              <div className="vp-ueb-flotte-gruppe" key={g.kunde}>
+                <small>{g.kunde} · {g.felder.length}</small>
+                <div className="vp-ueb-flotte-felder">
+                  {g.felder.map((f) => (
+                    <button
+                      key={f.ref}
+                      type="button"
+                      className={`vp-ueb-flotte-feld ${f.ton}`}
+                      title={`${f.name}: ${f.title}`}
+                      onClick={() => onOpen(geraeteAkteRoute(f.ref))}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Legende />
+        </>
+      )}
+    </Card>
+  );
+}
+
+function Legende() {
+  const EINTRAEGE: { ton: FlottenbildTon; label: string }[] = [
+    { ton: 'ok', label: 'verbunden' },
+    { ton: 'aus', label: 'meldet sich nicht' },
+    { ton: 'nie', label: 'nie gemeldet' },
+    { ton: 'lauf', label: 'Update läuft' },
+    { ton: 'hand', label: 'nur von Hand' },
+  ];
+  return (
+    <div className="vp-ueb-flotte-legende">
+      {EINTRAEGE.map((e) => (
+        <span key={e.ton}><i className={e.ton} />{e.label}</span>
+      ))}
+    </div>
+  );
+}
+
+// ── Dienste ─────────────────────────────────────────────────────────────────
+
+function DiensteKarte({ dienste }: { dienste: ReturnType<typeof uebersichtDienste> }) {
+  if (dienste.length === 0) return null;
+  return (
+    <Card style={{ marginBottom: 'var(--vp-space-6)' }}>
+      <div className="vp-admin-sec-head" style={{ padding: 0, marginBottom: 10 }}>
+        <h2>Dienste</h2>
+      </div>
+      <div className="vp-ueb-dienste" data-testid="ueb-dienste">
+        {dienste.map((d) => (
+          <span className="vp-ueb-dienst" key={d.id}>
+            <i className={`vp-ueb-dienst-punkt ${d.ton}`} />
+            <b>{d.label}</b>
+            <small>{d.text}</small>
+          </span>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── Auffällig ───────────────────────────────────────────────────────────────
+
+function AuffaelligKarte({ zeilen }: { zeilen: ReturnType<typeof uebersichtAuffaellig> }) {
+  if (zeilen.length === 0) return null;
+  return (
+    <Card>
+      <div className="vp-admin-sec-head" style={{ padding: 0, marginBottom: 6 }}>
+        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span>Auffällig</span>
+          <span className="vp-muted vp-text-sm">Tageswerte</span>
+        </h2>
+      </div>
+      <div data-testid="ueb-auffaellig">
+        {zeilen.map((z) => (
+          <div className="vp-ueb-auffaellig-zeile" key={z.key}>
+            <span>{z.ort}</span>
+            <span>{z.text}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── Telefon: die übrigen Plattform-Reiter als Zeilen ───────────────────────
+
+function ReiterZeilen({
+  onNavigate,
+  fernwartung,
+  werkstatt,
+  software,
+}: {
+  onNavigate?: (target: Route) => void;
+  fernwartung: FernwartungUebersicht | null;
+  werkstatt: WerkstattDienst | null;
+  software: UebersichtKachel | null;
+}) {
+  const urteil = (id: PageId): string | null => {
+    if (id === 'edge-updates') return software ? `${software.zahl} ${software.wortKurz}` : null;
+    if (id === 'werkstatt') {
+      const laufend = werkstatt?.laeufe.filter((l) => l.zustand !== 'fertig').length ?? 0;
+      return laufend > 0 ? `${laufend} in Arbeit` : null;
+    }
+    if (id === 'fernwartung') return fernwartung ? `${fernwartung.fensterOffen} Fenster offen` : null;
+    if (id === 'katalog') return `${KATALOG_BEREICHE} Bereiche`;
+    return null;
+  };
+  return (
+    <div className="vp-ueb-reiter-liste" data-testid="ueb-reiter-zeilen">
+      {PLATFORM_TAB_PAGES.filter((p) => ['edge-updates', 'werkstatt', 'fernwartung', 'katalog'].includes(p.id)).map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          className="vp-ueb-reiter-zeile"
+          onClick={() => onNavigate?.(pageRoute(p.id))}
+        >
+          <Icon name={p.icon} size={18} />
+          <span>{p.label}</span>
+          <span className="vp-ueb-reiter-urteil">{urteil(p.id)}</span>
+          <Icon name="chevron-right" size={16} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const KATALOG_BEREICHE = 4;
