@@ -100,14 +100,17 @@ export function AbnahmeAnzeige({ a, jetzt }: { a: WerkstattAbnahme; jetzt: Date 
       <dt>Prüfungen</dt>
       <dd>
         {belege ? (
-          <ul className="vp-ws-belege" data-testid="ws-belege">
-            {PRUEFUNGEN.map((p) => (
-              <li key={p.id}>
-                <span className="vp-ws-pruefung">{p.text}</span>
-                <span>{belege[p.id] ?? 'kein Beleg'}</span>
-              </li>
-            ))}
-          </ul>
+          <details className="vp-ws-aufklapp" data-testid="ws-belege-aufklapp">
+            <summary>{PRUEFUNGEN.length} Prüfungen mit Beleg</summary>
+            <ul className="vp-ws-belege" data-testid="ws-belege">
+              {PRUEFUNGEN.map((p) => (
+                <li key={p.id}>
+                  <span className="vp-ws-pruefung">{p.text}</span>
+                  <span>{belege[p.id] ?? 'kein Beleg'}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
         ) : (
           `${a.pruefungen.length} von ${PRUEFUNGEN.length} abgehakt`
         )}
