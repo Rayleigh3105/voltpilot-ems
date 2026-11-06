@@ -823,18 +823,18 @@ export function resetZiel(input: {
   if (saysSomething(input.siteVorgabe) || saysSomething(input.tenantVorgabe)) {
     return {
       ziel: saysSomething(input.siteVorgabe) ? 'vorgabe-anlage' : 'vorgabe-kunde',
-      satz: 'Danach gilt wieder die Vorgabe Ihres Betreibers.',
+      satz: '„Zurücksetzen“ stellt die Vorgabe Ihres Betreibers wieder her.',
     };
   }
   if (saysSomething(presetLayout(input.profil, input.flaeche ?? 'cockpit'))) {
     return {
       ziel: 'preset',
-      satz: 'Danach gilt wieder der VoltPilot-Standard für Ihr Profil.',
+      satz: '„Zurücksetzen“ stellt den VoltPilot-Standard für Ihr Profil wieder her.',
     };
   }
   return {
     ziel: 'katalog',
-    satz: 'Danach gilt wieder der VoltPilot-Standard.',
+    satz: '„Zurücksetzen“ stellt den VoltPilot-Standard wieder her.',
   };
 }
 

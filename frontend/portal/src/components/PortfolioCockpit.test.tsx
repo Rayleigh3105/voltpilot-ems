@@ -335,7 +335,7 @@ describe('Anpassen im Scope KUNDE (Stufe 3, wiederverwendet)', () => {
   it('der Reset SAGT sein Ziel - ohne mit dem Verlust zu drohen', async () => {
     renderCockpit();
     const leiste = await anpassenOeffnen();
-    expect(leiste.textContent).toContain('Danach gilt wieder der VoltPilot-Standard');
+    expect(leiste.textContent).toContain('„Zurücksetzen“ stellt den VoltPilot-Standard wieder her');
     expect(leiste.textContent).not.toContain('wird verworfen');
   });
 });

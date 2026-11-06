@@ -378,7 +378,7 @@ describe('Reset-Ansage (E2: der Knopf SAGT, worauf er fällt)', () => {
   it('fällt auf die Vorgabe des Betreibers, wenn es eine gibt', () => {
     expect(resetZiel({ siteVorgabe: doc({ hidden: ['strompreis'] }) })).toEqual({
       ziel: 'vorgabe-anlage',
-      satz: 'Danach gilt wieder die Vorgabe Ihres Betreibers.',
+      satz: '„Zurücksetzen“ stellt die Vorgabe Ihres Betreibers wieder her.',
     });
     expect(resetZiel({ tenantVorgabe: doc({ lead: 'energiefluss' }) }).ziel).toBe('vorgabe-kunde');
   });
@@ -388,7 +388,7 @@ describe('Reset-Ansage (E2: der Knopf SAGT, worauf er fällt)', () => {
     // der Kunde selbst ausgelöst hat, und das Haus warnt nur dort, wo etwas
     // Unerwartetes passiert.
     for (const eingabe of [{}, { profil: 'privat' }, { siteVorgabe: doc({ hidden: ['geld'] }) }]) {
-      expect(resetZiel(eingabe).satz).toMatch(/^Danach gilt wieder /);
+      expect(resetZiel(eingabe).satz).toMatch(/^„Zurücksetzen“ stellt .* wieder her\.$/);
       expect(resetZiel(eingabe).satz).not.toContain('verworfen');
     }
   });

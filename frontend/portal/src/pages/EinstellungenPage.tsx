@@ -21,6 +21,7 @@ import {
   type WebhookZiel,
 } from '../benachrichtigungenApi';
 import { InstallAppPanel } from '../components/InstallAppPanel';
+import { ErrorState } from '../components/States';
 import { VpPicker } from '../components/VpPicker';
 import { VpTimePicker } from '../components/VpTimePicker';
 import {
@@ -671,12 +672,7 @@ export function EinstellungenPage() {
         <header className="vp-meinst-kopf">
           <h1>Einstellungen</h1>
         </header>
-        <p className="vp-alert" role="alert">
-          Die Einstellungen konnten nicht geladen werden.{' '}
-          <button type="button" className="vp-linklike" onClick={() => setLadeVersion((v) => v + 1)}>
-            Erneut laden
-          </button>
-        </p>
+        <ErrorState message="Die Einstellungen konnten nicht geladen werden." onRetry={() => setLadeVersion((v) => v + 1)} />
       </div>
     );
   }
