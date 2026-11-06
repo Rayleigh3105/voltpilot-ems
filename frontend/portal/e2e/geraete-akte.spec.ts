@@ -42,8 +42,10 @@ test.describe('Geräteakte bei 390 px: Reiterleiste', () => {
     expect(sicht.linksOk).toBe(true);
     expect(sicht.rechtsOk).toBe(true);
 
-    // Position: sticky unter der 68px-Kopfzeile - bleibt nach dem Scrollen im Bild.
-    await page.evaluate(() => window.scrollTo(0, 400));
+    // Position: sticky unter der 68px-Kopfzeile - bleibt nach dem Scrollen im Bild. Die
+    // Raum-Reiterleiste (Geräte/Software/Werkstatt/Fernwartung, #1762) UND der Seitenkopf
+    // müssen dafür erst vorbeigescrollt sein - 800 px ist genug, aber noch innerhalb des Reiters.
+    await page.evaluate(() => window.scrollTo(0, 800));
     await expect(reiter).toBeInViewport();
     const top = await reiter.evaluate((el) => el.getBoundingClientRect().top);
     expect(Math.round(top)).toBe(68);

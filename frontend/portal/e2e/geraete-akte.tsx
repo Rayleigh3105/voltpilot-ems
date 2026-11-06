@@ -7,11 +7,11 @@
 import { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppShell } from '../src/shell/AppShell';
-import { GeraeteAktePage } from '../src/pages/admin/GeraeteAktePage';
+import { GeraeteBereich } from '../src/pages/admin/GeraeteRegistryPage';
 import { adminApi } from '../src/admin/adminApi';
 import { fleetApi } from '../src/admin/fleetApi';
 import { keycloak } from '../src/auth';
-import { type GeraeteAkteReiter } from '../src/nav';
+import { type GeraeteAkteReiter, type PageId } from '../src/nav';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -137,12 +137,17 @@ Object.assign(adminApi, {
 function Fixture() {
   const sucheReiter = new URLSearchParams(window.location.search).get('reiter') as GeraeteAkteReiter | null;
   const [reiter, setReiter] = useState<GeraeteAkteReiter | null>(sucheReiter ?? null);
+  const [page, setPage] = useState<PageId>('geraete-registry');
   return (
-    <AppShell page="geraete-registry" onNavigate={() => undefined} isAdmin showOverview={false}
+    <AppShell page={page} onNavigate={() => undefined} isAdmin showOverview={false}
       showAddAnlage={false} counts={{ sites: 1, devices: 1 }} tenants={[]} tenantOverride={null}
       onTenantChange={() => undefined}>
-      <GeraeteAktePage boxRef={BOX} reiter={reiter}
-        onNavigate={(r) => { if ('geraeteAkte' in r && r.geraeteAkte) setReiter(r.geraeteAkte.reiter); }}
+      <GeraeteBereich page={page} geraeteAkte={{ ref: BOX, reiter }}
+        onNavigate={(r) => {
+          if (typeof r === 'string') { setPage(r); return; }
+          setPage(r.page);
+          if ('geraeteAkte' in r && r.geraeteAkte) setReiter(r.geraeteAkte.reiter);
+        }}
         onJumpToTenant={() => undefined} tenants={[]} />
     </AppShell>
   );
