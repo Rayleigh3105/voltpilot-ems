@@ -1,0 +1,81 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EdgeUpdates } from '../../adminEdgeUpdates';
+
+const edgeUpdates = vi.fn();
+const listDevices = vi.fn();
+const listPendingEnrollments = vi.fn();
+const werkstattBoxen = vi.fn();
+const provisionDevice = vi.fn();
+
+vi.mock('../../admin/adminApi', () => ({
+  adminApi: {
+    edgeUpdates: (...a: unknown[]) => edgeUpdates(...a),
+    listDevices: (...a: unknown[]) => listDevices(...a),
+    listPendingEnrollments: (...a: unknown[]) => listPendingEnrollments(...a),
+    werkstattBoxen: (...a: unknown[]) => werkstattBoxen(...a),
+    provisionDevice: (...a: unknown[]) => provisionDevice(...a),
+  },
+}));
+
+const { GeraeteListePage } = await import('./GeraeteListePage');
+
+const emptyEdgeUpdates = (): EdgeUpdates => ({
+  releases: [], journal: [], rollouts: [], fleet: [], kpi: null,
+} as unknown as EdgeUpdates);
+
+describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnitt, eine Zeile führt in die Akte', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    edgeUpdates.mockResolvedValue(emptyEdgeUpdates());
+    listDevices.mockResolvedValue([]);
+    listPendingEnrollments.mockResolvedValue([]);
+    werkstattBoxen.mockResolvedValue([]);
+  });
+
+  it('zeigt die leere Lage ehrlich, statt eine Tabelle ohne Zeilen zu zeigen', async () => {
+    render(<GeraeteListePage onOpen={vi.fn()} />);
+    expect(await screen.findByText('Noch kein Gerät')).toBeInTheDocument();
+  });
+
+  it('führt eine verbundene Zeile in die Geräteakte, nie in eine zweite Ansicht', async () => {
+    edgeUpdates.mockResolvedValue({
+      ...emptyEdgeUpdates(),
+      fleet: [{
+        deviceId: 'd1', label: 'edge-a1', externalRef: 'edge-a1', siteId: 's1', siteName: 'Pilsting',
+        tenantId: 't1', tenantName: 'Kunde A', ist: 'edge-2026.08.0', soll: 'edge-2026.08.0', sollSeq: 12,
+        state: 'bestaetigt', reason: null, since: null, reportedAt: null, rolloutId: null,
+        lastSeenAt: new Date().toISOString(), boxArt: 'docker', linie: 'docker',
+      }],
+    });
+    const onOpen = vi.fn();
+    render(<GeraeteListePage onOpen={onOpen} />);
+    const row = await screen.findByText('Pilsting');
+    fireEvent.click(row);
+    expect(onOpen).toHaveBeenCalledWith('edge-a1');
+  });
+
+  it('„Geräte-ID registrieren" öffnet eine Eingabezeile - kein Fenster (E1 = A)', async () => {
+    render(<GeraeteListePage onOpen={vi.fn()} />);
+    await screen.findByText('Noch kein Gerät');
+    fireEvent.click(screen.getByRole('button', { name: 'Geräte-ID registrieren' }));
+    expect(screen.getByTestId('geraete-registrier-zeile')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    provisionDevice.mockResolvedValue(undefined);
+    fireEvent.change(screen.getByLabelText('Geräte-ID *'), { target: { value: 'VP-1234-ABCD' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrieren' }));
+    await waitFor(() => expect(provisionDevice).toHaveBeenCalledWith(expect.objectContaining({ externalRef: 'VP-1234-ABCD' })));
+  });
+
+  it('zeigt eine gedruckte, unverbundene ID als eigenen Lebensabschnitt', async () => {
+    listDevices.mockResolvedValue([{
+      deviceId: null, externalRef: 'VP-0001', label: null, siteId: null, siteName: null, tenantId: null,
+      tenantName: null, kind: 'inverter', ist: null, soll: null, sollSeq: null, state: null, reason: null,
+      blocker: null, lastSeenAt: null, reportedAt: null, provisioned: true, note: null,
+      provisionedAt: new Date().toISOString(),
+    }]);
+    render(<GeraeteListePage onOpen={vi.fn()} />);
+    expect(await screen.findByText('Gedruckt', { exact: false })).toBeInTheDocument();
+    expect(screen.getByTestId('geraete-liste')).toHaveTextContent('VP-0001');
+  });
+});

@@ -51,7 +51,7 @@ import {
   useGeraetesucheVerlauf,
 } from '../components/GeraetesucheEinstieg';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { anlageRoute, aufbauHash, boxSeiteHash, hashForRoute, pageRoute } from '../nav';
+import { anlageRoute, aufbauHash, boxSeiteHash, geraeteAkteHash, hashForRoute, pageRoute } from '../nav';
 import { einstellungenHash } from '../settingsNav';
 import { UEMS_GATEWAY_ANBINDEN } from '../glossar';
 import {
@@ -65,11 +65,6 @@ import { useAnlagensteuerung } from '../useAnlagensteuerung';
 // LIVE: die Box-Seite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
 import { LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
-import { FernwartungKarte } from '../components/FernwartungKarte';
-import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
-import { geraetView, type GeraetView } from '../adminGeraet';
-import { adminApi } from '../admin/adminApi';
-import { fleetApi } from '../admin/fleetApi';
 import './GeraetSeite.css';
 import './BoxSeite.css';
 
@@ -130,9 +125,6 @@ export function BoxSeiteSection({
   const [gemeinsameSteuerung, setGemeinsameSteuerung] = useState<UemsGemeinsameSteuerungZustand | null>(null);
   // Wohin der Wechsel einer Steuerquelle zu einem Mitglied führt (T6) — ohne Gemeinsame Steuerung der Bestand.
   const steuerquelleWeg = wegDesWechsels(true, gemeinsameSteuerung?.zustand ?? null, false, true);
-  const [adminView, setAdminView] = useState<GeraetView | null>(null);
-  const [adminBusy, setAdminBusy] = useState(false);
-  const [adminFehler, setAdminFehler] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -177,29 +169,6 @@ export function BoxSeiteSection({
     soft(api.gemeinsameSteuerung(site.id), setGemeinsameSteuerung);
     soft(api.standorte(), setStandorte);
     setNow(Date.now());
-    if (showTechnicalLayer() && boxDevice) {
-      void Promise.all([
-        adminApi.listDevices(),
-        fleetApi.fleet(),
-        adminApi.controlCandidates().catch(() => null),
-        adminApi.edgeUpdates().catch(() => null),
-      ]).then(
-        ([devs, flotte, candidates, updates]) => {
-          if (!active) return;
-          setAdminView(geraetView({
-            ref: boxDevice.externalRef,
-            devices: devs,
-            sites: flotte.sites,
-            candidates,
-            releases: updates?.releases ?? [],
-            journal: updates?.journal ?? [],
-          }, new Date()));
-        },
-        () => {
-          if (active) setAdminView(null);
-        },
-      );
-    }
     return () => {
       active = false;
     };
@@ -226,19 +195,6 @@ export function BoxSeiteSection({
       active = false;
     };
   }, [anlagenIds, reloadKey]);
-
-  async function adminAktion(fn: () => Promise<unknown>) {
-    setAdminBusy(true);
-    setAdminFehler(null);
-    try {
-      await fn();
-      setReloadKey((k) => k + 1);
-    } catch (e) {
-      setAdminFehler(e instanceof ApiError ? e.message : 'Die Aktion ist fehlgeschlagen.');
-    } finally {
-      setAdminBusy(false);
-    }
-  }
 
   // Zustand UND Bezugszeit ZUSAMMEN (die `liveness.ts`-Lehre); ein Fehlschlag
   // lässt beides unberührt.
@@ -555,31 +511,17 @@ export function BoxSeiteSection({
 
         // --- Technik & Diagnose -------------------------------------------------
         const technik: TechnikTeil[] = [{ id: 'rohdaten', inhalt: <ZeilenListe zeilen={view.technik} /> }];
-        if (showTechnicalLayer() && (adminView || boxDevice)) {
+        {/* E4 = A (Konzept `vp-adminview-konzept-k1` §4.6, Scheibe S2): die
+            Admin-Karten und die Fernwartungs-Karte entfallen hier - jeder
+            Box-Fakt hat seither genau EINEN Ort, die Geräteakte. */}
+        if (showTechnicalLayer() && boxDevice) {
           technik.push({
             id: 'plattform',
             inhalt: (
               <div data-testid="box-admin">
-                {adminView && <AdminGeraetKarten
-                  view={adminView}
-                  busy={adminBusy}
-                  onNavigateSteuerung={() => {
-                    window.location.hash = hashForRoute(pageRoute('steuerungs-freigabe'));
-                  }}
-                  onAssign={adminView.device.deviceId ? async (releaseSeq: number) => {
-                    await adminAktion(() => adminApi.setUpdateTarget(
-                      adminView.device.deviceId as string, { releaseSeq }));
-                  } : undefined}
-                  onRevert={adminView.device.deviceId && adminView.device.soll ? async () => {
-                    await adminAktion(() => adminApi.revertUpdateTarget(
-                      adminView.device.deviceId as string));
-                  } : undefined}
-                />}
-                {adminFehler && <p className="vp-alert vp-alert-err">{adminFehler}</p>}
-                {/* Fernwartung (E5): nur Plattform-Admins - der Kunde sieht
-                    die Fenster nicht (O3). Lädt selbst, unabhängig davon, ob
-                    die übrigen Plattform-Karten geladen sind. */}
-                {boxDevice && <FernwartungKarte edgeRef={boxDevice.externalRef} />}
+                <a className="vp-box-oberflaeche" href={geraeteAkteHash(boxDevice.externalRef)}>
+                  In der Geräteakte öffnen <Icon name="chevron-right" size={14} />
+                </a>
               </div>
             ),
           });

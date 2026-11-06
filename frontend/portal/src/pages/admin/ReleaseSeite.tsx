@@ -7,7 +7,7 @@ import {
   BOX_ART_LABELS, releaseBoxArt, type BoxArt, type EdgeReleaseSeite, type EdgeUpdatesRelease, type FleetRow,
 } from '../../adminEdgeUpdates';
 import { boxName, linieDerBox, releaseInhalt, verteiltSicht, wann } from '../../geraeteUpdates';
-import { Zeitleiste } from './BoxSeite';
+import { Zeitleiste } from './Zeitleiste';
 import { SatzText } from './GeraeteUpdates';
 
 const linienBoxen = (art: BoxArt, n: number) =>

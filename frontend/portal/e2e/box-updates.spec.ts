@@ -17,7 +17,7 @@ async function ueberlauf(page: import('@playwright/test').Page, auswahl: string)
   }, auswahl);
 }
 
-test('Updates: Lage, Linien, Braucht dich und Boxen - Fortschritt, Box-Dialog und Suche', async ({ page }) => {
+test('Updates: Lage, Linien und Braucht dich - „Box ansehen" führt in die Geräteakte (Scheibe S2)', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/e2e/box-updates.html');
@@ -41,92 +41,24 @@ test('Updates: Lage, Linien, Braucht dich und Boxen - Fortschritt, Box-Dialog un
   await expect(aufgaben.nth(1)).toContainText('Hof Lindenallee ist seit 4');
   await expect(aufgaben.nth(2)).toContainText('Kleingarten Ostend: nur von Hand (Stufe 1)');
 
-  // „Fortschritt": nur die Box, bei der das Update gerade läuft - mit Stand und Anfrage getrennt.
-  await docker.getByRole('button', { name: 'Fortschritt' }).click();
-  const boxes = page.getByTestId('box-versions');
-  await expect(boxes.getByTestId('box-zeile')).toHaveCount(1);
-  const werkstatt = boxes.getByTestId('box-zeile').filter({ hasText: 'Werkstatt am Bach' });
-  await expect(werkstatt.getByTestId('box-laeuft')).toHaveText('edge-2026.09.02');
-  await expect(werkstatt.getByTestId('box-ziel')).toHaveText('Anfrage edge-2026.09.10');
-  await expect(werkstatt.getByTestId('box-update')).toContainText('lädt');
-  // Die Box-Seite (G7): drei Kästen getrennt, darunter ihr Verlauf.
-  await page.getByRole('button', { name: 'Update verwalten für Werkstatt am Bach · edge-abcdefj' }).click();
-  const seite = page.getByRole('dialog', { name: 'Werkstatt am Bach' });
-  await expect(seite.getByTestId('box-seite-fakten')).toContainText('Angefragt · Portal');
-  await expect(seite.getByTestId('box-seite-fakten')).toContainText('edge-2026.09.10');
-  await expect(seite.getByTestId('box-seite-verlauf')).toContainText('angenommen: edge-2026.09.10');
-  await expect(seite.getByTestId('box-seite-verlauf')).toContainText('angefragt: edge-2026.09.10');
-  await page.keyboard.press('Escape');
-  await expect(seite).not.toBeVisible();
-
-  // Suche über Anlage und Gerät; die Filter lassen sich gemeinsam zurücksetzen.
-  await page.getByRole('searchbox', { name: 'Boxen durchsuchen' }).fill('Sonnenhof');
-  await expect(boxes).toHaveCount(0);
-  await expect(page.getByText('Keine Box passt zu diesem Filter.')).toBeVisible();
-  await page.getByRole('button', { name: 'Filter zurücksetzen' }).click();
-  await page.getByRole('searchbox', { name: 'Boxen durchsuchen' }).fill('Sonnenhof');
-  await expect(boxes.getByTestId('box-zeile')).toHaveCount(1);
-  await expect(boxes).toContainText('Solarpark Sonnenhof');
-
-  // Scheibe S1: Registrierung ist kein Reiter des Raums „Plattform" mehr - sie ist der eigene Raum „Geräte".
-  await page.getByRole('button', { name: 'Geräte', exact: true }).click();
-  const support = page.locator('details').filter({ hasText: '1 Box ohne Kundenkonto' });
-  await expect(support).not.toHaveAttribute('open');
-  await support.locator('summary').click();
-  await expect(support).toHaveAttribute('open');
-  await expect(support).toContainText('edge-xyz234q');
+  // Die Boxenliste entfällt hier (§4.3, S2): „Box ansehen" führt direkt in die Geräteakte dieser Box, nie in ein Fenster.
+  await aufgaben.nth(0).getByRole('button', { name: 'Box ansehen' }).click();
+  await expect(page.getByTestId('akte-zustand')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Gewerbepark West' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
-test('Box-Art: Chip, Gerät, Stufe 1 und keine Docker-Zuweisung für Edge Light', async ({ page }) => {
+test('Box-Art: Stufe 1 - „Nachrüsten" führt in die Geräteakte statt in ein Fenster', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/e2e/box-updates.html');
-  const boxes = page.getByTestId('box-versions');
-  await expect(boxes).toBeVisible();
-  const mango = boxes.getByTestId('box-zeile').filter({ hasText: 'Kleingarten Ostend' });
-  await expect(mango.getByTestId('box-art')).toHaveText('Edge Light');
-  await expect(mango.getByTestId('box-update')).toContainText('nur von Hand · Stufe 1');
-  await expect(mango).not.toContainText('ohne Vertrauens-Set');
-  // Geräte & Updates G8: das gemeldete Gerät in der Tabelle.
-  await expect(mango.getByTestId('box-geraet')).toHaveText('GL.iNet GL-MT300N-V2 · mipsle');
-  const neubau = boxes.getByTestId('box-zeile').filter({ hasText: 'Neubau am Feldrain' });
-  await expect(neubau.getByTestId('box-art')).toHaveText('Box-Art unbekannt');
-  await expect(neubau.getByTestId('box-geraet')).toHaveText('Gerät nicht gemeldet');
-
-  // Filtern nach Linie.
-  await page.getByRole('group', { name: 'Boxen nach Linie filtern' }).getByRole('button', { name: 'Edge Light 1' }).click();
-  await expect(boxes.getByTestId('box-zeile')).toHaveCount(1);
-  await expect(boxes).toContainText('Kleingarten Ostend');
-
-  // Die Box-Seite einer Box mit Stufe 1 (G7, E3 A): der Grund in einem Satz und die Schritte - kein Release.
-  await page.getByRole('button', { name: 'Update verwalten für Kleingarten Ostend · edge-m4ng0q1' }).click();
-  const seite = page.getByRole('dialog', { name: 'Kleingarten Ostend' });
-  await expect(seite.getByTestId('box-seite-geraet')).toHaveText('GL.iNet GL-MT300N-V2 · mipsle');
-  await expect(seite.getByTestId('box-seite-stufe1')).toContainText('Ihr Startprogramm startet immer die Fassung aus dem Flash.');
-  await expect(seite.getByTestId('box-seite-schritte')).toContainText('Fassung zum Nachrüsten: edge-light-2026.09.12, signiert');
-  await expect(seite.getByRole('button', { name: 'Fenster öffnen' })).toBeVisible();
-  await expect(seite.getByRole('button', { name: 'Update anfragen …' })).toHaveCount(0);
-  await seite.getByText('Technik').click();
-  await expect(seite.getByTestId('box-seite-loader')).toHaveText('startet nur die Fassung aus dem Flash (Stufe 1)');
-  await expect(seite.getByTestId('box-seite-verlauf')).toContainText('erste Meldung: edge-light-g2d2bca1b6');
-  await page.keyboard.press('Escape');
-  await expect(seite).not.toBeVisible();
-
-  // Die Releases der Edge-Light-Linie: im Verteil-Dialog kann die Mango nicht - mit dem Weg zum Nachrüsten.
-  await page.getByTestId('linie-light').getByRole('button', { name: 'Releases (1)' }).click();
-  const releases = page.getByRole('dialog', { name: 'Releases · Edge Light' });
-  await expect(releases).not.toContainText('edge-2026.09.02');
-  await releases.getByRole('button', { name: /Verteilen/ }).click();
-  const dialog = page.getByRole('dialog', { name: 'Update verteilen · Edge Light' });
-  const kannNicht = dialog.getByTestId('verteil-kann_nicht');
-  await expect(kannNicht).toContainText('Kleingarten Ostend');
-  await expect(kannNicht).toContainText('diese Box hat Stufe 1');
-  await expect(kannNicht.getByRole('checkbox').first()).toBeDisabled();
-  await expect(dialog.getByRole('button', { name: '0 Boxen anfragen' })).toBeDisabled();
-  await kannNicht.getByRole('button', { name: 'Nachrüsten' }).click();
-  await expect(page.getByRole('dialog', { name: 'Kleingarten Ostend' }).getByTestId('box-seite-stufe1')).toBeVisible();
-  await page.keyboard.press('Escape');
+  const light = page.getByTestId('linie-light');
+  await expect(light).toContainText('1 nur von Hand (Stufe 1)');
+  await expect(light.getByRole('button', { name: 'Verteilen …' })).toHaveCount(0);
+  await light.getByRole('button', { name: 'Nachrüsten: so geht’s' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Kleingarten Ostend' })).toBeVisible();
+  await expect(page.getByTestId('akte-reiter').getByRole('tab', { name: 'Software' })).toHaveAttribute('aria-selected', 'true');
   expect(errors).toEqual([]);
 });
 
@@ -166,7 +98,7 @@ test('Update verteilen: Gruppen, „Erst eine Box“ und der Knopf, der sagt, wa
   expect(errors).toEqual([]);
 });
 
-test('Release-Seite: Inhalt, was neu ist, wo es läuft, wann verteilt - von dort zur Box und zum Verteilen (G7)', async ({ page }) => {
+test('Release-Seite: Inhalt, was neu ist, wo es läuft, wann verteilt - von dort in die Geräteakte und zum Verteilen (G7)', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/e2e/box-updates.html');
@@ -183,13 +115,13 @@ test('Release-Seite: Inhalt, was neu ist, wo es läuft, wann verteilt - von dort
     const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     expect(over, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
   }
-  // Von der Release-Seite zur Box …
+  // Von der Release-Seite führt eine Box seit S2 direkt in ihre Geräteakte, nie in ein zweites Fenster.
   await seite.getByRole('button', { name: 'Solarpark Sonnenhof' }).click();
-  const box = page.getByRole('dialog', { name: 'Solarpark Sonnenhof' });
-  await expect(box.getByTestId('box-seite-verlauf')).toContainText('edge-2026.09.10 bestätigt');
-  await expect(box.getByTestId('box-seite-fakten')).toContainText('Zuletzt bestätigt · Box');
-  await page.keyboard.press('Escape');
-  // … und zum Verteilen.
+  await expect(page.getByRole('heading', { level: 1, name: 'Solarpark Sonnenhof' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  // … und zum Verteilen (zurück auf der Software-Seite).
+  await page.getByRole('button', { name: 'Plattform', exact: true }).click();
+  await page.getByRole('tab', { name: 'Software', exact: true }).click();
   await page.getByTestId('linie-light').getByTestId('linie-neuestes').click();
   const light = page.getByRole('dialog', { name: 'edge-light-2026.09.12' });
   await expect(light.getByTestId('release-inhalt')).toContainText('Mango');
@@ -215,12 +147,8 @@ test('Je Software-Linie eine Karte: nebeneinander am Rechner, untereinander am T
   await expect(light.getByTestId('linie-neuestes')).toHaveText('edge-light-2026.09.12');
   await expect(light).toContainText('1 nur von Hand (Stufe 1)');
   await expect(light.getByTestId('linie-leiter')).toContainText('Kleingarten Ostend · Stufe 1');
-  // Die einzige Edge-Light-Box hat Stufe 1: statt „Verteilen" der Weg zum Nachrüsten.
+  // Die einzige Edge-Light-Box hat Stufe 1: statt „Verteilen" der Weg zum Nachrüsten - in die Geräteakte.
   await expect(light.getByRole('button', { name: 'Verteilen …' })).toHaveCount(0);
-  await light.getByRole('button', { name: 'Nachrüsten: so geht’s' }).click();
-  await expect(page.getByRole('dialog')).toContainText('Kleingarten Ostend');
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
 
   for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -235,46 +163,43 @@ test('Je Software-Linie eine Karte: nebeneinander am Rechner, untereinander am T
   expect(errors).toEqual([]);
 });
 
-test('Updates bleibt bei 320, 768, 1024 und 1440 px innerhalb des Bildschirms', async ({ page }, info) => {
-  test.skip(info.project.name !== 'desktop-chromium' && info.project.use.browserName !== 'webkit', 'Gezielte zusätzliche Viewport-Prüfung');
-  await page.goto('/e2e/box-updates.html');
-  await expect(page.getByTestId('box-versions')).toBeVisible();
-  for (const width of [320, 768, 1024, 1440]) {
-    await page.setViewportSize({ width, height: 1000 });
-    const metrics = await page.evaluate(() => {
-      const table = document.querySelector('[data-testid="box-versions"]')!;
-      return {
-        documentOverflow: document.documentElement.scrollWidth - innerWidth,
-        tableOverflow: table.scrollWidth - table.clientWidth,
-      };
-    });
-    expect(metrics.documentOverflow, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
-    expect(metrics.tableOverflow, `Boxen bei ${width}px`).toBeLessThanOrEqual(1);
-  }
-});
+// ---------------------------------------------------------------------------
+// Scheibe S2 (Konzept `vp-adminview-konzept-k1` §4.4): die Geräte-Liste - eine
+// Zeile je Box in jedem Lebensabschnitt, nie mehr nur die Aufkleber-Registry.
+// ---------------------------------------------------------------------------
 
-test('Registrierung: Online-Status je Box mit Zählung und Filter, ohne Überlauf', async ({ page }) => {
+test('Geräte-Liste: jede Box in jedem Lebensabschnitt, eine Zeile führt in die Akte, ohne Überlauf', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto('/e2e/box-updates.html');
-  // Scheibe S1: Registrierung ist kein Reiter des Raums „Plattform" mehr - sie ist der eigene Raum „Geräte".
   await page.getByRole('button', { name: 'Geräte', exact: true }).click();
-  const devices = page.getByTestId('devices');
-  await expect(devices).toBeVisible();
-  await expect(page.getByTestId('online-zaehlung')).toHaveText('6 online · 1 offline · 1 nie gemeldet');
-  const still = devices.locator('tr').filter({ hasText: 'Hof Lindenallee' });
+  const liste = page.getByTestId('geraete-liste');
+  await expect(liste).toBeVisible();
+  await expect(liste).toContainText('Solarpark Sonnenhof');
+  // Gedruckt, wartet und Werkstatt stehen in derselben Liste wie die verbundene Flotte.
+  await expect(liste).toContainText('VP-5566-ZQTF');
+  await expect(liste).toContainText('edge-xyz234q');
+  await expect(liste).toContainText('VP-WRK-0007');
+
+  // Dieselbe Online-Regel wie zuvor in der Software-Linie.
+  const still = liste.locator('tr').filter({ hasText: 'Hof Lindenallee' });
   await expect(still).toContainText('Meldet sich nicht');
-  await expect(still).toContainText('Letzte Meldung: vor 4 Std.');
-  await expect(devices.locator('tr').filter({ hasText: 'Neubau am Feldrain' }))
-    .toContainText('Letzte Meldung: noch nie');
+  const nie = liste.locator('tr').filter({ hasText: 'Neubau am Feldrain' });
+  await expect(nie).toContainText('Wartet auf erste Meldung');
 
-  const gruppe = page.getByRole('group', { name: 'Boxen nach Online-Status filtern' });
-  await gruppe.getByRole('button', { name: 'Offline 1' }).click();
-  await expect(devices.locator('tbody tr')).toHaveCount(1);
-  await gruppe.getByRole('button', { name: 'Online 6' }).click();
-  await expect(devices.locator('tbody tr')).toHaveCount(6);
+  // Zähl-Chips filtern die Liste.
+  await page.getByRole('button', { name: /^Werkstatt \d/ }).click();
+  await expect(liste.locator('tbody tr')).toHaveCount(1);
+  await expect(liste).toContainText('VP-WRK-0007');
+  await page.getByRole('button', { name: /^Werkstatt \d/ }).click();
 
+  // Eine Zeile führt in die Geräteakte, nie in ein zweites Fenster.
+  await page.getByRole('button', { name: 'edge-a1' }).or(liste.getByText('Solarpark Sonnenhof')).first().click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Solarpark Sonnenhof' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await page.goBack();
   for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
@@ -283,32 +208,55 @@ test('Registrierung: Online-Status je Box mit Zählung und Filter, ohne Überlau
   expect(errors).toEqual([]);
 });
 
-test('Updates: Verbindung je Box aus der einen Uhr, mit Filter, ohne Überlauf', async ({ page }) => {
+// ---------------------------------------------------------------------------
+// Scheibe S2 §4.4: die Geräteakte - EIN Ort je Box, Kopf, Reiter inline.
+// ---------------------------------------------------------------------------
+
+test('Geräteakte: Kopf mit Zustand, vier Reiter, Fernwartung inline - ohne Überlauf bei 1440 und 390 px', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-  await page.goto('/e2e/box-updates.html');
-  const table = page.getByTestId('box-versions');
-  await expect(table).toBeVisible();
-  // Dieselbe Regel und derselbe Wortlaut wie im Reiter „Registrierung".
-  const still = table.getByTestId('box-zeile').filter({ hasText: 'Hof Lindenallee' });
-  await expect(still.getByTestId('box-verbindung')).toContainText('Meldet sich nicht');
-  await expect(still.getByTestId('box-verbindung')).toContainText(/seit 4\sStd\./);
-  // Was eine stumme Box zuletzt gemeldet hat, ist nicht aktuell.
-  await expect(still).toContainText('Stand von');
-  await expect(table.getByTestId('box-zeile').filter({ hasText: 'Neubau am Feldrain' }).getByTestId('box-verbindung'))
-    .toContainText('Wartet auf erste Meldung');
+  await page.goto('/e2e/box-updates.html#');
+  await page.getByRole('button', { name: 'Geräte', exact: true }).click();
+  await page.getByTestId('geraete-liste').getByText('Solarpark Sonnenhof').first().click();
 
-  const gruppe = page.getByRole('group', { name: 'Boxen nach Zustand filtern' });
-  await gruppe.getByRole('button', { name: 'Offline 1' }).click();
-  await expect(table.getByTestId('box-zeile')).toHaveCount(1);
-  await gruppe.getByRole('button', { name: 'Offline 1' }).click();
-  await expect(table.getByTestId('box-zeile')).toHaveCount(8);
+  await expect(page.getByTestId('akte-zustand')).toContainText('Verbunden');
+  const tabs = page.getByTestId('akte-reiter');
+  await expect(tabs).toContainText('Überblick');
+  await expect(tabs).toContainText('Software');
+  await expect(tabs).toContainText('Verbindung');
+  await expect(tabs).toContainText('Einrichtung');
+  await expect(tabs).toContainText('Verlauf');
+  // Der Reiter „Anlage" kommt erst mit S3 - er steht hier noch nicht.
+  await expect(tabs).not.toContainText('Anlage');
 
-  for (const width of [375, 1440]) {
-    await page.setViewportSize({ width, height: 1000 });
+  // Verbindung: die Fernwartungs-Karte EINER Box inline, kein zweites Fenster.
+  await tabs.getByRole('tab', { name: 'Verbindung' }).click();
+  await expect(page.getByTestId('fw-karte')).toBeVisible();
+  await expect(page.getByTestId('fw-karte')).toContainText('Tunnel 10.90.4.12');
+
+  await tabs.getByRole('tab', { name: 'Software' }).click();
+  await expect(page.getByText('Linie und Stand')).toBeVisible();
+
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     expect(overflow, `Seite bei ${width}px`).toBeLessThanOrEqual(1);
   }
   expect(errors).toEqual([]);
+});
+
+test('Geräteakte am Telefon: Überblick einer nicht verbundenen Box bleibt unter dem Wort-Budget', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/e2e/box-updates.html');
+  await page.getByRole('button', { name: 'Geräte', exact: true }).click();
+  await page.getByTestId('geraete-liste').getByText('VP-5566-ZQTF').first().click();
+  await expect(page.getByTestId('akte-zustand')).toContainText('Noch nicht verbunden');
+  const woerter = await page.evaluate(() => {
+    const kopf = document.querySelector('.vp-admin-head');
+    const erster = document.querySelector('.vp-card');
+    const text = [kopf, erster].filter(Boolean).map((el) => el!.textContent ?? '').join(' ');
+    return text.trim().split(/\s+/).filter(Boolean).length;
+  });
+  expect(woerter).toBeLessThanOrEqual(60);
 });

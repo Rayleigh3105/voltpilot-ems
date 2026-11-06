@@ -29,7 +29,7 @@ export function PlattformBereich({
   if (page === 'werkstatt') return <WerkstattPage tabs={tabs} />;
   if (page === 'katalog') return <KatalogBereich tabs={tabs} />;
   if (page === 'edge-updates') {
-    return <EdgeUpdatesPage onNavigate={(r) => onNavigate(r)} onJumpToTenant={onJumpToTenant} tabs={tabs} />;
+    return <EdgeUpdatesPage onNavigate={(r) => onNavigate(r)} tabs={tabs} />;
   }
   return (
     <PlattformUebersichtPage

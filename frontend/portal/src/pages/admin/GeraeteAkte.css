@@ -1,0 +1,31 @@
+/* Geräteakte (Konzept vp-adminview-konzept-k1 §4.4, Scheibe S2). */
+
+.vp-geraet-breit {
+  grid-column: 1 / -1;
+}
+
+.vp-akte-menu-liste {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  background: var(--vp-surface, #fff);
+  border: 1px solid var(--vp-border, #e2e2e2);
+  border-radius: var(--vp-radius-md, 10px);
+  box-shadow: var(--vp-shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
+  padding: 4px;
+}
+
+.vp-akte-menu-liste button {
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: var(--vp-radius-sm, 6px);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.vp-akte-menu-liste button:hover,
+.vp-akte-menu-liste button:focus-visible {
+  background: var(--vp-surface-hover, #f3f3f3);
+}
