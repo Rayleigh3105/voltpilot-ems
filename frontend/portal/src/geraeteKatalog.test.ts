@@ -309,3 +309,37 @@ describe('katalogFunde', () => {
     ]);
   });
 });
+
+/**
+ * Die erste Zähler-Vorlage (Shelly Pro 3EM, 06.11.2026): unter „Zähler" stehen erst die Zähler, dann - wie zuvor -
+ * das Gerät, über das gemessen wird. Ein Zähler bestimmt seine Rolle im Fluss (Netz-Zähler oder Unterzähler).
+ */
+describe('Zähler mit eigener Vorlage', () => {
+  const METER = tpl({ templateRef: 'builtin:shelly:shelly-pro-3em', brand: 'shelly', brandLabel: 'Shelly',
+    modelLabel: 'Shelly Pro 3EM / Pro 3EM-400 (Zähler)', deviceType: 'meter', communication: 'shelly_em_http',
+    communicationLabel: 'Shelly-Zähler über die lokale HTTP-Schnittstelle' });
+  const MIT = [...ALLE, METER];
+
+  it('zeigt erst die Zähler, dann das messende Gerät - ohne den Satz „keine Vorlage"', () => {
+    const a = katalogAnsicht({ templates: MIT, vorlagen: [], funde: [], q: '', chip: 'zaehler', marke: null });
+    expect(a.hinweis).not.toBe(keineVorlageHinweis('zaehler'));
+    expect(a.gruppen.map((g) => g.titel)).toEqual(['Zähler', 'Oder das Gerät, über das gemessen wird']);
+    expect(a.gruppen[0].eintraege.map((e) => e.titel)).toContain('Shelly Pro 3EM / Pro 3EM-400 (Zähler)');
+    expect(a.gruppen[1].eintraege.map((e) => e.titel)).toEqual(['Deye', 'Ebyte', 'KACO', 'Shelly']);
+  });
+
+  it('findet über „Zähler" den Zähler und das messende Gerät', () => {
+    const zaehler = katalogAnsicht({ templates: MIT, vorlagen: [], funde: [], q: '3em', chip: 'zaehler', marke: null });
+    expect(zaehler.gruppen.flatMap((g) => g.eintraege.map((e) => e.titel))).toContain('Shelly Pro 3EM / Pro 3EM-400 (Zähler)');
+    const deye = katalogAnsicht({ templates: MIT, vorlagen: [], funde: [], q: 'sun12k', chip: 'zaehler', marke: null });
+    expect(deye.gruppen.flatMap((g) => g.eintraege.map((e) => e.titel)).some((t) => t.includes('SUN-12K'))).toBe(true);
+  });
+
+  it('lässt den Zähler seine Rolle selbst finden - das messende Gerät wird Netz-Zähler', () => {
+    const zaehler = katalogAnsicht({ templates: MIT, vorlagen: [], funde: [], q: '3em', chip: 'zaehler', marke: null });
+    const eintrag = zaehler.gruppen.flatMap((g) => g.eintraege).find((e) => e.titel.includes('Pro 3EM'));
+    expect(eintrag && wahlFuer(eintrag, 'zaehler')).toMatchObject({ art: 'modell', rolle: null });
+    const deye = ansicht({ q: 'sun12k' }).gruppen[0].eintraege[0];
+    expect(wahlFuer(deye, 'zaehler')).toMatchObject({ art: 'modell', rolle: 'grid-meter' });
+  });
+});

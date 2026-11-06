@@ -135,3 +135,26 @@ Der Executor läuft nur mit `VP_CONTROL_ENABLED` **und**
 Die Typen `heating-rod`/`generic-load` bleiben im Katalog **unzertifiziert**
 (`simulator_only`), bis die Captain-Bench-Session sie flippt (D11, eigener
 Mini-PR - siehe CONTROL-BENCH.md „Shelly", Abschluss).
+
+## 8. Shelly als Zähler (Pro 3EM / Pro 3EM-400) - nur Edge Light
+
+Ein Shelly-**Zähler** ist kein Relais: er hat eine eigene Kommunikation
+`shelly_em_http` (Katalog: Marke Shelly, Modell „Shelly Pro 3EM / Pro 3EM-400
+(Zähler)“, Gerätetyp `meter`) und wird nie über diesen Treiber geschaltet.
+Edge Light liest ihn seit 06.11.2026 in der Schicht 1 (`core/internal/shellyem`):
+ein `GET /rpc/Shelly.GetStatus` je Takt, daraus `em:0` (Gesamt- und
+Phasenleistung) und `emdata:0` (Zählerstände). Andere RPCs sendet der Leser nie.
+
+- **Rolle:** am Hausanschluss Netz-Zähler (`power_kw`), in einer Unterverteilung
+  Unterzähler (Verbraucher-Quelle, `load_kw`; geht nie in den Netzwert).
+- **Vorzeichen:** `act_power` ist positiv in Pfeilrichtung der Wandler. Richtig
+  eingebaut ist am Netzanschluss + Bezug und − Einspeisung - belegt am echten
+  Pro 3EM-400 (Kunde Schramm: +6,68 kW am Netz bei 4,5 kW PV und 11,3 kW in den
+  Unterverteilungen). Der Haken „Vorzeichen umkehren“ dreht verkehrt eingebaute
+  Wandler.
+- **Uhr:** die eigene Uhr des Shelly wird nie benutzt (die echten liefen nach
+  620 Tagen ohne Zeitabgleich 2,5 h vor); der Messwert trägt die Zeit der Box.
+- **Noch nicht gelesen:** das Profil „monophase“ und der Pro EM (`em1`) sowie der
+  Gen1-3EM (`/status`). Die Gerätesuche erkennt sie als Zähler; der
+  Verbindungstest nennt den Grund. Die Docker-Box liest keinen Shelly-Zähler
+  (Folgepaket).

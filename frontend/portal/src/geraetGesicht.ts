@@ -307,7 +307,7 @@ export interface GesichtInput {
  * keine gibt - der Satz steht stattdessen im Technik-Aufklapper.
  */
 const OHNE_REGISTER = new Set([
-  'fronius_solar_api', 'goe_http_api', 'shelly_http', 'ocpp', 'ebyte_modbus_tcp',
+  'fronius_solar_api', 'goe_http_api', 'shelly_http', 'shelly_em_http', 'ocpp', 'ebyte_modbus_tcp',
 ]);
 
 /**

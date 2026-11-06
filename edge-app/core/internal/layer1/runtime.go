@@ -74,6 +74,14 @@ type Runtime struct {
 	srcRR    int
 	srcSig   string
 	srcTrace map[string]traceState
+
+	// sunspecSeen: the SunSpec identity last logged per address (sunspec.go).
+	sunspecSeen sync.Map
+
+	// bootID + receiptSeq make each source receipt's event_id unique
+	// (edge/data-sources/poll; receiptSeq under srcMu).
+	bootID     string
+	receiptSeq uint64
 }
 
 // Ready is closed once every bus subscription is confirmed.
@@ -122,7 +130,8 @@ func New(bus Bus, opts Options) *Runtime {
 	}
 	return &Runtime{bus: bus, opts: opts, log: opts.Logger, lanes: newLanes(),
 		pollKick: make(chan struct{}, 1), ready: make(chan struct{}),
-		http: newHTTPClient(opts.HTTPTimeout), srcTrace: map[string]traceState{}}
+		http: newHTTPClient(opts.HTTPTimeout), srcTrace: map[string]traceState{},
+		bootID: "l1-" + strconv.FormatInt(time.Now().UnixNano(), 36)}
 }
 
 // Run subscribes the bus topics and polls until ctx ends.
@@ -222,6 +231,13 @@ func (r *Runtime) pollOnce(ctx context.Context) {
 			return
 		}
 		r.pollKacoSerial(ctx, p)
+	case CommSunSpecTCP, CommFroniusSunSpec:
+		p, why := planSunSpec(s)
+		if p == nil {
+			r.idle(why)
+			return
+		}
+		r.pollSunSpec(ctx, p)
 	default:
 		// Honest, not silent: the parity matrix names what is ported. The core
 		// then shows "keine aktuellen Daten" exactly as for a dead device.

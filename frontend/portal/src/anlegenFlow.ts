@@ -90,6 +90,27 @@ const TYP_ROLLEN: Record<TypId, KomponentenRolle[]> = {
 };
 
 /**
+ * Ein ECHTER Zähler - eine Vorlage mit `deviceType: meter`, seit 06.11.2026 der
+ * Shelly Pro 3EM - hat zwei Aufgaben: am Hausanschluss den Netz-Zähler oder in
+ * einer Unterverteilung einen Unterzähler. Die Box liest den Unterzähler als
+ * Verbraucher-Quelle (`consumer`), sein Wert geht nie in den Netzwert. Ein Gerät,
+ * über das nur gemessen wird (ein Wechselrichter mit Zähler am Netzpunkt), bleibt
+ * Netz-Zähler: als Unterzähler könnte die Box ihm keine Rolle zuordnen.
+ */
+const ZAEHLER_ROLLEN: KomponentenRolle[] = ['grid-meter', 'consumer'];
+
+/** Die Kundenworte der Verbraucher-Rolle eines Zählers (Glossar: Unterzähler). */
+export const UNTERZAEHLER_ROLLE = {
+  label: 'Unterzähler',
+  hint: 'Misst einen Teil der Anlage, zum Beispiel eine Unterverteilung oder eine Halle. Er zählt nicht als Netz-Zähler.',
+} as const;
+
+function rollenFuer(typ: TypId, deviceType?: string | null): KomponentenRolle[] {
+  if (typ === 'zaehler' && (deviceType ?? '').trim() === 'meter') return ZAEHLER_ROLLEN;
+  return TYP_ROLLEN[typ];
+}
+
+/**
  * Der Satz zu einer Art, hinter der KEINE eigene Vorlage steht.
  *
  * ⚠ Er ist kein Schmuck, er ist die Ehrlichkeits-Hälfte der Erweiterung: der
@@ -166,9 +187,11 @@ export function rollenWahl(
   typ: TypId,
   vorhandeneRollen: string[],
   namen: Partial<Record<KomponentenRolle, string | null>> = {},
+  /** Der Gerätetyp der gewählten Vorlage: nur ein echter Zähler (`meter`) kann auch Unterzähler sein. */
+  deviceType?: string | null,
 ): RollenWahl[] {
-  return TYP_ROLLEN[typ].map((rolle) => {
-    const def = ROLLEN.find((r) => r.id === rolle);
+  return rollenFuer(typ, deviceType).map((rolle) => {
+    const def = typ === 'zaehler' && rolle === 'consumer' ? UNTERZAEHLER_ROLLE : ROLLEN.find((r) => r.id === rolle);
     const status = rolleVerfuegbar(rolle, vorhandeneRollen, namen);
     return {
       rolle,
@@ -234,8 +257,10 @@ export function vorschlagRolle(
    * der globale Einstieg zurück.
    */
   bevorzugt?: KomponentenRolle | null,
+  /** Der Gerätetyp der gewählten Vorlage ({@link rollenWahl}). */
+  deviceType?: string | null,
 ): KomponentenRolle | null {
-  const wahl = rollenWahl(typ, vorhandeneRollen);
+  const wahl = rollenWahl(typ, vorhandeneRollen, {}, deviceType);
   const frei = wahl.filter((w) => w.verfuegbar);
   if (frei.length === 0) return null;
   const ortsgebunden = frei.find((w) => w.rolle === bevorzugt);

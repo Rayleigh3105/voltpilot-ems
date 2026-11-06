@@ -149,6 +149,8 @@ func TestDockerBoxSuchtDurchNATNurMitTCP(t *testing.T) {
 	n.http(t, "10.77.0.50:80", geraetesim.ShellyGen2(p, "SPSW-003XE16EU", "1.4.4", 3, false, false))
 	n.http(t, "10.77.0.52:80", geraetesim.ShellyGen2(p, "SNSW-001X16EU", "1.4.4", 1, false, true))
 	n.http(t, "10.77.0.53:80", geraetesim.ShellyGen1(p, "SHEM-3", 1, 3))
+	n.http(t, "10.77.0.54:80", geraetesim.ShellyGen2(p, "SPEM-003CEBEU400", "1.4.4", 0, true, false))
+	n.http(t, "10.77.0.55:80", geraetesim.ShellyGen2(p, "SPEM-003CEBEU", "1.5.0", 0, true, true))
 	n.http(t, "10.77.0.61:80", geraetesim.Goe(p, "204117", "go-eCharger_V4", "56.1"))
 	n.http(t, "10.77.0.40:80", geraetesim.Fronius(p, "31234567"))
 	n.http(t, "10.77.0.1:80", geraetesim.Router(p, "FRITZ!Box 7590"))
@@ -198,9 +200,21 @@ func TestDockerBoxSuchtDurchNATNurMitTCP(t *testing.T) {
 	if zu := fundVon(t, aus.Funde, "shelly:10.77.0.52:80"); zu.Hindernis != "geschuetzt" || zu.Anbindung != "uebernehmen" {
 		t.Fatalf("protected shelly: %+v", zu)
 	}
+	// The Docker box does not read a Shelly meter yet (Edge Light does since
+	// 06.11.2026): the find carries the meter's way, the word stays kein_leseweg.
 	if em := fundVon(t, aus.Funde, "shelly:10.77.0.53:80"); em.Art != "zaehler" || em.Anbindung != "kein_leseweg" ||
-		em.Verbindung.Communication != "" {
+		em.Verbindung.Communication != "shelly_em_http" {
 		t.Fatalf("shelly 3EM: %+v", em)
+	}
+	// A Pro 3EM-400 (Gen2, em:0): a meter with its way - Edge Light takes it
+	// over, the Docker box names it kein_leseweg. A protected one needs help.
+	if pro := fundVon(t, aus.Funde, "shelly:10.77.0.54:80"); pro.Art != "zaehler" || pro.Anbindung != "kein_leseweg" ||
+		pro.Verbindung.Communication != "shelly_em_http" || pro.Hindernis != "" || pro.Kanaele != 0 {
+		t.Fatalf("shelly pro 3EM-400: %+v", pro)
+	}
+	if zu := fundVon(t, aus.Funde, "shelly:10.77.0.55:80"); zu.Art != "zaehler" || zu.Hindernis != "geschuetzt" ||
+		!enthaelt(zu.Merkmale, "auth_en") {
+		t.Fatalf("protected shelly pro 3EM: %+v", zu)
 	}
 	if goe := fundVon(t, aus.Funde, "goe:204117"); goe.Firmware != "56.1" || goe.Anbindung != "uebernehmen" {
 		t.Fatalf("go-e: %+v", goe)
@@ -377,8 +391,9 @@ func TestEdgeLightSiehtBeideNetzeUndDieWege(t *testing.T) {
 	if len(spuren) != 1 || spuren[0] != "192.168.178.34:8899" {
 		t.Fatalf("logger lane: %v", spuren)
 	}
-	// Edge Light reads no SunSpec yet: recognised, not connectable with this box.
-	if fr := fundVon(t, aus.Funde, "sunspec:31234567"); fr.Anbindung != "nicht_mit_dieser_box" {
+	// Edge Light reads SunSpec since 06.11.2026 (internal/sunspeclive).
+	if fr := fundVon(t, aus.Funde, "sunspec:31234567"); fr.Anbindung != "uebernehmen" ||
+		fr.Verbindung.Communication != "sunspec_tcp" {
 		t.Fatalf("fronius: %+v", fr)
 	}
 	if s := fundVon(t, aus.Funde, "shelly:192.168.178.52:80"); s.Hindernis != "geschuetzt" ||

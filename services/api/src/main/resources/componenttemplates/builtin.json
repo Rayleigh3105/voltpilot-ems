@@ -12415,6 +12415,48 @@
       "note": "Shelly 1/1PM, Plus 1/1PM, Plug S u. a., alle Generationen · Generation und Leistungsmessung werden automatisch erkannt Shelly-Relais vor einem Verbraucher (z. B. Heizstab). Generation und Leistungsmessung werden automatisch erkannt."
     },
     {
+      "template_ref": "builtin:shelly:shelly-pro-3em",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "shelly",
+      "brand_label": "Shelly",
+      "model": "shelly-pro-3em",
+      "model_label": "Shelly Pro 3EM / Pro 3EM-400 (Zähler)",
+      "device_type": "meter",
+      "family": "shelly_em_triphase",
+      "family_label": "Shelly-Zähler (dreiphasig)",
+      "communication": "shelly_em_http",
+      "communication_label": "Shelly-Zähler über die lokale HTTP-Schnittstelle",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Shelly-Zählers",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des Shelly Pro 3EM im lokalen Netz (z. B. 192.168.0.62). Feste IP/DHCP-Reservierung empfohlen; der Passwortschutz der Shelly-Weboberfläche muss AUS sein. Der Zähler muss im Profil „dreiphasig“ (triphase) laufen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 80,
+          "help": "HTTP-Port des Shelly, üblicherweise 80."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Vorzeichen umkehren",
+          "type": "checkbox",
+          "help": "Nur wenn die Stromwandler gegen die Pfeilrichtung eingebaut sind. Richtig eingebaut zeigt ein Zähler am Netzanschluss Bezug positiv und Einspeisung negativ, ein Unterzähler seinen Verbrauch positiv."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 0,
+      "certification_status": "builtin",
+      "note": "Dreiphasiger Zähler mit Stromwandlern (120 A oder 400 A), Profil „dreiphasig“ · am Netzanschluss als Netz-Zähler oder in einer Unterverteilung als Unterzähler · nur lesend"
+    },
+    {
       "template_ref": "builtin:ebyte:m31_axax8080g_u",
       "kind": "builtin",
       "version": 1,

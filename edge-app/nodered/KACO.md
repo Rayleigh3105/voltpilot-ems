@@ -184,8 +184,20 @@ Unsinn.
 
 ## 10. ⚠ Am Gerät zu prüfen (VERIFY-on-device)
 
-Nichts davon konnte an einem echten KACO gemessen werden. Beim ersten
-Kundengerät gehören diese Punkte auf die Liste:
+**Belegt für die KACO-eigene Linie (Edge Light, 06.11.2026):** drei Powador TL3
+(14.0 und 2× 20.0, Firmware V2.30) beim Kunden Schramm, gelesen nur mit FC3:
+Basis 40000, genau die Modelle 1 und 103 (int + Skalierung, `W_SF` = 1, also
+10-W-Schritte; kein 120/123), die Unit-ID wird über TCP überlesen (0, 3 und 126
+antworten wie 1). Im LAN braucht eine Lesung sechs Anfragen in ~0,85 s. Einzelne
+Lesungen fallen aus: eine Ausnahme mitten im Walk (der Kopf von Modell 103) oder
+eine stumme Anfrage bis zum Timeout - beim 14.0 in 7 von 36 Lesungen, genau jede
+fünfte im 5-s-Takt (ein zweiter Modbus-Client oder eine geräteinterne Aufgabe).
+Der Takt meldet dann keinen Wert, nie eine 0. Die Rohlesungen stehen in
+`sunspec/sunspec-live-vectors.json` (Fälle „Schramm“).
+
+Die folgenden Punkte betreffen die AISWEI-Plattform; nichts davon konnte an
+einem echten KACO gemessen werden. Beim ersten Kundengerät gehören sie auf die
+Liste:
 
 1. **Vorzeichen der Batterie.** Die AISWEI-Registerkarte dokumentiert für den
    **Schreib**-Sollwert (41153) „− laden / + entladen". VoltPilot übernimmt diese

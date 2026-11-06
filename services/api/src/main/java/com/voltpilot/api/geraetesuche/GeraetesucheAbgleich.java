@@ -132,7 +132,9 @@ public final class GeraetesucheAbgleich {
      * Die Vorlagen ({@code templateRef}), die zu einem übernehmbaren Fund passen: dieselbe Kommunikationsart, derselbe
      * Hersteller und — wo die Box eine Bauart nennt und der Katalog sie kennt — dieselbe Bauart (Deye: nur die Modelle
      * der gemeldeten Familie) und dieselbe Speicherspannung (Deye-Hybrid HV: nur SG01HP3/SG02HP3, LV: nur SG04LP3).
-     * Leer, wenn der Fund sich nicht übernehmen lässt oder keine Vorlage passt.
+     * Nennt die Box das Modell und trägt genau EINE der übrigen Vorlagen diesen Namen (das Common Model 1 eines
+     * SunSpec-Geräts: „Powador 14.0 TL3“), ist es diese - sonst bleibt die Auswahl. Leer, wenn der Fund sich nicht
+     * übernehmen lässt oder keine Vorlage passt.
      */
     public static List<String> vorlagen(GeraetesucheBericht.Fund fund, List<ComponentTemplateDto> katalog) {
         String communication = fund.verbindung().communication();
@@ -157,9 +159,22 @@ public final class GeraetesucheAbgleich {
                 passend = gleicheSpannung;
             }
         }
+        String modell = modellName(fund.modell());
+        if (!modell.isEmpty() && passend.size() > 1) {
+            List<ComponentTemplateDto> gleichesModell = passend.stream()
+                    .filter(t -> modell.equals(modellName(t.modelLabel()))).toList();
+            if (gleichesModell.size() == 1) {
+                passend = gleichesModell;
+            }
+        }
         List<String> refs = new ArrayList<>();
         passend.forEach(t -> refs.add(t.templateRef()));
         return List.copyOf(refs);
+    }
+
+    /** Ein Modellname zum Vergleich: ohne Rand, einfache Leerzeichen, Groß/Klein egal. */
+    private static String modellName(String s) {
+        return s == null ? "" : s.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     /** Deyes Typschlüssel trägt die Speicherspannung: SG04LP3 = Niedervolt, SG01HP3/SG02HP3 = Hochvolt. */

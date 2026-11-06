@@ -53,6 +53,17 @@ const (
 	// test AND the consumer-control executor, internal/shelly) - single
 	// writer, no Node-RED read path. See nodered/SHELLY.md.
 	CommShellyHTTP = "shelly_http"
+	// CommShellyEMHTTP reads a Shelly ENERGY METER of the Gen2+ line (Pro 3EM,
+	// Pro 3EM-400 in the profile "triphase") over its local HTTP RPC: ONE GET
+	// of Shelly.GetStatus per cycle, the total and per-phase active power of
+	// em:0 and the energy counters of emdata:0. READ-ONLY - a meter has nothing
+	// to switch, so no Switch.* or *.SetConfig call is ever made. Its own
+	// communication (not shelly_http) because shelly_http is the CORE's relay
+	// executor: a meter there would be polled with Switch.GetStatus and has no
+	// switch. Edge Light reads it in Layer 1 (internal/shellyem, a grid meter
+	// at the connection point or a sub-meter as a consumer source); the Docker
+	// box does not read it yet (follow-up), its Node-RED names it as unknown.
+	CommShellyEMHTTP = "shelly_em_http"
 	// CommEbyteModbusTCP is an Ebyte M31-U distributed I/O host (digital
 	// inputs + relay outputs, expandable by U-series modules) over Modbus TCP.
 	// Like Shelly the CORE owns the whole socket (source poll, connection test
@@ -563,6 +574,10 @@ const (
 	// core detects it per device and persists it (internal/shelly Store), so
 	// one family covers every Shelly relay/plug model.
 	FamShellyHTTP = "shelly_http"
+	// FamShellyEMTriphase is the decode profile of a Shelly three-phase meter
+	// in the profile "triphase" (em:0 + emdata:0, internal/shellyem). The
+	// single-channel profiles (em1: "monophase", Pro EM) are not read yet.
+	FamShellyEMTriphase = "shelly_em_triphase"
 	// FamEbyteM31 is the single profile of the Ebyte M31-U host: the register
 	// map is documented and identical across the host line, and the module
 	// stack (how many inputs/outputs) is discovered from the device.
@@ -849,10 +864,27 @@ func shellyFields() []Field {
 	}
 }
 
-// shellyFamilies is the single profile (dialect + metering are detected).
+// shellyEMFields describes a Shelly meter: host + HTTP port + the sign hatch
+// for transformers mounted against the arrow. No channel: the three-phase
+// meter is ONE measurement (em:0).
+func shellyEMFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des Shelly-Zählers", Type: "text", Required: true,
+			Help: "Die IP des Shelly Pro 3EM im lokalen Netz (z. B. 192.168.0.62). Feste IP/DHCP-Reservierung empfohlen; der Passwortschutz der Shelly-Weboberfläche muss AUS sein. Der Zähler muss im Profil „dreiphasig“ (triphase) laufen."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultShellyPort,
+			Help: "HTTP-Port des Shelly, üblicherweise 80."},
+		{Key: "invert_grid_sign", Label: "Vorzeichen umkehren", Type: "checkbox",
+			Help: "Nur wenn die Stromwandler gegen die Pfeilrichtung eingebaut sind. Richtig eingebaut zeigt ein Zähler am Netzanschluss Bezug positiv und Einspeisung negativ, ein Unterzähler seinen Verbrauch positiv."},
+	}
+}
+
+// shellyFamilies: the relay profile (dialect + metering are detected) and the
+// three-phase meter profile.
 func shellyFamilies() []Family {
 	return []Family{
 		{ID: FamShellyHTTP, Label: "Shelly HTTP API", Note: "Lokale HTTP-Schnittstelle; Generation (Gen1/Gen2+) wird automatisch erkannt"},
+		{ID: FamShellyEMTriphase, Label: "Shelly-Zähler (dreiphasig)",
+			Note: "Lokale HTTP-Schnittstelle (Shelly.GetStatus), Profil „triphase“: Gesamt- und Phasenleistung, Zählerstände; nur lesend"},
 	}
 }
 
@@ -860,12 +892,24 @@ func shellyFamilies() []Family {
 // (1PM/Plug-S class) is DETECTED from the device itself, not picked from a
 // list - a picked-but-wrong metering claim would fabricate a capability. No
 // RatedKw (the consumer's Nennleistung lives in the cloud consumer profile).
+//
+// The meter is its OWN model with its own device type and way: a Pro 3EM is a
+// Zaehler, not a Schaltaktor, and it is read over shelly_em_http. The relay
+// names its way explicitly, so the brand's second transport never becomes a
+// choice for it.
 func shellyModels() []Model {
 	return []Model{
 		{ID: FamShellyHTTP, Label: "Shelly Relais / Schaltaktor", Family: FamShellyHTTP,
-			Note: "Shelly 1/1PM, Plus 1/1PM, Plug S u. a., alle Generationen · Generation und Leistungsmessung werden automatisch erkannt"},
+			Transports: []string{CommShellyHTTP},
+			Note:       "Shelly 1/1PM, Plus 1/1PM, Plug S u. a., alle Generationen · Generation und Leistungsmessung werden automatisch erkannt"},
+		{ID: ModelShellyPro3EM, Label: "Shelly Pro 3EM / Pro 3EM-400 (Zähler)", Family: FamShellyEMTriphase,
+			DeviceType: DeviceTypeMeter, Transports: []string{CommShellyEMHTTP},
+			Note: "Dreiphasiger Zähler mit Stromwandlern (120 A oder 400 A), Profil „dreiphasig“ · am Netzanschluss als Netz-Zähler oder in einer Unterverteilung als Unterzähler · nur lesend"},
 	}
 }
+
+// ModelShellyPro3EM is the catalog model of the Shelly three-phase meter.
+const ModelShellyPro3EM = "shelly-pro-3em"
 
 // ebyteFields describes the M31 connection: host, Modbus-TCP port and unit id.
 // No channel field: the DEVICE is one component, its outputs are assigned to
@@ -1340,7 +1384,7 @@ func kacoSerialModels() []Model {
 			Note: "3,2 kW · String · 1-phasig · nur Erzeugung · seriell (RS232/RS485), kein eigener Netzwerk-Anschluss"},
 		{ID: "kaco-serial-generic", Label: "Anderes Powador-Altgerät (seriell)", Family: FamKacoSerial,
 			Transports: serial,
-			Note: "Weiteres Powador-Altgerät mit KACOs seriellem ASCII-Protokoll (RS232/RS485, 9600 8N1), Nennleistung unbekannt"},
+			Note:       "Weiteres Powador-Altgerät mit KACOs seriellem ASCII-Protokoll (RS232/RS485, 9600 8N1), Nennleistung unbekannt"},
 	}
 }
 
@@ -1528,6 +1572,12 @@ func DefaultCatalog() Catalog {
 					Communication: CommShellyHTTP,
 					Label:         "Shelly HTTP API (lokal)",
 					Fields:        shellyFields(),
+				}, {
+					Communication: CommShellyEMHTTP,
+					Label:         "Shelly-Zähler über die lokale HTTP-Schnittstelle",
+					Family:        FamShellyEMTriphase,
+					Note:          "Nur lesend. Der Passwortschutz der Shelly-Weboberfläche muss aus sein.",
+					Fields:        shellyEMFields(),
 				}},
 				// Tier 0 for the inverter control-path: a Shelly switches a
 				// CONSUMER, driven by the core executor (internal/shelly), not
@@ -2376,6 +2426,21 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.CurtailWriteFc = 0
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
+	case CommShellyEMHTTP:
+		// Shelly meter over local HTTP: host + port + the sign hatch. One
+		// three-phase measurement - no channel, serial, unit id or control.
+		if conn.Port == 0 {
+			conn.Port = defaultShellyPort
+		}
+		conn.Channel, conn.Channels = 0, ""
+		conn.Serial, conn.MbSlaveID, conn.PowerScale = "", 0, 0
+		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
+		conn.InvertControlSign, conn.InvertBattSign = false, false
+		conn.ControlWriteFc = 0
+		conn.CurtailWriteFc = 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
+		conn.MAC = ""
 	case CommEbyteModbusTCP:
 		// Ebyte M31 Modbus TCP: host + port + unit id (+ the pinned MAC). The
 		// module stack is DISCOVERED by the core (internal/ebyte), never

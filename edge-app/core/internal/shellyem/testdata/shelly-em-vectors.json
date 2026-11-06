@@ -1,0 +1,1115 @@
+{
+ "_comment": [
+  "Testvektoren des Shelly-Zaehler-Lesers (edge-app/core/internal/shellyem, Edge Light).",
+  "Die drei Schramm-Faelle sind echte Antworten von Shelly.GetStatus (Pro 3EM-400 am Netzanschluss, zwei Pro 3EM in Unterverteilungen, Firmware 1.4.4/1.5.0, Profil triphase), gelesen am 06.11.2026 ueber den Wartungstunnel der Box edge-tgjn9gd; MAC, WLAN-Name und Adresse sind ersetzt, die EM-Werte unveraendert.",
+  "Vorzeichen: act_power positiv in Pfeilrichtung der Wandler = Bezug am Netzanschluss (belegt: +6,68 kW am Netz bei 4,5 kW PV und 11,3 kW in den Unterverteilungen).",
+  "erwartet wurde unabhaengig vom Go-Decoder berechnet (power_kw = round3(total_act_power / 1000)); ein kuenftiger Zwilling der Docker-Box prueft sich gegen dieselbe Datei."
+ ],
+ "communication": "shelly_em_http",
+ "family": "shelly_em_triphase",
+ "status_path": "/rpc/Shelly.GetStatus",
+ "cases": [
+  {
+   "name": "Schramm: Netzanschluss (Pro 3EM-400, 400-A-Wandler), Shelly.GetStatus vom 06.11.2026",
+   "status": {
+    "ble": {},
+    "bthome": {
+     "errors": [
+      "observer_disabled"
+     ]
+    },
+    "cloud": {
+     "connected": false
+    },
+    "em:0": {
+     "id": 0,
+     "a_current": 22.001,
+     "a_voltage": 236.2,
+     "a_act_power": 2918.1,
+     "a_aprt_power": 5204.6,
+     "a_pf": 0.52,
+     "a_freq": 50.0,
+     "b_current": 22.571,
+     "b_voltage": 237.1,
+     "b_act_power": 2237.4,
+     "b_aprt_power": 5357.7,
+     "b_pf": 0.42,
+     "b_freq": 50.0,
+     "c_current": 21.225,
+     "c_voltage": 237.1,
+     "c_act_power": 1838.5,
+     "c_aprt_power": 5032.5,
+     "c_pf": 0.38,
+     "c_freq": 50.0,
+     "n_current": null,
+     "total_current": 65.797,
+     "total_act_power": 6994.002,
+     "total_aprt_power": 15594.745,
+     "user_calibrated_phase": []
+    },
+    "emdata:0": {
+     "id": 0,
+     "a_total_act_energy": 15679156.91,
+     "a_total_act_ret_energy": 26137669.81,
+     "b_total_act_energy": 14395840.99,
+     "b_total_act_ret_energy": 26818645.77,
+     "c_total_act_energy": 12579395.27,
+     "c_total_act_ret_energy": 28007704.61,
+     "total_act": 42654393.17,
+     "total_act_ret": 80964020.2
+    },
+    "eth": {
+     "ip": null
+    },
+    "modbus": {},
+    "mqtt": {
+     "connected": false
+    },
+    "sys": {
+     "mac": "000000000001",
+     "restart_required": false,
+     "time": "17:01",
+     "unixtime": 1793980875,
+     "uptime": 53562955,
+     "ram_size": 262172,
+     "ram_free": 93436,
+     "fs_size": 524288,
+     "fs_free": 180224,
+     "cfg_rev": 10,
+     "kvs_rev": 0,
+     "schedule_rev": 0,
+     "webhook_rev": 0,
+     "available_updates": {
+      "stable": {
+       "version": "2.1.1"
+      }
+     },
+     "reset_reason": 3
+    },
+    "temperature:0": {
+     "id": 0,
+     "tC": 56.1,
+     "tF": 132.9
+    },
+    "wifi": {
+     "sta_ip": "192.0.2.11",
+     "status": "got ip",
+     "rssi": -37
+    },
+    "ws": {
+     "connected": false
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": true,
+    "leistung_w": 6994.002,
+    "power_kw": 6.994,
+    "power_kw_invertiert": -6.994,
+    "phasen_w": [
+     2918.1,
+     2237.4,
+     1838.5
+    ],
+    "bezug_wh": 42654393.17,
+    "einspeisung_wh": 80964020.2
+   }
+  },
+  {
+   "name": "Schramm: Unterverteilung „UV Halle“ (Pro 3EM, 120 A), Shelly.GetStatus vom 06.11.2026",
+   "status": {
+    "ble": {},
+    "bthome": {
+     "errors": [
+      "observer_disabled"
+     ]
+    },
+    "cloud": {
+     "connected": false
+    },
+    "em:0": {
+     "id": 0,
+     "a_current": 26.181,
+     "a_voltage": 236.3,
+     "a_act_power": 4021.3,
+     "a_aprt_power": 6179.8,
+     "a_pf": 0.62,
+     "a_freq": 50.0,
+     "b_current": 28.08,
+     "b_voltage": 237.0,
+     "b_act_power": 4406.6,
+     "b_aprt_power": 6656.9,
+     "b_pf": 0.7,
+     "b_freq": 50.0,
+     "c_current": 25.455,
+     "c_voltage": 237.6,
+     "c_act_power": 3595.9,
+     "c_aprt_power": 6038.7,
+     "c_pf": 0.6,
+     "c_freq": 50.0,
+     "n_current": null,
+     "total_current": 79.715,
+     "total_act_power": 12023.785,
+     "total_aprt_power": 18875.344,
+     "user_calibrated_phase": []
+    },
+    "emdata:0": {
+     "id": 0,
+     "a_total_act_energy": 24474917.19,
+     "a_total_act_ret_energy": 317.75,
+     "b_total_act_energy": 22865109.82,
+     "b_total_act_ret_energy": 483.69,
+     "c_total_act_energy": 23462281.29,
+     "c_total_act_ret_energy": 267.76,
+     "total_act": 70802308.29,
+     "total_act_ret": 1069.19
+    },
+    "eth": {
+     "ip": null
+    },
+    "modbus": {},
+    "mqtt": {
+     "connected": false
+    },
+    "sys": {
+     "mac": "000000000002",
+     "restart_required": false,
+     "time": "16:59",
+     "unixtime": 1793980778,
+     "uptime": 53562620,
+     "ram_size": 262160,
+     "ram_free": 92996,
+     "fs_size": 524288,
+     "fs_free": 180224,
+     "cfg_rev": 5,
+     "kvs_rev": 0,
+     "schedule_rev": 0,
+     "webhook_rev": 0,
+     "available_updates": {
+      "stable": {
+       "version": "2.1.1"
+      }
+     },
+     "reset_reason": 3
+    },
+    "temperature:0": {
+     "id": 0,
+     "tC": 47.3,
+     "tF": 117.1
+    },
+    "wifi": {
+     "sta_ip": "192.0.2.12",
+     "status": "got ip",
+     "rssi": -46
+    },
+    "ws": {
+     "connected": false
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": true,
+    "leistung_w": 12023.785,
+    "power_kw": 12.024,
+    "power_kw_invertiert": -12.024,
+    "phasen_w": [
+     4021.3,
+     4406.6,
+     3595.9
+    ],
+    "bezug_wh": 70802308.29,
+    "einspeisung_wh": 1069.19
+   }
+  },
+  {
+   "name": "Schramm: Unterverteilung „UV Keller“ (Pro 3EM, 120 A), Shelly.GetStatus vom 06.11.2026",
+   "status": {
+    "ble": {},
+    "bthome": {},
+    "cloud": {
+     "connected": false
+    },
+    "em:0": {
+     "id": 0,
+     "a_current": 0.377,
+     "a_voltage": 236.4,
+     "a_act_power": 57.0,
+     "a_aprt_power": 89.2,
+     "a_pf": 0.64,
+     "a_freq": 50.0,
+     "b_current": 0.283,
+     "b_voltage": 237.1,
+     "b_act_power": 14.9,
+     "b_aprt_power": 67.2,
+     "b_pf": 0.22,
+     "b_freq": 50.0,
+     "c_current": 0.519,
+     "c_voltage": 237.3,
+     "c_act_power": -1.2,
+     "c_aprt_power": 123.4,
+     "c_pf": 0.01,
+     "c_freq": 50.0,
+     "n_current": null,
+     "total_current": 1.179,
+     "total_act_power": 70.705,
+     "total_aprt_power": 279.81,
+     "user_calibrated_phase": []
+    },
+    "emdata:0": {
+     "id": 0,
+     "a_total_act_energy": 2531034.37,
+     "a_total_act_ret_energy": 534.72,
+     "b_total_act_energy": 3025973.31,
+     "b_total_act_ret_energy": 58.5,
+     "c_total_act_energy": 2090380.04,
+     "c_total_act_ret_energy": 6206.89,
+     "total_act": 7647387.71,
+     "total_act_ret": 6800.11
+    },
+    "eth": {
+     "ip": null
+    },
+    "modbus": {},
+    "mqtt": {
+     "connected": false
+    },
+    "script:1": {
+     "id": 1,
+     "running": true,
+     "mem_used": 770,
+     "mem_peak": 3556,
+     "mem_free": 24416
+    },
+    "sys": {
+     "mac": "000000000003",
+     "restart_required": false,
+     "time": "16:47",
+     "unixtime": 1793980034,
+     "last_sync_ts": 1741329885,
+     "uptime": 53827621,
+     "ram_size": 262340,
+     "ram_free": 90464,
+     "ram_min_free": 63492,
+     "fs_size": 524288,
+     "fs_free": 184320,
+     "cfg_rev": 8,
+     "kvs_rev": 0,
+     "schedule_rev": 0,
+     "webhook_rev": 0,
+     "btrelay_rev": 0,
+     "available_updates": {
+      "stable": {
+       "version": "2.1.1"
+      }
+     },
+     "reset_reason": 1
+    },
+    "temperature:0": {
+     "id": 0,
+     "tC": 52.9,
+     "tF": 127.2
+    },
+    "wifi": {
+     "sta_ip": "192.0.2.13",
+     "status": "got ip",
+     "rssi": -38
+    },
+    "ws": {
+     "connected": false
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": true,
+    "leistung_w": 70.705,
+    "power_kw": 0.071,
+    "power_kw_invertiert": -0.071,
+    "phasen_w": [
+     57.0,
+     14.9,
+     -1.2
+    ],
+    "bezug_wh": 7647387.71,
+    "einspeisung_wh": 6800.11
+   }
+  },
+  {
+   "name": "Einspeisung am Netzanschluss: negative Gesamtleistung",
+   "status": {
+    "ble": {},
+    "bthome": {
+     "errors": [
+      "observer_disabled"
+     ]
+    },
+    "cloud": {
+     "connected": false
+    },
+    "em:0": {
+     "id": 0,
+     "a_current": 22.001,
+     "a_voltage": 236.2,
+     "a_act_power": -2100.5,
+     "a_aprt_power": 5204.6,
+     "a_pf": 0.52,
+     "a_freq": 50.0,
+     "b_current": 22.571,
+     "b_voltage": 237.1,
+     "b_act_power": -2050.25,
+     "b_aprt_power": 5357.7,
+     "b_pf": 0.42,
+     "b_freq": 50.0,
+     "c_current": 21.225,
+     "c_voltage": 237.1,
+     "c_act_power": -1999.0,
+     "c_aprt_power": 5032.5,
+     "c_pf": 0.38,
+     "c_freq": 50.0,
+     "n_current": null,
+     "total_current": 65.797,
+     "total_act_power": -6149.75,
+     "total_aprt_power": 15594.745,
+     "user_calibrated_phase": []
+    },
+    "emdata:0": {
+     "id": 0,
+     "a_total_act_energy": 15679156.91,
+     "a_total_act_ret_energy": 26137669.81,
+     "b_total_act_energy": 14395840.99,
+     "b_total_act_ret_energy": 26818645.77,
+     "c_total_act_energy": 12579395.27,
+     "c_total_act_ret_energy": 28007704.61,
+     "total_act": 42654393.17,
+     "total_act_ret": 80964020.2
+    },
+    "eth": {
+     "ip": null
+    },
+    "modbus": {},
+    "mqtt": {
+     "connected": false
+    },
+    "sys": {
+     "mac": "000000000001",
+     "restart_required": false,
+     "time": "17:01",
+     "unixtime": 1793980875,
+     "uptime": 53562955,
+     "ram_size": 262172,
+     "ram_free": 93436,
+     "fs_size": 524288,
+     "fs_free": 180224,
+     "cfg_rev": 10,
+     "kvs_rev": 0,
+     "schedule_rev": 0,
+     "webhook_rev": 0,
+     "available_updates": {
+      "stable": {
+       "version": "2.1.1"
+      }
+     },
+     "reset_reason": 3
+    },
+    "temperature:0": {
+     "id": 0,
+     "tC": 56.1,
+     "tF": 132.9
+    },
+    "wifi": {
+     "sta_ip": "192.0.2.11",
+     "status": "got ip",
+     "rssi": -37
+    },
+    "ws": {
+     "connected": false
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": true,
+    "leistung_w": -6149.75,
+    "power_kw": -6.15,
+    "power_kw_invertiert": 6.15,
+    "phasen_w": [
+     -2100.5,
+     -2050.25,
+     -1999.0
+    ],
+    "bezug_wh": 42654393.17,
+    "einspeisung_wh": 80964020.2
+   }
+  },
+  {
+   "name": "total_act_power null: kein Messwert, nie eine 0",
+   "status": {
+    "ble": {},
+    "bthome": {
+     "errors": [
+      "observer_disabled"
+     ]
+    },
+    "cloud": {
+     "connected": false
+    },
+    "em:0": {
+     "id": 0,
+     "a_current": 26.181,
+     "a_voltage": 236.3,
+     "a_act_power": 4021.3,
+     "a_aprt_power": 6179.8,
+     "a_pf": 0.62,
+     "a_freq": 50.0,
+     "b_current": 28.08,
+     "b_voltage": 237.0,
+     "b_act_power": 4406.6,
+     "b_aprt_power": 6656.9,
+     "b_pf": 0.7,
+     "b_freq": 50.0,
+     "c_current": 25.455,
+     "c_voltage": 237.6,
+     "c_act_power": 3595.9,
+     "c_aprt_power": 6038.7,
+     "c_pf": 0.6,
+     "c_freq": 50.0,
+     "n_current": null,
+     "total_current": 79.715,
+     "total_act_power": null,
+     "total_aprt_power": 18875.344,
+     "user_calibrated_phase": []
+    },
+    "emdata:0": {
+     "id": 0,
+     "a_total_act_energy": 24474917.19,
+     "a_total_act_ret_energy": 317.75,
+     "b_total_act_energy": 22865109.82,
+     "b_total_act_ret_energy": 483.69,
+     "c_total_act_energy": 23462281.29,
+     "c_total_act_ret_energy": 267.76,
+     "total_act": 70802308.29,
+     "total_act_ret": 1069.19
+    },
+    "eth": {
+     "ip": null
+    },
+    "modbus": {},
+    "mqtt": {
+     "connected": false
+    },
+    "sys": {
+     "mac": "000000000002",
+     "restart_required": false,
+     "time": "16:59",
+     "unixtime": 1793980778,
+     "uptime": 53562620,
+     "ram_size": 262160,
+     "ram_free": 92996,
+     "fs_size": 524288,
+     "fs_free": 180224,
+     "cfg_rev": 5,
+     "kvs_rev": 0,
+     "schedule_rev": 0,
+     "webhook_rev": 0,
+     "available_updates": {
+      "stable": {
+       "version": "2.1.1"
+      }
+     },
+     "reset_reason": 3
+    },
+    "temperature:0": {
+     "id": 0,
+     "tC": 47.3,
+     "tF": 117.1
+    },
+    "wifi": {
+     "sta_ip": "192.0.2.12",
+     "status": "got ip",
+     "rssi": -46
+    },
+    "ws": {
+     "connected": false
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": false,
+    "fehler": "kein_messwert"
+   }
+  },
+  {
+   "name": "total_act_power fehlt",
+   "status": {
+    "ble": {},
+    "bthome": {
+     "errors": [
+      "observer_disabled"
+     ]
+    },
+    "cloud": {
+     "connected": false
+    },
+    "em:0": {
+     "id": 0,
+     "a_current": 26.181,
+     "a_voltage": 236.3,
+     "a_act_power": 4021.3,
+     "a_aprt_power": 6179.8,
+     "a_pf": 0.62,
+     "a_freq": 50.0,
+     "b_current": 28.08,
+     "b_voltage": 237.0,
+     "b_act_power": 4406.6,
+     "b_aprt_power": 6656.9,
+     "b_pf": 0.7,
+     "b_freq": 50.0,
+     "c_current": 25.455,
+     "c_voltage": 237.6,
+     "c_act_power": 3595.9,
+     "c_aprt_power": 6038.7,
+     "c_pf": 0.6,
+     "c_freq": 50.0,
+     "n_current": null,
+     "total_current": 79.715,
+     "total_aprt_power": 18875.344,
+     "user_calibrated_phase": []
+    },
+    "emdata:0": {
+     "id": 0,
+     "a_total_act_energy": 24474917.19,
+     "a_total_act_ret_energy": 317.75,
+     "b_total_act_energy": 22865109.82,
+     "b_total_act_ret_energy": 483.69,
+     "c_total_act_energy": 23462281.29,
+     "c_total_act_ret_energy": 267.76,
+     "total_act": 70802308.29,
+     "total_act_ret": 1069.19
+    },
+    "eth": {
+     "ip": null
+    },
+    "modbus": {},
+    "mqtt": {
+     "connected": false
+    },
+    "sys": {
+     "mac": "000000000002",
+     "restart_required": false,
+     "time": "16:59",
+     "unixtime": 1793980778,
+     "uptime": 53562620,
+     "ram_size": 262160,
+     "ram_free": 92996,
+     "fs_size": 524288,
+     "fs_free": 180224,
+     "cfg_rev": 5,
+     "kvs_rev": 0,
+     "schedule_rev": 0,
+     "webhook_rev": 0,
+     "available_updates": {
+      "stable": {
+       "version": "2.1.1"
+      }
+     },
+     "reset_reason": 3
+    },
+    "temperature:0": {
+     "id": 0,
+     "tC": 47.3,
+     "tF": 117.1
+    },
+    "wifi": {
+     "sta_ip": "192.0.2.12",
+     "status": "got ip",
+     "rssi": -46
+    },
+    "ws": {
+     "connected": false
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": false,
+    "fehler": "kein_messwert"
+   }
+  },
+  {
+   "name": "errors power_meter_failure: Werte verworfen",
+   "status": {
+    "ble": {},
+    "bthome": {
+     "errors": [
+      "observer_disabled"
+     ]
+    },
+    "cloud": {
+     "connected": false
+    },
+    "em:0": {
+     "id": 0,
+     "a_current": 26.181,
+     "a_voltage": 236.3,
+     "a_act_power": 4021.3,
+     "a_aprt_power": 6179.8,
+     "a_pf": 0.62,
+     "a_freq": 50.0,
+     "b_current": 28.08,
+     "b_voltage": 237.0,
+     "b_act_power": 4406.6,
+     "b_aprt_power": 6656.9,
+     "b_pf": 0.7,
+     "b_freq": 50.0,
+     "c_current": 25.455,
+     "c_voltage": 237.6,
+     "c_act_power": 3595.9,
+     "c_aprt_power": 6038.7,
+     "c_pf": 0.6,
+     "c_freq": 50.0,
+     "n_current": null,
+     "total_current": 79.715,
+     "total_act_power": 12023.785,
+     "total_aprt_power": 18875.344,
+     "user_calibrated_phase": [],
+     "errors": [
+      "power_meter_failure"
+     ]
+    },
+    "emdata:0": {
+     "id": 0,
+     "a_total_act_energy": 24474917.19,
+     "a_total_act_ret_energy": 317.75,
+     "b_total_act_energy": 22865109.82,
+     "b_total_act_ret_energy": 483.69,
+     "c_total_act_energy": 23462281.29,
+     "c_total_act_ret_energy": 267.76,
+     "total_act": 70802308.29,
+     "total_act_ret": 1069.19
+    },
+    "eth": {
+     "ip": null
+    },
+    "modbus": {},
+    "mqtt": {
+     "connected": false
+    },
+    "sys": {
+     "mac": "000000000002",
+     "restart_required": false,
+     "time": "16:59",
+     "unixtime": 1793980778,
+     "uptime": 53562620,
+     "ram_size": 262160,
+     "ram_free": 92996,
+     "fs_size": 524288,
+     "fs_free": 180224,
+     "cfg_rev": 5,
+     "kvs_rev": 0,
+     "schedule_rev": 0,
+     "webhook_rev": 0,
+     "available_updates": {
+      "stable": {
+       "version": "2.1.1"
+      }
+     },
+     "reset_reason": 3
+    },
+    "temperature:0": {
+     "id": 0,
+     "tC": 47.3,
+     "tF": 117.1
+    },
+    "wifi": {
+     "sta_ip": "192.0.2.12",
+     "status": "got ip",
+     "rssi": -46
+    },
+    "ws": {
+     "connected": false
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": false,
+    "fehler": "zaehlerfehler"
+   }
+  },
+  {
+   "name": "b_errors out_of_range:current (Wandler uebersteuert): Werte verworfen",
+   "status": {
+    "ble": {},
+    "bthome": {
+     "errors": [
+      "observer_disabled"
+     ]
+    },
+    "cloud": {
+     "connected": false
+    },
+    "em:0": {
+     "id": 0,
+     "a_current": 26.181,
+     "a_voltage": 236.3,
+     "a_act_power": 4021.3,
+     "a_aprt_power": 6179.8,
+     "a_pf": 0.62,
+     "a_freq": 50.0,
+     "b_current": 28.08,
+     "b_voltage": 237.0,
+     "b_act_power": 4406.6,
+     "b_aprt_power": 6656.9,
+     "b_pf": 0.7,
+     "b_freq": 50.0,
+     "c_current": 25.455,
+     "c_voltage": 237.6,
+     "c_act_power": 3595.9,
+     "c_aprt_power": 6038.7,
+     "c_pf": 0.6,
+     "c_freq": 50.0,
+     "n_current": null,
+     "total_current": 79.715,
+     "total_act_power": 12023.785,
+     "total_aprt_power": 18875.344,
+     "user_calibrated_phase": [],
+     "b_errors": [
+      "out_of_range:current"
+     ]
+    },
+    "emdata:0": {
+     "id": 0,
+     "a_total_act_energy": 24474917.19,
+     "a_total_act_ret_energy": 317.75,
+     "b_total_act_energy": 22865109.82,
+     "b_total_act_ret_energy": 483.69,
+     "c_total_act_energy": 23462281.29,
+     "c_total_act_ret_energy": 267.76,
+     "total_act": 70802308.29,
+     "total_act_ret": 1069.19
+    },
+    "eth": {
+     "ip": null
+    },
+    "modbus": {},
+    "mqtt": {
+     "connected": false
+    },
+    "sys": {
+     "mac": "000000000002",
+     "restart_required": false,
+     "time": "16:59",
+     "unixtime": 1793980778,
+     "uptime": 53562620,
+     "ram_size": 262160,
+     "ram_free": 92996,
+     "fs_size": 524288,
+     "fs_free": 180224,
+     "cfg_rev": 5,
+     "kvs_rev": 0,
+     "schedule_rev": 0,
+     "webhook_rev": 0,
+     "available_updates": {
+      "stable": {
+       "version": "2.1.1"
+      }
+     },
+     "reset_reason": 3
+    },
+    "temperature:0": {
+     "id": 0,
+     "tC": 47.3,
+     "tF": 117.1
+    },
+    "wifi": {
+     "sta_ip": "192.0.2.12",
+     "status": "got ip",
+     "rssi": -46
+    },
+    "ws": {
+     "connected": false
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": false,
+    "fehler": "zaehlerfehler"
+   }
+  },
+  {
+   "name": "errors phase_sequence: Werte bleiben, Hinweis benannt",
+   "status": {
+    "ble": {},
+    "bthome": {
+     "errors": [
+      "observer_disabled"
+     ]
+    },
+    "cloud": {
+     "connected": false
+    },
+    "em:0": {
+     "id": 0,
+     "a_current": 26.181,
+     "a_voltage": 236.3,
+     "a_act_power": 4021.3,
+     "a_aprt_power": 6179.8,
+     "a_pf": 0.62,
+     "a_freq": 50.0,
+     "b_current": 28.08,
+     "b_voltage": 237.0,
+     "b_act_power": 4406.6,
+     "b_aprt_power": 6656.9,
+     "b_pf": 0.7,
+     "b_freq": 50.0,
+     "c_current": 25.455,
+     "c_voltage": 237.6,
+     "c_act_power": 3595.9,
+     "c_aprt_power": 6038.7,
+     "c_pf": 0.6,
+     "c_freq": 50.0,
+     "n_current": null,
+     "total_current": 79.715,
+     "total_act_power": 12023.785,
+     "total_aprt_power": 18875.344,
+     "user_calibrated_phase": [],
+     "errors": [
+      "phase_sequence"
+     ]
+    },
+    "emdata:0": {
+     "id": 0,
+     "a_total_act_energy": 24474917.19,
+     "a_total_act_ret_energy": 317.75,
+     "b_total_act_energy": 22865109.82,
+     "b_total_act_ret_energy": 483.69,
+     "c_total_act_energy": 23462281.29,
+     "c_total_act_ret_energy": 267.76,
+     "total_act": 70802308.29,
+     "total_act_ret": 1069.19
+    },
+    "eth": {
+     "ip": null
+    },
+    "modbus": {},
+    "mqtt": {
+     "connected": false
+    },
+    "sys": {
+     "mac": "000000000002",
+     "restart_required": false,
+     "time": "16:59",
+     "unixtime": 1793980778,
+     "uptime": 53562620,
+     "ram_size": 262160,
+     "ram_free": 92996,
+     "fs_size": 524288,
+     "fs_free": 180224,
+     "cfg_rev": 5,
+     "kvs_rev": 0,
+     "schedule_rev": 0,
+     "webhook_rev": 0,
+     "available_updates": {
+      "stable": {
+       "version": "2.1.1"
+      }
+     },
+     "reset_reason": 3
+    },
+    "temperature:0": {
+     "id": 0,
+     "tC": 47.3,
+     "tF": 117.1
+    },
+    "wifi": {
+     "sta_ip": "192.0.2.12",
+     "status": "got ip",
+     "rssi": -46
+    },
+    "ws": {
+     "connected": false
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": true,
+    "leistung_w": 12023.785,
+    "power_kw": 12.024,
+    "power_kw_invertiert": -12.024,
+    "phasen_w": [
+     4021.3,
+     4406.6,
+     3595.9
+    ],
+    "hinweise": [
+     "phase_sequence"
+    ],
+    "bezug_wh": 70802308.29,
+    "einspeisung_wh": 1069.19
+   }
+  },
+  {
+   "name": "ohne emdata:0: Leistung ja, Zaehlerstaende abwesend",
+   "status": {
+    "ble": {},
+    "bthome": {
+     "errors": [
+      "observer_disabled"
+     ]
+    },
+    "cloud": {
+     "connected": false
+    },
+    "em:0": {
+     "id": 0,
+     "a_current": 26.181,
+     "a_voltage": 236.3,
+     "a_act_power": 4021.3,
+     "a_aprt_power": 6179.8,
+     "a_pf": 0.62,
+     "a_freq": 50.0,
+     "b_current": 28.08,
+     "b_voltage": 237.0,
+     "b_act_power": 4406.6,
+     "b_aprt_power": 6656.9,
+     "b_pf": 0.7,
+     "b_freq": 50.0,
+     "c_current": 25.455,
+     "c_voltage": 237.6,
+     "c_act_power": 3595.9,
+     "c_aprt_power": 6038.7,
+     "c_pf": 0.6,
+     "c_freq": 50.0,
+     "n_current": null,
+     "total_current": 79.715,
+     "total_act_power": 12023.785,
+     "total_aprt_power": 18875.344,
+     "user_calibrated_phase": []
+    },
+    "eth": {
+     "ip": null
+    },
+    "modbus": {},
+    "mqtt": {
+     "connected": false
+    },
+    "sys": {
+     "mac": "000000000002",
+     "restart_required": false,
+     "time": "16:59",
+     "unixtime": 1793980778,
+     "uptime": 53562620,
+     "ram_size": 262160,
+     "ram_free": 92996,
+     "fs_size": 524288,
+     "fs_free": 180224,
+     "cfg_rev": 5,
+     "kvs_rev": 0,
+     "schedule_rev": 0,
+     "webhook_rev": 0,
+     "available_updates": {
+      "stable": {
+       "version": "2.1.1"
+      }
+     },
+     "reset_reason": 3
+    },
+    "temperature:0": {
+     "id": 0,
+     "tC": 47.3,
+     "tF": 117.1
+    },
+    "wifi": {
+     "sta_ip": "192.0.2.12",
+     "status": "got ip",
+     "rssi": -46
+    },
+    "ws": {
+     "connected": false
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": true,
+    "leistung_w": 12023.785,
+    "power_kw": 12.024,
+    "power_kw_invertiert": -12.024,
+    "phasen_w": [
+     4021.3,
+     4406.6,
+     3595.9
+    ]
+   }
+  },
+  {
+   "name": "Profil monophase (em1:0..): Einzelkanaele, noch nicht gelesen",
+   "status": {
+    "em1:0": {
+     "id": 0,
+     "current": 1.2,
+     "voltage": 230.1,
+     "act_power": 250.4,
+     "aprt_power": 270.0,
+     "pf": 0.93,
+     "freq": 50.0
+    },
+    "em1:1": {
+     "id": 1,
+     "current": 0.0,
+     "voltage": 230.0,
+     "act_power": 0.0,
+     "aprt_power": 0.0,
+     "pf": 0.0,
+     "freq": 50.0
+    },
+    "em1data:0": {
+     "id": 0,
+     "total_act_energy": 1000.5,
+     "total_act_ret_energy": 0.0
+    },
+    "sys": {
+     "mac": "000000000009"
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": false,
+    "fehler": "einzelkanaele"
+   }
+  },
+  {
+   "name": "Schaltaktor (switch:0) statt Zaehler",
+   "status": {
+    "switch:0": {
+     "id": 0,
+     "source": "init",
+     "output": false,
+     "apower": 0.0,
+     "voltage": 231.0
+    },
+    "sys": {
+     "mac": "000000000008"
+    }
+   },
+   "kanal": 0,
+   "erwartet": {
+    "ok": false,
+    "fehler": "kein_dreiphasen"
+   }
+  },
+  {
+   "name": "kein JSON-Objekt",
+   "roh": "[1,2,3]",
+   "kanal": 0,
+   "erwartet": {
+    "ok": false,
+    "fehler": "kein_json"
+   }
+  },
+  {
+   "name": "abgeschnittene Antwort",
+   "roh": "{\"em:0\": {\"total_act_power\": 12",
+   "kanal": 0,
+   "erwartet": {
+    "ok": false,
+    "fehler": "kein_json"
+   }
+  }
+ ]
+}

@@ -362,6 +362,7 @@ const COMM_WORT: Record<string, string> = {
   fronius_solar_api: 'Solar-API über das Netzwerk',
   goe_http_api: 'go-e über das Netzwerk',
   shelly_http: 'Shelly über das Netzwerk',
+  shelly_em_http: 'Shelly-Zähler über das Netzwerk',
   ebyte_modbus_tcp: 'Modbus über das Netzwerk',
   ocpp: 'OCPP 1.6J — die Säule wählt VoltPilot an',
   self_build: 'Modbus über das Netzwerk (selbst eingerichtet)',

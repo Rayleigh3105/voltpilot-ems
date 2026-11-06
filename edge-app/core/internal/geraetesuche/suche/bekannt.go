@@ -20,6 +20,8 @@ func bekanntPaar(b Bekannt) (erk, art string, ok bool) {
 		return "solarman", "wechselrichter", true
 	case "shelly_http":
 		return "shelly", "schaltaktor", true
+	case "shelly_em_http":
+		return "shelly", "zaehler", true
 	case "goe_http_api":
 		return "goe", "wallbox", true
 	case "fronius_solar_api":
@@ -47,7 +49,7 @@ func standardPort(communication string) int {
 	switch communication {
 	case "solarman_v5":
 		return solarmanv5.DefaultPort
-	case "shelly_http", "goe_http_api", "fronius_solar_api":
+	case "shelly_http", "shelly_em_http", "goe_http_api", "fronius_solar_api":
 		return 80
 	case "kaco_http":
 		return 8484

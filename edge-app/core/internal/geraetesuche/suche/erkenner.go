@@ -213,14 +213,18 @@ func erkenneShelly(ctx context.Context, g *geraet, port int, _ *modbus) (geraete
 		f.Merkmale = append(f.Merkmale, "mdns_shelly")
 	}
 	if auth {
+		// Neither the relay driver nor the meter reader logs in (Gen2 digest
+		// auth is not supported): a protected Shelly needs help either way.
 		f.Merkmale = append(f.Merkmale, "auth_en")
-		if f.Art == "schaltaktor" {
-			f.Hindernis = "geschuetzt"
-		}
+		f.Hindernis = "geschuetzt"
 	}
 	if f.Art == "zaehler" {
-		// The driver knows relays only: a meter has no reading way yet.
+		// A meter is read over its own way (Edge Light: internal/shellyem,
+		// the three-phase profile); the catalog row names it.
 		f.Verbindung.Communication = ""
+		if row, ok := geraetesuche.KatalogPaar("shelly", "zaehler"); ok {
+			f.Verbindung.Communication = row.Communication
+		}
 	}
 	return f, true
 }

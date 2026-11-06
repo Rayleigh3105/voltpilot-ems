@@ -16,8 +16,9 @@ const TopicSourcesConfig = sources.TopicConfig
 
 // sourcePlan is one source Edge Light reads - the Go twin of a plan the
 // flow's "sources-store" node builds (build-flows.js): a go-e over HTTP, a
-// Huawei SUN2000 over Modbus TCP or a Powador behind its RS485 converter. Every
-// other transport is named in the log, never silently skipped.
+// Huawei SUN2000 over Modbus TCP, a Powador behind its RS485 converter or a
+// SunSpec inverter (sunspec_tcp / fronius_sunspec). Every other transport is
+// named in the log, never silently skipped.
 type sourcePlan struct {
 	ID   string
 	Role string
@@ -27,8 +28,14 @@ type sourcePlan struct {
 	URL  string // goe_http_api: the status URL
 	Addr string // the lane key: one request at a time per device
 
-	Huawei *huaweiPlan     // huawei_modbus
-	Kaco   *kacoSerialPlan // kaco_serial
+	Huawei   *huaweiPlan     // huawei_modbus
+	Kaco     *kacoSerialPlan // kaco_serial
+	Sunspec  *sunspecPlan    // sunspec_tcp / fronius_sunspec
+	ShellyEM *shellyEMPlan   // shelly_em_http
+
+	// DataSourceID is the assigned data source (DQ-…) the push named, the
+	// identity of the read receipt (else the local id).
+	DataSourceID string
 }
 
 // sourceNote is one line of the store node's log: warn = NICHT VERDRAHTET.
@@ -38,8 +45,8 @@ type sourceNote struct {
 }
 
 // The transports the flow can read as a source. Edge Light names the ones it
-// does not read yet instead of calling them unknown (kaco_serial and
-// huawei_modbus are read here, like in the flow's source executor since #1672).
+// does not read yet instead of calling them unknown (kaco_serial, huawei_modbus
+// and the SunSpec way are read here, like in the flow's source executor).
 var knownSourceComms = map[string]bool{
 	"modbus_tcp": true, "fronius_sunspec": true, "sunspec_tcp": true, "kaco_http": true,
 	"kaco_modbus": true, "goe_http_api": true, "solarman_v5": true, "fronius_solar_api": true,
@@ -65,6 +72,7 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 	if json.Unmarshal(obj["sources"], &list) != nil || list == nil {
 		return nil, nil, 0, false
 	}
+	dataSourceIDs := map[string]string{}
 	for i, raw := range list {
 		var s map[string]any
 		label := "Eintrag #" + strconv.Itoa(i+1)
@@ -95,6 +103,9 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 			continue
 		}
 		entries++
+		if dq, _ := s["data_source_id"].(string); strings.TrimSpace(dq) != "" {
+			dataSourceIDs[id] = strings.TrimSpace(dq)
+		}
 		// --- the store node (role, then the transport) ---
 		role, _ := s["role"].(string)
 		// Die Adresse einer Anlagensteuerung (EZ-21) liest der Messplan, nicht
@@ -137,11 +148,36 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 			}
 			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: kp.IP, Port: kp.Port, Addr: kp.Addr, Kaco: kp})
 			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): kaco_serial " + kp.Addr + " Adresse " + strconv.Itoa(kp.Address) + " -> Leseplan (Powador #" + fmt.Sprintf("%02d", kp.Address) + "0)"})
+		case comm == CommShellyEM:
+			sp, why := planShellyEM(conn)
+			if sp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			if role == sources.RoleErzeuger {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: ein Zaehler liefert keinen PV-Wert (Netz-Zaehler oder Unterzaehler/Verbraucher)"})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: sp.IP, Port: sp.Port, Addr: sp.Addr, ShellyEM: sp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): shelly_em_http " + sp.Addr + " -> Leseplan (Shelly.GetStatus, em:0)"})
+		case isSunSpecComm(comm):
+			// The flow's plan: port num(conn.port, 502), unit num(conn.unit_id, 1),
+			// model_type auto unless float/int_sf.
+			sp, why := planSunSpec(&selection{Family: family, Communication: comm, Connection: conn})
+			if sp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: sp.IP, Port: sp.Port, Addr: sp.Addr, Sunspec: sp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): " + comm + " " + sp.Addr + " -> Leseplan sunspec_live (unit " + strconv.Itoa(int(sp.UnitID)) + ", model_type " + sp.ModelType + ")"})
 		case knownSourceComms[comm]:
 			notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + "): Edge Light liest die Anbindung \"" + comm + "\" als Energiequelle noch nicht"})
 		default:
 			notes = append(notes, sourceNote{true, "Quelle " + id + " NICHT VERDRAHTET: unbekannte Kommunikation \"" + comm + "\""})
 		}
+	}
+	for i := range plans {
+		plans[i].DataSourceID = dataSourceIDs[plans[i].ID]
 	}
 	return plans, notes, entries, true
 }

@@ -80,6 +80,14 @@ func (r *Runtime) testRead(ctx context.Context, req *testReadRequest) testReadRe
 			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
 		}
 		return r.testKacoSerial(ctx, p, req.Role)
+	case CommSunSpecTCP, CommFroniusSunSpec:
+		p, why := planSunSpec(&req.selection)
+		if p == nil {
+			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
+		}
+		return r.testSunSpec(ctx, p, req.Role)
+	case CommShellyEM:
+		return r.testShellyEM(ctx, &req.selection, req.Role)
 	}
 	return testReadResult{ErrorCode: testconn.ErrInvalidRequest,
 		Message: "Diese Anbindung („" + req.Communication + "“) wird von Edge Light noch nicht unterstützt."}

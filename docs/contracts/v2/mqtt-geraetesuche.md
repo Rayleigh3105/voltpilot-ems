@@ -139,9 +139,10 @@ vollständig) und die **neuen** `funde[]` seit dem vorigen Stand. Der Stand ist 
 Die Box meldet die Wallbox (`goe`/`wallbox`) wie im Katalog als `uebernehmen`. Die Cloud gibt sie dem Portal als `kein_leseweg` weiter (`GeraetesucheDienst.fuerPortal`, auch in den Zählern des Protokolls): Die HTTP-Schnittstelle ist nur lesend, die Box kann dem Gerät keine Rolle zuordnen, und der Anlege-Weg lehnt die Vorlage als Verbraucher mit 422 ab. Das Portal nennt statt eines Knopfs den Weg über „Ladesäule mit OCPP 1.6“. Der Vertrag mit der Box ändert sich nicht.
 
 **„Erkannt, mit dieser Box noch nicht anbindbar“** ist `anbindung` `nicht_mit_dieser_box` oder `kein_leseweg`. Der
-Katalog legt je Paar und Box-Art fest, welches Wort die Box meldet: SunSpec, Fronius, KACO/AISWEI, KOSTAL und
-das WAGO-Registerbild liest heute nur die Docker-Box (Huawei lesen seit 04.11.2026 beide Box-Arten); SMA, Victron,
-OpenDTU/Ahoy und die Shelly-Zähler liest keine.
+Katalog legt je Paar und Box-Art fest, welches Wort die Box meldet: Fronius (Solar API), KACO/AISWEI, KOSTAL und
+das WAGO-Registerbild liest heute nur die Docker-Box (Huawei seit 04.11.2026 und SunSpec seit 06.11.2026 lesen beide
+Box-Arten); die Shelly-Zähler (Pro 3EM, Profil dreiphasig, `shelly_em_http`) liest seit 06.11.2026 nur Edge Light – die
+Docker-Box meldet sie weiter als `kein_leseweg` (Folgepaket); SMA, Victron und OpenDTU/Ahoy liest keine.
 
 ### Datenschutz (DP-3 A)
 

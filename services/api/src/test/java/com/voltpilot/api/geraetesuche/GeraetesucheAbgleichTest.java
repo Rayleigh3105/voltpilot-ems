@@ -63,10 +63,11 @@ class GeraetesucheAbgleichTest {
         assertThat(GeraetesucheDienst.zaehler(docker.funde(), List.of())).containsExactly(
                 Map.entry("braucht_hilfe", 0), Map.entry("bereit", 2), Map.entry("nicht_anbindbar", 1),
                 Map.entry("vielleicht", 1), Map.entry("schon_eingerichtet", 0), Map.entry("weitere", 1));
-        // Edge Light: der geschützte Shelly braucht Hilfe; Fronius (nur Docker liest ihn), SMA und der Shelly-Zähler
-        // (kein Leseweg) sind „erkannt, mit dieser Box noch nicht anbindbar“.
+        // Edge Light: der geschützte Shelly braucht Hilfe; den Shelly-Zähler liest Edge Light seit 06.11.2026 (bereit);
+        // Fronius (Solar API, nur Docker liest ihn) und SMA (kein Leseweg) sind „erkannt, mit dieser Box noch nicht
+        // anbindbar“.
         assertThat(GeraetesucheDienst.zaehler(edgeLight.funde(), List.of())).containsExactly(
-                Map.entry("braucht_hilfe", 1), Map.entry("bereit", 2), Map.entry("nicht_anbindbar", 3),
+                Map.entry("braucht_hilfe", 1), Map.entry("bereit", 3), Map.entry("nicht_anbindbar", 2),
                 Map.entry("vielleicht", 0), Map.entry("schon_eingerichtet", 0), Map.entry("weitere", 1));
         for (GeraetesucheBericht.Fund f : edgeLight.funde()) {
             assertThat(GeraetesucheAbgleich.abgleichen(f, List.of()).abgleich()).as(f.schluessel()).isEqualTo("neu");
@@ -214,6 +215,41 @@ class GeraetesucheAbgleichTest {
                 vorlage("builtin:deye:sun-12k-sg04lp3", "deye", "sun-12k-sg04lp3", "hybrid_3p", "solarman_v5"));
         assertThat(GeraetesucheAbgleich.vorlagen(fund(docker, "solarman:3115580613"), nurNiedervolt))
                 .containsExactly("builtin:deye:sun-12k-sg04lp3");
+    }
+
+    /**
+     * Werner Schramm, 06.11.2026: die Suche meldet drei KACO über SunSpec mit dem Modell aus dem Common Model 1. Ohne
+     * Modell-Abgleich bekäme jeder Fund alle 49 KACO-Vorlagen von {@code sunspec_tcp}; mit ihm genau seine.
+     */
+    @Test
+    void einKacoMitGemeldetemModellBekommtGenauSeineVorlage() throws Exception {
+        List<ComponentTemplateDto> katalog = new java.util.ArrayList<>();
+        for (JsonNode t : JSON.readTree(getClass().getResourceAsStream("/componenttemplates/builtin.json"))
+                .path("templates")) {
+            katalog.add(new ComponentTemplateDto(t.path("template_ref").asText(), "builtin", 1, t.path("brand").asText(),
+                    t.path("brand_label").asText(), t.path("model").asText(), t.path("model_label").asText(), "[]",
+                    t.path("device_type").asText(), null, t.path("family").asText(), t.path("family").asText(),
+                    t.path("communication").asText(), t.path("communication").asText(), "[]", "[]", "[]", null, 0,
+                    null, null, null, null, null));
+        }
+        GeraetesucheBericht.Verbindung v = new GeraetesucheBericht.Verbindung("sunspec_tcp", "192.168.1.156", 502, null, 1);
+        java.util.function.Function<String, GeraetesucheBericht.Fund> kaco = modell -> new GeraetesucheBericht.Fund(
+                "sunspec:14.0TL00000001", "sunspec", "wechselrichter", "kaco", modell, "14.0TL00000001", "V2.30", null,
+                null, null, "sicher", List.of("sunspec_40000", "sunspec_common_model_1"), "uebernehmen", null, v, false);
+
+        assertThat(GeraetesucheAbgleich.vorlagen(kaco.apply("Powador 14.0 TL3"), katalog))
+                .containsExactly("builtin:kaco:powador-14.0-tl3");
+        assertThat(GeraetesucheAbgleich.vorlagen(kaco.apply("  powador   20.0 tl3 "), katalog))
+                .containsExactly("builtin:kaco:powador-20.0-tl3");
+        // Ein Modell, das der Katalog nicht kennt, engt nicht ein: der Kunde wählt aus allen KACO über SunSpec.
+        assertThat(GeraetesucheAbgleich.vorlagen(kaco.apply("Powador 99.9 TL3"), katalog)).hasSize(49);
+        assertThat(GeraetesucheAbgleich.vorlagen(kaco.apply(null), katalog)).hasSize(49);
+        // Der Shelly-Zähler hat genau eine Vorlage, das Modell der Box (SPEM-…) ist kein Vorlagenname.
+        GeraetesucheBericht.Fund zaehler = new GeraetesucheBericht.Fund("shelly:192.168.1.146:80", "shelly", "zaehler",
+                "shelly", "SPEM-003CEBEU400", null, "1.4.4", null, null, null, "sicher", List.of("shelly_gen2_antwort"),
+                "uebernehmen", null, new GeraetesucheBericht.Verbindung("shelly_em_http", "192.168.1.146", 80, null, null),
+                false);
+        assertThat(GeraetesucheAbgleich.vorlagen(zaehler, katalog)).containsExactly("builtin:shelly:shelly-pro-3em");
     }
 
     /** Die Spannung, die der Abgleich aus dem Modell liest, ist die, die der Katalog in seiner Notiz nennt. */

@@ -270,6 +270,7 @@
           "enum": [
             "solarman_v5",
             "shelly_http",
+            "shelly_em_http",
             "goe_http_api",
             "fronius_solar_api",
             "fronius_sunspec",

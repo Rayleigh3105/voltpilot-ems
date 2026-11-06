@@ -198,6 +198,15 @@ describe('Gerätesuche · Übernehmen', () => {
     expect(uebernahmeWeg(gsGoe, [])).toEqual({ art: 'unbekannt' });
   });
 
+  it('Shelly-Zähler (Pro 3EM, 06.11.2026): direkt in den Fluss - der fragt Netz-Zähler oder Unterzähler, nie die Ausgänge', () => {
+    const meter = { ...GS_SHELLY, templateRef: 'builtin:shelly:shelly-pro-3em', model: 'shelly-pro-3em',
+      modelLabel: 'Shelly Pro 3EM / Pro 3EM-400 (Zähler)', deviceType: 'meter', family: 'shelly_em_triphase',
+      communication: 'shelly_em_http' };
+    const zaehler = { ...gsShelly, schluessel: 'shelly:192.168.1.146:80', art: 'zaehler', modell: 'SPEM-003CEBEU400',
+      kanaele: null, verbindung: { communication: 'shelly_em_http', ip: '192.168.1.146', port: 80 }, vorlagen: [meter.templateRef] };
+    expect(uebernahmeWeg(zaehler, [...GS_TEMPLATES, meter])).toEqual({ art: 'direkt', template: meter });
+  });
+
   it('die Vorbelegung spricht die Schlüssel der Vorlage: unit_id → mb_slave_id, Seriennummer als Text, Kanal', () => {
     expect(vorbelegung(gsDeye, GS_DEYE_HV[0])).toEqual({
       ip: '192.168.178.34', port: 8899, serial: '3115580613', unit_id: 1, mb_slave_id: 1,

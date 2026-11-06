@@ -99,10 +99,10 @@
       "erkenner": "shelly",
       "art": "zaehler",
       "schnitt": 2,
-      "communication": null,
+      "communication": "shelly_em_http",
       "docker": "kein_leseweg",
-      "edge_light": "kein_leseweg",
-      "wie": "Shelly 3EM / Pro 3EM / EM über /shelly: der Treiber kennt nur Relais."
+      "edge_light": "uebernehmen",
+      "wie": "Shelly-Zähler (Pro 3EM, Pro 3EM-400, 3EM …) über /shelly, Art aus Modell oder em-Komponente: Edge Light liest den dreiphasigen Zähler über Shelly.GetStatus (Profil triphase), die Docker-Box noch nicht."
     },
     {
       "erkenner": "goe",
@@ -146,7 +146,7 @@
       "schnitt": 2,
       "communication": "sunspec_tcp",
       "docker": "uebernehmen",
-      "edge_light": "nicht_mit_dieser_box",
+      "edge_light": "uebernehmen",
       "wie": "SunSpec: TCP 502/1502, Unit-IDs 1/2/3/71/126, „SunS“ an 40000/50000/0, Common Model 1."
     },
     {
@@ -1279,8 +1279,9 @@
               "merkmale": [
                 "shelly_gen2_antwort"
               ],
-              "anbindung": "kein_leseweg",
+              "anbindung": "uebernehmen",
               "verbindung": {
+                "communication": "shelly_em_http",
                 "ip": "192.168.2.30",
                 "port": 80
               },
@@ -2175,8 +2176,9 @@
               "merkmale": [
                 "shelly_gen2_antwort"
               ],
-              "anbindung": "kein_leseweg",
+              "anbindung": "uebernehmen",
               "verbindung": {
+                "communication": "shelly_em_http",
                 "ip": "192.168.2.30",
                 "port": 80
               },
@@ -2374,8 +2376,9 @@
               "merkmale": [
                 "shelly_gen2_antwort"
               ],
-              "anbindung": "kein_leseweg",
+              "anbindung": "uebernehmen",
               "verbindung": {
+                "communication": "shelly_em_http",
                 "ip": "192.168.2.30",
                 "port": 80
               },

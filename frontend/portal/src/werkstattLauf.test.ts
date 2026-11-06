@@ -58,8 +58,11 @@ describe('Lauf-Seite aus der Ansicht des Dienstes', () => {
   });
 
   it('ein neueres Release nur, wenn es signiert und für Edge Light ist', () => {
-    const r = (version: string, signed = true, boxArt = 'edge-light') => ({ version, signed, boxArt, releaseSeq: 1 });
-    expect(neueresRelease('edge-light-2026.11.1', [r('2026.11.3'), r('2026.12.0', false), r('2026.12.1', true, 'edge-app')])).toBe('2026.11.3');
+    // Die Box-Art ist das Wort der API (EdgeUpdatesDto.ReleaseDto.boxArt: docker | light).
+    const r = (version: string, signed = true, boxArt = 'light') => ({ version, signed, boxArt, releaseSeq: 1 });
+    expect(neueresRelease('edge-light-2026.11.1', [r('2026.11.3'), r('2026.12.0', false), r('2026.12.1', true, 'docker')])).toBe('2026.11.3');
+    expect(neueresRelease('edge-light-2026.11.4', [r('edge-light-2026.11.5')])).toBe('2026.11.5');
+    expect(neueresRelease('edge-light-2026.11.4', [r('edge-light-2026.11.5', true, 'edge-light')])).toBeNull();
     expect(neueresRelease('edge-light-2026.11.10', [r('2026.11.9')])).toBeNull();
     expect(neueresRelease('edge-light-2026.11.1', [])).toBeNull();
   });

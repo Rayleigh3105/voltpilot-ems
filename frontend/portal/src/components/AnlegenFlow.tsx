@@ -207,7 +207,7 @@ export function AnlegenFlow({
     vorlage ? 'eigenbau' : (edit ? typFuerZeile(edit) : (startTyp ?? initialTyp ?? null)),
   );
   const [rolle, setRolle] = useState<KomponentenRolle | null>(() =>
-    edit ? kundenRolle(edit) : startTyp ? vorschlagRolle(startTyp, [], startRolle) : null,
+    edit ? kundenRolle(edit) : startTyp ? vorschlagRolle(startTyp, [], startRolle, startTemplate?.deviceType) : null,
   );
   const [template, setTemplate] = useState<ComponentTemplate | null>(startTemplate);
   const [templateVersion, setTemplateVersion] = useState<number | null>(
@@ -289,12 +289,12 @@ export function AnlegenFlow({
         setVorhandeneNamen(namen);
         if (startTyp && !edit) {
           setRolle((aktuell) => {
-            const wahlen = rollenWahl(startTyp, rollen);
+            const wahlen = rollenWahl(startTyp, rollen, {}, startTemplate?.deviceType);
             const bleibtGueltig = wahlen.some((wahl) => wahl.rolle === aktuell && wahl.verfuegbar);
             // ⚠ Nur ein AUTOMATISCHER Vorschlag wird nachgeführt: hat die Anlage
             // schon einen Hauptwechselrichter, meint der Kunde fast immer einen
             // weiteren Erzeuger (`vorschlagRolle`).
-            const vorschlag = vorschlagRolle(startTyp, rollen, startRolle);
+            const vorschlag = vorschlagRolle(startTyp, rollen, startRolle, startTemplate?.deviceType);
             return bleibtGueltig && (aktuell === startRolle || wahlen.length === 1) ? aktuell : vorschlag;
           });
         }
@@ -325,7 +325,7 @@ export function AnlegenFlow({
     () => (typ ? geraeteFuerTyp(alle, typ) : { templates: [], erweitert: false }),
     [alle, typ],
   );
-  const rollen = typ ? rollenWahl(typ, vorhandene, vorhandeneNamen) : [];
+  const rollen = typ ? rollenWahl(typ, vorhandene, vorhandeneNamen, template?.deviceType) : [];
 
   /**
    * Die Picker-Zeilen: EINE Zeile je Modell, gruppiert nach Marke. Die
@@ -1041,7 +1041,7 @@ export function AnlegenFlow({
    */
   if (!edit && template && typ && typ !== 'eigenbau' && typ !== 'ladesaeule') {
     const symbol = KATEGORIE_SYMBOL[typ === 'zaehler' ? 'zaehler' : kategorieVon(template)];
-    const vorschlag = vorschlagRolle(typ, vorhandene, startRolle);
+    const vorschlag = vorschlagRolle(typ, vorhandene, startRolle, template?.deviceType);
     const rolleOk = rollen.some((r) => r.rolle === rolle && r.verfuegbar);
     const rollenFrage = rollen.length > 1 || typ === 'zaehler' || !rolleOk;
     const belegt = testZustand === 'bestanden' || Boolean(ohneKanal);

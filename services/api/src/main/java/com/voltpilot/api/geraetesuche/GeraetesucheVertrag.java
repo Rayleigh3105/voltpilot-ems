@@ -55,9 +55,9 @@ public final class GeraetesucheVertrag {
             KEIN_LESEWEG, NUR_ANZEIGE);
     public static final List<String> ERKENNUNGEN = List.of("sicher", "wahrscheinlich", "unbekannt");
     public static final List<String> HINDERNISSE = List.of("geschuetzt", "lokale_api_aus");
-    public static final List<String> COMMUNICATIONS = List.of("solarman_v5", "shelly_http", "goe_http_api",
-            "fronius_solar_api", "fronius_sunspec", "sunspec_tcp", "kaco_http", "kostal_modbus", "huawei_modbus",
-            "ebyte_modbus_tcp", "modbus_tcp");
+    public static final List<String> COMMUNICATIONS = List.of("solarman_v5", "shelly_http", "shelly_em_http",
+            "goe_http_api", "fronius_solar_api", "fronius_sunspec", "sunspec_tcp", "kaco_http", "kostal_modbus",
+            "huawei_modbus", "ebyte_modbus_tcp", "modbus_tcp");
     public static final List<String> SCHRITTE = List.of("netze_bestimmen", "nachbarn_finden", "geraete_ansprechen",
             "geraete_erkennen");
     public static final List<String> ROLLEN = List.of("kundennetz", "box_netz");
@@ -94,13 +94,13 @@ public final class GeraetesucheVertrag {
     public static final List<KatalogZeile> KATALOG = List.of(
             new KatalogZeile("solarman", "wechselrichter", 1, "solarman_v5", UEBERNEHMEN, UEBERNEHMEN),
             new KatalogZeile("shelly", "schaltaktor", 1, "shelly_http", UEBERNEHMEN, UEBERNEHMEN),
-            new KatalogZeile("shelly", "zaehler", 2, null, KEIN_LESEWEG, KEIN_LESEWEG),
+            new KatalogZeile("shelly", "zaehler", 2, "shelly_em_http", KEIN_LESEWEG, UEBERNEHMEN),
             new KatalogZeile("goe", "wallbox", 1, "goe_http_api", UEBERNEHMEN, UEBERNEHMEN),
             new KatalogZeile("netztechnik", "router", 1, null, NUR_ANZEIGE, NUR_ANZEIGE),
             new KatalogZeile("netztechnik", "zugangspunkt", 1, null, NUR_ANZEIGE, NUR_ANZEIGE),
             new KatalogZeile("modbus_offen", "modbus_geraet", 1, "modbus_tcp", SELBST_BESCHREIBEN,
                     SELBST_BESCHREIBEN),
-            new KatalogZeile("sunspec", "wechselrichter", 2, "sunspec_tcp", UEBERNEHMEN, NICHT_MIT_DIESER_BOX),
+            new KatalogZeile("sunspec", "wechselrichter", 2, "sunspec_tcp", UEBERNEHMEN, UEBERNEHMEN),
             new KatalogZeile("fronius_solar_api", "wechselrichter", 2, "fronius_solar_api", UEBERNEHMEN,
                     NICHT_MIT_DIESER_BOX),
             new KatalogZeile("kaco_aiswei", "wechselrichter", 2, "kaco_http", UEBERNEHMEN, NICHT_MIT_DIESER_BOX),

@@ -759,8 +759,9 @@ describe('Werkstatt: Nochmal versuchen und zur Seite legen', () => {
   it('Fertig nennt neun Prüfungen und zeigt, was jetzt auf der Box ist; ein neueres Release nur als Hinweis', async () => {
     window.location.hash = '#/werkstatt?werkbank=1';
     werkstattDienst.mockResolvedValue(dienst({ zustand: 'fertig', ende: '2026-11-02T10:22:00Z' }));
-    edgeUpdates.mockResolvedValue({ releases: [{ releaseSeq: 9, version: '2026.11.3', signed: true, boxArt: 'edge-light' },
-      { releaseSeq: 10, version: '2026.12.0', signed: false, boxArt: 'edge-light' }] });
+    // Die Box-Art ist das Wort der API (EdgeUpdatesDto.ReleaseDto.boxArt: docker | light).
+    edgeUpdates.mockResolvedValue({ releases: [{ releaseSeq: 9, version: '2026.11.3', signed: true, boxArt: 'light' },
+      { releaseSeq: 10, version: '2026.12.0', signed: false, boxArt: 'light' }] });
     render(<WerkstattPage />);
     fireEvent.click(await screen.findByTestId('wsb-mango'));
     expect(screen.getByTestId('wsb-fertig')).toHaveTextContent('Alle neun Prüfungen bestanden · 17 Min');

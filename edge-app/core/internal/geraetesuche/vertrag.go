@@ -80,7 +80,7 @@ var (
 	Anbindungen      = []string{AnbindungUebernehmen, AnbindungSelbstBeschreiben, AnbindungNichtMitDieserBox, AnbindungKeinLeseweg, AnbindungNurAnzeige}
 	Erkennungen      = []string{ErkennungSicher, ErkennungWahrscheinlich, ErkennungUnbekannt}
 	Hindernisse      = []string{"geschuetzt", "lokale_api_aus"}
-	Communications   = []string{"solarman_v5", "shelly_http", "goe_http_api", "fronius_solar_api", "fronius_sunspec", "sunspec_tcp", "kaco_http", "kostal_modbus", "huawei_modbus", "ebyte_modbus_tcp", "modbus_tcp"}
+	Communications   = []string{"solarman_v5", "shelly_http", "shelly_em_http", "goe_http_api", "fronius_solar_api", "fronius_sunspec", "sunspec_tcp", "kaco_http", "kostal_modbus", "huawei_modbus", "ebyte_modbus_tcp", "modbus_tcp"}
 	Schritte         = []string{"netze_bestimmen", "nachbarn_finden", "geraete_ansprechen", "geraete_erkennen"}
 	Rollen           = []string{"kundennetz", "box_netz"}
 	Zustaende        = []string{"fertig", "abgebrochen", "fehlgeschlagen", "abgelehnt"}
@@ -109,12 +109,12 @@ type KatalogZeile struct {
 var Katalog = []KatalogZeile{
 	{"solarman", "wechselrichter", 1, "solarman_v5", AnbindungUebernehmen, AnbindungUebernehmen},
 	{"shelly", "schaltaktor", 1, "shelly_http", AnbindungUebernehmen, AnbindungUebernehmen},
-	{"shelly", "zaehler", 2, "", AnbindungKeinLeseweg, AnbindungKeinLeseweg},
+	{"shelly", "zaehler", 2, "shelly_em_http", AnbindungKeinLeseweg, AnbindungUebernehmen},
 	{"goe", "wallbox", 1, "goe_http_api", AnbindungUebernehmen, AnbindungUebernehmen},
 	{"netztechnik", "router", 1, "", AnbindungNurAnzeige, AnbindungNurAnzeige},
 	{"netztechnik", "zugangspunkt", 1, "", AnbindungNurAnzeige, AnbindungNurAnzeige},
 	{"modbus_offen", "modbus_geraet", 1, "modbus_tcp", AnbindungSelbstBeschreiben, AnbindungSelbstBeschreiben},
-	{"sunspec", "wechselrichter", 2, "sunspec_tcp", AnbindungUebernehmen, AnbindungNichtMitDieserBox},
+	{"sunspec", "wechselrichter", 2, "sunspec_tcp", AnbindungUebernehmen, AnbindungUebernehmen},
 	{"fronius_solar_api", "wechselrichter", 2, "fronius_solar_api", AnbindungUebernehmen, AnbindungNichtMitDieserBox},
 	{"kaco_aiswei", "wechselrichter", 2, "kaco_http", AnbindungUebernehmen, AnbindungNichtMitDieserBox},
 	{"kostal", "wechselrichter", 2, "kostal_modbus", AnbindungUebernehmen, AnbindungNichtMitDieserBox},

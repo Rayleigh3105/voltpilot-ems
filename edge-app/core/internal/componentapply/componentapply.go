@@ -312,6 +312,15 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 	if d.Communication == inverter.CommEbyteModbusTCP {
 		return sources.RoleConsumer, nil
 	}
+	// A Shelly meter that is not the grid meter (that one arrives as
+	// grid-meter above) is a SUB-METER - a sub-distribution, a hall. The cloud
+	// creates it for the consumer role with the meter template, which makes it
+	// a measure-only device entity. It is read on the consumer side: its power
+	// is the load of that part of the plant and never becomes the grid value,
+	// which belongs to the one grid meter alone.
+	if d.Communication == inverter.CommShellyEMHTTP {
+		return sources.RoleConsumer, nil
+	}
 	return "", &unassignableRole{fmt.Sprintf(
 		"für dieses Gerät (%s) ist nicht bestimmbar, welche Rolle es hat - es ist weder "+
 			"Wechselrichter, Erzeuger oder Netzzähler noch ein steuerbarer Verbraucher", e.Type)}

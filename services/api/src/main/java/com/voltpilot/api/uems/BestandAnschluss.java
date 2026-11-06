@@ -26,8 +26,9 @@ import java.util.Map;
  *       des Datenloggers gehört zum Weg (ohne sie liest der Treiber nicht), die Geräte-ID ist die
  *       Slave-ID {@code mb_slave_id}.</li>
  *   <li>HTTP-Auskunft ({@code kaco_http}, {@code fronius_solar_api}, {@code goe_http_api},
- *       {@code shelly_http}): {@code schema://host:port} — {@code https}, wo der Treiber es nimmt
- *       ({@code scheme: https} oder {@code insecure_tls}), sonst {@code http}.</li>
+ *       {@code shelly_http}, Shelly-Zähler {@code shelly_em_http}): {@code schema://host:port} —
+ *       {@code https}, wo der Treiber es nimmt ({@code scheme: https} oder {@code insecure_tls}),
+ *       sonst {@code http}.</li>
  *   <li>KACO seriell über einen RS485-zu-Ethernet-Wandler ({@code kaco_serial}): {@code ip:port}
  *       — des WANDLERS, nicht des Wechselrichters —, die Geräte-ID ist die RS485-Busadresse
  *       (1-32, {@code address}; KEINE Modbus-Unit-ID, dieses Protokoll kennt kein Modbus). 0 ist
@@ -88,6 +89,7 @@ public final class BestandAnschluss {
             Map.entry("fronius_solar_api", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("goe_http_api", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("shelly_http", new Transport("http", 80, null, Weg.HTTP)),
+            Map.entry("shelly_em_http", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("ebyte_modbus_tcp", new Transport("modbus_tcp", 502, 1, Weg.MODBUS)),
             Map.entry("kaco_serial", new Transport("kaco_serial", 8899, 1, Weg.KACO_SERIAL)));
 

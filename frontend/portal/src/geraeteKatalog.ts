@@ -364,9 +364,10 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
         ),
       );
     }
-    // Über „Zähler" sucht man das Gerät, ÜBER das gemessen wird - also in allem.
+    // Über „Zähler" sucht man den Zähler ODER das Gerät, ÜBER das gemessen wird -
+    // also in allem, auch wenn es Zähler-Vorlagen gibt.
     const suchraum =
-      e.chip === 'alle' || (e.chip === 'zaehler' && zaehlerVorlagen.length === 0)
+      e.chip === 'alle' || e.chip === 'zaehler'
         ? templates
         : templates.filter((t) => kategorieVon(t) === e.chip);
     const suche = modellSuche(suchraum, e.q);
@@ -444,7 +445,16 @@ export function katalogAnsicht(e: KatalogEingabe): KatalogAnsicht {
       return out;
     case 'zaehler':
       if (zaehlerVorlagen.length > 0) {
-        out.gruppen.push(...gruppe('zaehler', KATEGORIE_LABEL.zaehler, modelleUndWege('zaehler')));
+        // Erst die Zähler, dann - wie vor der ersten Zähler-Vorlage - das Gerät, über
+        // das gemessen wird (ein Wechselrichter mit Zähler am Netzpunkt bleibt so wählbar).
+        out.gruppen.push(
+          ...gruppe('zaehler', KATEGORIE_LABEL.zaehler, modelleUndWege('zaehler')),
+          ...gruppe(
+            'zaehler-geraet',
+            'Oder das Gerät, über das gemessen wird',
+            markenEintraege(templates.filter((t) => kategorieVon(t) !== 'zaehler')),
+          ),
+        );
         return out;
       }
       out.hinweis = keineVorlageHinweis('zaehler');
@@ -491,8 +501,9 @@ export function wahlFuer(eintrag: KatalogEintrag, chip: KatalogChip): KatalogWah
         art: 'modell',
         template: eintrag.template,
         // Über „Zähler" gewählt, misst das Gerät den Hausanschluss (K2) - es sei
-        // denn, es IST eine Zähler-Vorlage; dann ergibt sich die Rolle ohnehin.
-        rolle: chip === 'zaehler' ? 'grid-meter' : null,
+        // denn, es IST eine Zähler-Vorlage: dann fragt der Fluss, ob Netz-Zähler
+        // oder Unterzähler.
+        rolle: chip === 'zaehler' && (eintrag.template.deviceType ?? '').trim() !== 'meter' ? 'grid-meter' : null,
       };
     case 'weg':
       return { art: 'weg', weg: eintrag.weg };

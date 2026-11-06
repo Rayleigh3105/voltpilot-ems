@@ -332,7 +332,7 @@ IP-6 sie ihr zustellt): gelesen wird `measurement_point.communication` + `connec
 | `sunspec_tcp`, `fronius_sunspec` | `sunspec_modbus` | `ip:port` | `unit_id` |
 | `solarman_v5` (Deye über den Datenlogger) | `solarman_v5` | `ip:port/serial` — die Seriennummer des Datenloggers trägt jeder Solarman-V5-Rahmen; ohne sie keine Adresse | `mb_slave_id` |
 | `kaco_serial` (KACO Powador über RS485-zu-Ethernet-Wandler) | `kaco_serial` | `ip:port` des Wandlers (Port 8899) | RS485-Busadresse `address` (1-32; 0 oder außerhalb: Vorgabe 1) |
-| `kaco_http`, `fronius_solar_api`, `goe_http_api`, `shelly_http` | `http` | `schema://host:port[/pfad]` — `https`, wo der Treiber es nimmt (`scheme: https`, `insecure_tls`) | — |
+| `kaco_http`, `fronius_solar_api`, `goe_http_api`, `shelly_http`, Shelly-Zähler `shelly_em_http` | `http` | `schema://host:port[/pfad]` — `https`, wo der Treiber es nimmt (`scheme: https`, `insecure_tls`) | — |
 | Ladestation (`device_charge_point`) | `ocpp` | die Stations-Kennung | — |
 | jedes andere Wort (die Rückwand) | das Wort selbst → `protokoll_unbekannt` | — | — |
 

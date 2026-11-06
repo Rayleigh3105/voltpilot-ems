@@ -260,14 +260,17 @@ export function software(a: WerkstattAnsicht, lauf: LaufStand | null): Software 
   };
 }
 
-/** Ein neueres signiertes Edge-Light-Release als die Freigabe, oder null. */
+/**
+ * Ein neueres signiertes Edge-Light-Release als die Freigabe, oder null. Die Box-Art des Releases ist die der API
+ * (`ota.BoxArt`: `docker` oder `light`) - bis 06.11.2026 stand hier `edge-light`, und der Hinweis kam nie.
+ */
 export function neueresRelease(
   freigabeFassung: string,
   releases: readonly { version: string; signed: boolean; boxArt?: string; releaseSeq: number }[],
 ): string | null {
   const jetzt = edgeFassung(freigabeFassung);
   const neu = releases
-    .filter((r) => r.signed && r.boxArt === 'edge-light')
+    .filter((r) => r.signed && r.boxArt === 'light')
     .map((r) => edgeFassung(r.version))
     .filter((v) => v.localeCompare(jetzt, 'de', { numeric: true }) > 0)
     .sort((x, y) => y.localeCompare(x, 'de', { numeric: true }));

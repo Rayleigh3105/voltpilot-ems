@@ -444,7 +444,8 @@ func TestJedesKatalogPaarHatEinenErkenner(t *testing.T) {
 	}
 	for _, b := range []Bekannt{{Communication: "solarman_v5", IP: "10.77.0.35", Serial: "0x1234"},
 		{Communication: "shelly_http", IP: "10.77.0.36"}, {Communication: "fronius_sunspec", IP: "10.77.0.37"},
-		{Communication: "modbus_tcp", IP: "10.77.0.38", Rolle: "plant-controller"}, {Communication: "kaco_http", IP: "10.77.0.39"}} {
+		{Communication: "modbus_tcp", IP: "10.77.0.38", Rolle: "plant-controller"}, {Communication: "kaco_http", IP: "10.77.0.39"},
+		{Communication: "shelly_em_http", IP: "10.77.0.40"}, {Communication: "sunspec_tcp", IP: "10.77.0.41"}} {
 		f, ok := bekanntFund(b)
 		if !ok || !f.LiestBoxSchon {
 			t.Fatalf("%+v: %+v", b, f)
