@@ -34,7 +34,9 @@ Der Katalog bietet je nach Modell mehrere Kommunikationswege. Veraltete Regeln w
 | Generisch / `modbus_tcp` | IP, Port, `unit_id`, `profile` | [Eigener Adapter](nodered/CUSTOM-INVERTER.md) |
 | Fronius / `fronius_solar_api` | IP, HTTP-Port, gegebenenfalls `insecure_tls` | [Fronius](nodered/FRONIUS.md) |
 | Fronius / `fronius_sunspec` | IP, Port, `unit_id`, `model_type` | [Fronius](nodered/FRONIUS.md) |
-| KOSTAL / `kostal_modbus` | IP, Port 1502, `unit_id` 71, Byte-Reihenfolge | [KOSTAL](nodered/KOSTAL.md) |
+| KOSTAL PLENTICORE / `kostal_modbus` | IP, Port 1502, `unit_id` 71, Byte-Reihenfolge | [KOSTAL](nodered/KOSTAL.md) |
+| KOSTAL PIKO / `kostal_dxs` (Vorgabe) | IP, Port 80, keine Anmeldung | [KOSTAL](nodered/KOSTAL.md) |
+| KOSTAL PIKO / `kostal_piko_rtu` (Ausweg) | IP/Port des RS485-zu-Ethernet-Wandlers, `unit_id`, optional `cross_check_ip` für die Gegenprobe | [KOSTAL](nodered/KOSTAL.md) |
 | KACO | HTTP oder Modbus nach Modellfamilie | [KACO](nodered/KACO.md) |
 | Huawei / `huawei_modbus` | IP, Port 502, `unit_id` 0 | [Huawei](nodered/HUAWEI.md) |
 

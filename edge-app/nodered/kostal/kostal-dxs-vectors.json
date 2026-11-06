@@ -1,0 +1,399 @@
+{
+  "_comment": [
+    "GENERIERT von kostal-dxs-vectors.gen.js aus kostal-dxs-decode.js - nicht von Hand bearbeiten.",
+    "Gepruefte Seiten: kostal-dxs-decode.test.js (JS, direkt) und edge-app/core/internal/kostaldxs (Go, Edge Light).",
+    "raw ist der rohe /api/dxs.json-Antworttext; decode ist K.decode(raw) darauf."
+  ],
+  "constants": {
+    "default_port": 80,
+    "dxs_path": "/api/dxs.json",
+    "dxs": {
+      "AC_POWER_W": 67109120,
+      "DC_POWER_TOTAL_W": 33556736,
+      "DC1_A": 33555201,
+      "DC1_V": 33555202,
+      "DC1_W": 33555203,
+      "DC2_A": 33555457,
+      "DC2_V": 33555458,
+      "DC2_W": 33555459,
+      "DC3_A": 33555713,
+      "DC3_V": 33555714,
+      "DC3_W": 33555715,
+      "L1_A": 67109377,
+      "L1_V": 67109378,
+      "L1_W": 67109379,
+      "L2_A": 67109633,
+      "L2_V": 67109634,
+      "L2_W": 67109635,
+      "L3_A": 67109889,
+      "L3_V": 67109890,
+      "L3_W": 67109891,
+      "FREQ_HZ": 67110400,
+      "COS_PHI": 67110656,
+      "LIMITATION_PCT": 67110144,
+      "STATUS": 16780032,
+      "ENERGY_TOTAL_KWH": 251658753,
+      "ENERGY_TODAY_WH": 251658754,
+      "OPERATING_HOURS_H": 251658496,
+      "TYPE": 16780544,
+      "SERIAL": 16777728,
+      "NAME": 16777984,
+      "FW_VERSION": 16779265,
+      "HW_VERSION": 16779266,
+      "UI_VERSION": 16779267,
+      "PAR_VERSION": 16779268
+    },
+    "status_labels": {
+      "0": "Aus",
+      "1": "Leerlauf",
+      "2": "Anfahren",
+      "3": "Einspeisen (MPP)",
+      "4": "Einspeisen abgeregelt"
+    },
+    "fast_ids": [
+      67109120,
+      33556736,
+      33555201,
+      33555202,
+      33555203,
+      33555457,
+      33555458,
+      33555459,
+      33555713,
+      33555714,
+      33555715,
+      67109377,
+      67109378,
+      67109379,
+      67109633,
+      67109634,
+      67109635,
+      67109889,
+      67109890,
+      67109891,
+      67110400,
+      67110656,
+      67110144,
+      16780032
+    ],
+    "slow_ids": [
+      251658753,
+      251658754,
+      251658496
+    ],
+    "identity_ids": [
+      16780544,
+      16777728,
+      16777984,
+      16779265,
+      16779266,
+      16779267,
+      16779268
+    ],
+    "poll_ids": [
+      67109120,
+      33556736,
+      33555201,
+      33555202,
+      33555203,
+      33555457,
+      33555458,
+      33555459,
+      33555713,
+      33555714,
+      33555715,
+      67109377,
+      67109378,
+      67109379,
+      67109633,
+      67109634,
+      67109635,
+      67109889,
+      67109890,
+      67109891,
+      67110400,
+      67110656,
+      67110144,
+      16780032,
+      251658753,
+      251658754,
+      251658496
+    ],
+    "all_ids": [
+      67109120,
+      33556736,
+      33555201,
+      33555202,
+      33555203,
+      33555457,
+      33555458,
+      33555459,
+      33555713,
+      33555714,
+      33555715,
+      67109377,
+      67109378,
+      67109379,
+      67109633,
+      67109634,
+      67109635,
+      67109889,
+      67109890,
+      67109891,
+      67110400,
+      67110656,
+      67110144,
+      16780032,
+      251658753,
+      251658754,
+      251658496,
+      16780544,
+      16777728,
+      16777984,
+      16779265,
+      16779266,
+      16779267,
+      16779268
+    ]
+  },
+  "dxs_url": [
+    {
+      "scheme": "http",
+      "host": "192.168.1.122",
+      "port": 80,
+      "ids": [
+        67109120
+      ],
+      "url": "http://192.168.1.122:80/api/dxs.json?dxsEntries=67109120"
+    },
+    {
+      "scheme": "http",
+      "host": "192.168.1.122",
+      "port": 80,
+      "ids": [
+        67109120,
+        16780032
+      ],
+      "url": "http://192.168.1.122:80/api/dxs.json?dxsEntries=67109120&dxsEntries=16780032"
+    }
+  ],
+  "cases": [
+    {
+      "name": "volle Antwort (angelehnt an den Report, 5-s-Takt belegt)",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":67109120,\"value\":12505.64},{\"dxsId\":33556736,\"value\":12700},{\"dxsId\":33555201,\"value\":12.1},{\"dxsId\":33555202,\"value\":365.4},{\"dxsId\":33555203,\"value\":4420},{\"dxsId\":33555457,\"value\":11.8},{\"dxsId\":33555458,\"value\":364.9},{\"dxsId\":33555459,\"value\":4280},{\"dxsId\":67109377,\"value\":9.1},{\"dxsId\":67109378,\"value\":231.2},{\"dxsId\":67109379,\"value\":2100},{\"dxsId\":67109633,\"value\":9},{\"dxsId\":67109634,\"value\":230.8},{\"dxsId\":67109635,\"value\":2080},{\"dxsId\":67109889,\"value\":8.9},{\"dxsId\":67109890,\"value\":231.5},{\"dxsId\":67109891,\"value\":2060},{\"dxsId\":67110400,\"value\":50.01},{\"dxsId\":67110656,\"value\":1},{\"dxsId\":67110144,\"value\":70},{\"dxsId\":16780032,\"value\":3},{\"dxsId\":251658753,\"value\":32965.3},{\"dxsId\":251658754,\"value\":222.07},{\"dxsId\":251658496,\"value\":33919},{\"dxsId\":16780544,\"value\":\"PIKO 20\"},{\"dxsId\":16777728,\"value\":\"12345678\"},{\"dxsId\":16777984,\"value\":\"Dach Sued\"},{\"dxsId\":16779265,\"value\":\"06.17\"},{\"dxsId\":16779266,\"value\":\"01.08\"},{\"dxsId\":16779267,\"value\":\"06.53\"},{\"dxsId\":16779268,\"value\":\"01.02\"}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {
+          "pv_power_kw": 12.506
+        },
+        "meta": {
+          "ac_kw": 12.506,
+          "dc_kw": 12.7,
+          "dc1_v": 365.4,
+          "dc1_a": 12.1,
+          "dc1_w": 4420,
+          "dc2_v": 364.9,
+          "dc2_a": 11.8,
+          "dc2_w": 4280,
+          "l1_v": 231.2,
+          "l1_a": 9.1,
+          "l1_w": 2100,
+          "l2_v": 230.8,
+          "l2_a": 9,
+          "l2_w": 2080,
+          "l3_v": 231.5,
+          "l3_a": 8.9,
+          "l3_w": 2060,
+          "freq_hz": 50.01,
+          "cos_phi": 1,
+          "limitation_pct": 70,
+          "status": 3,
+          "status_text": "Einspeisen (MPP)",
+          "energy_total_kwh": 32965.3,
+          "energy_today_kwh": 0.222,
+          "operating_hours_h": 33919,
+          "type": "PIKO 20",
+          "serial": "12345678",
+          "name": "Dach Sued",
+          "fw_version": "06.17",
+          "hw_version": "01.08",
+          "ui_version": "06.53",
+          "par_version": "01.02"
+        }
+      }
+    },
+    {
+      "name": "nur die AC-Leistung (Kundenaltsystem liest genau dies alle 5 s)",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":67109120,\"value\":1234.5}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {
+          "pv_power_kw": 1.235
+        },
+        "meta": {
+          "ac_kw": 1.235
+        }
+      }
+    },
+    {
+      "name": "AC-Leistung negativ nachts (Eigenverbrauch der Elektronik)",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":67109120,\"value\":-2.1}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "ac_kw": -0.002
+        }
+      }
+    },
+    {
+      "name": "AC-Leistung 0",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":67109120,\"value\":0}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0
+        },
+        "meta": {
+          "ac_kw": 0
+        }
+      }
+    },
+    {
+      "name": "Status 0 (Aus, Nacht)",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":16780032,\"value\":0}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {},
+        "meta": {
+          "status": 0,
+          "status_text": "Aus"
+        }
+      }
+    },
+    {
+      "name": "Status 4 (Einspeisen, abgeregelt)",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":16780032,\"value\":4}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {},
+        "meta": {
+          "status": 4,
+          "status_text": "Einspeisen abgeregelt"
+        }
+      }
+    },
+    {
+      "name": "unbekannter Status-Code 9: benannt statt verschluckt",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":16780032,\"value\":9}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {},
+        "meta": {
+          "status": 9,
+          "status_text": "unbekannt (9)"
+        }
+      }
+    },
+    {
+      "name": "Tagesertrag 0 ([DBUS]-Hinweis: manche Firmware liefert das)",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":251658754,\"value\":0}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {},
+        "meta": {
+          "energy_today_kwh": 0
+        }
+      }
+    },
+    {
+      "name": "Begrenzung fehlt (kein Eintrag) - keine Begrenzung geraten",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":67109120,\"value\":500}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0.5
+        },
+        "meta": {
+          "ac_kw": 0.5
+        }
+      }
+    },
+    {
+      "name": "doppelte dxsId: der letzte Eintrag gewinnt",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":67109120,\"value\":1},{\"dxsId\":67109120,\"value\":2}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0.002
+        },
+        "meta": {
+          "ac_kw": 0.002
+        }
+      }
+    },
+    {
+      "name": "Kennung an Position 0 ist NICHT die AC-Leistung (Altsystem-Fehler vermeiden)",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":251658753,\"value\":999},{\"dxsId\":67109120,\"value\":42}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0.042
+        },
+        "meta": {
+          "ac_kw": 0.042,
+          "energy_total_kwh": 999
+        }
+      }
+    },
+    {
+      "name": "Identitaetsfeld als Zahl statt Text zaehlt nicht",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":16780544,\"value\":20}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": null
+    },
+    {
+      "name": "Identitaetsfeld leer/nur Leerzeichen zaehlt als abwesend",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":16777984,\"value\":\"   \"}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": null
+    },
+    {
+      "name": "value ist null -> abwesend",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":67109120,\"value\":null}],\"status\":{\"code\":0}}",
+      "decode": null
+    },
+    {
+      "name": "value ist ein Objekt -> abwesend",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":67109120,\"value\":{}}]}",
+      "decode": null
+    },
+    {
+      "name": "dxsEntries leer -> kein Kanal, decode liefert null",
+      "raw": "{\"dxsEntries\":[],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": null
+    },
+    {
+      "name": "status.code fehlt -> wie 0 behandelt (Messwerte lesbar ohne Login)",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":67109120,\"value\":77}]}",
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0.077
+        },
+        "meta": {
+          "ac_kw": 0.077
+        }
+      }
+    },
+    {
+      "name": "kaputtes JSON -> null",
+      "raw": "nicht json",
+      "decode": null
+    },
+    {
+      "name": "kein dxsEntries-Array -> null",
+      "raw": "{\"foo\":1}",
+      "decode": null
+    },
+    {
+      "name": "nur String/Phasen-Daten, keine AC-Leistung: meta gefuellt, reading leer",
+      "raw": "{\"dxsEntries\":[{\"dxsId\":33555202,\"value\":365.4},{\"dxsId\":67109379,\"value\":2100}],\"session\":{\"sessionId\":0,\"roleId\":0},\"status\":{\"code\":0}}",
+      "decode": {
+        "reading": {},
+        "meta": {
+          "dc1_v": 365.4,
+          "l1_w": 2100
+        }
+      }
+    }
+  ]
+}

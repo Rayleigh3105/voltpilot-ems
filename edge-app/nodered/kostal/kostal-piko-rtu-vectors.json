@@ -1,0 +1,406 @@
+{
+  "_comment": [
+    "GENERIERT von kostal-piko-rtu-vectors.gen.js aus kostal-piko-rtu-decode.js - nicht von Hand bearbeiten.",
+    "Gepruefte Seiten: kostal-piko-rtu-decode.test.js (JS, direkt) und edge-app/core/internal/kostalrtu (Go, Edge Light).",
+    "blocks sind gelesene Modbus-FC03-Registerbloecke {start, regs}; decode/decode_verbose sind die Modulfunktionen darauf."
+  ],
+  "constants": {
+    "default_port": 8899,
+    "default_unit_id": 1,
+    "min_unit_id": 1,
+    "max_unit_id": 247,
+    "reg": {
+      "DC1_V": 30000,
+      "DC1_A": 30001,
+      "DC1_W": 30002,
+      "DC2_V": 30005,
+      "DC2_A": 30006,
+      "DC2_W": 30007,
+      "DC3_V": 30010,
+      "DC3_A": 30011,
+      "DC3_W": 30012,
+      "L1_V": 30015,
+      "L1_A": 30016,
+      "L1_W": 30017,
+      "L2_V": 30019,
+      "L2_A": 30020,
+      "L2_W": 30021,
+      "L3_V": 30023,
+      "L3_A": 30024,
+      "L3_W": 30025,
+      "DC_TOTAL_W": 30028,
+      "AC_TOTAL_W": 30030,
+      "COS_PHI": 30032,
+      "FREQUENCY": 30033,
+      "RATED_W": 30043,
+      "ENERGY_TOTAL_HI": 30050,
+      "ENERGY_TOTAL_LO": 30051,
+      "OPERATING_HOURS": 30053,
+      "ENERGY_TODAY_WH": 30055,
+      "NAME_START": 30070,
+      "NAME_COUNT": 13,
+      "SERIAL_START": 30083,
+      "SERIAL_COUNT": 13
+    },
+    "fast_block": {
+      "start": 30030,
+      "count": 1
+    },
+    "test_blocks": [
+      {
+        "start": 30000,
+        "count": 34
+      },
+      {
+        "start": 30043,
+        "count": 1
+      },
+      {
+        "start": 30050,
+        "count": 6
+      },
+      {
+        "start": 30070,
+        "count": 26
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "voller Satz (angelehnt an das Report-Beispiel)",
+      "blocks": [
+        {
+          "start": 30000,
+          "regs": [
+            3654,
+            1210,
+            4420,
+            0,
+            0,
+            3649,
+            1180,
+            4280,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2312,
+            910,
+            2100,
+            0,
+            2308,
+            900,
+            2080,
+            0,
+            2315,
+            890,
+            2060,
+            0,
+            0,
+            12700,
+            0,
+            31250,
+            0,
+            100,
+            500
+          ]
+        },
+        {
+          "start": 30043,
+          "regs": [
+            20000
+          ]
+        },
+        {
+          "start": 30050,
+          "regs": [
+            503,
+            692,
+            0,
+            33919,
+            0,
+            22207
+          ]
+        },
+        {
+          "start": 30070,
+          "regs": [
+            20553,
+            19279,
+            12848,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224
+          ]
+        },
+        {
+          "start": 30083,
+          "regs": [
+            12594,
+            13108,
+            13622,
+            14136,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224,
+            8224
+          ]
+        }
+      ],
+      "decode": {
+        "reading": {
+          "pv_power_kw": 31.25
+        }
+      },
+      "decode_verbose": {
+        "pvPowerKw": 31.25,
+        "acKw": 31.25,
+        "dcKw": 12.7,
+        "strings": [
+          {
+            "vV": 365.4,
+            "aA": 12.1,
+            "pW": 4420
+          },
+          {
+            "vV": 364.9,
+            "aA": 11.8,
+            "pW": 4280
+          },
+          {
+            "vV": 0,
+            "aA": 0,
+            "pW": 0
+          }
+        ],
+        "phases": [
+          {
+            "vV": 231.2,
+            "aA": 9.1,
+            "pW": 2100
+          },
+          {
+            "vV": 230.8,
+            "aA": 9,
+            "pW": 2080
+          },
+          {
+            "vV": 231.5,
+            "aA": 8.9,
+            "pW": 2060
+          }
+        ],
+        "frequencyHz": 50,
+        "cosPhi": 1,
+        "ratedW": 20000,
+        "energyTotalKwh": 32965.3,
+        "energyTodayKwh": 22.207,
+        "operatingHours": 33919,
+        "name": "PIKO20",
+        "serial": "12345678"
+      }
+    },
+    {
+      "name": "nur die AC-Gesamtleistung (schneller Takt)",
+      "blocks": [
+        {
+          "start": 30030,
+          "regs": [
+            1234
+          ]
+        }
+      ],
+      "decode": {
+        "reading": {
+          "pv_power_kw": 1.234
+        }
+      },
+      "decode_verbose": {
+        "pvPowerKw": 1.234,
+        "acKw": 1.234,
+        "strings": [
+          {},
+          {},
+          {}
+        ],
+        "phases": [
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "name": "AC-Leistung fehlt -> decode liefert null",
+      "blocks": [
+        {
+          "start": 30000,
+          "regs": [
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "decode": null,
+      "decode_verbose": {
+        "strings": [
+          {
+            "vV": 0.1,
+            "aA": 0.02,
+            "pW": 3
+          },
+          {},
+          {}
+        ],
+        "phases": [
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "name": "AC-Leistung 0",
+      "blocks": [
+        {
+          "start": 30030,
+          "regs": [
+            0
+          ]
+        }
+      ],
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0
+        }
+      },
+      "decode_verbose": {
+        "pvPowerKw": 0,
+        "acKw": 0,
+        "strings": [
+          {},
+          {},
+          {}
+        ],
+        "phases": [
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "name": "kein Block -> alles abwesend",
+      "blocks": [],
+      "decode": null,
+      "decode_verbose": {
+        "strings": [
+          {},
+          {},
+          {}
+        ],
+        "phases": [
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "name": "nur DC1 (ein String), Rest abwesend",
+      "blocks": [
+        {
+          "start": 30000,
+          "regs": [
+            3654,
+            1210,
+            4420
+          ]
+        }
+      ],
+      "decode": null,
+      "decode_verbose": {
+        "strings": [
+          {
+            "vV": 365.4,
+            "aA": 12.1,
+            "pW": 4420
+          },
+          {},
+          {}
+        ],
+        "phases": [
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "name": "Gesamtertrag 32-Bit (503/692 -> 32965300 Wh)",
+      "blocks": [
+        {
+          "start": 30050,
+          "regs": [
+            503,
+            692
+          ]
+        }
+      ],
+      "decode": null,
+      "decode_verbose": {
+        "strings": [
+          {},
+          {},
+          {}
+        ],
+        "phases": [
+          {},
+          {},
+          {}
+        ],
+        "energyTotalKwh": 32965.3
+      }
+    },
+    {
+      "name": "Geraetename unvollstaendig (nur 1 von 13 Registern) -> abwesend",
+      "blocks": [
+        {
+          "start": 30070,
+          "regs": [
+            20553
+          ]
+        }
+      ],
+      "decode": null,
+      "decode_verbose": {
+        "strings": [
+          {},
+          {},
+          {}
+        ],
+        "phases": [
+          {},
+          {},
+          {}
+        ]
+      }
+    }
+  ]
+}

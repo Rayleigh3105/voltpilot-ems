@@ -121,6 +121,10 @@
     {
       "code": "kaco_serial",
       "name": "Serieller RS485-Wandler"
+    },
+    {
+      "code": "kostal_piko_rtu",
+      "name": "Modbus RTU über Wandler"
     }
   ],
   "urteile": [

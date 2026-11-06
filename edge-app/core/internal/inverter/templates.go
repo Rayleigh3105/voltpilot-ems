@@ -276,7 +276,7 @@ func BuiltinTemplates() []Template {
 				Channels:            nil,
 				Writes:              nil,
 				RatedKw:             rated,
-				ControlTier:         b.ControlTier,
+				ControlTier:         b.ControlTierOf(m),
 				CertificationStatus: TemplateCertBuiltin,
 				Note:                templateNote(b, m),
 			})

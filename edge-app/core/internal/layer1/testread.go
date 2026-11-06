@@ -88,6 +88,18 @@ func (r *Runtime) testRead(ctx context.Context, req *testReadRequest) testReadRe
 		return r.testSunSpec(ctx, p, req.Role)
 	case CommShellyEM:
 		return r.testShellyEM(ctx, &req.selection, req.Role)
+	case CommKostalDxs:
+		p, why := planKostalDxs(&req.selection)
+		if p == nil {
+			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
+		}
+		return r.testKostalDxs(ctx, p, req.Role)
+	case CommKostalPikoRtu:
+		p, why := planKostalPikoRtu(&req.selection)
+		if p == nil {
+			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
+		}
+		return r.testKostalPikoRtu(ctx, p, req.Role)
 	}
 	return testReadResult{ErrorCode: testconn.ErrInvalidRequest,
 		Message: "Diese Anbindung („" + req.Communication + "“) wird von Edge Light noch nicht unterstützt."}

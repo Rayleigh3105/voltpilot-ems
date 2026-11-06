@@ -382,6 +382,95 @@ test('flow auto-kostal embeds the current kostal/kostal-decode.js source', () =>
   assert.ok(func.includes('reading.battery_power_kw = out.battKw'));
 });
 
+test('flow router matches inverter-routing.route() for kostal_dxs (Web-API)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kostal', label: 'KOSTAL · PIKO 20',
+    family: 'kostal_piko', communication: 'kostal_dxs',
+    connection: { ip: '192.168.1.122', port: 80 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret.find((r) => r && r.kostalDxs);
+  assert.ok(outMsg, 'der KOSTAL-PIKO-Web-API-Ausgang traegt die Nachricht');
+  const expected = routing.route(routing.parseConfig(sel));
+  assert.strictEqual(outMsg.kostalDxs.target, expected.target);
+  assert.strictEqual(outMsg.kostalDxs.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.kostalDxs.conn.port, expected.connection.port);
+  for (let i = 0; i < ret.length; i++) {
+    if (ret[i] === outMsg) continue;
+    assert.strictEqual(ret[i], null, 'Ausgang ' + i);
+  }
+});
+
+test('flow router gates an unknown kostal_dxs family idle-safe', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kostal', label: 'KOSTAL',
+    family: 'kostal_piko_ba', communication: 'kostal_dxs',
+    connection: { ip: '192.168.1.122' },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[ret.length - 1];
+  assert.ok(outMsg && outMsg.idle, 'der Idle-Ausgang traegt die Nachricht');
+  assert.match(outMsg.idle, /KOSTAL-PIKO-Familie/);
+});
+
+test('flow auto-kostal-dxs embeds the current kostal/kostal-dxs-decode.js source', () => {
+  const func = byId['auto-kostal-dxs'].func;
+  const src = fs.readFileSync(path.join(__dirname, 'kostal/kostal-dxs-decode.js'), 'utf8');
+  assert.ok(
+    func.includes(src),
+    'flows.json auto-kostal-dxs node is out of sync with kostal/kostal-dxs-decode.js - re-run build-flows.js',
+  );
+  assert.ok(func.includes("context.get('kd_busy_since')"), 'overlap guard (skip-if-busy) present');
+  assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
+});
+
+test('flow router matches inverter-routing.route() for kostal_piko_rtu (Ausweg)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kostal', label: 'KOSTAL · PIKO 20',
+    family: 'kostal_piko_rtu', communication: 'kostal_piko_rtu',
+    connection: { ip: '192.168.0.50', port: 8899, unit_id: 3, cross_check_ip: '192.168.1.122' },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret.find((r) => r && r.kostalRtu);
+  assert.ok(outMsg, 'der KOSTAL-PIKO-RTU-Ausgang traegt die Nachricht');
+  const expected = routing.route(routing.parseConfig(sel));
+  assert.strictEqual(outMsg.kostalRtu.target, expected.target);
+  assert.strictEqual(outMsg.kostalRtu.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.kostalRtu.conn.port, expected.connection.port);
+  assert.strictEqual(outMsg.kostalRtu.conn.unit_id, expected.connection.unit_id);
+  assert.strictEqual(outMsg.kostalRtu.conn.cross_check_ip, expected.connection.cross_check_ip);
+  for (let i = 0; i < ret.length; i++) {
+    if (ret[i] === outMsg) continue;
+    assert.strictEqual(ret[i], null, 'Ausgang ' + i);
+  }
+});
+
+test('flow router gates a Modbus-Geraeteadresse ausserhalb 1..247 idle-safe', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kostal', label: 'KOSTAL',
+    family: 'kostal_piko_rtu', communication: 'kostal_piko_rtu',
+    connection: { ip: '192.168.0.50', unit_id: 999 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[ret.length - 1];
+  assert.ok(outMsg && outMsg.idle, 'der Idle-Ausgang traegt die Nachricht');
+  assert.match(outMsg.idle, /1 und 247/);
+});
+
+test('flow auto-kostal-rtu embeds the current kostal/kostal-piko-rtu-decode.js source', () => {
+  const func = byId['auto-kostal-rtu'].func;
+  const src = fs.readFileSync(path.join(__dirname, 'kostal/kostal-piko-rtu-decode.js'), 'utf8');
+  assert.ok(
+    func.includes(src),
+    'flows.json auto-kostal-rtu node is out of sync with kostal/kostal-piko-rtu-decode.js - re-run build-flows.js',
+  );
+  assert.ok(func.includes("context.get('kr_busy_since')"), 'overlap guard (skip-if-busy) present');
+  assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
+  // The regular poll reads ONLY the fast register (no `blocks` override) - the
+  // Gegenprobe against the Web-API happens only in "Verbindung testen".
+  assert.ok(func.includes('read({ ip: conn.ip, port: conn.port, unitId: conn.unit_id })'));
+});
+
 // --- Modbus-Datenspiegel: the router's learned-block merge -------------------
 //
 // The mirror's auto-learn want list (flow.mirror_want, from vp-register-want)

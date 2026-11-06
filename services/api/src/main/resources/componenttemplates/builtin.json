@@ -6101,7 +6101,7 @@
       "rated_kw": 10,
       "control_tier": 2,
       "certification_status": "builtin",
-      "note": "10 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 26 A) KOSTAL PLENTICORE BI (Batterie-Wechselrichter). Modbus muss im Webserver des Wechselrichters aktiviert sein."
+      "note": "10 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 26 A) KOSTAL PLENTICORE BI (Batterie-Wechselrichter, Modbus TCP) oder die klassische PIKO-Baureihe 10-20 (String, Weboberfläche ab UI 06, Web-API ohne Anmeldung oder Modbus RTU als Ausweg). Der Verbindungsweg ergibt sich aus dem Modell."
     },
     {
       "template_ref": "builtin:kostal:plenticore-bi-5.5-13",
@@ -6177,7 +6177,7 @@
       "rated_kw": 5.5,
       "control_tier": 2,
       "certification_status": "builtin",
-      "note": "5,5 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 13 A) KOSTAL PLENTICORE BI (Batterie-Wechselrichter). Modbus muss im Webserver des Wechselrichters aktiviert sein."
+      "note": "5,5 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 13 A) KOSTAL PLENTICORE BI (Batterie-Wechselrichter, Modbus TCP) oder die klassische PIKO-Baureihe 10-20 (String, Weboberfläche ab UI 06, Web-API ohne Anmeldung oder Modbus RTU als Ausweg). Der Verbindungsweg ergibt sich aus dem Modell."
     },
     {
       "template_ref": "builtin:kostal:kostal-plenticore-bi-generic",
@@ -6253,7 +6253,223 @@
       "rated_kw": null,
       "control_tier": 2,
       "certification_status": "builtin",
-      "note": "Weiteres Modell der Baureihe, auch G2 (Nennleistung unbekannt) KOSTAL PLENTICORE BI (Batterie-Wechselrichter). Modbus muss im Webserver des Wechselrichters aktiviert sein."
+      "note": "Weiteres Modell der Baureihe, auch G2 (Nennleistung unbekannt) KOSTAL PLENTICORE BI (Batterie-Wechselrichter, Modbus TCP) oder die klassische PIKO-Baureihe 10-20 (String, Weboberfläche ab UI 06, Web-API ohne Anmeldung oder Modbus RTU als Ausweg). Der Verbindungsweg ergibt sich aus dem Modell."
+    },
+    {
+      "template_ref": "builtin:kostal:piko-10",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kostal",
+      "brand_label": "KOSTAL",
+      "model": "piko-10",
+      "model_label": "PIKO 10",
+      "device_type": "inverter",
+      "family": "kostal_piko",
+      "family_label": "PIKO (Web-API)",
+      "communication": "kostal_dxs",
+      "communication_label": "Web-API (HTTP, Port 80)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des PIKO im lokalen Netz (z. B. 192.168.1.122). Die Web-API antwortet ohne Anmeldung, es ist keine Einrichtung am Gerät nötig."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 80,
+          "help": "HTTP-Port der Web-API, üblicherweise 80."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 10,
+      "control_tier": 0,
+      "certification_status": "builtin",
+      "note": "10 kW · String · 3-phasig · nur Erzeugung · Weboberfläche ab UI 06 KOSTAL PLENTICORE BI (Batterie-Wechselrichter, Modbus TCP) oder die klassische PIKO-Baureihe 10-20 (String, Weboberfläche ab UI 06, Web-API ohne Anmeldung oder Modbus RTU als Ausweg). Der Verbindungsweg ergibt sich aus dem Modell."
+    },
+    {
+      "template_ref": "builtin:kostal:piko-12",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kostal",
+      "brand_label": "KOSTAL",
+      "model": "piko-12",
+      "model_label": "PIKO 12",
+      "device_type": "inverter",
+      "family": "kostal_piko",
+      "family_label": "PIKO (Web-API)",
+      "communication": "kostal_dxs",
+      "communication_label": "Web-API (HTTP, Port 80)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des PIKO im lokalen Netz (z. B. 192.168.1.122). Die Web-API antwortet ohne Anmeldung, es ist keine Einrichtung am Gerät nötig."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 80,
+          "help": "HTTP-Port der Web-API, üblicherweise 80."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 12,
+      "control_tier": 0,
+      "certification_status": "builtin",
+      "note": "12 kW · String · 3-phasig · nur Erzeugung · Weboberfläche ab UI 06 KOSTAL PLENTICORE BI (Batterie-Wechselrichter, Modbus TCP) oder die klassische PIKO-Baureihe 10-20 (String, Weboberfläche ab UI 06, Web-API ohne Anmeldung oder Modbus RTU als Ausweg). Der Verbindungsweg ergibt sich aus dem Modell."
+    },
+    {
+      "template_ref": "builtin:kostal:piko-15",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kostal",
+      "brand_label": "KOSTAL",
+      "model": "piko-15",
+      "model_label": "PIKO 15",
+      "device_type": "inverter",
+      "family": "kostal_piko",
+      "family_label": "PIKO (Web-API)",
+      "communication": "kostal_dxs",
+      "communication_label": "Web-API (HTTP, Port 80)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des PIKO im lokalen Netz (z. B. 192.168.1.122). Die Web-API antwortet ohne Anmeldung, es ist keine Einrichtung am Gerät nötig."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 80,
+          "help": "HTTP-Port der Web-API, üblicherweise 80."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 15,
+      "control_tier": 0,
+      "certification_status": "builtin",
+      "note": "15 kW · String · 3-phasig · nur Erzeugung · Weboberfläche ab UI 06 KOSTAL PLENTICORE BI (Batterie-Wechselrichter, Modbus TCP) oder die klassische PIKO-Baureihe 10-20 (String, Weboberfläche ab UI 06, Web-API ohne Anmeldung oder Modbus RTU als Ausweg). Der Verbindungsweg ergibt sich aus dem Modell."
+    },
+    {
+      "template_ref": "builtin:kostal:piko-17",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kostal",
+      "brand_label": "KOSTAL",
+      "model": "piko-17",
+      "model_label": "PIKO 17",
+      "device_type": "inverter",
+      "family": "kostal_piko",
+      "family_label": "PIKO (Web-API)",
+      "communication": "kostal_dxs",
+      "communication_label": "Web-API (HTTP, Port 80)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des PIKO im lokalen Netz (z. B. 192.168.1.122). Die Web-API antwortet ohne Anmeldung, es ist keine Einrichtung am Gerät nötig."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 80,
+          "help": "HTTP-Port der Web-API, üblicherweise 80."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 17,
+      "control_tier": 0,
+      "certification_status": "builtin",
+      "note": "17 kW · String · 3-phasig · nur Erzeugung · Weboberfläche ab UI 06 KOSTAL PLENTICORE BI (Batterie-Wechselrichter, Modbus TCP) oder die klassische PIKO-Baureihe 10-20 (String, Weboberfläche ab UI 06, Web-API ohne Anmeldung oder Modbus RTU als Ausweg). Der Verbindungsweg ergibt sich aus dem Modell."
+    },
+    {
+      "template_ref": "builtin:kostal:piko-20",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kostal",
+      "brand_label": "KOSTAL",
+      "model": "piko-20",
+      "model_label": "PIKO 20",
+      "device_type": "inverter",
+      "family": "kostal_piko",
+      "family_label": "PIKO (Web-API)",
+      "communication": "kostal_dxs",
+      "communication_label": "Web-API (HTTP, Port 80)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des PIKO im lokalen Netz (z. B. 192.168.1.122). Die Web-API antwortet ohne Anmeldung, es ist keine Einrichtung am Gerät nötig."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 80,
+          "help": "HTTP-Port der Web-API, üblicherweise 80."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 20,
+      "control_tier": 0,
+      "certification_status": "builtin",
+      "note": "20 kW · String · 3-phasig · nur Erzeugung · Weboberfläche ab UI 06 KOSTAL PLENTICORE BI (Batterie-Wechselrichter, Modbus TCP) oder die klassische PIKO-Baureihe 10-20 (String, Weboberfläche ab UI 06, Web-API ohne Anmeldung oder Modbus RTU als Ausweg). Der Verbindungsweg ergibt sich aus dem Modell."
+    },
+    {
+      "template_ref": "builtin:kostal:piko-generic",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kostal",
+      "brand_label": "KOSTAL",
+      "model": "piko-generic",
+      "model_label": "Anderes PIKO-Modell (dreiphasig, Weboberfläche ab UI 06)",
+      "device_type": "inverter",
+      "family": "kostal_piko",
+      "family_label": "PIKO (Web-API)",
+      "communication": "kostal_dxs",
+      "communication_label": "Web-API (HTTP, Port 80)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des PIKO im lokalen Netz (z. B. 192.168.1.122). Die Web-API antwortet ohne Anmeldung, es ist keine Einrichtung am Gerät nötig."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 80,
+          "help": "HTTP-Port der Web-API, üblicherweise 80."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 0,
+      "certification_status": "builtin",
+      "note": "Weiteres dreiphasiges PIKO-Modell mit Weboberfläche ab UI 06, Nennleistung unbekannt KOSTAL PLENTICORE BI (Batterie-Wechselrichter, Modbus TCP) oder die klassische PIKO-Baureihe 10-20 (String, Weboberfläche ab UI 06, Web-API ohne Anmeldung oder Modbus RTU als Ausweg). Der Verbindungsweg ergibt sich aus dem Modell."
     },
     {
       "template_ref": "builtin:kaco:bp-hybrid-6.0-nh3-m2",

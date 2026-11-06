@@ -43,9 +43,16 @@ type Options struct {
 	// reply gap).
 	KacoTimeout  time.Duration
 	KacoReplyGap time.Duration
-	Dialer       solarmanv5.Dialer
-	Now          func() time.Time
-	Logger       *slog.Logger
+	// KostalDxsTimeout bounds one GET of the KOSTAL PIKO Web-API
+	// (`/api/dxs.json`): 3-4 s (report §4.6), not go-e's 8 s, so a 5-s poll
+	// tick never stacks two requests against the weak webserver.
+	KostalDxsTimeout time.Duration
+	// KostalRtuTimeout bounds one FC03 round trip against the RS485-to-
+	// Ethernet gateway of the Modbus-RTU Ausweg.
+	KostalRtuTimeout time.Duration
+	Dialer           solarmanv5.Dialer
+	Now              func() time.Time
+	Logger           *slog.Logger
 }
 
 // Runtime is the Go Layer 1.
@@ -121,6 +128,12 @@ func New(bus Bus, opts Options) *Runtime {
 	}
 	if opts.KacoReplyGap <= 0 {
 		opts.KacoReplyGap = DefaultKacoReplyGap
+	}
+	if opts.KostalDxsTimeout <= 0 {
+		opts.KostalDxsTimeout = DefaultKostalDxsTimeout
+	}
+	if opts.KostalRtuTimeout <= 0 {
+		opts.KostalRtuTimeout = DefaultKostalRtuTimeout
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
@@ -238,6 +251,20 @@ func (r *Runtime) pollOnce(ctx context.Context) {
 			return
 		}
 		r.pollSunSpec(ctx, p)
+	case CommKostalDxs:
+		p, why := planKostalDxs(s)
+		if p == nil {
+			r.idle(why)
+			return
+		}
+		r.pollKostalDxs(ctx, p)
+	case CommKostalPikoRtu:
+		p, why := planKostalPikoRtu(s)
+		if p == nil {
+			r.idle(why)
+			return
+		}
+		r.pollKostalPikoRtu(ctx, p)
 	default:
 		// Honest, not silent: the parity matrix names what is ported. The core
 		// then shows "keine aktuellen Daten" exactly as for a dead device.

@@ -26,10 +26,12 @@ const goe = require('./goe/goe-api');
 const kostal = require('./kostal/kostal-decode');
 const kacoSerial = require('./kaco/kaco-serial-decode');
 const huawei = require('./huawei/huawei-decode');
+const kostalDxs = require('./kostal/kostal-dxs-decode');
+const kostalRtu = require('./kostal/kostal-piko-rtu-decode');
 
 function deps(extra) {
   return Object.assign(
-    { deye, modbus, fronius, solarman, sunspec, discovery, goe, kostal, kacoSerial, huawei, net, http, https },
+    { deye, modbus, fronius, solarman, sunspec, discovery, goe, kostal, kacoSerial, huawei, kostalDxs, kostalRtu, net, http, https },
     extra || {},
   );
 }

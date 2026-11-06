@@ -42,6 +42,8 @@ const kacoHttp = require('./kaco/kaco-http');
 const aisweiDecode = require('./kaco/aiswei-decode');
 const huaweiDecode = require('./huawei/huawei-decode');
 const kacoSerialDecode = require('./kaco/kaco-serial-decode');
+const kostalDxsDecode = require('./kostal/kostal-dxs-decode');
+const kostalRtuDecode = require('./kostal/kostal-piko-rtu-decode');
 
 const SCHEMA_VERSION = '1.0';
 
@@ -93,6 +95,19 @@ const COMM_HUAWEI_MODBUS = 'huawei_modbus';
 // Bytes 1:1 durchreicht. Nur lesen - diese Geraetegeneration hat keine
 // Fernsteuerung. Siehe kaco/kaco-serial-decode.js + KACO.md.
 const COMM_KACO_SERIAL = 'kaco_serial';
+// Classic KOSTAL PIKO (3.0-20 / 10-20, web UI from UI 06) over its local
+// Web-API `/api/dxs.json` (port 80, no authentication for measurement
+// values) - the VORGABE-weg of this platform: it runs already (the field
+// precedent reads one id every 5 s without a login), needs no hardware and
+// no intervention at the inverter. See kostal/kostal-dxs-decode.js.
+const COMM_KOSTAL_DXS = 'kostal_dxs';
+// The SAME PIKO line over Modbus RTU on its RS485 terminal (protocol
+// switched to "Modbus" at the device), through a TRANSPARENT RS485-to-
+// Ethernet gateway (the kaco_serial hardware class). The register map is
+// only COMMUNITY-documented, so this stays the AUSWEG, never the Vorgabe -
+// see kostal/kostal-piko-rtu-decode.js and its built-in cross-check against
+// the Web-API in test-read.js.
+const COMM_KOSTAL_PIKO_RTU = 'kostal_piko_rtu';
 
 const DEFAULT_SOLARMAN_PORT = 8899;
 const DEFAULT_MODBUS_PORT = 502;
@@ -107,6 +122,9 @@ const DEFAULT_KACO_MODBUS_UNIT_ID = aisweiDecode.DEFAULT_UNIT_ID; // 1
 const DEFAULT_HUAWEI_PORT = huaweiDecode.DEFAULT_PORT; // 502
 const DEFAULT_HUAWEI_UNIT_ID = huaweiDecode.DEFAULT_UNIT_ID; // 0
 const DEFAULT_KACO_SERIAL_PORT = kacoSerialDecode.DEFAULT_PORT; // 8899 (RS485-zu-Ethernet-Wandler)
+const DEFAULT_KOSTAL_DXS_PORT = kostalDxsDecode.DEFAULT_PORT; // 80
+const DEFAULT_KOSTAL_RTU_PORT = kostalRtuDecode.DEFAULT_PORT; // 8899 (RS485-zu-Ethernet-Wandler)
+const DEFAULT_KOSTAL_RTU_UNIT_ID = kostalRtuDecode.DEFAULT_UNIT_ID; // 1
 
 // The one register-profile id the SunSpec-live read path uses (mirrors how the
 // Deye family / Modbus profile names the decode). Discovery is dynamic, so there
@@ -141,6 +159,9 @@ const KACO_HTTP_FAMILIES = Object.keys(kacoHttp.FAMILIES);
 const KACO_MODBUS_FAMILIES = Object.keys(aisweiDecode.FAMILIES);
 // Die eine Familie der seriellen Powador-Altgeraete-Plattform.
 const KACO_SERIAL_FAMILIES = Object.keys(kacoSerialDecode.FAMILIES);
+// Die KOSTAL-PIKO-Plattform: ein Decode-Profil je Weg (Web-API, Modbus RTU).
+const KOSTAL_DXS_FAMILIES = Object.keys(kostalDxsDecode.FAMILIES);
+const KOSTAL_RTU_FAMILIES = Object.keys(kostalRtuDecode.FAMILIES);
 
 function isObject(v) {
   return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -177,7 +198,9 @@ function parseConfig(input) {
       communication !== COMM_GOE && communication !== COMM_KOSTAL &&
       communication !== COMM_KACO_HTTP && communication !== COMM_KACO_MODBUS &&
       communication !== COMM_HUAWEI_MODBUS &&
-      communication !== COMM_KACO_SERIAL) return null;
+      communication !== COMM_KACO_SERIAL &&
+      communication !== COMM_KOSTAL_DXS &&
+      communication !== COMM_KOSTAL_PIKO_RTU) return null;
 
   const family = typeof obj.family === 'string' ? obj.family.trim() : '';
   if (!family) return null;
@@ -580,6 +603,48 @@ function route(sel) {
     };
   }
 
+  if (sel.communication === COMM_KOSTAL_DXS) {
+    // Klassischer KOSTAL PIKO, lokale Web-API /api/dxs.json - ohne Anmeldung,
+    // ohne Eingriff am Geraet. Gate auf die bekannte Familie (an unknown
+    // family stays idle-safe, never fabricates).
+    if (!KOSTAL_DXS_FAMILIES.includes(sel.family)) {
+      return { adapter: 'idle', reason: 'unbekannte KOSTAL-PIKO-Familie: ' + sel.family };
+    }
+    const port = num(conn.port, DEFAULT_KOSTAL_DXS_PORT);
+    return {
+      adapter: COMM_KOSTAL_DXS,
+      family: sel.family,
+      target: ip + ':' + port,
+      connection: { ip, port },
+    };
+  }
+
+  if (sel.communication === COMM_KOSTAL_PIKO_RTU) {
+    // Derselbe PIKO ueber den dokumentierten Ausweg: Modbus RTU durch einen
+    // transparenten RS485-zu-Ethernet-Wandler (Community-Registerkarte).
+    // cross_check_ip ist OPTIONAL und wird nur von "Verbindung testen" fuer
+    // die eingebaute Gegenprobe gegen die Web-API genutzt.
+    if (!KOSTAL_RTU_FAMILIES.includes(sel.family)) {
+      return { adapter: 'idle', reason: 'unbekannte KOSTAL-PIKO-Familie: ' + sel.family };
+    }
+    const port = num(conn.port, DEFAULT_KOSTAL_RTU_PORT);
+    const unitId = num(conn.unit_id, DEFAULT_KOSTAL_RTU_UNIT_ID);
+    if (unitId < kostalRtuDecode.MIN_UNIT_ID || unitId > kostalRtuDecode.MAX_UNIT_ID) {
+      return { adapter: 'idle', reason: 'Modbus-Geräteadresse muss zwischen 1 und 247 liegen' };
+    }
+    return {
+      adapter: COMM_KOSTAL_PIKO_RTU,
+      family: sel.family,
+      target: ip + ':' + port,
+      connection: {
+        ip,
+        port,
+        unit_id: unitId,
+        cross_check_ip: (typeof conn.cross_check_ip === 'string' ? conn.cross_check_ip : '').trim(),
+      },
+    };
+  }
+
   return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
 }
 
@@ -593,6 +658,8 @@ module.exports = {
   COMM_KACO_HTTP,
   COMM_KACO_MODBUS,
   COMM_KACO_SERIAL,
+  COMM_KOSTAL_DXS,
+  COMM_KOSTAL_PIKO_RTU,
   isSunSpecTcp,
   COMM_GOE,
   COMM_KOSTAL,
@@ -611,6 +678,9 @@ module.exports = {
   DEFAULT_HUAWEI_PORT,
   DEFAULT_HUAWEI_UNIT_ID,
   DEFAULT_KACO_SERIAL_PORT,
+  DEFAULT_KOSTAL_DXS_PORT,
+  DEFAULT_KOSTAL_RTU_PORT,
+  DEFAULT_KOSTAL_RTU_UNIT_ID,
   DEYE_EXPORT_LIMIT,
   EXPORT_LIMIT_INTERVAL_MS,
   exportLimitRegister,

@@ -531,3 +531,102 @@ test('route refuses an out-of-range RS485-Adresse and an unknown family, idle-sa
 test('kaco_serial shares exactly one family with kaco-serial-decode.js (no second register of the name)', () => {
   assert.deepStrictEqual(Object.keys(kacoSerialDecode.FAMILIES), ['kaco_serial']);
 });
+
+// --- Klassischer KOSTAL PIKO, Web-API /api/dxs.json (kostal_dxs) -------------
+
+const kostalDxsDecode = require('./kostal/kostal-dxs-decode');
+const kostalRtuDecode = require('./kostal/kostal-piko-rtu-decode');
+
+function kostalDxsConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'kostal',
+      label: 'KOSTAL · PIKO 20',
+      family: 'kostal_piko',
+      communication: 'kostal_dxs',
+      connection: { ip: '192.168.1.122', port: 80 },
+      updated_at: '2026-11-06T10:00:00Z',
+    },
+    overrides,
+  );
+}
+
+test('parseConfig accepts a kostal_dxs selection', () => {
+  const sel = routing.parseConfig(kostalDxsConfig());
+  assert.ok(sel);
+  assert.strictEqual(sel.communication, routing.COMM_KOSTAL_DXS);
+  assert.strictEqual(sel.family, 'kostal_piko');
+});
+
+test('route maps kostal_dxs onto an HTTP target with the default port 80', () => {
+  const plan = routing.route(routing.parseConfig(kostalDxsConfig({ connection: { ip: '192.168.1.122' } })));
+  assert.strictEqual(plan.adapter, 'kostal_dxs');
+  assert.strictEqual(plan.family, 'kostal_piko');
+  assert.strictEqual(plan.target, '192.168.1.122:80');
+  assert.strictEqual(plan.connection.port, 80);
+});
+
+test('route refuses an unknown kostal_dxs family idle-safe', () => {
+  const idle = routing.route(routing.parseConfig(kostalDxsConfig({ family: 'kostal_piko_ba' })));
+  assert.strictEqual(idle.adapter, 'idle');
+  assert.match(idle.reason, /KOSTAL-PIKO-Familie/);
+});
+
+test('kostal_dxs shares exactly one family with kostal-dxs-decode.js', () => {
+  assert.deepStrictEqual(Object.keys(kostalDxsDecode.FAMILIES), ['kostal_piko']);
+});
+
+// --- Derselbe PIKO ueber den Ausweg, Modbus RTU (kostal_piko_rtu) ------------
+
+function kostalRtuConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'kostal',
+      label: 'KOSTAL · PIKO 20',
+      family: 'kostal_piko_rtu',
+      communication: 'kostal_piko_rtu',
+      connection: { ip: '192.168.0.50', port: 8899, unit_id: 1 },
+      updated_at: '2026-11-06T10:00:00Z',
+    },
+    overrides,
+  );
+}
+
+test('parseConfig accepts a kostal_piko_rtu selection', () => {
+  const sel = routing.parseConfig(kostalRtuConfig());
+  assert.ok(sel);
+  assert.strictEqual(sel.communication, routing.COMM_KOSTAL_PIKO_RTU);
+});
+
+test('route maps kostal_piko_rtu onto the GATEWAY target, with defaults 8899/Geraeteadresse 1 and an empty cross-check IP', () => {
+  const plan = routing.route(routing.parseConfig(kostalRtuConfig({ connection: { ip: '192.168.0.50' } })));
+  assert.strictEqual(plan.adapter, 'kostal_piko_rtu');
+  assert.strictEqual(plan.target, '192.168.0.50:8899');
+  assert.strictEqual(plan.connection.unit_id, 1);
+  assert.strictEqual(plan.connection.cross_check_ip, '');
+});
+
+test('route keeps an explicit Geraeteadresse, Port and Gegenprobe-IP', () => {
+  const plan = routing.route(routing.parseConfig(kostalRtuConfig({
+    connection: { ip: '192.168.0.50', port: 4196, unit_id: 3, cross_check_ip: '192.168.1.122' },
+  })));
+  assert.strictEqual(plan.target, '192.168.0.50:4196');
+  assert.strictEqual(plan.connection.unit_id, 3);
+  assert.strictEqual(plan.connection.cross_check_ip, '192.168.1.122');
+});
+
+test('route refuses a Geraeteadresse ausserhalb 1..247 and an unknown family, idle-safe', () => {
+  const outOfRange = routing.route(routing.parseConfig(kostalRtuConfig({ connection: { ip: '10.0.0.5', unit_id: 999 } })));
+  assert.strictEqual(outOfRange.adapter, 'idle');
+  assert.match(outOfRange.reason, /1 und 247/);
+
+  const idle = routing.route(routing.parseConfig(kostalRtuConfig({ family: 'kostal_piko' })));
+  assert.strictEqual(idle.adapter, 'idle');
+  assert.match(idle.reason, /KOSTAL-PIKO-Familie/);
+});
+
+test('kostal_piko_rtu shares exactly one family with kostal-piko-rtu-decode.js', () => {
+  assert.deepStrictEqual(Object.keys(kostalRtuDecode.FAMILIES), ['kostal_piko_rtu']);
+});

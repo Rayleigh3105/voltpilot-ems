@@ -33,6 +33,7 @@ export const PROTOKOLLE = [
   { code: 'ocpp', name: 'OCPP-Station' },
   { code: 'solarman_v5', name: 'Solarman-Datenlogger' },
   { code: 'kaco_serial', name: 'Serieller RS485-Wandler' },
+  { code: 'kostal_piko_rtu', name: 'Modbus RTU über Wandler' },
 ] as const;
 export type Protokoll = (typeof PROTOKOLLE)[number]['code'];
 

@@ -1230,6 +1230,175 @@ func TestNormalizeKostal(t *testing.T) {
 	}
 }
 
+// TestNormalizeKostalPikoDxs pins the classic PIKO's Web-API transport
+// (kostal_dxs): host+port only, no auth, no unit id - the same shape as
+// kaco_http/fronius_solar_api.
+func TestNormalizeKostalPikoDxs(t *testing.T) {
+	cat := DefaultCatalog()
+
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "piko-20",
+		Connection: Connection{IP: "192.168.1.122"},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if sel.Communication != CommKostalDxs {
+		t.Fatalf("communication = %q, want %q", sel.Communication, CommKostalDxs)
+	}
+	if sel.Family != FamKostalPiko {
+		t.Fatalf("family = %q, want %q", sel.Family, FamKostalPiko)
+	}
+	if sel.Connection.Port != 80 {
+		t.Fatalf("default port = %d, want 80", sel.Connection.Port)
+	}
+	if sel.RatedKw != 20 {
+		t.Fatalf("PIKO 20 RatedKw = %v, want 20", sel.RatedKw)
+	}
+	if sel.ControlTier != ControlTierReadOnly {
+		t.Fatalf("control tier = %d, want read-only (0) - the Web-API has no documented write path", sel.ControlTier)
+	}
+	if !FamilyBatteryless(FamKostalPiko) {
+		t.Fatal("kostal_piko must be classified provably batteryless (string device, no battery)")
+	}
+	if FamilyHasBattery(FamKostalPiko) {
+		t.Fatal("kostal_piko must not count as a battery family")
+	}
+
+	// Foreign transport fields (unit id, RTU cross-check IP, every Deye/Fronius
+	// hatch) must be cleared - this transport is host+port only.
+	sel, err = cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "piko-12",
+		Connection: Connection{
+			IP: "192.168.1.123", UnitID: 5, CrossCheckIP: "10.0.0.1", Serial: "x",
+			InvertGridSign: true, InsecureTLS: true,
+		},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize foreign fields: %v", err)
+	}
+	c := sel.Connection
+	if c.UnitID != 0 || c.CrossCheckIP != "" || c.Serial != "" || c.InvertGridSign || c.InsecureTLS {
+		t.Fatalf("foreign fields must be cleared, got %+v", c)
+	}
+	if sel.RatedKw != 12 {
+		t.Fatalf("PIKO 12 RatedKw = %v, want 12", sel.RatedKw)
+	}
+
+	// Every dreiphasige model from the report (E3) is individually selectable.
+	for _, m := range []string{"piko-10", "piko-12", "piko-15", "piko-17", "piko-20", "piko-generic"} {
+		if _, err := cat.Normalize(SelectionRequest{Brand: BrandKostal, Model: m, Connection: Connection{IP: "10.0.0.1"}}, time.Now()); err != nil {
+			t.Errorf("model %s must be selectable on kostal_dxs: %v", m, err)
+		}
+	}
+
+	// PIKO BA and pre-UI-06 legacy devices are deliberately NOT in the catalog
+	// (E3: contradictory battery sign / HTML-scraping risk - honestly rejected,
+	// never silently missing).
+	b, _ := cat.brand(BrandKostal)
+	for _, m := range []string{"piko-ba", "piko-10-ba", "piko-legacy", "piko-5.5"} {
+		if _, ok := b.model(m); ok {
+			t.Errorf("model %q must not exist in the catalog (PIKO BA / legacy UI 5.x are rejected, not silently supported)", m)
+		}
+	}
+}
+
+// TestNormalizeKostalPikoRtu pins the documented Ausweg (kostal_piko_rtu): the
+// GATEWAY's host+port, a real Modbus unit id (1-247), and the optional
+// cross-check IP used only by "Verbindung testen".
+func TestNormalizeKostalPikoRtu(t *testing.T) {
+	cat := DefaultCatalog()
+
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "piko-20", Connection: Connection{Transport: CommKostalPikoRtu, IP: "192.168.0.50"},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if sel.Communication != CommKostalPikoRtu {
+		t.Fatalf("communication = %q, want %q", sel.Communication, CommKostalPikoRtu)
+	}
+	if sel.Family != FamKostalPikoRtu {
+		t.Fatalf("family = %q, want %q", sel.Family, FamKostalPikoRtu)
+	}
+	if sel.Connection.Port != 8899 || sel.Connection.UnitID != 1 {
+		t.Fatalf("defaults = %d/%d, want 8899/1", sel.Connection.Port, sel.Connection.UnitID)
+	}
+	if sel.Connection.CrossCheckIP != "" {
+		t.Fatalf("cross_check_ip default must be empty, got %q", sel.Connection.CrossCheckIP)
+	}
+	if !FamilyBatteryless(FamKostalPikoRtu) {
+		t.Fatal("kostal_piko_rtu must be classified provably batteryless, like its Web-API twin")
+	}
+
+	// An explicit unit id and cross-check IP survive; an out-of-range unit id
+	// (the family has no 0-is-valid exception, unlike Huawei) is refused.
+	sel, err = cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "piko-20",
+		Connection: Connection{Transport: CommKostalPikoRtu, IP: "192.168.0.50", UnitID: 3, CrossCheckIP: " 192.168.1.122 "},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize explicit: %v", err)
+	}
+	if sel.Connection.UnitID != 3 {
+		t.Fatalf("unit_id = %d, want 3", sel.Connection.UnitID)
+	}
+	if sel.Connection.CrossCheckIP != "192.168.1.122" {
+		t.Fatalf("cross_check_ip = %q, want trimmed 192.168.1.122", sel.Connection.CrossCheckIP)
+	}
+	if _, err = cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "piko-20",
+		Connection: Connection{Transport: CommKostalPikoRtu, IP: "192.168.0.50", UnitID: 300},
+	}, time.Now()); err == nil {
+		t.Fatal("a Modbus unit id outside 1-247 must be refused")
+	}
+
+	// Foreign transport fields are cleared.
+	sel, err = cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "piko-20",
+		Connection: Connection{
+			Transport: CommKostalPikoRtu, IP: "192.168.0.50", Serial: "x", InsecureTLS: true,
+			PowerScale: 10, InvertGridSign: true, Address: 7,
+		},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize foreign fields: %v", err)
+	}
+	c := sel.Connection
+	if c.Serial != "" || c.InsecureTLS || c.PowerScale != 0 || c.InvertGridSign || c.Address != 0 {
+		t.Fatalf("foreign fields must be cleared, got %+v", c)
+	}
+}
+
+// TestKostalPikoModelsOfferBothTransportsDxsFirst pins the Vorgabe/Ausweg
+// order (report §0/§5.5): kostal_dxs is Transports[0] for every PIKO model,
+// kostal_piko_rtu the expert escape hatch - never the other way round.
+func TestKostalPikoModelsOfferBothTransportsDxsFirst(t *testing.T) {
+	cat := DefaultCatalog()
+	b, ok := cat.brand(BrandKostal)
+	if !ok {
+		t.Fatal("brand kostal must resolve")
+	}
+	for _, id := range []string{"piko-10", "piko-12", "piko-15", "piko-17", "piko-20", "piko-generic"} {
+		m, ok := b.model(id)
+		if !ok {
+			t.Fatalf("model %s must resolve", id)
+		}
+		ways := b.TransportsFor(m)
+		if len(ways) != 2 || ways[0] != CommKostalDxs || ways[1] != CommKostalPikoRtu {
+			t.Errorf("model %s transports = %v, want [kostal_dxs, kostal_piko_rtu]", id, ways)
+		}
+	}
+	// The PLENTICORE line must be unaffected: still kostal_modbus only.
+	m, ok := b.model("plenticore-bi-10-26")
+	if !ok {
+		t.Fatal("plenticore-bi-10-26 must still resolve")
+	}
+	if ways := b.TransportsFor(m); len(ways) != 1 || ways[0] != CommKostalModbus {
+		t.Errorf("PLENTICORE transports = %v, want [kostal_modbus] only", ways)
+	}
+}
+
 // TestBusPayloadKostalShape pins the retained edge/inverter/config shape the
 // Node-RED self-wiring reads: unit id + byte order + BOTH read-sign hatches +
 // the shared write-sign hatch must all be published (the fm/vp-deye-sign-fix-v6
