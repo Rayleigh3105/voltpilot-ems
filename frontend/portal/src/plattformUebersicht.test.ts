@@ -50,6 +50,16 @@ describe('uebersichtKacheln', () => {
     expect(verbindung.wort).toContain('Alle 1 verbunden');
   });
 
+  it('E6: eine verzögerte Box zählt NICHT als Ausnahme der Verbindungs-Kachel - reine Anzeige', () => {
+    const k = uebersichtKacheln({
+      sites: [site({ boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box A', fuehrtAnlage: true, lastSeenAt: ago(2 * 60_000), edge: null, update: null }] })],
+      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
+    }, NOW);
+    const verbindung = k.find((x) => x.id === 'verbindung')!;
+    expect(verbindung.zahl).toBe(0);
+    expect(verbindung.ton).toBe('ok');
+  });
+
   it('zählt Boxen, die sich nicht melden, als Ausnahme', () => {
     const k = uebersichtKacheln({
       sites: [site({ boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box A', fuehrtAnlage: true, lastSeenAt: ago(3600_000), edge: null, update: null }] })],
@@ -180,6 +190,16 @@ describe('uebersichtFlottenbild', () => {
     const groups = fleetBoxGroups([site()], NOW);
     const bild = uebersichtFlottenbild(groups, [edgeRow({ stand: 'laeuft' })]);
     expect(bild[0].felder[0].ton).toBe('lauf');
+  });
+
+  it('E6/S7: eine verzögerte Box bekommt ihren eigenen Ton - nicht „aus"', () => {
+    const groups = fleetBoxGroups([
+      site({
+        boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box A', fuehrtAnlage: true, lastSeenAt: ago(2 * 60_000), edge: null, update: null }],
+      }),
+    ], NOW);
+    const bild = uebersichtFlottenbild(groups, []);
+    expect(bild[0].felder[0].ton).toBe('verzoegert');
   });
 });
 

@@ -125,10 +125,15 @@
 .vp-gu-name b { display: block; font-size: 0.97rem; overflow-wrap: anywhere; }
 .vp-gu-name small { display: block; color: var(--vp-text-gray); font-size: 0.82rem; overflow-wrap: anywhere; }
 .vp-gu-linie-zelle { display: flex; flex-wrap: wrap; gap: 4px; }
+/* Fünf Zustände (Adminview-Konzept §5.3): zwei gefüllte Punkte für „hier
+   tut sich (noch) etwas" (grün/bernstein), zwei hohle Ringe für „nichts zu
+   berichten" (nie gemeldet/unbekannt), ein gefüllter Punkt in sattem Orange
+   für den einzigen echten Alarm (meldet sich nicht). */
 .vp-gu-verb { display: grid; gap: 1px; font-size: 0.86rem; }
 .vp-gu-verb b { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
 .vp-gu-verb b i { width: 8px; height: 8px; border-radius: 50%; background: #43A047; display: inline-block; flex: none; }
-.vp-gu-verb.offline b i { background: #fff; box-shadow: inset 0 0 0 2px #E0A030; }
+.vp-gu-verb.verzoegert b i { background: #E0A030; }
+.vp-gu-verb.offline b i { background: #9A4A0A; }
 .vp-gu-verb.nie b i, .vp-gu-verb.unbekannt b i { background: #fff; box-shadow: inset 0 0 0 2px #90A4AE; }
 .vp-gu-verb small { color: var(--vp-text-gray); font-size: 0.78rem; }
 .vp-gu-laeuft { display: grid; gap: 4px; font-size: 0.86rem; justify-items: start; }

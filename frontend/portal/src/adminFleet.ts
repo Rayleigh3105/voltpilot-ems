@@ -152,6 +152,8 @@ export interface FleetBoxRow {
   roleText: string;
   connectionText: string;
   connectionTone: Tone;
+  /** Der genaue Zustand (E6: unterscheidet „verzögert" von „offline" - `connectionTone` tut das nicht). */
+  connectionZustand: BoxErreichbarkeit;
   lastSeenText: string;
   software: EdgeStand;
   capabilities: FleetBoxCapability[];
@@ -480,6 +482,7 @@ function fleetBoxRow(
         : 'Führende Box nicht festgelegt',
     connectionText: verbindung.text,
     connectionTone: verbindung.tone,
+    connectionZustand: verbindung.zustand,
     lastSeenText: verbindung.lastSeenText,
     software: edgeStand(box.edge, box.update, releases, box.boxArt),
     capabilities: capabilityResult.faehigkeiten.map((capability, index) => ({
@@ -538,21 +541,31 @@ export function planCell(lastRun: string | null, now: Date): { text: string; ton
 }
 
 /** „vor 7 Min." in der Sprache von `format.fmtRelative`, aus einer Dauer. */
-/** Ob eine Box gerade erreichbar ist - die drei Zustände der Flotten-Regel. */
-export type BoxErreichbarkeit = 'online' | 'offline' | 'nie';
+/** Ob eine Box gerade erreichbar ist - die vier Zustände der Flotten-Regel (E6: „verzögert" zusätzlich). */
+export type BoxErreichbarkeit = 'online' | 'verzoegert' | 'offline' | 'nie';
 
 export interface BoxVerbindung {
   zustand: BoxErreichbarkeit;
   tone: Tone;
-  /** „Verbunden" · „Meldet sich nicht" · „Wartet auf erste Meldung". */
+  /** „Verbunden" · „Verzögert" · „Meldet sich nicht" · „Wartet auf erste Meldung". */
   text: string;
   /** Alter der letzten Meldung („vor 3 Min.") oder „—" ohne Meldung. */
   lastSeenText: string;
 }
 
 /**
+ * Ab wann eine Box als „verzögert" gilt (Adminview-Konzept §5.3, E6): drei
+ * ausgebliebene Herzschläge bei einem 15-s-Takt. Bis dahin sagt das Portal
+ * zwischen dem Herzschlag-Takt und dem 5-Minuten-Fenster nichts, obwohl genau
+ * dann jemand am Gerät nachsieht - „verzögert" ist reine Anzeige, löst keine
+ * Aufgabe aus (`aufgaben`/`uebersichtBrauchtDich` bleiben bei `offline`).
+ */
+export const DELAYED_WINDOW_MS = 45 * 1000;
+
+/**
  * DIE Online-Regel der Plattform: eine Box gilt als online, wenn ihre letzte
- * Meldung höchstens `ONLINE_WINDOW_MS` vor `now` liegt. Ohne Meldung ist sie
+ * Meldung höchstens `DELAYED_WINDOW_MS` vor `now` liegt; bis `ONLINE_WINDOW_MS`
+ * gilt sie als verzögert, danach als „meldet sich nicht". Ohne Meldung ist sie
  * NICHT online, sondern „nie" (fehlend ist keine Null). Die Plattform-Übersicht
  * und die Geräteliste lesen beide diese Funktion, damit es nur EINE Schwelle
  * und EINEN Wortlaut gibt. `now` ist der Abrufzeitpunkt der Daten, nie eine
@@ -564,13 +577,18 @@ export function boxVerbindung(lastSeenAt: string | null | undefined, now: Date):
   if (age === null) {
     return { zustand: 'nie', tone: 'off', text: 'Wartet auf erste Meldung', lastSeenText: DASH };
   }
-  return age <= ONLINE_WINDOW_MS
-    ? { zustand: 'online', tone: 'ok', text: 'Verbunden', lastSeenText: relAge(age) }
-    : { zustand: 'offline', tone: 'warn', text: 'Meldet sich nicht', lastSeenText: relAge(age) };
+  if (age <= DELAYED_WINDOW_MS) {
+    return { zustand: 'online', tone: 'ok', text: 'Verbunden', lastSeenText: relAge(age) };
+  }
+  if (age <= ONLINE_WINDOW_MS) {
+    return { zustand: 'verzoegert', tone: 'warn', text: 'Verzögert', lastSeenText: relAge(age) };
+  }
+  return { zustand: 'offline', tone: 'warn', text: 'Meldet sich nicht', lastSeenText: relAge(age) };
 }
 
 export interface VerbindungZaehlung {
   online: number;
+  verzoegert: number;
   offline: number;
   nie: number;
   /** „12 online · 2 offline · 1 nie gemeldet" - Nullen bleiben stehen. */
@@ -580,9 +598,13 @@ export interface VerbindungZaehlung {
 /** Zählt Boxen nach `boxVerbindung`. */
 export function verbindungZaehlung(zustaende: BoxErreichbarkeit[]): VerbindungZaehlung {
   const online = zustaende.filter((z) => z === 'online').length;
+  const verzoegert = zustaende.filter((z) => z === 'verzoegert').length;
   const offline = zustaende.filter((z) => z === 'offline').length;
   const nie = zustaende.filter((z) => z === 'nie').length;
-  return { online, offline, nie, text: `${online} online · ${offline} offline · ${nie} nie gemeldet` };
+  return {
+    online, verzoegert, offline, nie,
+    text: `${online} online · ${offline} offline · ${nie} nie gemeldet`,
+  };
 }
 
 export function relAge(ms: number): string {

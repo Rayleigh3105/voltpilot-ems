@@ -378,6 +378,14 @@ describe('Bezugszeit', () => {
     // Eine Zukunft rechnet nie negativ.
     expect(freshnessLabel(t, t - 5_000)).toBe('Stand: gerade eben');
   });
+
+  it('nennt eine fehlgeschlagene Aktualisierung statt eines wachsenden Alters (§5.2)', () => {
+    const t = new Date('2026-11-06T14:02:00Z').getTime();
+    expect(freshnessLabel(t, t + 120_000, true)).toContain('Aktualisierung schlägt fehl');
+    expect(freshnessLabel(t, t + 120_000, true)).toContain('Stand');
+    // Die Uhrzeit ist absolut (die Bezugszeit des letzten Erfolgs), nie ein Alter.
+    expect(freshnessLabel(t, t + 120_000, true)).not.toMatch(/vor \d/);
+  });
 });
 
 describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {

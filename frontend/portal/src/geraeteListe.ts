@@ -14,8 +14,8 @@
  * `GET /admin/geraeteliste`, `AdminGeraeteListeEintrag`) - ohne dieses Signal
  * ließe sich die Stufe nicht von „noch nie verbunden" unterscheiden (eine
  * ausgebaute Box mit Aufkleber-Eintrag erschien davor fälschlich als
- * „gedruckt"). Die Stufe „verzögert" (E6) ist S7, nicht hier - der Chip fehlt
- * deshalb weiterhin.
+ * „gedruckt"). Die Stufe „verzögert" (E6, Scheibe S7) hat seither ihren
+ * eigenen Chip - reine Anzeige, löst nie „Braucht dich" aus.
  */
 import type { AdminDeviceRow, AdminGeraeteListeEintrag, PendingEnrollment } from './admin/adminApi';
 import type { BoxArt, FleetRow } from './adminEdgeUpdates';
@@ -159,7 +159,7 @@ const RANG: Record<Lebensabschnitt, number> = { verbunden: 0, wartet: 1, werksta
 // ── Filter ──────────────────────────────────────────────────────────────────
 
 export type ListeChip =
-  | 'braucht' | 'offline' | 'lauf' | 'aelter'
+  | 'braucht' | 'offline' | 'verzoegert' | 'lauf' | 'aelter'
   | 'gedruckt' | 'ohne_kunde' | 'werkstatt' | 'fassung' | 'ausgebaut';
 
 export interface ListeFilter {
@@ -174,6 +174,7 @@ const chipPasst = (z: GeraeteListeZeile, chip: ListeChip): boolean => {
   switch (chip) {
     case 'braucht': return z.lebensabschnitt === 'verbunden' && z.zeile.brauchtDich;
     case 'offline': return z.lebensabschnitt === 'verbunden' && z.zeile.offline;
+    case 'verzoegert': return z.lebensabschnitt === 'verbunden' && z.zeile.verbindung.zustand === 'verzoegert';
     case 'lauf': return z.lebensabschnitt === 'verbunden' && z.zeile.laeuftUpdate;
     case 'aelter': return z.lebensabschnitt === 'verbunden' && z.zeile.aelter;
     case 'gedruckt': return z.lebensabschnitt === 'gedruckt';
@@ -193,7 +194,7 @@ export interface ListeChipZahl { chip: ListeChip; label: string; n: number }
 /** Die Zähl-Chips der Filterleiste, nur mit Zahl > 0 (ein leerer Chip wäre eine Sackgasse). */
 export function listeChipZahlen(zeilen: GeraeteListeZeile[]): ListeChipZahl[] {
   const LABEL: Record<ListeChip, string> = {
-    braucht: 'Braucht dich', offline: 'Offline', lauf: 'Update läuft', aelter: 'Älter',
+    braucht: 'Braucht dich', offline: 'Offline', verzoegert: 'Verzögert', lauf: 'Update läuft', aelter: 'Älter',
     gedruckt: 'Gedruckt', ohne_kunde: 'Ohne Kunde', werkstatt: 'Werkstatt', fassung: 'Fassung weicht ab',
     ausgebaut: 'Ausgebaut',
   };

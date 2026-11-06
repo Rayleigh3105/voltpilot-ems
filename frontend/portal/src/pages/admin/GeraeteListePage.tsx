@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -6,16 +6,21 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { VpPicker } from '../../components/VpPicker';
 import { ApiError } from '../../api';
-import { adminApi, type AdminDeviceRow } from '../../admin/adminApi';
+import {
+  adminApi, type AdminDeviceRow, type AdminGeraeteListeEintrag, type PendingEnrollment,
+} from '../../admin/adminApi';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { Blende } from '../../components/Lazy';
 import { AdminPageHead } from './AdminPageHead';
 import { normalizeDeviceIdInput } from '../../anlageFlow';
 import { fmtRelative } from '../../format';
+import { freshnessLabel, type EdgeUpdates } from '../../adminEdgeUpdates';
 import {
   filterGeraeteListe, geraeteListeLinien, geraeteListeZeilen, listeChipZahlen,
   LEERER_LISTE_FILTER, type GeraeteListeZeile, type ListeFilter,
 } from '../../geraeteListe';
+import type { FlottenAnlage } from '../../adminKomponentenFlotte';
+import type { WerkstattBox } from '../../werkstatt';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { LIST_POLL_MS } from '../../pollCadence';
 import { BoxArtChip } from './BoxArtChip';
@@ -38,10 +43,12 @@ const WERKZEUG_LABEL: Record<AnlageWerkzeug, string> = { plan: 'Plan erklären (
  * Komponenten-Fassung nicht angewandt hat (`/admin/component-fleet`).
  */
 export function GeraeteListePage({ onOpen }: { onOpen: (ref: string, werkzeug?: AnlageWerkzeug | null) => void }) {
-  const [state, setState] = useState<{
-    fleet: AdminDeviceRow[] | null;
-    zeilen: GeraeteListeZeile[];
-  }>({ fleet: null, zeilen: [] });
+  const [edgeUpdates, setEdgeUpdates] = useState<EdgeUpdates | null>(null);
+  const [devices, setDevices] = useState<AdminDeviceRow[] | null>(null);
+  const [pending, setPending] = useState<PendingEnrollment[]>([]);
+  const [werkstattBoxen, setWerkstattBoxen] = useState<WerkstattBox[]>([]);
+  const [komponenten, setKomponenten] = useState<FlottenAnlage[]>([]);
+  const [geraeteListeDaten, setGeraeteListeDaten] = useState<AdminGeraeteListeEintrag[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,46 +58,61 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string, werkzeug?: 
   );
   const [werkzeug] = useState<AnlageWerkzeug | null>(() => parseGeraeteListeWerkzeug(window.location.hash));
   const [jetzt, setJetzt] = useState(() => new Date());
+  // §5.2: Bezugszeit des letzten ERFOLGS, nie eine laufende Uhr über einem
+  // stehenden Schnappschuss (`liveness.ts`).
+  const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
+  const [tick, setTick] = useState<number>(() => Date.now());
+  const [pollFehler, setPollFehler] = useState(false);
+  const hatteDaten = useRef(false);
 
   async function reload() {
     setError(null);
-    const [edgeUpdates, devices, pending, werkstatt, komponenten, geraeteListe] = await Promise.allSettled([
+    const [eu, dv, pe, ws, ko, gl] = await Promise.allSettled([
       adminApi.edgeUpdates(), adminApi.listDevices(), adminApi.listPendingEnrollments(), adminApi.werkstattBoxen(),
       adminApi.componentFleet(), adminApi.geraeteListe(),
     ]);
-    if (edgeUpdates.status === 'rejected' && devices.status === 'rejected') {
+    if (eu.status === 'fulfilled') setEdgeUpdates(eu.value);
+    if (dv.status === 'fulfilled') setDevices(dv.value);
+    if (pe.status === 'fulfilled') setPending(pe.value);
+    if (ws.status === 'fulfilled') setWerkstattBoxen(ws.value);
+    if (ko.status === 'fulfilled') setKomponenten(ko.value);
+    if (gl.status === 'fulfilled') setGeraeteListeDaten(gl.value.geraete);
+    const erfolg = eu.status === 'fulfilled' || dv.status === 'fulfilled';
+    if (erfolg) {
+      hatteDaten.current = true;
+      setLoadError(null);
+      setPollFehler(false);
+      setFetchedAt(Date.now());
+      setJetzt(new Date());
+    } else if (hatteDaten.current) {
+      // Ein fehlgeschlagener Abruf ist keine Datenlage (§5.2/`liveness.ts`):
+      // die Liste bleibt mit ihrem alten Stand stehen, nur die Fehlerzeile
+      // erscheint - nie eine leere Fehlerseite über einer schon gezeigten Liste.
+      setPollFehler(true);
+    } else {
       setLoadError('Das Geräte-Inventar ist gerade nicht abrufbar. Bitte erneut versuchen.');
-      setLoading(false);
-      return;
     }
-    setLoadError(null);
-    const now = new Date();
-    setJetzt(now);
-    const fleet = edgeUpdates.status === 'fulfilled' ? edgeUpdates.value.fleet : [];
-    // Scheibe S3: Boxen, deren Anlage eine Fassung nicht angewandt hat (`pending`) - für den Chip „Fassung weicht ab".
-    const abweichendeAnlagen = new Set(
-      (komponenten.status === 'fulfilled' ? komponenten.value : [])
-        .filter((k) => k.syncStatus === 'pending')
-        .map((k) => k.siteId),
-    );
-    const fassungRefs = new Set(fleet.filter((r) => abweichendeAnlagen.has(r.siteId)).map((r) => r.externalRef));
-    setState({
-      fleet: devices.status === 'fulfilled' ? devices.value : null,
-      zeilen: geraeteListeZeilen({
-        fleet,
-        devices: devices.status === 'fulfilled' ? devices.value : [],
-        pending: pending.status === 'fulfilled' ? pending.value : [],
-        werkstattBoxen: werkstatt.status === 'fulfilled' ? werkstatt.value : [],
-        geraeteListe: geraeteListe.status === 'fulfilled' ? geraeteListe.value.geraete : [],
-      }, now, fassungRefs),
-    });
     setLoading(false);
   }
 
   useEffect(() => {
     void reload();
   }, []);
-  useFreshnessPoll(() => void reload(), LIST_POLL_MS, !loading && loadError == null);
+  useFreshnessPoll(() => void reload(), LIST_POLL_MS, !loading);
+  useEffect(() => {
+    const t = window.setInterval(() => setTick(Date.now()), 5_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const zeilen = useMemo(() => {
+    const fleet = edgeUpdates?.fleet ?? [];
+    // Scheibe S3: Boxen, deren Anlage eine Fassung nicht angewandt hat - für den Chip „Fassung weicht ab".
+    const abweichendeAnlagen = new Set(komponenten.filter((k) => k.syncStatus === 'pending').map((k) => k.siteId));
+    const fassungRefs = new Set(fleet.filter((r) => abweichendeAnlagen.has(r.siteId)).map((r) => r.externalRef));
+    return geraeteListeZeilen({
+      fleet, devices: devices ?? [], pending, werkstattBoxen, geraeteListe: geraeteListeDaten,
+    }, jetzt, fassungRefs);
+  }, [edgeUpdates, devices, pending, werkstattBoxen, komponenten, geraeteListeDaten, jetzt]);
 
   async function registrieren(externalRef: string, kind: string, note: string) {
     await adminApi.provisionDevice({ externalRef, kind, note: note.trim() || undefined });
@@ -110,7 +132,14 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string, werkzeug?: 
         category="primary"
         title="Geräte"
         description="Jede Box in jedem Lebensabschnitt: gedruckt, meldet sich, in der Werkstatt, beim Kunden."
-        actions={registerButton}
+        actions={
+          <div className="vp-row-gap" style={{ alignItems: 'center' }}>
+            <span className="vp-muted vp-text-sm" data-testid="geraete-liste-stand">
+              {loading ? 'Wird geladen …' : pollFehler ? freshnessLabel(fetchedAt, tick, true) : `${freshnessLabel(fetchedAt, tick)} · alle 30 s`}
+            </span>
+            {registerButton}
+          </div>
+        }
       />
 
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
@@ -135,7 +164,7 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string, werkzeug?: 
         <ErrorState message={loadError} onRetry={() => void reload()} />
       ) : (
         <Blende laedt={loading} skelett={<Card style={{ padding: 0, overflow: 'hidden' }}><TableSkeleton rows={5} cols={6} /></Card>}>
-          <GeraeteTabelle zeilen={state.zeilen} jetzt={jetzt} filter={filter} onFilter={setFilter}
+          <GeraeteTabelle zeilen={zeilen} jetzt={jetzt} filter={filter} onFilter={setFilter}
             onOpen={(ref) => (werkzeug ? onOpen(ref, werkzeug) : onOpen(ref))} />
         </Blende>
       )}

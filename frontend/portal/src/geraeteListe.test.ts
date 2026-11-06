@@ -131,6 +131,15 @@ describe('Chips und Filter: kein leerer Chip, Lebensabschnitte zusammen als „O
     expect(listeChipZahlen(zeilen).find((c) => c.chip === 'werkstatt')?.n).toBe(1);
   });
 
+  it('E6/S7: „Verzögert" zählt eine Box zwischen 45 Sekunden und 5 Minuten - getrennt von „Offline"', () => {
+    const zeilen = geraeteListeZeilen({
+      fleet: [fleetRow({ lastSeenAt: vor(2 * 60_000) })], devices: [], pending: [], werkstattBoxen: [],
+    }, now);
+    const chips = listeChipZahlen(zeilen);
+    expect(chips.find((c) => c.chip === 'verzoegert')?.n).toBe(1);
+    expect(chips.find((c) => c.chip === 'offline')).toBeUndefined();
+  });
+
   it('filtert nach Chip und nach Suchtext', () => {
     const zeilen = geraeteListeZeilen({
       fleet: [fleetRow(), fleetRow({ externalRef: 'edge-b2', deviceId: 'd2', siteName: 'Auernheim', tenantName: 'Kunde A' })],

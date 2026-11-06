@@ -95,8 +95,11 @@ export function uebersichtKacheln(input: KachelnEingabe, now: Date): UebersichtK
 function verbindungKachel(sites: AdminFleetSite[], now: Date): UebersichtKachel {
   const boxen = fleetBoxGroups(sites, now).flatMap((g) => g.boxes);
   const total = boxen.length;
-  const offline = boxen.filter((b) => b.connectionTone === 'warn').length;
-  const nie = boxen.filter((b) => b.connectionTone === 'off').length;
+  // E6: „verzögert" ist reine Anzeige - sie zählt hier NICHT als Ausnahme,
+  // sonst würde die ruhigste aller drei Live-Kacheln genau dann unruhig, wenn
+  // noch kein echter Alarm vorliegt.
+  const offline = boxen.filter((b) => b.connectionZustand === 'offline').length;
+  const nie = boxen.filter((b) => b.connectionZustand === 'nie').length;
   const zahl = offline + nie;
   const teile = [nie > 0 ? `${nie} nie gemeldet` : null, `von ${total}`].filter(Boolean);
   return {
@@ -283,7 +286,7 @@ function satzText(z: BoxZeile): string | null {
 
 // ── Flottenbild ─────────────────────────────────────────────────────────────
 
-export type FlottenbildTon = 'ok' | 'aus' | 'nie' | 'lauf' | 'hand';
+export type FlottenbildTon = 'ok' | 'verzoegert' | 'aus' | 'nie' | 'lauf' | 'hand';
 
 export interface FlottenbildFeld {
   ref: string;
@@ -327,8 +330,11 @@ export function uebersichtFlottenbild(
 }
 
 function feld(box: FleetBoxRow, segment: ReturnType<typeof segmentArt> | null): FlottenbildFeld {
-  if (box.connectionTone === 'off') return { ref: box.externalRef, name: box.name, ton: 'nie', title: 'Wartet auf erste Meldung' };
-  if (box.connectionTone === 'warn') return { ref: box.externalRef, name: box.name, ton: 'aus', title: 'Meldet sich nicht' };
+  if (box.connectionZustand === 'nie') return { ref: box.externalRef, name: box.name, ton: 'nie', title: 'Wartet auf erste Meldung' };
+  if (box.connectionZustand === 'offline') return { ref: box.externalRef, name: box.name, ton: 'aus', title: 'Meldet sich nicht' };
+  // E6: „verzögert" bekommt ihre eigene, ruhigere Farbe - sie ist noch kein
+  // „aus" (dort ginge die Unterscheidung zur echten Störung verloren).
+  if (box.connectionZustand === 'verzoegert') return { ref: box.externalRef, name: box.name, ton: 'verzoegert', title: 'Verzögert' };
   if (segment === 'lauf') return { ref: box.externalRef, name: box.name, ton: 'lauf', title: 'Update läuft' };
   if (segment === 'hand') return { ref: box.externalRef, name: box.name, ton: 'hand', title: 'Nur von Hand (Stufe 1)' };
   return { ref: box.externalRef, name: box.name, ton: 'ok', title: 'Verbunden' };
