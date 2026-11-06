@@ -156,7 +156,8 @@ public class AdminFleetController {
             List<FleetBoxDto> boxDtos = siteBoxes.stream().map(box -> new FleetBoxDto(
                     box.deviceId(), box.externalRef(), box.name(),
                     leading == null ? null : leading.equals(box.deviceId()),
-                    box.lastSeenAt(), edgeDto(box.edge()), updateDto(box.update()), box.supports(),
+                    box.lastSeenAt(), box.herzschlagAm(), box.messwertAm(),
+                    edgeDto(box.edge()), updateDto(box.update()), box.supports(),
                     boxArt(box.edge(), box.update()))).toList();
             DeviceStats stats = deviceStats.get(id);
             int deviceCount = stats == null ? 0 : stats.deviceCount();
@@ -218,19 +219,22 @@ public class AdminFleetController {
      * Die Linie einer Box aus ihren beiden Meldungen ({@code ota.BoxArt}): das
      * Apply-Backend und jeder Stempel. {@code null} = unbekannt, nie still Docker.
      */
-    private static String boxArt(EdgeVersionRow version, UpdateStatusRow update) {
+    /** Package-sichtbar: auch {@code AdminGeraeteAkteController} bildet dieselbe Frage ab (L3). */
+    static String boxArt(EdgeVersionRow version, UpdateStatusRow update) {
         return com.voltpilot.api.ota.BoxArt.ofDevice(update == null ? null : update.backend(),
                 update == null ? null : update.version(),
                 update == null ? null : update.currentVersion(),
                 version == null ? null : version.coreVersion());
     }
 
-    private static FleetEdgeDto edgeDto(EdgeVersionRow version) {
+    /** Package-sichtbar, siehe {@link #boxArt}. */
+    static FleetEdgeDto edgeDto(EdgeVersionRow version) {
         return version == null ? null : new FleetEdgeDto(
                 version.coreVersion(), version.paletteVersion(), version.reportedAt());
     }
 
-    private static FleetUpdateDto updateDto(UpdateStatusRow update) {
+    /** Package-sichtbar, siehe {@link #boxArt}. */
+    static FleetUpdateDto updateDto(UpdateStatusRow update) {
         return update == null ? null : new FleetUpdateDto(
                 update.version(), update.backend(), update.currentVersion(), update.targetVersion(),
                 update.state(), update.reason(), update.lastKnownGood(), update.reportedAt());

@@ -200,6 +200,19 @@ describe('uebersichtDienste', () => {
   it('bleibt leer, ohne eine Null zu erfinden, wenn beide Quellen fehlen', () => {
     expect(uebersichtDienste(null, null, NOW)).toEqual([]);
   });
+
+  it('L1: fügt Optimierer, Preise und Messwerte VOR Tunnel- und Werkstatt-Dienst an', () => {
+    const dienste = uebersichtDienste(null, null, NOW, {
+      dienste: [
+        { name: 'optimierer', zuletztAm: ago(120_000) },
+        { name: 'preise', zuletztAm: null },
+        { name: 'messwerte', zuletztAm: ago(10_000) },
+      ],
+    });
+    expect(dienste.map((d) => d.id)).toEqual(['optimierer', 'preise', 'messwerte']);
+    expect(dienste[1]).toMatchObject({ text: 'noch nie gemeldet', ton: 'warn' });
+    expect(dienste[2].ton).toBe('ok');
+  });
 });
 
 describe('uebersichtAuffaellig', () => {

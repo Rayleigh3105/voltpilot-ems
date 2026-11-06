@@ -69,6 +69,9 @@ export interface AdminFleetBox {
   /** `null`: keine führende Box bestimmt; `false`: belegte weitere Box. */
   fuehrtAnlage: boolean | null;
   lastSeenAt: string | null;
+  /** Herzschlag und Messwert getrennt (L2); additiv neben `lastSeenAt`. */
+  herzschlagAm?: string | null;
+  messwertAm?: string | null;
   edge: AdminFleetEdge | null;
   update: AdminFleetUpdate | null;
   /** Die Linie der Box (`ota.BoxArt`, additiv seit S0); `null`/fehlend = unbekannt. */

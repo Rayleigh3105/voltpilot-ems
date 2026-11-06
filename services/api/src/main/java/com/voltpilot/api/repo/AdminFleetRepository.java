@@ -79,12 +79,23 @@ public class AdminFleetRepository {
             String plantKind, boolean netzladenErlaubt, String tarifArt) {
     }
 
-    /** Eine aktive Box mit ihren eigenen, nie anlagenweit geratenen Ständen. */
+    /**
+     * Eine aktive Box mit ihren eigenen, nie anlagenweit geratenen Ständen.
+     *
+     * <p>{@code herzschlagAm} (Status-Herzschlag, {@code device_status_seen_at})
+     * und {@code messwertAm} (jüngste Telemetrie-Ankunft) bleiben GETRENNT
+     * (Lücke L2, Adminview-Konzept Abschnitt 3.4): sie laufen über getrennte
+     * Wege (API-Listener bzw. Datenannahme → Redpanda → Writer) und können
+     * verschieden alt sein. {@code lastSeenAt} bleibt additiv als der
+     * verschmolzene Wert ({@code coalesce(herzschlagAm, messwertAm)}) bestehen,
+     * bis alle Leser auf die getrennten Felder umgestellt sind.
+     */
     public record FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
-            Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update, List<String> supports) {
+            Instant lastSeenAt, Instant herzschlagAm, Instant messwertAm,
+            EdgeVersionRow edge, UpdateStatusRow update, List<String> supports) {
         public FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
                 Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update) {
-            this(deviceId, siteId, externalRef, name, lastSeenAt, edge, update, null);
+            this(deviceId, siteId, externalRef, name, lastSeenAt, null, null, edge, update, null);
         }
     }
 
@@ -169,6 +180,8 @@ public class AdminFleetRepository {
         return jdbc.query("""
                 SELECT d.id AS device_id, d.site_id, d.external_ref, d.name, d.supports,
                        coalesce(d.device_status_seen_at, telemetry.last_seen) AS last_seen,
+                       d.device_status_seen_at AS herzschlag_am,
+                       telemetry.last_seen AS messwert_am,
                        edge.core_version, edge.palette_version,
                        edge.reported_at AS edge_reported_at,
                        update.version, update.backend, update.current_version,
@@ -194,6 +207,8 @@ public class AdminFleetRepository {
                  ORDER BY d.site_id, d.created_at, d.id
                 """, (rs, i) -> {
                     Timestamp lastSeen = rs.getTimestamp("last_seen");
+                    Timestamp herzschlagAm = rs.getTimestamp("herzschlag_am");
+                    Timestamp messwertAm = rs.getTimestamp("messwert_am");
                     Timestamp edgeReported = rs.getTimestamp("edge_reported_at");
                     Timestamp updateReported = rs.getTimestamp("update_reported_at");
                     return new FleetBoxRow(
@@ -202,6 +217,8 @@ public class AdminFleetRepository {
                             rs.getString("external_ref"),
                             rs.getString("name"),
                             lastSeen == null ? null : lastSeen.toInstant(),
+                            herzschlagAm == null ? null : herzschlagAm.toInstant(),
+                            messwertAm == null ? null : messwertAm.toInstant(),
                             edgeReported == null ? null : new EdgeVersionRow(
                                     rs.getString("core_version"),
                                     rs.getString("palette_version"),

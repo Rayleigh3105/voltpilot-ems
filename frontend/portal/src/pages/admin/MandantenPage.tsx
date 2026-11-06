@@ -142,9 +142,9 @@ export function MandantenPage({
 
 /**
  * Kundenliste (§4.5): Kunden mit Personenzahl, Anlagen und Boxen, Zustand; die
- * Suche findet Kunden UND Personen - zunächst über die geladenen Listen (die
- * Personensuche als eigenes Lesemodell ist S6, L6). „Neuer Kunde" fügt eine
- * Eingabezeile ein, kein Fenster (E1 = A).
+ * Suche findet Kunden UND Personen - über die schon geladenen Konten UND
+ * serverseitig über ALLE Kunden (`adminApi.personensuche`, Lücke L6). „Neuer
+ * Kunde" fügt eine Eingabezeile ein, kein Fenster (E1 = A).
  */
 function KundenlisteSeite({
   tenants,
@@ -166,6 +166,10 @@ function KundenlisteSeite({
   // Je Mandant: `undefined` = noch nicht geladen, sonst das Ergebnis (oder `'fehler'`).
   const [konten, setKonten] = useState<Record<string, AdminUser[] | 'fehler'>>({});
   const [vertragsende, setVertragsende] = useState<Record<string, SelbstauskunftKundenbereichBeendet | null | 'fehler'>>({});
+  // L6 (S6): serverseitige Personensuche über ALLE Kunden ergänzt die lokale
+  // Suche über die schon geladenen `konten` - findet so auch Personen eines
+  // Mandanten, dessen Kontoliste noch nicht geladen ist.
+  const [sucheTenantIds, setSucheTenantIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     void fleetApi.fleet().then((f) => {
@@ -193,6 +197,18 @@ function KundenlisteSeite({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenants]);
 
+  useEffect(() => {
+    const q = suche.trim();
+    if (q === '') { setSucheTenantIds(new Set()); return; }
+    let live = true;
+    const t = window.setTimeout(() => {
+      void adminApi.personensuche(q)
+        .then((treffer) => { if (live) setSucheTenantIds(new Set(treffer.map((p) => p.tenantId).filter((id): id is string => id != null))); })
+        .catch(() => { if (live) setSucheTenantIds(new Set()); });
+    }, 250);
+    return () => { live = false; window.clearTimeout(t); };
+  }, [suche]);
+
   const zeilen = useMemo(() => tenants.map((t) => {
     const anlagen = fleet?.filter((s) => s.tenantId === t.id) ?? null;
     const boxen = anlagen?.reduce((sum, s) => sum + s.deviceCount, 0) ?? null;
@@ -214,13 +230,14 @@ function KundenlisteSeite({
     if (!q) return zeilen;
     return zeilen.filter(({ tenant }) => {
       if (tenant.name.toLowerCase().includes(q)) return true;
+      if (sucheTenantIds.has(tenant.id)) return true;
       const liste = konten[tenant.id];
       return Array.isArray(liste) && liste.some((u) =>
         u.username.toLowerCase().includes(q)
         || (u.email ?? '').toLowerCase().includes(q)
         || [u.firstName, u.lastName].filter(Boolean).join(' ').toLowerCase().includes(q));
     });
-  }, [zeilen, suche, konten]);
+  }, [zeilen, suche, konten, sucheTenantIds]);
 
   const personenGesamt = Object.values(konten).reduce((sum, k) => sum + (Array.isArray(k) ? k.length : 0), 0);
 

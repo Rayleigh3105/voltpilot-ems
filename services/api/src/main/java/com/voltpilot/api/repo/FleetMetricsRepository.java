@@ -194,4 +194,34 @@ public class FleetMetricsRepository {
                 Timestamp.from(from), Timestamp.from(to));
         return slots;
     }
+
+    /**
+     * Jüngster Optimierer-Lauf über die GANZE Flotte (L1 Plattform-Dienste,
+     * Adminview-Konzept Abschnitt 3.4/4.3) - ein einziges {@code max()}, keine
+     * Gruppierung je Anlage. {@code null} heißt „noch nie ein Lauf", nie ein
+     * erfundenes Alter.
+     */
+    public Instant newestPlanAt() {
+        Timestamp t = admin.queryForObject("SELECT max(generated_at) FROM schedule", Timestamp.class);
+        return t == null ? null : t.toInstant();
+    }
+
+    /**
+     * Jüngste Mess-ANKUNFT über die GANZE Flotte (L1) - {@code max(received_at)},
+     * dieselbe Lebendigkeits-Hausregel wie {@link #lastTelemetryPerSite()}.
+     */
+    public Instant newestTelemetryAt() {
+        Timestamp t = admin.queryForObject("SELECT max(received_at) FROM telemetry", Timestamp.class);
+        return t == null ? null : t.toInstant();
+    }
+
+    /**
+     * Jüngster Preis-Import über alle Gebotszonen (L1) - {@code max(fetched_at)}
+     * aus {@code day_ahead_prices}, dem Lieferzeitpunkt des Marktdaten-Dienstes,
+     * nicht dem Lieferzeitpunkt der bepreisten Viertelstunde selbst.
+     */
+    public Instant newestPriceFetchAt() {
+        Timestamp t = admin.queryForObject("SELECT max(fetched_at) FROM day_ahead_prices", Timestamp.class);
+        return t == null ? null : t.toInstant();
+    }
 }

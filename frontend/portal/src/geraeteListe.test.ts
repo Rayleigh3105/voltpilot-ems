@@ -86,14 +86,25 @@ describe('geraeteListeZeilen: eine Zeile je Box, jeder Lebensabschnitt genau ein
     expect(zeilen[0].lebensabschnitt).toBe('verbunden');
   });
 
-  it('ordnet: verbunden vor wartet vor Werkstatt vor gedruckt', () => {
+  it('ordnet: verbunden vor wartet vor Werkstatt vor gedruckt vor ausgebaut', () => {
     const zeilen = geraeteListeZeilen({
       fleet: [fleetRow()],
       devices: [deviceRow()],
       pending: [pending()],
       werkstattBoxen: [werkstattBox()],
+      geraeteListe: [{ externalRef: 'edge-ausgebaut', lebensabschnitt: 'ausgebaut', seit: vor(1000), deviceId: null, siteId: null, tenantId: null, tenantName: null, name: null }],
     }, now);
-    expect(zeilen.map((z) => z.lebensabschnitt)).toEqual(['verbunden', 'wartet', 'werkstatt', 'gedruckt']);
+    expect(zeilen.map((z) => z.lebensabschnitt)).toEqual(['verbunden', 'wartet', 'werkstatt', 'gedruckt', 'ausgebaut']);
+  });
+
+  it('L7: eine ausgebaute Box mit Aufkleber-Eintrag erscheint als „ausgebaut", nicht als „gedruckt"', () => {
+    const ref = 'edge-z9';
+    const zeilen = geraeteListeZeilen({
+      fleet: [], devices: [deviceRow({ externalRef: ref })], pending: [], werkstattBoxen: [],
+      geraeteListe: [{ externalRef: ref, lebensabschnitt: 'ausgebaut', seit: vor(1000), deviceId: null, siteId: null, tenantId: null, tenantName: null, name: null }],
+    }, now);
+    expect(zeilen).toHaveLength(1);
+    expect(zeilen[0].lebensabschnitt).toBe('ausgebaut');
   });
 });
 

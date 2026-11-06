@@ -334,7 +334,7 @@ public class EnrollmentService {
         DeviceCertificateAuthority.IssuedCertificate issued =
                 ca.issue(csr, device.tenantId(), device.siteId(), device.deviceId());
         boolean stored = enrollments.storeCertificate(enrollment.externalRef(),
-                device.deviceId(), issued.certPem(), issued.serialHex());
+                device.deviceId(), issued.certPem(), issued.serialHex(), issued.notAfter());
         if (!stored) {
             // A concurrent poll won the race for the same device; serve its cert.
             Enrollment winner = enrollments.find(enrollment.externalRef()).orElseThrow();

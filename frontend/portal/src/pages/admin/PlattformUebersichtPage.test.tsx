@@ -15,6 +15,7 @@ const fernwartung = vi.fn();
 const fernwartungBoxen = vi.fn();
 const werkstattDienst = vi.fn();
 const listPendingEnrollments = vi.fn();
+const plattformDienste = vi.fn(() => Promise.resolve({ dienste: [] }));
 
 vi.mock('../../admin/fleetApi', () => ({
   fleetApi: { fleet: (...a: unknown[]) => fleet(...a) },
@@ -26,6 +27,7 @@ vi.mock('../../admin/adminApi', () => ({
     fernwartungBoxen: (...a: unknown[]) => fernwartungBoxen(...a),
     werkstattDienst: (...a: unknown[]) => werkstattDienst(...a),
     listPendingEnrollments: (...a: unknown[]) => listPendingEnrollments(...a),
+    plattformDienste: (...a: unknown[]) => plattformDienste(...a),
   },
 }));
 
@@ -58,6 +60,7 @@ beforeEach(() => {
   fernwartungBoxen.mockResolvedValue([]);
   werkstattDienst.mockResolvedValue(null);
   listPendingEnrollments.mockResolvedValue([]);
+  plattformDienste.mockResolvedValue({ dienste: [] });
 });
 
 describe('PlattformUebersichtPage', () => {
@@ -105,7 +108,7 @@ describe('PlattformUebersichtPage', () => {
     const zeile = await screen.findByTestId('ueb-braucht-zeile');
     expect(zeile).toHaveTextContent('Anlage A');
     fireEvent.click(zeile);
-    expect(onNavigate).toHaveBeenCalledWith({ page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'VP-BOX-9', reiter: 'software' } });
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref: 'VP-BOX-9', reiter: 'software', werkzeug: null } });
   });
 
   it('die Software-Kachel führt auf die Software-Seite', async () => {

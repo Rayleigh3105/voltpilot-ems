@@ -429,6 +429,20 @@ function SoftwareReiter({ row, ersterLeerLauf, verlauf, jetzt, busy, releases, o
 
 function VerbindungReiter({ boxRef, row, jetzt }: { boxRef: string; row: FleetRow | null; jetzt: Date }) {
   const verbindung = row ? verbindungSicht(row, jetzt) : null;
+  // Lücke L4 (S6): das Zertifikats-Ablaufdatum stand bisher nirgends - ein
+  // eigener, kleiner Abruf der Akte-in-einer-Antwort (L3) statt sechs Felder
+  // der ohnehin schon riesigen Reiter-Zusammensetzung dieser Seite anzufassen.
+  const [zertifikat, setZertifikat] = useState<{ ausgestelltAm: string | null; gueltigBis: string | null } | null>(null);
+  useEffect(() => {
+    let live = true;
+    adminApi.geraeteAkte(boxRef).then((akte) => {
+      if (live) setZertifikat(akte.einrichtung ? {
+        ausgestelltAm: akte.einrichtung.zertifikatAusgestelltAm,
+        gueltigBis: akte.einrichtung.zertifikatGueltigBis,
+      } : null);
+    }).catch(() => { if (live) setZertifikat(null); });
+    return () => { live = false; };
+  }, [boxRef]);
   return (
     <div className="vp-geraet-grid">
       <Card padding="lg" radius="lg" className="vp-geraet-sek">
@@ -439,6 +453,12 @@ function VerbindungReiter({ boxRef, row, jetzt }: { boxRef: string; row: FleetRo
             {verbindung.gesehen && <span className="vp-cell-sub"> {verbindung.gesehen}</span>}
           </p>
         ) : <p className="vp-muted">Diese Box hat sich der Cloud noch nie gemeldet.</p>}
+        {zertifikat?.gueltigBis && (
+          <dl className="vp-kv" data-testid="akte-zertifikat">
+            <dt>Zertifikat gültig bis</dt>
+            <dd>{new Date(zertifikat.gueltigBis).toLocaleDateString('de-DE')}</dd>
+          </dl>
+        )}
       </Card>
       <Card padding="lg" radius="lg" className="vp-geraet-sek vp-geraet-breit" data-testid="akte-wartung">
         <FernwartungKarte edgeRef={boxRef} />
