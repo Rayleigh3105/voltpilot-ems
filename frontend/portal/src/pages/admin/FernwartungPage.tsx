@@ -208,7 +208,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
             ) : (
               <Card style={{ padding: 0, overflow: 'hidden' }}>
                 <div className="vp-table-scroll">
-                  <table className="vp-table responsive" data-testid="fw-boxen">
+                  <table className="vp-table responsive vp-fw-tabelle-breit" data-testid="fw-boxen">
                     <thead>
                       <tr>
                         <th>Box</th>
@@ -372,7 +372,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
             ) : (
               <Card style={{ padding: 0, overflow: 'hidden' }}>
                 <div className="vp-table-scroll">
-                  <table className="vp-table responsive" data-testid="fw-techniker">
+                  <table className="vp-table responsive vp-fw-tabelle-breit" data-testid="fw-techniker">
                     <thead>
                       <tr>
                         <th>Zugang</th>
@@ -478,7 +478,15 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                 </Button>
               )}
             </div>
-            <ProtokollListe eintraege={protokoll ?? []} jetzt={jetzt} />
+            {/* Geschichte statt Zugang - wie „Verlauf" andernorts (EdgeUpdatesPage) zu, mit der
+                Anzahl als Beleg (`vp-adminview-mobile-rework`: weniger Scrollen bis zu den
+                Zugängen, die diese Seite eigentlich verwaltet). */}
+            <details className="vp-fw-protokoll-aufklapp" data-testid="fw-protokoll-aufklapp">
+              <summary className="vp-sec-summary">
+                {(protokoll ?? []).length} Einträge
+              </summary>
+              <ProtokollListe eintraege={protokoll ?? []} jetzt={jetzt} />
+            </details>
           </section>
         </>
       )}
