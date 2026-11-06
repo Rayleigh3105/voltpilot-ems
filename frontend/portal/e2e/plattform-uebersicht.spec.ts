@@ -8,6 +8,9 @@ async function ueberlauf(page: import('@playwright/test').Page) {
 test('Plattform › Übersicht: vier Kacheln, Braucht dich, Flotte, Dienste - Antwort zuerst', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  // Die Reiterleiste ist nur die Rechner-Fassung (§4.3) - ohne das zeigt `mobile-webkit`s
+  // Standard-Ansicht (390 px) die Zeilen-Liste statt des Tablists.
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/e2e/plattform-uebersicht.html');
 
   await expect(page.getByRole('tab', { name: 'Übersicht', exact: true })).toHaveAttribute('aria-selected', 'true');
@@ -114,7 +117,10 @@ test('Plattform › Übersicht am Telefon: Zeilen statt Reiterleiste, Wort-Budge
   });
   expect(woerter).toBeLessThanOrEqual(50);
 
-  for (const width of [390, 1440]) {
+  // 768 px ist die Stichprobe des Mobil-Durchgangs vp-adminview-mobile-rework (Tablet - weder
+  // Telefon noch Rechner; genau dort lief eine Fernwartungs-Tabelle über den Rand, Fix in
+  // Fernwartung.css). Die Übersicht selbst zeigt hier keinen Befund.
+  for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const seite = await ueberlauf(page);
     expect(seite, `Seitenüberlauf bei ${width}px`).toBeLessThanOrEqual(1);
