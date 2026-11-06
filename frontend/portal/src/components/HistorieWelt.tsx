@@ -421,7 +421,7 @@ function Sprungfeld({
   const grenzen = sprungGrenzen(range, now, coverage);
   return (
     <VpDatePicker
-      className="vp-zl-jump"
+      className="vp-zl-jump is-kalender"
       ariaLabel={label}
       art={feld === 'week' ? 'woche' : feld === 'month' ? 'monat' : 'tag'}
       value={wert}

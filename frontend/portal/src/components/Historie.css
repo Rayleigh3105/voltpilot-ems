@@ -992,11 +992,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--vp-c-fg, #1e293b);
-  /* ⚠ Der Blätterer trägt seinen Tag ZWEIMAL (diese Beschriftung und das
-     Sprungfeld daneben). Die Kürzung nimmt deshalb ZUERST die Beschriftung —
-     sie ellipsiert, während das Sprungfeld den Tag vollständig lesbar hält.
-     Die drei Schritt-Knöpfe halten ihre 44 px über ihr eigenes `min-width`. */
+  /* Die Beschriftung ist der EINE sichtbare Tag: das Kalender-Sprungfeld daneben
+     zeigt im Blätterer nur sein Symbol (unten). Die drei Schritt-Knöpfe halten
+     ihre 44 px über ihr eigenes `min-width`. */
   flex-shrink: 999;
+}
+
+/* Im Blätterer ist das Datums-Sprungfeld ein Kalender-KNOPF: sein Wert stand als
+   zweites „05.11.2026“ neben „Do., 05.11.2026“ (UI-Runde Kundenseiten, Befund
+   #10). Der Wert bleibt für Screenreader im Knopf, der Name kommt aus
+   `ariaLabel` („Tag wählen“ …). Das Jahr (eine Liste ohne Symbol) und das
+   ⋯-Blatt am Telefon zeigen ihn weiter. */
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) .vp-period-nav .vp-zl-jump.is-kalender .vp-picker-wert,
+.vp-zeitleiste:not(.vp-zeitleiste-mobil) .vp-period-nav .vp-zl-jump.is-kalender .vp-picker-caret {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 /* Das Datum-Feld: gleiche Höhe wie seine Nachbarn (B12). Der Auslöser des
