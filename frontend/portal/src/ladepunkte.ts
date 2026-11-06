@@ -1044,10 +1044,9 @@ export function kombinationsStreifen(budget: ChargingBudget | null): string | nu
   const physisch = num(budget.budgetKw);
   if (quelle == null || physisch == null) return null;
   return (
-    'So greifen sie ineinander: Das Lastmanagement begrenzt, WIE VIEL insgesamt fließen darf ' +
-    `(jetzt ${KW(physisch)} physisch möglich). Das Überschussladen bestimmt, WOHER der Strom ` +
-    `kommt (jetzt ${KW(quelle)} aus Ihrer Sonne). Es gilt immer die niedrigere Grenze - und ` +
-    'keine von beiden kann die Anschlussgrenze oder den Ausfall-Schutz aufweichen.'
+    // Kurz und ohne Großbuchstaben-Betonung („WIE VIEL … WOHER“) - dieselbe Aussage, dieselben Zahlen.
+    `Zwei Grenzen gelten zugleich: Ihr Anschluss lässt jetzt ${KW(physisch)} zu, Ihre Sonne liefert ` +
+    `${KW(quelle)}. Es gilt die niedrigere Grenze - Anschlussgrenze und Ausfall-Schutz bleiben immer bestehen.`
   );
 }
 

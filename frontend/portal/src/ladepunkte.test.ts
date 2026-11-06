@@ -547,9 +547,10 @@ describe('die Quellen-Bahn wird DURCHGEREICHT, nie neu formuliert', () => {
 
   it('zeigt BEIDE Wahrheiten - sonst liest die Drosselung wie ein Defekt', () => {
     const streifen = kombinationsStreifen(surplusBudget);
-    expect(streifen).toMatch(/197 kW physisch möglich/);
-    expect(streifen).toMatch(/110 kW aus Ihrer Sonne/);
+    expect(streifen).toMatch(/Ihr Anschluss lässt jetzt 197 kW zu/);
+    expect(streifen).toMatch(/Ihre Sonne liefert 110 kW/);
     expect(streifen).toMatch(/niedrigere Grenze/);
+    expect(streifen).not.toMatch(/WIE VIEL|WOHER/);
     // Ohne Quellen-Bahn gibt es nichts zu kombinieren - EINE Grenze ist EINE.
     expect(kombinationsStreifen(budget)).toBeNull();
     expect(kombinationsStreifen(null)).toBeNull();
