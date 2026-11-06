@@ -22,7 +22,7 @@ public class EnrollmentRepository {
     }
 
     public record Enrollment(String externalRef, String csrPem, String deviceInfo,
-            UUID deviceId, String certPem, String certSerial, Instant issuedAt) {
+            UUID deviceId, String certPem, String certSerial, Instant issuedAt, Instant notAfter) {
 
         public boolean issued() {
             return certPem != null;
@@ -48,28 +48,33 @@ public class EnrollmentRepository {
     public Optional<Enrollment> find(String externalRef) {
         return jdbc.query(
                 "SELECT external_ref, csr_pem, device_info, device_id, cert_pem, cert_serial, "
-                        + "issued_at FROM device_enrollment WHERE external_ref = ?",
+                        + "issued_at, not_after FROM device_enrollment WHERE external_ref = ?",
                 EnrollmentRepository::mapEnrollment, externalRef).stream().findFirst();
     }
 
     /**
-     * Persists the issued certificate. The guard makes a concurrent double-issue
-     * for the SAME device lose the race harmlessly (the caller re-reads and
-     * returns the winner's certificate), while an unclaim-and-re-claim - a NEW
-     * device_id for the ref - replaces the stale certificate.
+     * Persists the issued certificate, now mit {@code not_after} (Lücke L4,
+     * Adminview-Konzept Abschnitt 3.4): das Ablaufdatum wird beim Ausstellen
+     * geschrieben, statt nur im {@code cert_pem} zu stecken. The guard makes a
+     * concurrent double-issue for the SAME device lose the race harmlessly (the
+     * caller re-reads and returns the winner's certificate), while an
+     * unclaim-and-re-claim - a NEW device_id for the ref - replaces the stale
+     * certificate.
      */
     public boolean storeCertificate(String externalRef, UUID deviceId, String certPem,
-            String certSerial) {
+            String certSerial, Instant notAfter) {
         return jdbc.update(
                 "UPDATE device_enrollment SET device_id = ?, cert_pem = ?, cert_serial = ?, "
-                        + "issued_at = now() WHERE external_ref = ? "
+                        + "issued_at = now(), not_after = ? WHERE external_ref = ? "
                         + "AND (cert_pem IS NULL OR device_id IS DISTINCT FROM ?)",
-                deviceId, certPem, certSerial, externalRef, deviceId) > 0;
+                deviceId, certPem, certSerial, java.sql.Timestamp.from(notAfter),
+                externalRef, deviceId) > 0;
     }
 
     private static Enrollment mapEnrollment(java.sql.ResultSet rs, int rowNum)
             throws java.sql.SQLException {
         java.sql.Timestamp issuedAt = rs.getTimestamp("issued_at");
+        java.sql.Timestamp notAfter = rs.getTimestamp("not_after");
         return new Enrollment(
                 rs.getString("external_ref"),
                 rs.getString("csr_pem"),
@@ -77,6 +82,7 @@ public class EnrollmentRepository {
                 rs.getObject("device_id", UUID.class),
                 rs.getString("cert_pem"),
                 rs.getString("cert_serial"),
-                issuedAt == null ? null : issuedAt.toInstant());
+                issuedAt == null ? null : issuedAt.toInstant(),
+                notAfter == null ? null : notAfter.toInstant());
     }
 }

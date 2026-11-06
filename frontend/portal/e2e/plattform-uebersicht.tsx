@@ -180,6 +180,14 @@ Object.assign(adminApi, {
   })),
   fernwartungProtokoll: async () => [],
   fernwartungTechniker: async () => [],
+  // L1 (S6): Optimierer, Preise, Messwerte - additiv neben Tunnel/Werkstatt.
+  plattformDienste: async () => ({
+    dienste: [
+      { name: 'optimierer', zuletztAm: vor(4 * MIN) },
+      { name: 'preise', zuletztAm: vor(40 * MIN) },
+      { name: 'messwerte', zuletztAm: vor(8_000) },
+    ],
+  }),
 });
 
 function Fixture() {

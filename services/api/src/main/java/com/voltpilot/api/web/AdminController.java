@@ -52,6 +52,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -312,6 +313,28 @@ public class AdminController {
     @GetMapping("/enrollments/pending")
     public List<PendingEnrollmentDto> listPendingEnrollments() {
         return enrollments.findPending();
+    }
+
+    /**
+     * Personensuche über ALLE Kunden (Lücke L6, Adminview-Konzept Abschnitt
+     * 3.4/4.5): die Suche im Raum Benutzer findet damit Personen SERVERSEITIG
+     * statt nur über die geladenen Listen eines einzelnen Mandanten.
+     * Keycloaks eigene realmweite {@code search} deckt das in einem Aufruf ab
+     * ({@link KeycloakAdminClient#searchUsers}); jedes Konto trägt sein
+     * {@code tenantId} (oder {@code null} für ein Konto ohne das Attribut).
+     * Eine leere oder fehlende Suche liefert eine leere Liste, nie den ganzen
+     * Realm.
+     */
+    @GetMapping("/personen")
+    public List<AdminUserDto> personensuche(@RequestParam(required = false) String suche) {
+        if (suche == null || suche.isBlank()) {
+            return List.of();
+        }
+        try {
+            return keycloak.searchUsers(suche).stream().map(AdminController::toDto).toList();
+        } catch (KeycloakAdminException ex) {
+            throw toResponse(ex);
+        }
     }
 
     // ---- customer users ------------------------------------------------------

@@ -8,6 +8,7 @@ const listPendingEnrollments = vi.fn();
 const werkstattBoxen = vi.fn();
 const provisionDevice = vi.fn();
 const componentFleet = vi.fn();
+const geraeteListe = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -17,6 +18,7 @@ vi.mock('../../admin/adminApi', () => ({
     werkstattBoxen: (...a: unknown[]) => werkstattBoxen(...a),
     provisionDevice: (...a: unknown[]) => provisionDevice(...a),
     componentFleet: (...a: unknown[]) => componentFleet(...a),
+    geraeteListe: (...a: unknown[]) => geraeteListe(...a),
   },
 }));
 
@@ -34,6 +36,7 @@ describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnit
     listPendingEnrollments.mockResolvedValue([]);
     werkstattBoxen.mockResolvedValue([]);
     componentFleet.mockResolvedValue([]);
+    geraeteListe.mockResolvedValue({ geraete: [] });
   });
 
   it('zeigt die leere Lage ehrlich, statt eine Tabelle ohne Zeilen zu zeigen', async () => {

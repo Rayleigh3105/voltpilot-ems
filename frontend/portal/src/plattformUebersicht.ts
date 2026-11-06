@@ -17,11 +17,10 @@
  * Kachel wächst, sobald S3 ihren Lesepfad hat; das ist kein Fehlen, sondern
  * eine Grenze gegen das parallele Werk.
  *
- * **Dienste**: Diese Scheibe liefert nur Tunnel- und Werkstatt-Dienst (ihre
- * Rückmeldungen reisen bereits in den Antworten, die diese Seite ohnehin
- * lädt). Optimierer, Preise und Messwerte fehlen hier - sie brauchen das
- * Lesemodell aus S6 (Lücke L1, Report Abschnitt 3.4) und werden der Liste in
- * {@link uebersichtDienste} einfach angefügt, sobald es sie gibt.
+ * **Dienste**: Tunnel- und Werkstatt-Dienst kommen aus den Antworten, die
+ * diese Seite ohnehin lädt; Optimierer, Preise und Messwerte kommen additiv
+ * aus dem S6-Lesemodell (Lücke L1, `GET /admin/plattform/dienste`) - das
+ * dritte, optionale Argument von {@link uebersichtDienste}.
  *
  * Reines Modul: kein React, kein Netzwerk.
  */
@@ -30,7 +29,7 @@ import type {
   AdminFleetRelease,
   AdminFleetSite,
 } from './admin/fleetApi';
-import type { PendingEnrollment } from './admin/adminApi';
+import type { AdminPlattformDienste, PendingEnrollment } from './admin/adminApi';
 import {
   controlMatrixInputs,
   controlMatrixRows,
@@ -350,12 +349,37 @@ export interface UebersichtDienst {
  * bis dahin bleibt die Zeile bewusst kurz, statt eine erfundene Zahl zu
  * zeigen.
  */
+const PLATTFORM_DIENST_LABEL: Record<string, string> = {
+  optimierer: 'Optimierer',
+  preise: 'Preise',
+  messwerte: 'Messwerte',
+};
+
+/** Ab wann ein L1-Dienst als verzögert gilt - großzügiger als Tunnel/Werkstatt, da diese Dienste nur alle 15 Min. bzw. stündlich laufen. */
+const L1_DIENST_WARN_MS = 30 * 60_000;
+
 export function uebersichtDienste(
   fernwartung: FernwartungUebersicht | null,
   werkstatt: WerkstattDienst | null,
   now: Date,
+  plattformDienste?: AdminPlattformDienste | null,
 ): UebersichtDienst[] {
   const out: UebersichtDienst[] = [];
+  // L1 (S6): Optimierer, Preise, Messwerte - additiv aus dem Lesemodell, in
+  // der Reihenfolge des Konzepts (§4.3) VOR Tunnel- und Werkstatt-Dienst.
+  for (const d of plattformDienste?.dienste ?? []) {
+    const label = PLATTFORM_DIENST_LABEL[d.name];
+    if (!label) continue; // tunnel-dienst/werkstatt-dienst bleiben bei ihrer eigenen, frischeren Quelle unten.
+    if (d.zuletztAm == null) {
+      out.push({ id: d.name, label, text: 'noch nie gemeldet', ton: 'warn' });
+      continue;
+    }
+    const alterMs = now.getTime() - Date.parse(d.zuletztAm);
+    out.push({
+      id: d.name, label, text: `zuletzt ${relAge(alterMs)}`,
+      ton: alterMs <= L1_DIENST_WARN_MS ? 'ok' : 'warn',
+    });
+  }
   const rueckmeldungen = fernwartung?.rueckmeldungen ?? [];
   if (rueckmeldungen.length > 0) {
     const juengste = rueckmeldungen.reduce((a, b) => (Date.parse(a.zuletztAm) > Date.parse(b.zuletztAm) ? a : b));

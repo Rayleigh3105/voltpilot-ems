@@ -305,6 +305,101 @@ export interface SaveComponentTemplateInput {
   note?: string | null;
 }
 
+// ── S6 Lesemodelle (Adminview-Konzept Abschnitt 3.4) ───────────────────────
+
+/** L1 Plattform-Dienste: dieselben Werte, die die API längst für Prometheus rechnet. */
+export interface AdminPlattformDienst {
+  name: 'optimierer' | 'preise' | 'messwerte' | 'tunnel-dienst' | 'werkstatt-dienst';
+  zuletztAm: string | null;
+}
+export interface AdminPlattformDienste {
+  dienste: AdminPlattformDienst[];
+}
+
+/** L5 Meldungen plattformweit - dieselben Felder wie `MeldungDto`, plus Mandant. */
+export interface AdminMeldung {
+  id: string;
+  kennzeichen: string;
+  tenantId: string;
+  tenantName: string;
+  standortId: string | null;
+  bezugKennung: string;
+  wertart: string;
+  schwere: string;
+  ausgeloestAm: string;
+  zustand: string;
+  wiederNormalAm: string | null;
+  gesehenVon: string | null;
+  gesehenAm: string | null;
+  erledigtAm: string | null;
+}
+export interface AdminMeldungenListe {
+  meldungen: AdminMeldung[];
+}
+
+/** L6 Personensuche über alle Kunden. */
+export type AdminPerson = AdminUser;
+
+/** L7 Geräte-Liste über alle Lebensabschnitte. */
+export interface AdminGeraeteListeEintrag {
+  externalRef: string;
+  lebensabschnitt: 'gedruckt' | 'meldet_sich' | 'werkstatt' | 'kunde' | 'ausgebaut';
+  seit: string | null;
+  deviceId: string | null;
+  siteId: string | null;
+  tenantId: string | null;
+  tenantName: string | null;
+  name: string | null;
+}
+export interface AdminGeraeteListeAntwort {
+  geraete: AdminGeraeteListeEintrag[];
+}
+
+/** L3 Geräteakte in einer Antwort. */
+export interface AdminGeraeteAkte {
+  externalRef: string;
+  lebensabschnitt: AdminGeraeteListeEintrag['lebensabschnitt'];
+  lebensabschnittSeit: string | null;
+  kopf: {
+    deviceId: string;
+    name: string | null;
+    siteId: string;
+    siteName: string;
+    tenantId: string;
+    tenantName: string;
+    herzschlagAm: string | null;
+    messwertAm: string | null;
+    lastSeenAt: string | null;
+    ausgebautAm: string | null;
+  } | null;
+  software: {
+    edge: { coreVersion: string | null; paletteVersion: string | null; reportedAt: string } | null;
+    update: {
+      version: string | null;
+      backend: string | null;
+      currentVersion: string | null;
+      targetVersion: string | null;
+      state: string | null;
+      reason: string | null;
+      lastKnownGood: string | null;
+      reportedAt: string;
+    } | null;
+    supports: string[] | null;
+    boxArt: string | null;
+  } | null;
+  verbindung: {
+    lanHost: string | null;
+    lanSeenAt: string | null;
+    tunnelAktiv: boolean | null;
+    tunnelAdresse: string | null;
+  } | null;
+  einrichtung: {
+    zertifikatAusgestelltAm: string | null;
+    zertifikatGueltigBis: string | null;
+    werkstattAngelegtAm: string | null;
+  } | null;
+}
+
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
@@ -698,6 +793,30 @@ export const adminApi = {
 
   /** Was der Werkstatt-Dienst gerade tut (Ansicht mit Alter, Läufe), für die Werkstatt-Bildschirme. */
   werkstattDienst: () => request<WerkstattDienst>('/api/v1/admin/werkstatt/dienst'),
+
+  // ── S6 Lesemodelle (Adminview-Konzept Abschnitt 3.4) ─────────────────────
+
+  /** L1: die Dienste-Zeile der Übersicht. */
+  plattformDienste: () => request<AdminPlattformDienste>('/api/v1/admin/plattform/dienste'),
+
+  /** L3: die Geräteakte in einer Antwort. */
+  geraeteAkte: (ref: string) =>
+    request<AdminGeraeteAkte>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}`),
+
+  /** L5: Meldungen plattformweit (`status=verlauf` für erledigte). */
+  adminMeldungen: (status?: 'verlauf') =>
+    request<AdminMeldungenListe>(
+      `/api/v1/admin/meldungen${status ? `?status=${status}` : ''}`,
+    ),
+
+  /** L6: Personensuche über alle Kunden; eine leere Suche liefert nichts. */
+  personensuche: (suche: string) =>
+    suche.trim() === ''
+      ? Promise.resolve<AdminPerson[]>([])
+      : request<AdminPerson[]>(`/api/v1/admin/personen?suche=${encodeURIComponent(suche)}`),
+
+  /** L7: die eine Geräte-Liste über alle Lebensabschnitte. */
+  geraeteListe: () => request<AdminGeraeteListeAntwort>('/api/v1/admin/geraeteliste'),
 
   werkstattFreigaben: () => request<WerkstattFreigabe[]>('/api/v1/admin/werkstatt/freigaben'),
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { adminApi, type PendingEnrollment } from '../../admin/adminApi';
+import { adminApi, type AdminPlattformDienste, type PendingEnrollment } from '../../admin/adminApi';
 import { fleetApi, type AdminFleetRelease, type AdminFleetSite } from '../../admin/fleetApi';
 import type { EdgeUpdatesKpi, EdgeUpdatesLine, FleetRow as EdgeFleetRow } from '../../adminEdgeUpdates';
 import { fleetBoxGroups } from '../../adminFleet';
@@ -57,6 +57,7 @@ export function PlattformUebersichtPage({
   const [fernwartungBoxen, setFernwartungBoxen] = useState<FernwartungBox[]>([]);
   const [werkstatt, setWerkstatt] = useState<WerkstattDienst | null>(null);
   const [pending, setPending] = useState<PendingEnrollment[]>([]);
+  const [plattformDienste, setPlattformDienste] = useState<AdminPlattformDienste | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   const [loadError, setLoadError] = useState<string | null>(null);
   // Treibt nur die ANZEIGE des Alters weiter - die Bezugszeit der Daten
@@ -64,13 +65,14 @@ export function PlattformUebersichtPage({
   const [tick, setTick] = useState<number>(() => Date.now());
 
   const load = useCallback(async () => {
-    const [fleetR, edgeR, fwR, fwBoxenR, wsR, pendR] = await Promise.allSettled([
+    const [fleetR, edgeR, fwR, fwBoxenR, wsR, pendR, diensteR] = await Promise.allSettled([
       fleetApi.fleet(),
       adminApi.edgeUpdates(),
       adminApi.fernwartung(),
       adminApi.fernwartungBoxen(),
       adminApi.werkstattDienst(),
       adminApi.listPendingEnrollments(),
+      adminApi.plattformDienste(),
     ]);
     if (fleetR.status === 'fulfilled') {
       setSites(fleetR.value.sites);
@@ -94,6 +96,7 @@ export function PlattformUebersichtPage({
     setFernwartungBoxen(fwBoxenR.status === 'fulfilled' ? fwBoxenR.value : []);
     setWerkstatt(wsR.status === 'fulfilled' ? wsR.value : null);
     setPending(pendR.status === 'fulfilled' ? pendR.value : []);
+    setPlattformDienste(diensteR.status === 'fulfilled' ? diensteR.value : null);
     setFetchedAt(Date.now());
   }, []);
 
@@ -118,7 +121,10 @@ export function PlattformUebersichtPage({
   );
   const groups = useMemo(() => (sites ? fleetBoxGroups(sites, jetzt, releases) : []), [sites, jetzt, releases]);
   const flotte = useMemo(() => uebersichtFlottenbild(groups, edgeFleet), [groups, edgeFleet]);
-  const dienste = useMemo(() => uebersichtDienste(fernwartung, werkstatt, jetzt), [fernwartung, werkstatt, jetzt]);
+  const dienste = useMemo(
+    () => uebersichtDienste(fernwartung, werkstatt, jetzt, plattformDienste),
+    [fernwartung, werkstatt, jetzt, plattformDienste],
+  );
   const auffaellig = useMemo(
     () => (sites ? uebersichtAuffaellig(sites, edgeFleet, jetzt) : []),
     [sites, edgeFleet, jetzt],

@@ -18,6 +18,10 @@ const componentFleet = vi.fn();
 const activateControl = vi.fn();
 const deactivateControl = vi.fn();
 const fleet = vi.fn();
+const geraeteAkte = vi.fn(() => Promise.resolve({
+  externalRef: '', lebensabschnitt: 'kunde', lebensabschnittSeit: null,
+  kopf: null, software: null, verbindung: null, einrichtung: null,
+}));
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -36,6 +40,7 @@ vi.mock('../../admin/adminApi', () => ({
     componentFleet: (...a: unknown[]) => componentFleet(...a),
     activateControl: (...a: unknown[]) => activateControl(...a),
     deactivateControl: (...a: unknown[]) => deactivateControl(...a),
+    geraeteAkte: (...a: unknown[]) => geraeteAkte(...a),
   },
 }));
 

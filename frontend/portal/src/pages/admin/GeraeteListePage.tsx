@@ -54,9 +54,9 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string, werkzeug?: 
 
   async function reload() {
     setError(null);
-    const [edgeUpdates, devices, pending, werkstatt, komponenten] = await Promise.allSettled([
+    const [edgeUpdates, devices, pending, werkstatt, komponenten, geraeteListe] = await Promise.allSettled([
       adminApi.edgeUpdates(), adminApi.listDevices(), adminApi.listPendingEnrollments(), adminApi.werkstattBoxen(),
-      adminApi.componentFleet(),
+      adminApi.componentFleet(), adminApi.geraeteListe(),
     ]);
     if (edgeUpdates.status === 'rejected' && devices.status === 'rejected') {
       setLoadError('Das Geräte-Inventar ist gerade nicht abrufbar. Bitte erneut versuchen.');
@@ -81,6 +81,7 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string, werkzeug?: 
         devices: devices.status === 'fulfilled' ? devices.value : [],
         pending: pending.status === 'fulfilled' ? pending.value : [],
         werkstattBoxen: werkstatt.status === 'fulfilled' ? werkstatt.value : [],
+        geraeteListe: geraeteListe.status === 'fulfilled' ? geraeteListe.value.geraete : [],
       }, now, fassungRefs),
     });
     setLoading(false);
@@ -226,6 +227,7 @@ function GeraeteTabelle({ zeilen, jetzt, filter, onFilter, onOpen }: {
 
 const LEBENSABSCHNITT_LABEL: Record<GeraeteListeZeile['lebensabschnitt'], string> = {
   gedruckt: 'Gedruckt', wartet: 'Meldet sich', werkstatt: 'Werkstatt', verbunden: 'Beim Kunden',
+  ausgebaut: 'Ausgebaut',
 };
 
 function GeraeteZeile({ z, jetzt, onOpen }: { z: GeraeteListeZeile; jetzt: Date; onOpen: (ref: string) => void }) {

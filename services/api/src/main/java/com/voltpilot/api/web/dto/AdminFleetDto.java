@@ -114,8 +114,14 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
      * ({@code ota.BoxArt}, additiv seit Geräte &amp; Updates S0); an ihr misst die
      * Oberfläche den Stand.
      */
+    /**
+     * {@code herzschlagAm} (Status-Herzschlag) und {@code messwertAm}
+     * (jüngste Telemetrie) bleiben GETRENNT (Lücke L2); {@code lastSeenAt}
+     * bleibt additiv als der verschmolzene Wert bestehen.
+     */
     public record FleetBoxDto(UUID deviceId, String externalRef, String name,
-            Boolean fuehrtAnlage, Instant lastSeenAt, FleetEdgeDto edge, FleetUpdateDto update,
+            Boolean fuehrtAnlage, Instant lastSeenAt, Instant herzschlagAm, Instant messwertAm,
+            FleetEdgeDto edge, FleetUpdateDto update,
             List<String> supports, String boxArt) {
     }
 

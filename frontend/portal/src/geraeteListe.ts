@@ -10,23 +10,25 @@
  * haben kein Fakten-Urteil (noch keine Box, die etwas melden könnte) und
  * bekommen nur einen einordnenden Satz.
  *
- * „Ausgebaut" fehlt bewusst: ohne ein Signal dafür (keine neue Schnittstelle
- * in dieser Scheibe) ließe sich die Stufe nicht von „noch nie verbunden"
- * unterscheiden, und eine erfundene Stufe wäre schlimmer als keine. Die Stufe
- * „verzögert" (E6) ist S7, nicht hier - der Chip fehlt deshalb ebenfalls.
+ * „Ausgebaut" kommt additiv aus dem S6-Lesemodell (Lücke L7,
+ * `GET /admin/geraeteliste`, `AdminGeraeteListeEintrag`) - ohne dieses Signal
+ * ließe sich die Stufe nicht von „noch nie verbunden" unterscheiden (eine
+ * ausgebaute Box mit Aufkleber-Eintrag erschien davor fälschlich als
+ * „gedruckt"). Die Stufe „verzögert" (E6) ist S7, nicht hier - der Chip fehlt
+ * deshalb weiterhin.
  */
-import type { AdminDeviceRow, PendingEnrollment } from './admin/adminApi';
+import type { AdminDeviceRow, AdminGeraeteListeEintrag, PendingEnrollment } from './admin/adminApi';
 import type { BoxArt, FleetRow } from './adminEdgeUpdates';
 import { BOX_ART_LABELS, BOX_ART_UNBEKANNT } from './adminEdgeUpdates';
 import { boxZeile, LINIEN, type BoxZeile } from './geraeteUpdates';
 import { pendingRows } from './onboardingFunnel';
 import type { WerkstattBox } from './werkstatt';
 
-export type Lebensabschnitt = 'gedruckt' | 'wartet' | 'werkstatt' | 'verbunden';
+export type Lebensabschnitt = 'gedruckt' | 'wartet' | 'werkstatt' | 'verbunden' | 'ausgebaut';
 
-/** Eine Zeile ohne eigene Box-Meldung (gedruckt/wartet/werkstatt) - kein Urteil, nur ein Satz. */
+/** Eine Zeile ohne eigene Box-Meldung (gedruckt/wartet/werkstatt/ausgebaut) - kein Urteil, nur ein Satz. */
 export interface RohZeile {
-  lebensabschnitt: 'gedruckt' | 'wartet' | 'werkstatt';
+  lebensabschnitt: 'gedruckt' | 'wartet' | 'werkstatt' | 'ausgebaut';
   ref: string;
   name: string;
   hinweis: string;
@@ -51,18 +53,28 @@ const key = (z: GeraeteListeZeile): string => (z.lebensabschnitt === 'verbunden'
  * Anlage eine Komponenten-Fassung noch nicht angewandt hat
  * (`/admin/component-fleet`, `syncStatus === 'pending'`) - der Chip „Fassung
  * weicht ab" der stillgelegten Komponenten-Flotte.
+ *
+ * `geraeteListe` (Lücke L7, `GET /admin/geraeteliste`): die Refs, die das
+ * Lesemodell als {@code ausgebaut} einstuft - sie gewinnen gegenüber einem
+ * etwaigen „gedruckt"-Eintrag aus `devices` (derselbe Aufkleber, aber
+ * korrekt als Endstufe statt als „noch nie verbunden" gezeigt).
  */
 export function geraeteListeZeilen(args: {
   fleet: readonly FleetRow[];
   devices: readonly AdminDeviceRow[];
   pending: readonly PendingEnrollment[];
   werkstattBoxen: readonly WerkstattBox[];
+  geraeteListe?: readonly AdminGeraeteListeEintrag[];
 }, now: Date, fassungRefs: ReadonlySet<string> = new Set()): GeraeteListeZeile[] {
-  const { fleet, devices, pending, werkstattBoxen } = args;
+  const { fleet, devices, pending, werkstattBoxen, geraeteListe = [] } = args;
   const verbunden = new Set(fleet.map((r) => r.externalRef));
   const rows: GeraeteListeZeile[] = fleet.map((r) => ({
     lebensabschnitt: 'verbunden', zeile: boxZeile(r, now), fassungAbweichung: fassungRefs.has(r.externalRef),
   }));
+
+  const ausgebautRefs = new Set(
+    geraeteListe.filter((g) => g.lebensabschnitt === 'ausgebaut').map((g) => g.externalRef),
+  );
 
   const wartend = new Set<string>();
   for (const p of pendingRows(pending.filter((p) => !verbunden.has(p.externalRef)), now)) {
@@ -96,9 +108,12 @@ export function geraeteListeZeilen(args: {
     });
   }
 
+  const gedrucktRef = new Set<string>();
   for (const d of devices) {
     if (d.deviceId != null) continue; // schon als „verbunden" erfasst
     if (verbunden.has(d.externalRef) || wartend.has(d.externalRef) || werkstattRef.has(d.externalRef)) continue;
+    if (ausgebautRefs.has(d.externalRef)) continue; // Endstufe, nicht „noch nie verbunden"
+    gedrucktRef.add(d.externalRef);
     rows.push({
       lebensabschnitt: 'gedruckt',
       ref: d.externalRef,
@@ -107,6 +122,22 @@ export function geraeteListeZeilen(args: {
       seit: d.provisionedAt,
       suspect: false,
       suchtext: [d.externalRef, d.label, d.note].filter(Boolean).join(' ').toLocaleLowerCase('de'),
+      fassungAbweichung: false,
+    });
+  }
+
+  for (const g of geraeteListe) {
+    if (g.lebensabschnitt !== 'ausgebaut') continue;
+    if (verbunden.has(g.externalRef) || wartend.has(g.externalRef) || werkstattRef.has(g.externalRef)
+        || gedrucktRef.has(g.externalRef)) continue;
+    rows.push({
+      lebensabschnitt: 'ausgebaut',
+      ref: g.externalRef,
+      name: g.name ?? g.externalRef,
+      hinweis: 'Ausgebaut',
+      seit: g.seit,
+      suspect: false,
+      suchtext: [g.externalRef, g.name].filter(Boolean).join(' ').toLocaleLowerCase('de'),
       fassungAbweichung: false,
     });
   }
@@ -123,13 +154,13 @@ export function geraeteListeZeilen(args: {
   });
 }
 
-const RANG: Record<Lebensabschnitt, number> = { verbunden: 0, wartet: 1, werkstatt: 2, gedruckt: 3 };
+const RANG: Record<Lebensabschnitt, number> = { verbunden: 0, wartet: 1, werkstatt: 2, gedruckt: 3, ausgebaut: 4 };
 
 // ── Filter ──────────────────────────────────────────────────────────────────
 
 export type ListeChip =
   | 'braucht' | 'offline' | 'lauf' | 'aelter'
-  | 'gedruckt' | 'ohne_kunde' | 'werkstatt' | 'fassung';
+  | 'gedruckt' | 'ohne_kunde' | 'werkstatt' | 'fassung' | 'ausgebaut';
 
 export interface ListeFilter {
   chip: ListeChip | null;
@@ -149,6 +180,7 @@ const chipPasst = (z: GeraeteListeZeile, chip: ListeChip): boolean => {
     case 'werkstatt': return z.lebensabschnitt === 'werkstatt';
     case 'ohne_kunde': return z.lebensabschnitt === 'gedruckt' || z.lebensabschnitt === 'wartet';
     case 'fassung': return z.fassungAbweichung;
+    case 'ausgebaut': return z.lebensabschnitt === 'ausgebaut';
     default: return false;
   }
 };
@@ -163,6 +195,7 @@ export function listeChipZahlen(zeilen: GeraeteListeZeile[]): ListeChipZahl[] {
   const LABEL: Record<ListeChip, string> = {
     braucht: 'Braucht dich', offline: 'Offline', lauf: 'Update läuft', aelter: 'Älter',
     gedruckt: 'Gedruckt', ohne_kunde: 'Ohne Kunde', werkstatt: 'Werkstatt', fassung: 'Fassung weicht ab',
+    ausgebaut: 'Ausgebaut',
   };
   return (Object.keys(LABEL) as ListeChip[])
     .map((chip) => ({ chip, label: LABEL[chip], n: zeilen.filter((z) => chipPasst(z, chip)).length }))

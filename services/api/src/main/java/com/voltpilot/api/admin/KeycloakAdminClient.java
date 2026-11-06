@@ -282,6 +282,38 @@ public class KeycloakAdminClient {
                 .findFirst();
     }
 
+/**
+     * Personensuche über ALLE Kunden (Lücke L6, Adminview-Konzept Abschnitt
+     * 3.4/4.5): Keycloaks eigene freitext-{@code search} - sucht realmweit über
+     * Benutzername, E-Mail, Vor- und Nachname, also über jeden Mandanten
+     * hinweg in EINEM Aufruf. Jeder Treffer wird wie überall über
+     * {@link #tenantOf} und {@link #project} abgebildet, {@code tenantId}
+     * bleibt {@code null} für ein Konto ohne dieses Attribut (z.B. ein
+     * Partner-Konto).
+     */
+    public List<KeycloakUser> searchUsers(String query) {
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+        List<Map<String, Object>> users;
+        try {
+            users = admin().get()
+                    .uri(uriBuilder -> uriBuilder.path("/admin/realms/{realm}/users")
+                            .queryParam("search", query.trim())
+                            .queryParam("briefRepresentation", false)
+                            .queryParam("max", MAX_KONTEN_JE_KUNDENBEREICH)
+                            .build(props.getRealm()))
+                    .retrieve()
+                    .body(new org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        } catch (RestClientResponseException ex) {
+            throw upstreamError("Personensuche", ex);
+        }
+        if (users == null) {
+            return List.of();
+        }
+        return users.stream().map(this::project).toList();
+    }
+
     /** Fetch a single user by id. */
     public KeycloakUser getUser(String userId) {
         try {
