@@ -1,0 +1,28 @@
+/* Gerätevorlagen: Bestand und Suche in einer Zeile über der Tabelle, Aufklapp-Knopf je Zeile. */
+.vp-vorlagen-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--vp-space-3) var(--vp-space-5);
+  margin-bottom: var(--vp-space-4);
+}
+.vp-vorlagen-kopf > p { margin: 0; }
+.vp-vorlagen-suche { flex: 0 1 22rem; min-width: 0; }
+@media (max-width: 720px) {
+  .vp-vorlagen-suche { flex-basis: 100%; }
+}
+.vp-vorlagen-auf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: var(--vp-radius-sm);
+  background: transparent;
+  color: var(--vp-text-muted);
+  cursor: pointer;
+}
+.vp-vorlagen-auf:hover { background: var(--vp-bg-light); }
+.vp-vorlagen-auf:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }

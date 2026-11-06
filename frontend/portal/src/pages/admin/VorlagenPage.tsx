@@ -34,9 +34,11 @@ import {
   spur,
   umfang,
   bestand,
+  vorlagenSuche,
   type AdminVorlage,
   type VorlagenGruppe,
 } from '../../adminVorlagen';
+import './Vorlagen.css';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
@@ -49,6 +51,7 @@ export function VorlagenPage(): JSX.Element {
   const [drawer, setDrawer] = useState<{ base: VorlagenGruppe | null } | null>(null);
   const [ask, setAsk] = useState<{ gruppe: VorlagenGruppe; version: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [suche, setSuche] = useState('');
 
   async function reload() {
     setLoadError(null);
@@ -81,6 +84,7 @@ export function VorlagenPage(): JSX.Element {
   }
 
   const list = rows ? gruppen(rows) : [];
+  const sichtbar = vorlagenSuche(list, suche);
 
   return (
     <div className="vp-admin-page">
@@ -113,9 +117,22 @@ export function VorlagenPage(): JSX.Element {
         </Card>
       ) : (
         <>
-          <p className="vp-muted" data-testid="bestand">
-            {bestand(list)}
-          </p>
+          <div className="vp-vorlagen-kopf">
+            <p className="vp-muted" data-testid="bestand">
+              {bestand(list)}
+            </p>
+            {/* Über hundert eingebaute Vorlagen: ohne Suche findet man die eigene nicht. */}
+            <div className="vp-vorlagen-suche">
+              <Input
+                label="Vorlage suchen"
+                type="search"
+                placeholder="Marke, Modell oder Verbindung"
+                value={suche}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSuche(e.target.value)}
+              />
+            </div>
+          </div>
+          <span className="vp-sr-only" role="status">{sichtbar.length} von {list.length} Vorlagen angezeigt</span>
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <div className="vp-table-scroll">
               <table className="vp-table responsive" data-testid="vorlagen">
@@ -130,7 +147,12 @@ export function VorlagenPage(): JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {list.map((g) => {
+                  {sichtbar.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="vp-muted">Keine Vorlage passt zu „{suche.trim()}“.</td>
+                    </tr>
+                  )}
+                  {sichtbar.map((g) => {
                     const neueste = g.fassungen[0];
                     const h = herkunft(g.kind);
                     const p = pruefstand(neueste.certificationStatus);
@@ -177,10 +199,22 @@ export function VorlagenPage(): JSX.Element {
                             )}
                           </td>
                           <td>
-                            <Icon
-                              name={open === g.templateRef ? 'chevron-down' : 'chevron-right'}
-                              size={16}
-                            />
+                            {/* Ein Knopf, damit die Fassungen auch per Tastatur aufgehen. */}
+                            <button
+                              type="button"
+                              className="vp-vorlagen-auf"
+                              aria-expanded={open === g.templateRef}
+                              aria-label={`Fassungen von ${g.brandLabel} · ${g.modelLabel}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpen(open === g.templateRef ? null : g.templateRef);
+                              }}
+                            >
+                              <Icon
+                                name={open === g.templateRef ? 'chevron-down' : 'chevron-right'}
+                                size={16}
+                              />
+                            </button>
                           </td>
                         </tr>
                         {open === g.templateRef && (

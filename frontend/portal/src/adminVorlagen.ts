@@ -229,3 +229,19 @@ export function bestand(gruppen0: VorlagenGruppe[]): string {
   if (zurueck) teile.push(`${zurueck} nicht mehr wählbar`);
   return teile.join(' · ');
 }
+
+/**
+ * Die Suche über die Liste: jedes Wort muss in Marke, Modell oder Verbindung vorkommen
+ * (ohne Groß/Klein). Ein leerer Suchtext lässt alles stehen. Selbst eingetragene
+ * Vorlagen stehen vorn, damit die wenigen eigenen nicht zwischen den eingebauten verschwinden.
+ */
+export function vorlagenSuche(gruppen0: VorlagenGruppe[], text: string): VorlagenGruppe[] {
+  const woerter = text.toLocaleLowerCase('de-DE').split(/\s+/).filter(Boolean);
+  const treffer = woerter.length === 0
+    ? gruppen0
+    : gruppen0.filter((g) => {
+        const heu = `${g.brandLabel} ${g.modelLabel} ${g.communicationLabel}`.toLocaleLowerCase('de-DE');
+        return woerter.every((w) => heu.includes(w));
+      });
+  return [...treffer.filter((g) => g.kind === 'certified'), ...treffer.filter((g) => g.kind !== 'certified')];
+}

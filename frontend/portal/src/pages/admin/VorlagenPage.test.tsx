@@ -157,3 +157,28 @@ describe('VorlagenPage', () => {
     expect(screen.queryByTestId('vorlagen')).not.toBeInTheDocument();
   });
 });
+
+describe('VorlagenPage - Suche und Tastatur (UI-Runde Admin)', () => {
+  beforeEach(() => {
+    listComponentTemplates.mockResolvedValue([v(), BUILTIN]);
+  });
+
+  it('klappt die Fassungen über einen Knopf mit aria-expanded auf', async () => {
+    render(<VorlagenPage />);
+    const knopf = await screen.findByRole('button', { name: /Fassungen von Deye · SUN-30K/ });
+    expect(knopf).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(knopf);
+    expect(knopf).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('gesperrt')).toBeInTheDocument();
+  });
+
+  it('filtert nach Marke, Modell oder Verbindung und sagt, wenn nichts passt', async () => {
+    render(<VorlagenPage />);
+    await screen.findByText(/ACME · Relais 16/);
+    fireEvent.change(screen.getByLabelText('Vorlage suchen'), { target: { value: 'acme relais' } });
+    expect(screen.getByText(/ACME · Relais 16/)).toBeInTheDocument();
+    expect(screen.queryByText(/Deye · SUN-30K/)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Vorlage suchen'), { target: { value: 'gibtesnicht' } });
+    expect(screen.getByText('Keine Vorlage passt zu „gibtesnicht“.')).toBeInTheDocument();
+  });
+});
