@@ -318,6 +318,21 @@ const TOUCH_TOLERANZ_PX = 10;
  * letzten bekannten Preis; `breit` (ab 721 px) zeigt heute ab 0 Uhr und morgen.
  * Ist der Folgetag noch nicht veröffentlicht, steht das IM Bild.
  */
+
+/**
+ * Breite einer Band-Beschriftung (12 px, fett) in Pixeln, mit 8 px Einzug und
+ * 6 px Luft zum Bandende - geschätzt, nicht gemessen: Ziffern und Kleinbuchstaben
+ * dieser Schrift sind rund 7 px breit.
+ */
+export function bandTextBreite(text: string): number {
+  return 8 + text.length * 7 + 6;
+}
+
+/** Die erste (längste) Fassung, die in ein Band dieser Breite passt - sonst keine. */
+export function bandBeschriftung(fassungen: readonly string[], breite: number): string | null {
+  return fassungen.find((t) => bandTextBreite(t) <= breite) ?? null;
+}
+
 export function PreisZeitstrahlBild({
   z,
   plan,
@@ -385,7 +400,7 @@ export function PreisZeitstrahlBild({
   const markiert = fenster ? z[fenster] : null;
 
   // --- Tagesband ---------------------------------------------------------
-  const baender: { a: number; b: number; text: string; bekannt: boolean; ungerade: boolean }[] = [];
+  const baender: { a: number; b: number; text: string | null; bekannt: boolean; ungerade: boolean }[] = [];
   const bildAnfang = z.viertel[i0].start;
   const bildEnde = bildAnfang + (i1 - i0) * VIERTEL_MS;
   for (let tag = tagesBeginn(bildAnfang), k = 0; tag < bildEnde; tag = naechsteMitternacht(tag), k++) {
@@ -395,7 +410,11 @@ export function PreisZeitstrahlBild({
     const istHeute = tag === tagStart;
     const kurz = istHeute ? 'Heute' : wochentagDatum(tag);
     const lang = istHeute ? `Heute, ${wochentagDatum(tag)}` : langerTag(tag);
-    const text = !bekannt ? 'Morgen' : b - a > 150 ? lang : kurz;
+    // Die längste Fassung, die ins Band PASST - ein schmaler Tag (abends: nur noch
+    // wenige Stunden heute) trug sonst „Do 10.09.“, das unter „Morgen“ abgeschnitten
+    // wurde. Notfalls nur der Wochentag, sonst gar nichts.
+    const fassungen = !bekannt ? ['Morgen'] : [lang, kurz, istHeute ? 'Heute' : kurz.split(' ')[0]];
+    const text = bandBeschriftung(fassungen, b - a);
     baender.push({ a, b, text, bekannt, ungerade: k % 2 === 1 });
   }
 
@@ -515,7 +534,7 @@ export function PreisZeitstrahlBild({
                 rx={6}
                 className={b.ungerade ? 'vp-pz-band is-zweit' : 'vp-pz-band'}
               />
-              {b.b - b.a > 40 && (
+              {b.text != null && (
                 <text x={b.a + 8} y={12.8} className={b.bekannt ? 'vp-pz-band-text' : 'vp-pz-band-text is-offen'}>
                   {b.text}
                 </text>
