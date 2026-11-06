@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
 // WebKit braucht im Container mehr Zeit.
@@ -73,7 +72,8 @@ for (const breite of [1440, 375]) {
     await expect(detail.getByTestId('ws-belege')).toContainText('Schritt probe: Anmeldung über den Tunnel');
     await expect(detail.getByTestId('ws-abnahme-protokoll')).toContainText('vom Werkstatt-Dienst');
     await expect(detail.getByTestId('ws-qr')).toBeVisible();
-    await expect(detail.getByTestId('ws-gehaeuse-hinweis')).toContainText('ohne Referenz und QR-Code dieser Box');
+    await expect(detail.getByTestId('ws-gehaeuse')).toContainText('Box-Druckdatei (3MF) laden');
+    await expect(detail.getByTestId('ws-gehaeuse-stand')).toContainText('gehaeuse-edge-5t2dcy6.3mf');
     await passt(page);
     await page.screenshot({ path: test.info().outputPath(`werkstatt-box-${breite}.png`), fullPage: true });
 
@@ -169,24 +169,30 @@ for (const breite of [1440, 375]) {
   }
 }
 
-test('Einrichtungs-Detailseite: der 3MF-Download liefert die Datei des Gehäuses (nur komplett)', async ({ page }) => {
+test('Einrichtungs-Detailseite: der 3MF-Download holt GENAU die Box-Druckdatei über die admin-Route', async ({ page }) => {
   const fehler = wache(page);
+  const inhalt = Buffer.from('PK\x03\x04 gehaeuse-edge-5t2dcy6 (erfunden für den E2E-Test)');
+  await page.route('**/api/v1/admin/werkstatt/boxen/edge-5t2dcy6/gehaeuse', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'model/3mf',
+      headers: {
+        'Content-Disposition': 'attachment; filename=gehaeuse-edge-5t2dcy6.3mf',
+        'Access-Control-Expose-Headers': 'Content-Disposition',
+      },
+      body: inhalt,
+    });
+  });
   await page.goto('/e2e/werkstatt.html#/werkstatt?box=edge-5t2dcy6');
-  const summen = new Map(
-    readFileSync(resolve(process.cwd(), '../../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/SHA256SUMS'), 'utf8')
-      .trim().split('\n').map((z) => z.split(/\s+/) as [string, string]).map(([sha, name]) => [name, sha]),
-  );
-  await expect(page.getByTestId('ws-gehaeuse').getByRole('link')).toHaveCount(1);
-  for (const name of ['gehaeuse-v04.3mf']) {
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByTestId(`ws-gehaeuse-${name}`).getByRole('link').click(),
-    ]);
-    expect(download.suggestedFilename()).toBe(name);
-    const bytes = readFileSync((await download.path())!);
-    expect(bytes.subarray(0, 2).toString('latin1')).toBe('PK');
-    expect(createHash('sha256').update(bytes).digest('hex')).toBe(summen.get(name));
-  }
+  const karte = page.getByTestId('ws-gehaeuse');
+  await expect(karte.getByTestId('ws-gehaeuse-hinweis')).toHaveCount(0);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    karte.getByRole('button', { name: 'Box-Druckdatei (3MF) laden' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe('gehaeuse-edge-5t2dcy6.3mf');
+  const bytes = readFileSync((await download.path())!);
+  expect(createHash('sha256').update(bytes).digest('hex')).toBe(createHash('sha256').update(inhalt).digest('hex'));
   expect(fehler).toEqual([]);
 });
 

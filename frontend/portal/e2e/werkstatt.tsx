@@ -157,6 +157,7 @@ function registerBox(edgeRef: string, boxArt: 'edge-light' | 'edge-app', over: P
 
 const register: WerkstattBox[] = [
   registerBox('edge-5t2dcy6', 'edge-light', {
+    gehaeuse: { name: 'gehaeuse-edge-5t2dcy6.3mf', sha256: SHA, bytes: 4_832_112, hochgeladenAm: iso(-27 * 60_000) },
     abnahmen: [{ id: 'a1', edgeRef: 'edge-5t2dcy6', hostSchluessel: 'SHA256:' + 'Q'.repeat(42) + 'c', fassung: 'edge-light-2026.11.1',
       tunnelAdresse: '10.10.16.9', lanNetz: '10.213.0.1/24', pruefungen: [], notiz: null, erfasstAm: iso(-28 * 60_000), erfasstVon: 'werkstatt-dienst',
       probe: { fensterId: 'p1', technikerName: 'Werkstatt-Dienst', grund: 'Werkstatt-Probe', beginn: iso(-34 * 60_000), ende: iso(-30 * 60_000),
@@ -236,6 +237,20 @@ Object.assign(adminApi, {
 });
 
 Object.assign(keycloak, { tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } } });
+// Der 3MF-Download geht über echtes fetch() (freshToken); ein echtes Token braucht er dafür. Das
+// weckt sonst nur hier (nicht in jedem anderen Fixture) die globale Meldungen-Zählung aus ihrem
+// sonst stillen Rückfall ohne Token: ihr Pfad bekommt einen stillen Platzhalter statt eines echten
+// 401 in der Konsole.
+(keycloak as unknown as { token: string; updateToken: () => Promise<boolean> }).token = 'e2e-token';
+(keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
+const echtesFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  if (url.includes('/api/v1/meldungen/zahl')) {
+    return Promise.resolve(new Response(JSON.stringify({ ungelesen: 0 }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+  }
+  return echtesFetch(input, init);
+};
 
 function Fixture() {
   const [page, setPage] = useState<PageId>('werkstatt');

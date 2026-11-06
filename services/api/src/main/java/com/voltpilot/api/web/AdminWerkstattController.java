@@ -12,6 +12,7 @@ import com.voltpilot.api.werkstatt.FreigabeRepository;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Abbild;
 import com.voltpilot.api.werkstatt.FreigabeRepository.Programm;
 import com.voltpilot.api.werkstatt.FreigabeService;
+import com.voltpilot.api.werkstatt.WerkstattGehaeuseRepository;
 import com.voltpilot.api.werkstatt.WerkstattService;
 import com.voltpilot.api.werkstatt.WerkstattService.Angelegt;
 import com.voltpilot.api.werkstatt.WerkstattService.SchrittStand;
@@ -24,7 +25,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -94,11 +98,23 @@ public class AdminWerkstattController {
      */
     public record BoxDto(UUID id, String edgeRef, String boxArt, String lanNetz, Map<String, SchrittDto> schritte,
             String notiz, Instant angelegtAm, String angelegtVon, Instant geaendertAm, List<AbnahmeDto> abnahmen,
-            List<String> inGebrauch, List<String> loeschtMit, KundeDto kunde) {
+            List<String> inGebrauch, List<String> loeschtMit, KundeDto kunde, GehaeuseDto gehaeuse) {
     }
 
     /** Der Kunde einer Box: Mandant, Anlage (null = ohne Anlage) und seit wann sie zu ihm gehört. */
     public record KundeDto(String mandant, String anlage, Instant seit) {
+    }
+
+    /**
+     * Die Box-Druckdatei des Gehäuses (vp-mango-3mf-pro-box): mit Referenz in Klarschrift und
+     * QR-Code im Unterteil, vom Werkstatt-Dienst nach einem Auftrag ohne Fehler hochgeladen.
+     * {@code null} an {@link BoxDto#gehaeuse()}: noch keine Datei abgelegt (kein Lauf, zu alt,
+     * oder noch in der alten internen Ablage des Dienstes).
+     */
+    public record GehaeuseDto(String name, String sha256, long bytes, Instant hochgeladenAm) {
+        static GehaeuseDto of(WerkstattGehaeuseRepository.Stand s) {
+            return new GehaeuseDto(s.name(), s.sha256(), s.bytes(), s.hochgeladenAm());
+        }
     }
 
     /** Was die Seite vor allem anderen braucht: die geschlossene Liste der Prüfungen und den Vorschlag fürs LAN. */
@@ -183,14 +199,17 @@ public class AdminWerkstattController {
     private final FreigabeService freigaben;
     private final DienstAnsichtService ansichten;
     private final LaufSeiteService laufSeite;
+    private final WerkstattGehaeuseRepository gehaeuseDateien;
     private final ObjectMapper json;
 
     public AdminWerkstattController(WerkstattService service, FreigabeService freigaben,
-            DienstAnsichtService ansichten, LaufSeiteService laufSeite, ObjectMapper json) {
+            DienstAnsichtService ansichten, LaufSeiteService laufSeite, WerkstattGehaeuseRepository gehaeuseDateien,
+            ObjectMapper json) {
         this.service = service;
         this.freigaben = freigaben;
         this.ansichten = ansichten;
         this.laufSeite = laufSeite;
+        this.gehaeuseDateien = gehaeuseDateien;
         this.json = json;
     }
 
@@ -285,6 +304,26 @@ public class AdminWerkstattController {
         return boxDto(service.lanNetz(referenz(ref), req.lanNetz(), Akteur.aus(caller)));
     }
 
+    // ── Gehäuse-Druckdatei ────────────────────────────────────────────────
+
+    /**
+     * Die Box-Druckdatei herunterladen (vp-mango-3mf-pro-box): mit Referenz in Klarschrift und
+     * QR-Code dieser Box. 404, solange der Werkstatt-Dienst sie noch nicht hochgeladen hat.
+     */
+    @GetMapping("/boxen/{ref}/gehaeuse")
+    public ResponseEntity<byte[]> gehaeuseDatei(@PathVariable String ref) {
+        String edgeRef = referenz(ref);
+        WerkstattGehaeuseRepository.Datei d = gehaeuseDateien.datei(edgeRef)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Für " + edgeRef + " liegt noch keine Box-Druckdatei im Portal."));
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("model/3mf"))
+                .contentLength(d.bytes())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + d.name())
+                .cacheControl(CacheControl.noStore())
+                .body(d.daten());
+    }
+
     // ── Abnahme ───────────────────────────────────────────────────────────
 
     /** Das Abnahmeprotokoll anlegen: 201. Die Regeln stehen an {@link WerkstattService#abnahme}. */
@@ -328,7 +367,8 @@ public class AdminWerkstattController {
         return new BoxDto(s.box().id(), s.box().edgeRef(), s.box().boxArt(), s.box().lanNetz(), schritte,
                 s.box().notiz(), s.box().angelegtAm(), name(s.box().angelegtVonName(), s.box().angelegtVon()),
                 s.box().geaendertAm(), s.abnahmen().stream().map(this::abnahmeDto).toList(), s.inGebrauch(), s.loeschtMit(),
-                s.kunde() == null ? null : new KundeDto(s.kunde().mandant(), s.kunde().anlage(), s.kunde().seit()));
+                s.kunde() == null ? null : new KundeDto(s.kunde().mandant(), s.kunde().anlage(), s.kunde().seit()),
+                gehaeuseDateien.stand(s.box().edgeRef()).map(GehaeuseDto::of).orElse(null));
     }
 
     private AbnahmeDto abnahmeDto(Abnahme a) {

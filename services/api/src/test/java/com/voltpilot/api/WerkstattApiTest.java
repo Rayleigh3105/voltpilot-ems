@@ -519,6 +519,89 @@ class WerkstattApiTest {
         assertThat(inListe.get("kunde").get("mandant").asText()).isEqualTo("Kunde Werkstatt");
     }
 
+    /**
+     * vp-mango-3mf-pro-box: der Werkstatt-Dienst lädt die Box-Druckdatei hoch, die Werkstatt-Box-Seite
+     * bietet genau SIE zum Download an. Wiederholbar (Nachdruck überschreibt), Prüfsumme wird geprüft,
+     * nur platform-admin lädt herunter.
+     */
+    @Test
+    @Order(6)
+    void boxDruckdateiHochUndHerunterladen() throws Exception {
+        String admin = token("admin", "admin");
+        String dienst = serviceToken("voltpilot-werkstatt-dienst", "voltpilot-werkstatt-dienst-dev-secret");
+        byte[] erster = ("PK\u0003\u0004 " + "gehaeuse-" + BOX + " v1").getBytes();
+        String sha1 = sha256(erster);
+
+        // Vor dem Hochladen: die Karte bekommt ehrlich "keine Datei", kein toter Knopf.
+        assertThat(getJson(BASE + "/boxen/" + BOX, admin).get("gehaeuse").isNull()).isTrue();
+        assertThat(send(HttpMethod.GET, BASE + "/boxen/" + BOX + "/gehaeuse", admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        ResponseEntity<String> neu = putGehaeuse(dienst, BOX, "gehaeuse-" + BOX + ".3mf", sha1, erster);
+        assertThat(neu.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        JsonNode nach = json.readTree(neu.getBody());
+        assertThat(nach.get("name").asText()).isEqualTo("gehaeuse-" + BOX + ".3mf");
+        assertThat(nach.get("sha256").asText()).isEqualTo(sha1);
+        assertThat(nach.get("bytes").asLong()).isEqualTo(erster.length);
+
+        JsonNode box = getJson(BASE + "/boxen/" + BOX, admin);
+        assertThat(box.get("gehaeuse").get("sha256").asText()).isEqualTo(sha1);
+        assertThat(box.get("gehaeuse").get("bytes").asLong()).isEqualTo(erster.length);
+
+        ResponseEntity<byte[]> datei = rest.exchange(url(BASE + "/boxen/" + BOX + "/gehaeuse"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), byte[].class);
+        assertThat(datei.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(datei.getBody()).isEqualTo(erster);
+        assertThat(datei.getHeaders().getContentDisposition().getFilename()).isEqualTo("gehaeuse-" + BOX + ".3mf");
+
+        // Falsche Prüfsumme: 422, nichts gespeichert.
+        ResponseEntity<String> falsch = putGehaeuse(dienst, BOX, "gehaeuse-" + BOX + ".3mf",
+                "0".repeat(64), erster);
+        assertThat(falsch.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // Unbekannte Box: 404.
+        assertThat(putGehaeuse(dienst, ref("wrkgeh"), "gehaeuse-x.3mf", sha1, erster).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Nachdruck: überschreibt mit dem neueren Stand, 200 statt 201.
+        byte[] zweiter = ("PK\u0003\u0004 " + "gehaeuse-" + BOX + " v2").getBytes();
+        String sha2 = sha256(zweiter);
+        ResponseEntity<String> ueberschrieben = putGehaeuse(dienst, BOX, "gehaeuse-" + BOX + ".3mf", sha2, zweiter);
+        assertThat(ueberschrieben.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getJson(BASE + "/boxen/" + BOX, admin).get("gehaeuse").get("sha256").asText()).isEqualTo(sha2);
+
+        // Nur platform-admin lädt herunter.
+        String kunde = token("demo", "demo");
+        assertThat(send(HttpMethod.GET, BASE + "/boxen/" + BOX + "/gehaeuse", kunde, null).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(send(HttpMethod.GET, BASE + "/boxen/" + BOX + "/gehaeuse", null, null).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    private ResponseEntity<String> putGehaeuse(String token, String edgeRef, String name, String sha256,
+            byte[] daten) {
+        HttpHeaders h = bearer(token);
+        h.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        String pfad = "/api/v1/werkstatt-dienst/gehaeuse/" + edgeRef + "?name=" + name + "&sha256=" + sha256;
+        return rest.exchange(url(pfad), HttpMethod.PUT, new HttpEntity<>(daten, h), String.class);
+    }
+
+    private static String sha256(byte[] daten) throws Exception {
+        return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(daten));
+    }
+
+    private String url(String pfad) {
+        return "http://localhost:" + port + pfad;
+    }
+
+    private HttpHeaders bearer(String token) {
+        HttpHeaders h = new HttpHeaders();
+        if (token != null) {
+            h.setBearerAuth(token);
+        }
+        return h;
+    }
+
     /** 409 mit Grund, die Box bleibt, und die Seite liest denselben Grund in {@code inGebrauch}. */
     private void abgelehnt(String admin, String ref, String... gruende) throws Exception {
         ResponseEntity<String> r = send(HttpMethod.DELETE, BASE + "/boxen/" + ref, admin, null);

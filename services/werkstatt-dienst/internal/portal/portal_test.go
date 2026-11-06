@@ -50,6 +50,14 @@ func attrappe(t *testing.T, gesehen map[string]string) *httptest.Server {
 			_, _ = w.Write([]byte(`{"edgeRef":"edge-k7m2xq3","festgehalten":null,"einloesungen":[],"abgenommen":false,"gekoppelt":true}`))
 		case "GET /api/v1/werkstatt-dienst/einloesungen/edge-alt2345":
 			_, _ = w.Write([]byte(`{"edgeRef":"edge-alt2345","festgehalten":null,"einloesungen":[]}`))
+		case "PUT /api/v1/werkstatt-dienst/gehaeuse/edge-k7m2xq3":
+			if r.URL.Query().Get("sha256") == "falsch" {
+				w.WriteHeader(422)
+				_, _ = w.Write([]byte(`{"message":"Die Prüfsumme passt nicht zu den Bytes."}`))
+				return
+			}
+			w.WriteHeader(201)
+			_, _ = w.Write([]byte(`{"edgeRef":"edge-k7m2xq3","name":"gehaeuse-edge-k7m2xq3.3mf","sha256":"x","bytes":3,"hochgeladenAm":"2026-11-06T10:00:00Z"}`))
 		default:
 			w.WriteHeader(409)
 			_, _ = w.Write([]byte(`{"message":"Die Werkstatt ist nicht freigegeben."}`))
@@ -121,6 +129,27 @@ func TestBoxStandLesen(t *testing.T) {
 	}
 	if _, err := c.BoxStandLesen(context.Background(), "edge-alt2345"); err == nil || !strings.Contains(err.Error(), "nicht, ob") {
 		t.Fatalf("alte API ohne Felder: %v", err)
+	}
+}
+
+// Die Box-Druckdatei hochladen (vp-mango-3mf-pro-box): Name und Prüfsumme
+// gehen als Query mit, die Bytes im Körper als application/octet-stream.
+func TestGehaeuseHochladen(t *testing.T) {
+	gesehen := map[string]string{}
+	srv := attrappe(t, gesehen)
+	defer srv.Close()
+	c := Client{URL: srv.URL, Token: festesToken("tok")}
+	daten := []byte("PK\x03\x04 gehaeuse")
+	if err := c.GehaeuseHochladen(context.Background(), "edge-k7m2xq3", "gehaeuse-edge-k7m2xq3.3mf", daten, "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if gesehen["PUT /api/v1/werkstatt-dienst/gehaeuse/edge-k7m2xq3"] != string(daten) {
+		t.Fatalf("Körper nicht die rohen Bytes: %q", gesehen["PUT /api/v1/werkstatt-dienst/gehaeuse/edge-k7m2xq3"])
+	}
+	var ab Abgelehnt
+	err := c.GehaeuseHochladen(context.Background(), "edge-k7m2xq3", "gehaeuse-edge-k7m2xq3.3mf", daten, "falsch")
+	if !errors.As(err, &ab) || ab.Status != 422 {
+		t.Fatalf("falsche Prüfsumme: %v", err)
 	}
 }
 

@@ -204,21 +204,37 @@ describe('Werkstatt: Einrichtungs-Detailseite einer Box', () => {
     expect(screen.getByTestId('ws-einrichtung')).toBeInTheDocument();
   });
 
-  it('3MF: nur das komplette Gehäuse als Download mit Dateiname, als Datei ohne Kennung der Box beschriftet', async () => {
+  it('3MF: eine schon abgenommene Box ohne Datei im Portal bekommt den ehrlichen Hinweis auf die alte Ablage', async () => {
     window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
     render(<WerkstattPage />);
     const g = await screen.findByTestId('ws-gehaeuse');
-    expect(within(g).getByTestId('ws-gehaeuse-hinweis')).toHaveTextContent('ohne Referenz und QR-Code dieser Box');
-    expect(within(g).queryByText(/Bambu Studio/)).toBeNull();
-    expect(within(g).queryByText(/sitzt perfekt/)).toBeNull();
-    const a = within(within(g).getByTestId('ws-gehaeuse-gehaeuse-v04.3mf')).getByRole('link');
-    expect(a).toHaveAttribute('download', 'gehaeuse-v04.3mf');
-    expect(a).toHaveAttribute('href', expect.stringMatching(/\.3mf(\?.*)?$/));
-    expect(within(g).getAllByRole('link')).toHaveLength(1);
-    expect(within(g).queryByTestId('ws-gehaeuse-unterteil.3mf')).toBeNull();
-    expect(within(g).queryByTestId('ws-gehaeuse-deckel.3mf')).toBeNull();
+    expect(within(g).getByTestId('ws-gehaeuse-hinweis')).toHaveTextContent('alten internen Ablage des Dienstes');
+    expect(within(g).queryByRole('button')).toBeNull();
     // Oben: die Druckdatei ist die erste Karte der Seite, vor der Einrichtung.
     expect(g.compareDocumentPosition(screen.getByTestId('ws-einrichtung')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('3MF: ohne Abnahme (noch kein Werkstatt-Lauf) sagt die Karte ehrlich, dass sie noch gebaut wird', async () => {
+    werkstattBoxen.mockResolvedValue([{ ...box('edge-5t2dcy6'), abnahmen: [] }]);
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const g = await screen.findByTestId('ws-gehaeuse');
+    expect(within(g).getByTestId('ws-gehaeuse-hinweis')).toHaveTextContent('wird nach einem Werkstatt-Lauf ohne Fehler hier abgelegt');
+    expect(within(g).queryByRole('button')).toBeNull();
+  });
+
+  it('3MF: mit hochgeladener Datei bietet die Karte GENAU sie zum Download an, mit Stand und Größe', async () => {
+    werkstattBoxen.mockResolvedValue([{
+      ...box('edge-5t2dcy6'),
+      gehaeuse: { name: 'gehaeuse-edge-5t2dcy6.3mf', sha256: '0'.repeat(64), bytes: 4_700_000, hochgeladenAm: '2026-11-05T08:00:00Z' },
+    }]);
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const g = await screen.findByTestId('ws-gehaeuse');
+    expect(within(g).queryByTestId('ws-gehaeuse-hinweis')).toBeNull();
+    expect(within(g).getByRole('button', { name: 'Box-Druckdatei (3MF) laden' })).toBeInTheDocument();
+    expect(within(g).getByTestId('ws-gehaeuse-stand')).toHaveTextContent('gehaeuse-edge-5t2dcy6.3mf');
+    expect(within(g).getByTestId('ws-gehaeuse-stand')).toHaveTextContent('4,7');
   });
 
   it('Kunde: noch nicht eingerichtet zeigt den Link des QR-Codes zum Kopieren und den QR-Code', async () => {

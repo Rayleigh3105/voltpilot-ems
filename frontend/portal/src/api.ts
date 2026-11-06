@@ -8441,6 +8441,34 @@ export async function ladeMeldungenVerlaufCsv(von: string, bis: string): Promise
   setTimeout(() => URL.revokeObjectURL(href), 0);
 }
 
+/**
+ * vp-mango-3mf-pro-box: die Box-Druckdatei des Gehäuses herunterladen (nur
+ * platform-admin) - derselbe Download-Weg wie {@link ladeGesamtabzug}. 404,
+ * solange der Werkstatt-Dienst sie noch nicht hochgeladen hat.
+ */
+export async function ladeWerkstattGehaeuse(edgeRef: string): Promise<void> {
+  const token = await freshToken();
+  const path = `/api/v1/admin/werkstatt/boxen/${encodeURIComponent(edgeRef)}/gehaeuse`;
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...bereichKopf(path),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined);
+    throw new ApiError(res.status, (body as { message?: string } | undefined)?.message
+      ?? 'Die Box-Druckdatei konnte nicht geladen werden.', body);
+  }
+  const name = /filename=([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]?.trim() ?? `${edgeRef}.3mf`;
+  const href = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
 export interface RegisterInput {
   name: string;
   email: string;

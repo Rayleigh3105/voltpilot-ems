@@ -214,6 +214,10 @@ public class SecurityConfig {
         // Idempotency-Key the Anfrage-Kennung of the create routes (Anlage-Flow a1, B3).
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Tenant-Id",
                 ZugriffKontextLader.KUNDENBEREICH_HEADER, com.voltpilot.api.web.AnfrageKennungen.KOPF));
+        // Downloads nennen ihren Dateinamen über Content-Disposition (Gesamtabzug, Meldungen-Verlauf,
+        // Box-Druckdatei) - ohne das als "exposed" zu nennen, verweigert der Browser JS cross-origin
+        // den Zugriff darauf und der Download fällt auf einen Platzhalternamen zurück.
+        cfg.setExposedHeaders(List.of("Content-Disposition"));
         cfg.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cfg);

@@ -286,6 +286,11 @@ je Auftrag einen Job mit dem Bau-Image. Den Druck startest du (WI-11 A).
 QR-Code mit dem Telefon lesen. Der Bericht `pruefung.md` liegt daneben. Eine gescheiterte Datei bietet die Anzeige
 nicht an, nur Bericht und `ausgabe.log`.
 
+Mit `VP_WERKSTATT_API_URL` gesetzt lädt der Dienst `gehaeuse-<referenz>.3mf` zusätzlich zur Portal-API hoch
+(vp-mango-3mf-pro-box): Die Werkstatt-Box-Seite bietet sie dort zum Download an, `kubectl exec`/Download aus der
+Anzeige bleiben trotzdem der Weg zum Drucken. Ein Fehlschlag beim Hochladen blockiert den Lauf an der Box nicht;
+der nächste Anlauf des Dienstes holt ihn nach - kein eigener Befehl dafür nötig.
+
 Noch einmal bauen (Nachdruck, nach einem behobenen Fehler):
 `kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst gehaeuse <referenz> neu`; für eine
 Box ohne Lauf dasselbe ohne `neu`.

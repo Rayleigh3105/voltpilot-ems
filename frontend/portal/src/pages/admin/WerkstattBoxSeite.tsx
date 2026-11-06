@@ -14,8 +14,9 @@ import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
 import { adminApi } from '../../admin/adminApi';
 import { boxVerbindung, zeitpunkt, type FernwartungBox, type FernwartungUebersicht } from '../../adminFernwartung';
-import { ApiError } from '../../api';
+import { ApiError, ladeWerkstattGehaeuse } from '../../api';
 import { Befehl } from '../../components/FernwartungSsh';
+import { mb } from '../../geraeteUpdates';
 import { fernwartungHash } from '../../nav';
 import { loeschbar, loeschtTunnelSchluessel, VERSAND_SATZ, type WerkstattBox } from '../../werkstatt';
 import type { UebersichtZeile, WerkstattFreigabe } from '../../werkstattBank';
@@ -24,8 +25,9 @@ import {
   einrichtung,
   freigabeDerBox,
   fruehereAbnahmen,
-  GEHAEUSE_DATEIEN,
-  GEHAEUSE_OHNE_KENNUNG,
+  GEHAEUSE_ALT_SATZ,
+  gehaeuseStand,
+  GEHAEUSE_WARTET_SATZ,
   kundenStand,
   type EinrichtungZeile,
 } from '../../werkstattEinrichtung';
@@ -34,6 +36,31 @@ import { schrittTitel } from '../../werkstattLauf';
 import { AbnahmeAnzeige, BeschriftungKarte, DirektlinkQr, STAND_BADGE } from './WerkstattTeile';
 
 type Bindung = { art: 'laedt' } | { art: 'keine' } | { art: 'fehler'; text: string } | { art: 'da'; box: FernwartungBox; uebersicht: FernwartungUebersicht | null };
+
+/** Der Download-Knopf der Box-Druckdatei: lädt authentifiziert (platform-admin), zeigt einen Fehler ehrlich. */
+function GehaeuseDownloadKnopf({ edgeRef }: { edgeRef: string }) {
+  const [laedt, setLaedt] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  async function laden() {
+    setLaedt(true);
+    setFehler(null);
+    try {
+      await ladeWerkstattGehaeuse(edgeRef);
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Die Box-Druckdatei konnte nicht geladen werden.');
+    } finally {
+      setLaedt(false);
+    }
+  }
+  return (
+    <div data-testid="ws-gehaeuse-knopf">
+      <Button variant="outline" size="sm" onClick={() => void laden()} disabled={laedt}>
+        {laedt ? 'Lädt …' : 'Box-Druckdatei (3MF) laden'}
+      </Button>
+      {fehler && <p role="alert" className="vp-alert vp-alert-err" data-testid="ws-gehaeuse-fehler">{fehler}</p>}
+    </div>
+  );
+}
 
 function Zeilen({ zeilen, leer = '–' }: { zeilen: EinrichtungZeile[]; leer?: string }) {
   return (
@@ -173,16 +200,24 @@ export function WerkstattBoxSeite({
         {mango && (
           <Card padding="md" radius="lg" className="vp-ws-karte vp-ws-breit" data-testid="ws-gehaeuse">
             <h3 className="vp-ws-kartenkopf">Gehäuse-Druckdatei (3MF)</h3>
-            <ul className="vp-ws-dateien">
-              {GEHAEUSE_DATEIEN.map((d) => (
-                <li key={d.name} className="vp-ws-datei" data-testid={`ws-gehaeuse-${d.name}`}>
-                  <a className="vp-btn vp-btn--outline vp-btn--sm" href={d.url} download={d.name} type="model/3mf">
-                    {d.name} laden
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-hinweis">{GEHAEUSE_OHNE_KENNUNG}</p>
+            {(() => {
+              const stand = gehaeuseStand(box);
+              if (stand.art === 'bereit') {
+                return (
+                  <>
+                    <GehaeuseDownloadKnopf edgeRef={ref} />
+                    <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-stand">
+                      {stand.name} · {mb(stand.bytes)} · abgelegt {zeitpunkt(stand.hochgeladenAm, jetzt)}
+                    </p>
+                  </>
+                );
+              }
+              return (
+                <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-hinweis">
+                  {stand.art === 'alt' ? GEHAEUSE_ALT_SATZ : GEHAEUSE_WARTET_SATZ}
+                </p>
+              );
+            })()}
           </Card>
         )}
 
