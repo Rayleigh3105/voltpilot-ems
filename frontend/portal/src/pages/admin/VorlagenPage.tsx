@@ -41,6 +41,7 @@ import {
 import './Vorlagen.css';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
+import { InfoTip } from '../../components/InfoTip';
 import { AdminPageHead } from './AdminPageHead';
 
 export function VorlagenPage(): JSX.Element {
@@ -91,7 +92,15 @@ export function VorlagenPage(): JSX.Element {
       <AdminPageHead
         icon="layers"
         title="Gerätevorlagen"
-        description="Eine geprüfte Vorlage ist ein Datensatz, kein Software-Update: sobald sie hier steht, bietet der Anlege-Assistent sie jedem Kunden an. Eingebaute Vorlagen kommen aus dem Geräte-Katalog der Edge-Software und werden hier nur angezeigt."
+        description={
+          <>
+            Eine geprüfte Vorlage ist ein Datensatz, kein Software-Update.{' '}
+            <InfoTip title="Gerätevorlagen" label="Mehr zu Gerätevorlagen">
+              Sobald sie hier steht, bietet der Anlege-Assistent sie jedem Kunden an. Eingebaute Vorlagen kommen aus dem
+              Geräte-Katalog der Edge-Software und werden hier nur angezeigt.
+            </InfoTip>
+          </>
+        }
         actions={
           <Button onClick={() => setDrawer({ base: null })} disabled={!rows}>
             ＋ Vorlage eintragen
