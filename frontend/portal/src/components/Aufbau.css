@@ -931,6 +931,26 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
 
 /* Handy und schmale Fenster: zwei Zeilen statt fünf Spalten. */
 @container vp-auf (max-width: 719px) {
+  /* Tippflächen am Telefon (UI-Runde Kundenseiten, Befund #44): Aufklappen (22 px), „+“ und „…“
+     (30 px) und der Filter-Knopf (30 px) wachsen über eine unsichtbare ::after-Fläche auf 44 px Höhe -
+     dasselbe Muster wie `.vp-infotip-btn`. Seitlich nur wenig, damit sich „+“ und „…“ nicht decken. */
+  .vp-auf-t-auf::after {
+    content: '';
+    position: absolute;
+    inset: -11px;
+  }
+  .vp-auf-t-plus,
+  .vp-auf-t-mehr,
+  .vp-auf-filter-auf {
+    position: relative;
+  }
+  .vp-auf-t-plus::after,
+  .vp-auf-t-mehr::after,
+  .vp-auf-filter-auf::after {
+    content: '';
+    position: absolute;
+    inset: -7px -3px;
+  }
   /* ⚠ Eine Container-Abfrage erreicht nur NACHKOMMEN - die Variable sitzt
      deshalb an der Tabelle, nicht am Behälter `.vp-auf`. */
   .vp-auf-t {
