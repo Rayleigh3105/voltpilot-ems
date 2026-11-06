@@ -1991,6 +1991,34 @@
       "nachher": "e044153ff7f62f53674265deacede131cf83c33ba6a401cd4da51a417a0456c5",
       "commit": "fm/vp-anlage-adresse-ux",
       "grund": "Task vp-anlage-adresse-ux: der Knopf „Entfernen“ räumt jetzt auch eine stehende Rückwärts-Auflösung des Pins ab (Zustand ehrlich machen, Geister-Pin-Befund) - Beschriftung, Recht und das eigentliche Entfernen (`onChange(null, null)`) bleiben unverändert."
+    },
+    {
+      "datei": "shell/AppShell.tsx",
+      "vorher": "b47e708b821a5fb1aed22c95fad38d9acff20913f05be2503f2715c891c6b137",
+      "nachher": null,
+      "commit": "430db48b5a8868ced219959beaa1e3b9825484fd",
+      "grund": "#1752 Adminview S1: der Falt-Knopf „Plattform“ der Seitenleiste entfällt - die drei Räume (Plattform/Geräte/Benutzer) stehen jetzt immer offen als eigene Knöpfe, nichts mehr zum Auf-/Zuklappen."
+    },
+    {
+      "datei": "shell/AppShell.tsx",
+      "vorher": "a7ae0eea270eb8639d91e231fbf0dbf1be527ae5cfe587ea19db5460d28379fa",
+      "nachher": null,
+      "commit": "430db48b5a8868ced219959beaa1e3b9825484fd",
+      "grund": "#1752 Adminview S1: der Telefon-Block „Plattform“ im Avatar-Menü (eine Schleife über die Plattform-Seiten) entfällt; „Einstellungen“, „Benutzer“ und „Funktionen“ stehen seitdem als eigene, fest benannte Einträge im selben Menü."
+    },
+    {
+      "datei": "pages/AnlageTechnik.tsx",
+      "vorher": "9f87a0d001b8e5bd88d7ffac006a8c4f573ebd1f3f095d4f657d1d98bbdedd54",
+      "nachher": "084696c2589d1f1a77cfc1aeae4ce82f955daf5a36b479a4b1bc58e4b3517b97",
+      "commit": "9f018ef42ad1b84d52e5e2b3bfe1e0963f19d66b",
+      "grund": "#1714 „jede Zeile öffnet nur ihr Feld“: das Namensfeld trägt die Pflichtstern-Beschriftung nur noch, wenn das Blatt mehr als das eine Feld zeigt (`nur`); Wert, Fokus und Änderungs-Handler bleiben unverändert."
+    },
+    {
+      "datei": "pages/AnlageTechnik.tsx",
+      "vorher": "0773946f678ee504a47ad03d7544c55e9944dee40ddc45030d5276ca40b13176",
+      "nachher": "41c4c4175445905afda0904132f06ca4195e2c0e78607e96e04706340a3d5309",
+      "commit": "9f018ef42ad1b84d52e5e2b3bfe1e0963f19d66b",
+      "grund": "#1714 „jede Zeile öffnet nur ihr Feld“: der Speichern-Knopf des Stammdaten-Blatts heißt „Speichern“, wenn `nur` ein einzelnes Feld öffnet, sonst weiter „Änderungen speichern“; Recht, Handler und Sperre bleiben unverändert."
     }
   ],
   "assistentZusammenfuehrung": {
