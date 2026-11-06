@@ -224,16 +224,26 @@ export interface Route {
   /**
    * Nur bei `page === 'geraete-registry'` MIT Referenz: die GERÄTEAKTE einer
    * Box statt der Geräte-Liste (Konzept `vp-adminview-konzept-k1` §4.2/4.4,
-   * Scheibe S2) - `#/plattform/geraete/{ref}[/software|verbindung|einrichtung|verlauf]`.
-   * Absent = die Liste. Der Reiter „Anlage" kommt erst mit S3.
+   * Scheiben S2/S3) -
+   * `#/plattform/geraete/{ref}[/software|verbindung|anlage[/plan|flows]|einrichtung|verlauf]`.
+   * Absent = die Liste.
    */
-  geraeteAkte?: { ref: string; reiter: GeraeteAkteReiter | null };
+  geraeteAkte?: { ref: string; reiter: GeraeteAkteReiter | null; werkzeug?: AnlageWerkzeug | null };
 }
 
-/** Ein Reiter der Geräteakte (§4.4). „Anlage" fehlt bewusst - er kommt erst mit S3. */
-export type GeraeteAkteReiter = 'software' | 'verbindung' | 'einrichtung' | 'verlauf';
+/** Ein Reiter der Geräteakte (§4.4, Scheibe S3). */
+export type GeraeteAkteReiter = 'software' | 'verbindung' | 'anlage' | 'einrichtung' | 'verlauf';
 
-const GERAETE_AKTE_REITER = new Set<string>(['software', 'verbindung', 'einrichtung', 'verlauf']);
+const GERAETE_AKTE_REITER = new Set<string>(['software', 'verbindung', 'anlage', 'einrichtung', 'verlauf']);
+
+/**
+ * Ein WERKZEUG des Reiters „Anlage" (§4.2/4.4, Scheibe S3): öffnet mit
+ * vorgewählter Anlage - die Auswahl Mandant → Anlage entfällt
+ * (`#/plattform/geraete/{ref}/anlage/plan` bzw. `/flows`).
+ */
+export type AnlageWerkzeug = 'plan' | 'flows';
+
+const ANLAGE_WERKZEUGE = new Set<string>(['plan', 'flows']);
 
 /**
  * Das Ziel einer Geräte-Detailseite: die REFERENZ der VoltPilot-Box, dahinter
@@ -404,19 +414,26 @@ export const PLATTFORM_BEREICH: { host: PageId; tabs: BereichTab[] } = {
   ],
 };
 
-/** Ein Unter-Reiter des Raums „Katalog" (§4.3): je eine bestehende Seite, ungeändert. */
-export type KatalogSektion = 'vorlagen' | 'modelle' | 'komponenten';
+/**
+ * Ein Unter-Reiter des Raums „Katalog" (§4.3). „Komponenten" ist mit Scheibe
+ * S3 entfallen (die Fassung Soll/Ist wohnt jetzt in der Akte › Anlage, die
+ * Ablehnung in der Übersicht „Auffällig" - S4, die Nutzung je Vorlage steht
+ * schon in „Gerätevorlagen" › „Genutzt von"); „Prognosemodelle" ist neu (N8:
+ * `AdminForecastModelController`/`adminApi.forecastModels` hatten Server und
+ * Funktion, aber keine Fläche).
+ */
+export type KatalogSektion = 'vorlagen' | 'modelle' | 'prognose';
 
 export const KATALOG_TABS: { id: KatalogSektion; label: string }[] = [
   { id: 'vorlagen', label: 'Gerätevorlagen' },
   { id: 'modelle', label: 'Steuerungs-Freigabe' },
-  { id: 'komponenten', label: 'Komponenten' },
+  { id: 'prognose', label: 'Prognosemodelle' },
 ];
 
-/** Die bestehende Seite hinter einem Katalog-Unter-Reiter. */
+/** Die bestehende Seite hinter einem Katalog-Unter-Reiter (`prognose` lebt als Sektion IN `KatalogBereich`, keine eigene `PageId`). */
 export function katalogSektionPage(sektion: KatalogSektion): PageId {
   if (sektion === 'vorlagen') return 'vorlagen';
-  if (sektion === 'komponenten') return 'komponenten-flotte';
+  if (sektion === 'prognose') return 'katalog';
   return 'steuerungs-freigabe';
 }
 
@@ -431,8 +448,11 @@ export const PLATFORM_TAB_PAGES: PageDef[] = [
   { id: 'werkstatt', label: 'Werkstatt', icon: 'sliders', adminOnly: true },
   { id: 'fernwartung', label: 'Fernwartung', icon: 'lock', adminOnly: true },
   { id: 'katalog', label: 'Katalog', icon: 'archive', adminOnly: true },
-  // Nicht mehr in der Navigation (Scheibe S1 hält sich an Schale + Umhängen),
-  // aber als Route gültig bis Scheibe S3 ihnen einen Ort in der Geräteakte gibt.
+  // Nicht mehr in der Navigation (Scheibe S1 hält sich an Schale + Umhängen).
+  // Scheibe S3 hat ihnen in der Akte › Anlage einen Ort gegeben und die
+  // Alt-Adressen umgeleitet (`canonicalPlatformHash`); diese Routen bleiben
+  // nur noch GÜLTIG (ein Lesezeichen läuft nie ins Leere), erreicht werden sie
+  // über keinen Pfad mehr.
   { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
   { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
   { id: 'steuerungs-freigabe', label: 'Steuerungs-Freigabe', icon: 'shield', adminOnly: true },
@@ -585,7 +605,6 @@ const LEGACY_FOLDED_PLATFORM_PAGES: Record<string, PageId> = {
  */
 const LEGACY_KATALOG_PAGES: Record<string, KatalogSektion> = {
   vorlagen: 'vorlagen',
-  'komponenten-flotte': 'komponenten',
   'steuerungs-freigabe': 'modelle',
 };
 
@@ -617,6 +636,17 @@ export function canonicalPlatformHash(hash: string): string | null {
     const ref = parseFernwartungBox(hash);
     if (ref) return geraeteAkteHash(ref, 'einrichtung');
   }
+
+  // Scheibe S3 (Umzugstabelle §4.7): die alten Anlagen-Werkzeuge lösen sich
+  // auf - ohne eine Box im Griff können sie nicht direkt in eine Akte
+  // springen, darum landen sie auf der Geräte-Liste MIT dem Werkzeug im
+  // Gepäck ("Box wählen, dann Werkzeug"); ein Klick dort öffnet `…/anlage/plan`
+  // bzw. `…/anlage/flows` dieser Box.
+  if (head === 'optimizer') return geraeteListeHash(null, 'plan');
+  if (head === 'flows') return geraeteListeHash(null, 'flows');
+  // Die Komponenten-Flotte löst sich auf: die Fassung Soll/Ist wohnt jetzt in
+  // der Akte › Anlage jeder Box.
+  if (head === 'komponenten-flotte') return geraeteListeHash('fassung');
 
   if (head in LEGACY_FOLDED_PLATFORM_PAGES) {
     const sektion = head === 'geraetetypen' ? 'geraetetypen' : null;
@@ -880,7 +910,9 @@ export function parseRoute(hash: string): Route {
       const ref = decodeURIComponent(segments[2]);
       const reiterRaw = segments[3];
       const reiter = reiterRaw && GERAETE_AKTE_REITER.has(reiterRaw) ? (reiterRaw as GeraeteAkteReiter) : null;
-      return { page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref, reiter } };
+      const werkzeugRaw = reiter === 'anlage' ? segments[4] : undefined;
+      const werkzeug = werkzeugRaw && ANLAGE_WERKZEUGE.has(werkzeugRaw) ? (werkzeugRaw as AnlageWerkzeug) : null;
+      return { page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref, reiter, werkzeug } };
     }
     const page = PLATTFORM_SEGMENT_PAGE[segment] ?? 'plattform-uebersicht';
     return { page, siteId: null, sub: null };
@@ -1024,7 +1056,7 @@ export function hashForRoute(route: Route): string {
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
   // Die Geräteakte (Scheibe S2): `#/plattform/geraete/{ref}[/{reiter}]`.
   if (route.page === 'geraete-registry' && route.geraeteAkte) {
-    return geraeteAkteHash(route.geraeteAkte.ref, route.geraeteAkte.reiter);
+    return geraeteAkteHash(route.geraeteAkte.ref, route.geraeteAkte.reiter, route.geraeteAkte.werkzeug);
   }
   // Die drei Räume (§4.2): die Plattform-Landung und ihre Reiter/Unterräume
   // schreiben sich zweistufig unter `#/plattform/…`, Geräte und Benutzer je
@@ -1571,23 +1603,35 @@ export function parseGeraetRef(hash: string): string | null {
 }
 
 /**
- * Die Adresse der GERÄTEAKTE (§4.2/4.4, Scheibe S2): `#/plattform/geraete/{ref}[/{reiter}]`.
- * Die Referenz ist die Box-Kennung, nicht die Geräte-UUID - dasselbe
- * Lesezeichen-Argument wie bei {@link geraetSeiteHash}.
+ * Die Adresse der GERÄTEAKTE (§4.2/4.4, Scheiben S2/S3):
+ * `#/plattform/geraete/{ref}[/{reiter}[/{werkzeug}]]`. Die Referenz ist die
+ * Box-Kennung, nicht die Geräte-UUID - dasselbe Lesezeichen-Argument wie bei
+ * {@link geraetSeiteHash}. `werkzeug` gilt nur unter `reiter === 'anlage'`.
  */
-export function geraeteAkteHash(ref: string, reiter?: GeraeteAkteReiter | null): string {
+export function geraeteAkteHash(ref: string, reiter?: GeraeteAkteReiter | null, werkzeug?: AnlageWerkzeug | null): string {
   const base = `#/plattform/geraete/${encodeURIComponent(ref)}`;
-  return reiter ? `${base}/${reiter}` : base;
+  if (!reiter) return base;
+  const reiterBase = `${base}/${reiter}`;
+  return reiter === 'anlage' && werkzeug ? `${reiterBase}/${werkzeug}` : reiterBase;
 }
 
 /** Die Route der Geräteakte, zum Aufrufen über `onNavigate`. */
-export function geraeteAkteRoute(ref: string, reiter: GeraeteAkteReiter | null = null): Route {
-  return { page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref, reiter } };
+export function geraeteAkteRoute(ref: string, reiter: GeraeteAkteReiter | null = null, werkzeug: AnlageWerkzeug | null = null): Route {
+  return { page: 'geraete-registry', siteId: null, sub: null, geraeteAkte: { ref, reiter, werkzeug } };
 }
 
-/** Die Adresse der GERÄTE-LISTE, auf Wunsch mit einem vorgewählten Filter-Chip. */
-export function geraeteListeHash(filter?: string | null): string {
-  return filter && filter.trim() ? `#/plattform/geraete?filter=${encodeURIComponent(filter.trim())}` : '#/plattform/geraete';
+/**
+ * Die Adresse der GERÄTE-LISTE, auf Wunsch mit einem vorgewählten Filter-Chip
+ * oder einem WERKZEUG (Scheibe S3: die alten Adressen `#/optimizer`/`#/flows`
+ * landen hier, „Box wählen" - ein Klick öffnet das Werkzeug direkt in der
+ * Akte dieser Box).
+ */
+export function geraeteListeHash(filter?: string | null, werkzeug?: AnlageWerkzeug | null): string {
+  const params = new URLSearchParams();
+  if (filter && filter.trim()) params.set('filter', filter.trim());
+  if (werkzeug) params.set('werkzeug', werkzeug);
+  const query = params.toString();
+  return query ? `#/plattform/geraete?${query}` : '#/plattform/geraete';
 }
 
 /** Der vorgewählte Filter aus einem `?filter=`-Hash der Geräte-Liste, oder null. */
@@ -1596,6 +1640,14 @@ export function parseGeraeteListeFilter(hash: string): string | null {
   if (rest.length === 0) return null;
   const value = new URLSearchParams(rest.join('?')).get('filter');
   return value && value.trim() ? value.trim() : null;
+}
+
+/** Das vorgewählte Werkzeug aus einem `?werkzeug=`-Hash der Geräte-Liste, oder null (Scheibe S3). */
+export function parseGeraeteListeWerkzeug(hash: string): AnlageWerkzeug | null {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  if (rest.length === 0) return null;
+  const value = new URLSearchParams(rest.join('?')).get('werkzeug');
+  return value && ANLAGE_WERKZEUGE.has(value) ? (value as AnlageWerkzeug) : null;
 }
 
 /**

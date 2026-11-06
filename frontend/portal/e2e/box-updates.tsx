@@ -6,12 +6,13 @@ import { AppShell } from '../src/shell/AppShell';
 import { PlattformBereich } from '../src/pages/admin/PlattformBereich';
 import { GeraeteRegistryPage } from '../src/pages/admin/GeraeteRegistryPage';
 import { adminApi } from '../src/admin/adminApi';
+import { fleetApi } from '../src/admin/fleetApi';
 import { ApiError } from '../src/api';
 import { keycloak } from '../src/auth';
 import {
   GRUND_LIGHT_AUF_UNBEKANNT, GRUND_LIGHT_STUFE_1_LOADER, type EdgeUpdates, type FleetRow,
 } from '../src/adminEdgeUpdates';
-import { type GeraeteAkteReiter, type PageId, type Route } from '../src/nav';
+import { type AnlageWerkzeug, type GeraeteAkteReiter, type PageId, type Route } from '../src/nav';
 import type { WerkstattBox } from '../src/werkstatt';
 import type { WerkstattDienst, WerkstattFreigabe } from '../src/werkstattBank';
 import type { FernwartungBox, FernwartungUebersicht } from '../src/adminFernwartung';
@@ -248,11 +249,49 @@ Object.assign(adminApi, {
     return box;
   },
   fernwartungFensterSchliessen: async () => { throw new Error('Vorschau: Keine Änderung an echten Fenstern.'); },
+  // Reiter „Anlage" (Scheibe S3): Solarpark Sonnenhof (d1) führt ihre Anlage, hat einen frischen Plan,
+  // Batterie-Steuerung aktiv mit Beleg, und eine angewandte Komponenten-Fassung.
+  controlCandidates: async () => [
+    { deviceId: 'd1', tenantId: 't1', siteId: 's1', siteName: 'Solarpark Sonnenhof', tenantName: 'Stadtwerke Musterstadt',
+      externalRef: 'VP-BOX-1001', activated: true, platformCertVerdict: null, platformCertModel: 'SUN-30K', certSource: 'platform',
+      activatedAt: vor(30 * 24 * 3600_000), activatedBy: 'alex' },
+  ],
+  componentFleet: async () => [
+    { siteId: 's1', siteName: 'Solarpark Sonnenhof', tenantId: 't1', tenantName: 'Stadtwerke Musterstadt',
+      componentAuthority: 'portal', componentCount: 4, syncStatus: 'in_sync',
+      sources: { builtin: 4, certified: 0, custom: 0, composed: 0, unknown: 0 }, privateTemplates: 0 },
+  ],
+  activateControl: async () => { throw new Error('Vorschau: Keine Änderung an echter Steuerung.'); },
+  deactivateControl: async () => { throw new Error('Vorschau: Keine Änderung an echter Steuerung.'); },
+});
+Object.assign(fleetApi, {
+  fleet: async () => ({
+    sites: [{
+      siteId: 's1', siteName: 'Solarpark Sonnenhof', tenantId: 't1', tenantName: 'Stadtwerke Musterstadt',
+      plantKind: 'pv_storage', netzladenErlaubt: true, tarifArt: null,
+      boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-1001', name: 'VP-BOX-1001', fuehrtAnlage: true, lastSeenAt: vor(40_000), edge: null, update: null }],
+      deviceCount: 1, onlineCount: 1, waitingCount: 0, worstStatus: 'online', lastSeenAt: vor(40_000),
+      lastPlanGeneratedAt: vor(10 * MIN), hasStorage: true, batteryWithoutDevice: false,
+      sources: { total: 2, ok: 2, stale: 0, never: 0 }, edge: null, update: null,
+      control: {
+        deviceId: 'd1', commandedKw: -3.2, confirmedKw: -3.2, allMatch: true, controlEnabled: true,
+        certified: true, mismatchRoles: null, slotStart: vor(5 * MIN), checkedAt: vor(5 * MIN),
+      },
+      curtailment: {
+        deviceId: 'd1', units: 1, certifiedUnits: 1, controlEnabled: true, active: false,
+        appliedCapKw: null, allMatch: true, possibleOverride: false, checkedAt: vor(5 * MIN),
+        exportGuard: null, deviceExportLimit: null,
+      },
+      kwp: { configuredKwp: 29.6, observedPeakKw: 27.1, buckets: 120, verdict: 'ok', reason: '' },
+      forecast: [], pflege: [],
+    }],
+    releases: [],
+  }),
 });
 
 function Fixture() {
   const [page, setPage] = useState<PageId>('edge-updates');
-  const [geraeteAkte, setGeraeteAkte] = useState<{ ref: string; reiter: GeraeteAkteReiter | null } | null>(null);
+  const [geraeteAkte, setGeraeteAkte] = useState<{ ref: string; reiter: GeraeteAkteReiter | null; werkzeug?: AnlageWerkzeug | null } | null>(null);
 
   function navigate(target: Route | PageId) {
     if (typeof target === 'string') { setPage(target); setGeraeteAkte(null); return; }

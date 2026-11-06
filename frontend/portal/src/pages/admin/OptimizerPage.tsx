@@ -61,11 +61,22 @@ import { MiniShareBar } from '../../components/MiniChart';
  * Everything honours the backend's null discipline: a value that is not
  * honestly computable shows "—", never a fabricated 0.
  */
-export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
-  const [tenantId, setTenantId] = useState<string | null>(null);
+/** Scheibe S3 (E2 = A): mit welcher Anlage das Werkzeug aus der Akte heraus geöffnet wurde - die Auswahl Mandant → Anlage entfällt dann. */
+export interface OptimizerPreselect {
+  tenantId: string;
+  siteId: string;
+  siteName: string;
+}
+
+export function OptimizerPage({ tenants = [], preselect, onBack }: {
+  tenants?: Tenant[];
+  preselect?: OptimizerPreselect | null;
+  onBack?: () => void;
+}) {
+  const [tenantId, setTenantId] = useState<string | null>(() => preselect?.tenantId ?? null);
   const [sites, setSites] = useState<Site[]>([]);
   const [sitesState, setSitesState] = useState<'idle' | 'loading' | 'error'>('idle');
-  const [siteId, setSiteId] = useState<string | null>(null);
+  const [siteId, setSiteId] = useState<string | null>(() => preselect?.siteId ?? null);
 
   const [runAt, setRunAt] = useState<string | null>(null); // null = latest
   const [runDate, setRunDate] = useState<string | null>(null); // Berlin day of the run list
@@ -80,9 +91,8 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
   // ---- data loading ----------------------------------------------------------
 
   useEffect(() => {
-    if (!tenantId) {
-      setSites([]);
-      setSiteId(null);
+    if (!tenantId || preselect) {
+      if (!tenantId) { setSites([]); setSiteId(null); }
       return;
     }
     let cancelled = false;
@@ -150,7 +160,7 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
   }, [tenantId, siteId]);
 
   const selectedSite = useMemo(() => sites.find((s) => s.id === siteId) ?? null, [sites, siteId]);
-  const siteName = selectedSite?.name ?? 'Diese Anlage';
+  const siteName = preselect?.siteName ?? selectedSite?.name ?? 'Diese Anlage';
 
   return (
     <>
@@ -158,42 +168,51 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
         icon="settings"
         category="primary"
         title="Optimizer"
-        description="Diagnose & Konfiguration: verstehen, was der Optimizer für eine Anlage geplant hat und warum - und die Stellhebel pro Anlage justieren. Änderungen wirken beim nächsten Planungslauf."
+        description={
+          preselect
+            ? `Diagnose & Konfiguration für „${preselect.siteName}" - was der Optimizer geplant hat und warum, und die Stellhebel dieser Anlage.`
+            : 'Diagnose & Konfiguration: verstehen, was der Optimizer für eine Anlage geplant hat und warum - und die Stellhebel pro Anlage justieren. Änderungen wirken beim nächsten Planungslauf.'
+        }
+        actions={preselect && onBack ? <Button variant="outline" size="sm" onClick={onBack}>← Zur Anlage</Button> : undefined}
       />
 
-      {/* ---- picker row -------------------------------------------------------- */}
+      {/* ---- picker row (E2 = A, Scheibe S3: mit vorgewählter Anlage entfällt sie) -- */}
       <Card className="vp-optim-pickers" style={{ marginBottom: 'var(--vp-space-4)' }}>
-        <VpPicker
-          id="optim-tenant"
-          className="vp-optim-picker"
-          label="Mandant"
-          options={[
-            { value: '', label: 'Mandant wählen…' },
-            ...tenants.map((t) => ({ value: t.id, label: t.name })),
-          ]}
-          value={tenantId ?? ''}
-          onChange={(v) => {
-            setTenantId(v || null);
-            setSiteId(null);
-            setDiag(null);
-            setConfig(null);
-          }}
-          searchPlaceholder="Mandant suchen …"
-        />
+        {!preselect && (
+          <>
+            <VpPicker
+              id="optim-tenant"
+              className="vp-optim-picker"
+              label="Mandant"
+              options={[
+                { value: '', label: 'Mandant wählen…' },
+                ...tenants.map((t) => ({ value: t.id, label: t.name })),
+              ]}
+              value={tenantId ?? ''}
+              onChange={(v) => {
+                setTenantId(v || null);
+                setSiteId(null);
+                setDiag(null);
+                setConfig(null);
+              }}
+              searchPlaceholder="Mandant suchen …"
+            />
 
-        <VpPicker
-          id="optim-site"
-          className="vp-optim-picker"
-          label="Anlage"
-          options={[
-            { value: '', label: sitesState === 'loading' ? 'Lädt…' : 'Anlage wählen…' },
-            ...sites.map((s) => ({ value: s.id, label: s.name })),
-          ]}
-          value={siteId ?? ''}
-          disabled={!tenantId || sitesState === 'loading'}
-          onChange={(v) => setSiteId(v || null)}
-          searchPlaceholder="Anlage suchen …"
-        />
+            <VpPicker
+              id="optim-site"
+              className="vp-optim-picker"
+              label="Anlage"
+              options={[
+                { value: '', label: sitesState === 'loading' ? 'Lädt…' : 'Anlage wählen…' },
+                ...sites.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+              value={siteId ?? ''}
+              disabled={!tenantId || sitesState === 'loading'}
+              onChange={(v) => setSiteId(v || null)}
+              searchPlaceholder="Anlage suchen …"
+            />
+          </>
+        )}
 
         {diag && diag.lastRunDate != null && (
           <>

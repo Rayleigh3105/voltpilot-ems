@@ -19,17 +19,25 @@ import {
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { LIST_POLL_MS } from '../../pollCadence';
 import { BoxArtChip } from './BoxArtChip';
-import { parseGeraeteListeFilter } from '../../nav';
+import { parseGeraeteListeFilter, parseGeraeteListeWerkzeug, type AnlageWerkzeug } from '../../nav';
 import './BoxVersions.css';
 import './GeraeteUpdates.css';
 
+const WERKZEUG_LABEL: Record<AnlageWerkzeug, string> = { plan: 'Plan erklären (Optimizer)', flows: 'Flows' };
+
 /**
- * Die GERÄTE-LISTE (§4.4, Scheibe S2): eine Zeile je Box in jedem
+ * Die GERÄTE-LISTE (§4.4, Scheiben S2/S3): eine Zeile je Box in jedem
  * Lebensabschnitt. Sie ersetzt die Registrierungs-Seite und die Boxenliste
  * von „Plattform › Software" - eine Zeile führt in die Geräteakte, nie in
  * ein zweites Fenster.
+ *
+ * Scheibe S3: `?werkzeug=plan|flows` (die Alt-Adressen `#/optimizer`/`#/flows`)
+ * trägt ein Werkzeug mit - „Box wählen, dann Werkzeug"; ein Klick öffnet es
+ * direkt in `…/anlage/plan` bzw. `…/anlage/flows` dieser Box. `?filter=fassung`
+ * (die Alt-Adresse `#/komponenten-flotte`) markiert Boxen, deren Anlage eine
+ * Komponenten-Fassung nicht angewandt hat (`/admin/component-fleet`).
  */
-export function GeraeteListePage({ onOpen }: { onOpen: (ref: string) => void }) {
+export function GeraeteListePage({ onOpen }: { onOpen: (ref: string, werkzeug?: AnlageWerkzeug | null) => void }) {
   const [state, setState] = useState<{
     fleet: AdminDeviceRow[] | null;
     zeilen: GeraeteListeZeile[];
@@ -41,12 +49,14 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string) => void }) 
   const [filter, setFilter] = useState<ListeFilter>(
     () => ({ ...LEERER_LISTE_FILTER, chip: (parseGeraeteListeFilter(window.location.hash) as ListeFilter['chip']) ?? null }),
   );
+  const [werkzeug] = useState<AnlageWerkzeug | null>(() => parseGeraeteListeWerkzeug(window.location.hash));
   const [jetzt, setJetzt] = useState(() => new Date());
 
   async function reload() {
     setError(null);
-    const [edgeUpdates, devices, pending, werkstatt] = await Promise.allSettled([
+    const [edgeUpdates, devices, pending, werkstatt, komponenten] = await Promise.allSettled([
       adminApi.edgeUpdates(), adminApi.listDevices(), adminApi.listPendingEnrollments(), adminApi.werkstattBoxen(),
+      adminApi.componentFleet(),
     ]);
     if (edgeUpdates.status === 'rejected' && devices.status === 'rejected') {
       setLoadError('Das Geräte-Inventar ist gerade nicht abrufbar. Bitte erneut versuchen.');
@@ -56,14 +66,22 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string) => void }) 
     setLoadError(null);
     const now = new Date();
     setJetzt(now);
+    const fleet = edgeUpdates.status === 'fulfilled' ? edgeUpdates.value.fleet : [];
+    // Scheibe S3: Boxen, deren Anlage eine Fassung nicht angewandt hat (`pending`) - für den Chip „Fassung weicht ab".
+    const abweichendeAnlagen = new Set(
+      (komponenten.status === 'fulfilled' ? komponenten.value : [])
+        .filter((k) => k.syncStatus === 'pending')
+        .map((k) => k.siteId),
+    );
+    const fassungRefs = new Set(fleet.filter((r) => abweichendeAnlagen.has(r.siteId)).map((r) => r.externalRef));
     setState({
       fleet: devices.status === 'fulfilled' ? devices.value : null,
       zeilen: geraeteListeZeilen({
-        fleet: edgeUpdates.status === 'fulfilled' ? edgeUpdates.value.fleet : [],
+        fleet,
         devices: devices.status === 'fulfilled' ? devices.value : [],
         pending: pending.status === 'fulfilled' ? pending.value : [],
         werkstattBoxen: werkstatt.status === 'fulfilled' ? werkstatt.value : [],
-      }, now),
+      }, now, fassungRefs),
     });
     setLoading(false);
   }
@@ -96,6 +114,12 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string) => void }) 
 
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
 
+      {werkzeug && (
+        <div className="vp-alert vp-alert-info" data-testid="geraete-liste-werkzeug">
+          Werkzeug „{WERKZEUG_LABEL[werkzeug]}" - wählen Sie unten die Box, deren Anlage es öffnen soll.
+        </div>
+      )}
+
       {addOpen && (
         <RegistrierZeile
           onAbbrechen={() => setAddOpen(false)}
@@ -110,7 +134,8 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string) => void }) 
         <ErrorState message={loadError} onRetry={() => void reload()} />
       ) : (
         <Blende laedt={loading} skelett={<Card style={{ padding: 0, overflow: 'hidden' }}><TableSkeleton rows={5} cols={6} /></Card>}>
-          <GeraeteTabelle zeilen={state.zeilen} jetzt={jetzt} filter={filter} onFilter={setFilter} onOpen={onOpen} />
+          <GeraeteTabelle zeilen={state.zeilen} jetzt={jetzt} filter={filter} onFilter={setFilter}
+            onOpen={(ref) => (werkzeug ? onOpen(ref, werkzeug) : onOpen(ref))} />
         </Blende>
       )}
     </>

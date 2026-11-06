@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const controlCertifications = vi.fn();
@@ -17,14 +17,19 @@ vi.mock('../../admin/adminApi', () => ({
   },
 }));
 
-const { SteuerungsFreigabePage, gemeinsameHinweise } = await import('./SteuerungsFreigabePage');
+const { SteuerungsFreigabePage } = await import('./SteuerungsFreigabePage');
 
 /**
  * Admin-Umbau Stufe 3 (Captain-Entscheid F4): „Gerätetypen" ist keine eigene
- * Seite mehr, sondern die dritte Sektion hier - dieselbe Betreiber-Frage
- * („was dürfen wir steuern?"), nur für die andere Geräteklasse.
+ * Seite mehr, sondern eine Sektion hier - dieselbe Betreiber-Frage („was
+ * dürfen wir steuern?"), nur für die andere Geräteklasse.
+ *
+ * Konzept `vp-adminview-konzept-k1`, Scheibe S3: der Abschnitt „Anlagen"
+ * (Scharfschalten je Box) ist in den Reiter „Anlage" der Geräteakte umgezogen
+ * (`GeraeteAktePage.test.tsx` deckt ihn dort ab); diese Seite bleibt das
+ * Register plus die read-only Gerätetypen-Sektion.
  */
-describe('SteuerungsFreigabePage - die drei Sektionen', () => {
+describe('SteuerungsFreigabePage - Register und Gerätetypen', () => {
   beforeEach(() => {
     window.location.hash = '';
     controlCertifications.mockResolvedValue([]);
@@ -41,10 +46,10 @@ describe('SteuerungsFreigabePage - die drei Sektionen', () => {
     ]);
   });
 
-  it('trägt die Gerätetypen als dritte Sektion', async () => {
+  it('trägt Register und Gerätetypen, aber keine Anlagen-Sektion mehr', async () => {
     render(<SteuerungsFreigabePage />);
     expect(await screen.findByRole('heading', { name: 'Freigegebene Modelle' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Anlagen' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Anlagen' })).toBeNull();
     expect(
       await screen.findByRole('heading', { name: 'Steuerbare Gerätetypen' }),
     ).toBeInTheDocument();
@@ -72,12 +77,12 @@ describe('SteuerungsFreigabePage - die drei Sektionen', () => {
   it('springt NICHT, wenn kein Anker in der Adresse steht', async () => {
     const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
     render(<SteuerungsFreigabePage />);
-    await screen.findByRole('heading', { name: 'Anlagen' });
+    await screen.findByRole('heading', { name: 'Freigegebene Modelle' });
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 
-  it('reißt die Wechselrichter-Abschnitte NICHT mit, wenn der Katalog ausfällt', async () => {
+  it('reißt den Register-Abschnitt NICHT mit, wenn der Gerätetypen-Katalog ausfällt', async () => {
     consumerDeviceTypes.mockRejectedValue(new Error('boom'));
     render(<SteuerungsFreigabePage />);
     // Die eigene, fail-soft Meldung der Sektion …
@@ -86,54 +91,16 @@ describe('SteuerungsFreigabePage - die drei Sektionen', () => {
     ).toBeInTheDocument();
     // … und die Seite steht trotzdem.
     expect(screen.getByRole('heading', { name: 'Freigegebene Modelle' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Anlagen' })).toBeInTheDocument();
   });
-});
 
-const anlage = (id: string, verdict: 'covered_not_activated' | null) => ({
-  deviceId: id, tenantId: 't', siteId: `s-${id}`, siteName: `Anlage ${id}`, tenantName: 'Mandant', externalRef: `VP-${id}`,
-  activated: false, platformCertVerdict: verdict, platformCertModel: null, certSource: null, activatedAt: null, activatedBy: null,
-});
-
-/** UI-Runde Admin: derselbe Grund an vielen Anlagen steht einmal, der Knopf ist nur bei „bereit“ laut. */
-describe('SteuerungsFreigabePage - Anlagen ohne Wiederholung', () => {
-  beforeEach(() => {
-    window.location.hash = '';
-    controlCertifications.mockResolvedValue([]);
-    controlCandidates.mockResolvedValue([anlage('1', null), anlage('2', null), anlage('3', 'covered_not_activated')]);
-    consumerDeviceTypes.mockResolvedValue([
-      { type: 'wallbox', label: 'Wallbox', certificationStatus: 'simulator_only', certifiedAt: null, certificationNotes: 'Nur am Simulator (Runbook §5).', connectedCount: 0 },
+  it('nennt die aktivierten Anlagen als EIN Aggregat über dem Register', async () => {
+    controlCertifications.mockResolvedValue([
+      { brand: 'deye', model: 'SUN-30K', family: 'hybrid_3p', controlPath: null, invertControlSign: null, firmwareNote: null, note: null, certifiedAt: '2026-01-01T00:00:00Z' },
     ]);
-  });
-
-  it('nennt den gemeinsamen Grund einmal über der Tabelle, nicht an jeder Zeile', async () => {
+    controlCandidates.mockResolvedValue([
+      { deviceId: '1', tenantId: 't', siteId: 's-1', siteName: 'Anlage 1', tenantName: 'Mandant', externalRef: 'VP-1', activated: true, platformCertVerdict: null, platformCertModel: null, certSource: 'platform', activatedAt: null, activatedBy: null },
+    ]);
     render(<SteuerungsFreigabePage />);
-    await screen.findByText('Anlage 1');
-    expect(screen.getAllByText(/hat noch nicht gemeldet, ob sein Modell im Register steht/)).toHaveLength(1);
-    expect(screen.getByText('(2)', { exact: false })).toBeInTheDocument();
-    // Ein einmaliger Grund bleibt an seiner Zeile.
-    expect(screen.getByText(/Es fehlt nur die Aktivierung für diese Anlage/)).toBeInTheDocument();
-  });
-
-  it('macht nur den Knopf der freigegebenen Anlage zur Hauptaktion', async () => {
-    render(<SteuerungsFreigabePage />);
-    const zeile = (await screen.findByText('Anlage 3')).closest('tr')!;
-    expect(within(zeile).getByRole('button', { name: 'Steuerung aktivieren' }).className).toMatch(/primary/);
-    const leise = screen.getByText('Anlage 1').closest('tr')!;
-    expect(within(leise).getByRole('button', { name: 'Steuerung aktivieren' }).className).not.toMatch(/primary/);
-  });
-
-  it('klappt den Prüfstandsbeleg eines Gerätetyps erst auf Wunsch auf', async () => {
-    render(<SteuerungsFreigabePage />);
-    const beleg = await screen.findByText('Nur am Simulator (Runbook §5).');
-    expect(beleg.closest('details')).not.toHaveAttribute('open');
-  });
-});
-
-describe('gemeinsameHinweise', () => {
-  it('zählt nur Gründe, die mindestens zweimal vorkommen', () => {
-    expect(gemeinsameHinweise([
-      { label: 'A', hint: 'x' }, { label: 'A', hint: 'x' }, { label: 'B', hint: 'y' }, { label: 'C', hint: '' }, { label: 'C', hint: '' },
-    ])).toEqual([{ label: 'A', hint: 'x', anzahl: 2 }]);
+    expect(await screen.findByText(/1 Modell freigegeben · 1 Anlage aktiviert/)).toBeInTheDocument();
   });
 });

@@ -212,7 +212,7 @@ test('Geräte-Liste: jede Box in jedem Lebensabschnitt, eine Zeile führt in die
 // Scheibe S2 §4.4: die Geräteakte - EIN Ort je Box, Kopf, Reiter inline.
 // ---------------------------------------------------------------------------
 
-test('Geräteakte: Kopf mit Zustand, vier Reiter, Fernwartung inline - ohne Überlauf bei 1440 und 390 px', async ({ page }) => {
+test('Geräteakte: Kopf mit Zustand, fünf Reiter, Fernwartung inline - ohne Überlauf bei 1440 und 390 px', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -225,10 +225,9 @@ test('Geräteakte: Kopf mit Zustand, vier Reiter, Fernwartung inline - ohne Übe
   await expect(tabs).toContainText('Überblick');
   await expect(tabs).toContainText('Software');
   await expect(tabs).toContainText('Verbindung');
+  await expect(tabs).toContainText('Anlage');
   await expect(tabs).toContainText('Einrichtung');
   await expect(tabs).toContainText('Verlauf');
-  // Der Reiter „Anlage" kommt erst mit S3 - er steht hier noch nicht.
-  await expect(tabs).not.toContainText('Anlage');
 
   // Verbindung: die Fernwartungs-Karte EINER Box inline, kein zweites Fenster.
   await tabs.getByRole('tab', { name: 'Verbindung' }).click();
@@ -237,6 +236,14 @@ test('Geräteakte: Kopf mit Zustand, vier Reiter, Fernwartung inline - ohne Übe
 
   await tabs.getByRole('tab', { name: 'Software' }).click();
   await expect(page.getByText('Linie und Stand')).toBeVisible();
+
+  // Anlage (Scheibe S3): Plan, Steuerung & Abregelung, Scharfschalten, Fassung, Werkzeuge - alles inline.
+  await tabs.getByRole('tab', { name: 'Anlage' }).click();
+  await expect(page.getByText('Steuerung und Abregelung')).toBeVisible();
+  await expect(page.getByText('Komponenten-Fassung')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Zurücknehmen' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Plan erklären (Optimizer)' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Flows' })).toBeVisible();
 
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });

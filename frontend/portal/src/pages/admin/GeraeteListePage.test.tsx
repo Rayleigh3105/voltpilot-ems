@@ -7,6 +7,7 @@ const listDevices = vi.fn();
 const listPendingEnrollments = vi.fn();
 const werkstattBoxen = vi.fn();
 const provisionDevice = vi.fn();
+const componentFleet = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -15,6 +16,7 @@ vi.mock('../../admin/adminApi', () => ({
     listPendingEnrollments: (...a: unknown[]) => listPendingEnrollments(...a),
     werkstattBoxen: (...a: unknown[]) => werkstattBoxen(...a),
     provisionDevice: (...a: unknown[]) => provisionDevice(...a),
+    componentFleet: (...a: unknown[]) => componentFleet(...a),
   },
 }));
 
@@ -31,6 +33,7 @@ describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnit
     listDevices.mockResolvedValue([]);
     listPendingEnrollments.mockResolvedValue([]);
     werkstattBoxen.mockResolvedValue([]);
+    componentFleet.mockResolvedValue([]);
   });
 
   it('zeigt die leere Lage ehrlich, statt eine Tabelle ohne Zeilen zu zeigen', async () => {
@@ -77,5 +80,43 @@ describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnit
     render(<GeraeteListePage onOpen={vi.fn()} />);
     expect(await screen.findByText('Gedruckt', { exact: false })).toBeInTheDocument();
     expect(screen.getByTestId('geraete-liste')).toHaveTextContent('VP-0001');
+  });
+
+  const boxRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
+    deviceId: 'd1', label: 'edge-a1', externalRef: 'edge-a1', siteId: 's1', siteName: 'Pilsting',
+    tenantId: 't1', tenantName: 'Kunde A', ist: 'edge-2026.08.0', soll: 'edge-2026.08.0', sollSeq: 12,
+    state: 'bestaetigt', reason: null, since: null, reportedAt: null, rolloutId: null,
+    lastSeenAt: new Date().toISOString(), boxArt: 'docker', linie: 'docker',
+    ...overrides,
+  });
+
+  /** Scheibe S3: `#/optimizer`/`#/flows` landen hier mit einem Werkzeug - „Box wählen, dann Werkzeug". */
+  it('trägt ein Werkzeug aus der Adresse mit und öffnet die Akte direkt im Werkzeug', async () => {
+    window.location.hash = '#/plattform/geraete?werkzeug=plan';
+    edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [boxRow()] });
+    const onOpen = vi.fn();
+    render(<GeraeteListePage onOpen={onOpen} />);
+    expect(await screen.findByTestId('geraete-liste-werkzeug')).toHaveTextContent('Plan erklären (Optimizer)');
+    fireEvent.click(await screen.findByText('Pilsting'));
+    expect(onOpen).toHaveBeenCalledWith('edge-a1', 'plan');
+    window.location.hash = '';
+  });
+
+  /** Scheibe S3: `#/komponenten-flotte` landet hier mit `?filter=fassung` - nur Boxen mit abweichender Fassung. */
+  it('Chip „Fassung weicht ab" filtert auf Boxen, deren Anlage eine Fassung nicht angewandt hat', async () => {
+    window.location.hash = '#/plattform/geraete?filter=fassung';
+    edgeUpdates.mockResolvedValue({
+      ...emptyEdgeUpdates(),
+      fleet: [boxRow(), boxRow({ deviceId: 'd2', externalRef: 'edge-a2', siteId: 's2', siteName: 'Ahrenberg' })],
+    });
+    componentFleet.mockResolvedValue([
+      { siteId: 's1', siteName: 'Pilsting', tenantId: 't1', tenantName: 'Kunde A', componentAuthority: 'portal', componentCount: 2, syncStatus: 'pending', privateTemplates: 0 },
+      { siteId: 's2', siteName: 'Ahrenberg', tenantId: 't1', tenantName: 'Kunde A', componentAuthority: 'portal', componentCount: 2, syncStatus: 'in_sync', privateTemplates: 0 },
+    ]);
+    render(<GeraeteListePage onOpen={vi.fn()} />);
+    const liste = await screen.findByTestId('geraete-liste');
+    await waitFor(() => expect(liste).toHaveTextContent('Pilsting'));
+    expect(liste).not.toHaveTextContent('Ahrenberg');
+    window.location.hash = '';
   });
 });

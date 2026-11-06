@@ -163,6 +163,20 @@ describe('OptimizerPage - picker gating', () => {
     await waitFor(() => expect(listSites).toHaveBeenCalledWith('t-1'));
     expect(await screen.findByText(/Wählen Sie eine Anlage/)).toBeInTheDocument();
   });
+
+  /** Scheibe S3 (E2 = A): aus der Akte › Anlage geöffnet - die Auswahl Mandant → Anlage entfällt. */
+  it('mit vorgewählter Anlage (preselect) lädt sofort, ohne Mandant/Anlage-Auswahl', async () => {
+    diagnostics.mockResolvedValue(makeDiag());
+    config.mockResolvedValue(makeConfig());
+    const onBack = vi.fn();
+    render(<OptimizerPage preselect={{ tenantId: 't-1', siteId: 's-1', siteName: 'Hof Lindenberg' }} onBack={onBack} />);
+    expect(screen.queryByRole('combobox', { name: 'Mandant' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Anlage' })).toBeNull();
+    expect(listSites).not.toHaveBeenCalled();
+    await waitFor(() => expect(diagnostics).toHaveBeenCalledWith('t-1', 's-1', null, null));
+    fireEvent.click(screen.getByRole('button', { name: '← Zur Anlage' }));
+    expect(onBack).toHaveBeenCalled();
+  });
 });
 
 describe('OptimizerPage - diagnostics rendering', () => {

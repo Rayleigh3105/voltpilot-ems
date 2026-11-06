@@ -530,7 +530,8 @@ function liveCell(site: AdminFleetSite, now: Date): { text: string; tone: Tone }
   return { text: relAge(age), tone: age <= ONLINE_WINDOW_MS ? 'ok' : 'warn' };
 }
 
-function planCell(lastRun: string | null, now: Date): { text: string; tone: Tone } {
+/** Das Alter des letzten Optimierer-Laufs - auch wiederverwendet in der Akte › Anlage (Scheibe S3). */
+export function planCell(lastRun: string | null, now: Date): { text: string; tone: Tone } {
   if (!lastRun) return { text: 'kein aktueller Plan', tone: 'warn' };
   const age = now.getTime() - Date.parse(lastRun);
   return { text: relAge(age), tone: age > PLAN_STALE_MS ? 'warn' : 'ok' };
