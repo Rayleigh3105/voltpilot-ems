@@ -312,14 +312,23 @@ function FleetSiteGroup({
               </span>
             </td>
             <td data-label="Fähigkeiten">
-              <div className="vp-fleet-capabilities">
-                {box.capabilities.map((capability) => (
-                  // Eine fehlende Fähigkeit ist keine Störung: grau statt orange.
-                  <Badge key={capability.code} variant={capability.status === 'vorhanden' ? 'ok' : 'off'} dot>
-                    {capability.name}: {capability.status === 'vorhanden' ? 'vorhanden' : 'fehlt'}
-                  </Badge>
-                ))}
-              </div>
+              {/* N4: eine VORHANDENE Fähigkeit braucht keine Ansage - nur eine
+                  fehlende verhindert etwas und ist deshalb den Blick wert.
+                  Zwei graue Abzeichen an jeder Box waren reine Kulisse. */}
+              {(() => {
+                const fehlend = box.capabilities.filter((c) => c.status !== 'vorhanden');
+                return fehlend.length === 0 ? (
+                  <span className="vp-muted">—</span>
+                ) : (
+                  <div className="vp-fleet-capabilities">
+                    {fehlend.map((capability) => (
+                      <Badge key={capability.code} variant="off" dot>
+                        {capability.name} fehlt
+                      </Badge>
+                    ))}
+                  </div>
+                );
+              })()}
             </td>
           </tr>
         );

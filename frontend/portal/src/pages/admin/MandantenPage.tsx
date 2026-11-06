@@ -9,7 +9,7 @@ import { Input } from '../../../designsystem/components/forms/Input';
 import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { VpPicker } from '../../components/VpPicker';
-import { ApiError, type Site } from '../../api';
+import { ApiError, api, type SelbstauskunftKundenbereichBeendet, type Site } from '../../api';
 import { fmtCoords, fmtNum } from '../../format';
 import { tenantPulse } from '../../adminPulse';
 import {
@@ -357,17 +357,24 @@ function TenantDetailSeite({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [report, setReport] = useState<TenantOffboardingReport | null>(null);
+  // Vertragsende I (N1): `undefined` = noch nicht gelesen, `null` = aktiv.
+  const [vertragsende, setVertragsende] = useState<SelbstauskunftKundenbereichBeendet | null | undefined>(undefined);
+  const [vertragDialog, setVertragDialog] = useState<'beenden' | 'wiederaufnehmen' | null>(null);
+  const [vertragBusy, setVertragBusy] = useState(false);
+  const [vertragError, setVertragError] = useState<string | null>(null);
 
   async function reload() {
     setError(null);
     setLoadError(null);
     try {
-      const [u, s] = await Promise.all([
+      const [u, s, selbst] = await Promise.all([
         adminApi.listUsers(tenant.id),
         adminApi.listSites(tenant.id),
+        api.selbstauskunft(tenant.id),
       ]);
       setUsers(u);
       setSites(s);
+      setVertragsende(selbst.kundenbereich?.beendet ?? null);
     } catch (e) {
       setLoadError(
         e instanceof ApiError ? e.message : 'Die Mandantendaten konnten nicht geladen werden.',
@@ -432,6 +439,36 @@ function TenantDetailSeite({
       );
     } finally {
       setDeleteBusy(false);
+    }
+  }
+
+  async function beenden(auftrag: string, begruendung: string, fristTage: number) {
+    setVertragBusy(true);
+    setVertragError(null);
+    try {
+      await adminApi.beendenMandant(tenant.id, { auftrag, begruendung, confirmName: tenant.name, fristTage });
+      const selbst = await api.selbstauskunft(tenant.id);
+      setVertragsende(selbst.kundenbereich?.beendet ?? null);
+      setVertragDialog(null);
+    } catch (e) {
+      setVertragError(e instanceof ApiError ? `Beenden fehlgeschlagen: ${e.message}` : 'Fehler');
+    } finally {
+      setVertragBusy(false);
+    }
+  }
+
+  async function wiederaufnehmen(auftrag: string, begruendung: string) {
+    setVertragBusy(true);
+    setVertragError(null);
+    try {
+      await adminApi.wiederaufnehmenMandant(tenant.id, { auftrag, begruendung });
+      const selbst = await api.selbstauskunft(tenant.id);
+      setVertragsende(selbst.kundenbereich?.beendet ?? null);
+      setVertragDialog(null);
+    } catch (e) {
+      setVertragError(e instanceof ApiError ? `Wiederaufnehmen fehlgeschlagen: ${e.message}` : 'Fehler');
+    } finally {
+      setVertragBusy(false);
     }
   }
 
@@ -659,6 +696,38 @@ function TenantDetailSeite({
 
         <UnterstuetzungAdmin tenantId={tenant.id} name={tenant.name} />
 
+        <Card padding="lg" radius="lg" className="vp-mandant-karte">
+          <div className="vp-section-head">
+            <h2>Vertrag</h2>
+          </div>
+          {vertragsende === undefined ? (
+            <TextSkeleton lines={1} />
+          ) : vertragsende ? (
+            <>
+              <div className="vp-alert vp-alert-info" style={{ marginTop: 0 }}>
+                Der Vertrag ist am {datumDe(vertragsende.beendet_am)} beendet. Die Daten lassen sich
+                nur noch lesen; gelöscht werden sie frühestens am{' '}
+                {datumDe(vertragsende.loeschung_fruehestens)}.
+              </div>
+              {vertragError && <div className="vp-alert vp-alert-err">{vertragError}</div>}
+              <Button variant="outline" size="sm" onClick={() => setVertragDialog('wiederaufnehmen')}>
+                Wiederaufnehmen
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="vp-muted" style={{ marginTop: 0 }}>
+                Ein aktiver Vertrag kann beendet werden - mit Frist, danach wiederaufnehmbar.
+                Gelöscht wird ein Mandant erst nach Ablauf der Frist, in der Gefahrenzone unten.
+              </p>
+              {vertragError && <div className="vp-alert vp-alert-err">{vertragError}</div>}
+              <Button variant="outline" size="sm" onClick={() => setVertragDialog('beenden')}>
+                Vertrag beenden
+              </Button>
+            </>
+          )}
+        </Card>
+
         <DangerZone
           actionLabel="Mandant löschen (Offboarding)"
           description="Offboarding entfernt den Mandanten mit allen Daten und Zugängen - die endgültigste Aktion auf der Plattform."
@@ -672,9 +741,27 @@ function TenantDetailSeite({
           typeToConfirm={tenant.name}
           busy={deleteBusy}
           error={deleteError}
+          disabledReason={
+            vertragsende === undefined
+              ? null
+              : vertragsende === null
+                ? 'Gelöscht werden kann ein Mandant erst, nachdem der Vertrag beendet wurde und die Frist abgelaufen ist.'
+                : !fristAbgelaufen(vertragsende.loeschung_fruehestens)
+                  ? `Die Frist läuft noch bis ${datumDe(vertragsende.loeschung_fruehestens)} - vorher kann nicht gelöscht werden.`
+                  : null
+          }
           onConfirm={() => void offboard()}
         />
       </section>
+
+      <VertragsendeDialog
+        kind={vertragDialog}
+        tenantName={tenant.name}
+        busy={vertragBusy}
+        onClose={() => setVertragDialog(null)}
+        onBeenden={(a, b, f) => void beenden(a, b, f)}
+        onWiederaufnehmen={(a, b) => void wiederaufnehmen(a, b)}
+      />
 
       <CreateUserDrawer
         open={userDrawer}
@@ -865,4 +952,114 @@ function betriebsartLabel(betriebsart: string): string {
   if (betriebsart === 'endkunde') return 'Endkunde';
   if (betriebsart === 'betreiber') return 'Betreiber';
   return betriebsart;
+}
+
+/** `beendet_am`/`loeschung_fruehestens` sind Kalendertage (`LocalDate.toString()`, YYYY-MM-DD). */
+function datumDe(tag: string): string {
+  const [jahr, monat, t] = tag.split('-');
+  return `${t}.${monat}.${jahr}`;
+}
+
+/** Heutiger Kalendertag in der Vertragszone (Europe/Berlin), zum Vergleich mit `loeschung_fruehestens`. */
+function heuteBerlin(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date());
+}
+
+function fristAbgelaufen(loeschungFruehestens: string): boolean {
+  return heuteBerlin() >= loeschungFruehestens;
+}
+
+/**
+ * Vertragsende I (N1): EIN Dialog für beide Übergänge - „beenden" trägt
+ * zusätzlich die Frist und das Namens-Eintippen (dieselbe Bestätigungsform
+ * wie die Gefahrenzone), „wiederaufnehmen" nur Auftrag und Begründung.
+ */
+function VertragsendeDialog({
+  kind,
+  tenantName,
+  busy,
+  onClose,
+  onBeenden,
+  onWiederaufnehmen,
+}: {
+  kind: 'beenden' | 'wiederaufnehmen' | null;
+  tenantName: string;
+  busy: boolean;
+  onClose: () => void;
+  onBeenden: (auftrag: string, begruendung: string, fristTage: number) => void;
+  onWiederaufnehmen: (auftrag: string, begruendung: string) => void;
+}) {
+  const [auftrag, setAuftrag] = useState('');
+  const [begruendung, setBegruendung] = useState('');
+  const [fristTage, setFristTage] = useState('90');
+  const [typed, setTyped] = useState('');
+
+  useEffect(() => {
+    if (kind) {
+      setAuftrag('');
+      setBegruendung('');
+      setFristTage('90');
+      setTyped('');
+    }
+  }, [kind]);
+
+  const beenden = kind === 'beenden';
+  const frist = Number.parseInt(fristTage, 10);
+  const blocked =
+    !auftrag.trim() || !begruendung.trim() || (beenden && (typed.trim() !== tenantName || !Number.isFinite(frist) || frist < 1));
+
+  return (
+    <Modal
+      open={kind != null}
+      onClose={onClose}
+      title={beenden ? `Vertrag beenden: ${tenantName}` : `Vertrag wiederaufnehmen: ${tenantName}`}
+    >
+      <p className="vp-note" style={{ marginTop: 0 }}>
+        {beenden
+          ? 'Ab dem Beenden kann der Mandant seine Daten nur noch lesen; gelöscht werden sie frühestens nach der Frist.'
+          : 'Der Mandant kehrt in den aktiven Zustand zurück - derselbe Kundenbereich, kein neuer.'}
+      </p>
+      <Input label="Auftrag" value={auftrag} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAuftrag(e.target.value)} />
+      <Input
+        label="Begründung"
+        value={begruendung}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBegruendung(e.target.value)}
+      />
+      {beenden && (
+        <>
+          <Input
+            label="Frist in Tagen"
+            type="number"
+            min={1}
+            max={3650}
+            value={fristTage}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFristTage(e.target.value)}
+          />
+          <Input
+            label={`Zur Bestätigung „${tenantName}" eintippen`}
+            placeholder={tenantName}
+            value={typed}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTyped(e.target.value)}
+          />
+        </>
+      )}
+      <div style={{ display: 'flex', gap: 'var(--vp-space-2)', justifyContent: 'flex-end', marginTop: 'var(--vp-space-4)' }}>
+        <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
+          Abbrechen
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={busy || blocked}
+          onClick={() =>
+            beenden ? onBeenden(auftrag.trim(), begruendung.trim(), frist) : onWiederaufnehmen(auftrag.trim(), begruendung.trim())
+          }
+        >
+          {busy ? 'Wird gespeichert…' : beenden ? 'Vertrag beenden' : 'Wiederaufnehmen'}
+        </Button>
+      </div>
+    </Modal>
+  );
 }

@@ -12480,7 +12480,15 @@ export const api = {
    * UEMS AP-03 IP-4: die Selbstauskunft — wer fragt und was er darf. Die Berichts-Dialoge (AP-12 IP-14) lesen daraus,
    * welche Hebel sie zeigen; entscheiden tut weiter die Route.
    */
-  selbstauskunft: () => request<Selbstauskunft>('/api/v1/me'),
+  /**
+   * `tenantId` stampft den `X-Tenant-Id`-Kopf NUR für diesen Aufruf (wie
+   * `registerWritePreview`) - die Plattform liest damit `kundenbereich.beendet`
+   * eines einzelnen Mandanten, ohne den globalen Mandanten-Umschalter zu
+   * verstellen. Kein neuer Endpoint: dieselbe Selbstauskunft, die jede Person
+   * über ihren eigenen Kundenbereich liest (N1).
+   */
+  selbstauskunft: (tenantId?: string) =>
+    request<Selbstauskunft>('/api/v1/me', tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : {}),
   /**
    * Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. `abruf` ist der
    * Augenblick der Route - die Uhr der Zeitraum-Wahl beim Anlegen (Konzept Nachweisen n1, Befund 3).

@@ -90,10 +90,12 @@ describe('PlattformUebersichtPage', () => {
     expect(table).toHaveTextContent('Führende Box');
     expect(table).toHaveTextContent('Weitere Box');
     expect(table).toHaveTextContent('edge-2026.09.0');
-    expect(table).toHaveTextContent('Rückmeldung je Datenquelle: fehlt');
+    expect(table).toHaveTextContent('Rückmeldung je Datenquelle fehlt');
     // UI-Runde Admin: eine fehlende Fähigkeit ist grau, keine Störung; ohne Unterstützung keine Zeile dazu.
-    const faehigkeit = screen.getAllByText(/Rückmeldung je Datenquelle: fehlt/)[0].closest('span') as HTMLElement;
+    const faehigkeit = screen.getAllByText(/Rückmeldung je Datenquelle fehlt/)[0].closest('span') as HTMLElement;
     expect(faehigkeit.style.background).toBe('var(--vp-bg-light)');
+    // N4: eine VORHANDENE Fähigkeit bekommt kein Abzeichen - nur die fehlende verhindert etwas.
+    expect(table).not.toHaveTextContent('vorhanden');
     expect(table).not.toHaveTextContent('Keine aktive Unterstützung');
     expect(table).not.toHaveTextContent('Unterstützung nicht verfügbar');
 

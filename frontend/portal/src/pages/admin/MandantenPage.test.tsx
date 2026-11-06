@@ -8,6 +8,9 @@ const updateUser = vi.fn();
 const deleteUser = vi.fn();
 const disableUser = vi.fn();
 const enableUser = vi.fn();
+const selbstauskunft = vi.fn();
+const beendenMandant = vi.fn();
+const wiederaufnehmenMandant = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -22,8 +25,15 @@ vi.mock('../../admin/adminApi', () => ({
     createSite: vi.fn(),
     updateTenant: vi.fn(),
     deleteTenant: vi.fn(),
+    beendenMandant: (...a: unknown[]) => beendenMandant(...a),
+    wiederaufnehmenMandant: (...a: unknown[]) => wiederaufnehmenMandant(...a),
   },
 }));
+
+vi.mock('../../api', async () => {
+  const actual = await vi.importActual<typeof import('../../api')>('../../api');
+  return { ...actual, api: { ...actual.api, selbstauskunft: (...a: unknown[]) => selbstauskunft(...a) } };
+});
 
 const { MandantenPage, mandantAusHash, mandantHash } = await import('./MandantenPage');
 
@@ -72,6 +82,9 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
     deleteUser.mockReset().mockResolvedValue(undefined);
     disableUser.mockReset().mockResolvedValue(undefined);
     enableUser.mockReset().mockResolvedValue(undefined);
+    selbstauskunft.mockReset().mockResolvedValue({ kundenbereich: { id: 't-1', name: TENANT.name, beendet: null } });
+    beendenMandant.mockReset();
+    wiederaufnehmenMandant.mockReset();
   });
 
   it('belässt die Profilhandlungen in der Plattformverwaltung', async () => {
@@ -192,6 +205,43 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
     expect(document.body.textContent).not.toContain('Portal-Ansicht');
     expect(document.body.textContent).not.toContain('Kundensicht');
     expect(document.body.textContent).not.toContain('Kontext-Umschalter');
+  });
+
+  it('N1: beendet den Vertrag mit Frist und schließt die Gefahrenzone bis zu deren Ablauf', async () => {
+    openDetail();
+    const drawer = await screen.findByRole('region', { name: TENANT.name });
+    // Solange der Vertrag aktiv ist, ist Löschen nur möglich, wenn man zuerst beendet.
+    expect(within(drawer).getByText(/erst, nachdem der Vertrag beendet wurde/)).toBeInTheDocument();
+    expect(within(drawer).queryByRole('button', { name: 'Mandant löschen (Offboarding)' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Vertrag beenden' }));
+    const dlg = await screen.findByRole('dialog', { name: /Vertrag beenden/ });
+    fireEvent.change(within(dlg).getByLabelText('Auftrag'), { target: { value: 'TICKET-1' } });
+    fireEvent.change(within(dlg).getByLabelText('Begründung'), { target: { value: 'Kunde hat gekündigt' } });
+    fireEvent.change(within(dlg).getByLabelText(`Zur Bestätigung „${TENANT.name}" eintippen`), {
+      target: { value: TENANT.name },
+    });
+    beendenMandant.mockResolvedValue({ zustand: 'beendet' });
+    selbstauskunft.mockResolvedValue({
+      kundenbereich: {
+        id: 't-1',
+        name: TENANT.name,
+        beendet: { beendet_am: '2029-01-01', loeschung_fruehestens: '2029-04-01', liest: true, text: '' },
+      },
+    });
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Vertrag beenden' }));
+    await waitFor(() =>
+      expect(beendenMandant).toHaveBeenCalledWith('t-1', {
+        auftrag: 'TICKET-1',
+        begruendung: 'Kunde hat gekündigt',
+        confirmName: TENANT.name,
+        fristTage: 90,
+      }),
+    );
+    expect(await within(drawer).findByText(/am 01.01.2029 beendet/)).toBeInTheDocument();
+    // Gelöscht wird erst nach der Frist (hier: in der Zukunft) - der Knopf bleibt deshalb aus.
+    expect(within(drawer).queryByRole('button', { name: 'Mandant löschen (Offboarding)' })).not.toBeInTheDocument();
+    expect(within(drawer).getByText(/Die Frist läuft noch bis 01.04.2029/)).toBeInTheDocument();
   });
 
   it('verspricht den Sprung wieder ohne Bedingung: Seite und Dialog nennen den Umschalter, keine Unterstützung', async () => {
