@@ -39,6 +39,14 @@ describe('Die Hülle', () => {
 });
 
 describe('Unterm Strich', () => {
+  it('sagt „Zwischenstand" nur einmal: steht es schon in der Zeile, entfällt die Marke', () => {
+    const { container } = render(
+      <GeldKachel money={{ ...MONEY, attribution: 'Zwischenstand Steuerung + 0,09 €', attributionInterim: true }} />,
+    );
+    expect(container.textContent).toContain('Zwischenstand Steuerung + 0,09 €');
+    expect(container.querySelector('.vp-k-marke')).toBeNull();
+  });
+
   it('kompakt wie im Prototyp: die eine Geldzahl, der Zeitraum daneben, die Zurechnung als Satz', () => {
     const { container } = render(
       <GeldKachel money={{ ...MONEY, attributionInterim: true }} periodSeg={<div className="vp-seg" />} />,

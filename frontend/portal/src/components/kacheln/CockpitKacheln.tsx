@@ -99,7 +99,10 @@ export function GeldKachel({
       )}
       {money?.attributionZweit && <p className="vp-k-sub">{money.attributionZweit}</p>}
       {money?.winterSatz && <p className="vp-k-sub">{money.winterSatz}</p>}
-      {money?.attributionInterim && <Marke>Zwischenstand</Marke>}
+      {/* Die Marke nur, wenn die Zeile darüber das Wort nicht schon sagt („Zwischenstand Steuerung + 0,09 €"). */}
+      {money?.attributionInterim && !/Zwischenstand/i.test(`${money.attribution ?? ''} ${money.attributionZweit ?? ''}`) && (
+        <Marke>Zwischenstand</Marke>
+      )}
     </Kachel>
   );
 }
