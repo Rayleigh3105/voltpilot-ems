@@ -479,9 +479,29 @@ public class RolloutService {
             journal.add(new EdgeUpdatesDto.EventDto(e.id(), e.at(), e.actor(), e.event(),
                     e.rolloutId(), e.deviceId(), e.detail()));
         }
+        long nochOffen = inRollout.values().stream()
+                .filter(rd -> istNochOffen(rd.state())).count();
         return new EdgeUpdatesDto(releaseDtos, rolloutDtos, rows, journal,
-                new EdgeUpdatesDto.KpiDto(known, upToDate, unknown, inRollout.size(), failed,
+                new EdgeUpdatesDto.KpiDto(known, upToDate, unknown, (int) nochOffen, failed,
                         newest), lines(releaseDtos, perLine));
+    }
+
+    /**
+     * „Im Rollout" heißt: eine Zuweisung ist begonnen und weder bestätigt noch
+     * fehlgeschlagen noch abgelöst (Geräte &amp; Updates G1-Folgefund). Reine
+     * Anwesenheit im Fenster der letzten Rollouts (die {@code inRollout}-Karte)
+     * zählt NICHT mehr mit - sonst bliebe ein längst bestätigtes Gerät für
+     * immer „im Rollout".
+     *
+     * <p>„Im Update verstummt" zählt hier bewusst NICHT mehr mit - es steht
+     * schon in {@code failed} (wie beim Zeilen-Zähler weiter oben); sonst
+     * würde dieselbe Box zugleich als „läuft" und als „fehlgeschlagen"
+     * auftauchen.
+     */
+    private static boolean istNochOffen(String state) {
+        return !RolloutStates.isConfirmed(state) && !isTerminalFailure(state)
+                && !RolloutStates.IM_UPDATE_VERSTUMMT.equals(state)
+                && !RolloutStates.ZURUECKGEZOGEN.equals(state);
     }
 
     /**
