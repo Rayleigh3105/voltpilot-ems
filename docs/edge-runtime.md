@@ -33,8 +33,14 @@ Die Vorzeichen folgen dem lokalen Vertrag. Der primäre Netzwert wird standardm�
 - Quellwechsel und veraltete Messungen müssen im Zustand nachvollziehbar bleiben. Eine Komponente behält Kennung und Historie bei Aliasänderung.
 
 - Eine Box ohne Wechselrichter, die eine Anlagensteuerung liest (Erzeuger-Registerbild), bildet die Standortbilanz aus deren Lesung: PV = Erzeugung, Netz = Netzpunkt, Batterie 0 als Tatsache des Bilds, durch denselben Fold.
+- Eine portal-verwaltete Box ohne Wechselrichter und ohne Anlagensteuerung (reines Monitoring: nur Erzeuger und Zähler) bildet die Standortbilanz aus ihren Quellen, durch denselben Fold und höchstens alle 5 s:
+  - PV = Summe der frischen Erzeuger,
+  - Netz = frischer Netz-Zähler,
+  - Haus = PV + Netz − Batterie.
 
-Quellen: `agent.onLocalTelemetry`, `agent.foldSiteSample`, `agent.plantControllerSample`, `sources.BalanceSettings`, `inverter.FamilyHasBattery` im [Core](../edge-app/core/internal/).
+  Batterie 0 gilt nur als Tatsache: alle Erzeuger nachweislich batterielos und kein Speicher in der Registry. Unterzähler gehen nicht in die Bilanz ein. Jeder Erzeuger meldet seine Lesung zusätzlich als Telemetrie seiner Komponente (`pv_power_kw`); die Komponente ergibt sich aus dem Pin oder der Ableitung des Pushs. Beides schweigt, solange ein Wechselrichter-Sample auf `edge/telemetry` ankommt.
+
+Quellen: `agent.onLocalTelemetry`, `agent.foldSiteSample`, `agent.plantControllerSample`, `agent.sourcesSiteSample`, `agent.producerEntityTelemetry`, `sources.BalanceSettings`, `inverter.FamilyHasBattery` im [Core](../edge-app/core/internal/).
 
 ## Schutzgrenzen
 

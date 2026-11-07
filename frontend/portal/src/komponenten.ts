@@ -524,6 +524,28 @@ function sourceReadingIndex(sources: SiteSource[] | null | undefined): Map<strin
   return idx;
 }
 
+/** What a box-read meter reports about itself: its health and its own value (kW). */
+interface MeterReading {
+  health: ComponentHealth;
+  valueKw: number;
+}
+
+/**
+ * Index the box-read METERS (`/sources`: a grid meter's signed `powerKw`, a sub-meter's
+ * `loadKw`) by their edge source id - only those with a value and a reported health, so a
+ * component pinned to one can say „Liefert Daten" with its own number. A point that never
+ * delivered, or a role without a meter value, is not in the index (absent, never a 0).
+ */
+function meterReadingIndex(sources: SiteSource[] | null | undefined): Map<string, MeterReading> {
+  const idx = new Map<string, MeterReading>();
+  for (const s of sources ?? []) {
+    const valueKw = s.role === 'grid-meter' ? s.powerKw : s.role === 'consumer' ? s.loadKw : null;
+    if (valueKw == null || (s.health !== 'ok' && s.health !== 'stale')) continue;
+    idx.set(s.sourceId, { health: s.health, valueKw });
+  }
+  return idx;
+}
+
 /** A customer-safe role word for a reported-but-unassigned source (no "Quelle"). */
 function reportedRoleLabel(role: string | null): string {
   switch (role) {
@@ -1212,6 +1234,7 @@ export function plantModel(
     capsById.set(te.id, caps);
   }
   const sourceByEdgeId = sourceReadingIndex(sources);
+  const meterByEdgeId = meterReadingIndex(sources);
 
   // The per-device PV split: the SAME reconciliation the energy flow uses, so
   // the Anlagen-Modell can never disagree with the cockpit's PV number. On a
@@ -1255,6 +1278,20 @@ export function plantModel(
       const src = e.edgeSourceId != null ? sourceByEdgeId.get(e.edgeSourceId) : undefined;
       if (src?.hasReading) health = src.health;
     }
+    // Dasselbe für einen Zähler, den die Box als eigene Quelle liest (Unterzähler, Netz-Zähler): er
+    // hat auf einer Box ohne Wechselrichter keine eigene telemetry_v2, ein Unterzähler nie
+    // (Schramm „Zuhause“, 07.11.2026) - die Box meldet seinen Wert aber im Herzschlag. Liefert die
+    // gepinnte Quelle, sagt die Zeile das samt Wert, statt für immer „Wartet auf die ersten Daten“.
+    // Nur Anzeige an der eigenen Zeile: in den Energiefluss geht er dadurch nicht ein.
+    let zaehlerWert: number | null = null;
+    if ((role === 'consumer' || role === 'grid') && health !== 'ok' && e.edgeSourceId != null) {
+      const src = meterByEdgeId.get(e.edgeSourceId);
+      if (src != null) {
+        health = src.health;
+        // Ein veralteter Wert steht nie als aktueller da - „Meldet sich gerade nicht" ohne Zahl.
+        zaehlerWert = src.health === 'ok' ? src.valueKw : null;
+      }
+    }
     components.push({
       id: e.id,
       entityId: e.id,
@@ -1269,7 +1306,11 @@ export function plantModel(
       provenance: null,
       reading: orphaned
         ? null
-        : readingFor(role, caps, role === 'pv' ? (pvByEntity.get(e.id) ?? null) : null),
+        : readingFor(
+          role,
+          zaehlerWert != null && !caps.has('power_kw') ? new Map(caps).set('power_kw', zaehlerWert) : caps,
+          role === 'pv' ? (pvByEntity.get(e.id) ?? null) : null,
+        ),
       channels: componentChannels(e),
       control,
       schaltbar,

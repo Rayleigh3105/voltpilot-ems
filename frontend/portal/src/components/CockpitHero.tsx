@@ -167,7 +167,6 @@ export function CockpitHero({
 }) {
   const rollenTopologie = cockpitRollenTopologie(topology, [pvRollen, verbrauchRollen, netzRollen]);
   const erzeuger = buehne?.erzeuger ?? null;
-  const hasFlow = erzeuger != null || flowHasValues(rollenTopologie, snapshot);
   // Existiert eine kanonische PV-Zuordnung, ist SIE die Herkunft der Cockpit-Zahl - dann tritt die
   // rohe Quellen-Aufteilung (`PvBreakdownLine`) zurück, sie erklärte sonst eine andere Zahl.
   const pvRolleAktiv = pvRollen?.zuordnung_vorhanden === true;
@@ -175,6 +174,11 @@ export function CockpitHero({
   // Sonnen-Knoten UND „Erzeugung im Detail“ - beide können sich nicht
   // widersprechen. Mit kanonischer PV-Rolle ist deren Wert die Zahl.
   const composition = topology && !pvRolleAktiv ? pvComposition(rollenTopologie, sources, pins) : null;
+  // Was die Sonne zeigt, ist auch ein Fluss: eine reine Erzeugeranlage ohne Hauptgerät (Schramm
+  // „Zuhause“, 07.11.2026) hat ihre PV nur über die gepinnten Quellen - die Zahl am Sonnen-Knoten
+  // kommt genau daher. Ohne diese Zeile sagte das Cockpit „Ist Ihr Gerät mit Strom versorgt?“,
+  // während drei Wechselrichter lieferten.
+  const hasFlow = erzeuger != null || flowHasValues(rollenTopologie, snapshot) || composition?.totalKw != null;
   // Rechts neben dem Fluss steht am Rechner die LEITKACHEL (Konzept „Cockpit
   // als Tagesfilm“) - „Unterm Strich“, der Börsenpreis oder die Lastspitze.
   // Ohne sie wird die Bühne einspaltig. Einen Werteblock „Dieser Moment“ gibt

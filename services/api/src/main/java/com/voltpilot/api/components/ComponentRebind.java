@@ -81,7 +81,16 @@ public final class ComponentRebind {
             // eigene Kopie gegen eine Meldung, die sie nie tragen kann: ein Heizstab wurde nie an
             // seine Quelle gebunden und nach einem Kennungswechsel nie wiedererkannt (Anlage
             // „Zuhause“, 04.11.2026).
-            "anschluss", "output_kw", "stages", "rotation", "on_timer_s");
+            "anschluss", "output_kw", "stages", "rotation", "on_timer_s",
+            // Die Registerfamilie, die die Box beim Normalisieren SELBST in die Verbindung schreibt
+            // (`inverter.go`: `conn.Profile = registerFamily` - SunSpec, Huawei, KOSTAL, KACO HTTP/NH3,
+            // generisches Modbus). Sie folgt aus Marke und Modell, nicht aus dem Gerät
+            // (`sources.TransportIdentity` kennt sie nicht), und eine im Portal angelegte Komponente
+            // trägt sie nie: ihre Kopie stammt aus dem Vorlagen-Formular. Mit ihr verglich die Cloud
+            // eine Kopie ohne `profile` gegen eine Meldung mit `profile` - keine im Portal angelegte
+            // SunSpec-Quelle bekam je ihren Pin, und die Box meldete dieselben Geräte daneben als
+            // „noch nicht übernommen“ (Schramm „Zuhause“, drei KACO Powador TL3, 07.11.2026).
+            "profile");
 
     /** Eine gepinnte Komponente der Anlage. */
     public record PinnedComponent(UUID pointId, String edgeSourceId, String role,

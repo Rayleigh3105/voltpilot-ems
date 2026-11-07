@@ -261,6 +261,113 @@ class ComponentRebindTest {
                 MAPPER)).isEmpty();
     }
 
+    /**
+     * Was die Cloud für einen im Portal übernommenen KACO Powador TL3 speichert: das
+     * Vorlagen-Formular (`builtin:kaco:powador-*-tl3`) samt Lese-Kadenz.
+     */
+    private static String kacoGespeichert(String ip) {
+        return "{\"ip\":\"" + ip + "\",\"port\":502,\"unit_id\":1,\"model_type\":\"auto\","
+                + "\"invert_grid_sign\":false,\"curtail_write_fc\":0,\"interval_s\":5}";
+    }
+
+    /**
+     * Was die Box dazu in `local_setup` meldet: dieselbe Verbindung, normalisiert - mit der
+     * Registerfamilie, die sie selbst einträgt (`sources.json` von edge-tgjn9gd, 07.11.2026).
+     */
+    private static String kacoGemeldet(String ip) {
+        return "{\"ip\":\"" + ip + "\",\"port\":502,\"unit_id\":1,\"profile\":\"sunspec_live\","
+                + "\"model_type\":\"auto\"}";
+    }
+
+    private static final UUID KACO_1 = UUID.fromString("2126f452-ac6e-4ec3-8446-a52fbeb8834e");
+    private static final UUID KACO_2 = UUID.fromString("33d64aa8-7e1d-484f-92bc-b0cce2cb97d3");
+    private static final UUID KACO_3 = UUID.fromString("ecc6ad92-0373-47a4-8cc2-20781426e2eb");
+
+    @Test
+    @DisplayName("Schramm: drei im Portal übernommene KACO finden ihre gemeldeten Quellen")
+    void threePortalCreatedKacoAreBoundToTheirReportedSources() {
+        // Der Live-Fall „Zuhause“ (07.11.2026): drei Powador TL3 über „Geräte suchen“ übernommen, die
+        // Box liest alle drei - und meldete sie daneben als „KACO gefunden · noch nicht übernommen“,
+        // weil ihre Verbindung ein `profile` trägt, das die Cloud-Kopie nie hat.
+        List<ComponentRebind.Rebind> plan = ComponentRebind.decide(
+                List.of(kaco(KACO_1, kacoGespeichert("192.168.1.147"), "Kaco 1"),
+                        kaco(KACO_2, kacoGespeichert("192.168.1.113"), "Kaco 2"),
+                        kaco(KACO_3, kacoGespeichert("192.168.1.156"), "Kaco 3")),
+                List.of(kacoQuelle("src-wqng3qfp", kacoGemeldet("192.168.1.147"), "Kaco 1"),
+                        kacoQuelle("src-sgw8hrpt", kacoGemeldet("192.168.1.113"), "Kaco 2"),
+                        kacoQuelle("src-5ahgajrq", kacoGemeldet("192.168.1.156"), "Kaco 3")),
+                MAPPER);
+
+        assertThat(plan).extracting(ComponentRebind.Rebind::pointId,
+                        ComponentRebind.Rebind::fromSourceId, ComponentRebind.Rebind::toSourceId)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple(KACO_1, null, "src-wqng3qfp"),
+                        org.assertj.core.groups.Tuple.tuple(KACO_2, null, "src-sgw8hrpt"),
+                        org.assertj.core.groups.Tuple.tuple(KACO_3, null, "src-5ahgajrq"));
+    }
+
+    @Test
+    @DisplayName("Die Registerfamilie gehört nicht zum Gerät, Adresse und Unit-Id schon")
+    void theRegisterFamilyIsNotPartOfTheDevice() {
+        String gespeichert = ComponentRebind.fingerprint("pv-generation", "sunspec_tcp",
+                kacoGespeichert("192.168.1.147"), MAPPER);
+        assertThat(gespeichert).isEqualTo(ComponentRebind.fingerprint("pv-generation",
+                "sunspec_tcp", kacoGemeldet("192.168.1.147"), MAPPER));
+        // Ein anderer Wechselrichter bleibt ein anderer - Adresse oder Unit-Id entscheiden.
+        assertThat(gespeichert).isNotEqualTo(ComponentRebind.fingerprint("pv-generation",
+                "sunspec_tcp", kacoGemeldet("192.168.1.113"), MAPPER));
+        assertThat(gespeichert).isNotEqualTo(ComponentRebind.fingerprint("pv-generation",
+                "sunspec_tcp", kacoGemeldet("192.168.1.147").replace("\"unit_id\":1",
+                        "\"unit_id\":2"), MAPPER));
+        // Ein ausdrücklich gewählter Modelltyp bleibt Teil des Vergleichs.
+        assertThat(gespeichert).isNotEqualTo(ComponentRebind.fingerprint("pv-generation",
+                "sunspec_tcp", kacoGemeldet("192.168.1.147").replace("auto", "float"), MAPPER));
+    }
+
+    /**
+     * Das Gegenstück zum Wächter unten, aus der Richtung der Box: ein Feld, das die Box beim
+     * Normalisieren SELBST aus der Registerfamilie einträgt, steht in keiner Cloud-Kopie einer im
+     * Portal angelegten Komponente. Verglichen, ließe es jede Erstbindung dieses Transports still
+     * scheitern (Schramm, 07.11.2026: `profile`).
+     */
+    @Test
+    @DisplayName("Was die Box aus der Registerfamilie selbst einträgt, wird ignoriert")
+    void everyFieldTheBoxDerivesFromTheRegisterFamilyIsIgnored() throws Exception {
+        String go = Files.readString(Path.of("../../edge-app/core/internal/inverter/inverter.go"));
+        int start = go.indexOf("type Connection struct");
+        String struct = go.substring(start, go.indexOf("\n}\n", start));
+        java.util.Map<String, String> jsonByField = new java.util.HashMap<>();
+        Matcher field = Pattern.compile("(?m)^\\s*([A-Z][A-Za-z0-9]*)\\s+\\S+\\s+`json:\"([a-z_0-9]+)")
+                .matcher(struct);
+        while (field.find()) {
+            jsonByField.put(field.group(1), field.group(2));
+        }
+        Set<String> derived = new LinkedHashSet<>();
+        Matcher assign = Pattern.compile("conn\\.([A-Z][A-Za-z0-9]*) = registerFamily").matcher(go);
+        while (assign.find()) {
+            derived.add(jsonByField.get(assign.group(1)));
+        }
+        assertThat(derived).as("die Box trägt die Registerfamilie mindestens als profile ein")
+                .contains("profile").doesNotContainNull();
+
+        String ohne = ComponentRebind.fingerprint("pv-generation", "x", "{\"ip\":\"10.0.0.1\"}", MAPPER);
+        for (String key : derived) {
+            assertThat(ComponentRebind.fingerprint("pv-generation", "x",
+                    "{\"ip\":\"10.0.0.1\",\"" + key + "\":\"sunspec_live\"}", MAPPER))
+                    .as("Feld \"%s\" trägt die Box selbst ein - es darf den Fingerabdruck nicht ändern", key)
+                    .isEqualTo(ohne);
+        }
+    }
+
+    private static ComponentRebind.PinnedComponent kaco(UUID id, String conn, String label) {
+        return new ComponentRebind.PinnedComponent(id, null, "pv-generation", "sunspec_tcp", conn,
+                label);
+    }
+
+    private static ComponentRebind.ReportedDevice kacoQuelle(String src, String conn, String label) {
+        return new ComponentRebind.ReportedDevice(src, "pv-generation", "sunspec_tcp", conn, label);
+    }
+
     @Test
     @DisplayName("Ohne Meldung und ohne Pin passiert nichts")
     void nothingHappensWithoutBothSides() {

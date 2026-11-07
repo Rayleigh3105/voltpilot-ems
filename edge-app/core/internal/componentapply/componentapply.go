@@ -157,6 +157,12 @@ type Plan struct {
 	// plant that only has meters/producers is a legitimate shape).
 	Inverter *inverter.Selection
 	Sources  []sources.Source
+	// SourceEntities names, per derived source id, the registry entity the
+	// source was derived from: the box's OWN answer to "whose reading is this?"
+	// on a portal-managed plant. The agent needs it to report an Erzeuger's
+	// reading as the telemetry of ITS component on a box without an inverter
+	// (agent.producerEntityTelemetry). Derived, never persisted - SameAs ignores it.
+	SourceEntities map[string]string
 	// Rejected are the devices of this push the box did NOT apply because it
 	// cannot assign them a role (sorted by entity id, like the push). They are
 	// not part of what runs; SameAs therefore ignores them. With
@@ -450,6 +456,10 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 		}
 		taken[src.ID] = true
 		plan.Sources = append(plan.Sources, src)
+		if plan.SourceEntities == nil {
+			plan.SourceEntities = map[string]string{}
+		}
+		plan.SourceEntities[src.ID] = e.ID
 	}
 
 	if plan.Empty() {

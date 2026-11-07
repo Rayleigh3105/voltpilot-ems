@@ -670,6 +670,87 @@ describe('plantModel — F1: health from real data presence, not the edge echo',
   });
 });
 
+// Schramm „Zuhause“ (07.11.2026): drei KACO als Erzeuger übernommen, danach ein Shelly Pro 3EM am
+// Netzanschluss und zwei als Unterzähler - eine Box OHNE Wechselrichter. Was die Box als eigene
+// Quelle liest, meldet sie im Herzschlag (`/sources`); ein Unterzähler hat nie eine eigene
+// telemetry_v2. Ohne Rückfall stand jede dieser Zeilen für immer auf „Wartet auf die ersten Daten“.
+describe('plantModel — Zähler, die die Box als Quelle liest (Schramm „Zuhause“)', () => {
+  const nie = { health: 'never' as const, lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' };
+
+  function zuhause(sources: SiteSource[], pins: { halle?: string | null; netz?: string | null } = {}) {
+    const entities = [
+      entity('netz', 'grid-meter', { label: 'Netzanschluss', edgeSourceId: pins.netz ?? null, observed: nie }),
+      entity('haus', 'house-load', { label: 'Hausverbrauch', observed: nie }),
+      entity('halle', 'generic-load', {
+        label: 'UV Halle',
+        edgeSourceId: pins.halle === undefined ? 'src-halle' : pins.halle,
+        observed: nie,
+      }),
+      entity('kaco1', 'producer', {
+        label: 'Kaco 1',
+        edgeSourceId: 'src-wqng3qfp',
+        observed: nie,
+        capabilities: { measure: [{ channel: 'pv_power_kw', unit: 'kW' }] },
+      }),
+    ];
+    const topology: SiteTopology = {
+      schemaVersion: '1.0',
+      entities: [
+        topoEntity('netz', 'grid-meter', 'meter', 'never'),
+        topoEntity('haus', 'house-load', 'consumer', 'never'),
+        topoEntity('halle', 'generic-load', 'consumer', 'never'),
+        topoEntity('kaco1', 'producer', 'producer', 'never'),
+      ],
+      topology: { schema_version: '1.0', nodes: [] },
+    };
+    const localSetup = [
+      source('src-halle', 'consumer', { brand: 'shelly', label: 'UV Halle', adoptedEntityId: 'halle' }),
+      source('src-wqng3qfp', 'pv-generation', { brand: 'kaco', label: 'Kaco 1', adoptedEntityId: 'kaco1' }),
+    ];
+    return plantModel(entities, topology, localSetup, sources);
+  }
+
+  it('ein Unterzähler, dessen Quelle liefert, sagt „Liefert Daten“ mit seinem eigenen Wert', () => {
+    const halle = zuhause([siteSource('src-halle', { role: 'consumer', loadKw: 2.34 })])
+      .components.find((c) => c.id === 'halle')!;
+    expect(halle.health).toBe('ok');
+    expect(halle.reading).toEqual({ value: 2.3, unit: 'kW', caption: null });
+    expect(deviceState(halle.health)).toBe('Liefert Daten');
+  });
+
+  it('der Netz-Zähler zeigt Bezug oder Einspeisung, bevor die Box ein Standort-Sample sendet', () => {
+    const netz = zuhause([siteSource('src-netz', { role: 'grid-meter', powerKw: -3.21 })], { netz: 'src-netz' })
+      .components.find((c) => c.id === 'netz')!;
+    expect(netz.health).toBe('ok');
+    expect(netz.reading).toEqual({ value: 3.2, unit: 'kW', caption: 'Einspeisung' });
+  });
+
+  it('ein veralteter Zähler sagt es - ohne einen alten Wert als aktuellen zu zeigen', () => {
+    const halle = zuhause([siteSource('src-halle', { role: 'consumer', loadKw: 2.34, health: 'stale' })])
+      .components.find((c) => c.id === 'halle')!;
+    expect(halle.health).toBe('stale');
+    expect(halle.reading).toBeNull();
+  });
+
+  it('ohne Pin wird nichts zugeordnet - weder nach Adresse noch nach Reihenfolge', () => {
+    const halle = zuhause([siteSource('src-halle', { role: 'consumer', loadKw: 2.34 })], { halle: null })
+      .components.find((c) => c.id === 'halle')!;
+    expect(halle.health).toBe('never');
+    expect(halle.reading).toBeNull();
+  });
+
+  it('ein Zähler-Wert geht nie in den Erzeuger: der KACO liest weiter nur seine eigene Quelle', () => {
+    const m = zuhause([
+      siteSource('src-halle', { role: 'consumer', loadKw: 2.34 }),
+      siteSource('src-wqng3qfp', { pvKw: 0.52, label: 'Kaco 1' }),
+    ]);
+    const kaco = m.components.find((c) => c.id === 'kaco1')!;
+    expect(kaco.health).toBe('ok');
+    // Gepinnt und geliefert: nichts davon steht noch als „noch nicht übernommen" daneben.
+    expect(m.newlyReported).toEqual([]);
+  });
+});
+
 // Variante A (vp-anlagenmodell-ux-w7): die Live-Werte sind der Kern. Erst mit
 // Zahlen kann der Kunde prüfen „21,2 + 23,5 + 0,2 = 44,9 - stimmt". Deshalb ist
 // die Gruppen-Summe per Konstruktion die Summe der GEZEIGTEN Zeilen, und eine

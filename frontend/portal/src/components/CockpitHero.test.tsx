@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { CockpitHero } from './CockpitHero';
 import { ControlStrip } from './ControlStrip';
 import type { LiveSnapshot } from '../live';
-import type { SiteTopology } from '../api';
+import type { SiteEntity, SiteSource, SiteTopology } from '../api';
 
 // Die Bühne lädt `EnergieBuehne` nach (React.lazy). Unter Last dauerte der erste Import länger als die Frist eines
 // `waitFor` (1 s) und der erste Fall scheiterte zufällig; vorgewärmt löst `lazy` sofort auf — geprüft wird das Bild,
@@ -166,5 +166,66 @@ describe('Laden bei Bezug unter dem Fluss (K8/B2)', () => {
     mit.unmount();
     const ohne = renderStage();
     expect(ohne.container.querySelector('.vp-hero-hinweis')).toBeNull();
+  });
+});
+
+/**
+ * Schramm „Zuhause“ (07.11.2026): drei KACO als „Weitere Erzeuger“, KEIN Hauptgerät - reines
+ * Monitoring. Die Erzeuger haben (noch) keine eigene telemetry_v2, die Box noch kein
+ * Standort-Sample; ihre PV kommt allein über die gepinnten Quellen. Das Cockpit sagte „Ist Ihr
+ * Gerät mit Strom versorgt?“, während drei Wechselrichter lieferten.
+ */
+describe('Eine reine Erzeugeranlage ohne Hauptgerät zeigt ihre Erzeugung', () => {
+  const ohneWerte: LiveSnapshot = {
+    pvKw: null, loadKw: null, gridKw: null, battKw: null, socPct: null, socAt: null,
+  } as unknown as LiveSnapshot;
+  const prod = (id: string, label: string) => ({
+    id, entityType: 'producer', typeLabel: 'Erzeuger', label, category: 'producer', health: 'never',
+    capabilities: [{ channel: 'pv_power_kw', unit: 'kW', role: 'pv', primary: false, value: null }],
+  });
+  const topology = {
+    schemaVersion: '1.0',
+    entities: [prod('k1', 'Kaco 1'), prod('k2', 'Kaco 2'), prod('k3', 'Kaco 3')],
+    topology: {
+      schema_version: '1.0',
+      nodes: [{
+        role: 'pv', flow_active: false,
+        members: [
+          { entity_id: 'k3', label: 'Kaco 3', primary: true },
+          { entity_id: 'k2', label: 'Kaco 2', primary: false },
+          { entity_id: 'k1', label: 'Kaco 1', primary: false },
+        ],
+      }],
+    },
+  } as unknown as SiteTopology;
+  const pins = [
+    { id: 'k1', edgeSourceId: 'src-wqng3qfp' },
+    { id: 'k2', edgeSourceId: 'src-sgw8hrpt' },
+    { id: 'k3', edgeSourceId: 'src-5ahgajrq' },
+  ] as unknown as SiteEntity[];
+  const quelle = (sourceId: string, pvKw: number): SiteSource => ({
+    deviceId: 'box', sourceId, kind: 'source', role: 'pv-generation', label: null, brand: 'kaco',
+    model: null, pvKw, powerKw: null, loadKw: null, health: 'ok', readAt: null, reportedAt: '',
+  });
+
+  it('zeichnet den Fluss mit der PV-Summe statt der Strom-und-Internet-Hilfe', async () => {
+    const { container, queryByText } = render(
+      <CockpitHero
+        topology={topology}
+        snapshot={ohneWerte}
+        sources={[quelle('src-wqng3qfp', 0.52), quelle('src-sgw8hrpt', 0.52), quelle('src-5ahgajrq', 0.35)]}
+        pins={pins}
+        onOpenSub={() => {}}
+      />,
+    );
+    expect(queryByText('Was kann ich tun?')).toBeNull();
+    await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).not.toBeNull());
+  });
+
+  it('ohne liefernde Quelle bleibt es bei der ehrlichen Hilfe', () => {
+    const { getByText } = render(
+      <CockpitHero topology={topology} snapshot={ohneWerte} sources={[]} pins={pins} onOpenSub={() => {}} />,
+    );
+    expect(getByText('Was kann ich tun?')).toBeTruthy();
   });
 });

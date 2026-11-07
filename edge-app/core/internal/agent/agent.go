@@ -384,6 +384,21 @@ type Agent struct {
 	// controller's reading then stays out of the balance, see there).
 	steuerungNebenWrOnce sync.Once
 
+	// lastSourcesSample is when sourcesSiteSample last folded a site sample on
+	// a box WITHOUT an inverter and without an Anlagensteuerung (Schramm
+	// „Zuhause“, 07.11.2026). Guarded by srcMu.
+	lastSourcesSample time.Time
+	// srcEntities caches which registry entity each running source belongs to
+	// (agent.sourceEntityIDs); nil = not derived yet for the current registry
+	// and source list. Guarded by srcMu.
+	srcEntities    map[string]string
+	srcEntitiesKey string
+	// lastPrimaryAt is when the last sample of a primary arrived on
+	// edge/telemetry (onLocalTelemetry). While one arrives, its sample IS the
+	// site sample - even on a box without a stored selection - and the sources
+	// never fold a second one beside it. Guarded by srcMu.
+	lastPrimaryAt time.Time
+
 	// testReads correlates an in-flight "Verbindung testen" round-trip
 	// (edge/test-read/request -> Node-RED -> edge/test-read/result) to the
 	// waiting HTTP handler by request id. The channel is buffered (size 1) so the
@@ -1603,6 +1618,9 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// the gates below KEEP the sample; a gated channel is held to its last
 	// accepted primary value there (the same display policy as the composite).
 	a.dataSourceStatus.Observe(datasourcestatus.Event{SourceID: "inverter", Ts: ts, Samples: len(measurements)}, time.Now())
+	a.srcMu.Lock()
+	a.lastPrimaryAt = time.Now()
+	a.srcMu.Unlock()
 	primary := make(map[string]float64, len(measurements))
 	for k, v := range measurements {
 		primary[k] = v
@@ -4537,6 +4555,11 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		a.curtailObserve(id, *pv, now)
 	}
 	a.plantControllerSample(id, pv, grid, m.Ts, now)
+	// A box without an inverter (and without an Anlagensteuerung): the
+	// Erzeuger reading is its component's telemetry, and the sources fold the
+	// site sample themselves (sources_site_sample.go).
+	a.producerEntityTelemetry(id, pv, m.Ts, now)
+	a.sourcesSiteSample(now)
 }
 
 // plantControllerSample turns the reading of an Anlagensteuerung (the
