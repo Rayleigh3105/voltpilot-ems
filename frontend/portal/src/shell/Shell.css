@@ -658,6 +658,15 @@
   .vp-main.has-bottombar {
     padding-bottom: calc(72px + env(safe-area-inset-bottom, 0));
   }
+  /* Derselbe Platz für den TASTATURFOKUS (WCAG 2.4.11): Tab rollt das nächste
+     Element nur knapp ins Bild - unten lag es dann unter der Leiste. */
+  .vp-app .vp-main.has-bottombar :is(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex='-1'])) {
+    scroll-margin-bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 8px);
+  }
+}
+/* Und oben unter der klebenden Kopfzeile (ihre Höhe misst `AppShell`). */
+.vp-app .vp-main :is(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex='-1'])) {
+  scroll-margin-top: calc(var(--vp-topbar-height, 0px) + 8px);
 }
 .vp-bottombar-item {
   display: flex;
