@@ -237,7 +237,9 @@ button.vp-einst-zeile:focus-visible {
   border: 0;
   border-radius: var(--vp-radius-sm);
   background: transparent;
-  color: var(--vp-text-gray);
+  /* Auf `--vp-neutral-soft` hielt `--vp-text-gray` nur 4,39 : 1 (WCAG 1.4.3);
+     die Sekundärschrift des Hauses hält 6,7 : 1. */
+  color: var(--vp-c-muted-fg);
   font: inherit;
   font-size: 0.82rem;
   font-weight: var(--vp-weight-semibold);
