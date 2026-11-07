@@ -268,6 +268,13 @@ a {
 a:hover {
   color: var(--vp-link-hover);
 }
+/* Ein Link MITTEN IM SATZ braucht mehr als die Farbe (WCAG 1.4.1): gegen die
+   graue Hinweisschrift trennt das Blau nur 1,6 : 1. Unterstrichen wie
+   `.vp-linklike`; Links mit eigener Klasse (Knöpfe, Karten) bleiben, wie sie sind. */
+:is(.vp-note, .vp-tb-fein, .vp-einst-grenze) a:not([class]) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 button {
   font-family: var(--vp-font-heading);
