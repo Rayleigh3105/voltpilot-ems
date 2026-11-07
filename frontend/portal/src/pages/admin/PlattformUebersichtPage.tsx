@@ -300,6 +300,7 @@ function Kachel({ kachel, onNavigate }: { kachel: UebersichtKachel; onNavigate?:
   return klickbar ? (
     <Card
       className="vp-ueb-kachel vp-ueb-kachel--klick"
+      interactive
       role="button"
       tabIndex={0}
       onClick={() => onNavigate?.(pageRoute('edge-updates'))}
@@ -366,7 +367,8 @@ function BrauchtDichKarte({
               <button type="button" className="vp-ueb-braucht-zeile-knopf" onClick={() => onOpen(z.route)}>
                 <span className="vp-ueb-braucht-kreis"><Icon name={z.icon} size={16} /></span>
                 <span className="vp-ueb-braucht-haupt">
-                  <b>{z.box}{z.kunde && <span className="vp-ueb-braucht-kunde">{z.kunde}</span>}</b>
+                  <b>{z.box}</b>
+                  {z.kunde && <span className="vp-ueb-braucht-kunde">{z.kunde}</span>}
                   <small>{z.grund}</small>
                 </span>
                 <span className="vp-ueb-braucht-schritt">{z.schrittLabel}</span>

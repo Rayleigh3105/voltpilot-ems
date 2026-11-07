@@ -81,6 +81,43 @@ describe('uebersichtKacheln', () => {
     expect(verbindung.ton).toBe('warn');
   });
 
+  it('N2: Einzahl bei genau einer schweigenden Box', () => {
+    const k = uebersichtKacheln({
+      sites: [site({ boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box A', fuehrtAnlage: true, lastSeenAt: ago(3600_000), edge: null, update: null }] })],
+      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [],
+    }, NOW);
+    const verbindung = k.find((x) => x.id === 'verbindung')!;
+    expect(verbindung.wort).toBe('meldet sich nicht');
+  });
+
+  it('N2: Mehrzahl bei mehreren schweigenden Boxen', () => {
+    const k = uebersichtKacheln({
+      sites: [site({ boxes: [
+        { deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box A', fuehrtAnlage: true, lastSeenAt: ago(3600_000), edge: null, update: null },
+        { deviceId: 'd2', externalRef: 'VP-BOX-0002', name: 'Box B', fuehrtAnlage: true, lastSeenAt: ago(3600_000), edge: null, update: null },
+      ] })],
+      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [],
+    }, NOW);
+    const verbindung = k.find((x) => x.id === 'verbindung')!;
+    expect(verbindung.wort).toBe('melden sich nicht');
+  });
+
+  it('N2: Einzahl bei genau einer Abweichung der Steuerungs-Kachel', () => {
+    const k = uebersichtKacheln({
+      sites: [site({
+        hasStorage: true,
+        control: {
+          deviceId: 'd1', commandedKw: 1, confirmedKw: 2, allMatch: false,
+          controlEnabled: true, certified: true, mismatchRoles: null, slotStart: null, checkedAt: ago(10_000),
+        } as AdminFleetSite['control'],
+      })],
+      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [],
+    }, NOW);
+    const steuerung = k.find((x) => x.id === 'steuerung')!;
+    expect(steuerung.zahl).toBe(1);
+    expect(steuerung.wort).toBe('Abweichung');
+  });
+
   it('die Software-Kachel zählt „bekannt minus aktuell", je Linie aufgeschlüsselt', () => {
     const k = uebersichtKacheln({
       sites: [], releases: [],
@@ -90,7 +127,7 @@ describe('uebersichtKacheln', () => {
     }, NOW);
     const software = k.find((x) => x.id === 'software')!;
     expect(software.zahl).toBe(2);
-    expect(software.kontext).toContain('1 laufen');
+    expect(software.kontext).toContain('1 läuft');
     expect(software.kontext).toContain('Docker-Box 2 älter');
   });
 
@@ -175,7 +212,8 @@ describe('uebersichtKacheln', () => {
       const text = kpiText(fall.kpi, fall.lines);
       expect(text).toContain(`${aktuell}/${bekannt} aktuell`);
       const laufend = rolloutsLaufend(fall.rollouts);
-      expect(software.kontext.includes(`${laufend} laufen`)).toBe(laufend > 0);
+      const laufendWort = laufend === 1 ? 'läuft' : 'laufen';
+      expect(software.kontext.includes(`${laufend} ${laufendWort}`)).toBe(laufend > 0);
     }
   });
 
