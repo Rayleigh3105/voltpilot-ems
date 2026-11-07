@@ -146,6 +146,7 @@ import { BereichTabs } from '../components/BereichTabs';
 import { anlageSidebar, bereichLabel, ladeSicht, tabsFor } from '../ebenenNav';
 import { useSiteEarnings } from '../useSiteEarnings';
 import { isoDate } from '../periodNav';
+import { schnellZeileRelevant } from '../ladeRegel';
 // Die Unterseiten einer Anlage werden LAZY geladen. Das Cockpit (`sub === null`)
 // zeichnet keine von ihnen, zog aber über den statischen Import ihre gesamte
 // Fracht ins Einstiegs-Bündel: ECharts (jede Diagramm-Fläche), Leaflet (die
@@ -1753,12 +1754,9 @@ export function AnlageSeite({
   // (Cockpit Phase 1 / C2): der Abzweig hinter dem Haus und - falls eine Säule
   // an einem EIGENEN Netzanschluss hängt - ein Kreis am Hub daneben.
   const ladeKreise = useMemo(() => ladeFlussKnoten(charging), [charging]);
-  // Läuft an einer verbundenen Säule eine Ladung (Sitzung oder Budget-Anspruch)? Nur dann lädt die Zeile
-  // „Jetzt schnell laden“ nach; ob sie etwas anbietet, entscheidet sie selbst (`schnellZeilen`).
-  const ladungLaeuft = useMemo(
-    () => (charging?.chargers ?? []).some((cp) => cp.connected && (cp.connectors ?? []).some((c) => c.charging === true || c.sessionSince != null)),
-    [charging],
-  );
+  // Läuft an einer verbundenen Säule eine Ladung, oder steckt ein Auto ohne Ladevorgang? Nur dann lädt die Zeile
+  // „Jetzt schnell laden“ nach; ob sie einen Knopf oder den Ausweg anbietet, entscheidet sie selbst (`schnellZeilen`).
+  const ladungLaeuft = useMemo(() => schnellZeileRelevant(charging), [charging]);
 
   // --- Anwendungs-Programm Stufe 3 · das anpassbare Cockpit ------------------
   // Welche BAUSTEINE diese Anlage GERADE hat: dieselbe Ehrlichkeit wie bisher -

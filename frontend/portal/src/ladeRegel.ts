@@ -1,9 +1,10 @@
 /**
  * Die EINE Regel „an diesem Stecker läuft ein Ladevorgang“ und ihr
  * Gegenstück „Auto steckt, aber kein Ladevorgang“. Eigene kleine Datei ohne
- * Abhängigkeiten, damit auch eine Fläche ohne `ladepunkte.ts` sie fragen kann.
+ * Abhängigkeiten: das Cockpit fragt sie schon im ersten Bild (ob die Zeile
+ * „Jetzt schnell laden“ nachlädt), ohne `ladepunkte.ts` mitzuladen.
  */
-import type { ChargeConnector } from './ladepunkte';
+import type { ChargeConnector, SiteCharging } from './ladepunkte';
 
 /**
  * DIE Regel „an diesem Stecker läuft ein Ladevorgang“ - genau das `charging`
@@ -54,3 +55,14 @@ export function keinLadevorgang(
   return reason == null && !(con.sessionSince ?? '').trim() && !Number.isFinite(con.allocatedKw ?? NaN);
 }
 
+/**
+ * Hat die Cockpit-Zeile „Jetzt schnell laden“ an dieser Anlage etwas zu sagen?
+ * Ja, sobald an einer verbundenen Säule ein Ladevorgang läuft (eine Sitzung im
+ * Abgleich zählt mit) oder ein Auto ohne Ladevorgang steckt - dann nennt sie
+ * den Ausweg. Was sie anbietet, entscheidet `schnellZeilen`.
+ */
+export function schnellZeileRelevant(charging: Pick<SiteCharging, 'chargers'> | null | undefined): boolean {
+  return (charging?.chargers ?? []).some(
+    (cp) => cp.connected && (cp.connectors ?? []).some((c) => ladungLaeuft(c) || c.sessionSince != null || keinLadevorgang(c)),
+  );
+}

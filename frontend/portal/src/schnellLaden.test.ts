@@ -6,6 +6,7 @@ import {
   schnellFuerPrivatkunden,
   schnellZeilen,
 } from './schnellLaden';
+import { schnellZeileRelevant } from './ladeRegel';
 
 /**
  * „Auto steckt · Jetzt schnell laden“ im Cockpit (Kapitän 07.11.2026, F3 b,
@@ -50,6 +51,37 @@ describe('schnellZeilen', () => {
   it('bietet den Rückweg an, solange „Schnell“ läuft', () => {
     const z = zeilen(anlage([saeule({}, { status: 'Charging', powerKw: 11, boost: true, reason: 'laedt' })]));
     expect(z[0]).toMatchObject({ laeuft: true, satz: 'Lädt schnell auf Ihren Wunsch · 11,0 kW' });
+  });
+
+  it('nennt bei einem Auto ohne Ladevorgang den Ausweg, ohne Knopf (Pilotanlage 07.11.2026)', () => {
+    // Die Box im Feld schickt kein Wort dafür: SuspendedEVSE, charging falsch, keine Sitzung.
+    const alt = zeilen(anlage([saeule({}, { charging: false, sessionSince: null, allocatedKw: null, reason: null, reasonText: null })]));
+    expect(alt).toHaveLength(1);
+    expect(alt[0]).toMatchObject({
+      satz: 'Auto steckt · kein Ladevorgang',
+      laeuft: false,
+      hinweis: 'Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken.',
+    });
+    // Eine neue Box nennt den Grund selbst - derselbe Satz.
+    const neu = zeilen(anlage([saeule({}, {
+      charging: false, sessionSince: null, allocatedKw: null, reason: 'kein_ladevorgang',
+      reasonText: 'Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken.',
+    })]));
+    expect(neu[0].hinweis).toMatch(/Stecker kurz ziehen und wieder einstecken/);
+    // Mit laufendem Ladevorgang bleibt der Knopf.
+    expect(zeilen(anlage([saeule()]))[0].hinweis).toBeNull();
+  });
+
+  it('bietet ohne laufenden Ladevorgang keinen Knopf an - dieselbe Regel wie der Server (charging)', () => {
+    // Die Fixture von PR 1768 trägt charging: true; dasselbe Bild mit charging: false endete beim Server im 409.
+    expect(zeilen(anlage([saeule({}, { charging: false })]))).toEqual([]);
+  });
+
+  it('lädt die Zeile nach, wo sie etwas zu sagen hat', () => {
+    expect(schnellZeileRelevant(anlage([saeule()]))).toBe(true);
+    expect(schnellZeileRelevant(anlage([saeule({}, { charging: false, sessionSince: null, allocatedKw: null, reason: null })]))).toBe(true);
+    expect(schnellZeileRelevant(anlage([saeule({}, { status: 'Available', charging: false, sessionSince: null, allocatedKw: null, reason: null })]))).toBe(false);
+    expect(schnellZeileRelevant(anlage([saeule({ connected: false })]))).toBe(false);
   });
 
   it('erscheint nicht ohne Auto', () => {

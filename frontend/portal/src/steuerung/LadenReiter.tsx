@@ -135,6 +135,8 @@ function LadeKarte({
   const sperreAus = ladeModusSperre(g, bild.funktion.sperre, 'aus');
   const sperreSchnell = ladeModusSperre(g, bild.funktion.sperre, 'schnell');
   const schnellWirktNicht = sperreSchnell?.art === 'wirkt_nicht';
+  // Auto steckt, aber kein Ladevorgang läuft: „Aus“ und „Schnell“ endeten in der Ablehnung des Servers.
+  const ohneLadung = sperreSchnell?.art === 'kein_ladevorgang' ? sperreSchnell : null;
   const schnellGrundId = useId();
   const karte = l?.karte ? liste(fahrzeuge?.fahrzeuge).find((f) => f.tagRef === l.karte) ?? null : null;
   // Regelt VoltPilot diese Wallbox gerade gar nicht? (Audit W-01/W-05/W-12)
@@ -191,9 +193,11 @@ function LadeKarte({
       ? 'Kein Auto angesteckt'
       : an
         ? (hw === 'lädt' ? 'Lädt' : `Lädt ${hw}`)
-        : wahl === 'aus'
-          ? 'Pausiert'
-          : 'Wartet';
+        : l.keinLadevorgang
+          ? 'Kein Ladevorgang'
+          : wahl === 'aus'
+            ? 'Pausiert'
+            : 'Wartet';
   const ladungenMonat = ladungenZeilen(economics, l?.chargePointId ?? '');
   const ladungen = ladungenMonat.slice(0, 3);
   const summe = ladungenSumme(ladungenMonat);
@@ -206,7 +210,7 @@ function LadeKarte({
       <GeraetBuehne
         zahl={an && g.jetztKw != null ? { zahl: String(Math.round(g.jetztKw * 10) / 10).replace('.', ','), einheit: 'kW', wort: null, ton: 'ok', key: 'kw' } : null}
         satz={buehneSatz}
-        satzTon={sperre ? 'warn' : 'ok'}
+        satzTon={sperre || l?.keinLadevorgang ? 'warn' : 'ok'}
         grafik={{ art: 'wallbox', kw: g.jetztKw ?? null, laedt: an, herkunft, angesteckt: !!l?.angesteckt }}
       />
       <div className="lp-h">
@@ -232,7 +236,7 @@ function LadeKarte({
             // Blatt des Ladepunkts, und für „Schnell“ derselben (`boostbar`) wie *Ladevorgänge*
             // und das Menü „Eingreifen“ (Audit, Befund 3).
             disabled={busy || (k === 'smart' ? sperre != null && !g.eingriff : (k === 'aus' ? sperreAus : sperreSchnell) != null)}
-            aria-describedby={k === 'schnell' && schnellWirktNicht ? schnellGrundId : undefined}
+            aria-describedby={k !== 'smart' && ohneLadung ? schnellGrundId : k === 'schnell' && schnellWirktNicht ? schnellGrundId : undefined}
             onClick={(e) => {
               e.currentTarget.focus();
               if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
@@ -241,13 +245,19 @@ function LadeKarte({
           >
             <Ic n={i} s={20} />
             {label}
-            {k === 'schnell' && <small>{ungesteuert ? 'immer' : schnellWirktNicht ? 'gerade nicht' : 'für diese Ladung'}</small>}
+            {k === 'schnell' && <small>{ungesteuert ? 'immer' : schnellWirktNicht || ohneLadung ? 'gerade nicht' : 'für diese Ladung'}</small>}
           </button>
         ))}
       </div></Recht>
       {/* Der Grund statt eines stummen grauen Knopfs; Sperre, Ruhe und „kein Auto“
           sagen ihre eigenen Flächen darunter bzw. die Bühne. */}
       {schnellWirktNicht && <p className="leise" role="note" id={schnellGrundId}>{sperreSchnell?.satz}</p>}
+      {/* Auto steckt ohne Ladevorgang: der Ausweg als Hinweis, nicht als Fehler nach dem Klick. */}
+      {ohneLadung && (
+        l?.keinLadevorgang
+          ? <p className="konflikt" role="note" id={schnellGrundId}><Ic n="info" s={18} /><span>{ohneLadung.satz}</span></p>
+          : <p className="leise" role="note" id={schnellGrundId}>{ohneLadung.satz}</p>
+      )}
       {sperre && <SperreHinweis sperre={sperre} />}
       {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
       {ansage && <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>}

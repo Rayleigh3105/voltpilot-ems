@@ -74,6 +74,13 @@ und am Mandanten-Umschalter der Plattform. `SetChargingProfile` und
   Neuverbinden mit BootNotification und beendet einen abgelehnten Vorgang, ohne es
   bei steckendem Auto erneut zu versuchen. Jede Ablehnung steht mit Grund im
   Protokoll der Box („Ladevorgang abgelehnt“).
+- Meldet ein Stecker ein verbundenes Auto (`Charging`, `SuspendedEV`, `SuspendedEVSE`),
+  ohne dass die Box eine Transaktion dazu kennt, steht im Herzschlag der Grund
+  `kein_ladevorgang` mit dem Ausweg (neu einstecken); Vektoren in
+  `contracts/ocpp-ladezustand-vectors.json`. „Schnell“, „Aus“ und „bis Abstecken“
+  greifen nur in einen laufenden Ladevorgang: Server (`connector.charging()`), Box
+  (`ocppTransactionOf`) und Portal (`ladeRegel.ts` `ladungLaeuft`) prüfen dasselbe
+  `charging`; ohne es bietet das Portal keinen Knopf, sondern den Hinweis an.
 - **Phasenumschaltung (1p/3p)** ist je Stecker freigeschaltet (`phase_switching` in
   der Verdrahtung, nur bei drei Phasen) und braucht zusätzlich die eigene Meldung
   der Säule `ConnectorSwitch3to1PhaseSupported=true`. Dann kennt der Verteiler zwei

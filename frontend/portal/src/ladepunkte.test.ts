@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   KEIN_LADEVORGANG_SATZ,
   keinLadevorgang,
+  ladungLaeuft,
   aktuelleLeistung,
   messwertAlter,
   ANBINDEN_EINSTIEG,
@@ -673,8 +674,13 @@ describe('„Jetzt voll laden"', () => {
       saeule({
         connectors: [
           {
+            // Die Box vergibt `kein_ueberschuss` nur an einen Stecker MIT
+            // Sitzung - `charging` ist dort wahr. Das Auto meldet SuspendedEV:
+            // weder Ton noch Zustand machen den Knopf, nur das Maschinen-Wort.
             connectorId: 1,
-            charging: false,
+            charging: true,
+            status: 'SuspendedEV',
+            allocatedKw: 0,
             reason: 'kein_ueberschuss',
             reasonText: 'wartet — kein Überschuss (Ihre Priorität: Nur Sonnenstrom)',
           },
@@ -792,8 +798,8 @@ const ZUSTAND_VEKTOREN: { faelle: ZustandVektor[] } = JSON.parse(
 /**
  * „Auto steckt, kein Ladevorgang“ (Befund an einer Pilotanlage, 07.11.2026):
  * die Wallbox meldet SuspendedEVSE, die Box kennt keinen Ladevorgang - Server
- * und Box lehnen „Schnell“, „Aus“ und „bis Abstecken“ ab. Der Zustand hat
- * ein eigenes Wort, mit dem Ausweg (neu einstecken) als Grund.
+ * und Box lehnen „Schnell“, „Aus“ und „bis Abstecken“ ab. EINE Regel
+ * (`ladungLaeuft` = `charging`, wie der Server) entscheidet jeden Knopf.
  */
 describe('Ladevorgang läuft · kein Ladevorgang', () => {
   const ohne = { connectorId: 1, status: 'SuspendedEVSE', charging: false };
@@ -827,6 +833,31 @@ describe('Ladevorgang läuft · kein Ladevorgang', () => {
     expect(ladeZustand(ohne, { connected: false, lastSeen: null }).kind).toBe('getrennt');
   });
 
+  it('bietet ohne Ladevorgang keinen Knopf an, der in die Ablehnung des Servers läuft', () => {
+    const budget = { deviceId: 'd-1', enabled: true, controlEnabled: true, connectorCount: 1, surplusActive: true } as never;
+    const [row] = ladevorgangRows([saeule({ connectors: [ohne], quelle: { source: 'nur_sonne' } } as never)]);
+    expect(row.ladungLaeuft).toBe(false);
+    expect(boostbar(budget, row)).toBe(false);
+    expect(pausierbar(row)).toBe(false);
+    expect(ladepunktAktionen(budget, row)).toEqual([]);
+    expect(schnellWirktNichtGrund(budget, row)).toBe(KEIN_LADEVORGANG_SATZ);
+    // ⚠ Auch die alte Form „wartet“ (SuspendedEVSE, 0 kW, charging falsch) bekommt keinen Knopf mehr:
+    // der Server prüft `charging`, nicht das Statuswort.
+    const [alt] = ladevorgangRows([saeule({ connectors: [{ ...ohne, allocatedKw: 0, reason: 'budget' }], quelle: { source: 'nur_sonne' } } as never)]);
+    expect(alt.kind).toBe('wartet');
+    expect(boostbar(budget, alt)).toBe(false);
+    expect(schnellWirktNichtGrund(budget, alt)).toBe('Schnell gilt für eine laufende Ladung.');
+    // Mit Ladevorgang bleibt alles wie bisher.
+    const [mit] = ladevorgangRows([saeule({ connectors: [{ ...ohne, charging: true, allocatedKw: 0, reason: 'kein_ueberschuss' }], quelle: { source: 'nur_sonne' } } as never)]);
+    expect(mit.ladungLaeuft).toBe(true);
+    expect(boostbar(budget, mit)).toBe(true);
+  });
+
+  it('ist dieselbe Regel wie der Server: charging', () => {
+    expect(ladungLaeuft({ charging: true })).toBe(true);
+    expect(ladungLaeuft({ charging: false })).toBe(false);
+    expect(ladungLaeuft(null)).toBe(false);
+  });
 });
 
 describe('ladeZustand · Sim-Abgleich gegen die geteilten Vektoren (E7)', () => {
@@ -960,7 +991,7 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
     key: 'CP1#1', title: 'Wallbox Garage · Stecker A', kind: 'laedt', word: 'Lädt',
     tone: 'laedt', reason: null, reasonCode: null, powerKw: 7.4, allocatedKw: 7.4,
     socPct: null, since: null, nextTurn: null, priority: false,
-    chargePointId: 'CP1', connectorId: 1, boost: false, ...over,
+    chargePointId: 'CP1', connectorId: 1, boost: false, ladungLaeuft: true, ...over,
   } as unknown as Parameters<typeof ladepunktAktionen>[1]);
 
   it('bietet an einer laufenden Ladung BEIDE Richtungen an', () => {
@@ -1106,7 +1137,7 @@ describe('Ladepunkt pausieren (P3b)', () => {
     key: 'CP1#1', title: 'Wallbox Garage · Stecker A', kind: 'laedt', word: 'Lädt',
     basisWort: 'Lädt', tone: 'laedt', reason: null, reasonCode: null, powerKw: 7.4,
     allocatedKw: 7.4, socPct: null, since: null, nextTurn: null, priority: false,
-    chargePointId: 'CP1', connectorId: 1, boost: false, handeingriff: false, ...over,
+    chargePointId: 'CP1', connectorId: 1, boost: false, handeingriff: false, ladungLaeuft: true, ...over,
   } as unknown as Parameters<typeof ladepunktAktionen>[1]);
 
   it('erkennt die Pause am MASCHINEN-Wort und sagt sie im ZUSTAND', () => {
@@ -1156,9 +1187,18 @@ describe('Ladepunkt pausieren (P3b)', () => {
       expect(pausierbar(row({ kind }))).toBe(true);
     }
     for (const kind of ['frei', 'startet', 'beendet', 'getrennt', 'stoerung',
-      'nicht_verfuegbar', 'reserviert']) {
+      'nicht_verfuegbar', 'reserviert', 'kein_ladevorgang']) {
       expect(pausierbar(row({ kind }))).toBe(false);
     }
+    // ⚠ Dieselbe Regel wie der Server: ohne Ladevorgang (`charging` falsch)
+    // keine Pause, auch wenn das Statuswort „wartet“ ergäbe.
+    expect(pausierbar(row({ kind: 'wartet', ladungLaeuft: false }))).toBe(false);
+  });
+
+  it('nennt am Stecker ohne Ladevorgang den Ausweg statt eines Knopfs', () => {
+    const ohne = row({ kind: 'kein_ladevorgang', word: 'Eingesteckt · kein Ladevorgang', tone: 'stoerung', ladungLaeuft: false });
+    expect(ladepunktAktionen(budget(), ohne)).toEqual([]);
+    expect(ladepunktKeinEingriff(budget(), ohne)).toBe(KEIN_LADEVORGANG_SATZ);
   });
 
   it('nennt am nicht-ladenden Stecker den Grund, statt einen Knopf zu zeigen', () => {

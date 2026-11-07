@@ -94,15 +94,17 @@ export function SchnellLadenZeile({
   return (
     <section className="vp-schnell" aria-label={SCHNELL_KNOPF}>
       {zeilen.map((z) => (
-        <div key={z.key} className={`vp-schnell-zeile${z.laeuft ? ' is-laeuft' : ''}`}>
+        <div key={z.key} className={`vp-schnell-zeile${z.laeuft ? ' is-laeuft' : ''}${z.hinweis ? ' is-hinweis' : ''}`}>
           <span className="vp-schnell-ico" aria-hidden="true">
             <Icon name={z.laeuft ? 'zap' : 'car'} size={22} />
           </span>
           <span className="vp-schnell-text">
             <b>{z.name}</b>
             <small>{z.satz}</small>
+            {/* Kein Knopf, der in die Ablehnung des Servers läuft: hier steht der Ausweg. */}
+            {z.hinweis && <span className="vp-schnell-hinweis" role="note">{z.hinweis}</span>}
           </span>
-          {z.laeuft ? (
+          {z.hinweis ? null : z.laeuft ? (
             <Button variant="outline" size="sm" disabled={busy} onClick={() => void senden(z, null, true)}>
               {SCHNELL_ZURUECK}
             </Button>

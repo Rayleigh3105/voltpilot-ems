@@ -72,3 +72,17 @@
   color: var(--vp-c-muted-fg, #475569);
 }
 .vp-schnell-meldung.is-fehler { color: var(--vp-c-destructive, #b91c1c); }
+
+/* Auto steckt, aber kein Ladevorgang: statt des Knopfs der Ausweg (neu einstecken). */
+.vp-schnell-zeile.is-hinweis { border-left-color: var(--vp-warn, #d97706); }
+.vp-schnell-zeile.is-hinweis .vp-schnell-ico {
+  background: var(--vp-c-warn-bg, #fef3c7);
+  color: var(--vp-c-warn-fg, #92400e);
+}
+.vp-schnell-hinweis {
+  margin-top: 4px;
+  font-size: .85rem;
+  line-height: 1.35;
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}

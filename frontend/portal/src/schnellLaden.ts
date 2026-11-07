@@ -16,6 +16,7 @@ import type { Betriebsart } from './api';
 import { ladeSicht } from './ebenenNav';
 import {
   BOOST_INTRO,
+  KEIN_LADEVORGANG_SATZ,
   LADEPUNKT_ABSTECKEN_DECKEL_MIN,
   boostbar,
   budgetFuer,
@@ -49,6 +50,12 @@ export interface SchnellZeile {
   satz: string;
   /** Läuft „Schnell“ hier schon? Dann bietet die Zeile den Rückweg an. */
   laeuft: boolean;
+  /**
+   * Steckt ein Auto ohne Ladevorgang (`kein_ladevorgang`)? Dann trägt die
+   * Zeile statt eines Knopfs diesen Satz - „Schnell“ endete dort nur in der
+   * Ablehnung des Servers. `null` = die Zeile bietet ihren Knopf an.
+   */
+  hinweis: string | null;
   /** Das Budget der Box dieser Säule - für die Folgen-Karte. */
   budget: ChargingBudget | null;
 }
@@ -69,7 +76,9 @@ export function schnellFuerPrivatkunden(
 
 /**
  * Die Zeilen der Cockpit-Zeile: je Stecker, an dem ein Auto steckt und
- * „Schnell“ etwas ändern kann, oder an dem „Schnell“ schon läuft.
+ * „Schnell“ etwas ändern kann, oder an dem „Schnell“ schon läuft. Steckt ein
+ * Auto, aber die Box kennt dazu keinen Ladevorgang (`kein_ladevorgang`), steht
+ * dort statt des Knopfs der Ausweg: neu einstecken.
  *
  * Keine Zeile, wo VoltPilot die Wallbox nicht regelt (`ladepunktSperre`), wo
  * der Kunde selbst pausiert hat (`handeingriff`) oder wo „Schnell“ nichts
@@ -92,6 +101,20 @@ export function schnellZeilen(input: {
     for (const row of ladevorgangRows([cp], nowMs)) {
       if (row.handeingriff) continue;
       const laeuft = row.boost;
+      const name = mehrere ? `${chargerName(cp)} · ${connectorName(row.connectorId)}` : chargerName(cp);
+      if (row.kind === 'kein_ladevorgang') {
+        out.push({
+          key: row.key,
+          chargePointId: row.chargePointId,
+          connectorId: row.connectorId,
+          name,
+          satz: 'Auto steckt · kein Ladevorgang',
+          laeuft: false,
+          hinweis: row.reason ?? KEIN_LADEVORGANG_SATZ,
+          budget,
+        });
+        continue;
+      }
       if (!laeuft && !boostbar(budget, row)) continue;
       const kw = row.powerKw != null && row.powerKw > 0.05 ? ` · ${fKw(row.powerKw)}` : '';
       const satz = laeuft
@@ -105,9 +128,10 @@ export function schnellZeilen(input: {
         key: row.key,
         chargePointId: row.chargePointId,
         connectorId: row.connectorId,
-        name: mehrere ? `${chargerName(cp)} · ${connectorName(row.connectorId)}` : chargerName(cp),
+        name,
         satz,
         laeuft,
+        hinweis: null,
         budget,
       });
     }

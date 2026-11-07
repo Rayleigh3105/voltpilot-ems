@@ -142,6 +142,8 @@ const STATUS: Record<string, [string, string | null]> = {
  * - `voll` (W-21): das Auto ist voll (SuspendedEV, 0 kW).
  * - `einspeisung` (W-14): sonniger Mittag, der Rest der Box (`Netz − Laden`) ist negativ.
  * - `smart-ohne-sonne` / `smart-ohne-sonne-neu`: „Nur Sonne“ ohne Sonne, Box im Feld bzw. nach dem Fix (siehe unten).
+ * - `ohne-ladevorgang` / `ohne-ladevorgang-neu`: dieselbe Lage, aber die Box kennt KEINEN Ladevorgang
+ *   (`charging: false`, keine Sitzung) - Box im Feld bzw. mit dem Grund `kein_ladevorgang` (siehe unten).
  */
 const WALLBOX_FALL = new URLSearchParams(location.search).get('wallbox');
 
@@ -175,7 +177,8 @@ function wallboxFall(
       Object.assign(con, { meteredAt: vor(120) });
       break;
     case 'voll':
-      Object.assign(con, { status: 'SuspendedEV', charging: false, powerKw: 0, allocatedKw: 11, sessionKwh: 18.2,
+      // Die Box hält `charging` für SuspendedEV mit Sitzung WAHR (`csms.ChargingStatus`): die Ladung läuft, das Auto nimmt nichts.
+      Object.assign(con, { status: 'SuspendedEV', charging: true, powerKw: 0, allocatedKw: 11, sessionKwh: 18.2,
         sessionSince: vor(240), reason: null, reasonText: null });
       break;
     // Befund `voltpilot-lademodus-schnellzugriff` (06.11.2026): „Smart · Nur Sonne“ an der Säule, die Anlage ohne
@@ -190,6 +193,22 @@ function wallboxFall(
       Object.assign(rahmen, { verteiltKw: 0 });
       Object.assign(con, { status: 'SuspendedEVSE', charging: true, powerKw: 0, allocatedKw: 0, sessionKwh: 4.0,
         reason: 'kein_ueberschuss', reasonText: 'wartet — kein Überschuss (Ihre Priorität: Nur Sonnenstrom)' });
+      break;
+    }
+    // Pilotanlage 07.11.2026: die Wallbox verband sich neu, als die Ladung begann; die Box lehnte den Start im
+    // Einrichtungsfenster ab, die Wallbox gab ihn auf. Seitdem: SuspendedEVSE, `charging: false`, keine Sitzung -
+    // Server und Box lehnen „Schnell“, „Aus“ und „bis Abstecken“ ab. Dieselbe Lage wie `smart-ohne-sonne`, nur
+    // ohne Ladevorgang. `-neu`: eine Box, die den Grund `kein_ladevorgang` mit Satz meldet.
+    case 'ohne-ladevorgang':
+    case 'ohne-ladevorgang-neu': {
+      const neu = WALLBOX_FALL === 'ohne-ladevorgang-neu';
+      Object.assign(charging.budget, { surplusPolicy: 'schnell', surplusActive: neu, surplusKw: neu ? 0 : undefined,
+        measuredKw: 0, allocatedKw: 0 });
+      Object.assign(rahmen, { verteiltKw: 0 });
+      Object.assign(con, { status: 'SuspendedEVSE', charging: false, powerKw: null, allocatedKw: null, sessionKwh: null,
+        sessionSince: null, tagRef: null, meteredAt: null,
+        reason: neu ? 'kein_ladevorgang' : null,
+        reasonText: neu ? 'Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken.' : null });
       break;
     }
     case 'einspeisung':
@@ -278,7 +297,9 @@ export function installSteuerungFixtures() {
   });
   const connector = (id: Id, angesteckt: boolean) => ({
     connectorId: 1, status: angesteckt ? (KW[id][J] > 0 ? 'Charging' : 'SuspendedEVSE') : 'Available',
-    charging: KW[id][J] > 0, allocatedKw: KW[id][J], powerKw: angesteckt ? KW[id][J] : 0, energyKwh: 812,
+    // `charging` ist die SITZUNG, nicht der Stromfluss: die Box meldet es für jeden angesteckten Stecker mit
+    // Ladevorgang wahr, auch bei 0 kW (`csms.ChargingStatus`) - dieselbe Regel, nach der der Server Eingriffe annimmt.
+    charging: angesteckt, allocatedKw: KW[id][J], powerKw: angesteckt ? KW[id][J] : 0, energyKwh: 812,
     sessionKwh: angesteckt ? 4.6 : null, meteredAt: JETZT, sessionSince: angesteckt ? ts(32) : null,
     readback: 'confirmed', commandStatus: 'accepted', tagRef: angesteckt ? 'tagref_07cd1234' : null,
     reason: angesteckt ? 'ueberschuss' : null, reasonText: angesteckt ? 'Sonnenstrom' : 'Kein Fahrzeug angeschlossen.',

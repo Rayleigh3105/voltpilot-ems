@@ -387,6 +387,26 @@ describe('Ladepunkt im Haushalt (Audit vp-ocpp-haushalt)', () => {
     expect(g.pill).toEqual(['wait', 'Auto pausiert']);
     expect(g.warum).toBe('Auto pausiert · voll oder Auto-Timer');
     expect(g.ladepunkt?.sperre).toBeNull();
+    // So meldet es die echte Box: mit Sitzung ist `charging` auch bei SuspendedEV wahr - „an“ ist es trotzdem nicht.
+    const echt = bildVon(charging({}, { status: 'SuspendedEV', charging: true, powerKw: 0, allocatedKw: 11 }));
+    expect(echt.an).toBe(false);
+    expect(echt.ladepunkt?.laedt).toBe(true);
+    expect(echt.pill).toEqual(['wait', 'Auto pausiert']);
+  });
+
+  it('Auto steckt ohne Ladevorgang (Pilotanlage 07.11.2026): nicht „an“, kein laufender Ladevorgang, der Ausweg als Satz', () => {
+    const g = bildVon(charging({}, { status: 'SuspendedEVSE', charging: false, powerKw: null, sessionSince: null, meteredAt: null }));
+    expect(g.an).toBe(false);
+    expect(g.ladepunkt?.angesteckt).toBe(true);
+    expect(g.ladepunkt?.laedt).toBe(false);
+    expect(g.ladepunkt?.keinLadevorgang).toBe('Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken.');
+    expect(g.ladepunkt?.boostbar).toBe(false);
+    expect(g.pill).toEqual(['wait', 'kein Ladevorgang']);
+    // Mit Ladevorgang, von uns bei 0 kW gehalten: die Sitzung läuft, „an“ ist die Säule nicht.
+    const wartet = bildVon(charging({}, { status: 'SuspendedEVSE', charging: true, powerKw: 0, allocatedKw: 0 }));
+    expect(wartet.an).toBe(false);
+    expect(wartet.ladepunkt?.laedt).toBe(true);
+    expect(wartet.ladepunkt?.keinLadevorgang).toBeNull();
   });
 });
 

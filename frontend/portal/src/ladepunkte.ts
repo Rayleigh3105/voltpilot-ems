@@ -441,7 +441,7 @@ export type LadeZustandKind =
 // Ladevorgang“ wohnt in `ladeRegel.ts` - klein und ohne Abhängigkeiten, damit
 // auch das erste Bild des Cockpits sie fragen kann, ohne diese Datei zu laden.
 export { KEIN_LADEVORGANG_SATZ, keinLadevorgang, ladungLaeuft } from './ladeRegel';
-import { KEIN_LADEVORGANG_SATZ, keinLadevorgang } from './ladeRegel';
+import { KEIN_LADEVORGANG_SATZ, keinLadevorgang, ladungLaeuft } from './ladeRegel';
 
 export interface LadeZustand {
   /** Das MASCHINEN-Wort des Zustands - worauf eine Fläche schlüsseln darf. */
@@ -741,6 +741,11 @@ export interface LadevorgangRow {
   connectorId: number;
   /** Diese Ladung läuft auf Wunsch des Kunden, ohne die Quellen-Bahn. */
   boost: boolean;
+  /**
+   * Läuft hier ein Ladevorgang ({@link ladungLaeuft})? Ohne ihn bietet keine
+   * Fläche „Schnell“, „Aus“ oder „bis Abstecken“ an - Server und Box lehnten ab.
+   */
+  ladungLaeuft: boolean;
   /** Läuft an dieser Ladung ein „Laden pausieren" des Kunden? (P3b) */
   handeingriff: boolean;
   /** Das Pseudonym der Karte, die hier lädt (P7); null = keine gemeldet. */
@@ -808,6 +813,7 @@ function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): Ladevorga
     chargePointId: c.chargePointId,
     connectorId: con.connectorId,
     boost: con.boost === true,
+    ladungLaeuft: ladungLaeuft(con),
     handeingriff: z.handeingriff,
     tagRef: con.tagRef ?? null,
     bahn: asPolicy(c.quelle?.source),
@@ -1125,6 +1131,8 @@ export function quellenBahnWirkt(
  * {@link schnellWirktNichtGrund} warum.
  */
 export function boostbar(budget: ChargingBudget | null, row: LadevorgangRow): boolean {
+  // ⚠ Zuerst die Regel des Servers: ohne laufenden Ladevorgang endete der Knopf in seinem 409.
+  if (!row.ladungLaeuft) return false;
   if (!quellenBahnWirkt(budget, row)) return false;
   if (row.boost) return false;
   // ⚠ Geprüft wird das MASCHINEN-Wort, nie der deutsche Satz: der trägt bei
@@ -1148,6 +1156,11 @@ export function schnellWirktNichtGrund(
   if (!row) return 'Schnell gilt für eine laufende Ladung.';
   if (row.boost || boostbar(budget, row)) return null;
   if (row.kind === 'kein_ladevorgang') return KEIN_LADEVORGANG_SATZ;
+  if (!row.ladungLaeuft) {
+    if (row.kind === 'startet') return 'Schnell geht, sobald die Ladung begonnen hat.';
+    if (row.kind === 'beendet') return 'Diese Ladung ist beendet. Schnell gilt für eine laufende Ladung.';
+    return 'Schnell gilt für eine laufende Ladung.';
+  }
   if (!quellenBahnWirkt(budget, row)) {
     // Ohne Echo (ältere Box) weiß das Portal nur, dass die Box keine Bahn meldet - mehr wird nicht behauptet.
     return row.bahn === 'schnell'
@@ -1329,7 +1342,7 @@ const LAUFENDE_LADUNG: ReadonlySet<LadeZustandKind> = new Set<LadeZustandKind>([
  * - es gibt dort nichts zu übersteuern, aber sehr wohl etwas zu stoppen.
  */
 export function pausierbar(row: LadevorgangRow): boolean {
-  if (row.handeingriff) return false;
+  if (row.handeingriff || !row.ladungLaeuft) return false;
   return LAUFENDE_LADUNG.has(row.kind);
 }
 
@@ -1355,7 +1368,7 @@ export function ladepunktKeinEingriff(
   // ⚠ Seit P3b bleibt für eine LAUFENDE Ladung immer mindestens „Laden
   // pausieren" übrig - dieser Zweig gilt also nur noch dem Stecker, an dem
   // (noch) kein Ladevorgang läuft, und sagt genau das.
-  if (!LAUFENDE_LADUNG.has(row.kind)) {
+  if (!LAUFENDE_LADUNG.has(row.kind) || !row.ladungLaeuft) {
     return 'An diesem Stecker läuft gerade kein Ladevorgang.';
   }
   if (!quellenBahnWirkt(budget, row)) {
