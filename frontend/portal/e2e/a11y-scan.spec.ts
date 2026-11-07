@@ -119,3 +119,38 @@ for (const seite of SEITEN) {
   }
 }
 
+/**
+ * `prefers-reduced-motion` im echten Browser: keine Endlos-Animation läuft.
+ * `src/motionTokens.test.ts` prüft statisch, dass jeder Loop im Halt-Block
+ * genannt ist - ob die Regel dort auch GEWINNT, entscheidet erst der Browser:
+ * ein nachgeladenes Komponenten-Blatt steht nach `index.css` und siegt bei
+ * gleicher Spezifität (so liefen Fluss-Punkte und Pillen-Puls weiter).
+ */
+const MIT_LOOPS: { name: string; seite?: string; hash: string; uhr?: string }[] = [
+  { name: 'Cockpit', hash: plant() },
+  { name: 'Steuerung', seite: 'steuerung', hash: plant('steuerung'), uhr: STEUERUNG_UHR },
+];
+
+for (const seite of MIT_LOOPS) {
+  test(`reduzierte Bewegung: ${seite.name} ohne laufende Endlos-Animation`, async ({ page }, info) => {
+    test.skip(info.project.name !== 'desktop-chromium', 'eine Breite genügt');
+    test.setTimeout(120_000);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.clock.setFixedTime(new Date(seite.uhr ?? '2026-09-10T10:00:00Z'));
+    await page.goto(`/e2e/${seite.seite ?? 'help'}.html${seite.hash}`, { timeout: 90_000 });
+    await page.locator('.vp-app').first().waitFor({ timeout: 60_000 });
+    await expect(page.locator('[data-vp-loader], .vp-skeleton')).toHaveCount(0, { timeout: 30_000 });
+    // Die Bühne/Pillen stehen erst nach dem Nachladen ihrer Stücke.
+    await expect(page.locator(seite.seite ? '.stn .pill' : '.vp-lp').first()).toBeVisible({ timeout: 30_000 });
+    const endlos = await page.evaluate(() =>
+      document
+        .getAnimations()
+        .filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity)
+        .map((a) => {
+          const el = (a.effect as KeyframeEffect | null)?.target as Element | null;
+          return `${(a as CSSAnimation).animationName ?? '?'} an ${el?.tagName ?? '?'}.${el?.getAttribute('class') ?? ''}`;
+        }),
+    );
+    expect(endlos).toEqual([]);
+  });
+}

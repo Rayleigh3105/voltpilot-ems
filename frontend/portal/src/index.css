@@ -6759,18 +6759,24 @@ span.vp-swap-out {
     --vp-motion-scale: 0;
   }
 
+  /* ⚠ `:root` vorneweg bei den nächsten zwei Regeln: ihr Loop steht in einem
+     NACHGELADENEN Stück (`EnergieBuehne.css`, `steuerung.css`), dessen Blatt
+     erst NACH dieser Datei eingehängt wird. Bei gleicher Spezifität gewann es
+     über die Quell-Reihenfolge - im Browser gemessen liefen die Fluss-Punkte
+     und der Puls der Pille unter reduzierter Bewegung weiter. */
+
   /* Leitungsplan (Cockpit-Bühne): die Punkte SIND die Aussage „live“ -
      unter reduzierter Bewegung entfallen sie ganz; die Richtung trägt dort
      die Herkunftsfarbe der Spur (Grün kommt immer aus dem Speicher …). */
-  .vp-lp.is-live .vp-lp-punkte {
+  :root .vp-lp.is-live .vp-lp-punkte {
     display: none;
     animation: none;
   }
 
   /* Die Zustands-Pille der Steuerung („läuft"): derselbe Herzschlag wie der
      Flotten-Punkt - das Wort „läuft" trägt die Aussage auch ohne ihn. */
-  .stn .pill.on i,
-  .stn-blatt .pill.on i {
+  :root .stn .pill.on i,
+  :root .stn-blatt .pill.on i {
     animation: none;
   }
 
