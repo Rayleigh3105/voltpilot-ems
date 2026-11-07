@@ -134,6 +134,13 @@ beauftragte Änderung („sagt es, statt widersprüchliche Zahlen zu zeigen“),
 geschrieben mit `vitest -u` am Produktstand; der Token-Vergleich alt/neu zeigt nur diesen einen Satz
 (19 295 → 19 400 Bytes), kein anderes Byte.
 
+**Fahrplan per Tastatur (07.11.2026, Wartung Barrierefreiheit `vp-wartung-a11y-w1`, WCAG 2.1.1):**
+`ScheduleChart.tsx` hat in `diagramme.json` einen neuen Hash.
+Die Slot-Auswahl unter „Alle Werte" ging bisher nur über den Klick auf die Zeichenfläche; mit `onSlotClick` ist der Diagramm-Behälter jetzt fokussierbar (`tabIndex`, `role="slider"`, `aria-value*`) und wählt mit Pfeilen, Pos1/Ende und Eingabe/Leertaste denselben Slot wie der Klick.
+Die ECharts-Option, also das gezeichnete Bild, ist unverändert; neu sind `nowSlotIndex` aus `schedule.ts`, der Tastatur-Handler und die Attribute am Behälter.
+Ohne `onSlotClick` (jeder Aufruf außer „Alle Werte" im Fahrplan) bleibt der Behälter ohne neue Attribute.
+Das ist die beauftragte Änderung dieser Fläche, keine gefundene Abweichung; keine HTML-Aufnahme ändert sich.
+
 Aus `frontend/portal` gezielt ausführen (auch nach einem Rebase):
 
 ```bash

@@ -869,6 +869,24 @@ export function todaySlots<T extends { start: string }>(slots: T[], now: Date): 
   return slots.filter((s) => new Date(s.start).toDateString() === day);
 }
 
+/**
+ * Index des letzten Slots, dessen Start nicht nach `now` liegt ("jetzt").
+ * -1, wenn der Plan noch vollständig in der Zukunft liegt (oder leer ist).
+ *
+ * Tastatur-Einstieg (WCAG 2.1.1): ein Fokus, der noch keinen gewählten Slot
+ * trägt, startet hier statt bei Index 0 - "jetzt" ist der sinnvolle erste
+ * Haltepunkt, genau wie beim Tipp auf die Tagesleiste.
+ */
+export function nowSlotIndex<T extends { start: string }>(slots: T[], now: Date): number {
+  const nowMs = now.getTime();
+  let idx = -1;
+  for (let i = 0; i < slots.length; i++) {
+    if (new Date(slots[i].start).getTime() <= nowMs) idx = i;
+    else break;
+  }
+  return idx;
+}
+
 /** Was der Fahrplan für heute an Geld vorsieht - drei Zahlen EINER Rechnung. */
 export interface PlannedDayCosts {
   /** Geplante Stromkosten mit VoltPilot (signierte Kosten, negativ = Erlös). */

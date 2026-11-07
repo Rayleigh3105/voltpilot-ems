@@ -968,3 +968,95 @@ describe('ScheduleChart · eine Legende mit Phasen-Band (V-06)', () => {
     expect(legende.compareDocumentPosition(bild) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+/* ---------------------------------------------------------------------------
+ * WCAG 2.1.1 - der Tipp auf die Zeichenfläche (Slot-Auswahl der "Warum"-Ebene)
+ * lief bisher nur über den zrender-Klick, also nur per Maus/Finger auf dem
+ * Canvas. Diese Fälle nageln das Tastatur-Äquivalent fest.
+ * ------------------------------------------------------------------------- */
+describe('ScheduleChart · Slot-Auswahl per Tastatur (WCAG 2.1.1)', () => {
+  const achtSlots = (jetzt: Date) =>
+    plan(
+      Array.from({ length: 8 }, (_, i) =>
+        slot({ start: new Date(jetzt.getTime() + (i - 4) * 15 * 60_000).toISOString(), batteryKw: 2 }),
+      ),
+    );
+
+  it('ohne onSlotClick bleibt der Container ohne tabIndex/Rolle (byte-identisch)', () => {
+    const { container } = render(<ScheduleChart plan={achtSlots(new Date())} />);
+    const bild = container.querySelector('.vp-chart')!;
+    expect(bild.getAttribute('tabindex')).toBeNull();
+    expect(bild.getAttribute('role')).toBeNull();
+    expect(bild.className).not.toContain('vp-chart-clickable');
+  });
+
+  it('mit onSlotClick ist die Fläche fokussierbar und trägt die Slider-Rolle, Startwert "jetzt"', () => {
+    const jetzt = new Date();
+    const { container } = render(
+      <ScheduleChart plan={achtSlots(jetzt)} onSlotClick={() => {}} />,
+    );
+    const bild = container.querySelector('.vp-chart')!;
+    expect(bild.getAttribute('tabindex')).toBe('0');
+    expect(bild.getAttribute('role')).toBe('slider');
+    expect(bild.getAttribute('aria-valuemin')).toBe('0');
+    expect(bild.getAttribute('aria-valuemax')).toBe('7');
+    // Ohne gewählten Slot startet der Wert bei "jetzt" (Index 4), nicht bei 0.
+    expect(bild.getAttribute('aria-valuenow')).toBe('4');
+    expect(bild.getAttribute('aria-valuetext')).toMatch(/^\d{2}:\d{2} Uhr/);
+    expect(bild.className).toContain('vp-chart-clickable');
+  });
+
+  it('Pfeil rechts/links wählt den Nachbar-Slot relativ zur Auswahl', () => {
+    const jetzt = new Date();
+    const onSlotClick = vi.fn();
+    const { container, rerender } = render(
+      <ScheduleChart plan={achtSlots(jetzt)} onSlotClick={onSlotClick} selectedIndex={3} />,
+    );
+    const bild = container.querySelector('.vp-chart')!;
+    fireEvent.keyDown(bild, { key: 'ArrowRight' });
+    expect(onSlotClick).toHaveBeenCalledWith(4);
+    fireEvent.keyDown(bild, { key: 'ArrowLeft' });
+    expect(onSlotClick).toHaveBeenCalledWith(2);
+    rerender(<ScheduleChart plan={achtSlots(jetzt)} onSlotClick={onSlotClick} selectedIndex={0} />);
+    onSlotClick.mockClear();
+    fireEvent.keyDown(bild, { key: 'ArrowLeft' });
+    // Am linken Rand bleibt der Wert stehen - kein Aufruf, kein Umschalten.
+    expect(onSlotClick).not.toHaveBeenCalled();
+  });
+
+  it('Pos1/Ende springen an den Anfang/das Ende des Plans', () => {
+    const jetzt = new Date();
+    const onSlotClick = vi.fn();
+    const { container } = render(
+      <ScheduleChart plan={achtSlots(jetzt)} onSlotClick={onSlotClick} selectedIndex={3} />,
+    );
+    const bild = container.querySelector('.vp-chart')!;
+    fireEvent.keyDown(bild, { key: 'Home' });
+    expect(onSlotClick).toHaveBeenCalledWith(0);
+    fireEvent.keyDown(bild, { key: 'End' });
+    expect(onSlotClick).toHaveBeenCalledWith(7);
+  });
+
+  it('ein leerer Plan meldet keinen Slot (kein Index -1)', () => {
+    const onSlotClick = vi.fn();
+    const { container } = render(<ScheduleChart plan={plan([])} onSlotClick={onSlotClick} />);
+    const bild = container.querySelector('.vp-chart')!;
+    for (const key of ['ArrowRight', 'ArrowLeft', 'Home', 'End', 'Enter']) fireEvent.keyDown(bild, { key });
+    expect(onSlotClick).not.toHaveBeenCalled();
+  });
+
+  it('Eingabe/Leertaste wählt den aktuellen Slot - erneut drücken hebt die Auswahl auf (wie der Klick)', () => {
+    const jetzt = new Date();
+    const onSlotClick = vi.fn();
+    const { container, rerender } = render(
+      <ScheduleChart plan={achtSlots(jetzt)} onSlotClick={onSlotClick} />,
+    );
+    const bild = container.querySelector('.vp-chart')!;
+    fireEvent.keyDown(bild, { key: 'Enter' });
+    expect(onSlotClick).toHaveBeenCalledWith(4);
+    rerender(<ScheduleChart plan={achtSlots(jetzt)} onSlotClick={onSlotClick} selectedIndex={4} />);
+    onSlotClick.mockClear();
+    fireEvent.keyDown(bild, { key: ' ' });
+    expect(onSlotClick).toHaveBeenCalledWith(4);
+  });
+});

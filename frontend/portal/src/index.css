@@ -322,6 +322,20 @@ svg [tabindex]:focus-visible {
   outline-offset: 2px;
 }
 
+/* Ein Diagramm-Container, dessen Fläche einen Zeitpunkt wählt oder einen Tag
+   öffnet (`ScheduleChart`/`HistoryEnergieChart`): dieselbe Maus-Geste muss mit
+   Pfeiltasten + Enter bedienbar sein (WCAG 2.1.1), also derselbe Haus-Ring wie
+   bei der Tagesleiste (`.vp-tl:focus-visible`). Die Marke selbst wird von
+   mehreren, sonst getrennten Chart-Komponenten gesetzt - EIN Ort statt einer
+   Kopie je Diagramm. */
+.vp-chart-clickable {
+  cursor: pointer;
+}
+.vp-chart-clickable:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 4px;
+}
+
 /* ============================================================
    Unified dashboard shell: fixed sidebar + content column
    ============================================================ */
