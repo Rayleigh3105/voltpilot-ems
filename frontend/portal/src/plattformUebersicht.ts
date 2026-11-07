@@ -112,7 +112,7 @@ function verbindungKachel(sites: AdminFleetSite[], now: Date): UebersichtKachel 
     label: 'Verbindung',
     zahl,
     ton: zahl > 0 ? 'warn' : 'ok',
-    wort: zahl > 0 ? 'melden sich nicht' : `Alle ${total} verbunden ✓`,
+    wort: zahl > 0 ? (zahl === 1 ? 'meldet sich nicht' : 'melden sich nicht') : `Alle ${total} verbunden ✓`,
     wortKurz: zahl > 0 ? 'offline' : `alle ${total} ✓`,
     kontext: teile.join(' · '),
   };
@@ -131,7 +131,7 @@ function softwareKachel(
     .filter((l) => l.devices > 0 && l.known - l.upToDate > 0)
     .map((l) => `${BOX_ART_LABELS[l.boxArt]} ${l.known - l.upToDate} älter`);
   const laufend = rolloutsLaufend(rollouts);
-  const teile = [laufend > 0 ? `${laufend} laufen` : null, ...linienTexte].filter(Boolean);
+  const teile = [laufend > 0 ? `${laufend} ${laufend === 1 ? 'läuft' : 'laufen'}` : null, ...linienTexte].filter(Boolean);
   return {
     id: 'software',
     icon: 'refresh-cw',
@@ -154,7 +154,7 @@ function steuerungKachel(sites: AdminFleetSite[], now: Date): UebersichtKachel {
     label: 'Steuerung',
     zahl,
     ton: zahl > 0 ? 'warn' : 'ok',
-    wort: zahl > 0 ? 'Abweichungen' : 'Keine Abweichungen ✓',
+    wort: zahl > 0 ? (zahl === 1 ? 'Abweichung' : 'Abweichungen') : 'Keine Abweichungen ✓',
     wortKurz: zahl > 0 ? 'Abweichung' : 'ok ✓',
     kontext: rows.length === 1 ? '1 Anlage mit Speicher' : `${rows.length} Anlagen mit Speicher`,
   };

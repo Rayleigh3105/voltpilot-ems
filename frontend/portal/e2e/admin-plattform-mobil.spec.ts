@@ -41,6 +41,33 @@ test('390 px: Übersicht - vier kompakte Kacheln, „Braucht dich“ im ersten B
   await keinUeberlauf(page);
 });
 
+test('N6 - 390 px: „Braucht dich“ trennt Box und Kunde in zwei Zeilen, kein Wortbruch', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.goto('/e2e/plattform-uebersicht.html');
+  const zeilen = page.getByTestId('ueb-braucht-zeile');
+  await expect(zeilen.first()).toBeVisible();
+  const masse = await zeilen.evaluateAll((els) => els.map((el) => {
+    const box = el.querySelector('.vp-ueb-braucht-haupt b')!;
+    const kunde = el.querySelector('.vp-ueb-braucht-kunde');
+    if (!kunde) return { hatKunde: false, getrennt: true, boxBreiteUeberlauf: false };
+    const boxRect = box.getBoundingClientRect();
+    const kundeRect = kunde.getBoundingClientRect();
+    return {
+      hatKunde: true,
+      // Kunde steht unterhalb der Box-Zeile statt daneben in derselben Zeile.
+      getrennt: kundeRect.top >= boxRect.bottom - 1,
+      boxBreiteUeberlauf: box.scrollWidth > box.clientWidth + 1,
+    };
+  }));
+  const mitKunde = masse.filter((m) => m.hatKunde);
+  expect(mitKunde.length, 'mindestens eine Zeile mit Kunde').toBeGreaterThan(0);
+  for (const m of mitKunde) {
+    expect(m.getrennt, 'Kunde steht unter dem Box-Namen, nicht daneben').toBe(true);
+    expect(m.boxBreiteUeberlauf, 'Box-Name bricht nicht mitten im Wort um').toBe(false);
+  }
+  await keinUeberlauf(page);
+});
+
 test('390 px: Katalog-Reiter tragen ein Kurzwort und passen, der Name bleibt lang', async ({ page }) => {
   await page.setViewportSize(PHONE);
   await page.goto('/e2e/katalog-bereich.html?sektion=prognose');
