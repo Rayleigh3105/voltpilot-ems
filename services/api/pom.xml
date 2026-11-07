@@ -190,6 +190,20 @@
         </dependency>
     </dependencies>
 
+    <dependencyManagement>
+        <dependencies>
+            <!-- Sicherheits-Patch (transitiv über spring-security-oauth2-jose 6.3.10):
+                 GHSA-xwmg-2g98-w7v9, DoS durch tief verschachteltes JSON beim Parsen eines
+                 JWT - das passiert vor der Signaturprüfung, also für jeden Bearer-Token.
+                 Behoben in 9.37.4. Beim nächsten Wechsel der Boot-Linie entfernen. -->
+            <dependency>
+                <groupId>com.nimbusds</groupId>
+                <artifactId>nimbus-jose-jwt</artifactId>
+                <version>9.37.4</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <build>
         <!-- The versioned measurement-point catalog remains ONE generated truth
              at repo root. Package that canonical dist artifact into the api jar
