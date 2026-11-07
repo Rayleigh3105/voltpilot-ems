@@ -126,6 +126,14 @@ Komponente ist entfallen; ihr Formular-Körper `LadesaeuleAnbinden` lebt unverä
 (`AnlegenFlow.tsx`) weiter. Neu geschrieben mit `vitest -u` gegen den aktuellen Produktstand - die bewusste, von
 firstmate beauftragte Änderung dieser Fläche; der Zeichenvergleich alt/neu zeigt nur das eine getauschte Element.
 
+**Der Fluss geht auf (07.11.2026, Schramm „Zuhause“, `flussBilanz.ts`):** `cockpit.html` ändert genau den Satz der
+Bühne. Die Fixture zeigt keinen PV-Knoten (Erzeugung 0), Einspeisung 2,1 kW, Laden 1,2 kW und 1,1 kW Verbrauch aus
+dem Schnappschuss; die vier Werte gehen um 4,4 kW nicht auf. Statt „Netzbezug 0,0 kW. Der Speicher lädt mit
+1,2 kW nach.“ sagt der Satz jetzt, dass die Werte nicht zusammenpassen, mit beiden Seiten. Das ist die von firstmate
+beauftragte Änderung („sagt es, statt widersprüchliche Zahlen zu zeigen“), keine gefundene Abweichung. Neu
+geschrieben mit `vitest -u` am Produktstand; der Token-Vergleich alt/neu zeigt nur diesen einen Satz
+(19 295 → 19 400 Bytes), kein anderes Byte.
+
 Aus `frontend/portal` gezielt ausführen (auch nach einem Rebase):
 
 ```bash

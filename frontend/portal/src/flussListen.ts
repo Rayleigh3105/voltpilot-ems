@@ -9,7 +9,7 @@
  * Messwert, steht das Wort bzw. „—“, nie eine erfundene 0.
  */
 import type { RollenKanonischerWert } from './api';
-import type { PvComposition } from './pvComposition';
+import type { PvComposition, PvContribution } from './pvComposition';
 import { SUMMENWERT } from './glossar';
 import { rollenStand, rollenView, teilSummeText } from './pvRolle';
 import type { VerbrauchGruppeId, VerbrauchKomposition } from './verbrauchKomposition';
@@ -153,25 +153,28 @@ export function verbrauchListe(
   };
 }
 
+/** Eine Erzeuger-Zeile: ohne Wert steht der Grund, eine gemessene Null neben Produzierenden heißt „liefert gerade keine Erzeugung“. */
+function erzeugerZeile(p: PvContribution, producing: boolean, gesamtKw: number | null): ListenZeile {
+  const null0 = p.kw != null && p.kw <= TOTBAND_KW && producing;
+  return {
+    key: p.key,
+    name: p.label,
+    sub: p.kw == null ? p.note ?? 'ohne Messung' : null0 ? 'liefert gerade keine Erzeugung' : p.note,
+    wert: p.kw == null ? '—' : kw(p.kw),
+    zahl: p.kw,
+    anteil: p.kw != null && gesamtKw ? Math.min(1, p.kw / gesamtKw) : null,
+    art: p.health === 'stale' ? 'still' : null0 ? 'aus' : 'normal',
+    icon: 'panel',
+    title: p.title,
+  };
+}
+
 /** Erzeugung im Detail - nur mit mehr als einer Fläche bzw. einem Gerät. */
 export function erzeugungListe(c: PvComposition | null, opts: { max: number }): Liste | null {
   if (!c || c.parts.length + c.unmeasured.length < 2) return null;
   const producing = c.parts.some((p) => p.kw != null && p.kw > TOTBAND_KW);
   const alle = [...c.parts, ...c.unmeasured];
-  const zeilen: ListenZeile[] = alle.map((p) => {
-    const null0 = p.kw != null && p.kw <= TOTBAND_KW && producing;
-    return {
-      key: p.key,
-      name: p.label,
-      sub: p.kw == null ? p.note ?? 'ohne Messung' : null0 ? 'liefert gerade keine Erzeugung' : p.note,
-      wert: p.kw == null ? '—' : kw(p.kw),
-      zahl: p.kw,
-      anteil: p.kw != null && c.totalKw ? Math.min(1, p.kw / c.totalKw) : null,
-      art: p.health === 'stale' ? 'still' : null0 ? 'aus' : 'normal',
-      icon: 'panel',
-      title: p.title,
-    };
-  });
+  const zeilen: ListenZeile[] = alle.map((p) => erzeugerZeile(p, producing, c.totalKw));
   const sortiert = sortiere(zeilen);
   return {
     titel: 'Erzeugung im Detail',
@@ -207,18 +210,31 @@ export function ohneAufteilung(titel: string, summe: string, plan: boolean): Lis
  * Die Aufschlüsselung einer kanonischen Rolle (Summenwert, `GET …/rollen/…`)
  * in derselben Listenform - für das Blatt des Knotens. Ein stummes Gerät hat
  * keinen Wert, nur sein Wort; die Summe ist die des Servers, nie nachgerechnet.
+ *
+ * `weitere` (nur PV, `flussBilanz.weitereErzeuger`): die Erzeuger, die die Zuordnung nicht erfasst.
+ * Sie zählen mit ihrer eigenen Messung und stehen mit in der Liste - so ist ihre Summe die Zahl am
+ * Sonnen-Knoten (Schramm 07.11.2026: der zugeordnete PIKO und drei KACO ohne Zuordnung).
  */
-export function rollenListe(wert: RollenKanonischerWert | null | undefined): Liste | null {
+export function rollenListe(
+  wert: RollenKanonischerWert | null | undefined,
+  weitere: readonly PvContribution[] = [],
+): Liste | null {
   const view = rollenView(wert);
   if (!view || !wert) return null;
   const netz = wert.role === 'grid';
   const titel = wert.role === 'pv' ? 'Erzeugung im Detail' : wert.role === 'grid' ? 'Netz im Detail' : 'Verbrauch im Detail';
   const icon: ZeilenIcon = wert.role === 'pv' ? 'panel' : wert.role === 'grid' ? 'plug' : 'home';
-  const bezug = view.zeilen.reduce((s, z) => s + Math.abs(z.kw ?? 0), 0);
+  const ohneZuordnung = wert.role === 'pv' ? weitere : [];
+  const weitereKw = ohneZuordnung.reduce((s, p) => s + (p.kw ?? 0), 0);
+  const bezug = view.zeilen.reduce((s, z) => s + Math.abs(z.kw ?? 0), 0) + weitereKw;
   const zeilen: ListenZeile[] = view.zeilen.map((z) => ({
     key: z.entityId,
     name: z.name,
-    sub: !z.liefernd ? 'liefert gerade nicht' : netz && z.kw != null ? (z.kw < -TOTBAND_KW ? 'Einspeisung' : z.kw > TOTBAND_KW ? 'Bezug' : null) : null,
+    sub: !z.liefernd
+      ? 'liefert gerade nicht'
+      : netz && z.kw != null
+        ? (z.kw < -TOTBAND_KW ? 'Einspeisung' : z.kw > TOTBAND_KW ? 'Bezug' : null)
+        : ohneZuordnung.length > 0 ? 'zugeordnet' : null,
     wert: z.kw == null ? '—' : kw(Math.abs(z.kw)),
     zahl: z.kw == null ? null : Math.abs(z.kw),
     anteil: z.kw != null && bezug > 0 ? Math.min(1, Math.abs(z.kw) / bezug) : null,
@@ -226,13 +242,16 @@ export function rollenListe(wert: RollenKanonischerWert | null | undefined): Lis
     icon,
     title: null,
   }));
+  const producing = ohneZuordnung.some((p) => p.kw != null && p.kw > TOTBAND_KW);
+  for (const p of ohneZuordnung) zeilen.push(erzeugerZeile(p, producing, bezug > 0 ? bezug : null));
   const fuss = [rollenStand(view.stand)];
   const teil = teilSummeText(view);
   if (teil) fuss.push(`Summe ${teil}`);
   if (view.summenwertHinweis) fuss.push(`Ein ${SUMMENWERT} kann mehreren Geräten zugeordnet sein. Er zählt in der Anlagenzahl einmal.`);
+  if (ohneZuordnung.length > 0) fuss.push('Geräte ohne Zuordnung zählen mit ihrer eigenen Messung.');
   return {
     titel,
-    summe: view.summe == null ? '—' : kw(Math.abs(view.summe)),
+    summe: view.summe == null ? '—' : kw(Math.abs(view.summe) + weitereKw),
     zeilen: sortiere(zeilen),
     gesamt: zeilen.length,
     fuss,

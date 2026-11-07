@@ -71,6 +71,7 @@ import { kwText } from './anlagensteuerung';
 import { gruppeFuer, istUnterzaehler, werteFuerGruppe, type GeraeteGruppe } from './aufbauGruppen';
 import { boxSeiteHash } from './nav';
 import { sanitizeSoc } from './plausible';
+import { wertAktuell } from './wertAktuell';
 import { boxLage, type GeraeteKarte, type KartenArt } from './zentraleListe';
 
 /** Welche Größe ein Chip zeigt - bestimmt Symbol und Farbe, nie den Wert. */
@@ -490,10 +491,11 @@ const KOPF_REIHENFOLGE: AufbauWertArt[] = ['pv', 'speicher', 'netz'];
 
 /**
  * Trägt eine Komponente einen AKTUELLEN Wert? Gesund, nicht verwaist, mit Lesung. Dieselbe Regel für den Anlagenkopf
- * (`anlagenKopf`) und die Gruppenköpfe (`aufbauGruppen.ts`) - sonst liefen die Summen gegeneinander.
+ * (`anlagenKopf`), die Gruppenköpfe (`aufbauGruppen.ts`) und die Erzeugung im Cockpit-Fluss (`flussBilanz.ts`, über
+ * `wertAktuell`) - sonst liefen die Summen gegeneinander.
  */
 export function komponenteAktuell(c: PlantComponent): boolean {
-  return c.health === 'ok' && !c.orphaned && c.reading != null;
+  return wertAktuell({ health: c.health, verwaist: c.orphaned, hatWert: c.reading != null });
 }
 
 function zeitpunkt(iso: string | null): number | null {

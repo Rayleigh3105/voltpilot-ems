@@ -99,6 +99,27 @@ describe('Rollen-Aufschlüsselung im Blatt (dieselbe Listenform)', () => {
     expect(rollenListe(wert({ zuordnung_vorhanden: false }))).toBeNull();
     expect(rollenListe(null)).toBeNull();
   });
+
+  it('Erzeuger ohne Zuordnung stehen mit ihrer Messung dabei; die Summe ist die Zahl am Sonnen-Knoten', () => {
+    const zugeordnet = wert({
+      wert: 1.18, unvollstaendig: false,
+      geraete: [{ entity_id: 'piko', name: 'PIKO Scheune', art: 'messkanal', wert: 1.18, liefernd: true, grund: null }],
+    });
+    const erzeuger = (key: string, label: string, kw: number | null, note: string | null = null) =>
+      ({ key, label, kw, health: kw == null ? 'stale' : 'ok', note, title: label, entityId: key, deviceId: null, alias: null }) as never;
+    const l = rollenListe(zugeordnet, [erzeuger('ost', 'Kaco Ost', 0.92), erzeuger('mitte', 'Kaco Mitte', 0.88),
+      erzeuger('west', 'Kaco West', null, 'meldet sich gerade nicht')])!;
+    expect(l.zeilen.map((z) => [z.name, txt(z.wert), z.sub])).toEqual([
+      ['PIKO Scheune', '1,2 kW', 'zugeordnet'],
+      ['Kaco Ost', '0,9 kW', null],
+      ['Kaco Mitte', '0,9 kW', null],
+      ['Kaco West', '—', 'meldet sich gerade nicht'],
+    ]);
+    expect(txt(l.summe)).toBe('3,0 kW');
+    expect(l.fuss).toContain('Geräte ohne Zuordnung zählen mit ihrer eigenen Messung.');
+    // Netz und Verbrauch kennen keine weiteren Erzeuger.
+    expect(rollenListe(wert({ role: 'grid' }), [erzeuger('ost', 'Kaco Ost', 0.92)])!.zeilen).toHaveLength(3);
+  });
 });
 
 describe('Heizstab in „Verbrauch im Detail“', () => {

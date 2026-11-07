@@ -8,7 +8,8 @@ import type { AnlagenSub } from '../nav';
 import { showTechnicalLayer } from '../rollen';
 import type { ErzeugerBuehne } from '../erzeuger';
 import type { JetztFluss } from '../flussJetzt';
-import { erzeugungListe, ohneAufteilung, rollenListe, verbrauchListe, type Liste } from '../flussListen';
+import { lueckenSatz, widerspruchSatz, type FlussBilanz } from '../flussBilanz';
+import { erzeugungListe, kuerzen, ohneAufteilung, rollenListe, verbrauchListe, type Liste } from '../flussListen';
 import {
   herkunftMoment,
   knotenTexte,
@@ -28,7 +29,7 @@ import {
   type Rolle,
   type Zeitbezug,
 } from '../leitungsplan';
-import type { PvComposition } from '../pvComposition';
+import type { PvComposition, PvContribution } from '../pvComposition';
 import { energieBis, hoechsterBezug, tagesSkala, uhrzeit, type Tag } from '../tagesleiste';
 import type { VerbrauchKomposition } from '../verbrauchKomposition';
 import { BottomSheet } from './BottomSheet';
@@ -72,6 +73,7 @@ export function EnergieBuehne({
   onBlatt,
   onOpenSub,
   erzeuger = null,
+  bilanz = null,
 }: {
   jetzt: JetztFluss;
   stale?: boolean;
@@ -98,6 +100,12 @@ export function EnergieBuehne({
    * „Verbrauch“ (= Erzeugung + Netzpunkt). Ohne Netzpunkt (EW-16 C) stehen Netz und Hof als „—“, nie 0.
    */
   erzeuger?: ErzeugerBuehne | null;
+  /**
+   * Die Bilanz des Moments „jetzt“ (`flussBilanz`): passt der Satz der vier Werte nicht zusammen, gibt
+   * es keine Anteile, und die Teile, die fehlen oder veraltet sind, stehen unter dem Satz. `null` = kein
+   * Befund (Erzeugeranlage, Prüfbühnen ohne Topologie).
+   */
+  bilanz?: Pick<FlussBilanz, 'luecken' | 'stimmig' | 'weitereErzeuger'> | null;
 }) {
   const [ansicht, setAnsicht] = useState<Ansicht>('jetzt');
   const [gewaehlt, setGewaehlt] = useState<number | null>(null);
@@ -134,7 +142,8 @@ export function EnergieBuehne({
     zeit = 'gemessen';
   } else if (!tag || q === jetztQ) {
     werte = jetzt.werte;
-    herkunft = herkunftMoment(werte);
+    // Passen die vier Werte nicht als EIN Satz zusammen, erfindet der Fluss keine Aufteilung.
+    herkunft = bilanz && !bilanz.stimmig ? null : herkunftMoment(werte);
     socPct = jetzt.socPct;
     zeit = 'live';
     skala = Math.max(tag?.maxKw ?? 0, liveMax);
@@ -175,7 +184,10 @@ export function EnergieBuehne({
     if (live && k.netzZeile) texte.grid = { ...texte.grid, zeilen: [k.netzZeile], aria: `Netz: ${texte.grid.wert}, ${k.netzZeile}` };
   }
   const uhr = !tag || (q === jetztQ && !heute) ? uhrText(now) : heute && q === jetztQ ? uhrText(now) : uhrzeit(v?.start ?? now.getTime());
-  const satzText = erzeuger && zeit === 'live' && !heute ? erzeuger.satz : satz({
+  const jetztLive = zeit === 'live' && !heute;
+  const widerspruch = jetztLive && !erzeuger && bilanz && !bilanz.stimmig ? widerspruchSatz(werte) : null;
+  const luecke = jetztLive && !erzeuger && bilanz ? lueckenSatz(bilanz.luecken) : null;
+  const satzText = erzeuger && jetztLive ? erzeuger.satz : widerspruch ?? satz({
       betrieb,
       ansicht,
       zeit,
@@ -207,13 +219,19 @@ export function EnergieBuehne({
   // Unter dem Fluss steht nur der Verbrauch; die Erzeugung je Gerät öffnet
   // sich im Blatt des Sonnen-Knotens (dieselbe Listenform).
   // Bei einer Erzeugeranlage steht hier die Erzeugung je Einheit (Motor, Wechselrichter) - nur jetzt.
-  const vListe: Liste | null = erzeuger
-    ? (zeit === 'live' && !heute ? erzeuger.liste : null)
-    : heute || zeit === 'live'
-      ? verbrauchListe(verbrauch, { heute, max, hausKw: heute ? null : werte.load, technik: showTechnicalLayer() })
-      : verbrauch
-        ? ohneAufteilung('Verbrauch im Detail', kw(werte.load), zeit === 'plan')
-        : null;
+  // Mit Verbrauchs-Zuordnung ist IHR Wert der Verbrauch am Knoten - dann steht auch unter dem Fluss
+  // ihre Aufschlüsselung (wie im Blatt), nie das Haus der Box mit einer anderen Summe.
+  const rollenVerbrauch = jetztLive && !erzeuger ? rollenListe(rollen?.load) : null;
+  // Ohne aktuellen Hauswert gibt es keine Aufschlüsselung davon (der Grund steht unter dem Satz).
+  const hausFehlt = jetztLive && bilanz?.luecken.some((l) => l.rolle === 'load') === true;
+  let vListe: Liste | null;
+  if (erzeuger) vListe = zeit === 'live' && !heute ? erzeuger.liste : null;
+  else if (rollenVerbrauch) vListe = { ...rollenVerbrauch, zeilen: kuerzen(rollenVerbrauch.zeilen, max, 'Verbraucher', false) };
+  else if (heute || zeit === 'live') {
+    vListe = verbrauchListe(hausFehlt ? null : verbrauch, {
+      heute, max, hausKw: heute ? null : werte.load, technik: showTechnicalLayer(),
+    });
+  } else vListe = verbrauch ? ohneAufteilung('Verbrauch im Detail', kw(werte.load), zeit === 'plan') : null;
 
   const oeffne = (art: Rolle, el: HTMLElement) => {
     ausloeser.current = el;
@@ -256,6 +274,7 @@ export function EnergieBuehne({
         </span>
       </div>
       <p className="vp-eb-satz" aria-live="polite">{satzText}</p>
+      {luecke && <p className="vp-eb-luecke">{luecke}</p>}
 
       <Leitungsplan
         herkunft={herkunft}
@@ -349,6 +368,7 @@ export function EnergieBuehne({
             uhr={uhr}
             verbrauch={verbrauch}
             pv={pv}
+            weitereErzeuger={bilanz?.weitereErzeuger ?? []}
             rollen={rollen}
             zielKw={zielKw}
             rolle={rolle}
@@ -560,6 +580,7 @@ function BlattInhalt({
   uhr,
   verbrauch,
   pv,
+  weitereErzeuger = [],
   rollen,
   zielKw,
   rolle,
@@ -576,6 +597,8 @@ function BlattInhalt({
   uhr: string;
   verbrauch: VerbrauchKomposition | null;
   pv: PvComposition | null;
+  /** Mit PV-Zuordnung: die Erzeuger, die sie nicht erfasst - sie zählen mit ihrer eigenen Messung. */
+  weitereErzeuger?: readonly PvContribution[];
   rollen: { pv: RollenKanonischerWert | null; load: RollenKanonischerWert | null; grid: RollenKanonischerWert | null } | null;
   zielKw: number | null;
   rolle: string | null;
@@ -614,7 +637,9 @@ function BlattInhalt({
         {wegZeilen(wege((p) => p.startsWith('pv>')))}
         {!heute && zeit === 'live' && (() => {
           // Dieselbe Listenform wie unter dem Fluss, hier vollständig.
-          const liste = erzeuger ? erzeuger.liste : rollenListe(rollen?.pv) ?? erzeugungListe(pv, { max: Number.MAX_SAFE_INTEGER });
+          const liste = erzeuger
+            ? erzeuger.liste
+            : rollenListe(rollen?.pv, weitereErzeuger) ?? erzeugungListe(pv, { max: Number.MAX_SAFE_INTEGER });
           return liste ? <ListeBlock liste={liste} className="vp-rolle-pv" /> : null;
         })()}
         {zeit === 'plan' && <p className="vp-eb-note">Die Prognose gilt für die ganze Anlage, nicht je Fläche.</p>}

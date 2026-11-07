@@ -9,7 +9,7 @@ import type { ChargingNodeOpts } from '../adaptiveFlow';
 import { cockpitRollenTopologie } from '../pvRolle';
 import { pvComposition } from '../pvComposition';
 import type { ErzeugerBuehne } from '../erzeuger';
-import { jetztFluss } from '../flussJetzt';
+import { flussBilanz } from '../flussBilanz';
 import type { Betrieb, Rolle } from '../leitungsplan';
 import type { PlanWordingKind } from '../schedule';
 import type { Tag } from '../tagesleiste';
@@ -156,10 +156,10 @@ export function CockpitHero({
     erzeuger?: ErzeugerBuehne | null;
   } | null;
   /**
-   * Der kanonische PV-ROLLEN-Wert der Anlage (`GET …/rollen/pv`, vp-agg §2.4/B). Existiert eine
-   * Standort-PV-Zuordnung, trägt die Cockpit-Zahl ein dezentes „berechnet" und ein Tipp öffnet die
-   * Aufschlüsselung je Gerät. null / keine Zuordnung = das Cockpit bleibt beim Rückfall
-   * `telemetry.pv_power_kw` und die Fläche rendert nichts.
+   * Der kanonische PV-ROLLEN-Wert der Anlage (`GET …/rollen/pv`, vp-agg §2.4/B). Er ersetzt die Zahl
+   * der zugeordneten Geräte; Erzeuger ohne Zuordnung zählen mit ihrer eigenen Messung weiter
+   * (`flussBilanz`). Das Blatt der Sonne nennt beide. null / keine Zuordnung = das Cockpit bleibt bei
+   * der PV-Zusammensetzung.
    */
   pvRollen?: RollenKanonischerWert | null;
   verbrauchRollen?: RollenKanonischerWert | null;
@@ -167,13 +167,18 @@ export function CockpitHero({
 }) {
   const rollenTopologie = cockpitRollenTopologie(topology, [pvRollen, verbrauchRollen, netzRollen]);
   const erzeuger = buehne?.erzeuger ?? null;
-  // Existiert eine kanonische PV-Zuordnung, ist SIE die Herkunft der Cockpit-Zahl - dann tritt die
-  // rohe Quellen-Aufteilung (`PvBreakdownLine`) zurück, sie erklärte sonst eine andere Zahl.
-  const pvRolleAktiv = pvRollen?.zuordnung_vorhanden === true;
-  // Die EINE Ableitung der PV-Zusammensetzung: sie liefert die Zahl am
-  // Sonnen-Knoten UND „Erzeugung im Detail“ - beide können sich nicht
-  // widersprechen. Mit kanonischer PV-Rolle ist deren Wert die Zahl.
-  const composition = topology && !pvRolleAktiv ? pvComposition(rollenTopologie, sources, pins) : null;
+  // Die EINE Ableitung der PV-Zusammensetzung aus der ROHEN Topologie: sie liefert die Zahl am
+  // Sonnen-Knoten UND „Erzeugung im Detail“ - beide können sich nicht widersprechen. Auch mit
+  // PV-Zuordnung: die Zuordnung ersetzt nur die Zahl der beteiligten Geräte, die übrigen Erzeuger
+  // zählen mit dieser Messung weiter (`flussBilanz`, Schramm „Zuhause“ 07.11.2026).
+  const composition = topology ? pvComposition(topology, sources, pins) : null;
+  // Der Moment „jetzt“ als EIN stimmiger Satz aus Erzeugung, Netz, Speicher und Verbrauch.
+  const bilanz = erzeuger ? null : flussBilanz({
+    topology,
+    snapshot,
+    pv: composition,
+    rollen: { pv: pvRollen, load: verbrauchRollen, grid: netzRollen },
+  });
   // Was die Sonne zeigt, ist auch ein Fluss: eine reine Erzeugeranlage ohne Hauptgerät (Schramm
   // „Zuhause“, 07.11.2026) hat ihre PV nur über die gepinnten Quellen - die Zahl am Sonnen-Knoten
   // kommt genau daher. Ohne diese Zeile sagte das Cockpit „Ist Ihr Gerät mit Strom versorgt?“,
@@ -195,16 +200,14 @@ export function CockpitHero({
         {hasFlow ? (
           <Suspense fallback={<div className="vp-eb-warten" aria-hidden="true" />}>
           <EnergieBuehne
-            jetzt={erzeuger ? erzeuger.jetzt : jetztFluss(rollenTopologie, snapshot, {
-              pvTotalKw: composition?.totalKw ?? null,
-              loadKanonisch: verbrauchRollen?.zuordnung_vorhanden ? { wert: verbrauchRollen.wert } : null,
-            })}
+            jetzt={erzeuger ? erzeuger.jetzt : bilanz!}
             stale={stale}
             betrieb={buehne?.betrieb ?? 'eigenverbrauch'}
             tag={buehne?.tag ?? null}
             zielKw={buehne?.zielKw ?? null}
             verbrauch={buehne?.verbrauch ?? null}
-            pv={composition}
+            pv={bilanz?.erzeugung ?? composition}
+            bilanz={bilanz}
             rollen={{ pv: pvRollen, load: verbrauchRollen, grid: netzRollen }}
             planKind={buehne?.planKind ?? 'eigenverbrauch'}
             isPhone={buehne?.isPhone ?? false}

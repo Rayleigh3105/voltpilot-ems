@@ -83,6 +83,14 @@
   font: 600 0.95rem/1.4 var(--vp-font-heading);
   text-wrap: pretty;
 }
+/* Was im Moment fehlt oder veraltet ist (`flussBilanz.lueckenSatz`) - leise unter dem Satz, bricht um. */
+.vp-eb-luecke {
+  margin: -6px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
 
 /* --- Der Leitungsplan ---------------------------------------------------- */
 .vp-lp {

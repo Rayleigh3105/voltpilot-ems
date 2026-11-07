@@ -4,6 +4,7 @@ import { CockpitHero } from './CockpitHero';
 import { ControlStrip } from './ControlStrip';
 import type { LiveSnapshot } from '../live';
 import type { SiteEntity, SiteSource, SiteTopology } from '../api';
+import { ebStand } from '../test/flussBilanzFixtures';
 
 // Die Bühne lädt `EnergieBuehne` nach (React.lazy). Unter Last dauerte der erste Import länger als die Frist eines
 // `waitFor` (1 s) und der erste Fall scheiterte zufällig; vorgewärmt löst `lazy` sofort auf — geprüft wird das Bild,
@@ -227,5 +228,65 @@ describe('Eine reine Erzeugeranlage ohne Hauptgerät zeigt ihre Erzeugung', () =
       <CockpitHero topology={topology} snapshot={ohneWerte} sources={[]} pins={pins} onOpenSub={() => {}} />,
     );
     expect(getByText('Was kann ich tun?')).toBeTruthy();
+  });
+});
+
+/**
+ * Schramm „Zuhause“, 07.11.2026 14:20 - fiktiv nachgestellt (`test/flussBilanzFixtures.ts`): eine
+ * PV-Zuordnung nannte nur den PIKO, das Cockpit zeigte „Erzeugung 1,2 kW · Bezug 5,9 kW · Verbrauch
+ * 9,6 kW“ und „Sonne deckt 12 % des Verbrauchs“. Die Reproduktion ist der Regressionstest.
+ */
+describe('Der Fluss geht auf (flussBilanz)', () => {
+  const NB = ' ';
+  const knoten = (c: HTMLElement, rolle: string) => c.querySelector(`.vp-lp-k-${rolle}`)?.getAttribute('aria-label') ?? '';
+  const buehne = (fall: Parameters<typeof ebStand>[0] = {}) => {
+    const s = ebStand(fall);
+    return render(
+      <CockpitHero
+        topology={s.topology}
+        snapshot={s.snapshot}
+        sources={s.sources}
+        pins={s.pins}
+        pvRollen={s.pvRollen}
+        verbrauchRollen={s.verbrauchRollen}
+        onOpenSub={() => {}}
+      />,
+    );
+  };
+
+  it('Erzeugung 3,7 + Bezug 5,9 = Verbrauch 9,6 kW, der Satz nennt 38 % - nicht mehr 1,2 kW und 12 %', async () => {
+    const { container } = buehne();
+    await waitFor(() => expect(container.querySelector('.vp-lp')).not.toBeNull());
+    expect(knoten(container, 'pv')).toBe(`Sonne: 3,7${NB}kW, Erzeugung`);
+    expect(knoten(container, 'grid')).toBe(`Netz: 5,9${NB}kW, Bezug`);
+    expect(knoten(container, 'load')).toBe(`Haus: 9,6${NB}kW, Verbrauch`);
+    expect(container.querySelector('.vp-eb-satz')?.textContent).toBe(`Sonne deckt 38${NB}% des Verbrauchs, der Rest kommt aus dem Netz.`);
+    expect(container.querySelector('.vp-eb-luecke')).toBeNull();
+    // Das Blatt der Sonne nennt den zugeordneten PIKO und die drei KACO mit ihrer Messung - Summe = Knoten.
+    fireEvent.click(container.querySelector('.vp-lp-k-pv')!);
+    await waitFor(() => expect(document.body.querySelector('.vp-rolle-pv')).not.toBeNull());
+    const blatt = document.body.querySelector('.vp-rolle-pv')!.textContent ?? '';
+    for (const name of ['Kostal PIKO Scheune', 'Kaco Ost', 'Kaco Mitte', 'Kaco West']) expect(blatt).toContain(name);
+    expect(blatt).toContain(`3,7${NB}kW`);
+    expect(blatt).toContain('Geräte ohne Zuordnung zählen mit ihrer eigenen Messung.');
+  });
+
+  it('ein KACO, den die Box nicht liest, steht unter dem Satz statt still in der Sonne', async () => {
+    const { container } = buehne({ veraltet: ['eb-kaco-west'] });
+    await waitFor(() => expect(container.querySelector('.vp-lp')).not.toBeNull());
+    expect(knoten(container, 'pv')).toBe(`Sonne: 3,0${NB}kW, Erzeugung`);
+    expect(knoten(container, 'load')).toBe(`Haus: 8,9${NB}kW, Verbrauch`);
+    expect(container.querySelector('.vp-eb-luecke')?.textContent).toBe('Nicht mitgezählt: Kaco West (meldet sich gerade nicht).');
+  });
+
+  it('passen die Werte nicht zusammen, gibt es keine Prozente, sondern beide Zahlen', async () => {
+    const { container } = buehne({ teilverbrauch: true });
+    await waitFor(() => expect(container.querySelector('.vp-lp')).not.toBeNull());
+    const satz = container.querySelector('.vp-eb-satz')?.textContent ?? '';
+    expect(satz).toBe(
+      `Die Werte passen gerade nicht zusammen: Erzeugung und Bezug liefern 9,6${NB}kW, der Verbrauch zeigt 7,9${NB}kW. ` +
+        'Darum rechnet das Cockpit keine Anteile aus.',
+    );
+    expect(satz).not.toContain('%');
   });
 });

@@ -15,6 +15,16 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   im Browser ein erfundenes „lädt 332 kW“); dann gibt es keine Aufteilung und einen Satz dazu. Kanonische
   Rollenwerte (`pvRollen`/`verbrauchRollen`/`netzRollen` mit Zuordnung) haben Vorrang. Zahlen mit einer
   Nachkommastelle wie überall im Portal.
+- **Der Moment ist EIN Satz** (`flussBilanz.ts`, Schramm „Zuhause“ 07.11.2026: eine PV-Zuordnung nur am PIKO
+  ergab „Erzeugung 1,2 + Bezug 5,9 ≠ Verbrauch 9,6, Sonne deckt 12 %“, das Haus der Box enthielt alle vier
+  Erzeuger). Eine PV-Zuordnung ersetzt die Zahl der BETEILIGTEN Geräte (Wortlaut des Rollen-Dialogs), Erzeuger
+  ohne Zuordnung zählen mit ihrer Messung, das Blatt der Sonne nennt beide (`rollenListe(wert, weitere)`); in der
+  Rekonstruktion aus `/sources` (Hybrid trägt die Summe) bleibt die Zuordnung die ganze Sonne. Ein Teil ohne
+  aktuellen Wert (`wertAktuell`, dieselbe Regel wie `aufbauBaum.komponenteAktuell`) zählt nicht still mit und steht
+  als „Nicht mitgezählt: …“ unter dem Satz (nur wenn die Anlage sonst lebt). Bleibt ein Rest über
+  max(0,3 kW; 10 %), gibt es keine Anteile, der Satz nennt beide Seiten (`widerspruchSatz`). Mit
+  Verbrauchs-Zuordnung zeigt „Verbrauch im Detail“ unter dem Fluss deren Aufschlüsselung, nie das Haus der Box mit
+  anderer Summe. Offen: `/overview` ersetzt die PV serverseitig weiter anlagenweit (`OverviewController.rollenWert`).
 - **Kopf und Zeitwahl (Konzept b1, 20.10.2026):** Der Kopf ist ein Raster mit festen Plätzen
   (Telefon `uhr modus` / `marke marke`, Rechner eine Zeile); der Umschalter Jetzt/Heute bricht nie um.
   Die Plan-Tätigkeit steht in der Marke („Plan · …“, abseits von jetzt gemessen „gemessen · Plan: …“),
@@ -94,7 +104,7 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   Gespeicherte Schichten gewinnen.
 - **Beweise:** `leitungsplan.test.ts`, `tagesleiste.test.ts`, `flussListen.test.ts`, `kacheln.test.ts`,
   `kacheln/CockpitKacheln.test.tsx`, `kachelGroessen.test.ts`, `AnlagenPage.test.tsx`; E2E
-  `cockpit-buehne`, `cockpit-rollen`, `laden-bei-bezug`, `summenwert-abnahme` (Rollen im Blatt),
-  `layout-waechter`. Browserprüfung: `e2e/help.html?betrieb=eigen#/anlage/help-site` (Eigenverbrauch)
+  `cockpit-buehne`, `cockpit-rollen`, `cockpit-fluss-bilanz` (Zuordnung, veralteter Erzeuger, Teilverbrauch),
+  `laden-bei-bezug`, `summenwert-abnahme` (Rollen im Blatt), `layout-waechter`; Vitest `flussBilanz.test.ts`. Browserprüfung: `e2e/help.html?betrieb=eigen#/anlage/help-site` (Eigenverbrauch)
   bzw. ohne Parameter (Marktoptimierung), Uhr auf `2026-09-10T10:00:00Z`, `TZ=Europe/Berlin`. Bündel:
   Einstieg 210,6 kB gz (Grenze 230).
