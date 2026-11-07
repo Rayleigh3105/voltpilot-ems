@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AdminFleetSite } from './admin/fleetApi';
-import type { FleetRow as EdgeFleetRow } from './adminEdgeUpdates';
+import type { EdgeUpdatesKpi, EdgeUpdatesLine, FleetRow as EdgeFleetRow, Rollout } from './adminEdgeUpdates';
+import { edgeUpdatesUrteil, kpiText, rolloutsLaufend } from './adminEdgeUpdates';
 import type { PendingEnrollment } from './admin/adminApi';
 import type { FernwartungBox, FernwartungUebersicht } from './adminFernwartung';
 import type { WerkstattDienst } from './werkstattBank';
@@ -31,6 +32,15 @@ function site(over: Partial<AdminFleetSite> = {}): AdminFleetSite {
   } as AdminFleetSite;
 }
 
+function rollout(over: Partial<Rollout> = {}): Rollout {
+  return {
+    id: 'r1', releaseVersion: 'edge-2026.09.0', releaseSeq: 2, state: 'laufend',
+    createdBy: 'admin', createdAt: ago(10 * 60_000), total: 1, confirmed: 0, failed: 0,
+    devices: [{ deviceId: 'd1', label: 'Box A', siteName: 'Anlage A', tenantName: 'Kunde A', state: 'angefragt', reason: null, since: ago(10 * 60_000) }],
+    ...over,
+  } as Rollout;
+}
+
 function edgeRow(over: Partial<EdgeFleetRow> = {}): EdgeFleetRow {
   return {
     deviceId: 'd1', label: 'Box A', externalRef: 'VP-BOX-0001', siteId: 's1', siteName: 'Anlage A',
@@ -44,7 +54,7 @@ function edgeRow(over: Partial<EdgeFleetRow> = {}): EdgeFleetRow {
 
 describe('uebersichtKacheln', () => {
   it('zeigt eine ruhige Verbindungs-Kachel ohne Ausnahme', () => {
-    const k = uebersichtKacheln({ sites: [site()], releases: [], edgeLines: [], edgeKpi: { known: 1, upToDate: 1, unknown: 0, inRollout: 0, failed: 0, newestRelease: null } }, NOW);
+    const k = uebersichtKacheln({ sites: [site()], releases: [], edgeLines: [], edgeKpi: { known: 1, upToDate: 1, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [] }, NOW);
     const verbindung = k.find((x) => x.id === 'verbindung')!;
     expect(verbindung.zahl).toBe(0);
     expect(verbindung.ton).toBe('ok');
@@ -54,7 +64,7 @@ describe('uebersichtKacheln', () => {
   it('E6: eine verzögerte Box zählt NICHT als Ausnahme der Verbindungs-Kachel - reine Anzeige', () => {
     const k = uebersichtKacheln({
       sites: [site({ boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box A', fuehrtAnlage: true, lastSeenAt: ago(2 * 60_000), edge: null, update: null }] })],
-      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
+      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [],
     }, NOW);
     const verbindung = k.find((x) => x.id === 'verbindung')!;
     expect(verbindung.zahl).toBe(0);
@@ -64,7 +74,7 @@ describe('uebersichtKacheln', () => {
   it('zählt Boxen, die sich nicht melden, als Ausnahme', () => {
     const k = uebersichtKacheln({
       sites: [site({ boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box A', fuehrtAnlage: true, lastSeenAt: ago(3600_000), edge: null, update: null }] })],
-      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
+      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [],
     }, NOW);
     const verbindung = k.find((x) => x.id === 'verbindung')!;
     expect(verbindung.zahl).toBe(1);
@@ -76,6 +86,7 @@ describe('uebersichtKacheln', () => {
       sites: [], releases: [],
       edgeLines: [{ boxArt: 'docker', newestRelease: 'edge-2026.09.0', newestReleaseSeq: 2, devices: 4, known: 4, upToDate: 2 }],
       edgeKpi: { known: 4, upToDate: 2, unknown: 0, inRollout: 1, failed: 0, newestRelease: 'edge-2026.09.0' },
+      edgeRollouts: [rollout()],
     }, NOW);
     const software = k.find((x) => x.id === 'software')!;
     expect(software.zahl).toBe(2);
@@ -83,10 +94,95 @@ describe('uebersichtKacheln', () => {
     expect(software.kontext).toContain('Docker-Box 2 älter');
   });
 
+  it('REGRESSION: zwei Linien, jede für sich auf dem neuesten Release - die Kachel zeigt 0, nicht „nicht aktuell" über die ANDERE Linie gemessen', () => {
+    // Wie im Vorfall: 3 Docker-Boxen auf edge-2026.10.7 (neuestes ihrer
+    // Linie), 3 Edge-Light-Boxen auf edge-light-2026.11.9 (neuestes ihrer
+    // Linie). `kpi.upToDate` misst über BEIDE Linien gegen das insgesamt
+    // neueste Release und zählte die Docker-Boxen früher fälschlich als
+    // „nicht aktuell".
+    const k = uebersichtKacheln({
+      sites: [], releases: [],
+      edgeLines: [
+        { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 5, devices: 3, known: 3, upToDate: 3 },
+        { boxArt: 'light', newestRelease: 'edge-light-2026.11.9', newestReleaseSeq: 9, devices: 3, known: 3, upToDate: 3 },
+      ],
+      edgeKpi: { known: 6, upToDate: 3, unknown: 0, inRollout: 3, failed: 0, newestRelease: 'edge-light-2026.11.9' },
+      edgeRollouts: [],
+    }, NOW);
+    const software = k.find((x) => x.id === 'software')!;
+    expect(software.zahl).toBe(0);
+    expect(software.ton).toBe('ok');
+    expect(software.wort).toBe('Alle aktuell ✓');
+  });
+
+  it('REGRESSION: ein vollständig bestätigter Rollout zählt nicht mehr als „laufen"', () => {
+    // Wie im Vorfall: Rollout-Feld zeigt 3 angefragt / 3 angenommen / 3
+    // bestätigt - `kpi.inRollout` zählte trotzdem 3, weil es jedes Gerät
+    // zählt, das im Fenster der letzten Rollouts VORKOMMT, nicht nur die
+    // noch laufenden.
+    const k = uebersichtKacheln({
+      sites: [], releases: [],
+      edgeLines: [{ boxArt: 'light', newestRelease: 'edge-light-2026.11.9', newestReleaseSeq: 9, devices: 3, known: 3, upToDate: 3 }],
+      edgeKpi: { known: 3, upToDate: 3, unknown: 0, inRollout: 3, failed: 0, newestRelease: 'edge-light-2026.11.9' },
+      edgeRollouts: [rollout({
+        total: 3, confirmed: 3, failed: 0,
+        devices: [
+          { deviceId: 'd1', label: 'Box A', siteName: 'Anlage A', tenantName: 'Kunde A', state: 'bestaetigt', reason: null, since: ago(10 * 60_000) },
+          { deviceId: 'd2', label: 'Box B', siteName: 'Anlage B', tenantName: 'Kunde A', state: 'bestaetigt', reason: null, since: ago(10 * 60_000) },
+          { deviceId: 'd3', label: 'Box C', siteName: 'Anlage C', tenantName: 'Kunde A', state: 'bestaetigt', reason: null, since: ago(10 * 60_000) },
+        ],
+      })],
+    }, NOW);
+    const software = k.find((x) => x.id === 'software')!;
+    expect(software.zahl).toBe(0);
+    expect(software.kontext).not.toContain('laufen');
+  });
+
+  it('WÄCHTER: Übersicht-Kachel und Software-Seite fällen für dieselben Daten dasselbe Urteil', () => {
+    // Beide Flächen lesen `edgeUpdatesUrteil`/`rolloutsLaufend` - eine Zahl an
+    // zwei Orten mit zwei Rechnungen darf nicht wieder entstehen.
+    const faelle: { kpi: EdgeUpdatesKpi; lines: EdgeUpdatesLine[]; rollouts: Rollout[] }[] = [
+      {
+        kpi: { known: 6, upToDate: 3, unknown: 0, inRollout: 3, failed: 0, newestRelease: 'edge-light-2026.11.9' },
+        lines: [
+          { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 5, devices: 3, known: 3, upToDate: 3 },
+          { boxArt: 'light', newestRelease: 'edge-light-2026.11.9', newestReleaseSeq: 9, devices: 3, known: 3, upToDate: 3 },
+        ],
+        rollouts: [rollout({
+          total: 3, confirmed: 3, failed: 0,
+          devices: [
+            { deviceId: 'd1', label: 'Box A', siteName: 'Anlage A', tenantName: 'Kunde A', state: 'bestaetigt', reason: null, since: null },
+            { deviceId: 'd2', label: 'Box B', siteName: 'Anlage B', tenantName: 'Kunde A', state: 'bestaetigt', reason: null, since: null },
+            { deviceId: 'd3', label: 'Box C', siteName: 'Anlage C', tenantName: 'Kunde A', state: 'bestaetigt', reason: null, since: null },
+          ],
+        })],
+      },
+      {
+        kpi: { known: 4, upToDate: 2, unknown: 0, inRollout: 1, failed: 0, newestRelease: 'edge-2026.09.0' },
+        lines: [{ boxArt: 'docker', newestRelease: 'edge-2026.09.0', newestReleaseSeq: 2, devices: 4, known: 4, upToDate: 2 }],
+        rollouts: [rollout()],
+      },
+    ];
+    for (const fall of faelle) {
+      const k = uebersichtKacheln(
+        { sites: [], releases: [], edgeLines: fall.lines, edgeKpi: fall.kpi, edgeRollouts: fall.rollouts },
+        NOW,
+      );
+      const software = k.find((x) => x.id === 'software')!;
+      const { aktuell, bekannt } = edgeUpdatesUrteil(fall.kpi, fall.lines);
+      expect(software.zahl).toBe(bekannt - aktuell);
+      expect(software.ton).toBe(bekannt - aktuell > 0 ? 'warn' : 'ok');
+      const text = kpiText(fall.kpi, fall.lines);
+      expect(text).toContain(`${aktuell}/${bekannt} aktuell`);
+      const laufend = rolloutsLaufend(fall.rollouts);
+      expect(software.kontext.includes(`${laufend} laufen`)).toBe(laufend > 0);
+    }
+  });
+
   it('die Plan-Kachel nennt den jüngsten Lauf über die ganze Flotte', () => {
     const k = uebersichtKacheln({
       sites: [site({ lastPlanGeneratedAt: ago(3 * 3600_000) }), site({ siteId: 's2', lastPlanGeneratedAt: ago(5 * 60_000) })],
-      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
+      releases: [], edgeLines: [], edgeKpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, edgeRollouts: [],
     }, NOW);
     const plan = k.find((x) => x.id === 'plan')!;
     expect(plan.zahl).toBe(1);

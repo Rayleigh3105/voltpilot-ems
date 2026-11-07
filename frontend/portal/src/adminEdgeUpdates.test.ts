@@ -6,6 +6,7 @@ import {
   canRollOut,
   crossoverHint,
   crossoverState,
+  edgeUpdatesUrteil,
   eventLabel,
   freshnessLabel,
   isLoud,
@@ -15,6 +16,7 @@ import {
   loudBanner,
   releaseBoxArt,
   releaseSperre,
+  rolloutsLaufend,
   signatureLabel,
   sortFleet,
   stateLabel,
@@ -29,6 +31,7 @@ import {
   type EdgeUpdatesRelease,
   type FleetRow,
   type JournalEntry,
+  type Rollout,
 } from './adminEdgeUpdates';
 
 const row = (over: Partial<FleetRow> = {}): FleetRow => ({
@@ -221,6 +224,78 @@ describe('Puls-Kennzahl', () => {
     expect(kpiTone({ ...kpi, failed: 1 })).toBe('warn');
     expect(kpiTone(kpi)).toBe('busy');
     expect(kpiTone({ ...kpi, inRollout: 0 })).toBe('ok');
+  });
+});
+
+describe('edgeUpdatesUrteil - die EINE Ableitung „aktuell/bekannt"', () => {
+  it('misst je Linie, wenn `lines` vorhanden ist', () => {
+    const u = edgeUpdatesUrteil(
+      { known: 6, upToDate: 3, unknown: 0, inRollout: 0, failed: 0, newestRelease: 'edge-light-2026.11.9' },
+      [
+        { boxArt: 'docker', newestRelease: 'edge-2026.10.7', newestReleaseSeq: 5, devices: 3, known: 3, upToDate: 3 },
+        { boxArt: 'light', newestRelease: 'edge-light-2026.11.9', newestReleaseSeq: 9, devices: 3, known: 3, upToDate: 3 },
+      ],
+    );
+    expect(u).toEqual({ aktuell: 6, bekannt: 6, veraltet: 0 });
+  });
+
+  it('fällt ohne `lines` auf `kpi` zurück (älterer Server)', () => {
+    const u = edgeUpdatesUrteil({ known: 4, upToDate: 3, unknown: 0, inRollout: 0, failed: 0, newestRelease: 'x' });
+    expect(u).toEqual({ aktuell: 3, bekannt: 4, veraltet: 1 });
+  });
+});
+
+describe('rolloutsLaufend - nur WIRKLICH laufende Geräte, nicht jedes Vorkommen', () => {
+  const geraet = (over: Partial<Rollout['devices'][number]> = {}): Rollout['devices'][number] => ({
+    deviceId: 'd1', label: 'Box A', siteName: 'Anlage A', tenantName: 'Kunde A',
+    state: 'angefragt', reason: null, since: null, ...over,
+  });
+
+  it('zählt ein Gerät nicht mehr, sobald sein jüngster Eintrag bestätigt ist', () => {
+    const rollouts: Rollout[] = [{
+      id: 'r1', releaseVersion: 'edge-light-2026.11.9', releaseSeq: 9, state: 'laufend',
+      createdBy: 'admin', createdAt: '2026-11-07T13:39:00Z', total: 3, confirmed: 3, failed: 0,
+      devices: [
+        geraet({ deviceId: 'd1', state: 'bestaetigt' }),
+        geraet({ deviceId: 'd2', state: 'bestaetigt' }),
+        geraet({ deviceId: 'd3', state: 'bestaetigt' }),
+      ],
+    }];
+    expect(rolloutsLaufend(rollouts)).toBe(0);
+  });
+
+  it('zählt ein noch nicht abgeschlossenes Gerät', () => {
+    const rollouts: Rollout[] = [{
+      id: 'r1', releaseVersion: 'edge-light-2026.11.9', releaseSeq: 9, state: 'laufend',
+      createdBy: 'admin', createdAt: '2026-11-07T13:39:00Z', total: 2, confirmed: 1, failed: 0,
+      devices: [geraet({ deviceId: 'd1', state: 'bestaetigt' }), geraet({ deviceId: 'd2', state: 'angenommen' })],
+    }];
+    expect(rolloutsLaufend(rollouts)).toBe(1);
+  });
+
+  it('nimmt pro Gerät nur den JÜNGSTEN Eintrag (Listen-Reihenfolge neueste zuerst)', () => {
+    const rollouts: Rollout[] = [
+      {
+        id: 'r2', releaseVersion: 'edge-2026.10.8', releaseSeq: 6, state: 'laufend',
+        createdBy: 'admin', createdAt: '2026-11-07T14:00:00Z', total: 1, confirmed: 1, failed: 0,
+        devices: [geraet({ deviceId: 'd1', state: 'bestaetigt' })],
+      },
+      {
+        id: 'r1', releaseVersion: 'edge-2026.10.7', releaseSeq: 5, state: 'laufend',
+        createdBy: 'admin', createdAt: '2026-11-06T13:39:00Z', total: 1, confirmed: 0, failed: 0,
+        devices: [geraet({ deviceId: 'd1', state: 'angenommen' })],
+      },
+    ];
+    expect(rolloutsLaufend(rollouts)).toBe(0);
+  });
+
+  it('zählt ein entferntes Gerät nicht', () => {
+    const rollouts: Rollout[] = [{
+      id: 'r1', releaseVersion: 'edge-2026.10.7', releaseSeq: 5, state: 'laufend',
+      createdBy: 'admin', createdAt: '2026-11-07T13:39:00Z', total: 1, confirmed: 0, failed: 0,
+      devices: [geraet({ deviceId: 'd1', state: 'angenommen', removed: true })],
+    }];
+    expect(rolloutsLaufend(rollouts)).toBe(0);
   });
 });
 

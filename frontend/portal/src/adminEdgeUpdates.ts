@@ -443,6 +443,33 @@ export function loudBanner(fleet: FleetRow[]): string | null {
 }
 
 /**
+ * Die EINE Ableitung „aktuell/bekannt" über Linien hinweg (Geräte & Updates
+ * S0): „aktuell" heißt auf dem neuesten Release der EIGENEN Linie. Ohne
+ * `lines` (älterer Server) bleibt es bei der alten, linienblinden Zahl aus
+ * `kpi`.
+ *
+ * Jede Fläche, die behauptet, wie viele Boxen „aktuell" bzw. „nicht aktuell"
+ * sind, liest dieses EINE Urteil - nie `kpi.known`/`kpi.upToDate` direkt,
+ * sonst misst eine zweite Stelle an BEIDEN Linien statt an der eigenen und
+ * widerspricht der ersten (Plattform-Übersicht G1).
+ */
+export interface EdgeUpdatesUrteil {
+  aktuell: number;
+  bekannt: number;
+  /** `bekannt - aktuell`, nie negativ. */
+  veraltet: number;
+}
+
+export function edgeUpdatesUrteil(
+  kpi: EdgeUpdatesKpi,
+  lines?: EdgeUpdatesLine[] | null,
+): EdgeUpdatesUrteil {
+  const aktuell = lines ? lines.reduce((n, l) => n + l.upToDate, 0) : kpi.upToDate;
+  const bekannt = lines ? lines.reduce((n, l) => n + l.known, 0) : kpi.known;
+  return { aktuell, bekannt, veraltet: Math.max(0, bekannt - aktuell) };
+}
+
+/**
  * Die Puls-Kennzahl „Edge-Updates": `n/m aktuell · k Rollout aktiv ·
  * j fehlgeschlagen`.
  *
@@ -451,14 +478,49 @@ export function loudBanner(fleet: FleetRow[]): string | null {
  * machte aus einer Wissenslücke eine schlechte Quote.
  */
 export function kpiText(kpi: EdgeUpdatesKpi, lines?: EdgeUpdatesLine[] | null): string {
-  // Je Linie gemessen (S0): „aktuell" heißt auf dem neuesten Release der
-  // EIGENEN Linie. Ohne `lines` (älterer Server) bleibt es bei der alten Zahl.
-  const aktuell = lines ? lines.reduce((n, l) => n + l.upToDate, 0) : kpi.upToDate;
-  const bekannt = lines ? lines.reduce((n, l) => n + l.known, 0) : kpi.known;
+  const { aktuell, bekannt } = edgeUpdatesUrteil(kpi, lines);
   const parts = [`${aktuell}/${bekannt} aktuell`];
   if (kpi.inRollout > 0) parts.push(`${kpi.inRollout} im Rollout`);
   if (kpi.failed > 0) parts.push(`${kpi.failed} fehlgeschlagen`);
   return parts.join(' · ');
+}
+
+/**
+ * Zustände eines Rollout-Geräts, die KEIN „läuft noch" mehr sind (Geräte &
+ * Updates: `RolloutStates.isConfirmed` plus die Fehl-Enden). Ein Gerät in
+ * einem dieser Zustände ist FERTIG - gut oder schlecht - und darf nicht mehr
+ * als „laufend" gezählt werden.
+ */
+const ROLLOUT_ABGESCHLOSSEN = new Set([
+  'bestaetigt',
+  'fehlgeschlagen',
+  'zurueckgerollt',
+  'im_update_verstummt',
+]);
+
+/**
+ * Wie viele Geräte gerade WIRKLICH in einem Rollout laufen (Geräte & Updates
+ * G1-Folgefund): `EdgeUpdatesKpi.inRollout` zählt jedes Gerät, das in einem
+ * der letzten Rollouts VORKOMMT - auch ein längst bestätigtes. Diese
+ * Ableitung zählt stattdessen je Gerät nur den JÜNGSTEN Eintrag (`rollouts`
+ * kommt neueste-zuerst, wie `RolloutService.readModel`) und nur, wenn der
+ * dort NICHT abgeschlossen ist.
+ */
+export function rolloutsLaufend(rollouts: Rollout[]): number {
+  const jeGeraet = new Map<string, string>();
+  for (const r of rollouts) {
+    for (const d of r.devices) {
+      if (d.removed) continue;
+      if (!jeGeraet.has(d.deviceId)) {
+        jeGeraet.set(d.deviceId, d.state);
+      }
+    }
+  }
+  let laufend = 0;
+  for (const state of jeGeraet.values()) {
+    if (!ROLLOUT_ABGESCHLOSSEN.has(state)) laufend++;
+  }
+  return laufend;
 }
 
 /**

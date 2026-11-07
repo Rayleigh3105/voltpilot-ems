@@ -8,7 +8,12 @@ import {
   type PendingEnrollment,
 } from '../../admin/adminApi';
 import { fleetApi, type AdminFleetRelease, type AdminFleetSite } from '../../admin/fleetApi';
-import type { EdgeUpdatesKpi, EdgeUpdatesLine, FleetRow as EdgeFleetRow } from '../../adminEdgeUpdates';
+import type {
+  EdgeUpdatesKpi,
+  EdgeUpdatesLine,
+  FleetRow as EdgeFleetRow,
+  Rollout as EdgeRollout,
+} from '../../adminEdgeUpdates';
 import { fleetBoxGroups } from '../../adminFleet';
 import type { FernwartungBox, FernwartungUebersicht } from '../../adminFernwartung';
 import type { WerkstattDienst } from '../../werkstattBank';
@@ -64,6 +69,7 @@ export function PlattformUebersichtPage({
   const [edgeFleet, setEdgeFleet] = useState<EdgeFleetRow[]>([]);
   const [edgeLines, setEdgeLines] = useState<EdgeUpdatesLine[]>([]);
   const [edgeKpi, setEdgeKpi] = useState<EdgeUpdatesKpi | null>(null);
+  const [edgeRollouts, setEdgeRollouts] = useState<EdgeRollout[]>([]);
   const [fernwartung, setFernwartung] = useState<FernwartungUebersicht | null>(null);
   const [fernwartungBoxen, setFernwartungBoxen] = useState<FernwartungBox[]>([]);
   const [werkstatt, setWerkstatt] = useState<WerkstattDienst | null>(null);
@@ -107,6 +113,7 @@ export function PlattformUebersichtPage({
       setEdgeFleet(edgeR.value.fleet);
       setEdgeLines(edgeR.value.lines ?? []);
       setEdgeKpi(edgeR.value.kpi);
+      setEdgeRollouts(edgeR.value.rollouts ?? []);
     }
     if (fwR.status === 'fulfilled') setFernwartung(fwR.value);
     if (fwBoxenR.status === 'fulfilled') setFernwartungBoxen(fwBoxenR.value);
@@ -134,8 +141,10 @@ export function PlattformUebersichtPage({
   const jetzt = useMemo(() => new Date(fetchedAt), [fetchedAt]);
 
   const kacheln = useMemo(
-    () => (sites && edgeKpi ? uebersichtKacheln({ sites, releases, edgeLines, edgeKpi }, jetzt) : null),
-    [sites, releases, edgeLines, edgeKpi, jetzt],
+    () => (sites && edgeKpi
+      ? uebersichtKacheln({ sites, releases, edgeLines, edgeKpi, edgeRollouts }, jetzt)
+      : null),
+    [sites, releases, edgeLines, edgeKpi, edgeRollouts, jetzt],
   );
   const brauchtDichAlle = useMemo(
     () => uebersichtBrauchtDich({ edgeFleet, fernwartungBoxen, werkstatt, pending }, jetzt),
