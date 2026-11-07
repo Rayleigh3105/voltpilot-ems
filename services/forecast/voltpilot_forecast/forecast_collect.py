@@ -37,7 +37,6 @@ import logging
 import os
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-from urllib.parse import quote
 
 from voltpilot_forecast import model_choice, registry
 from voltpilot_forecast.anlage import anlage_slot_kw, fuehrende_box
@@ -60,6 +59,7 @@ from voltpilot_forecast.openmeteo import (
     WeatherPoint,
     hour_label_for,
 )
+from voltpilot_forecast.pgdsn import dsn_from_env
 from voltpilot_forecast.pv import PhysicalPvForecaster
 from voltpilot_forecast.quality_repository import (
     STATUS_COLLECTING,
@@ -88,23 +88,6 @@ DEFAULT_LOCATION = GeoLocation(latitude=52.52, longitude=13.405)
 #: with reality. Sites without any PV telemetry get no PV plant (zero series).
 CAPACITY_HEADROOM = 1.05
 MIN_CAPACITY_KWP = 0.05
-
-
-def _dsn_from_env(env: dict[str, str]) -> str:
-    host = env.get("POSTGRES_HOST", "localhost")
-    port = env.get("POSTGRES_PORT", "5432")
-    db = env.get("POSTGRES_DB", "voltpilot")
-    user = quote(env.get("POSTGRES_USER", "voltpilot"), safe="")
-    password = quote(env.get("POSTGRES_PASSWORD", ""), safe="")
-    # connect_timeout bounds the connect: without it libpq waits on the OS
-    # TCP timeout, so an unreachable DB hangs the cycle (and the shutdown
-    # handler) instead of failing into the retry back-off. See
-    # docs/k8s-readiness.md.
-    timeout = env.get("POSTGRES_CONNECT_TIMEOUT", "10")
-    return (
-        f"postgresql://{user}:{password}@{host}:{port}/{db}"
-        f"?connect_timeout={quote(timeout, safe='')}"
-    )
 
 
 def _ml_available() -> bool:
@@ -562,7 +545,7 @@ def main(argv: list[str] | None = None) -> int:
 
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO))
     env = dict(os.environ)
-    dsn = _dsn_from_env(env)
+    dsn = dsn_from_env(env)
     cfg = CollectorConfig.from_env(env)
     cache = ChallengerCache()
     ml_available = _ml_available()
