@@ -21,7 +21,7 @@ flowchart LR
 
 `pv_power_kw → pv`, `battery_power_kw`/`soc_pct → storage`. `power_kw` folgt der Kategorie: Speicher → `storage`, Erzeuger → `pv`, Verbraucher → `consumer`, Zähler → `grid`. Sonstige Informationskanäle erhalten nicht automatisch eine Flussrolle. Ein Hybrid kann mehrere Rollen beitragen.
 
-`primary` wählt maßgeblichen Netzwert beziehungsweise SoC. Ohne explizite Auswahl gilt der vorgesehene erste Kandidat. PV und Verbraucher summieren ihre Mitglieder.
+`primary` wählt maßgeblichen Netzwert beziehungsweise SoC. Ohne explizite Auswahl gilt der vorgesehene erste Kandidat. PV und Verbraucher summieren ihre Mitglieder. Die Technik-Ansicht bietet „maßgeblich setzen“ deshalb nur für Netzwert und Ladestand an (`rollen.massgeblichWaehlbar`): bei PV legte es eine Rollen-Zuordnung an, ohne an der Summe etwas zu ändern.
 
 ## Form und Unbekannt
 

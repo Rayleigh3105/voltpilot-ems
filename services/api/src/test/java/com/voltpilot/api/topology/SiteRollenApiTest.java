@@ -516,6 +516,29 @@ class SiteRollenApiTest {
                 .as("kanonische PV-Rolle statt telemetry.pv_power_kw").isEqualTo(5.0);
     }
 
+    /**
+     * Schramm „Zuhause“, 07.11.2026: „PIKO allein maßgeblich“ drueckte die Uebersicht auf die PV des PIKO, waehrend
+     * die Box alle Erzeuger mass. Zwei Erzeuger mit eigenem PV-Kanal, Box-PV 3,0 = 1,0 + 2,0, Zuordnung am ersten:
+     * die Zuordnung ersetzt die Zahl IHRES Geraets (Je-Gerät-Regel, wie das Cockpit), der zweite zaehlt weiter.
+     */
+    @Test
+    void eineZuordnungAnEinemVonZweiErzeugernLaesstDenAnderenInDerUebersicht() throws Exception {
+        Welt w = welt();
+        UUID piko = erzeuger(w, "PIKO");
+        UUID kaco = erzeuger(w, "KACO");
+        telemetrieLegacy(w, 3.0);
+        telemetrie(w, piko, 1.0, 0);
+        telemetrie(w, kaco, 2.0, 0);
+        assertThat(uebersichtPv(w, w.anlage())).as("ohne Zuordnung").isEqualTo(3.0);
+
+        ordneKanalZu(w, piko);
+        assertThat(uebersichtPv(w, w.anlage()))
+                .as("nicht 1,0 (nur der PIKO): der KACO zaehlt mit seiner Messung").isEqualTo(3.0);
+        // Liefert der PIKO nicht mehr, ist die Zuordnung stumm: unbekannt, nie die Rohzahl.
+        root.update("UPDATE telemetry_v2 SET time = time - interval '6 minutes', received_at = received_at - interval '6 minutes' WHERE entity_id = ?", piko.toString());
+        assertThat(uebersichtPv(w, w.anlage())).as("stumme Zuordnung").isNull();
+    }
+
     @Test
     void eineZugeordneteAberStummeAnlageZeigtKeinePvNieEineNull() throws Exception {
         Welt w = welt();
@@ -581,6 +604,15 @@ class SiteRollenApiTest {
                 + "status, created_at) VALUES (?, ?, ?, 'Box B', 'claimed', now()) RETURNING id",
                 UUID.class, w.mandant(), anlage, "EB-" + nr);
         return new Welt(w.mandant(), anlage, box);
+    }
+
+    /** Ein Erzeuger mit eigenem PV-Kanal - ein Mitglied des PV-Knotens der Topologie (wie die KACO/PIKO bei Schramm). */
+    private UUID erzeuger(Welt w, String label) {
+        return root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, "
+                + "entity_type, device_id, control, communication, capabilities, created_at) VALUES (?, ?, "
+                + "'pv-generation', ?, 'producer', ?, false, 'modbus_tcp', "
+                + "'{\"measure\":[{\"channel\":\"pv_power_kw\",\"unit\":\"kW\"}]}'::jsonb, now()) RETURNING id",
+                UUID.class, w.mandant(), w.anlage(), label, w.box());
     }
 
     private UUID komponente(Welt w, String label) {

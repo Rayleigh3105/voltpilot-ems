@@ -9,6 +9,7 @@ import {
   assignableCapabilities,
   inverterSetup,
   isAutoAssigned,
+  massgeblichWaehlbar,
   resetAssignments,
   roleBoxes,
   rolePillsFor,
@@ -139,12 +140,23 @@ describe('roleBoxes', () => {
   });
 });
 
+describe('massgeblichWaehlbar (Schramm 07.11.2026: nur Netzwert und Ladestand)', () => {
+  it('Netz und Ladestand ja; PV, Verbrauch und Batterieleistung nicht', () => {
+    expect(massgeblichWaehlbar('grid', 'power_kw')).toBe(true);
+    expect(massgeblichWaehlbar('storage', 'soc_pct')).toBe(true);
+    expect(massgeblichWaehlbar('storage', 'battery_power_kw')).toBe(false);
+    expect(massgeblichWaehlbar('pv', 'pv_power_kw')).toBe(false);
+    expect(massgeblichWaehlbar('consumer', 'power_kw')).toBe(false);
+  });
+});
+
 describe('rolePillsFor', () => {
   it('shows several roles for a hybrid, one for a producer, with primary flags', () => {
     const t = topology();
     const battery = rolePillsFor('battery', t);
     expect(battery.map((p) => p.role)).toEqual(['pv', 'storage']);
-    expect(battery.every((p) => p.primary)).toBe(true);
+    // „maßgeblich“ nur, wo es etwas bedeutet: der Ladestand ja, die PV (sie summiert) nicht.
+    expect(battery.map((p) => p.primary)).toEqual([false, true]);
 
     const producer = rolePillsFor('producer', t);
     expect(producer.map((p) => p.role)).toEqual(['pv']);

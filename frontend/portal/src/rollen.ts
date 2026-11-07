@@ -259,8 +259,19 @@ export interface RolePill {
 }
 
 /**
+ * Wo „maßgeblich“ etwas bedeutet: der Topologie-Vertrag wählt mit `primary` den maßgeblichen Netzwert und den
+ * Ladestand; PV und Verbraucher summieren ihre Mitglieder. Dort legte „maßgeblich setzen“ trotzdem eine
+ * Rollen-Zuordnung an, die Cockpit und Übersicht als ganze Sonne lasen (Schramm „Zuhause“, 07.11.2026: „PIKO
+ * allein maßgeblich“). Darum gibt es das Wort und den Knopf nur für Netz und Ladestand.
+ */
+export function massgeblichWaehlbar(role: Role, channel: string): boolean {
+  return role === 'grid' ? channel !== SOC_CHANNEL : role === 'storage' && channel === SOC_CHANNEL;
+}
+
+/**
  * The distinct roles an entity's capabilities resolve to, for its card's role
- * pills. A hybrid inverter shows several (PV + Speicher); primary = maßgeblich.
+ * pills. A hybrid inverter shows several (PV + Speicher); primary = maßgeblich,
+ * nur wo es etwas bedeutet ({@link massgeblichWaehlbar}: Netzwert, Ladestand).
  */
 export function rolePillsFor(entityId: string, topology: SiteTopology): RolePill[] {
   const entity = topology.entities.find((e) => e.id === entityId);
@@ -269,7 +280,7 @@ export function rolePillsFor(entityId: string, topology: SiteTopology): RolePill
   for (const cap of entity.capabilities) {
     if (cap.role == null || !ROLE_ORDER.includes(cap.role as Role)) continue;
     const role = cap.role as Role;
-    seen.set(role, (seen.get(role) ?? false) || cap.primary);
+    seen.set(role, (seen.get(role) ?? false) || (cap.primary && massgeblichWaehlbar(role, cap.channel)));
   }
   return ROLE_ORDER.filter((r) => seen.has(r)).map((role) => ({
     role,

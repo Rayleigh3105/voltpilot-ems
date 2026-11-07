@@ -32,6 +32,16 @@ dieses Geräts.“, entsprechend die Verbrauchszahl; Netz: „Wird der Netzwert
 dieser Anlage.“ Ein Teilverbrauch ist nur nach ausdrücklicher Wahl Verbrauch
 der Anlage; aus einem Ortsnamen wird keine Rolle abgeleitet.
 
+**PV je Gerät (07.11.2026, Schramm „Zuhause“):** Cockpit und Übersicht rechnen den
+Folgensatz wörtlich. Anlagen-PV = PV der Box − Rohwert der zugeordneten Geräte +
+Wert der Zuordnung; Erzeuger ohne Zuordnung zählen mit ihrer Messung weiter
+(Cockpit `flussBilanz.ts`, Server `PvJeGeraet.java`). Das gilt nur, wo jedes
+zugeordnete Gerät ein Erzeuger mit eigenem Wert im PV-Knoten ist; sonst (Hybrid
+ohne eigene Reihe, Zähler als Erzeugung) bleibt die Zuordnung die ganze Sonne.
+Verbrauch und Netz ersetzen die Anlagenzahl wie bisher. Bis dahin nahm eine
+Zuordnung an einem von vier Erzeugern die ganze Sonne ein („Erzeugung 1,2 kW“
+neben einem Haus mit allen vier).
+
 ## Identität und Zählregel
 
 Eine Zuordnung gehört zu **Anlage × Gerät × Rolle**. Pro Gerät und Rolle ist

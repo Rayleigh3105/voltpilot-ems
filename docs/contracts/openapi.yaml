@@ -26451,7 +26451,7 @@ components:
       type: object
       properties:
         ts: { type: string, format: date-time, description: Observation time. }
-        pvKw: { type: number, nullable: true }
+        pvKw: { type: number, nullable: true, description: "PV der Box; eine PV-Zuordnung ersetzt nur die Zahl ihrer Geräte (Je-Gerät-Regel, PvJeGeraet), eine stumme Zuordnung ist null." }
         loadKw: { type: number, nullable: true }
         gridKw: { type: number, nullable: true, description: "+ import / - export" }
         socPct: { type: number, nullable: true }

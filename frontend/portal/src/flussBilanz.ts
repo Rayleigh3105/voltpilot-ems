@@ -15,6 +15,9 @@
  *     Geräte“, `RolleAendernDialog`, Vertrag `rollen-zuordnung.md`). Erzeuger ohne Zuordnung zählen
  *     mit ihrer eigenen Messung weiter. Der Wert der Zuordnung bleibt die Zahl des Servers: ein
  *     Summenwert an mehreren Geräten zählt einmal, er wird nie aus Gerätezeilen nachgerechnet.
+ *     Je Gerät ersetzt wird nur, wo jedes zugeordnete Gerät ein Erzeuger mit eigenem Wert ist;
+ *     sonst (Hybrid ohne eigene Reihe, Zähler als Erzeugung) bleibt die Zuordnung die ganze Sonne.
+ *     Dieselbe Regel rechnet die Übersicht im Server (`PvJeGeraet.java`).
  *  2. **Ein Erzeuger ohne aktuellen Wert zählt nicht still mit.** Die Box rechnet ihn nicht ins Haus.
  *     Das Cockpit legt seinen letzten Wert deshalb nicht zur Erzeugung, sondern nennt ihn
  *     („Nicht mitgezählt: …“). „Aktuell“ ist dieselbe Regel wie im Anlagenkopf und in den
@@ -164,10 +167,13 @@ export function flussBilanz(e: FlussBilanzEingabe): FlussBilanz {
   const erzeugung = roh ? (lebt ? zaehlendeErzeugung(roh) : roh) : null;
   let weitereErzeuger: PvContribution[] = [];
   if (pvRolle) {
-    // Je Gerät ersetzen geht nur, wo die Geräte eigene Werte tragen. In der Rekonstruktion aus
-    // `/sources` trägt der Hybrid die Summe der Anlage; dort bleibt die Zuordnung die ganze Sonne
-    // (wie bisher) - passt das nicht zum Haus, sagt es die Prüfung unten.
-    const jeGeraet = erzeugung?.origin === 'entity';
+    // Je Gerät ersetzen geht nur, wo jedes zugeordnete Gerät ein Erzeuger mit eigenem Wert ist - nur
+    // dann ist sein Anteil an der Box-Zahl bekannt. In der Rekonstruktion aus `/sources` trägt der
+    // Hybrid die Summe der Anlage, ein Zähler als Erzeugung misst meist dieselbe PV: dort bleibt die
+    // Zuordnung die ganze Sonne (wie bisher, wie `PvJeGeraet.java`) - passt das nicht zum Haus, sagt
+    // es die Prüfung unten.
+    const mitWert = new Set((roh?.parts ?? []).filter((p) => p.kw != null).map((p) => p.entityId));
+    const jeGeraet = erzeugung?.origin === 'entity' && pvRolle.geraete.every((g) => mitWert.has(g.entity_id));
     const erfasst = new Set(pvRolle.geraete.map((g) => g.entity_id));
     const frei = (p: PvContribution) => p.entityId == null || !erfasst.has(p.entityId);
     weitereErzeuger = erzeugung && jeGeraet ? [...erzeugung.parts, ...erzeugung.unmeasured].filter(frei) : [];
