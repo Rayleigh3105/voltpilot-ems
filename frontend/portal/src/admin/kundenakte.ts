@@ -162,3 +162,28 @@ export function kundenZustand(
   if (unterstuetzungBisText) return { ton: 'ok', text: `Unterstützung bis ${unterstuetzungBisText}` };
   return { ton: 'ok', text: 'aktiv' };
 }
+
+/** Die Zählungen einer Zeile der Kundenliste (`undefined` = lädt noch, `null` = nicht ladbar). */
+export interface KundenZahlen {
+  anzahlPersonen?: number | null;
+  anzahlAnlagen: number | null;
+  anzahlBoxen: number | null;
+}
+
+function zahlMitWort(n: number | null | undefined, eins: string, mehrere: string): string {
+  if (n == null) return `… ${mehrere}`;
+  return `${n} ${n === 1 ? eins : mehrere}`;
+}
+
+/**
+ * Die drei Zahlen einer Kundenzeile als EINE Zeile für das Telefon
+ * („1 Person · 3 Anlagen · 0 Boxen") - statt drei Etikett/Wert-Zeilen je Kunde.
+ * Eine fehlende Zahl bleibt „…“, nie 0.
+ */
+export function kundenZahlenText(z: KundenZahlen): string {
+  return [
+    zahlMitWort(z.anzahlPersonen, 'Person', 'Personen'),
+    zahlMitWort(z.anzahlAnlagen, 'Anlage', 'Anlagen'),
+    zahlMitWort(z.anzahlBoxen, 'Box', 'Boxen'),
+  ].join(' · ');
+}

@@ -2961,6 +2961,72 @@ button.vp-cl-item.is-off .vp-cl-label {
   }
 }
 
+/* Listen-Zeilen am Telefon (`vp-table responsive vp-zeilen`): EINE kompakte Zeile je
+   Eintrag statt einer Etikett/Wert-Karte je Spalte. Die Zellen sagen per `data-zeile`,
+   wo sie stehen: `haupt` und `neben` links untereinander, `marke` (Zustand) und
+   `aktion` rechts, `breit` nur ab 721 px (am Telefon steht dieselbe Angabe in einer
+   `vp-zeilen-telefon`-Zeile der Hauptzelle). Ohne `data-zeile` gilt `haupt`. */
+.vp-zeilen-telefon {
+  display: none;
+}
+@media (max-width: 720px) {
+  .vp-table.responsive.vp-zeilen tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    column-gap: var(--vp-space-3);
+    border: 0;
+    border-bottom: 1px solid var(--vp-border);
+    border-radius: 0;
+    margin: 0;
+    padding: var(--vp-space-3) var(--vp-zeilen-rand, 0);
+  }
+  .vp-table.responsive.vp-zeilen tr:last-child {
+    border-bottom: 0;
+  }
+  .vp-table.responsive.vp-zeilen td {
+    display: block;
+    width: auto;
+    min-width: 0;
+    padding: 0;
+    grid-column: 1;
+    overflow-wrap: anywhere;
+  }
+  .vp-table.responsive.vp-zeilen td::before {
+    content: none;
+  }
+  .vp-table.responsive.vp-zeilen td[data-zeile='neben'] {
+    color: var(--vp-text-muted);
+    font-size: 0.875rem;
+    margin-top: 2px;
+  }
+  .vp-table.responsive.vp-zeilen td[data-zeile='marke'] {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+  }
+  .vp-table.responsive.vp-zeilen td[data-zeile='aktion'] {
+    grid-column: 3;
+    grid-row: 1 / span 3;
+    text-align: right;
+  }
+  .vp-table.responsive.vp-zeilen td[data-zeile='breit'] {
+    display: none;
+  }
+  .vp-table.responsive.vp-zeilen td[colspan] {
+    grid-column: 1 / -1;
+  }
+  .vp-zeilen-telefon {
+    display: block;
+    color: var(--vp-text-muted);
+    font-size: 0.875rem;
+    font-weight: 400;
+    margin-top: 2px;
+  }
+  .vp-zeilen-nur-breit {
+    display: none;
+  }
+}
+
 /* =============================================================================
    Fleet overview (adaptive Übersicht, multi-site customers)
    Money hero on the brand gradient + fleet status sentence + per-site cards.

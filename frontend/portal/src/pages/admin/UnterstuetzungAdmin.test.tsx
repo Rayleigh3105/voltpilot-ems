@@ -45,7 +45,7 @@ it('Mandant ohne Standort: der Kasten sagt vor jedem Formular, warum keine Unter
   const hinweis = await screen.findByRole('note');
   expect(hinweis).toHaveTextContent('Dieser Mandant hat noch keinen Standort.');
   expect(hinweis).toHaveTextContent('gelten immer für Standorte, nie für das ganze Unternehmen');
-  expect(hinweis).toHaveTextContent('„In Mandanten-Ansicht springen“ öffnet sie trotzdem');
+  expect(hinweis).toHaveTextContent('„Wie der Kunde es sieht“ öffnet sie trotzdem');
   expect(hinweis).not.toHaveTextContent('zurzeit nicht öffnen');
   // Die Regel bleibt, wie sie ist: beide Wege stehen weiter da, nichts wird versteckt oder gesperrt.
   expect(screen.getByRole('button', { name: 'Unterstützung anfragen' })).toBeEnabled();

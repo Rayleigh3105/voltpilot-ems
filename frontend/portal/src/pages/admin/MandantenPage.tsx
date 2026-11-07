@@ -16,6 +16,7 @@ import {
   anlagenBoxenZeilen,
   datumDe,
   fristAbgelaufen,
+  kundenZahlenText,
   kundenZustand,
   personenListe,
   type AnlageBoxZeile,
@@ -256,7 +257,7 @@ function KundenlisteSeite({
         title="Benutzer"
         description={
           tenants.length > 0
-            ? `${tenants.length} Kunden · ${personenGesamt} Personen. Eine Zeile öffnet die Kundenakte; oben über die Suche einen Kunden oder eine Person finden.`
+            ? `${tenants.length} Kunden · ${personenGesamt} Personen`
             : 'Eine Zeile öffnet die Kundenakte - Personen, Anlagen, Zugriff und Vertrag.'
         }
         actions={addButton}
@@ -296,7 +297,7 @@ function KundenlisteSeite({
         </Card>
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="vp-table responsive">
+          <table className="vp-table responsive vp-zeilen vp-kundenliste">
             <thead>
               <tr>
                 <th>Kunde</th>
@@ -319,18 +320,21 @@ function KundenlisteSeite({
               )}
               {gefiltert.map((z) => (
                 <tr key={z.tenant.id} className="clickable" onClick={() => onOeffnen(z.tenant)}>
-                  <td data-label="Kunde">
-                    <b>{z.tenant.name}</b>
-                    <br />
-                    <Badge variant="tint">{segmentLabel(z.tenant.segment)}</Badge>
+                  <td data-label="Kunde" data-zeile="haupt">
+                    <span className="vp-kundenliste-name">
+                      <b>{z.tenant.name}</b>
+                      <Badge variant="tint">{segmentLabel(z.tenant.segment)}</Badge>
+                    </span>
                   </td>
-                  <td data-label="Personen">{z.anzahlPersonen ?? <span className="vp-muted">…</span>}</td>
-                  <td data-label="Anlagen">{z.anzahlAnlagen ?? <span className="vp-muted">…</span>}</td>
-                  <td data-label="Boxen">{z.anzahlBoxen ?? <span className="vp-muted">…</span>}</td>
-                  <td data-label="Zustand">
+                  {/* Am Telefon stehen die drei Zahlen als EINE Zeile unter dem Namen statt drei Etikett-Zeilen. */}
+                  <td className="vp-zeilen-telefon" data-zeile="neben">{kundenZahlenText(z)}</td>
+                  <td data-label="Personen" data-zeile="breit">{z.anzahlPersonen ?? <span className="vp-muted">…</span>}</td>
+                  <td data-label="Anlagen" data-zeile="breit">{z.anzahlAnlagen ?? <span className="vp-muted">…</span>}</td>
+                  <td data-label="Boxen" data-zeile="breit">{z.anzahlBoxen ?? <span className="vp-muted">…</span>}</td>
+                  <td data-label="Zustand" data-zeile="marke">
                     {z.zustand ? <Badge variant={z.zustand.ton} dot>{z.zustand.text}</Badge> : <span className="vp-muted">…</span>}
                   </td>
-                  <td data-label="" style={{ textAlign: 'right' }}>
+                  <td data-label="" data-zeile="aktion" style={{ textAlign: 'right' }}>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -341,7 +345,7 @@ function KundenlisteSeite({
                         onOeffnen(z.tenant);
                       }}
                     >
-                      Details <Icon name="chevron-right" size={16} />
+                      <span className="vp-zeilen-nur-breit">Details</span> <Icon name="chevron-right" size={16} />
                     </Button>
                   </td>
                 </tr>
@@ -656,8 +660,10 @@ function KundenaktePage({
       <section className="vp-mandant-seite vp-kundenakte" aria-label={tenant.name}>
         <ZurueckZuMandanten onClick={onClose} />
 
+        {/* Kopf: Name, darunter Segment + Zustand und die Stammzeile; die zwei Knöpfe stehen
+            am Telefon in EINER Reihe unter dem Namen statt ihn auf 26 px zusammenzudrücken. */}
         <div className="vp-kundenakte-kopf">
-          <IconTile category="industry" size={48}>
+          <IconTile category="industry" size={48} className="vp-kundenakte-symbol">
             <Icon name="building" size={24} />
           </IconTile>
           <div className="vp-kundenakte-kopf-mitte">
@@ -672,28 +678,29 @@ function KundenaktePage({
               />
             ) : (
               <>
-                <h1>
-                  {tenant.name} <Badge variant="tint">{segmentLabel(tenant.segment)}</Badge>
-                </h1>
+                <h1>{tenant.name}</h1>
+                <p className="vp-kundenakte-marken">
+                  <Badge variant="tint">{segmentLabel(tenant.segment)}</Badge>
+                  {vertragsende === undefined ? null : <Badge variant={zustand.ton} dot>{zustand.text}</Badge>}
+                </p>
                 <p className="vp-kundenakte-unter">
                   {tenant.betriebsart == null ? 'Automatisch' : betriebsartLabel(tenant.betriebsart)}
                   {' · Tarif '}{tenant.plan.toUpperCase()}
                   {' · seit '}{datumKurz(tenant.createdAt)}
-                  <Button variant="ghost" size="sm" iconLeft={<Icon name="pencil" size={14} />} onClick={() => setEditing(true)}>
-                    Bearbeiten
-                  </Button>
                 </p>
               </>
             )}
           </div>
           <div className="vp-kundenakte-kopf-rechts">
-            {vertragsende === undefined ? null : <Badge variant={zustand.ton} dot>{zustand.text}</Badge>}
             {wieDerKundeEsSieht}
+            {!editing && (
+              <Button variant="ghost" aria-label="Bearbeiten" iconLeft={<Icon name="pencil" size={16} />} onClick={() => setEditing(true)}>
+                {/* Am Telefon nur der Stift: beide Knöpfe passen so in eine Reihe. */}
+                <span className="vp-zeilen-nur-breit">Bearbeiten</span>
+              </Button>
+            )}
           </div>
         </div>
-        <p className="vp-muted vp-kundenakte-unter-hinweis">
-          „Wie der Kunde es sieht“ zeigt Anlagen, Geräte und Übersicht wie der Kunde. Eine Unterstützung oder ein Notfall-Zugriff ist dafür nicht nötig.
-        </p>
 
         {error && <div className="vp-alert vp-alert-err" role="alert">{error}</div>}
 
@@ -714,7 +721,7 @@ function KundenaktePage({
                 </Button>
               </>
             ) : (
-              <table className="vp-table responsive">
+              <table className="vp-table responsive vp-zeilen">
                 <thead>
                   <tr>
                     <th>Person</th>
@@ -726,15 +733,16 @@ function KundenaktePage({
                 <tbody>
                   {personen.map((p) => (
                     <tr key={p.key}>
-                      <td data-label="Person">
+                      <td data-label="Person" data-zeile="haupt">
                         <b>{p.name}</b>
-                        {p.email && <><br /><span className="vp-muted" style={{ fontSize: '0.85rem' }}>{p.email}</span></>}
+                        {/* Ohne Anzeigenamen IST der Name die E-Mail - dann nicht zweimal. */}
+                        {p.email && p.email !== p.name && <span className="vp-muted vp-person-mail">{mailMitUmbruch(p.email)}</span>}
                       </td>
-                      <td data-label="Rolle">{p.rollenText}</td>
-                      <td data-label="Konto">
+                      <td data-label="Rolle" data-zeile="neben">{p.rollenText}</td>
+                      <td data-label="Konto" data-zeile="marke">
                         <Badge variant={p.ton} dot>{p.zustandText}</Badge>
                       </td>
-                      <td data-label="" style={{ textAlign: 'right' }}>
+                      <td data-label="" data-zeile="aktion" style={{ textAlign: 'right' }}>
                         {p.konto && (
                           <RowMenu
                             label={`Aktionen für ${p.konto.username}`}
@@ -755,7 +763,7 @@ function KundenaktePage({
             )}
             {personen != null && personen.length > 0 && (
               <p className="vp-mandant-hinweis vp-muted">
-                Die Plattform legt nur den ersten Benutzer an. Weitere Personen lädt der Kundenadministrator ein; Startpasswort neu, sperren und aktivieren stehen im Menü der Zeile.
+                Weitere Personen lädt der Kundenadministrator ein.
               </p>
             )}
             {neuerAdminOffen && (
@@ -1091,6 +1099,12 @@ export function mandantAusHash(hash: string): string | null {
   if (segments[0] !== 'plattform' || segments[1] !== 'benutzer' || !segments[2]) return null;
   const id = decodeURIComponent(segments[2]).trim();
   return id ? id : null;
+}
+
+/** Eine E-Mail bricht am „@“ um statt mitten im Wort (am Telefon: „person3@“ / „ahrenberg.example.test“). */
+function mailMitUmbruch(mail: string) {
+  const at = mail.indexOf('@');
+  return at < 0 ? mail : <>{mail.slice(0, at + 1)}<wbr />{mail.slice(at + 1)}</>;
 }
 
 function ZurueckZuMandanten({ onClick }: { onClick: () => void }) {

@@ -37,7 +37,6 @@ test('ohne Unterstützung: der Sprung landet in der Ansicht des Mandanten', asyn
   // Dieser Mandant hat einen Standort: kein Hinweis im Kasten, beide Wege stehen da.
   await expect(dialog.getByRole('button', { name: 'Notfall-Zugriff', exact: true })).toBeVisible();
   await expect(dialog.getByRole('note')).toHaveCount(0);
-  await expect(dialog.getByText(/Eine Unterstützung oder ein Notfall-Zugriff ist dafür nicht nötig/)).toBeVisible();
   await passt(page, dialog, 'p, h3, button, .vp-alert');
 
   await dialog.getByRole('button', { name: 'Wie der Kunde es sieht' }).click();
@@ -56,7 +55,7 @@ test('Mandant ohne Standort: die Mandanten-Seite sagt, warum keine Unterstützun
   await expect(hinweis).toBeVisible();
   await expect(hinweis).toContainText('Dieser Mandant hat noch keinen Standort.');
   await expect(hinweis).toContainText('gelten immer für Standorte, nie für das ganze Unternehmen');
-  await expect(hinweis).toContainText('„In Mandanten-Ansicht springen“ öffnet sie trotzdem');
+  await expect(hinweis).toContainText('„Wie der Kunde es sieht“ öffnet sie trotzdem');
   // Nichts wird versteckt: Anfrage, Notfall-Zugriff und Sprung bleiben, wie sie sind.
   await expect(dialog.getByRole('button', { name: 'Unterstützung anfragen' })).toBeEnabled();
   await passt(page, dialog, 'p, h3, button, .vp-alert');

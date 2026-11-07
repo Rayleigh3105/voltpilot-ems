@@ -862,13 +862,17 @@ export function AppShell({
         {isAdmin && tenantOverride && (
           // E3 (Konzept §4.2/§4.6): "Wie der Kunde es sieht" - ein sichtbares
           // Rückweg-Band, solange die Suche einen Kunden geöffnet hat.
+          // Am Telefon EINE Zeile: Auge + Name, rechts „Zurück“ (Name des Knopfs bleibt
+          // „Zur Plattform zurück“); vorher brach der Knopf in eine eigene zweite Zeile.
           <div className="vp-kundenansicht-band" role="status">
             <Icon name="eye" size={16} />
-            <span>
-              Wie der Kunde es sieht: <strong>{tenants.find((t) => t.id === tenantOverride)?.name ?? tenantOverride}</strong>
+            <span className="vp-kundenansicht-text">
+              <span className="vp-kundenansicht-vorsatz">Wie der Kunde es sieht: </span>
+              <strong>{tenants.find((t) => t.id === tenantOverride)?.name ?? tenantOverride}</strong>
             </span>
-            <button type="button" className="vp-kundenansicht-zurueck" onClick={() => onTenantChange(null)}>
-              Zur Plattform zurück
+            <button type="button" className="vp-kundenansicht-zurueck" aria-label="Zur Plattform zurück" onClick={() => onTenantChange(null)}>
+              <span className="vp-kundenansicht-zurueck-lang">Zur Plattform zurück</span>
+              <span className="vp-kundenansicht-zurueck-kurz" aria-hidden="true">Zurück</span>
             </button>
           </div>
         )}
