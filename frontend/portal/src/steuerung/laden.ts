@@ -36,7 +36,7 @@ export const UEBERSCHUSS_MODUS: Record<Exclude<LadeQuelle, 'guenstig'>, string> 
  */
 export const OPTION_SONNE_SPEICHER = 'ueberschuss_speicher';
 
-export function ladeWahl(g: GeraetBild): LadeWahl {
+export function ladeWahl(g: Pick<GeraetBild, 'eingriff' | 'steuerart'>): LadeWahl {
   if (g.eingriff) return g.eingriff.art === 'aus' ? 'aus' : 'schnell';
   return g.steuerart?.quelle === 'sofort' ? 'schnell' : 'smart';
 }
@@ -61,6 +61,51 @@ export function smartSchritte(g: Pick<GeraetBild, 'eingriff' | 'steuerart'>): {
     eingriffBeenden: g.eingriff != null && !sofort,
     blattOeffnen: sofort,
   };
+}
+
+/** Warum „Aus“ oder „Schnell“ an einem Ladepunkt gerade nicht wählbar ist. */
+export interface LadeModusSperre {
+  /**
+   * `sperre`: VoltPilot regelt die Wallbox nicht (`SperreHinweis` sagt es),
+   * `kein_auto`: es steckt keins, `funktion`: die Steuerung ruht,
+   * `wirkt_nicht`: „Schnell“ hätte hier nichts zu übersteuern.
+   */
+  art: 'sperre' | 'kein_auto' | 'funktion' | 'wirkt_nicht';
+  satz: string;
+}
+
+/** Der Satz, wenn kein Auto steckt: Aus und Schnell gelten je Ladung. */
+export const LADEMODUS_OHNE_AUTO = 'Aus und Schnell gelten für eine Ladung, sobald ein Auto steckt.';
+
+/**
+ * Ist „Aus“ bzw. „Schnell“ an diesem Ladepunkt wählbar? `null` = ja.
+ *
+ * ⚠ EINE Regel für die Karte im Reiter „Laden“ UND das Blatt des Ladepunkts.
+ * Bis hierher fragte nur die Karte `boostbar`; über „Aus“ ins Blatt ließ sich
+ * „Schnell“ trotzdem wählen - dieselbe Anlage hieß an einer Stelle „gesperrt“,
+ * an der anderen „wählbar“ (Befund `voltpilot-lademodus-schnellzugriff`).
+ * „Schnell“ ist dieselbe Regel wie auf „Ladevorgänge“ und im Menü „Eingreifen“
+ * (`boostbar`), und wo sie es versagt, trägt sie den Grund
+ * (`schnellWirktNichtGrund`) statt eines stummen grauen Knopfs.
+ */
+export function ladeModusSperre(
+  g: Pick<GeraetBild, 'ladepunkt' | 'eingriff' | 'steuerart'>,
+  funktionSperre: string | null,
+  modus: 'aus' | 'schnell',
+): LadeModusSperre | null {
+  const l = g.ladepunkt;
+  if (!l) return null;
+  if (l.sperre) return { art: 'sperre', satz: `${l.sperre.satz}. ${l.sperre.folge}` };
+  if (!l.angesteckt) return { art: 'kein_auto', satz: LADEMODUS_OHNE_AUTO };
+  if (funktionSperre) return { art: 'funktion', satz: funktionSperre };
+  if (modus === 'schnell') {
+    // Ein Ladepunkt auf „Sofort“ lädt immer voll („immer“), ein laufendes
+    // „Schnell“ beendet „Smart“ - beides ist kein Übersteuern.
+    if (ladeWahl(g) !== 'schnell' && !l.boostbar) {
+      return { art: 'wirkt_nicht', satz: l.schnellGrund ?? 'Schnell ändert gerade nichts.' };
+    }
+  }
+  return null;
 }
 
 /** Die Ladequelle eines Auftrags an den Server (für die Rückmeldung). */

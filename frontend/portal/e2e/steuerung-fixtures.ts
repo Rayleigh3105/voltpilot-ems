@@ -141,6 +141,7 @@ const STATUS: Record<string, [string, string | null]> = {
  * - `offline` (W-12): die Wallbox seit 2 h getrennt, ihr letzter Stand „Charging 7,4 kW".
  * - `voll` (W-21): das Auto ist voll (SuspendedEV, 0 kW).
  * - `einspeisung` (W-14): sonniger Mittag, der Rest der Box (`Netz − Laden`) ist negativ.
+ * - `smart-ohne-sonne` / `smart-ohne-sonne-neu`: „Nur Sonne“ ohne Sonne, Box im Feld bzw. nach dem Fix (siehe unten).
  */
 const WALLBOX_FALL = new URLSearchParams(location.search).get('wallbox');
 
@@ -177,6 +178,20 @@ function wallboxFall(
       Object.assign(con, { status: 'SuspendedEV', charging: false, powerKw: 0, allocatedKw: 11, sessionKwh: 18.2,
         sessionSince: vor(240), reason: null, reasonText: null });
       break;
+    // Befund `voltpilot-lademodus-schnellzugriff` (06.11.2026): „Smart · Nur Sonne“ an der Säule, die Anlage ohne
+    // eigene Vorgabe (das Portal schreibt seit P5 keine), keine Sonne. Die Box im Feld hält das Auto mit
+    // `kein_ueberschuss` auf 0 kW und meldet `surplusActive=false` - nur das Echo der Säule nennt die Bahn.
+    // `-neu`: dieselbe Lage mit einer Box nach dem Fix, die die Bahn der Säule meldet.
+    case 'smart-ohne-sonne':
+    case 'smart-ohne-sonne-neu': {
+      const neu = WALLBOX_FALL === 'smart-ohne-sonne-neu';
+      Object.assign(charging.budget, { surplusPolicy: 'schnell', surplusActive: neu, surplusKw: neu ? 0 : undefined,
+        measuredKw: 0, allocatedKw: 0 });
+      Object.assign(rahmen, { verteiltKw: 0 });
+      Object.assign(con, { status: 'SuspendedEVSE', charging: true, powerKw: 0, allocatedKw: 0, sessionKwh: 4.0,
+        reason: 'kein_ueberschuss', reasonText: 'wartet — kein Überschuss (Ihre Priorität: Nur Sonnenstrom)' });
+      break;
+    }
     case 'einspeisung':
       laedt(2.5);
       Object.assign(charging.budget, { siteLoadKw: -4, siteGridKw: -1.5 });

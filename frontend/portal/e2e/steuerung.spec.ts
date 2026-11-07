@@ -355,6 +355,42 @@ test('Laden W-21: Auto voll - das Vektor-Wort statt „wartet“, keine Ladeank�
   await expect(karte).not.toContainText('Lädt ab');
 });
 
+// Befund `voltpilot-lademodus-schnellzugriff` (06.11.2026): „Schnell“ war grau, weil eine Box im Feld bei einer
+// Anlage ohne Vorgabe `surplusActive=false` meldet, obwohl sie das Auto auf „Nur Sonne“ bei 0 kW hält.
+for (const [fall, wer] of [['smart-ohne-sonne', 'Box im Feld'], ['smart-ohne-sonne-neu', 'Box nach dem Fix']] as const) {
+  test(`Laden: „Nur Sonne“ ohne Sonne - „Schnell“ ist frei (${wer})`, async ({ page }) => {
+    const fehler = await oeffnen(page, `/e2e/steuerung.html?wallbox=${fall}#/anlage/help-site/laden`);
+    const karte = lpKarte(page);
+    const schnell = karte.locator('.lmodes button[data-m="schnell"]');
+    await expect(schnell).toBeEnabled();
+    await expect(schnell).toContainText('für diese Ladung');
+    await expect(karte.getByRole('note')).toHaveCount(0);
+    await schnell.click();
+    const blatt = page.getByRole('dialog', { name: 'Wallbox Werkstatt' });
+    await expect(blatt.getByText('Wie lange?')).toBeVisible();
+    await expect(blatt.getByRole('button', { name: /^Schnell bis zum Abstecken/ })).toBeVisible();
+    expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+    expect(fehler).toEqual([]);
+  });
+}
+
+test('Laden W-21: wo „Schnell“ nichts ändert, steht der Grund - auf der Karte und im Blatt gleich', async ({ page }) => {
+  await oeffnen(page, '/e2e/steuerung.html?wallbox=voll#/anlage/help-site/laden');
+  const karte = lpKarte(page);
+  const schnell = karte.locator('.lmodes button[data-m="schnell"]');
+  const grund = 'Schnell ändert gerade nichts: Das Auto nimmt keinen Strom an (voll oder Auto-Timer).';
+  await expect(schnell).toBeDisabled();
+  await expect(schnell).toContainText('gerade nicht');
+  await expect(karte.getByRole('note')).toHaveText(grund);
+  await expect(schnell).toHaveAttribute('aria-describedby', /.+/);
+  // Der frühere Umweg: über „Aus“ ins Blatt - dort gilt jetzt dieselbe Regel.
+  await karte.locator('.lmodes button[data-m="aus"]').click();
+  const blatt = page.getByRole('dialog', { name: 'Wallbox Werkstatt' });
+  await expect(blatt.getByRole('group', { name: /Aus, Smart oder Schnell/ }).getByRole('button', { name: /Schnell/ })).toBeDisabled();
+  await expect(blatt.getByRole('note').filter({ hasText: grund })).toBeVisible();
+  expect(await ueberstehend(page)).toEqual([]);
+});
+
 // Laden W-14 (Einspeisung - keine negative Hauslast, „frei“ höchstens der Anschluss): die Karte
 // „Netzanschluss" ist seit „Ein Ort fürs Laden" Scheibe 4 (E5 = A) von dieser Seite entfallen; die
 // geprüfte Rechnung (`band()`) bleibt unverändert und zeichengleich getestet in

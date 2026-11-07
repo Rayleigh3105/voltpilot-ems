@@ -20,6 +20,8 @@ import {
   asStorage,
   BOOST_INTRO,
   boostbar,
+  quellenBahnWirkt,
+  schnellWirktNichtGrund,
   boostBanner,
   boostEndeKarte,
   boostFolgen,
@@ -682,6 +684,73 @@ describe('„Jetzt voll laden"', () => {
     expect(boostbar(surplusBudget, wartend[0])).toBe(true);
     // Ein Wort, das dieser Stand nicht kennt, begründet nichts.
     expect(boostbar(surplusBudget, { ...wartend[0], reasonCode: 'neues_wort' })).toBe(false);
+  });
+});
+
+/**
+ * Befund `voltpilot-lademodus-schnellzugriff` (07.11.2026): eine Box vor dem
+ * Fix meldet `surplusActive=false`, sobald die Anlage keine Vorgabe hat - und
+ * das Portal schreibt seit P5 keine mehr. Das Echo der Säule nennt die Bahn,
+ * die die Box wirklich fährt; „Schnell“ liest sie.
+ */
+describe('„Schnell“ liest die Bahn der Säule', () => {
+  const ohneSonne = (quelle: ChargePoint['quelle']) => ladevorgangRows([
+    saeule({
+      quelle,
+      connectors: [{
+        connectorId: 1, status: 'SuspendedEVSE', charging: true, powerKw: 0, allocatedKw: 0,
+        reason: 'kein_ueberschuss', reasonText: 'wartet — kein Überschuss (Ihre Priorität: Nur Sonnenstrom)',
+      }],
+    }),
+  ])[0];
+  const feldBox = { ...surplusBudget, surplusActive: false };
+
+  it('trägt die Bahn je Zeile, ein unbekanntes Wort als unbekannt', () => {
+    expect(ohneSonne({ source: 'nur_sonne', minKw: null, storageRelease: false }).bahn).toBe('nur_sonne');
+    expect(ohneSonne(null).bahn).toBeNull();
+    expect(ohneSonne({ source: 'mondschein' as never, minKw: null, storageRelease: null }).bahn).toBeNull();
+  });
+
+  it('bietet „Schnell“ an, wo die Box die Sonnen-Bahn der Säule fährt, auch wenn die Anlage keine meldet', () => {
+    const row = ohneSonne({ source: 'nur_sonne', minKw: null, storageRelease: false });
+    expect(quellenBahnWirkt(feldBox, row)).toBe(true);
+    expect(boostbar(feldBox, row)).toBe(true);
+    expect(schnellWirktNichtGrund(feldBox, row)).toBeNull();
+    expect(ladepunktAktionen(feldBox, row)).toContain('voll_laden');
+    expect(boostbar(feldBox, ohneSonne({ source: 'sonne_zuerst', minKw: 4.2, storageRelease: false }))).toBe(true);
+  });
+
+  it('nimmt eine Säule auf „schnell“ aus, auch wenn eine Nachbarsäule die Bahn aufspannt', () => {
+    const row = ohneSonne({ source: 'schnell', minKw: null, storageRelease: false });
+    expect(quellenBahnWirkt(surplusBudget, row)).toBe(false);
+    expect(boostbar(surplusBudget, row)).toBe(false);
+    expect(schnellWirktNichtGrund(surplusBudget, row)).toMatch(/lädt schon so schnell es geht/);
+    expect(ladepunktKeinEingriff(surplusBudget, row)).toBeNull();
+  });
+
+  it('fällt ohne Echo (ältere Box) auf den Block der Anlage zurück', () => {
+    const row = ohneSonne(null);
+    expect(boostbar(surplusBudget, row)).toBe(true);
+    expect(boostbar(feldBox, row)).toBe(false);
+    expect(schnellWirktNichtGrund(feldBox, row)).toBe('Schnell ändert gerade nichts: Für diese Ladung meldet die Box keine Sonnen-Vorgabe.');
+  });
+
+  it('sagt, warum „Schnell“ nichts ändert, statt still zu sperren', () => {
+    const mit = (con: Record<string, unknown>) => ladevorgangRows([
+      saeule({ quelle: { source: 'nur_sonne', minKw: null, storageRelease: false }, connectors: [{ connectorId: 1, ...con } as never] }),
+    ])[0];
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'SuspendedEV', charging: true, powerKw: 0 })))
+      .toBe('Schnell ändert gerade nichts: Das Auto nimmt keinen Strom an (voll oder Auto-Timer).');
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'Charging', charging: true, powerKw: 0 })))
+      .toBe('Schnell ändert gerade nichts: Das Auto nimmt gerade keinen Strom.');
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'SuspendedEVSE', charging: true, powerKw: 0, allocatedKw: 7 })))
+      .toBe('Schnell ändert gerade nichts: Die Wallbox hält die Ladung selbst an.');
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'Preparing', charging: false })))
+      .toBe('Schnell geht, sobald die Ladung begonnen hat.');
+    expect(schnellWirktNichtGrund(surplusBudget, null)).toBe('Schnell gilt für eine laufende Ladung.');
+    // Wo es etwas ändert oder schon läuft, gibt es keinen Grund.
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'Charging', charging: true, powerKw: 3.2 }))).toBeNull();
+    expect(schnellWirktNichtGrund(surplusBudget, mit({ status: 'Charging', charging: true, powerKw: 11, boost: true }))).toBeNull();
   });
 });
 

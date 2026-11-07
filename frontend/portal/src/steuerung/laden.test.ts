@@ -6,7 +6,7 @@ import { LADEQUELLE } from '../glossar';
 import type { GeraetBild } from './bild';
 import {
   FREIGABE_STUFE_TEXT, OPTION_SONNE_SPEICHER, UEBERSCHUSS_MODUS, band, grenzePruefung, hatSpeicherGrenze,
-  heutigerAnschluss, ladeQuelle, ladeWahl, ladebudgetKw, lokalesDatum, smartSchritte, speicherZeile,
+  LADEMODUS_OHNE_AUTO, heutigerAnschluss, ladeModusSperre, ladeQuelle, ladeWahl, ladebudgetKw, lokalesDatum, smartSchritte, speicherZeile,
 } from './laden';
 
 function anschluss(bindungen: { anlage: string; ab: string; bis: string | null }[], vereinbart: string | number | null = '200'): Netzanschluss {
@@ -229,5 +229,51 @@ describe('Netzanschluss bei Einspeisung (Audit W-14)', () => {
     const b = band({ netzanschlussKw: 22, hausLastKw: 0.6, sicherheitsabstandPct: 0 }, [wallbox], reihenOhneAnteil, 0)!;
     expect(b.hausKw).toBe(0.6);
     expect(b.einspeisungKw).toBeNull();
+  });
+});
+
+/**
+ * EINE Regel für Karte und Blatt des Ladepunkts (Befund
+ * `voltpilot-lademodus-schnellzugriff`): über „Aus“ ins Blatt ließ sich
+ * „Schnell“ wählen, wo die Karte es gesperrt hatte.
+ */
+describe('ladeModusSperre', () => {
+  const lp = (over: Record<string, unknown> = {}) => ({
+    angesteckt: true, sperre: null, boostbar: true, schnellGrund: null, ...over,
+  });
+  const g = (ladepunkt: Record<string, unknown> | null, over: Record<string, unknown> = {}) => ({
+    ladepunkt, eingriff: null, steuerart: { quelle: 'ueberschuss', herkunft: 'saeule' }, ...over,
+  }) as unknown as Pick<GeraetBild, 'ladepunkt' | 'eingriff' | 'steuerart'>;
+
+  it('lässt beide frei, wo „Schnell“ etwas ändert', () => {
+    expect(ladeModusSperre(g(lp()), null, 'aus')).toBeNull();
+    expect(ladeModusSperre(g(lp()), null, 'schnell')).toBeNull();
+  });
+
+  it('sperrt „Schnell“ mit dem Grund, wo es nichts übersteuert - „Aus“ bleibt', () => {
+    const grund = 'Schnell ändert gerade nichts: Das Auto nimmt keinen Strom an (voll oder Auto-Timer).';
+    const x = g(lp({ boostbar: false, schnellGrund: grund }));
+    expect(ladeModusSperre(x, null, 'schnell')).toEqual({ art: 'wirkt_nicht', satz: grund });
+    expect(ladeModusSperre(x, null, 'aus')).toBeNull();
+  });
+
+  it('sperrt nicht, was schon läuft oder immer gilt', () => {
+    const nichts = lp({ boostbar: false, schnellGrund: 'x' });
+    expect(ladeModusSperre(g(nichts, { eingriff: { art: 'an', bisMs: null } }), null, 'schnell')).toBeNull();
+    expect(ladeModusSperre(g(nichts, { steuerart: { quelle: 'sofort', herkunft: 'standard' } }), null, 'schnell')).toBeNull();
+  });
+
+  it('nennt Sperre, fehlendes Auto und Ruhe vor allem anderen', () => {
+    const sperre = { kind: 'getrennt', satz: 'Wallbox nicht erreichbar seit 12:40 Uhr', folge: 'Ein Eingriff käme nicht an.' };
+    expect(ladeModusSperre(g(lp({ sperre })), null, 'aus')).toEqual({
+      art: 'sperre', satz: 'Wallbox nicht erreichbar seit 12:40 Uhr. Ein Eingriff käme nicht an.',
+    });
+    expect(ladeModusSperre(g(lp({ angesteckt: false })), null, 'schnell')).toEqual({ art: 'kein_auto', satz: LADEMODUS_OHNE_AUTO });
+    expect(ladeModusSperre(g(lp()), 'Eingriffe und Pause gibt es, sobald die Steuerung gestartet ist.', 'aus'))
+      .toEqual({ art: 'funktion', satz: 'Eingriffe und Pause gibt es, sobald die Steuerung gestartet ist.' });
+  });
+
+  it('gilt nur für Ladepunkte', () => {
+    expect(ladeModusSperre(g(null), null, 'schnell')).toBeNull();
   });
 });

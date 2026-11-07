@@ -13,7 +13,7 @@ import { HeizstabKarteGeladen } from '../components/HeizstabKarte';
 import { quelleChip } from '../verbraucherZone';
 import { LADEPUNKT_MODUS, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
 import { BIS_ABSTECKEN, LADEPUNKT_ABSTECKEN_DECKEL_MIN, bisAbsteckenSatz } from '../ladepunkte';
-import { ladeQuelle } from './laden';
+import { ladeModusSperre, ladeQuelle } from './laden';
 import { useRollen } from '../rollen';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
 import type { SiteProfile } from '../profiles';
@@ -111,14 +111,19 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
   const cur: Art3 = eingriff ? eingriff.art : 'smart';
   // In Ruhe (UEMS R0) gibt es keinen Eingriff - nur „Smart“ beendet einen laufenden.
   const sperre = bild.funktion.sperre;
-  const [wahl, setWahl] = useState<Art3>(sperre ? cur : start ?? cur);
   const lp = !!g?.eintrag.ladepunkt;
+  // ⚠ Am Ladepunkt gilt DIESELBE Regel wie auf seiner Karte (`ladeModusSperre`):
+  // über „Aus“ ins Blatt ließ sich „Schnell“ sonst wählen, wo die Karte es sperrt.
+  const lpSperre = (k: Art3) => (lp && g && k !== 'smart' ? ladeModusSperre(g, sperre, k === 'aus' ? 'aus' : 'schnell') : null);
+  const [wahl, setWahl] = useState<Art3>(sperre || (start && lpSperre(start)) ? cur : start ?? cur);
+  // Läuft „Schnell“ schon, ist sein Knopf der aktuelle Stand, kein Angebot.
+  const schnellSperre = cur === 'an' ? null : lpSperre('an');
   const [minuten, setMinuten] = useState<number | null>(lp ? null : 60);
   const knopf = (k: Art3, label: string, icon: string) => (
     <button
       type="button"
       aria-pressed={wahl === k}
-      disabled={busy || (sperre != null && k !== 'smart')}
+      disabled={busy || (sperre != null && k !== 'smart') || lpSperre(k) != null}
       onClick={() => {
         if (k === 'smart') {
           setWahl('smart');
@@ -149,7 +154,9 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
           {knopf('smart', b, 'sun')}
           {knopf('an', c, !g ? 'down' : lp ? 'rocket' : 'power')}
         </div>
-        {wahl !== 'smart' && wahl !== cur && !sperre && (
+        {/* Der Grund, warum „Schnell“ (und ggf. „Aus“) hier nicht geht - die Ruhe sagt ihren unten. */}
+        {schnellSperre && schnellSperre.art !== 'funktion' && <p className="leise" role="note">{schnellSperre.satz}</p>}
+        {wahl !== 'smart' && wahl !== cur && !sperre && !lpSperre(wahl) && (
           <div className="param">
             <div className="blk">
               <h3>Wie lange?</h3>

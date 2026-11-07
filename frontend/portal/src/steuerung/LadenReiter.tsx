@@ -28,7 +28,7 @@ import { ladungenCsv, ladungenSumme, ladungenZeilen } from './ladungen';
 import { Ic } from './Ic';
 import {
   OPTION_SONNE_SPEICHER, band, bandBremst, grenzePruefung, heutigerAnschluss, kwVereinbart, ladebudgetKw,
-  ladeQuelle, ladeWahl, lokalesDatum, naechsteUhrzeit, speicherZeile, type AnschlussStand,
+  ladeModusSperre, ladeQuelle, ladeWahl, lokalesDatum, naechsteUhrzeit, speicherZeile, type AnschlussStand,
 } from './laden';
 import { DreiZahlen, QuelleZeichen, VorschauBand, startEntwurf, wunschAus } from './LadeWahl';
 import { kwhText, mitAuto, uhrKurz, vorschauFuer, vorschauSaetze, type VorschauAnlage } from './ladeVorschau';
@@ -132,6 +132,10 @@ function LadeKarte({
   const an = g.an === true;
   // Der Anlagen-Standard eines Ladepunkts, dessen Kunde nie gewählt hat (E5=A): ehrlich „immer sofort voll“.
   const ungesteuert = !g.eingriff && g.steuerart?.quelle === 'sofort';
+  const sperreAus = ladeModusSperre(g, bild.funktion.sperre, 'aus');
+  const sperreSchnell = ladeModusSperre(g, bild.funktion.sperre, 'schnell');
+  const schnellWirktNicht = sperreSchnell?.art === 'wirkt_nicht';
+  const schnellGrundId = useId();
   const karte = l?.karte ? liste(fahrzeuge?.fahrzeuge).find((f) => f.tagRef === l.karte) ?? null : null;
   // Regelt VoltPilot diese Wallbox gerade gar nicht? (Audit W-01/W-05/W-12)
   const sperre = l?.sperre ?? null;
@@ -224,11 +228,11 @@ function LadeKarte({
             data-m={k}
             aria-pressed={wahl === k}
             // ⚠ Unter einer Sperre bleibt nur der Rückweg eines laufenden Eingriffs („Smart“).
-            // ⚠ „Schnell“ ist derselbe `POST /charging-boost` wie auf *Ladevorgänge* und im
-            // Menü „Eingreifen“ - EINE Regel (`boostbar`) für alle drei Flächen, sonst zeigt
-            // dieselbe Anlage gleichzeitig „anbietbar" und „gesperrt" (Audit, Befund 3).
-            disabled={busy || (sperre != null && !(k === 'smart' && g.eingriff)) || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))
-              || (k === 'schnell' && !ungesteuert && wahl !== 'schnell' && !(l?.boostbar ?? false))}
+            // ⚠ „Aus“ und „Schnell“ folgen EINER Regel (`ladeModusSperre`) - derselben wie das
+            // Blatt des Ladepunkts, und für „Schnell“ derselben (`boostbar`) wie *Ladevorgänge*
+            // und das Menü „Eingreifen“ (Audit, Befund 3).
+            disabled={busy || (k === 'smart' ? sperre != null && !g.eingriff : (k === 'aus' ? sperreAus : sperreSchnell) != null)}
+            aria-describedby={k === 'schnell' && schnellWirktNicht ? schnellGrundId : undefined}
             onClick={(e) => {
               e.currentTarget.focus();
               if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
@@ -237,10 +241,13 @@ function LadeKarte({
           >
             <Ic n={i} s={20} />
             {label}
-            {k === 'schnell' && <small>{ungesteuert ? 'immer' : 'für diese Ladung'}</small>}
+            {k === 'schnell' && <small>{ungesteuert ? 'immer' : schnellWirktNicht ? 'gerade nicht' : 'für diese Ladung'}</small>}
           </button>
         ))}
       </div></Recht>
+      {/* Der Grund statt eines stummen grauen Knopfs; Sperre, Ruhe und „kein Auto“
+          sagen ihre eigenen Flächen darunter bzw. die Bühne. */}
+      {schnellWirktNicht && <p className="leise" role="note" id={schnellGrundId}>{sperreSchnell?.satz}</p>}
       {sperre && <SperreHinweis sperre={sperre} />}
       {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
       {ansage && <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>}
