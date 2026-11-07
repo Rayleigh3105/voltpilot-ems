@@ -597,6 +597,58 @@
 .vp-auf-t-zeile.is-leer {
   min-height: 42px;
 }
+/* Der Kopf einer Gerätegruppe (Konzept `vp-anlage-geraete-gruppiert`): ein ruhiger Abschnitt wie der Tabellenkopf,
+   Name über Gerät, Art und Zustand, die Summe in der Wert-Spalte. Er klappt nicht. */
+.vp-auf-t-zeile.is-gruppe {
+  min-height: 32px;
+  background: var(--vp-bg-light);
+}
+.vp-auf-t-zeile.is-gruppe > .vp-auf-t-name {
+  grid-column: 1 / 4;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.vp-auf-t-zeile.is-gruppe > .vp-auf-t-wert {
+  grid-column: 4;
+  white-space: normal;
+}
+.vp-auf-t-zeile.is-gruppe > .vp-auf-t-wert .is-leer {
+  font-size: var(--vp-text-meta);
+}
+.vp-auf-t-gkopf {
+  --c: var(--vp-text-gray);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.7rem;
+  font-weight: var(--vp-weight-bold);
+  letter-spacing: var(--vp-tracking-wide);
+  text-transform: uppercase;
+  color: var(--vp-text-gray);
+}
+.vp-auf-t-gkopf > svg {
+  flex: 0 0 auto;
+  color: var(--c);
+}
+.vp-auf-t-gkopf.is-solar { --c: var(--vp-chart-pv-line); }
+.vp-auf-t-gkopf.is-battery { --c: var(--vp-battery-end); }
+.vp-auf-t-gkopf.is-ev { --c: var(--vp-ev-end); }
+.vp-auf-t-gkopf.is-home { --c: var(--vp-home-end); }
+.vp-auf-t-gkopf.is-grid { --c: var(--vp-grid); }
+.vp-auf-t-ganzahl {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  border: 1px solid var(--vp-auf-haar);
+  background: var(--vp-surface);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: var(--vp-text-gray);
+}
 /* Die Antwort auf einen Sprung (`?komponente=`): kurz hervorgehoben. */
 .vp-auf-t-zeile.is-angesprungen {
   background: color-mix(in srgb, var(--vp-primary) 18%, var(--vp-surface));
@@ -1022,6 +1074,9 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     grid-area: wert;
     align-self: end;
     padding-top: 8px;
+    /* Ein langer Wert („0,6 kW Einspeisung“) bricht um, statt Menü und Pfeil über den Rand zu schieben. */
+    white-space: normal;
+    min-width: 0;
   }
   .vp-auf-t-zeile > .vp-auf-t-zustand {
     grid-area: zustand;
@@ -1060,6 +1115,19 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   }
   .vp-auf-t-zeile.is-teil {
     grid-template-areas: 'name wert';
+  }
+  /* Der Gruppenkopf ist eine Zeile: Name und Anzahl links, Summe rechts. */
+  .vp-auf-t-zeile.is-gruppe {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'name wert';
+  }
+  .vp-auf-t-zeile.is-gruppe > .vp-auf-t-name {
+    grid-column: auto;
+  }
+  .vp-auf-t-zeile.is-gruppe > .vp-auf-t-wert {
+    grid-column: auto;
+    align-self: center;
+    padding: 0;
   }
   .vp-auf-t-zeile.is-teil > .vp-auf-t-name {
     padding-left: 30px;

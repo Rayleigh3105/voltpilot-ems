@@ -33,6 +33,7 @@ import type { ComponentHealth, ComponentRole, PlantComponent } from '../komponen
 import type { AdoptableSource } from '../rollen';
 import { anlageRoute, hashForRoute } from '../nav';
 import { UEMS_GERAETE_SUCHEN, UEMS_LISTE_DURCHSUCHEN } from '../glossar';
+import { GRUPPE_SYMBOL } from '../aufbauGruppen';
 import { mitStaffel, useStaffel } from '../staffel';
 
 /**
@@ -416,6 +417,8 @@ function Zeile({ z, begriffe, p }: { z: TabellenZeile; begriffe: string[]; p: Au
       return <AnschlussZeile z={z} begriffe={begriffe} p={p} />;
     case 'fund':
       return <FundZeile z={z} begriffe={begriffe} p={p} />;
+    case 'gruppe':
+      return <GruppeZeile z={z} />;
     default:
       return (
         <div className={`vp-auf-t-zeile is-leer${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)}>
@@ -762,6 +765,39 @@ function TeilZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'teil' }>
  * Ein Gateway (GE-1, GD-3 A): ein Kasten, hinter dem mehrere Geräte antworten — eine Zeile mit Weg und
  * Box-Rückmeldung, die Geräte eine Ebene tiefer. Der Name und der Pfeil führen auf seine Seite (GE-5).
  */
+/**
+ * Der Kopf einer Gerätegruppe (Konzept `vp-anlage-geraete-gruppiert`): Symbol · Name · Anzahl, rechts die Summe
+ * der Zeilen - oder, statt einer Teilsumme, wie viele Geräte keinen aktuellen Wert haben. Am Telefon bringt er Art
+ * und Summe zurück, die dort sonst fehlen.
+ */
+function GruppeZeile({ z }: { z: Extract<TabellenZeile, { typ: 'gruppe' }> }) {
+  const k = z.kopf;
+  const symbol = GRUPPE_SYMBOL[k.gruppe];
+  return (
+    <div
+      className={`vp-auf-t-zeile is-gruppe${ebeneKlasse(z.ebene)}`}
+      role="row"
+      style={ebene(z.ebene)}
+      aria-label={k.label}
+      data-aufbau-gruppe={k.gruppe}
+    >
+      <span role="cell" className="vp-auf-t-name">
+        <span className={`vp-auf-t-gkopf is-${symbol.kategorie}`}>
+          <Icon name={symbol.icon} size={14} aria-hidden="true" />
+          <span className="w">{k.wort}</span>
+          <span className="vp-auf-t-ganzahl">
+            {k.anzahl}
+            <span className="vp-sr-only"> {k.anzahl === 1 ? 'Gerät' : 'Geräte'}</span>
+          </span>
+        </span>
+      </span>
+      <span role="cell" className="vp-auf-t-wert">
+        {k.summe ?? (k.hinweis ? <span className="is-leer">{k.hinweis}</span> : null)}
+      </span>
+    </div>
+  );
+}
+
 function GatewayZeile({
   z,
   begriffe,

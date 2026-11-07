@@ -73,6 +73,11 @@ export function anlagensteuerungGeraetId(entityId: string): string {
   return `as-${entityId}`;
 }
 
+/** Ist diese Gerätekennung eine Anlagensteuerung oder eine ihrer Einheiten (`as-…`, `as-…~te-n`)? */
+export function istAnlagensteuerungGeraet(geraetId: string): boolean {
+  return geraetId.startsWith('as-');
+}
+
 /**
  * Das Gerät einer Komponente, die (noch) an keinem gemeldeten Gerät hängt: im Portal angelegt, von der Box noch
  * nicht als Quelle gemeldet, und die Box meldet auch keinen Wechselrichter, der sie mittragen könnte (Live-Fall

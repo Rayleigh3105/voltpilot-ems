@@ -14,6 +14,7 @@
  */
 import type { Device, SiteEntities, SiteSource, SiteTopology, UemsDatenquelle, UemsGeraet } from './api';
 import { aufbauBaum, type AufbauAnlage, type AufbauBox, type AufbauEingabe, type AufbauGeraet, type AufbauWeg } from './aufbauBaum';
+import { sortiereGeraete } from './aufbauGruppen';
 import { kastenSatz } from './aufbauTabelle';
 import { ANFRAGEN_GRENZE, boxLast, lastText, MESSWERTE_GRENZE, wegLast, type WegLast } from './boxUebersicht';
 import { boxRefOf } from './geraetAdresse';
@@ -230,7 +231,7 @@ export function boxGeraeteBlock(e: BoxGeraeteEingabe): BoxGeraeteBlock {
     zeile: [mehrzahl(w.geraete.length, 'Gerät', 'Geräte'), lastVon([w.id])].filter(Boolean).join(' · '),
     zustand: [w.zustandWort, w.zustandZeit].filter(Boolean).join(' · '),
     ton: w.ton,
-    geraete: mitEinheiten(w.geraete).map(eintrag),
+    geraete: mitEinheiten(sortiereGeraete(w.geraete)).map(eintrag),
     href: w.href,
   }));
   const offen = wege.filter((w) => w.art === 'offen').map((w): BoxAnschluss => ({
@@ -253,7 +254,8 @@ export function boxGeraeteBlock(e: BoxGeraeteEingabe): BoxGeraeteBlock {
       + `${fremde.map((q) => q.kennzeichen).join(', ')} — dort im Aufbau.`;
 
   return {
-    eintraege: mitEinheiten(geraete.filter((g) => !g.gateway && !g.einheit)).map(eintrag),
+    // Dieselbe Reihenfolge wie der Aufbau: nach Gruppe, darin nach Namen (vp-anlage-geraete-gruppiert).
+    eintraege: mitEinheiten(sortiereGeraete(geraete.filter((g) => !g.gateway && !g.einheit))).map(eintrag),
     gateways,
     offen,
     anzahl: box ? geraete.length : null,

@@ -337,6 +337,13 @@ Die Erkennung steht als Wort: „sicher erkannt“ (das Gerät hat Hersteller, T
 „Übernehmen“ öffnet den bestehenden Anlege-Fluss mit dem Anschluss aus der Suche; der Verbindungstest startet von selbst und liest nur. Gleich ist ein Fund nur über seine Seriennummer, nie über dieselbe Adresse; eine neue Adresse desselben Geräts ist ein Vorschlag, den ein Tipp übernimmt (dieselbe Komponente, eine neue Fassung).
 Kundenwörter: `UEMS_GERAETE_SUCHEN`, `UEMS_GERAETESUCHE`, `UEMS_IM_HEIMNETZ_SUCHEN`, `UEMS_LISTE_DURCHSUCHEN` (PORTAL/glossar.ts).
 
+**Gerätegruppen im Aufbau (Konzept „Geräte gruppiert“, Captain 07.11.2026, GR-1 A, GR-2 A, GR-3 A).**
+Der Aufbau ordnet die Geräte einer Box in fünf feste Gruppen, in der Reihenfolge des Anlagenkopfs: „Erzeugung“, „Speicher“, „Netz“, „Verbrauch“ und „Laden“ — dieselben Wörter wie Energiefluss und Cockpit. Leere Gruppen entfallen; Köpfe stehen erst ab zwei Gruppen in einer Box, an einer Anlage mit mehreren Boxen je Box. Gruppen klappen nicht.
+Jedes Gerät steht einmal, in der ersten Gruppe, zu der es gehört: ein Hybrid-Wechselrichter unter „Erzeugung“ (seine Zeile zeigt dort die PV-Leistung, den Ladestand zeigen Anlagenkopf und Aufklappen), eine Anlagensteuerung ebenso, eine Ladesäule unter „Laden“, Heizstab, Wärmepumpe, Schalter und Unterzähler unter „Verbrauch“. Darin nach Namen, natürlich („Kaco 2“ vor „Kaco 10“), im Verbrauch die Unterzähler zuerst; nie nach Leistung.
+Der Kopf nennt die Anzahl und die Summe der Zeilen — nur bei mindestens zwei Zeilen, die alle einen aktuellen Wert haben; sonst „1 Gerät ohne aktuellen Wert“, nie eine Teilsumme und nie eine 0. Unter „Laden“ steht der Wortlaut des Cockpits („2 von 4 laden · 18,2 kW“). Unter Suche und Filter steht keine Summe.
+Nichts zählt doppelt: mischt „Verbrauch“ Unterzähler und einzelne Verbraucher, entfällt die Summe (ein Heizstab kann hinter einer Unterverteilung hängen); „Netz“ summiert nie (zwei Zähler messen oft denselben Anschluss), ein Ladestand in % auch nicht.
+Kundenwörter: `AUFBAU_ERZEUGUNG`, `AUFBAU_SPEICHER`, `AUFBAU_NETZ`, `AUFBAU_VERBRAUCH`, `AUFBAU_LADEN` (PORTAL/glossar.ts); Regeln: PORTAL/aufbauGruppen.ts.
+
 ## Komponente
 
 *Sicht: Erfassung*

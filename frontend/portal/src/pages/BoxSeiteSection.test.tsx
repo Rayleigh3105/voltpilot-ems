@@ -554,7 +554,8 @@ describe('BoxSeiteSection · Geräte an dieser Box (GE-4)', () => {
     expect(gateway.querySelector(':scope > a.vp-geraet-zeile')).toHaveAttribute('href', '#/anlage/site-hs/geraet/VP-HS-0001/dq-3');
     const dahinter = within(gateway).getByRole('list', { name: 'Geräte hinter Zählergateway Halle' });
     expect(within(dahinter).getAllByRole('link')).toHaveLength(4);
-    expect(within(dahinter).getAllByRole('link')[1]).toHaveTextContent('Geräte-ID 2');
+    // Nach Namen wie im Aufbau (vp-anlage-geraete-gruppiert) - die Geräte-ID steht an jedem.
+    expect(within(dahinter).getAllByRole('link').map((l) => l.textContent ?? '').join(' | ')).toContain('Geräte-ID 2');
     // Den Box-Wechsel trägt das Gateway — für alle vier; die Geräte dahinter haben keinen eigenen.
     expect(within(gateway).getAllByRole('button', { name: /Zuständige Box wechseln/ })).toHaveLength(1);
 

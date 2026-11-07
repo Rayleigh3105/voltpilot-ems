@@ -206,10 +206,12 @@ describe('aufbauBaum — eine Box', () => {
 describe('aufbauBaum — Geräte-Zeilen', () => {
   it('macht aus den Komponenten Chips - nur mit Messwert, nie eine 0', () => {
     const g = aufbauBaum(eingabe()).anlagen[0].boxen[0].geraete[0];
-    expect(texte(g.werte)).toEqual(['64 % geladen', '6,2 kW', '3,4 kW Einspeisung']);
+    // Der Hybrid steht unter Erzeugung - dort zeigt er zuerst seine PV-Leistung (vp-anlage-geraete-gruppiert).
+    expect(g.gruppe).toBe('erzeugung');
+    expect(texte(g.werte)).toEqual(['6,2 kW', '64 % geladen', '3,4 kW Einspeisung']);
     expect(g.werte.map((w) => plain(w.label))).toEqual([
-      'Speicher 64 % geladen',
       'PV 6,2 kW',
+      'Speicher 64 % geladen',
       'Netz 3,4 kW Einspeisung',
     ]);
   });
@@ -795,8 +797,9 @@ describe('aufbauBaum — ein Eintrag je Kasten (GE-1)', () => {
         ['gateway', 'Zählergateway Halle', 'Modbus TCP · 192.168.10.31:502 · Geräte-IDs 1–4 · Kennung DQ-3', zaehler],
       ]);
       expect(typen(tabellenZeilen(baum, LEERER_FILTER, ALLES_OFFEN))).toEqual([
+        // Eine Gruppe an der Box: keine Köpfe; hinter dem Gateway nach Namen (vp-anlage-geraete-gruppiert).
         'anlage@0', 'box@1', 'geraet@2:wr', 'gateway@2:DQ-3',
-        'geraet@3:haupt', 'geraet@3:kompressor', 'geraet@3:licht', 'geraet@3:buero',
+        'geraet@3:buero', 'geraet@3:haupt', 'geraet@3:kompressor', 'geraet@3:licht',
       ]);
       expect(kastenSatz(b.geraete, b.wege)).toBe('5 Geräte · 1 Gateway');
       expect(aufbauZahlen(baum, LEERER_FILTER)).toMatchObject({ geraete: 5, gateways: 1, achtung: 0 });

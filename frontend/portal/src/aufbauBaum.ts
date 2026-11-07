@@ -68,6 +68,7 @@ import type { ChargePoint, SiteCharging } from './ladepunkte';
 import { gridState } from './live';
 import { einheitHref, einheitStand, UEBER_DIE_STEUERUNG } from './erzeugungseinheit';
 import { kwText } from './anlagensteuerung';
+import { gruppeFuer, istUnterzaehler, werteFuerGruppe, type GeraeteGruppe } from './aufbauGruppen';
 import { boxSeiteHash } from './nav';
 import { sanitizeSoc } from './plausible';
 import { boxLage, type GeraeteKarte, type KartenArt } from './zentraleListe';
@@ -133,6 +134,16 @@ export interface AufbauGeraet {
    * sie steht, und ihre TE-Nr.; null = ein gewöhnliches Gerät. Ohne eigene Komponente — ihre Werte sind die der Steuerung.
    */
   einheit: { steuerungId: string; teNr: number } | null;
+  /**
+   * Die Gruppe, unter der es im Aufbau steht (Erzeugung · Speicher · Netz · Verbrauch · Laden, `aufbauGruppen.ts`);
+   * null = keine (ein Fund oder „Nicht mehr verbunden" - sie stehen am Ende).
+   */
+  gruppe: GeraeteGruppe | null;
+  /**
+   * Nur an einer Ladesäule: lädt sie gerade, mit welcher Leistung (Summe der ladenden Stecker; null = nicht
+   * messbar)? null = ihr Bericht sagt es nicht (keine Säule, kein Stecker gemeldet) - unbekannt ist kein „frei".
+   */
+  ladung: { laedt: boolean; kw: number | null } | null;
 }
 
 /**
@@ -423,7 +434,7 @@ export function anlagenKopf(
       komps.push({ c, gelesenAm: k.gelesenAm ?? null });
     }
   }
-  const aktuell = (c: PlantComponent) => c.health === 'ok' && !c.orphaned && c.reading != null;
+  const aktuell = komponenteAktuell;
 
   const werte: AufbauWert[] = [];
   const zeiten: (number | null)[] = [];
@@ -476,6 +487,14 @@ export function anlagenKopf(
 }
 
 const KOPF_REIHENFOLGE: AufbauWertArt[] = ['pv', 'speicher', 'netz'];
+
+/**
+ * Trägt eine Komponente einen AKTUELLEN Wert? Gesund, nicht verwaist, mit Lesung. Dieselbe Regel für den Anlagenkopf
+ * (`anlagenKopf`) und die Gruppenköpfe (`aufbauGruppen.ts`) - sonst liefen die Summen gegeneinander.
+ */
+export function komponenteAktuell(c: PlantComponent): boolean {
+  return c.health === 'ok' && !c.orphaned && c.reading != null;
+}
 
 function zeitpunkt(iso: string | null): number | null {
   if (!iso) return null;
@@ -551,6 +570,8 @@ function kachelFuer(karte: GeraeteKarte): { kategorie: AufbauKategorie; icon: Ic
   if (karte.art === 'neu') return { kategorie: 'fund', icon: 'search' };
   if (karte.art === 'verwaist') return { kategorie: 'warn', icon: 'alert-triangle' };
   if (karte.art === 'ladepunkt') return { kategorie: 'ev', icon: 'zap' };
+  // Ein Unterzähler misst - das Zählersymbol wie die Messung am Netzanschluss, in der Farbe des Verbrauchs.
+  if (istUnterzaehler(karte.komponenten)) return { kategorie: 'home', icon: 'activity' };
   for (const rolle of KACHEL_REIHENFOLGE) {
     if (karte.komponenten.some((c) => c.role === rolle)) return KACHEL[rolle];
   }
@@ -581,6 +602,7 @@ export function aufbauGeraet(
     werte = w ? [w] : [];
   }
   const kachel = kachelFuer(karte);
+  const gruppe = gruppeFuer(karte, setup);
   const markeRoh = karte.art === 'neu' ? karte.quelle?.brand : setup?.brand;
   return {
     id: karte.id,
@@ -594,7 +616,7 @@ export function aufbauGeraet(
     artWort: artWortFuer(karte),
     marke: markeRoh ? technicalDeviceName({ brand: markeRoh, model: null }) : null,
     kennung: saeule?.chargePointId ?? null,
-    werte,
+    werte: werteFuerGruppe(werte, gruppe),
     kategorie: kachel.kategorie,
     icon: kachel.icon,
     karte,
@@ -602,6 +624,21 @@ export function aufbauGeraet(
     anbindungText: null,
     gateway: null,
     einheit: null,
+    gruppe,
+    ladung: saeule ? ladungVon(saeule) : null,
+  };
+}
+
+/** Lädt die Säule, und mit welcher Leistung? null = kein Stecker gemeldet (unbekannt, nicht „frei"). */
+function ladungVon(c: ChargePoint): AufbauGeraet['ladung'] {
+  const stecker = c.connectors ?? [];
+  if (stecker.length === 0) return null;
+  const laedt = stecker.filter((k) => k.charging);
+  if (laedt.length === 0) return { laedt: false, kw: null };
+  const kw = laedt.map((k) => k.powerKw);
+  return {
+    laedt: true,
+    kw: kw.every((v): v is number => typeof v === 'number' && Number.isFinite(v)) ? kw.reduce((a, b) => a + b, 0) : null,
   };
 }
 
@@ -854,6 +891,8 @@ function einheitenUnter(
         // Hinter einem Gateway steht die Steuerung — die Einheit steht hinter der Steuerung, nicht am Gateway.
         gateway: null,
         einheit: { steuerungId: steuerung.id, teNr: e.te_nr },
+        gruppe: 'erzeugung' as const,
+        ladung: null,
       };
     });
 }

@@ -384,8 +384,9 @@ describe('AufbauSection · der Baum', () => {
     rendere();
     const deye = await zeile('inv');
     expect(deye).toHaveTextContent('Deye SUN-30K');
-    // Der Ladestand steht als ganze Zahl - wie am Kopf der Anlage.
-    expect(deye).toHaveTextContent('76 %');
+    // Der Hybrid steht unter Erzeugung und zeigt dort seine PV-Leistung; den Ladestand zeigen Kopf und Aufklappen
+    // (vp-anlage-geraete-gruppiert).
+    expect(deye).not.toHaveTextContent('76 %');
     // Die weiteren Messwerte klappen darunter auf (K5).
     fireEvent.click(within(deye).getByRole('button', { name: /Messwerte von .* aufklappen/ }));
     const teile = await waitFor(() => {
@@ -394,6 +395,8 @@ describe('AufbauSection · der Baum', () => {
       return t;
     });
     const text = teile.map((t) => t.textContent ?? '').join(' | ');
+    // Der Ladestand steht als ganze Zahl - wie am Kopf der Anlage.
+    expect(text).toMatch(/76\s%/);
     expect(text).toContain('Einspeisung');
     expect(text).not.toMatch(/[-−]30,0/);
     // Der Fronius liefert über die Box - sein Wert steht an seiner Zeile.

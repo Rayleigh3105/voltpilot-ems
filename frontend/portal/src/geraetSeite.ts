@@ -427,6 +427,8 @@ export function geraeteArtWort(
     const hatSpeicher = komponenten.some((c) => c.role === 'storage');
     return `${hatSpeicher ? 'Hybrid-Wechselrichter' : ART_WORT.hauptgeraet} · Hauptgerät`;
   }
+  // Ein Shelly in einer Unterverteilung ist ein Unterzähler, kein Verbraucher - dasselbe Wort wie seine Seite (UV-3 A).
+  if (komponenten.some((c) => c.entityType === 'sub-meter')) return 'Unterzähler';
   if (art === 'quelle') return ROLLEN_WORT[rolle ?? ''] ?? ART_WORT.quelle;
   return ART_WORT[art];
 }

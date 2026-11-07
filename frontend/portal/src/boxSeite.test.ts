@@ -437,10 +437,11 @@ describe('boxSeite · die Geräte an ihr', () => {
   it('listet jedes Gerät aus dem Aufbau mit seiner Art, seinem Zustand und dem Weg auf seine Seite', () => {
     const v = boxSeite(input());
     const g = v.geraete!;
-    expect(g.eintraege.map((e) => e.id)).toEqual(['inverter', 'src-7c1e9a2b']);
+    // Wie im Aufbau: beide erzeugen, darin nach Namen - „Dach Süd" vor „Wechselrichter Scheune" (vp-anlage-geraete-gruppiert).
+    expect(g.eintraege.map((e) => e.id)).toEqual(['src-7c1e9a2b', 'inverter']);
     expect(g.eintraege.map((e) => e.href)).toEqual([
-      '#/anlage/site-1/geraet/edge-45gz7da/inverter',
       '#/anlage/site-1/geraet/edge-45gz7da/src-7c1e9a2b',
+      '#/anlage/site-1/geraet/edge-45gz7da/inverter',
     ]);
     // Katalog-Geräte tragen keinen gespeicherten Weg: keine Anbindung, keine Last — und keine geratene.
     expect(g.eintraege.map((e) => e.anbindung)).toEqual([null, null]);
@@ -539,7 +540,8 @@ describe('boxSeite · die Geräte an ihr', () => {
       'Zählergateway Halle',
       'Modbus TCP · 192.168.10.31:502 · Geräte-IDs 1–4 · Kennung DQ-3',
       '4 Geräte · Last 23\u00a0%',
-      ['Geräte-ID 1', 'Geräte-ID 2', 'Geräte-ID 3', 'Geräte-ID 4'],
+      // Nach Namen wie im Aufbau: „Zähler buero" (Geräte-ID 4) zuerst.
+      ['Geräte-ID 4', 'Geräte-ID 1', 'Geräte-ID 2', 'Geräte-ID 3'],
     ]]);
     // Hinter dem Gateway wechselt niemand die Box für EIN Gerät: der Weg gehört dem Gateway.
     expect(g.gateways[0].geraete.every((e) => e.quelleId === null && e.href != null)).toBe(true);

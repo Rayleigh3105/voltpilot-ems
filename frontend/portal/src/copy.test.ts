@@ -48,6 +48,7 @@ import {
   UEMS_IM_HEIMNETZ_SUCHEN,
   UEMS_LISTE_DURCHSUCHEN,
 } from './glossar';
+import { AUFBAU_ERZEUGUNG, AUFBAU_LADEN, AUFBAU_NETZ, AUFBAU_SPEICHER, AUFBAU_VERBRAUCH } from './glossar';
 import { GATEWAY_ANBINDEN, MESSEN_SCHRITTE, ZUR_DATENQUELLE } from './messenAssistent';
 import {
   UEMS_ABWEICHUNG,
@@ -1074,6 +1075,23 @@ describe('Gerätesuche · ein Name je Sache (Konzept „Geräte suchen“, Beric
     expect(texte.filter((t) => /Hostname|Gerätename/.test(t))).toEqual([]);
     const glossar = readFileSync(join(process.cwd(), '../../docs/fachmodell/glossar.md'), 'utf8');
     for (const k of ['UEMS_GERAETE_SUCHEN', 'UEMS_GERAETESUCHE', 'UEMS_IM_HEIMNETZ_SUCHEN', 'UEMS_LISTE_DURCHSUCHEN']) {
+      expect(glossar, k).toContain(k);
+    }
+  });
+
+  it('die Gerätegruppen im Aufbau tragen die Wörter von Energiefluss und Cockpit - aus dem Glossar, nie „Bereich“', () => {
+    expect([AUFBAU_ERZEUGUNG, AUFBAU_SPEICHER, AUFBAU_NETZ, AUFBAU_VERBRAUCH, AUFBAU_LADEN]).toEqual([
+      'Erzeugung', 'Speicher', 'Netz', 'Verbrauch', 'Laden',
+    ]);
+    const gruppen = lies('src/aufbauGruppen.ts');
+    for (const k of ['AUFBAU_ERZEUGUNG', 'AUFBAU_SPEICHER', 'AUFBAU_NETZ', 'AUFBAU_VERBRAUCH', 'AUFBAU_LADEN']) {
+      expect(gruppen, k).toContain(`: ${k},`);
+    }
+    // „Bereich“ ist das Ortswort des Unternehmens (UEMS_BEREICH), kein Gruppenwort.
+    expect(visibleTexts(gruppen).filter((t) => /Bereich/.test(t))).toEqual([]);
+    const glossar = readFileSync(join(process.cwd(), '../../docs/fachmodell/glossar.md'), 'utf8');
+    expect(glossar).toContain('Gerätegruppen im Aufbau');
+    for (const k of ['AUFBAU_ERZEUGUNG', 'AUFBAU_SPEICHER', 'AUFBAU_NETZ', 'AUFBAU_VERBRAUCH', 'AUFBAU_LADEN']) {
       expect(glossar, k).toContain(k);
     }
   });

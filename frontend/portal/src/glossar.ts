@@ -935,6 +935,18 @@ export const UEMS_GERAETESUCHE = 'Gerätesuche';
 export const UEMS_IM_HEIMNETZ_SUCHEN = 'Im Heimnetz suchen';
 export const UEMS_LISTE_DURCHSUCHEN = 'Liste durchsuchen';
 
+/**
+ * Die Gerätegruppen im Aufbau (Konzept „Geräte gruppiert“, Captain 07.11.2026, GR-1 A · GR-2 A · GR-3 A): fünf feste
+ * Gruppen in der Reihenfolge des Anlagenkopfs - dieselben Wörter wie Energiefluss und Cockpit. „Bereich“ ist kein
+ * Gruppenwort (Ortswort des Unternehmens). Regeln: `aufbauGruppen.ts`.
+ * Glossar: `docs/fachmodell/glossar.md` › Gerät (Abschnitt „Gerätegruppen im Aufbau“).
+ */
+export const AUFBAU_ERZEUGUNG = 'Erzeugung';
+export const AUFBAU_SPEICHER = 'Speicher';
+export const AUFBAU_NETZ = 'Netz';
+export const AUFBAU_VERBRAUCH = 'Verbrauch';
+export const AUFBAU_LADEN = 'Laden';
+
 /** Der Zwischenstand im Schritt „Anschluss“: der Weg ist gespeichert, das Gerät entsteht erst am Ende. */
 export function anschlussGespeichert(kennzeichen: string, abschluss: string): string {
   return `${UEMS_ANSCHLUSS} gespeichert (Kennung ${kennzeichen}). Das Gerät entsteht erst mit „${abschluss}“.`;

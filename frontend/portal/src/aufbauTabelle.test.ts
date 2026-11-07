@@ -171,12 +171,16 @@ describe('tabellenZeilen — ohne Suche und Filter', () => {
     expect(kurz(rows)).toEqual([
       'anlage:s-1',
       'box:b-1',
+      // Gruppiert (vp-anlage-geraete-gruppiert): je Gruppe ein Kopf auf der Ebene seiner Geräte, der Fund am Ende.
+      'gruppe:b-1::gruppe::erzeugung',
       'geraet:inverter',
+      'gruppe:b-1::gruppe::verbrauch',
       'geraet:heizstab',
+      'gruppe:b-1::gruppe::laden',
       'geraet:cp-CP-1',
       'fund:neu:src-7',
     ]);
-    expect(rows.map((r) => r.ebene)).toEqual([0, 1, 2, 2, 2, 2]);
+    expect(rows.map((r) => r.ebene)).toEqual([0, 1, 2, 2, 2, 2, 2, 2, 2]);
   });
 
   it('bietet nur Geräten mit mehreren Komponenten die Unterzeilen an', () => {
@@ -219,8 +223,10 @@ describe('tabellenZeilen — ohne Suche und Filter', () => {
 
 describe('tabellenZeilen — Suche', () => {
   it('findet ein Gerät über sein Modell in jeder Schreibweise', () => {
-    expect(kurz(zeilen({ q: 'sun12k' }))).toEqual(['anlage:s-1', 'box:b-1', 'geraet:inverter']);
-    expect(kurz(zeilen({ q: 'SUN-12K' }))).toEqual(['anlage:s-1', 'box:b-1', 'geraet:inverter']);
+    // Ein Treffer zeigt Anlage, Box und seine Gruppe.
+    const treffer = ['anlage:s-1', 'box:b-1', 'gruppe:b-1::gruppe::erzeugung', 'geraet:inverter'];
+    expect(kurz(zeilen({ q: 'sun12k' }))).toEqual(treffer);
+    expect(kurz(zeilen({ q: 'SUN-12K' }))).toEqual(treffer);
   });
 
   it('findet eine Ladesäule über ihre Kennung', () => {
@@ -229,7 +235,12 @@ describe('tabellenZeilen — Suche', () => {
   });
 
   it('findet ein Gerät über den Namen seiner Komponente', () => {
-    expect(kurz(zeilen({ q: 'netzanschluss' }))).toEqual(['anlage:s-1', 'box:b-1', 'geraet:inverter']);
+    expect(kurz(zeilen({ q: 'netzanschluss' }))).toEqual([
+      'anlage:s-1',
+      'box:b-1',
+      'gruppe:b-1::gruppe::erzeugung',
+      'geraet:inverter',
+    ]);
   });
 
   it('zeigt über den Box-Namen alle Geräte dieser Box', () => {
@@ -239,7 +250,12 @@ describe('tabellenZeilen — Suche', () => {
 
   it('öffnet Gruppen mit Treffern, auch wenn sie zugeklappt waren', () => {
     const zu: Aufklappzustand = { offen: () => false, geraete: new Set() };
-    expect(kurz(zeilen({ q: 'heizstab' }, zu))).toEqual(['anlage:s-1', 'box:b-1', 'geraet:heizstab']);
+    expect(kurz(zeilen({ q: 'heizstab' }, zu))).toEqual([
+      'anlage:s-1',
+      'box:b-1',
+      'gruppe:b-1::gruppe::verbrauch',
+      'geraet:heizstab',
+    ]);
   });
 
   it('verlangt JEDEN Begriff (UND) und liefert ohne Treffer keine Zeile', () => {
@@ -254,30 +270,53 @@ describe('tabellenZeilen — Filter', () => {
   });
 
   it('filtert nach Zustand: was Aufmerksamkeit braucht', () => {
-    expect(kurz(zeilen({ zustand: ['achtung'] }))).toEqual(['anlage:s-1', 'box:b-1', 'geraet:heizstab']);
+    expect(kurz(zeilen({ zustand: ['achtung'] }))).toEqual([
+      'anlage:s-1',
+      'box:b-1',
+      'gruppe:b-1::gruppe::verbrauch',
+      'geraet:heizstab',
+    ]);
   });
 
   it('filtert nach Hersteller - ohne Angabe ist ein eigener Wert', () => {
-    expect(kurz(zeilen({ marke: ['Deye'] }))).toEqual(['anlage:s-1', 'box:b-1', 'geraet:inverter']);
-    expect(kurz(zeilen({ marke: [OHNE_MARKE] }))).toEqual(['anlage:s-1', 'box:b-1', 'geraet:cp-CP-1']);
+    expect(kurz(zeilen({ marke: ['Deye'] }))).toEqual([
+      'anlage:s-1',
+      'box:b-1',
+      'gruppe:b-1::gruppe::erzeugung',
+      'geraet:inverter',
+    ]);
+    expect(kurz(zeilen({ marke: [OHNE_MARKE] }))).toEqual([
+      'anlage:s-1',
+      'box:b-1',
+      'gruppe:b-1::gruppe::laden',
+      'geraet:cp-CP-1',
+    ]);
   });
 
   it('filtert nach Art, ohne die Rolle („Hauptgerät") mitzuzählen', () => {
     const baum = aufbauBaum(eingabe());
     expect(artVon(baum.anlagen[0].boxen[0].geraete[0])).toBe('Hybrid-Wechselrichter');
-    expect(kurz(zeilen({ art: ['Hybrid-Wechselrichter'] }))).toEqual(['anlage:s-1', 'box:b-1', 'geraet:inverter']);
+    expect(kurz(zeilen({ art: ['Hybrid-Wechselrichter'] }))).toEqual([
+      'anlage:s-1',
+      'box:b-1',
+      'gruppe:b-1::gruppe::erzeugung',
+      'geraet:inverter',
+    ]);
   });
 
   it('verbindet Filter verschiedener Art mit UND, Werte eines Filters mit ODER', () => {
     expect(kurz(zeilen({ art: ['Ladesäule', 'Verbraucher'] }))).toEqual([
       'anlage:s-1',
       'box:b-1',
+      'gruppe:b-1::gruppe::verbrauch',
       'geraet:heizstab',
+      'gruppe:b-1::gruppe::laden',
       'geraet:cp-CP-1',
     ]);
     expect(kurz(zeilen({ art: ['Ladesäule', 'Verbraucher'], zustand: ['ok'] }))).toEqual([
       'anlage:s-1',
       'box:b-1',
+      'gruppe:b-1::gruppe::laden',
       'geraet:cp-CP-1',
     ]);
   });

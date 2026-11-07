@@ -181,6 +181,12 @@ export interface PlantComponent {
    */
   renameable: boolean;
   role: ComponentRole;
+  /**
+   * Der Typ der Entität aus dem Typkatalog (`sub-meter`, `heating-rod`, …); absent = unbekannt (eine vom Portal
+   * gebildete Zeile ohne eigene Entität). Nur zum Unterscheiden innerhalb einer Rolle - ein Unterzähler ist
+   * `consumer` wie ein Heizstab, zählt aber anders (Aufbau-Gruppen).
+   */
+  entityType?: string;
   /** One plain-German line describing what this component is/does. */
   summary: string;
   /** The device(s) that feed/host this component (edge source ids). */
@@ -1305,6 +1311,7 @@ export function plantModel(
       derivedLabel: componentLabel(null, role, e.typeLabel),
       renameable: true,
       role,
+      entityType: e.entityType,
       summary: componentSummary(role, control, primary, e.entityType),
       deviceIds: [],
       provenance: null,

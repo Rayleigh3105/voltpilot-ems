@@ -26,6 +26,7 @@
  */
 import type { AufbauAnlage, AufbauBaum, AufbauBox, AufbauGeraet, AufbauWeg } from './aufbauBaum';
 import type { PlantComponent } from './komponenten';
+import { gruppenKopf, gruppenZahl, GRUPPEN_ORDNUNG, sortiereGeraete, type GruppenKopf } from './aufbauGruppen';
 import { normalisiereSuche, passt, suchBegriffe } from './picker/suche';
 
 export type FilterSchluessel = 'art' | 'zustand' | 'box' | 'marke';
@@ -144,6 +145,11 @@ export type TabellenZeile =
       teilbar: boolean;
       offen: boolean;
     }
+  /**
+   * Der Kopf einer Gerätegruppe (Erzeugung · Speicher · Netz · Verbrauch · Laden, `aufbauGruppen.ts`): Anzahl und
+   * ehrliche Summe. Er steht auf der Ebene seiner Geräte und klappt nicht - Gruppen bleiben offen wie Abschnitte.
+   */
+  | { typ: 'gruppe'; key: string; ebene: number; anlage: AufbauAnlage; box: AufbauBox | null; kopf: GruppenKopf }
   | { typ: 'teil'; key: string; ebene: number; anlage: AufbauAnlage; geraet: AufbauGeraet; komponente: PlantComponent }
   /** Ein Gateway (1 : N, GE-1): ein Kasten, kein Gerät — seine Geräte stehen eine Ebene tiefer. */
   | { typ: 'gateway'; key: string; ebene: number; anlage: AufbauAnlage; box: AufbauBox | null; weg: AufbauWeg; offen: boolean }
@@ -236,12 +242,29 @@ function ortZeilen(
     .map((w) => ({ w, geraete: w.geraete.filter(traegt) }))
     .filter(({ w, geraete: g }) => !aktiv || g.length > 0 || wegTrifft(w, box, f, begriffe));
   const offene = wege.filter((w) => w.art === 'offen' && (!aktiv || wegTrifft(w, box, f, begriffe)));
-  geraeteZeilen(out, anlage, box, direkt, ebene, z, einheiten);
   const ort = box?.id ?? `${anlage.id}::ohne-box`;
+  // Gruppiert (Konzept `vp-anlage-geraete-gruppiert`): je Gruppe ein Kopf, erst ab zwei Gruppen an diesem Ort -
+  // gezählt über ALLE seine Geräte, damit ein Treffer auch unter Suche und Filter seine Gruppe zeigt.
+  const alleDirekt = geraete.filter((g) => !amGateway.has(g.id) && !g.einheit);
+  const mitKoepfen = gruppenZahl(alleDirekt) >= 2;
+  const sortiert = sortiereGeraete(direkt);
+  for (const gruppe of GRUPPEN_ORDNUNG) {
+    const darin = sortiert.filter((g) => g.gruppe === gruppe);
+    if (darin.length === 0) continue;
+    if (mitKoepfen) {
+      // Blenden Suche oder Filter Geräte der Gruppe aus, wäre ihre Summe eine Teilsumme - dann steht keine da.
+      const teilmenge = darin.length !== alleDirekt.filter((g) => g.gruppe === gruppe).length;
+      out.push({ typ: 'gruppe', key: `${ort}::gruppe::${gruppe}`, ebene, anlage, box, kopf: gruppenKopf(gruppe, darin, teilmenge) });
+    }
+    geraeteZeilen(out, anlage, box, darin, ebene, z, einheiten);
+  }
+  // Funde und „Nicht mehr verbunden" gehören in keine Gruppe - sie bleiben am Ende der Geräte.
+  geraeteZeilen(out, anlage, box, sortiert.filter((g) => g.gruppe == null), ebene, z, einheiten);
   for (const { w, geraete: dahinter } of sichtbar) {
     const offen = aktiv || z.offen(w.id, true);
     out.push({ typ: 'gateway', key: `${ort}::gateway::${w.id}`, ebene, anlage, box, weg: w, offen });
-    if (offen) geraeteZeilen(out, anlage, box, dahinter, ebene + 1, z, einheiten);
+    // Hinter einem Gateway in derselben Reihenfolge, ohne eigene Köpfe.
+    if (offen) geraeteZeilen(out, anlage, box, sortiereGeraete(dahinter), ebene + 1, z, einheiten);
   }
   for (const w of offene) out.push({ typ: 'anschluss', key: `${ort}::anschluss::${w.id}`, ebene, anlage, box, weg: w });
   const unter = (liste: AufbauGeraet[]) => liste.reduce((n, g) => n + (einheiten.get(g.id)?.length ?? 0), 0);
