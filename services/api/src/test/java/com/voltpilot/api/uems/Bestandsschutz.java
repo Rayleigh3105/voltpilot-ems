@@ -33,6 +33,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       dieselbe Unterscheidung eine Ebene tiefer;</li>
  *   <li>die Katalog-Metadaten ({@link #KATALOG_METADATEN}) werden JE Laufzeitstand gemessen: ein
  *       bestehender Stand muss zeichengleich bleiben, ein angehängter Stand ist KEINE Abweichung.</li>
+ *   <li>die Zwischenspeicher eines Hintergrund-Jobs ({@link #HINTERGRUND_ZWISCHENSPEICHER}) werden
+ *       nicht gemessen: sie ändern sich ohne Zutun eines Pakets.</li>
  * </ul>
  *
  * <p>Darum ist der Wert einer Zeile ihr JSON-Objekt OHNE die Spalten, die SQL-NULL sind
@@ -55,6 +57,15 @@ final class Bestandsschutz {
     static final String KATALOG_METADATEN = "measurement_catalog_point_metadata";
 
     /**
+     * Tabellen, die ein TimescaleDB-Job im Hintergrund aus anderen Tabellen neu rechnet - kein Bestand,
+     * sondern ein Zwischenspeicher: {@code schedule_savings_1d_job} (V20261105090000, stündlich) füllt die
+     * Sparzeile je Anlage und Tag aus {@code schedule}. Der Job läuft, sobald der Scheduler der Datenbank
+     * anläuft (im Testcontainer gut eine Minute nach dem Start) - mitten in einem Vergleich hinge das
+     * Ergebnis also an der Uhr, nicht am Paket. Gemessen bleibt seine Quelle {@code schedule}.
+     */
+    static final List<String> HINTERGRUND_ZWISCHENSPEICHER = List.of("schedule_savings_1d", "schedule_savings_1d_state");
+
+    /**
      * Eine Zeile {@code t} als Text: die Spalten mit Wert als jsonb-Objekt (Schlüssel sortiert,
      * also unabhängig von der Spaltenreihenfolge). Nur die OBERSTE Ebene wird gefiltert — ein
      * {@code null} innerhalb eines jsonb-Werts bleibt stehen.
@@ -67,7 +78,8 @@ final class Bestandsschutz {
 
     /**
      * Der Inhalt jeder Tabelle des Schemas {@code public} als ein Wert je Tabelle — ändert sich
-     * irgendwo eine Zeile, ändert sich ihr Wert. Das Migrations-Protokoll ist immer ausgenommen.
+     * irgendwo eine Zeile, ändert sich ihr Wert. Das Migrations-Protokoll und die
+     * {@link #HINTERGRUND_ZWISCHENSPEICHER} sind immer ausgenommen.
      *
      * @param ausnahmen {@code LIKE}-Muster der Tabellen, die das Paket selbst bearbeitet; sie
      *                  gelten auch für später hinzukommende Tabellen
@@ -76,10 +88,13 @@ final class Bestandsschutz {
         StringBuilder sql = new StringBuilder("SELECT table_name FROM information_schema.tables "
                 + "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
                 + "AND table_name <> 'flyway_schema_history'");
+        HINTERGRUND_ZWISCHENSPEICHER.forEach(t -> sql.append(" AND table_name <> ?"));
         ausnahmen.forEach(a -> sql.append(" AND table_name NOT LIKE ?"));
         sql.append(" ORDER BY table_name");
+        List<Object> parameter = new ArrayList<>(HINTERGRUND_ZWISCHENSPEICHER);
+        parameter.addAll(ausnahmen);
         Map<String, String> aus = new LinkedHashMap<>();
-        for (String tabelle : db.queryForList(sql.toString(), String.class, ausnahmen.toArray())) {
+        for (String tabelle : db.queryForList(sql.toString(), String.class, parameter.toArray())) {
             if (KATALOG_METADATEN.equals(tabelle)) {
                 List<String> staende = db.queryForList("SELECT DISTINCT catalog_version FROM " + tabelle
                         + " ORDER BY 1", String.class);
@@ -173,6 +188,20 @@ final class Bestandsschutz {
             db.update("INSERT INTO bestandsschutz_probe VALUES (1)");
             assertThat(abweichungen(vorher, fingerabdruck(db, ausnahmen))).as("neue Tabelle mit Inhalt")
                     .containsExactly("bestandsschutz_probe: neue Tabelle mit Inhalt");
+        });
+        // Der Zwischenspeicher des Hintergrund-Jobs, so beschrieben wie der Job ihn schreibt: kein Unterschied.
+        tx.executeWithoutResult(status -> {
+            status.setRollbackOnly();
+            if (!Boolean.TRUE.equals(db.queryForObject(
+                    "SELECT to_regclass('schedule_savings_1d_state') IS NOT NULL", Boolean.class))) {
+                return; // eine Schemafassung vor dem Job - dann gibt es nichts zu proben
+            }
+            Map<String, String> vorher = fingerabdruck(db, ausnahmen);
+            db.update("INSERT INTO schedule_savings_1d_state (id, von, bis) VALUES (true, DATE '2026-01-01', "
+                    + "DATE '2026-01-31') ON CONFLICT (id) DO UPDATE SET von = EXCLUDED.von, bis = EXCLUDED.bis");
+            db.update("INSERT INTO schedule_savings_1d (site_id, day, tenant_id, savings_eur) "
+                    + "SELECT id, DATE '2026-01-31', tenant_id, 1.5 FROM site ON CONFLICT (site_id, day) DO NOTHING");
+            assertThat(abweichungen(vorher, fingerabdruck(db, ausnahmen))).as("Lauf des Hintergrund-Jobs").isEmpty();
         });
         // Die Katalog-Metadaten je Laufzeitstand, auf der echten Tabelle (UEMS AP-05 IP-6b): ein neuer Stand
         // ist keine Abweichung, eine Zeile mehr an einem bestehenden Stand schon.
