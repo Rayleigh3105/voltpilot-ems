@@ -38,7 +38,7 @@ import { EditUserDrawer } from './UserDrawers';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { RowMenu } from '../../components/RowMenu';
 import './Mandanten.css';
-import type { PageId } from '../../nav';
+import { mandantAusHash, mandantHash, type PageId } from '../../nav';
 
 /**
  * Plattform → Benutzer (Admin-Umbau Scheibe S5, Konzept `vp-adminview-konzept-k1`
@@ -1085,20 +1085,6 @@ function TenantEditForm({
       </div>
     </div>
   );
-}
-
-/** Adresse der Kundenakte (Scheibe S5, §4.2); ohne Kennung die Kundenliste. */
-export function mandantHash(id: string | null): string {
-  return id ? `#/plattform/benutzer/${encodeURIComponent(id)}` : '#/plattform/benutzer';
-}
-
-/** Der geöffnete Kunde aus `#/plattform/benutzer/<id>`; alles andere ist die Liste. */
-export function mandantAusHash(hash: string): string | null {
-  const [pfad] = hash.replace(/^#\/?/, '').split('?');
-  const segments = pfad.split('/').filter(Boolean);
-  if (segments[0] !== 'plattform' || segments[1] !== 'benutzer' || !segments[2]) return null;
-  const id = decodeURIComponent(segments[2]).trim();
-  return id ? id : null;
 }
 
 /** Eine E-Mail bricht am „@“ um statt mitten im Wort (am Telefon: „person3@“ / „ahrenberg.example.test“). */

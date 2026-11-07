@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminFleetSite } from '../../admin/fleetApi';
 import type { EdgeUpdates } from '../../adminEdgeUpdates';
+import { geraeteAkteRoute } from '../../nav';
 
 /**
  * Scheibe S4 (Konzept `vp-adminview-konzept-k1` §4.3): die neue Landung von
@@ -187,7 +188,14 @@ describe('PlattformUebersichtPage', () => {
 
       const auf = screen.getByRole('button', { name: /Erledigte anzeigen \(1\)/ });
       fireEvent.click(auf);
-      expect(await screen.findByText('Box 9')).toBeInTheDocument();
+      // Die erledigte Zeile nennt die Box wie „Braucht dich" und die Flotte: nach
+      // ihrer Anlage (früher fand dieser Fall „Box 9" nur im Chip der alten Flotten-Karte).
+      const liste = await waitFor(() => {
+        const el = document.querySelector<HTMLElement>('.vp-ueb-braucht-erledigte-liste');
+        if (!el) throw new Error('Erledigte noch nicht aufgeklappt');
+        return el;
+      });
+      expect(within(liste).getByText('Anlage A')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /zurückholen/ }));
       await waitFor(() => expect(brauchtDichWiederherstellen).toHaveBeenCalledWith(eintraege[0].schluessel));
       await waitFor(() => expect(screen.getByTestId('ueb-braucht-zeile')).toBeInTheDocument());
@@ -356,3 +364,93 @@ describe('PlattformUebersichtPage', () => {
     });
   });
 });
+
+describe('Flotte als Gerätewand (Konzept vp-flottenbild-konzept, E1=B, E2=A)', () => {
+  const box = (ref: string, lastSeenAt: string | null = new Date().toISOString()) => ({
+    deviceId: `d-${ref}`, externalRef: ref, name: null, fuehrtAnlage: true, lastSeenAt, edge: null, update: null,
+  });
+  const vorEinerStunde = () => new Date(Date.now() - 3600_000).toISOString();
+
+  it('nennt jede Box mit Kunde und Anlage und öffnet mit einem Tipp ihre Akte', async () => {
+    const onNavigate = vi.fn();
+    fleet.mockResolvedValue({ sites: [site('s1', 'Wohnhaus Hörmann', { tenantName: 'Hörmann', boxes: [box('edge-k7q2m9x')] })] });
+    render(<PlattformUebersichtPage onNavigate={onNavigate} />);
+    const kachel = await screen.findByRole('button', { name: /^Hörmann, Wohnhaus Hörmann: verbunden/ });
+    expect(within(kachel).getByText('Hörmann')).toBeInTheDocument();
+    expect(within(kachel).getByText('Wohnhaus Hörmann')).toBeInTheDocument();
+    fireEvent.click(kachel);
+    expect(onNavigate).toHaveBeenCalledWith(geraeteAkteRoute('edge-k7q2m9x'));
+  });
+
+  it('ein Wort steht nur bei einer Abweichung, die Störung steht vorn - keine Legende', async () => {
+    fleet.mockResolvedValue({
+      sites: [
+        site('s1', 'Haus A', { boxes: [box('VP-A')] }),
+        site('s2', 'Haus B', { boxes: [box('VP-B', vorEinerStunde())] }),
+      ],
+    });
+    render(<PlattformUebersichtPage />);
+    const flotte = within(await screen.findByTestId('ueb-flotte'));
+    expect(flotte.getByText('offline')).toBeInTheDocument();
+    expect(flotte.queryByText('verbunden')).toBeNull();
+    expect(flotte.queryByText('nie gemeldet')).toBeNull();
+    expect(flotte.getAllByTestId('ueb-flotte-box')[0]).toHaveAccessibleName(/Haus B: offline/);
+    expect(flotte.getByText('2 Boxen · 1 Kunde')).toBeInTheDocument();
+  });
+
+  it('eine Anlage ohne Box ist ein Hinweis mit Weg zur Kundenakte, keine leere Zeile', async () => {
+    fleet.mockResolvedValue({
+      sites: [site('s1', 'Haus A'), site('s2', 'PV Dach', { tenantId: 't2', tenantName: 'Lena Brandl', boxes: [] })],
+    });
+    render(<PlattformUebersichtPage />);
+    const hinweis = await screen.findByTestId('ueb-flotte-ohnebox');
+    expect(hinweis).toHaveTextContent('1 Anlage ohne Box');
+    expect(within(hinweis).getByRole('link', { name: /Lena Brandl/ })).toHaveAttribute('href', '#/plattform/benutzer/t2');
+    expect(screen.queryByText(/Lena Brandl · 0/)).toBeNull();
+  });
+
+  describe('am Telefon', () => {
+    beforeEach(() => {
+      Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        configurable: true,
+        value: (q: string) => ({
+          matches: q.includes('max-width'), media: q, onchange: null,
+          addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {},
+          dispatchEvent: () => false,
+        }),
+      });
+    });
+    afterEach(() => {
+      // @ts-expect-error - der Stub gehört zum einzelnen Fall
+      delete window.matchMedia;
+    });
+
+    it('ab 13 Boxen klappen die ruhigen zu, die Störung bleibt offen (E2=A)', async () => {
+      fleet.mockResolvedValue({
+        sites: Array.from({ length: 13 }, (_, i) => site(`s${i}`, `Haus ${i}`, {
+          tenantId: `t${i}`, tenantName: `Kunde ${String(i).padStart(2, '0')}`,
+          boxes: [box(`VP-${i}`, i === 0 ? vorEinerStunde() : new Date().toISOString())],
+        })),
+      });
+      render(<PlattformUebersichtPage />);
+      const flotte = within(await screen.findByTestId('ueb-flotte'));
+      const klappe = flotte.getByRole('button', { name: /12 weitere Boxen · alle verbunden/ });
+      expect(klappe).toHaveAttribute('aria-expanded', 'false');
+      expect(flotte.getAllByRole('button', { name: /Geräteakte öffnen/ }).map((b) => b.getAttribute('aria-label')))
+        .toEqual([expect.stringMatching(/^Kunde 00, Haus 0: offline/)]);
+      fireEvent.click(klappe);
+      expect(klappe).toHaveAttribute('aria-expanded', 'true');
+      expect(flotte.getAllByRole('button', { name: /Geräteakte öffnen/ })).toHaveLength(13);
+    });
+
+    it('unter 13 Boxen klappt nichts zu', async () => {
+      fleet.mockResolvedValue({ sites: [site('s1', 'Haus A'), site('s2', 'Haus B', { boxes: [box('VP-B')] })] });
+      render(<PlattformUebersichtPage />);
+      const flotte = within(await screen.findByTestId('ueb-flotte'));
+      expect(flotte.getAllByRole('button', { name: /Geräteakte öffnen/ })).toHaveLength(2);
+      expect(flotte.queryByRole('button', { name: /weitere Boxen/ })).toBeNull();
+    });
+  });
+});
+

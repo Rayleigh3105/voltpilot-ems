@@ -7,7 +7,8 @@
  */
 import ReactDOM from 'react-dom/client';
 import { AppShell } from '../src/shell/AppShell';
-import { MandantenPage, mandantHash } from '../src/pages/admin/MandantenPage';
+import { MandantenPage } from '../src/pages/admin/MandantenPage';
+import { mandantHash } from '../src/nav';
 import { adminApi, type AdminUser, type Tenant } from '../src/admin/adminApi';
 import { benutzerApi } from '../src/benutzer';
 import { fleetApi, type AdminFleetSite } from '../src/admin/fleetApi';

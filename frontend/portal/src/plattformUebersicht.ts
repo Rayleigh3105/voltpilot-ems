@@ -5,7 +5,7 @@
  *
  * **Keine neue Wahrheit.** Jede Zahl hier ist ein zweites Urteil einer schon
  * bestehenden Ableitung (Software: `geraeteUpdates.boxZeile`; Verbindung und
- * Flottenbild: `adminFleet.fleetBoxGroups`; Steuerung: `adminFleet.
+ * Flotte: `adminFleet.fleetBoxGroups`; Steuerung: `adminFleet.
  * controlMatrixRows`; Plan: `adminFleet.fleetRows`) - nie eine eigene
  * Berechnung über dieselben Felder. Das ist die Regel „Ein Ort je Fakt"
  * (§4.1) angewandt auf die Landung.
@@ -44,12 +44,13 @@ import {
   BOX_ART_LABELS,
   edgeUpdatesUrteil,
   rolloutsLaufend,
+  type BoxArt,
   type EdgeUpdatesKpi,
   type EdgeUpdatesLine,
   type FleetRow as EdgeFleetRow,
   type Rollout,
 } from './adminEdgeUpdates';
-import { boxZeile, segmentArt, type BoxZeile } from './geraeteUpdates';
+import { boxZeile, linieDerBox, segmentArt, type BoxZeile } from './geraeteUpdates';
 import { pendingRows } from './onboardingFunnel';
 import type {
   FernwartungBox,
@@ -349,66 +350,133 @@ function satzText(z: BoxZeile): string | null {
   return z.satz.map((t) => (typeof t === 'string' ? t : t.mono)).join('');
 }
 
-// ── Flottenbild ─────────────────────────────────────────────────────────────
+// ── Flotte (Gerätewand) ─────────────────────────────────────────────────────
 
-export type FlottenbildTon = 'ok' | 'verzoegert' | 'aus' | 'nie' | 'lauf' | 'hand';
+/**
+ * Der Zustand einer Box auf der Gerätewand - dieselben Töne wie die
+ * Live-Zustände der Akte (§5.3). Die Verbindung schlägt das Update: eine Box,
+ * die sich nicht meldet, „läuft" nicht.
+ */
+export type FlottenTon = 'ok' | 'verzoegert' | 'aus' | 'nie' | 'lauf' | 'hand';
 
-export interface FlottenbildFeld {
+/**
+ * Ein bis zwei Wörter je Zustand - dieselben wie die Filter der Geräte-Liste
+ * (`geraeteListe.ts`). Auf der Wand trägt nur eine Abweichung ihr Wort; eine
+ * gesunde Box zeigt ihre grüne Leuchte und nennt „verbunden" nur dem
+ * Vorleseprogramm.
+ */
+export const FLOTTEN_WORT: Record<FlottenTon, string> = {
+  ok: 'verbunden',
+  verzoegert: 'verzögert',
+  aus: 'offline',
+  nie: 'nie gemeldet',
+  lauf: 'Update läuft',
+  hand: 'nur von Hand',
+};
+
+/** 0 = Störung, 1 = Hinweis, 2 = ruhig - die Reihenfolge der Wand. */
+export type FlottenStufe = 0 | 1 | 2;
+const FLOTTEN_STUFE: Record<FlottenTon, FlottenStufe> = { aus: 0, nie: 0, verzoegert: 1, lauf: 1, hand: 1, ok: 2 };
+const FLOTTEN_RANG: Record<FlottenTon, number> = { aus: 0, nie: 1, verzoegert: 2, lauf: 3, hand: 4, ok: 5 };
+
+export interface FlottenBox {
   ref: string;
-  name: string;
-  ton: FlottenbildTon;
-  title: string;
+  /** Wie in der Akte und in „Braucht dich": zuerst der Kunde, dann die Anlage. */
+  kunde: string;
+  tenantId: string;
+  anlage: string;
+  /** Nur bei mehreren Boxen an EINER Anlage: der Gerätename, sonst die Kennung. */
+  zusatz: string | null;
+  /** Die Linie der Box (Umriss auf der Wand); `null` = unbekannt. */
+  linie: BoxArt | null;
+  ton: FlottenTon;
+  stufe: FlottenStufe;
 }
 
-export interface FlottenbildGruppe {
+/** Eine Anlage ohne Box: kein Feld auf der Wand, ein leiser Hinweis mit Weg zur Kundenakte. */
+export interface FlottenOhneBox {
   kunde: string;
-  felder: FlottenbildFeld[];
+  tenantId: string;
+  anlage: string;
+}
+
+export interface Flottenbild {
+  /** Störungen zuerst, dann Hinweise, dann die ruhigen - je nach Kunde und Anlage. */
+  boxen: FlottenBox[];
+  kunden: number;
+  ohneBox: FlottenOhneBox[];
 }
 
 /**
- * Jede Box ein Feld, Farbe = Zustand, nach Kunde gruppiert, Störungen zuerst
- * (§4.3 Punkt 4). Verbindung kommt aus `fleetBoxGroups` (derselbe Fakt wie die
- * Verbindungs-Kachel); „läuft" und „nur von Hand" kommen - wo bekannt - aus
- * `boxZeile`, weil nur dort gemeldet wird, OB ein Update gerade läuft.
+ * Die Gerätewand (§4.3 Punkt 4; Konzept `vp-flottenbild-konzept` Weg B,
+ * Captain-Entscheid E1=B vom 07.11.2026): jede Box ein kleines Gerät mit
+ * Leuchte, Störungen vorn. Die Verbindung kommt aus `fleetBoxGroups` (derselbe
+ * Fakt wie die Verbindungs-Kachel); „läuft" und „nur von Hand" kommen aus der
+ * Linie der Box (`segmentArt`), weil nur dort gemeldet wird, OB ein Update
+ * gerade läuft.
+ *
+ * **Name wie in der Akte.** Eine Box bekommt beim Verbinden keinen Namen
+ * (`DeviceRepository.claim`), ihr `name` fällt dann auf die Kennung zurück.
+ * Erkennbar ist sie am Kunden und an der Anlage - so nennen sie auch „Braucht
+ * dich" (`geraeteUpdates.boxName`) und der Kopf der Akte.
  */
-export function uebersichtFlottenbild(
-  groups: FleetBoxGroup[],
-  edgeFleet: readonly EdgeFleetRow[],
-): FlottenbildGruppe[] {
-  const segmentByRef = new Map(edgeFleet.map((r) => [r.externalRef, segmentArt(r.stand)]));
-  const byKunde = new Map<string, FlottenbildFeld[]>();
-  for (const group of groups) {
-    const kunde = group.site.tenantName;
-    const felder = byKunde.get(kunde) ?? [];
-    for (const box of group.boxes) {
-      felder.push(feld(box, segmentByRef.get(box.externalRef) ?? null));
+export function uebersichtFlotte(groups: FleetBoxGroup[], edgeFleet: readonly EdgeFleetRow[]): Flottenbild {
+  const linieByRef = new Map(edgeFleet.map((r) => [r.externalRef, r]));
+  const boxen: FlottenBox[] = [];
+  const ohneBox: FlottenOhneBox[] = [];
+  for (const { site, boxes } of groups) {
+    if (boxes.length === 0) {
+      ohneBox.push({ kunde: site.tenantName, tenantId: site.tenantId, anlage: site.siteName });
+      continue;
     }
-    byKunde.set(kunde, felder);
+    for (const box of boxes) {
+      const row = linieByRef.get(box.externalRef) ?? null;
+      const ton = flottenTon(box, row ? segmentArt(row.stand) : null);
+      boxen.push({
+        ref: box.externalRef,
+        kunde: site.tenantName,
+        tenantId: site.tenantId,
+        anlage: site.siteName,
+        zusatz: boxes.length > 1 ? box.name : null,
+        linie: row ? linieDerBox(row) : null,
+        ton,
+        stufe: FLOTTEN_STUFE[ton],
+      });
+    }
   }
-  // Innerhalb einer Kunden-Gruppe die auffälligen Boxen zuerst - „auf einen
-  // Blick erkennbar, wo es klemmt" gilt genauso innerhalb einer Zeile.
-  const TON_RANG: Record<FlottenbildTon, number> = { aus: 0, nie: 1, hand: 2, lauf: 3, verzoegert: 4, ok: 5 };
-  const out: FlottenbildGruppe[] = [...byKunde.entries()].map(([kunde, felder]) => ({
-    kunde,
-    felder: [...felder].sort((a, b) => TON_RANG[a.ton] - TON_RANG[b.ton] || a.name.localeCompare(b.name, 'de')),
-  }));
-  return out.sort((a, b) => {
-    const stoerA = a.felder.some((f) => f.ton !== 'ok');
-    const stoerB = b.felder.some((f) => f.ton !== 'ok');
-    if (stoerA !== stoerB) return stoerA ? -1 : 1;
-    return a.kunde.localeCompare(b.kunde, 'de');
-  });
+  boxen.sort((a, b) => a.stufe - b.stufe
+    || FLOTTEN_RANG[a.ton] - FLOTTEN_RANG[b.ton]
+    || a.kunde.localeCompare(b.kunde, 'de')
+    || a.anlage.localeCompare(b.anlage, 'de')
+    || (a.zusatz ?? '').localeCompare(b.zusatz ?? '', 'de')
+    || a.ref.localeCompare(b.ref));
+  return { boxen, kunden: new Set(boxen.map((b) => b.tenantId)).size, ohneBox };
 }
 
-function feld(box: FleetBoxRow, segment: ReturnType<typeof segmentArt> | null): FlottenbildFeld {
-  if (box.connectionZustand === 'nie') return { ref: box.externalRef, name: box.name, ton: 'nie', title: 'Wartet auf erste Meldung' };
-  if (box.connectionZustand === 'offline') return { ref: box.externalRef, name: box.name, ton: 'aus', title: 'Meldet sich nicht' };
-  // E6: „verzögert" bekommt ihre eigene, ruhigere Farbe - sie ist noch kein
-  // „aus" (dort ginge die Unterscheidung zur echten Störung verloren).
-  if (box.connectionZustand === 'verzoegert') return { ref: box.externalRef, name: box.name, ton: 'verzoegert', title: 'Verzögert' };
-  if (segment === 'lauf') return { ref: box.externalRef, name: box.name, ton: 'lauf', title: 'Update läuft' };
-  if (segment === 'hand') return { ref: box.externalRef, name: box.name, ton: 'hand', title: 'Nur von Hand (Stufe 1)' };
-  return { ref: box.externalRef, name: box.name, ton: 'ok', title: 'Verbunden' };
+function flottenTon(box: FleetBoxRow, segment: ReturnType<typeof segmentArt> | null): FlottenTon {
+  if (box.connectionZustand === 'nie') return 'nie';
+  if (box.connectionZustand === 'offline') return 'aus';
+  // E6: „verzögert" ist noch keine Störung - ein eigener, ruhigerer Ton.
+  if (box.connectionZustand === 'verzoegert') return 'verzoegert';
+  if (segment === 'lauf') return 'lauf';
+  if (segment === 'hand') return 'hand';
+  return 'ok';
+}
+
+/**
+ * Ab dieser Flottengröße klappt das Telefon die ruhigen Boxen zu (E2=A). Die
+ * Grenze hängt an der Größe der Flotte, nicht am Zustand - sonst wechselte die
+ * Wand bei jedem Ausfall ihre Form.
+ */
+export const FLOTTE_TELEFON_KLAPPEN_AB = 13;
+
+/** Am Telefon: Störungen und Hinweise bleiben offen, ab 13 Boxen klappen die ruhigen zu. */
+export function flotteAmTelefon(bild: Flottenbild): { offen: FlottenBox[]; zugeklappt: FlottenBox[] } {
+  if (bild.boxen.length < FLOTTE_TELEFON_KLAPPEN_AB) return { offen: bild.boxen, zugeklappt: [] };
+  return {
+    offen: bild.boxen.filter((b) => b.stufe < 2),
+    zugeklappt: bild.boxen.filter((b) => b.stufe === 2),
+  };
 }
 
 // ── Dienste ─────────────────────────────────────────────────────────────────

@@ -98,24 +98,31 @@ const data: EdgeUpdates = {
   ],
 };
 
-// ── `/admin/fleet` (dieselben Boxen, je eine Anlage) ───────────────────────
+// ── `/admin/fleet` (dieselben Boxen; die drei Ahrenberger an EINER Anlage) ──
 
-const box = (r: FleetRow) => ({
-  deviceId: r.deviceId, externalRef: r.externalRef, name: r.label, fuehrtAnlage: true,
+const box = (r: FleetRow, fuehrtAnlage: boolean) => ({
+  deviceId: r.deviceId, externalRef: r.externalRef, name: r.label, fuehrtAnlage,
   lastSeenAt: r.lastSeenAt ?? null, edge: null,
   update: r.ist ? { version: r.ist, backend: 'compose', current: r.ist, target: null, state: 'idle', reason: null, lastKnownGood: null, reportedAt: now } : null,
 });
 
-const sites: AdminFleetSite[] = fleet.map((r, i) => ({
-  siteId: `s${i + 1}`, siteName: r.siteName, tenantId: r.tenantId, tenantName: r.tenantName,
+const tenantIds = new Map<string, string>();
+const tenantIdVon = (kunde: string) => {
+  if (!tenantIds.has(kunde)) tenantIds.set(kunde, `t${tenantIds.size + 1}`);
+  return tenantIds.get(kunde)!;
+};
+
+const anlage = (i: number, siteName: string, tenantName: string, boxes: ReturnType<typeof box>[]): AdminFleetSite => ({
+  siteId: `s${i + 1}`, siteName, tenantId: tenantIdVon(tenantName), tenantName,
   plantKind: 'eigenverbrauch', netzladenErlaubt: false, tarifArt: 'fest',
-  deviceCount: 1, onlineCount: r.lastSeenAt && Date.now() - Date.parse(r.lastSeenAt) < 5 * MIN ? 1 : 0,
+  deviceCount: boxes.length,
+  onlineCount: boxes.filter((b) => b.lastSeenAt && Date.now() - Date.parse(b.lastSeenAt) < 5 * MIN).length,
   waitingCount: 0, worstStatus: 'online',
-  lastSeenAt: r.lastSeenAt, lastPlanGeneratedAt: i === 2 ? vor(3 * STD) : vor(6 * MIN),
+  lastSeenAt: boxes[0]?.lastSeenAt ?? null, lastPlanGeneratedAt: i === 2 ? vor(3 * STD) : vor(6 * MIN),
   hasStorage: i === 0, batteryWithoutDevice: false, sources: null, edge: null, update: null,
   control: i === 0
     ? {
-      deviceId: r.deviceId, commandedKw: 3.2, confirmedKw: 1.1, allMatch: false, controlEnabled: true,
+      deviceId: boxes[0].deviceId, commandedKw: 3.2, confirmedKw: 1.1, allMatch: false, controlEnabled: true,
       certified: true, mismatchRoles: 'Batterie', slotStart: null, checkedAt: vor(2 * MIN),
     }
     : null,
@@ -123,8 +130,36 @@ const sites: AdminFleetSite[] = fleet.map((r, i) => ({
   kwp: { configuredKwp: null, observedPeakKw: null, buckets: 0, verdict: 'unbekannt', reason: 'Noch keine Messung.' },
   forecast: [],
   pflege: i === 6 ? [{ code: 'kwp-unplausibel', label: 'Einspeisegrenze prüfen', detail: 'Gemessene PV-Spitze über der installierten Leistung.' }] : [],
-  boxes: [box(r)],
+  boxes,
+});
+
+// Weg B, E2=A: ab 13 Boxen klappt das Telefon die ruhigen zu - `?flotte=gross`
+// stellt 31 ruhige Boxen bei weiteren Kunden dazu (zusammen 40).
+const RUHIGE_KUNDEN = [
+  'Alfons Reichl', 'Bäckerei Stöckl', 'Christine Ostermeier', 'Dachdecker Hufnagel', 'Gasthof Zur Linde',
+  'Josef Kammerer', 'Klaus Bittner', 'Landmaschinen Ebner', 'Markus Seitz', 'Monika Fürst',
+  'Pfarrei St. Martin', 'Sportfreunde Haslach 1921 e. V.', 'Theresa Lang', 'Tierarztpraxis Dr. Vogl', 'Ulrich Brandmayer',
+  'Verena Huber', 'Weingut Albrecht', 'Wolfgang Seidl', 'Zimmerei Kraus', 'Brennecke Kunststofftechnik GmbH & Co. KG',
+  'Hörmann', 'Ingrid Wallner', 'Konrad Pfister', 'Lena Brandl', 'Anna Riedl',
+  'Bernd Wagner', 'Carola Mayr', 'Dieter Schuster', 'Elke Bauer', 'Franz Zeller', 'Gerda Hofmann',
+];
+const flotteGross = new URLSearchParams(location.search).get('flotte') === 'gross';
+const ruhigeBoxen = (flotteGross ? RUHIGE_KUNDEN : []).map((kunde, i) => ({
+  kunde,
+  row: { ...base, deviceId: `r${i}`, externalRef: `VP-BOX-30${String(i).padStart(2, '0')}`, label: `VP-BOX-30${String(i).padStart(2, '0')}`,
+    siteName: `Anlage ${kunde.split(' ')[0]}`, tenantName: kunde, lastSeenAt: vor((5 + (i % 7)) * 1000) } as FleetRow,
 }));
+
+const anlagenNamen = [...new Set(fleet.map((r) => r.siteName))];
+const sites: AdminFleetSite[] = [
+  ...anlagenNamen.map((siteName, i) => {
+    const rows = fleet.filter((r) => r.siteName === siteName);
+    return anlage(i, siteName, rows[0].tenantName, rows.map((r, j) => box(r, j === 0)));
+  }),
+  // Eine Anlage ohne Box: kein Feld der Flotte, ein Hinweis mit Weg zur Kundenakte.
+  anlage(anlagenNamen.length, 'PV Dach Neumann', 'Familie Neumann', []),
+  ...ruhigeBoxen.map(({ kunde, row }, i) => anlage(anlagenNamen.length + 1 + i, row.siteName, kunde, [box(row, true)])),
+];
 
 // ── Fernwartung: eine Box mit offenem Fenster, aber ohne abgeholten Schlüssel ──
 
@@ -172,7 +207,7 @@ const brauchtDichErledigtAblage = new Map<string, { schluessel: string; stand: s
 
 // L3/L2 (S6/S7): die Akte-in-einer-Antwort, herzschlagAm und messwertAm getrennt.
 const geraeteAkteVon = (ref: string): AdminGeraeteAkte => {
-  const r = fleet.find((f) => f.externalRef === ref);
+  const r = fleet.find((f) => f.externalRef === ref) ?? ruhigeBoxen.find((b) => b.row.externalRef === ref)?.row;
   if (!r) return { externalRef: ref, lebensabschnitt: 'gedruckt', lebensabschnittSeit: null, kopf: null, software: null, verbindung: null, einrichtung: null };
   const herzschlagAm = r.lastSeenAt ?? null;
   return {
