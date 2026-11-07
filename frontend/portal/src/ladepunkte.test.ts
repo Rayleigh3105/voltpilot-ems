@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  KEIN_LADEVORGANG_SATZ,
+  keinLadevorgang,
   aktuelleLeistung,
   messwertAlter,
   ANBINDEN_EINSTIEG,
@@ -787,6 +789,46 @@ const ZUSTAND_VEKTOREN: { faelle: ZustandVektor[] } = JSON.parse(
   ),
 );
 
+/**
+ * „Auto steckt, kein Ladevorgang“ (Befund an einer Pilotanlage, 07.11.2026):
+ * die Wallbox meldet SuspendedEVSE, die Box kennt keinen Ladevorgang - Server
+ * und Box lehnen „Schnell“, „Aus“ und „bis Abstecken“ ab. Der Zustand hat
+ * ein eigenes Wort, mit dem Ausweg (neu einstecken) als Grund.
+ */
+describe('Ladevorgang läuft · kein Ladevorgang', () => {
+  const ohne = { connectorId: 1, status: 'SuspendedEVSE', charging: false };
+
+  it('erkennt den Fall auch an einer Box, die das Wort noch nicht schickt', () => {
+    expect(keinLadevorgang(ohne)).toBe(true);
+    expect(keinLadevorgang({ ...ohne, status: 'SuspendedEV' })).toBe(true);
+    expect(keinLadevorgang({ ...ohne, status: 'Charging' })).toBe(true);
+    // Eine neue Box sagt es ausdrücklich.
+    expect(keinLadevorgang({ ...ohne, reason: 'kein_ladevorgang' })).toBe(true);
+  });
+
+  it('verwechselt ihn nicht mit einer Sitzung, einem freien Stecker oder einem Start', () => {
+    expect(keinLadevorgang({ ...ohne, charging: true })).toBe(false);
+    expect(keinLadevorgang({ ...ohne, sessionSince: '2026-11-07T08:00:00Z' })).toBe(false);
+    // Zuteilung oder Grund vergibt die Box nur an einen Stecker MIT Sitzung.
+    expect(keinLadevorgang({ ...ohne, allocatedKw: 0 })).toBe(false);
+    expect(keinLadevorgang({ ...ohne, reason: 'budget' })).toBe(false);
+    for (const status of ['Available', 'Preparing', 'Finishing', 'Faulted', 'Unavailable', 'Reserved', null]) {
+      expect(keinLadevorgang({ ...ohne, status })).toBe(false);
+    }
+  });
+
+  it('sagt „kein Ladevorgang“ mit dem Ausweg statt „wartet“', () => {
+    const z = ladeZustand(ohne, { connected: true, lastSeen: null });
+    expect(z.kind).toBe('kein_ladevorgang');
+    expect(z.word).toBe('Eingesteckt · kein Ladevorgang');
+    expect(z.reason).toBe(KEIN_LADEVORGANG_SATZ);
+    expect(z.reasonCode).toBe('kein_ladevorgang');
+    // Eine getrennte Säule bleibt getrennt - über ihren Stecker wissen wir nichts.
+    expect(ladeZustand(ohne, { connected: false, lastSeen: null }).kind).toBe('getrennt');
+  });
+
+});
+
 describe('ladeZustand · Sim-Abgleich gegen die geteilten Vektoren (E7)', () => {
   it('deckt jedes Zustandswort des Konzepts §4.2 ab', () => {
     // Kein Wort darf ungeprüft bleiben - sonst wäre die Abnahme löchrig genau
@@ -795,7 +837,7 @@ describe('ladeZustand · Sim-Abgleich gegen die geteilten Vektoren (E7)', () => 
     for (const kind of [
       'getrennt', 'frei', 'startet', 'laedt', 'laedt_ohne_messung', 'nimmt_nichts',
       'wartet', 'saeule_pausiert', 'auto_pausiert', 'beendet', 'stoerung',
-      'nicht_verfuegbar', 'reserviert',
+      'nicht_verfuegbar', 'reserviert', 'kein_ladevorgang',
     ]) {
       expect(abgedeckt.has(kind)).toBe(true);
     }

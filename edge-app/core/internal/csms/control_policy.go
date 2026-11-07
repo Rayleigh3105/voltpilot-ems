@@ -138,6 +138,14 @@ func (s *Server) startReady(id string) bool {
 	return s.startReadyLocked(id)
 }
 
+// StartPending reports whether a StartTransaction for this connector is
+// waiting for the station's set-up right now (awaitStartReady).
+func (s *Server) StartPending(id string, connectorID int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.startPending[ocppcontrol.Key(id, connectorID)] > 0
+}
+
 // startBlocked is startReady with the reason for a log line.
 func (s *Server) startBlocked(id string) (string, bool) {
 	s.mu.Lock()
@@ -245,6 +253,17 @@ func (s *Server) awaitStartReady(id string, connectorID int) {
 			timer := time.NewTimer(startCommissionWait)
 			defer timer.Stop()
 			deadline = timer.C
+			key := ocppcontrol.Key(id, connectorID)
+			s.mu.Lock()
+			s.startPending[key]++
+			s.mu.Unlock()
+			defer func() {
+				s.mu.Lock()
+				if s.startPending[key]--; s.startPending[key] <= 0 {
+					delete(s.startPending, key)
+				}
+				s.mu.Unlock()
+			}()
 		}
 		select {
 		case <-wake:

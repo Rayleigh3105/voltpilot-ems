@@ -46,6 +46,8 @@ const STECKT: ReadonlySet<LadeZustandKind> = new Set<LadeZustandKind>([
   'saeule_pausiert',
   'auto_pausiert',
   'beendet',
+  // Ein Auto steckt - nur kennt die Box dazu keinen Ladevorgang (neu einstecken).
+  'kein_ladevorgang',
 ]);
 
 /** Eine Zeile der Kachel - ein Stecker, oder eine Säule ohne Stecker. */

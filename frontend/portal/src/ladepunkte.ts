@@ -434,7 +434,14 @@ export type LadeZustandKind =
   | 'beendet'
   | 'stoerung'
   | 'nicht_verfuegbar'
-  | 'reserviert';
+  | 'reserviert'
+  | 'kein_ladevorgang';
+
+// Die gemeinsame Regel „ein Ladevorgang läuft“ und „Auto steckt, kein
+// Ladevorgang“ wohnt in `ladeRegel.ts` - klein und ohne Abhängigkeiten, damit
+// auch das erste Bild des Cockpits sie fragen kann, ohne diese Datei zu laden.
+export { KEIN_LADEVORGANG_SATZ, keinLadevorgang, ladungLaeuft } from './ladeRegel';
+import { KEIN_LADEVORGANG_SATZ, keinLadevorgang } from './ladeRegel';
 
 export interface LadeZustand {
   /** Das MASCHINEN-Wort des Zustands - worauf eine Fläche schlüsseln darf. */
@@ -484,6 +491,7 @@ const ZUSTAND_WORT: Record<LadeZustandKind, string> = {
   stoerung: 'Störung an der Säule',
   nicht_verfuegbar: 'Nicht verfügbar',
   reserviert: 'Reserviert',
+  kein_ladevorgang: 'Eingesteckt · kein Ladevorgang',
 };
 
 /**
@@ -508,6 +516,8 @@ const ZUSTAND_TON: Record<LadeZustandKind, LadeTone> = {
   stoerung: 'stoerung',
   nicht_verfuegbar: 'ruhig',
   reserviert: 'ruhig',
+  // Bernstein: hier muss jemand etwas tun (neu einstecken), sonst lädt nichts.
+  kein_ladevorgang: 'stoerung',
 };
 
 /** Unsere eigenen Zusätze - nur dort, wo der Zustand allein zu wenig sagt. */
@@ -591,13 +601,16 @@ export function ladeZustand(
     // ⚠ Bei einem Handeingriff steht der Urheber schon IM Wort - der Satz der
     // Box („pausiert — Handeingriff") wäre daneben dieselbe Aussage ein zweites
     // Mal, genau die Doppelung, gegen die `basisWort` gebaut ist.
-    reason:
-      handeingriff
+    // ⚠ „Kein Ladevorgang“ trägt IMMER seinen Ausweg - auch von einer Box,
+    // die den Satz noch nicht schickt.
+    reason: kind === 'kein_ladevorgang'
+      ? text(con.reasonText) ?? KEIN_LADEVORGANG_SATZ
+      : handeingriff
         || sameWord(con.reasonText, word)
         || sameWord(con.reasonText, ZUSTAND_WORT[kind])
         ? null
         : text(con.reasonText),
-    reasonCode: text(con.reason),
+    reasonCode: kind === 'kein_ladevorgang' ? 'kein_ladevorgang' : text(con.reason),
     detail,
   };
 }
@@ -653,6 +666,9 @@ function zustandKind(
   // damit auf den Zustand zurück, den es dafür längst gibt
   // (`laedt_ohne_messung`) - kein neues Wort, keine neue Farbe.
   const power = aktuelleLeistung(con, nowMs);
+  // Auto verbunden, aber kein Ladevorgang: kein „wartet“, denn worauf es
+  // wartet, kommt nie - erst neu einstecken hilft.
+  if (keinLadevorgang(con)) return 'kein_ladevorgang';
   switch (text(con.status)) {
     case 'Faulted':
       return 'stoerung';
@@ -1131,6 +1147,7 @@ export function schnellWirktNichtGrund(
 ): string | null {
   if (!row) return 'Schnell gilt für eine laufende Ladung.';
   if (row.boost || boostbar(budget, row)) return null;
+  if (row.kind === 'kein_ladevorgang') return KEIN_LADEVORGANG_SATZ;
   if (!quellenBahnWirkt(budget, row)) {
     // Ohne Echo (ältere Box) weiß das Portal nur, dass die Box keine Bahn meldet - mehr wird nicht behauptet.
     return row.bahn === 'schnell'
@@ -1334,6 +1351,7 @@ export function ladepunktKeinEingriff(
   if (row.kind === 'getrennt' || row.kind === 'stoerung' || row.kind === 'nicht_verfuegbar') {
     return 'Dieser Ladepunkt meldet sich gerade nicht - ein Eingriff käme nicht an.';
   }
+  if (row.kind === 'kein_ladevorgang') return KEIN_LADEVORGANG_SATZ;
   // ⚠ Seit P3b bleibt für eine LAUFENDE Ladung immer mindestens „Laden
   // pausieren" übrig - dieser Zweig gilt also nur noch dem Stecker, an dem
   // (noch) kein Ladevorgang läuft, und sagt genau das.

@@ -759,7 +759,8 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
             : lz.kind === 'stoerung' || lz.kind === 'nicht_verfuegbar' ? ['lock', 'Störung']
               : lz.kind === 'reserviert' ? ['off', 'reserviert']
                 : lz.kind === 'auto_pausiert' ? ['wait', 'Auto pausiert']
-                  : ['wait', 'wartet'];
+                  : lz.kind === 'kein_ladevorgang' ? ['wait', 'kein Ladevorgang']
+                    : ['wait', 'wartet'];
     return { pill, kurz, lang: `${kurz}.` };
   }
   // --- Verbraucher: Zustand und Grund, wie die Box sie meldet.

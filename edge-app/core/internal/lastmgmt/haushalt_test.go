@@ -304,3 +304,34 @@ func TestNoMinimumRunOnABlindLaneOrAPlugWithBands(t *testing.T) {
 		t.Fatalf("eine Säule mit Bändern trägt keine Haltezeit: %+v", a)
 	}
 }
+
+// Der Satz zu „Auto steckt, kein Ladevorgang" (`kein_ladevorgang`) steht in den
+// geteilten Vektoren und kommt von der Box - Portal und Box sagen ihn gleich.
+func TestTheVectorCarriesTheNoSessionSentence(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "contracts", "ocpp-ladezustand-vectors.json"))
+	if err != nil {
+		t.Skipf("Vektoren nicht erreichbar: %v", err)
+	}
+	var v struct {
+		Faelle []struct {
+			Name string `json:"name"`
+			Edge struct {
+				Reason     string `json:"reason"`
+				ReasonText string `json:"reason_text"`
+			} `json:"edge"`
+		} `json:"faelle"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range v.Faelle {
+		if f.Name != "kein_ladevorgang" {
+			continue
+		}
+		if f.Edge.Reason != ReasonNoSession || f.Edge.ReasonText != Text(ReasonNoSession) || Text(ReasonNoSession) != NoSessionText {
+			t.Fatalf("Vektor %+v, Box %q/%q", f.Edge, ReasonNoSession, Text(ReasonNoSession))
+		}
+		return
+	}
+	t.Fatal("der Vektor-Fall kein_ladevorgang fehlt")
+}
