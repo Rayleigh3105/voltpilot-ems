@@ -5,6 +5,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
+  ablehnungCode,
   api,
   ApiError,
   type Bezugsbasis,
@@ -27,11 +28,6 @@ import { BezugsbasisModell } from './BezugsbasisModell';
 import { VpPicker } from './VpPicker';
 import './Gesamtwert.css';
 import './Bezugsbasis.css';
-
-const code = (e: unknown): string | null => {
-  const body = e instanceof ApiError ? (e.body as { code?: unknown } | undefined) : undefined;
-  return typeof body?.code === 'string' ? body.code : null;
-};
 
 /**
  * Der Assistent „Bezugsbasis anlegen“ (UEMS AP-17 IP-9, §5.1, R1) in fünf Schritten: Referenzperiode (ganze,
@@ -111,7 +107,7 @@ export function BezugsbasisAssistent({
     } catch (e) {
       // B1: läuft schon eine (etwa aus einem abgebrochenen Assistenten), nennt die Route sie — dort weiter.
       const body = e instanceof ApiError ? (e.body as { bezugsbasis_id?: string; bezugsbasis?: string } | undefined) : undefined;
-      if (code(e) === 'bezugsbasis_laeuft' && body?.bezugsbasis_id) {
+      if (ablehnungCode(e) === 'bezugsbasis_laeuft' && body?.bezugsbasis_id) {
         const da = { id: body.bezugsbasis_id, kennzeichen: body.bezugsbasis ?? '' };
         setBasis(da);
         return da;
@@ -145,7 +141,7 @@ export function BezugsbasisAssistent({
       setVorschau(antwort);
       if (mitAllem) setGespeichert(antwort);
     } catch (e) {
-      const c = code(e);
+      const c = ablehnungCode(e);
       if (c === 'methode_noch_nicht_gebaut') {
         setNichtGebaut((alt) => new Set(alt).add(methode));
         setMethode('verhaeltnis');
@@ -538,7 +534,7 @@ export function FreigabeFormular({
       try {
         antwort = await api.bezugsbasisFreigabe(kennzahl.id, basis.id, fassung, schritt, begruendung);
       } catch (e) {
-        const umweg = art === 'entwurf' ? ({ vieraugen_aus: 'freigeben', vieraugen_beantragen: 'beantragen' } as const)[code(e) ?? ''] : undefined;
+        const umweg = art === 'entwurf' ? ({ vieraugen_aus: 'freigeben', vieraugen_beantragen: 'beantragen' } as const)[ablehnungCode(e) ?? ''] : undefined;
         if (!umweg || umweg === schritt) throw e;
         antwort = await api.bezugsbasisFreigabe(kennzahl.id, basis.id, fassung, umweg, begruendung);
       }

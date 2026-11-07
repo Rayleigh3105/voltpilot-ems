@@ -55,7 +55,10 @@ export function DatenquelleWechselDialog({ quelle, devices, onClose, onChanged }
         setAnlagen(new Set(standort.anlagen.map((a) => a.id)));
         setZeit(ortszeit(Date.now() + 60_000, standort.zeitzone));
       }
-    }).catch(() => {});
+    }).catch((e) => {
+      if (!aktiv) return;
+      setFehler(e instanceof Error ? e.message : 'Der Standort konnte nicht geladen werden.');
+    });
     return () => { aktiv = false; };
   }, [quelle.anlage]);
 

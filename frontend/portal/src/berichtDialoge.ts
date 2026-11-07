@@ -16,7 +16,7 @@ import { darfInListen } from './rollen';
  */
 
 import type { Erklaerung } from './components/nachweisen/erklaerung';
-import { ApiError } from './api';
+import { ablehnungCode, ApiError } from './api';
 import type {
   Bericht,
   BerichtAbweichung,
@@ -317,11 +317,6 @@ export const anlegenAnfrage = (w: AnlegenWahl, gueltigeKennzahlen: readonly stri
   };
 };
 
-const code = (e: unknown): string | null => {
-  const body = e instanceof ApiError ? (e.body as { code?: unknown } | undefined) : undefined;
-  return typeof body?.code === 'string' ? body.code : null;
-};
-
 /**
  * Warum Anlegen nicht ging — der Satz der Route (§5.8: `bericht_gibt_es_schon`, `keine_quellen`, 403 …); gibt es den
  * Bericht schon, die Kennung dazu, damit der Dialog ihn öffnen kann.
@@ -329,7 +324,7 @@ const code = (e: unknown): string | null => {
 export const anlegenFehler = (e: unknown): { satz: string; kennung: string | null } => {
   if (!(e instanceof ApiError) || e.body === undefined) return { satz: ANLEGEN_FEHLER, kennung: null };
   const kennung = (e.body as { kennung?: unknown }).kennung;
-  return { satz: e.message, kennung: code(e) === 'bericht_gibt_es_schon' && typeof kennung === 'string' ? kennung : null };
+  return { satz: e.message, kennung: ablehnungCode(e) === 'bericht_gibt_es_schon' && typeof kennung === 'string' ? kennung : null };
 };
 
 // ------------------------------------------------------------------ Berichtsstand freigeben (§5.2)
@@ -424,7 +419,7 @@ export const freigabeVorschau = (a: B.FreigabeAntrag, ersetztNr: number | null, 
 /** Warum die Freigabe abgelehnt wurde — der Satz der Route; bei `entwurf_veraltet` mit dem Hebel „Entwurf neu laden“. */
 export const freigabeFehler = (e: unknown): { satz: string; neuLaden: boolean } =>
   e instanceof ApiError && e.body !== undefined
-    ? { satz: e.message, neuLaden: code(e) === 'entwurf_veraltet' }
+    ? { satz: e.message, neuLaden: ablehnungCode(e) === 'entwurf_veraltet' }
     : { satz: FREIGEBEN_FEHLER, neuLaden: false };
 
 // ------------------------------------------------------------------ Vergleich Entwurf gegen Stand (§5.3, R1)

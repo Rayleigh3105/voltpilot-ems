@@ -38,6 +38,7 @@ from voltpilot_forecast.evaluation import (
     skill_vs_baseline,
 )
 from voltpilot_forecast.kundenbereich import NICHT_BEENDET
+from voltpilot_forecast.pgdsn import dsn_from_env
 from voltpilot_forecast.quality_repository import (
     AccuracyRecord,
     PlanAccuracyRecord,
@@ -49,25 +50,6 @@ from voltpilot_forecast.runtime import ServeRuntime
 logger = logging.getLogger("voltpilot.forecast.evaluate")
 
 _KIND_COLUMNS = {ForecastKind.LOAD: "load_kw", ForecastKind.PV: "pv_power_kw"}
-
-
-def _dsn_from_env(env: dict[str, str]) -> str:
-    from urllib.parse import quote  # noqa: PLC0415
-
-    host = env.get("POSTGRES_HOST", "localhost")
-    port = env.get("POSTGRES_PORT", "5432")
-    db = env.get("POSTGRES_DB", "voltpilot")
-    user = quote(env.get("POSTGRES_USER", "voltpilot"), safe="")
-    password = quote(env.get("POSTGRES_PASSWORD", ""), safe="")
-    # connect_timeout bounds the connect: without it libpq waits on the OS
-    # TCP timeout, so an unreachable DB hangs the cycle (and the shutdown
-    # handler) instead of failing into the retry back-off. See
-    # docs/k8s-readiness.md.
-    timeout = env.get("POSTGRES_CONNECT_TIMEOUT", "10")
-    return (
-        f"postgresql://{user}:{password}@{host}:{port}/{db}"
-        f"?connect_timeout={quote(timeout, safe='')}"
-    )
 
 
 # ---- DB reads (trusted backend role) ------------------------------------------
@@ -332,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO))
     env = dict(os.environ)
-    dsn = _dsn_from_env(env)
+    dsn = dsn_from_env(env)
 
     if args.command == "run":
         day = (
