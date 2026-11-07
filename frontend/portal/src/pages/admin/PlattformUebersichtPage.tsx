@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import {
@@ -76,7 +76,15 @@ export function PlattformUebersichtPage({
   // bleibt `fetchedAt` (die Lebendigkeits-Lehre, `liveness.ts`).
   const [tick, setTick] = useState<number>(() => Date.now());
 
+  // Mehrere `load()`-Läufe können gleichzeitig unterwegs sein (schnelles
+  // Hintereinander-Klicken auf „erledigt" löst je einen eigenen Lauf aus,
+  // dazu kommt der 30s-Takt) - ihre Antworten können in anderer Reihenfolge
+  // zurückkommen als sie gestartet sind. Nur der ZULETZT GESTARTETE Lauf darf
+  // seinen Stand noch anwenden, sonst dreht eine spät zurückkommende, aber
+  // ältere Antwort einen frischeren „erledigt"-Klick wieder zurück.
+  const loadLauf = useRef(0);
   const load = useCallback(async () => {
+    const lauf = ++loadLauf.current;
     const [fleetR, edgeR, fwR, fwBoxenR, wsR, pendR, diensteR, erledigtR] = await Promise.allSettled([
       fleetApi.fleet(),
       adminApi.edgeUpdates(),
@@ -87,6 +95,7 @@ export function PlattformUebersichtPage({
       adminApi.plattformDienste(),
       adminApi.brauchtDichErledigt(),
     ]);
+    if (loadLauf.current !== lauf) return;
     // Ein Fehlschlag ist keine Datenlage (§5.2/`liveness.ts`): ein Block, den
     // dieser Abruf nicht lieferte, bleibt mit seinem alten Stand stehen -
     // nie still auf „nichts" zurückgesetzt, solange schon etwas gezeigt wird.
