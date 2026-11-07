@@ -729,6 +729,13 @@ export interface LadevorgangRow {
   handeingriff: boolean;
   /** Das Pseudonym der Karte, die hier lädt (P7); null = keine gemeldet. */
   tagRef: string | null;
+  /**
+   * Die Bahn, die die BOX für DIESE Säule fährt (Echo `ChargePoint.quelle`,
+   * `docs/contracts/ladepunkt-quelle-echo.md`); `null` = eine ältere Box meldet
+   * es nicht. Sie entscheidet, ob „Schnell“ hier etwas übersteuern kann
+   * (`quellenBahnWirkt`).
+   */
+  bahn: SurplusPolicy | null;
 }
 
 /** Der Name einer Säule: der vergebene, sonst ihre Kennung (nie erfunden). */
@@ -787,6 +794,7 @@ function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): Ladevorga
     boost: con.boost === true,
     handeingriff: z.handeingriff,
     tagRef: con.tagRef ?? null,
+    bahn: asPolicy(c.quelle?.source),
   };
 }
 
@@ -1070,16 +1078,79 @@ export function ueberschussVerfuegbar(hasPv: boolean, charging: SiteCharging): b
 // --- „Jetzt voll laden" ----------------------------------------------------
 
 /**
+ * Hält eine Quellen-Bahn DIESE Säule an der Sonne? Nur dann gibt es für
+ * „Schnell“ etwas zu übersteuern.
+ *
+ * ⚠ Die Bahn der SÄULE geht vor dem Block der Anlage. Seit P5 schreibt das
+ * Portal „Womit laden“ je Säule und keine Vorgabe der Anlage mehr; eine Box vor
+ * dem Fix leitete `surplusActive` aber allein aus dieser (leeren) Vorgabe ab
+ * und meldete `false`, während sie ein Auto auf „Nur Sonne“ ohne Sonne bei
+ * 0 kW hielt - „Schnell“ war genau dort grau, wo es helfen sollte. Das Echo je
+ * Säule (Konzept k1 Regel 4) nennt die Bahn, die die Box wirklich fährt, und
+ * gilt damit auch für die Boxen im Feld.
+ *
+ * Eine Säule auf `schnell` ist ausgenommen, auch wenn eine Nachbarsäule die
+ * Bahn des Standorts aufspannt (`lastmgmt.splitExempt`). Ohne Echo (ältere Box)
+ * bleibt nur der Block der Anlage.
+ */
+export function quellenBahnWirkt(
+  budget: Pick<ChargingBudget, 'surplusActive'> | null | undefined,
+  row: Pick<LadevorgangRow, 'bahn'>,
+): boolean {
+  if (row.bahn === 'schnell') return false;
+  if (row.bahn === 'nur_sonne' || row.bahn === 'sonne_zuerst') return true;
+  return budget?.surplusActive === true;
+}
+
+/**
  * Der Knopf wird NUR angeboten, wo er etwas ändern kann: ein laufender
  * Ladevorgang, den die Quellen-Bahn wirklich zurückhält. Ein Knopf, der
- * strukturell nichts bewirkt, ist Lärm.
+ * strukturell nichts bewirkt, ist Lärm - und wo er fehlt, sagt
+ * {@link schnellWirktNichtGrund} warum.
  */
 export function boostbar(budget: ChargingBudget | null, row: LadevorgangRow): boolean {
-  if (!budget || budget.surplusActive !== true) return false;
+  if (!quellenBahnWirkt(budget, row)) return false;
   if (row.boost) return false;
   // ⚠ Geprüft wird das MASCHINEN-Wort, nie der deutsche Satz: der trägt bei
   // „kein Überschuss" zusätzlich die Priorität und passte auf keinen Vergleich.
   return row.tone === 'laedt' || row.reasonCode === 'kein_ueberschuss' || row.kind === 'wartet';
+}
+
+/**
+ * WARUM „Schnell“ an diesem Ladevorgang nichts ändern kann - der eine Satz
+ * statt eines stummen grauen Knopfs (Portal-Regel: keine unsichtbare
+ * Voraussetzung ohne Ausweg). `null`, solange {@link boostbar} ihn anbietet
+ * oder schon eine Übersteuerung läuft.
+ *
+ * ⚠ Geschlüsselt auf die MASCHINEN-Wörter (Bahn, Zustand), nie auf den Satz
+ * der Box. Ohne Zeile (kein Stecker gemeldet) fragt der Aufrufer mit `null`.
+ */
+export function schnellWirktNichtGrund(
+  budget: ChargingBudget | null,
+  row: LadevorgangRow | null,
+): string | null {
+  if (!row) return 'Schnell gilt für eine laufende Ladung.';
+  if (row.boost || boostbar(budget, row)) return null;
+  if (!quellenBahnWirkt(budget, row)) {
+    // Ohne Echo (ältere Box) weiß das Portal nur, dass die Box keine Bahn meldet - mehr wird nicht behauptet.
+    return row.bahn === 'schnell'
+      ? 'Schnell ändert gerade nichts: Diese Ladung wartet nicht auf die Sonne, sie lädt schon so schnell es geht.'
+      : 'Schnell ändert gerade nichts: Für diese Ladung meldet die Box keine Sonnen-Vorgabe.';
+  }
+  switch (row.kind) {
+    case 'auto_pausiert':
+      return 'Schnell ändert gerade nichts: Das Auto nimmt keinen Strom an (voll oder Auto-Timer).';
+    case 'nimmt_nichts':
+      return 'Schnell ändert gerade nichts: Das Auto nimmt gerade keinen Strom.';
+    case 'saeule_pausiert':
+      return 'Schnell ändert gerade nichts: Die Wallbox hält die Ladung selbst an.';
+    case 'startet':
+      return 'Schnell geht, sobald die Ladung begonnen hat.';
+    case 'beendet':
+      return 'Diese Ladung ist beendet. Schnell gilt für eine laufende Ladung.';
+    default:
+      return `Schnell geht gerade nicht: ${row.word}.`;
+  }
 }
 
 /**
@@ -1269,7 +1340,7 @@ export function ladepunktKeinEingriff(
   if (!LAUFENDE_LADUNG.has(row.kind)) {
     return 'An diesem Stecker läuft gerade kein Ladevorgang.';
   }
-  if (!budget || budget.surplusActive !== true) {
+  if (!quellenBahnWirkt(budget, row)) {
     return 'Diese Ladung folgt keiner Überschuss-Priorität - es gibt nichts zu übersteuern.';
   }
   return null;

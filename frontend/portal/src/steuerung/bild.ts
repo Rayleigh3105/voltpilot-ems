@@ -40,7 +40,7 @@ import { CONSUMER_REASON_TEXT, CONSUMER_STATE_TEXT, STATUS_UNKNOWN_TEXT } from '
 import type { ManualOverride } from '../consumers/fulfillment';
 import { LADEQUELLE } from '../glossar';
 import type { ChargePoint, ChargeConnector, LadepunktSperre, LadeZustand, SiteCharging } from '../ladepunkte';
-import { budgetFuer, ladepunktSperre, ladeZustand, aktuelleLeistung, boostbar, ladevorgangRows } from '../ladepunkte';
+import { budgetFuer, ladepunktSperre, ladeZustand, aktuelleLeistung, boostbar, ladevorgangRows, schnellWirktNichtGrund } from '../ladepunkte';
 import type {
   RanglisteEintrag,
   SiteVerbraucher,
@@ -282,6 +282,11 @@ export interface LadepunktBezug {
    * laden“ kann hier strukturell nichts bewirken, wenn dort kein Knopf stünde.
    */
   boostbar: boolean;
+  /**
+   * Warum „Schnell“ hier nichts ändern kann (`schnellWirktNichtGrund`), aus
+   * DERSELBEN Zeile wie `boostbar`; `null`, solange es etwas ändert.
+   */
+  schnellGrund: string | null;
 }
 
 export interface GeraetBild {
@@ -490,11 +495,15 @@ function boostbarFuer(
   lp: { cp: ChargePoint; con: ChargeConnector | null },
   charging: SiteCharging | null | undefined,
   nowMs: number,
-): boolean {
-  if (!lp.con) return false;
-  const row = ladevorgangRows([lp.cp], nowMs).find((r) => r.connectorId === lp.con!.connectorId);
-  if (!row) return false;
-  return boostbar(budgetFuer(charging, lp.cp), row);
+): { boostbar: boolean; schnellGrund: string | null } {
+  const row = lp.con
+    ? ladevorgangRows([lp.cp], nowMs).find((r) => r.connectorId === lp.con!.connectorId) ?? null
+    : null;
+  const budget = budgetFuer(charging, lp.cp);
+  return {
+    boostbar: row ? boostbar(budget, row) : false,
+    schnellGrund: schnellWirktNichtGrund(budget, row),
+  };
 }
 
 function eingriffVon(
@@ -647,7 +656,7 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
             // ⚠ EIN Blick in `boostbar` reicht - dieselbe Zeile, die die
             // Ladevorgänge-Seite und das Menü „Eingreifen“ fragen (Audit: zwei
             // Regeln für `POST /charging-boost` waren Befund 3).
-            boostbar: boostbarFuer(lp, i.charging, nowMs),
+            ...boostbarFuer(lp, i.charging, nowMs),
           }
         : null,
       gemessen,

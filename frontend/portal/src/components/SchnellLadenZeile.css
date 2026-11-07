@@ -1,0 +1,74 @@
+/* -----------------------------------------------------------------------------
+   „Auto steckt · Jetzt schnell laden“ (Kapitän 07.11.2026, F3 b): eine schmale
+   Zeile oben im Cockpit, nur solange ein Auto steckt. Hülle und Töne wie die
+   Kacheln (`kacheln/Kacheln.css`), der Rand in der Farbe des Ladens.
+----------------------------------------------------------------------------- */
+
+.vp-schnell {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vp-schnell-zeile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-left: 4px solid var(--vp-flow-load, #8b5cf6);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-schnell-zeile.is-laeuft { border-left-color: var(--vp-flow-grid, #0ea5a3); }
+
+.vp-schnell-ico {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--vp-flow-load-soft, #f1ecfd);
+  color: #6d28d9;
+}
+.vp-schnell-zeile.is-laeuft .vp-schnell-ico {
+  background: var(--vp-flow-grid-soft, #e2f6f5);
+  color: var(--vp-chart-grid-line, #036672);
+}
+
+.vp-schnell-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vp-schnell-text b {
+  font-weight: 800;
+  font-size: .95rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.vp-schnell-text small {
+  font-size: .82rem;
+  line-height: 1.3;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
+.vp-schnell-zeile > button { flex: none; white-space: nowrap; }
+
+/* Am Telefon steht der Knopf unter dem Text über die volle Breite. */
+@media (max-width: 520px) {
+  .vp-schnell-zeile { flex-wrap: wrap; }
+  .vp-schnell-zeile > button { flex: 1 1 100%; justify-content: center; }
+}
+
+.vp-schnell-meldung {
+  margin: 0;
+  font-size: .85rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-schnell-meldung.is-fehler { color: var(--vp-c-destructive, #b91c1c); }

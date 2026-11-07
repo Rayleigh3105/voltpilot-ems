@@ -12,6 +12,7 @@ Vorgaben aus der Abstimmung am 29.09.2026:
 - Die Umschaltung „Jetzt · kW / Heute · kWh“ bleibt.
 - Es muss mit beliebig vielen Verbrauchern funktionieren.
 - Das Cockpit bleibt reine Anzeige. Eingriffe laufen über Steuerung und Fahrplan.
+  - Eine Ausnahme (Kapitän 07.11.2026, Befund `voltpilot-lademodus-schnellzugriff`): Beim Privatkunden steht oben die Zeile „Auto steckt · Jetzt schnell laden“, nur solange ein Auto steckt und „Schnell“ etwas ändert. Sie öffnet den bestehenden Handeingriff-Dialog (Vorwahl „bis Abstecken, höchstens 14 Std“) und sendet denselben Auftrag wie der Reiter Laden (`components/SchnellLadenZeile.tsx`, Regeln in `schnellLaden.ts`).
 - Kachel-Vorschläge erscheinen nur im Dialog „Cockpit anpassen“.
 - Beim ersten Besuch gibt es keine Einführung. Das Cockpit muss sich selbst erklären.
 
