@@ -29,6 +29,7 @@
              schließt bekannte Advisories. Beim nächsten Wechsel der Boot-Linie entfernen,
              sonst halten sie Versionen der alten Linie fest. -->
         <tomcat.version>10.1.61</tomcat.version>
+        <logback.version>1.5.38</logback.version>
     </properties>
 
     <dependencies>
