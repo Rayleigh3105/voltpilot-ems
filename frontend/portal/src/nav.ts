@@ -442,10 +442,11 @@ export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
  */
 export type KatalogSektion = 'vorlagen' | 'modelle' | 'prognose';
 
-export const KATALOG_TABS: { id: KatalogSektion; label: string }[] = [
-  { id: 'vorlagen', label: 'Gerätevorlagen' },
-  { id: 'modelle', label: 'Steuerungs-Freigabe' },
-  { id: 'prognose', label: 'Prognosemodelle' },
+/** `kurz`: das Wort am Telefon - drei lange Namen passen bei 390 px nicht nebeneinander. */
+export const KATALOG_TABS: { id: KatalogSektion; label: string; kurz: string }[] = [
+  { id: 'vorlagen', label: 'Gerätevorlagen', kurz: 'Vorlagen' },
+  { id: 'modelle', label: 'Steuerungs-Freigabe', kurz: 'Freigabe' },
+  { id: 'prognose', label: 'Prognosemodelle', kurz: 'Prognose' },
 ];
 
 /** Die bestehende Seite hinter einem Katalog-Unter-Reiter (`prognose` lebt als Sektion IN `KatalogBereich`, keine eigene `PageId`). */

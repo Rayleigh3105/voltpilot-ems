@@ -144,7 +144,8 @@ export function VorlagenPage(): JSX.Element {
           <span className="vp-sr-only" role="status">{sichtbar.length} von {list.length} Vorlagen angezeigt</span>
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <div className="vp-table-scroll">
-              <table className="vp-table responsive" data-testid="vorlagen">
+              {/* Am Telefon (`vp-zeilen`): je Vorlage eine kompakte Zeile statt einer Etikett/Wert-Karte (122 Vorlagen ≈ 38.000 px). */}
+              <table className="vp-table responsive vp-zeilen vp-vorlagen-tabelle" data-testid="vorlagen">
                 <thead>
                   <tr>
                     <th>Gerät</th>
@@ -177,7 +178,7 @@ export function VorlagenPage(): JSX.Element {
                             setOpen(open === g.templateRef ? null : g.templateRef)
                           }
                         >
-                          <td data-label="Gerät">
+                          <td data-label="Gerät" data-zeile="haupt">
                             <span className="vp-cell-main">
                               <span>
                                 {g.brandLabel} · {g.modelLabel}
@@ -185,29 +186,30 @@ export function VorlagenPage(): JSX.Element {
                               <span className="vp-cell-sub">{g.communicationLabel}</span>
                             </span>
                           </td>
-                          <td data-label="Herkunft">
+                          <td data-label="Herkunft" data-zeile="neben" className="vp-vorlagen-marken">
                             <Badge variant={h.ton} dot>
                               {h.label}
                             </Badge>
                           </td>
-                          <td data-label="Prüfstand">
+                          <td data-label="Prüfstand" data-zeile="neben" className="vp-vorlagen-marken">
                             <Badge variant={p.ton}>{p.label}</Badge>
                           </td>
-                          <td data-label="In der Auswahl">
+                          <td data-label="In der Auswahl" data-zeile="neben" className="vp-zeilen-etikett">
                             {g.waehlbar ? (
                               `Fassung ${g.waehlbar.version}`
                             ) : (
                               <span className="vp-muted">Nicht wählbar</span>
                             )}
                           </td>
-                          <td data-label="Genutzt von">
+                          {/* Ungenutzt sagt am Telefon nichts - dort entfällt die Zeile. */}
+                          <td data-label="Genutzt von" data-zeile={g.benutztVon === 0 ? 'breit' : 'neben'} className="vp-zeilen-etikett">
                             {g.benutztVon === 0 ? (
                               <span className="vp-muted">—</span>
                             ) : (
                               `${g.benutztVon}`
                             )}
                           </td>
-                          <td>
+                          <td data-zeile="aktion">
                             {/* Ein Knopf, damit die Fassungen auch per Tastatur aufgehen. */}
                             <button
                               type="button"

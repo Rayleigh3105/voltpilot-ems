@@ -66,7 +66,7 @@ export function GeraetetypenSektion(): JSX.Element {
       {!failed && types && types.length > 0 && (
         <Card radius="lg" style={{ padding: 0, overflow: 'hidden' }}>
           <p className="vp-gt-summary">{certSummary(types)}</p>
-          <table className="vp-table responsive">
+          <table className="vp-table responsive vp-zeilen vp-sf-tabelle">
             <thead>
               <tr>
                 <th>Gerätetyp</th>
@@ -80,11 +80,11 @@ export function GeraetetypenSektion(): JSX.Element {
                 const detail = certDetail(t);
                 return (
                   <tr key={t.type}>
-                    <td data-label="Gerätetyp">
+                    <td data-label="Gerätetyp" data-zeile="haupt">
                       <div className="vp-cell-main">{t.label}</div>
                       <div className="vp-cell-sub">{t.type}</div>
                     </td>
-                    <td data-label="Freigabe-Stand">
+                    <td data-label="Freigabe-Stand" data-zeile="neben">
                       <Badge variant={cert.tone} dot>{cert.label}</Badge>
                       {/* Der Beleg ist ein technischer Nachweis: aufklappbar statt immer offen. */}
                       {detail && (
@@ -94,7 +94,7 @@ export function GeraetetypenSektion(): JSX.Element {
                         </details>
                       )}
                     </td>
-                    <td data-label="Verbundene Geräte">
+                    <td data-label="Verbundene Geräte" data-zeile="neben" className="vp-zeilen-etikett">
                       {t.connectedCount.toLocaleString('de-DE')}
                     </td>
                   </tr>

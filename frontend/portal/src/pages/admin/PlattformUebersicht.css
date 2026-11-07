@@ -56,6 +56,19 @@
    Zahl und Wort reichen, genau wie das Board es misst. */
 @media (max-width: 720px) {
   .vp-ueb-kacheln .vp-ueb-kachel-kontext { display: none; }
+  /* Kompakte Kacheln: Zahl und Wort nebeneinander, weniger Polster - die vier Kacheln
+     belegten vorher ~ 400 px des ersten Bildschirms. `!important` nur gegen das Inline-Polster der Karte. */
+  .vp-ueb-kacheln { gap: var(--vp-space-2); margin-bottom: var(--vp-space-4); }
+  .vp-ueb-kacheln .vp-ueb-kachel {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 8px;
+    padding: 12px 14px !important;
+  }
+  .vp-ueb-kacheln .vp-ueb-kachel-kopf { grid-column: 1 / -1; }
+  .vp-ueb-kacheln .vp-ueb-kachel .vp-ueb-kachel-zahl { font-size: 1.5rem; margin-top: 2px; }
+  .vp-ueb-kacheln .vp-ueb-kachel .vp-ueb-kachel-wort { font-size: 0.8125rem; line-height: 1.25; }
 }
 
 .vp-ueb-spalten {

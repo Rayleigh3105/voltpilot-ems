@@ -54,12 +54,14 @@ function KatalogTabs({ active }: { active: KatalogSektion }) {
           ref={active === t.id ? gewaehlt : undefined}
           role="tab"
           aria-selected={active === t.id}
+          aria-label={t.label}
           className={active === t.id ? 'active' : ''}
           onClick={() => {
             window.location.hash = sektionHash('katalog', t.id);
           }}
         >
-          {t.label}
+          <span className="vp-tab-lang">{t.label}</span>
+          <span className="vp-tab-kurz" aria-hidden="true">{t.kurz}</span>
         </button>
       ))}
     </div>

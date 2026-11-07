@@ -3018,7 +3018,8 @@ button.vp-cl-item.is-off .vp-cl-label {
     border-bottom: 1px solid var(--vp-border);
     border-radius: 0;
     margin: 0;
-    padding: var(--vp-space-3) var(--vp-zeilen-rand, 0);
+    /* Die meisten Listen stehen in einer Karte ohne Polster; in einer gepolsterten Karte setzt die Fläche `--vp-zeilen-rand: 0`. */
+    padding: var(--vp-space-3) var(--vp-zeilen-rand, var(--vp-space-4));
   }
   .vp-table.responsive.vp-zeilen tr:last-child {
     border-bottom: 0;
@@ -3051,9 +3052,6 @@ button.vp-cl-item.is-off .vp-cl-label {
     grid-row: 1 / span 4;
     text-align: right;
   }
-  .vp-table.responsive.vp-zeilen td[data-zeile='breit'] {
-    display: none;
-  }
   .vp-table.responsive.vp-zeilen td[data-zeile='fuss'] {
     grid-column: 1 / -1;
     margin-top: var(--vp-space-2);
@@ -3066,6 +3064,9 @@ button.vp-cl-item.is-off .vp-cl-label {
     align-items: baseline;
     column-gap: 6px;
   }
+  .vp-table.responsive.vp-zeilen td.vp-zeilen-etikett > details {
+    flex-basis: 100%;
+  }
   .vp-table.responsive.vp-zeilen td.vp-zeilen-etikett::before {
     content: attr(data-label);
     font-family: var(--vp-font-body);
@@ -3077,6 +3078,10 @@ button.vp-cl-item.is-off .vp-cl-label {
   }
   .vp-table.responsive.vp-zeilen td[colspan] {
     grid-column: 1 / -1;
+  }
+  /* Am Ende des Blocks: gewinnt auch gegen `vp-zeilen-etikett` (gleiche Spezifität). */
+  .vp-table.responsive.vp-zeilen td[data-zeile='breit'] {
+    display: none;
   }
   .vp-zeilen-telefon {
     display: block;
@@ -3975,11 +3980,21 @@ button.vp-cl-item.is-off .vp-cl-label {
 /* Am Telefon passen die vier Geräte-Reiter (Geräte · Software · Werkstatt · Fernwartung)
    mit schmalerem Polster in die Breite; vorher war „Fernwartung“ abgeschnitten. Unter
    ~ 350 px scrollt die Leiste weiter in sich. */
+.vp-seg.vp-bereich-tabs .vp-tab-kurz {
+  display: none;
+}
 @media (max-width: 720px) {
   /* Nur die Breite, nicht `display`: eine Fläche darf die Leiste am Telefon weiter ausblenden
      (Plattform-Übersicht: Zeilen am Ende statt Reiterleiste). */
   .vp-seg.vp-bereich-tabs {
     width: 100%;
+  }
+  /* Reiter mit Kurzwort (Katalog: Vorlagen · Freigabe · Prognose); der Name des Reiters bleibt lang (aria-label). */
+  .vp-seg.vp-bereich-tabs .vp-tab-lang {
+    display: none;
+  }
+  .vp-seg.vp-bereich-tabs .vp-tab-kurz {
+    display: inline;
   }
   .vp-seg.vp-bereich-tabs button {
     flex: 1 0 auto;
@@ -3998,6 +4013,11 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-admin-sec-head h2 {
   font-size: 1.05rem;
   margin: 0;
+}
+/* Als freier Abschnittskopf (h2 direkt in `.vp-admin-sec`, z. B. Prognosemodelle im Katalog) ohne den
+   Innenabstand der Tabellenkarte - sonst steht er 20 px eingerückt über seinem eigenen Text. */
+.vp-admin-sec > h2.vp-admin-sec-head {
+  padding: 0 0 var(--vp-space-2);
 }
 .vp-admin-sec-head p {
   margin: 4px 0 0;

@@ -72,7 +72,8 @@ export function PrognoseKatalogSektion(): JSX.Element {
 
       {!failed && zustand && (
         <Card radius="lg" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="vp-table responsive">
+          {/* Am Telefon: Prognoseart und Herkunft oben, darunter die Auswahl (sie nennt die Vorgabe selbst). */}
+          <table className="vp-table responsive vp-zeilen vp-prognose-tabelle">
             <thead>
               <tr>
                 <th>Prognoseart</th>
@@ -84,14 +85,14 @@ export function PrognoseKatalogSektion(): JSX.Element {
             <tbody>
               {zustand.kinds.map((k) => (
                 <tr key={k.kind}>
-                  <td data-label="Prognoseart">{KIND_LABELS[k.kind]}</td>
-                  <td data-label="Vorgabe">{MODEL_LABELS[k.activeModel] ?? k.activeModel}</td>
-                  <td data-label="Herkunft">
+                  <td data-label="Prognoseart" data-zeile="haupt"><b>{KIND_LABELS[k.kind]}</b></td>
+                  <td data-label="Vorgabe" data-zeile="breit">{MODEL_LABELS[k.activeModel] ?? k.activeModel}</td>
+                  <td data-label="Herkunft" data-zeile="neben">
                     <Badge variant={k.source === 'portal' ? 'tint' : 'off'}>
                       {k.source === 'portal' ? 'Im Portal gesetzt' : 'Ausgeliefertes Modell'}
                     </Badge>
                   </td>
-                  <td data-label="Ändern">
+                  <td data-label="Ändern" data-zeile="fuss">
                     <VpPicker
                       id={`prognose-vorgabe-${k.kind}`}
                       ariaLabel={`Vorgabe ${KIND_LABELS[k.kind]}`}

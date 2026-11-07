@@ -75,6 +75,8 @@
 /* Kundenliste: Name und Segment in einer Zeile, am Telefon darunter die Zahlen. */
 .vp-kundenliste-name { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--vp-space-2); row-gap: 2px; }
 .vp-kundenliste { --vp-zeilen-rand: var(--vp-space-4); }
+/* Personen stehen in einer gepolsterten Karte: die Zeilen brauchen keinen eigenen Rand. */
+.vp-kundenakte-personen .vp-zeilen { --vp-zeilen-rand: 0; }
 @media (max-width: 720px) {
   /* Die ganze Zeile öffnet den Kunden; rechts bleibt nur der Pfeil, damit die Zahlen in eine Zeile passen. */
   .vp-table.responsive.vp-zeilen.vp-kundenliste tr { column-gap: var(--vp-space-2); }

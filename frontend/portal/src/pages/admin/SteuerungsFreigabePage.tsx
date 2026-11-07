@@ -132,7 +132,7 @@ export function SteuerungsFreigabePage(): JSX.Element {
             />
           ) : (
             <Card radius="lg" style={{ padding: 0, overflow: 'hidden' }}>
-              <table className="vp-table responsive">
+              <table className="vp-table responsive vp-zeilen vp-sf-tabelle">
                 <thead>
                   <tr>
                     <th>Modell</th>
@@ -144,15 +144,15 @@ export function SteuerungsFreigabePage(): JSX.Element {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.key}>
-                      <td data-label="Modell">
+                      <td data-label="Modell" data-zeile="haupt">
                         <div className="vp-cell-main">{r.model}</div>
                         <div className="vp-cell-sub">{r.brand}</div>
                       </td>
-                      <td data-label="Registerfamilie">
+                      <td data-label="Registerfamilie" data-zeile="neben" className="vp-zeilen-etikett">
                         <div className="vp-cell-main">{r.family}</div>
                         {r.pathLabel && <div className="vp-cell-sub">{r.pathLabel}</div>}
                       </td>
-                      <td data-label="Prüfstand">
+                      <td data-label="Prüfstand" data-zeile="neben" className="vp-zeilen-etikett">
                         <div className="vp-cell-main">{r.certifiedAt}</div>
                         {/* Ohne Aussage steht hier NICHTS - „nicht umgekehrt"
                             wäre eine Behauptung über einen Lauf, der die
@@ -168,7 +168,7 @@ export function SteuerungsFreigabePage(): JSX.Element {
                           </details>
                         )}
                       </td>
-                      <td data-label="">
+                      <td data-label="" data-zeile="fuss">
                         <Button
                           variant="ghost"
                           onClick={() => setRevoking({ brand: r.brand, model: r.model })}
