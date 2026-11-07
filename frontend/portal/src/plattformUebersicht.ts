@@ -42,9 +42,12 @@ import {
 } from './adminFleet';
 import {
   BOX_ART_LABELS,
+  edgeUpdatesUrteil,
+  rolloutsLaufend,
   type EdgeUpdatesKpi,
   type EdgeUpdatesLine,
   type FleetRow as EdgeFleetRow,
+  type Rollout,
 } from './adminEdgeUpdates';
 import { boxZeile, segmentArt, type BoxZeile } from './geraeteUpdates';
 import { pendingRows } from './onboardingFunnel';
@@ -81,12 +84,13 @@ export interface KachelnEingabe {
   releases: AdminFleetRelease[];
   edgeLines: EdgeUpdatesLine[];
   edgeKpi: EdgeUpdatesKpi;
+  edgeRollouts: Rollout[];
 }
 
 export function uebersichtKacheln(input: KachelnEingabe, now: Date): UebersichtKachel[] {
   return [
     verbindungKachel(input.sites, now),
-    softwareKachel(input.edgeKpi, input.edgeLines),
+    softwareKachel(input.edgeKpi, input.edgeLines, input.edgeRollouts),
     steuerungKachel(input.sites, now),
     planKachel(input.sites, now),
   ];
@@ -114,12 +118,20 @@ function verbindungKachel(sites: AdminFleetSite[], now: Date): UebersichtKachel 
   };
 }
 
-function softwareKachel(kpi: EdgeUpdatesKpi, lines: EdgeUpdatesLine[]): UebersichtKachel {
-  const zahl = Math.max(0, kpi.known - kpi.upToDate);
+function softwareKachel(
+  kpi: EdgeUpdatesKpi,
+  lines: EdgeUpdatesLine[],
+  rollouts: Rollout[],
+): UebersichtKachel {
+  // Dieselbe Wahrheit wie die Software-Seite (`adminEdgeUpdates.edgeUpdatesUrteil`,
+  // Muster `kpiText`): je Linie gemessen, Rückfall auf `kpi` nur ohne `lines`.
+  const { veraltet } = edgeUpdatesUrteil(kpi, lines);
+  const zahl = veraltet;
   const linienTexte = lines
     .filter((l) => l.devices > 0 && l.known - l.upToDate > 0)
     .map((l) => `${BOX_ART_LABELS[l.boxArt]} ${l.known - l.upToDate} älter`);
-  const teile = [kpi.inRollout > 0 ? `${kpi.inRollout} laufen` : null, ...linienTexte].filter(Boolean);
+  const laufend = rolloutsLaufend(rollouts);
+  const teile = [laufend > 0 ? `${laufend} laufen` : null, ...linienTexte].filter(Boolean);
   return {
     id: 'software',
     icon: 'refresh-cw',
