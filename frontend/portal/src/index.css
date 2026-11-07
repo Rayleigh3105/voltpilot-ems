@@ -2250,6 +2250,42 @@ button.vp-cl-item.is-off .vp-cl-label {
   font-weight: 600;
   color: var(--vp-text-dark);
 }
+/* Ein Feld aus Beschriftung, Textfeld und Hilfe (`<label className="vp-field">`): untereinander,
+   das Textfeld über die volle Breite. Ohne diese Regel standen Beschriftung, ein schmales
+   Textfeld und der Hilfesatz nebeneinander in EINER Zeile (Fernwartung „Grund *“ beim Öffnen
+   eines Fensters, „Vorlage eintragen“). Schrift 16 px: iOS zoomt sonst beim Antippen hinein. */
+.vp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.vp-field textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-white, #fff);
+  color: var(--vp-text-dark);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.4;
+  resize: vertical;
+}
+.vp-field textarea:focus-visible {
+  outline: none;
+  border-color: var(--vp-action);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-field textarea[aria-invalid='true'] {
+  border-color: var(--vp-industry-end);
+}
+.vp-field .vp-field-help {
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-muted);
+}
 .vp-pw-toggle {
   font-size: var(--vp-text-meta);
 }
