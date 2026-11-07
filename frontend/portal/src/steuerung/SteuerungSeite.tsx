@@ -735,9 +735,10 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub, devices }: Steue
           )}
         </div>
       )}
-      <main className={`stn-main ${reiter}`}>
+      {/* Kein zweites <main>: die Schale trägt schon das eine (`AppShell`). */}
+      <div className={`stn-main ${reiter}`}>
         {inhalt}
-      </main>
+      </div>
       {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} anlage={anlage} onSoLaden={soLaden} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onFahrzeug={async (tagRef, w) => {
         // ⚠ `FahrzeugDialog` (Konzept „Ein Ort fürs Laden" e1, Abschnitt 7
         // Punkt 6: EIN Dialog statt des früheren Fahrzeug-Blatts) trägt seinen
