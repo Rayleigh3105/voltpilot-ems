@@ -258,8 +258,15 @@ func sessionTxOf(snap csms.Snapshot, key string) (tx int, known bool) {
 // ocppSurplus is THE source-lane derivation, shared by the executor and the
 // surface exactly like ocppBudget — the page must never show a lane the
 // stations were not given.
-func (a *Agent) ocppSurplus(now time.Time, set lastmgmt.Settings) lastmgmt.SurplusVerdict {
-	return a.ocppSurplusFor(now, set, set.SurplusPolicy)
+//
+// ⚠ It derives the lane under ocppLanePolicy, the policy the executor runs
+// (P5), never under the site default alone. The portal writes a source per
+// station only, so a site set up there has NO site default ("schnell" on the
+// box); deriving the heartbeat from that default reported `surplus_active=false`
+// while the executor held a „Nur Sonnenstrom" station at 0 kW - and the portal
+// then hid „Schnell" as an override with nothing to override.
+func (a *Agent) ocppSurplus(now time.Time, set lastmgmt.Settings, snap csms.Snapshot) lastmgmt.SurplusVerdict {
+	return a.ocppSurplusFor(now, set, ocppLanePolicy(set, snap))
 }
 
 // ocppSurplusFor is the same derivation under an EXPLICIT lane policy (P5): the

@@ -103,6 +103,76 @@ func TestWithoutASourceChoiceTheStationsAreByteForByteStufe3(t *testing.T) {
 	nearKwSoon(t, "the car keeps everything its station can deliver", drawOf(s1, 1), 240)
 }
 
+// stationOnItsOwnSource is the site the PORTAL sets up since P5: „Womit laden"
+// writes a source for THIS station only (`charge_points[].source`), and no
+// site default exists at all - the box resolves that to „schnell".
+func stationOnItsOwnSource(t *testing.T, source string) (*Agent, *ocppsim.Station) {
+	t.Helper()
+	a := chargingCfgAgent(t)
+	ocppSite(t, a, 0)
+	s1 := ocppStation(t, a, "SAEULE-1", 1, 240)
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[{"id":"SAEULE-1","source":"` + source + `"}],
+	  "published_at":"2026-11-07T08:00:00Z"}`))
+	if err := s1.Plug(1, ocppsim.Vehicle{DemandKw: 240, MinKw: 5}); err != nil {
+		t.Fatalf("plug: %v", err)
+	}
+	waitUntil(t, "the session is known", func() bool {
+		c, _ := a.ocpp.srv.Snapshot().ChargerByID("SAEULE-1")
+		return len(c.ActiveConnectors()) == 1
+	})
+	return a, s1
+}
+
+// TestTheHeartbeatReportsTheLaneAStationRunsWithoutASiteDefault is the
+// regression guard for „Schnell ist grau": the executor ran the station's own
+// „Nur Sonnenstrom" (P5), the heartbeat derived `surplus_active` from the
+// absent site default and reported false - and the portal hid „Schnell" as an
+// override with nothing to override, while the car stood at 0 kW.
+func TestTheHeartbeatReportsTheLaneAStationRunsWithoutASiteDefault(t *testing.T) {
+	t.Run("keine Sonne: das Auto wartet, die Bahn ist gemeldet", func(t *testing.T) {
+		a, s1 := stationOnItsOwnSource(t, "nur_sonne")
+		for i := 0; i < 3; i++ {
+			measureSurplus(t, a, 20, 0, 0, s1)
+			a.ocppStep(context.Background())
+		}
+		nearKwSoon(t, "the source lane holds the car without sun", drawOf(s1, 1), 0)
+		if con := ocppConnectorView(t, a, "SAEULE-1", 1); con.Reason != lastmgmt.ReasonNoSurplus {
+			t.Fatalf("reason = %q, want the source word", con.Reason)
+		}
+		info := a.State.Get().Ocpp
+		if !info.SurplusActive {
+			t.Fatalf("the heartbeat must report the lane the station runs (site default %q): %s",
+				info.SurplusPolicy, info.SurplusNote)
+		}
+		if !strings.Contains(info.SurplusNote, "Nur Sonnenstrom") {
+			t.Fatalf("the sentence must name the station's own priority: %q", info.SurplusNote)
+		}
+	})
+	t.Run("Sonne: das Auto zieht den Überschuss, die Bahn ist gemeldet", func(t *testing.T) {
+		a, s1 := stationOnItsOwnSource(t, "nur_sonne")
+		for i := 0; i < 4; i++ {
+			measureSurplus(t, a, 20, 120, 0, s1)
+			a.ocppStep(context.Background())
+		}
+		nearKwSoon(t, "the car draws the surplus, not its nameplate", drawOf(s1, 1), 100)
+		if info := a.State.Get().Ocpp; !info.SurplusActive || info.SurplusKw == nil {
+			t.Fatalf("a lane that caps the car must be reported with its cap: %+v / %v", info.SurplusActive, info.SurplusKw)
+		}
+	})
+	t.Run("eine Säule auf Schnell: keine Bahn, wie vorher", func(t *testing.T) {
+		a, s1 := stationOnItsOwnSource(t, "schnell")
+		for i := 0; i < 3; i++ {
+			measureSurplus(t, a, 20, 120, 0, s1)
+			a.ocppStep(context.Background())
+		}
+		if info := a.State.Get().Ocpp; info.SurplusActive {
+			t.Fatalf("no station wants sun - there is no lane to report: %s", info.SurplusNote)
+		}
+		nearKwSoon(t, "the car keeps everything its station can deliver", drawOf(s1, 1), 240)
+	})
+}
+
 // TestJetztVollLadenExemptsOneSessionAndSaysSo - the override, measured.
 func TestJetztVollLadenExemptsOneSessionAndSaysSo(t *testing.T) {
 	a := ocppAgent(t, nil)

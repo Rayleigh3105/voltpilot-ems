@@ -373,8 +373,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	// default is „Schnell laden" would have no lane at all for the one station
 	// the customer put on „Nur Sonnenstrom". A site where NO station chose is
 	// byte-for-byte unchanged - ocppLanePolicy then returns the site default.
-	lanePolicy := ocppLanePolicy(set, snap)
-	surplus := a.ocppSurplusFor(now, set, lanePolicy)
+	surplus := a.ocppSurplus(now, set, snap)
 
 	sessions, byKey := ocppSessions(snap, allocKw, set)
 	// P6: the go-e/Modbus wallboxes the portal put into the Ladepark-Rahmen
@@ -1062,7 +1061,9 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 	safe := lastmgmt.DeriveSafeDefault(set.GridLimitKw, effectiveMaxHouseLoad(set), snap.ConnectorCount())
 	now := time.Now().UTC()
 	verdict, reserved := a.ocppBudget(now, set, snap, safe)
-	surplus := a.ocppSurplus(now, set)
+	// The SAME derivation the executor ran above (ocppSurplus): the heartbeat
+	// must report the lane the stations were given, not the site default.
+	surplus := a.ocppSurplus(now, set, snap)
 	boosted := map[string]bool{}
 	paused := map[string]bool{}
 	fullKeys, pausedKeys := rt.boostKeys(now)
