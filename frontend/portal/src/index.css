@@ -2350,7 +2350,9 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 .vp-alert-info {
   background: var(--vp-paleblue-start);
-  color: var(--vp-primary-deep);
+  /* Wie `--vp-link`: `--vp-primary-deep` hielt als Schrift nur 2,98 : 1,
+     `--vp-action` hält 7,2 : 1 (WCAG 1.4.3). */
+  color: var(--vp-action);
 }
 .vp-alert-warn {
   background: #fff4e5;
