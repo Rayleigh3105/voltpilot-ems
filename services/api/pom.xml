@@ -25,6 +25,11 @@
         <docker.api.version>1.44</docker.api.version>
         <measurement.catalog.version>2026.10.26.1</measurement.catalog.version>
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
+        <!-- Sicherheits-Patches über der Boot-BOM: Spring Boot 3.3 bekommt keine freien
+             Patches mehr (3.3.13 ist der letzte). Jede Zeile bleibt in der Linie der BOM und
+             schließt bekannte Advisories. Beim nächsten Wechsel der Boot-Linie entfernen,
+             sonst halten sie Versionen der alten Linie fest. -->
+        <tomcat.version>10.1.61</tomcat.version>
     </properties>
 
     <dependencies>
