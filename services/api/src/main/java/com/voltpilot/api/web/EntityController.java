@@ -179,7 +179,7 @@ public class EntityController {
             String sourceId = row.entityId().replaceFirst("^local:", "");
             reportedSourceIds.add(sourceId);
             EntityObservedRepository.EdgeLink link = row.edgeLink();
-            JsonNode conn = link == null ? null : parse(link.connectionJson());
+            JsonNode conn = link == null ? null : LenientJson.parse(mapper, link.connectionJson());
             localSetup.add(new LocalSetupDto(sourceId, row.entityType(), row.edgeRole(),
                     row.edgeBrand(), row.edgeModel(), row.label(), row.reportedAt(),
                     adoptedBySource.get(sourceId),
@@ -201,11 +201,12 @@ public class EntityController {
                     : !reportedSourceIds.contains(row.edgeSourceId());
             entities.add(new EntityDto(row.id(), row.entityType(),
                     catalog.labelFor(row.entityType()), row.role(), row.label(), row.control(),
-                    row.deviceId(), parse(row.capabilitiesJson()), parse(row.guardConfigJson()),
+                    row.deviceId(), LenientJson.parse(mapper, row.capabilitiesJson()),
+                    LenientJson.parse(mapper, row.guardConfigJson()),
                     syncStatus(state, obs, !observedRows.isEmpty(), reportedRevision),
                     obs == null ? null
                             : new ObservedDto(obs.health(), obs.lastTelemetryAt(),
-                                    parse(obs.channelsJson()), obs.entityType(),
+                                    LenientJson.parse(mapper, obs.channelsJson()), obs.entityType(),
                                     obs.reportedAt()),
                     row.edgeSourceId(), orphanedPin, row.capacityKwp(), row.sourceKind(),
                     certificationStatus(row.entityType())));
@@ -341,17 +342,6 @@ public class EntityController {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
-    }
-
-    private JsonNode parse(String json) {
-        if (json == null || json.isBlank()) {
-            return null;
-        }
-        try {
-            return mapper.readTree(json);
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private void requireSite(UUID siteId) {

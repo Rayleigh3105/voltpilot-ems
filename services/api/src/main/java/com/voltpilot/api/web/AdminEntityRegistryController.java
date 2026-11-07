@@ -282,18 +282,8 @@ public class AdminEntityRegistryController {
 
     private EntityAdminDto toDto(EntityRegistryRepository.EntityRow row) {
         return new EntityAdminDto(row.id(), row.entityType(), row.role(), row.label(),
-                row.deviceId(), parse(row.capabilitiesJson()), parse(row.guardConfigJson()));
-    }
-
-    private JsonNode parse(String json) {
-        if (json == null || json.isBlank()) {
-            return null;
-        }
-        try {
-            return mapper.readTree(json);
-        } catch (Exception e) {
-            return null;
-        }
+                row.deviceId(), LenientJson.parse(mapper, row.capabilitiesJson()),
+                LenientJson.parse(mapper, row.guardConfigJson()));
     }
 
     @ExceptionHandler(BelegeImWeg.class)
