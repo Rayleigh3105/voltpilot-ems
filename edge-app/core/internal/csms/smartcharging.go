@@ -66,7 +66,7 @@ func (s *Server) Commission(ctx context.Context, chargerID string, maxKw, defaul
 	owned = owned && ownedBoot.Equal(bootedAt)
 	s.mu.Unlock()
 	// Previous acknowledgements are no evidence for this connection/setup.
-	s.recordCommission(chargerID, nil, nil, errors.New("Sicherheitsprofile werden geprüft"))
+	s.recordCommission(chargerID, nil, nil, errors.New(commissionRunning))
 
 	values, unknown, err := t.getConfiguration(ctx, chargerID, CapabilityKeys())
 	if err != nil {
@@ -285,6 +285,7 @@ func (s *Server) recordCommission(chargerID string, maxKw, defaultKw *float64, e
 	if !ok {
 		return
 	}
+	defer s.wakeStartWaitersLocked()
 	c.MaxKw, c.DefaultKw = maxKw, defaultKw
 	if err != nil {
 		c.CommissionError = err.Error()

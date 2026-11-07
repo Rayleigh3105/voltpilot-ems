@@ -67,6 +67,13 @@ und am Mandanten-Umschalter der Plattform. `SetChargingProfile` und
   Phasen. Bei Änderungen bleiben neue Starts gesperrt,
   bis sämtliche Säulen die neuen Schutzprofile angenommen haben. Fehlende Angaben
   oder nicht bestätigbare Cache-Einstellungen verhindern die Freigabe.
+  Kommt ein `StartTransaction` (oder `Authorize`) nach einer BootNotification an,
+  bevor die Säule wieder eingerichtet ist, wartet die Box höchstens 20 s auf die
+  Einrichtung und nimmt den Start danach regulär an; scheitert die Einrichtung oder
+  dauert sie länger, bleibt es bei `Invalid`. Eine go-e meldet sich bei jedem
+  Neuverbinden mit BootNotification und beendet einen abgelehnten Vorgang, ohne es
+  bei steckendem Auto erneut zu versuchen. Jede Ablehnung steht mit Grund im
+  Protokoll der Box („Ladevorgang abgelehnt“).
 - **Phasenumschaltung (1p/3p)** ist je Stecker freigeschaltet (`phase_switching` in
   der Verdrahtung, nur bei drei Phasen) und braucht zusätzlich die eigene Meldung
   der Säule `ConnectorSwitch3to1PhaseSupported=true`. Dann kennt der Verteiler zwei
