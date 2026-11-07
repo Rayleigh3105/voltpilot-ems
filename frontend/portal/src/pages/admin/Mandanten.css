@@ -78,8 +78,6 @@
 @media (max-width: 720px) {
   /* Die ganze Zeile öffnet den Kunden; rechts bleibt nur der Pfeil, damit die Zahlen in eine Zeile passen. */
   .vp-table.responsive.vp-zeilen.vp-kundenliste tr { column-gap: var(--vp-space-2); }
-  .vp-table.responsive.vp-zeilen.vp-kundenliste td[data-zeile='marke'] { grid-row: 1; align-self: start; }
-  .vp-table.responsive.vp-zeilen.vp-kundenliste td[data-zeile='neben'] { grid-column: 1 / 3; }
   .vp-table.responsive.vp-zeilen.vp-kundenliste td[data-zeile='aktion'] .vp-btn { padding-inline: 4px; min-width: 32px; }
 }
 

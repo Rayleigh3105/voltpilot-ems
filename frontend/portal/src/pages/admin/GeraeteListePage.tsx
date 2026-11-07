@@ -139,7 +139,6 @@ export function GeraeteListePage({ onOpen }: { onOpen: (ref: string, werkzeug?: 
         icon="cpu"
         category="primary"
         title="Geräte"
-        description="Jede Box in jedem Lebensabschnitt: gedruckt, meldet sich, in der Werkstatt, beim Kunden."
         actions={
           <span className="vp-muted vp-text-sm" data-testid="geraete-liste-stand">
             {loading ? 'Wird geladen …' : pollFehler ? freshnessLabel(fetchedAt, tick, true) : `${freshnessLabel(fetchedAt, tick)} · alle 30 s`}
@@ -246,7 +245,7 @@ function GeraeteTabelle({ zeilen, jetzt, filter, onFilter, onOpen, werkstattBoxe
           action={<Button variant="outline" onClick={() => onFilter(LEERER_LISTE_FILTER)}>Filter zurücksetzen</Button>} />
       ) : (
         <div className="vp-table-scroll">
-          <table className="vp-table responsive" data-testid="geraete-liste">
+          <table className="vp-table responsive vp-zeilen vp-geraeteliste" data-testid="geraete-liste">
             <thead>
               <tr>
                 <th>Box</th>
@@ -287,7 +286,7 @@ function GeraeteZeile({ z, jetzt, onOpen, werkstattBoxen, onLoeschenAnfragen }: 
   const kandidat = loeschKandidat(z, werkstattBoxen);
   return (
     <tr className="vp-row-click" onClick={() => onOpen(openRef)} title="Geräteakte öffnen">
-      <td data-label="Box">
+      <td data-label="Box" data-zeile="haupt">
         <span className="vp-cell-main">
           <button type="button" className="vp-linklike" onClick={(e) => { e.stopPropagation(); onOpen(openRef); }}>
             {z.lebensabschnitt === 'verbunden' ? z.zeile.name : z.name}
@@ -296,10 +295,10 @@ function GeraeteZeile({ z, jetzt, onOpen, werkstattBoxen, onLoeschenAnfragen }: 
           {z.lebensabschnitt === 'verbunden' && <span className="vp-box-art"><BoxArtChip boxArt={z.zeile.row.boxArt} /></span>}
         </span>
       </td>
-      <td data-label="Kunde und Anlage">
+      <td data-label="Kunde und Anlage" data-zeile="neben">
         {z.lebensabschnitt === 'verbunden' ? z.zeile.ort : <span className="vp-muted">{LEBENSABSCHNITT_LABEL[z.lebensabschnitt]}</span>}
       </td>
-      <td data-label="Verbindung">
+      <td data-label="Verbindung" data-zeile="neben">
         {z.lebensabschnitt === 'verbunden' ? (
           <div className={`vp-gu-verb ${z.zeile.verbindung.zustand}`}>
             <b><i aria-hidden="true" />{z.zeile.verbindung.text}</b>
@@ -309,19 +308,19 @@ function GeraeteZeile({ z, jetzt, onOpen, werkstattBoxen, onLoeschenAnfragen }: 
           <span className="vp-muted">{z.seit ? fmtRelative(z.seit, jetzt) : '–'}</span>
         )}
       </td>
-      <td data-label="Software">
+      <td data-label="Software" data-zeile="neben">
         {z.lebensabschnitt === 'verbunden' && z.zeile.urteil ? (
           <Badge variant={z.zeile.urteil.ton === 'ok' ? 'ok' : z.zeile.urteil.ton === 'warn' || z.zeile.urteil.ton === 'fehler' ? 'warn' : 'off'} dot>
             {z.zeile.urteil.text}
           </Badge>
-        ) : <span className="vp-muted">–</span>}
+        ) : <span className="vp-muted vp-zeilen-nur-breit">–</span>}
       </td>
-      <td data-label="Hinweis">
+      <td data-label="Hinweis" data-zeile="neben">
         {z.lebensabschnitt === 'verbunden'
           ? (z.zeile.satz ? z.zeile.satz.map((t) => (typeof t === 'string' ? t : t.mono)).join('') : null)
           : <Badge variant={z.suspect ? 'warn' : 'off'} dot>{z.hinweis}</Badge>}
       </td>
-      <td className="vp-gu-pfeil-zelle">
+      <td className="vp-gu-pfeil-zelle" data-zeile="aktion">
         <span className="vp-gu-zeile-aktionen" onClick={(e) => e.stopPropagation()}>
           {kandidat && (
             <RowMenu label={`Aktionen für ${ref}`} items={[

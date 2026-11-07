@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EdgeUpdates } from '../../adminEdgeUpdates';
 
@@ -81,7 +81,9 @@ describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnit
       provisionedAt: new Date().toISOString(),
     }]);
     render(<GeraeteListePage onOpen={vi.fn()} />);
-    expect(await screen.findByText('Gedruckt', { exact: false })).toBeInTheDocument();
+    // In der Zeile selbst (früher traf die Suche den Kopf-Satz „… gedruckt, meldet sich …“).
+    const zeile = (await screen.findAllByText('VP-0001'))[0].closest('tr')!;
+    expect(within(zeile).getAllByText('Gedruckt').length).toBeGreaterThan(0);
     expect(screen.getByTestId('geraete-liste')).toHaveTextContent('VP-0001');
   });
 

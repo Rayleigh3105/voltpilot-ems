@@ -445,3 +445,28 @@ tr.vp-fw-gewaehlt > td {
 .vp-fw-erzeugen-auf > summary { cursor: pointer; width: fit-content; font-size: 0.875rem; color: var(--vp-text-muted); border-radius: var(--vp-radius-sm); }
 .vp-fw-erzeugen-auf > summary:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 2px; }
 .vp-fw-erzeugen-auf[open] > summary { margin-bottom: var(--vp-space-2); }
+
+/* Telefon (Auftrag vp-admin-mobil-ueberholung): Boxen und Techniker-Zugänge als kompakte
+   Zeilen (`vp-zeilen`) statt Etikett/Wert-Karten - Name oben, Zustand rechts, Tunnel,
+   Verbindung, Fenster und Schlüssel als kurze Zeilen, die Knöpfe als Fußzeile in einer Reihe.
+   Vorher war die Seite mit vier Boxen und vier Zugängen ~ 5.200 px lang. */
+@media (max-width: 720px) {
+  .vp-fw-tabelle-breit.vp-zeilen { --vp-zeilen-rand: var(--vp-space-4); }
+  .vp-fw-name { font-weight: 700; color: var(--vp-text-dark); }
+  .vp-table.vp-zeilen .vp-fw-name ~ .vp-cell-sub,
+  .vp-table.vp-zeilen td[data-zeile='haupt'] .vp-cell-sub { font-size: 0.8125rem; }
+  /* Der gekürzte öffentliche Schlüssel sagt am Telefon nichts; die volle Form steht im Titel und am Rechner. */
+  .vp-table.vp-zeilen .vp-fw-schluessel { display: none; }
+  .vp-table.vp-zeilen td.vp-zeilen-etikett .vp-cell-main { display: inline-flex; flex-direction: row; gap: 6px; }
+  .vp-table.responsive.vp-zeilen td.vp-fw-zelle-verbindung .vp-cell-main { gap: 2px; }
+  .vp-table.responsive.vp-zeilen td.vp-fw-zelle-ssh .vp-cell-main { flex-wrap: wrap; }
+  .vp-table.responsive.vp-zeilen.vp-fw-tabelle-breit tr.vp-fw-hat-unterzeile { border-bottom: 0; padding-bottom: var(--vp-space-2); }
+  .vp-table.responsive.vp-zeilen.vp-fw-tabelle-breit tr.vp-fw-unterzeile { padding-top: 0; border-top: 0; }
+  .vp-fw-aktionen.vp-fw-aktionen-box { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .vp-fw-aktionen-box .vp-fw-sperre { flex-basis: 100%; max-width: none; }
+  .vp-fw-aktionen.vp-fw-aktionen-raster { flex-wrap: wrap; justify-content: flex-start; }
+}
+@media (max-width: 720px) {
+  /* Ein offenes Fenster: Zustand | bis wann · wer | „Schließen“ in EINER Zeile statt drei. */
+  .vp-table.vp-zeilen .vp-fw-fenster li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; align-items: center; }
+}

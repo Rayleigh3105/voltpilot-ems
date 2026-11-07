@@ -208,7 +208,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
             ) : (
               <Card style={{ padding: 0, overflow: 'hidden' }}>
                 <div className="vp-table-scroll">
-                  <table className="vp-table responsive vp-fw-tabelle-breit" data-testid="fw-boxen">
+                  <table className="vp-table responsive vp-zeilen vp-fw-tabelle-breit" data-testid="fw-boxen">
                     <thead>
                       <tr>
                         <th>Box</th>
@@ -227,25 +227,26 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                         return (
                           <Fragment key={b.id}>
                           <tr className={`${anmeldung ? 'vp-fw-hat-unterzeile' : ''}${gewaehlt}` || undefined}>
-                            <td data-label="Box">
+                            <td data-label="Box" data-zeile="haupt">
                               <span className="vp-cell-main">
-                                <span>
+                                <span className="vp-fw-name">
                                   {b.edgeRef}{' '}
                                   {b.status === 'gesperrt' && <Badge variant="off">gesperrt</Badge>}
                                 </span>
                                 <span className="vp-cell-sub">{boxOrt(b)}</span>
                               </span>
                             </td>
-                            <td data-label="Tunnel">
+                            <td data-label="Tunnel" data-zeile="neben" className="vp-zeilen-etikett">
                               <span className="vp-cell-main">
                                 <span>{b.adresse}</span>
-                                <span className="vp-cell-sub" title={b.publicKey}>
+                                <span className="vp-cell-sub vp-fw-schluessel" title={b.publicKey}>
                                   {b.publicKeyKurz}
                                 </span>
                               </span>
                             </td>
                             <td
                               data-label="Verbindung"
+                              data-zeile="neben"
                               className="vp-fw-zelle-verbindung"
                               data-testid="fw-verbindung"
                               data-fall={verbindung.fall}
@@ -259,7 +260,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 <span className="vp-cell-sub vp-fw-umbruch">{verbindung.text}</span>
                               </span>
                             </td>
-                            <td data-label="Fernwartung">
+                            <td data-label="Fernwartung" data-zeile="neben">
                               {b.laufendeFenster.length === 0 ? (
                                 <span className="vp-muted">kein Fenster</span>
                               ) : (
@@ -283,7 +284,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 </ul>
                               )}
                             </td>
-                            <td data-label="Aktionen">
+                            <td data-label="Aktionen" data-zeile="fuss">
                               <div className="vp-fw-aktionen vp-fw-aktionen-box">
                                 <Button
                                   variant="primary"
@@ -372,7 +373,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
             ) : (
               <Card style={{ padding: 0, overflow: 'hidden' }}>
                 <div className="vp-table-scroll">
-                  <table className="vp-table responsive vp-fw-tabelle-breit" data-testid="fw-techniker">
+                  <table className="vp-table responsive vp-zeilen vp-fw-tabelle-breit" data-testid="fw-techniker">
                     <thead>
                       <tr>
                         <th>Zugang</th>
@@ -388,21 +389,21 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                         .sort((a, b) => a.name.localeCompare(b.name, 'de'))
                         .map((t) => (
                           <tr key={t.id}>
-                            <td data-label="Zugang">
+                            <td data-label="Zugang" data-zeile="haupt">
                               <span className="vp-cell-main">
-                                <span>{t.name}</span>
+                                <span className="vp-fw-name">{t.name}</span>
                                 {t.notiz && <span className="vp-cell-sub">{t.notiz}</span>}
                               </span>
                             </td>
-                            <td data-label="Tunnel">
+                            <td data-label="Tunnel" data-zeile="neben" className="vp-zeilen-etikett">
                               <span className="vp-cell-main">
                                 <span>{t.adresse}</span>
-                                <span className="vp-cell-sub" title={t.publicKey}>
+                                <span className="vp-cell-sub vp-fw-schluessel" title={t.publicKey}>
                                   {t.publicKeyKurz}
                                 </span>
                               </span>
                             </td>
-                            <td data-label="SSH-Schlüssel" className="vp-fw-zelle-ssh">
+                            <td data-label="SSH-Schlüssel" data-zeile="neben" className="vp-fw-zelle-ssh vp-zeilen-etikett">
                               {t.sshFingerabdruck ? (
                                 <span className="vp-cell-main">
                                   <span className="vp-fw-fingerabdruck">{t.sshFingerabdruck}</span>
@@ -416,12 +417,12 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                               )}
                             </td>
                             <HandshakeZelle handshake={technikerHandshake(t, uebersicht, jetzt)} />
-                            <td data-label="Status">
+                            <td data-label="Status" data-zeile="marke">
                               <Badge variant={t.status === 'aktiv' ? 'ok' : 'off'} dot>
                                 {t.status}
                               </Badge>
                             </td>
-                            <td data-label="Aktionen">
+                            <td data-label="Aktionen" data-zeile="fuss">
                               <div className="vp-fw-aktionen vp-fw-aktionen-raster">
                                 <Button variant="ghost" size="sm" onClick={() => setKonfigFuer(t)}>
                                   Konfiguration
@@ -641,6 +642,8 @@ function HandshakeZelle({ handshake }: { handshake: TechnikerHandshake }) {
   return (
     <td
       data-label="Letzter Handshake"
+      data-zeile="neben"
+      className="vp-zeilen-etikett"
       data-testid="fw-handshake"
       data-fall={handshake.fall}
       title={handshake.titel}

@@ -11,7 +11,7 @@
   }
   .vp-admin-head .vp-admin-head-main > .titles { display: contents; }
   .vp-admin-head .titles h1 { font-size: 1.75rem; line-height: 1.2; overflow-wrap: anywhere; hyphens: auto; }
-  .vp-admin-head .titles p { grid-column: 1 / -1; font-size: 1rem; line-height: 1.5; }
+  .vp-admin-head .titles p { grid-column: 1 / -1; font-size: 1rem; line-height: 1.5; margin: var(--vp-space-2) 0 0; }
   .vp-kpis.vp-admin-pulse { gap: var(--vp-space-2); }
   .vp-admin-pulse .vp-kpi { padding: 0.75rem 1rem !important; }
   .vp-admin-pulse .vp-stat-val { font-size: 1.25rem; }

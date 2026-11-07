@@ -859,3 +859,10 @@
 .vp-ws-technik small { display: block; margin-top: 2px; }
 .vp-ws-technik-grund { margin-top: 4px; font-size: 0.875rem; overflow-wrap: anywhere; }
 .vp-ws-technik-grund code { font-size: 0.8125rem; }
+
+/* Telefon: Box-Zeilen kompakt (`vp-zeilen`); die Zelle der Tabelle trägt dort kein eigenes Polster. */
+@media (max-width: 720px) {
+  .vp-ws-tabelle.vp-zeilen { --vp-zeilen-rand: var(--vp-space-3); font-size: 0.9375rem; }
+  .vp-table.responsive.vp-zeilen.vp-ws-tabelle td { border-bottom: 0; }
+  .vp-ws-tabelle.vp-zeilen td[data-zeile='marke'] { color: var(--vp-text-muted); font-size: 0.8125rem; }
+}

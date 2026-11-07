@@ -112,6 +112,23 @@
 .vp-gu-such:focus-within { border-color: var(--vp-action); box-shadow: 0 0 0 3px rgba(90, 141, 232, 0.25); }
 .vp-gu-leer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 18px 16px; color: var(--vp-text-gray); }
 
+/* Geräte-Liste am Telefon (`vp-zeilen`): je Box eine kompakte Zeile - Name, darunter Referenz,
+   Kunde/Anlage, Verbindung, Software und Hinweis als kurze Zeilen; vorher ~ 350 px Etikett/Wert-Karte.
+   Filter-Chips brechen um statt rechts abgeschnitten zu scrollen, die Suche nimmt die volle Breite. */
+@media (max-width: 720px) {
+  .vp-gu-filterzeile .vp-gu-seg { flex-wrap: wrap; overflow-x: visible; }
+  .vp-gu-filterzeile .vp-gu-such { margin-left: 0; width: 100%; min-width: 0; }
+  .vp-gu-filterzeile .vp-gu-such input { padding: 10px 0; font-size: 1rem; }
+  .vp-geraeteliste { --vp-zeilen-rand: var(--vp-space-4); }
+  .vp-geraeteliste .vp-cell-main { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 8px; }
+  .vp-geraeteliste .vp-cell-main .vp-linklike { flex-basis: 100%; text-align: left; font-weight: 700; }
+  .vp-geraeteliste .vp-box-art { display: inline; margin: 0; }
+  /* „Box-Art unbekannt“ stünde sonst an jeder Zeile; die Geräteakte nennt sie. */
+  .vp-geraeteliste .vp-box-art:has([data-box-art='unbekannt']) { display: none; }
+  .vp-geraeteliste .vp-gu-verb { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .vp-geraeteliste .vp-gu-zeile-aktionen { display: inline-flex; align-items: center; }
+}
+
 /* Die Box-Tabelle: Spalten am Rechner, Karten am Telefon */
 .vp-gu-tabelle { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .vp-gu-tabelle th, .vp-gu-tabelle td { text-align: left; vertical-align: middle; padding: 12px 16px; }

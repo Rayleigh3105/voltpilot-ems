@@ -233,7 +233,8 @@ export function GeraeteAktePage({
       ) : reiter === 'verlauf' ? (
         <VerlaufReiter verlauf={verlauf} jetzt={jetzt} fwProtokoll={fwProtokoll ?? []} />
       ) : (
-        <UeberblickReiter row={row} ersterLeerLauf={ersterLeerLauf} jetzt={jetzt} onReiter={nav} akte={akte} />
+        <UeberblickReiter row={row} ersterLeerLauf={ersterLeerLauf} jetzt={jetzt} onReiter={nav} akte={akte}
+          onJumpToTenant={onJumpToTenant} />
       )}
     </div>
   );
@@ -299,7 +300,7 @@ function AktenKopf({
         category="primary"
         title={name}
         description={
-          <span className="vp-row-gap" style={{ alignItems: 'center' }}>
+          <span className="vp-row-gap vp-akte-kennung" style={{ alignItems: 'center' }}>
             <BoxArtChip boxArt={row?.boxArt ?? null} />
             <span className="vp-mono">{boxRef}</span>
             {row && (
@@ -310,11 +311,15 @@ function AktenKopf({
           </span>
         }
         actions={
-          <div className="vp-row-gap" style={{ alignItems: 'center' }}>
-            <span className="vp-muted vp-text-sm" data-testid="akte-stand">{stand}</span>
-            <Badge variant={zustandBadge.variant} dot pulse={pulsiert} data-testid="akte-zustand">
-              {zustandBadge.text}
-            </Badge>
+          // Am Telefon: Zustand und Stand in EINER Zeile, darunter die Knöpfe in einer Reihe
+          // (vorher verteilten sich Stand, Zustand und drei Knöpfe auf drei unordentliche Zeilen).
+          <div className="vp-row-gap vp-akte-aktionen" style={{ alignItems: 'center' }}>
+            <span className="vp-akte-status">
+              <span className="vp-muted vp-text-sm" data-testid="akte-stand">{stand}</span>
+              <Badge variant={zustandBadge.variant} dot pulse={pulsiert} data-testid="akte-zustand">
+                {zustandBadge.text}
+              </Badge>
+            </span>
             {row && (
               <Button variant="outline" size="sm" onClick={() => onReiter('verbindung')}>Fernwartung öffnen</Button>
             )}
@@ -353,13 +358,15 @@ function AktenKopf({
 
 // ── Überblick ───────────────────────────────────────────────────────────────
 
-function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte }: {
+function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpToTenant }: {
   row: FleetRow | null;
   ersterLeerLauf: boolean;
   jetzt: Date;
   onReiter: (r: GeraeteAkteReiter) => void;
   /** §5.3-Sonderfall L2: Herzschlag und Messwert getrennt, aus der Akte-in-einer-Antwort (L3). */
   akte: AdminGeraeteAkte | null;
+  /** „Wie der Kunde es sieht": öffnet die Anlage dieser Box in der Kundensicht (Live-Werte). */
+  onJumpToTenant?: (tenantId: string, target: Route) => void;
 }) {
   if (ersterLeerLauf) {
     return (
@@ -395,9 +402,15 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte }: {
             Messwerte {luecke.seit} aus - die Datenannahme braucht einen Blick, nicht die Box.
           </p>
         ) : (
-          <p className="vp-muted">
-            Live-Messwerte dieser Anlage (PV, Netz, Speicher, Haus) stehen in der Kundenansicht dieser Box - „Wie der Kunde es sieht“ im Menü „⋯“ des Kopfes.
-          </p>
+          // Der frühere Satz verwies auf „Wie der Kunde es sieht im Menü ⋯ des Kopfes" - dieses Menü
+          // trägt den Eintrag nicht. Jetzt führt der Knopf darunter selbst dorthin.
+          <p className="vp-muted">Live-Werte (PV, Netz, Speicher, Haus) zeigt die Kundensicht dieser Anlage.</p>
+        )}
+        {onJumpToTenant && (
+          <Button variant="outline" size="sm" iconLeft={<Icon name="eye" size={16} />}
+            onClick={() => onJumpToTenant(row!.tenantId, anlageRoute(row!.siteId))}>
+            Wie der Kunde es sieht
+          </Button>
         )}
       </Card>
       <Card padding="lg" radius="lg" className="vp-geraet-sek">

@@ -50,6 +50,27 @@
   }
 }
 
+/* Kopf der Akte: Stand und Zustand gehören zusammen. Am Telefon steht der Zustand vorn
+   in EINER Zeile mit dem Stand, darunter die Knöpfe nebeneinander; die Kennzeile nennt
+   Referenz und Kunde › Anlage ohne „Box-Art unbekannt“ (die Einrichtung nennt sie). */
+.vp-akte-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2) var(--vp-space-3);
+}
+@media (max-width: 720px) {
+  .vp-akte-kennung { font-size: 0.875rem; row-gap: 2px; }
+  .vp-akte-kennung > :has([data-box-art='unbekannt']),
+  .vp-akte-kennung > [data-box-art='unbekannt'] { display: none !important; }
+  .vp-akte-aktionen { gap: var(--vp-space-2); }
+  .vp-akte-aktionen .vp-akte-status { flex: 1 1 100%; }
+  .vp-akte-aktionen .vp-akte-status [data-testid='akte-zustand'] { order: -1; }
+  .vp-akte-aktionen .vp-akte-status [data-testid='akte-stand'] { font-size: 0.8125rem; }
+  .vp-akte-aktionen > .vp-btn { flex: 1 1 0; min-width: 0; }
+  .vp-akte-aktionen > .vp-akte-menu { flex: 0 0 auto; }
+}
+
 .vp-akte-menu-liste {
   display: flex;
   flex-direction: column;

@@ -105,6 +105,15 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
     expect(tabs).toHaveTextContent('Verlauf');
   });
 
+  it('Überblick: „Wie der Kunde es sieht" ist ein Knopf zur Anlage der Box (das Kopf-Menü ⋯ trägt ihn nicht)', async () => {
+    edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [connectedRow] });
+    const jump = vi.fn();
+    render(<GeraeteAktePage boxRef="edge-a1" reiter={null} onJumpToTenant={jump} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Wie der Kunde es sieht' }));
+    expect(jump).toHaveBeenCalledWith('t1', expect.objectContaining({ page: 'anlagen', siteId: 's1' }));
+    expect(screen.queryByText(/im Menü „⋯“ des Kopfes/)).toBeNull();
+  });
+
   it('wechselt per Reiter inline - kein Fenster, keine zweite Seite (E1 = A)', async () => {
     edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [connectedRow] });
     const nav = vi.fn();

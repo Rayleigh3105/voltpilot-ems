@@ -330,7 +330,8 @@ function BoxTabelle({ zeilen, auswahl, onWaehle }: { zeilen: UebersichtZeile[]; 
   }
   return (
     <div className="vp-ws-tabelle-rahmen vp-table-scroll">
-      <table className="vp-table responsive vp-ws-tabelle" data-testid="ws-boxen">
+      {/* Am Telefon (`vp-zeilen`): Box und Zeit oben, darunter Gerät und Stand - statt vier Etikett-Zeilen je Box. */}
+      <table className="vp-table responsive vp-zeilen vp-ws-tabelle" data-testid="ws-boxen">
         <thead>
           <tr>
             <th>Box</th>
@@ -344,19 +345,19 @@ function BoxTabelle({ zeilen, auswahl, onWaehle }: { zeilen: UebersichtZeile[]; 
             const b = STAND_BADGE[z.stand];
             return (
               <tr key={z.box ?? `ohne-${i}`} className={z.box && z.box === auswahl ? 'vp-ws-gewaehlt' : undefined} data-stand={z.stand}>
-                <td data-label="Box">
+                <td data-label="Box" data-zeile="haupt">
                   {z.box ? (
                     <button type="button" className="vp-ws-link" onClick={() => onWaehle(z.box as string)}>{z.box}</button>
                   ) : (
                     '–'
                   )}
                 </td>
-                <td data-label="Gerät">{z.geraet}</td>
-                <td data-label="Stand">
+                <td data-label="Gerät" data-zeile="neben">{z.geraet}</td>
+                <td data-label="Stand" data-zeile="neben">
                   <Badge variant={b.variant}>{b.text}</Badge> {z.text !== b.text && <span className="vp-muted">{z.text}</span>}
                 </td>
                 {/* Heute nur die Uhrzeit, sonst mit Tag: „05:06“ von gestern sähe sonst aus wie heute. */}
-                <td data-label="Seit">{zeitpunkt(z.seit, new Date())}</td>
+                <td data-label="Seit" data-zeile="marke">{zeitpunkt(z.seit, new Date())}</td>
               </tr>
             );
           })}
