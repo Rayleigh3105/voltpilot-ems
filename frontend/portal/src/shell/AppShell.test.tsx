@@ -1128,3 +1128,24 @@ describe('Seitenleiste: ein Titel nur, wo er mehr sagt als der sichtbare Text (B
     expect(titel().Portfolio).toBe('Portfolio');
   });
 });
+
+describe('AppShell: Sprung zum Inhalt vor Seitenleiste und Kopfzeile (WCAG 2.4.1)', () => {
+  it('ist der erste fokussierbare Knoten der Schale und setzt den Fokus auf <main>, ohne die Adresse zu ändern', () => {
+    window.location.hash = '#/fahrplan';
+    const { container } = render(
+      <AppShell {...baseProps}>
+        <div>content</div>
+      </AppShell>,
+    );
+    const app = container.querySelector('.vp-app')!;
+    const sprung = app.firstElementChild as HTMLElement;
+    expect(sprung).toBe(screen.getByRole('button', { name: 'Zum Inhalt springen' }));
+    expect(sprung.className).toContain('vp-skip-link');
+    const main = container.querySelector('main')!;
+    expect(main.getAttribute('tabindex')).toBe('-1');
+    fireEvent.click(sprung);
+    expect(document.activeElement).toBe(main);
+    // Jeder Hash ist eine Route - ein Anker hätte die Seite gewechselt.
+    expect(window.location.hash).toBe('#/fahrplan');
+  });
+});

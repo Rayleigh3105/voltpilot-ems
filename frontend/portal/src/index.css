@@ -336,6 +336,36 @@ svg [tabindex]:focus-visible {
   outline-offset: 4px;
 }
 
+/* Erster Tab-Stopp jeder Seite (`AppShell`): ohne ihn tabbt eine
+   Tastaturbedienung auf JEDER Seite erst durch die ganze Seitenleiste und
+   Kopfzeile, bevor der Inhalt beginnt (WCAG 2.4.1 "Bypass Blocks").
+   Unsichtbar, bis er den Tastaturfokus trägt. Er setzt den Fokus auf
+   `<main tabindex="-1">`; das ist kein Bedienelement, ein Ring um die ganze
+   Spalte sagte nichts - der nächste Tab landet im Inhalt. */
+.vp-skip-link {
+  position: absolute;
+  top: -100px;
+  left: 8px;
+  z-index: 100;
+  padding: 8px 16px;
+  border: 0;
+  background: var(--vp-surface);
+  color: var(--vp-action);
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--vp-radius-sm);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+.vp-skip-link:focus-visible {
+  top: 8px;
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-main:focus {
+  outline: none;
+}
+
 /* ============================================================
    Unified dashboard shell: fixed sidebar + content column
    ============================================================ */
