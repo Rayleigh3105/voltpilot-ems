@@ -194,7 +194,9 @@ button.vp-einst-zeile:focus-visible {
 }
 
 .vp-einst-zeile.is-gefahr .vp-einst-lab b {
-  color: var(--vp-chart-discharge);
+  /* Das Rot der Fehler-Hinweise (5,6 : 1); `--vp-chart-discharge` ist ein
+     Diagramm-Ton und hielt als Schrift auf Weiß nur 4,23 : 1 (WCAG 1.4.3). */
+  color: var(--vp-industry-end);
 }
 
 .vp-einst-tile {
