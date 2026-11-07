@@ -31,6 +31,7 @@
              sonst halten sie Versionen der alten Linie fest. -->
         <tomcat.version>10.1.61</tomcat.version>
         <logback.version>1.5.38</logback.version>
+        <postgresql.version>42.7.14</postgresql.version>
     </properties>
 
     <dependencies>
