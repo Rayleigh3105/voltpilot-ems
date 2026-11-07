@@ -97,6 +97,47 @@ describe('AppShell Suche statt Mandanten-Umschalter (Scheibe S1, E3 = A)', () =>
     expect(onTenantChange).toHaveBeenCalledWith('t-2');
   });
 
+  it('ein Kunde aus der Suche springt in seine Kundensicht (nicht nur Mandant setzen)', () => {
+    const onTenantChange = vi.fn();
+    const onKundeOeffnen = vi.fn();
+    render(
+      <AppShell
+        {...baseProps}
+        isAdmin
+        showAddAnlage={false}
+        onAddAnlage={vi.fn()}
+        tenants={tenants}
+        onTenantChange={onTenantChange}
+        onKundeOeffnen={onKundeOeffnen}
+      >
+        <div>content</div>
+      </AppShell>,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' }));
+    fireEvent.click(screen.getByRole('option', { name: /Familie Kaiser/ }));
+    expect(onKundeOeffnen).toHaveBeenCalledWith('t-2');
+    expect(onTenantChange).not.toHaveBeenCalled();
+  });
+
+  it('das Feld nennt den offenen Kunden statt „Bitte wählen …“', () => {
+    const { rerender } = render(
+      <AppShell {...baseProps} isAdmin showAddAnlage={false} onAddAnlage={vi.fn()} tenants={tenants}>
+        <div>content</div>
+      </AppShell>,
+    );
+    const feld = () => screen.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen' });
+    expect(feld()).toHaveTextContent('Kunde suchen …');
+    expect(feld()).not.toHaveTextContent('Bitte wählen');
+    rerender(
+      <AppShell {...baseProps} isAdmin showAddAnlage={false} onAddAnlage={vi.fn()} tenants={tenants} tenantOverride="t-2">
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(feld()).toHaveTextContent('Familie Kaiser');
+    fireEvent.click(feld());
+    expect(screen.getByRole('option', { name: /Familie Kaiser/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('sucht auch über die Plattform-Seiten und navigiert dorthin', () => {
     const onNavigate = vi.fn();
     render(
@@ -139,7 +180,7 @@ describe('AppShell Suche statt Mandanten-Umschalter (Scheibe S1, E3 = A)', () =>
         <div>content</div>
       </AppShell>,
     );
-    expect(screen.getByText('Familie Kaiser')).toBeInTheDocument();
+    expect(document.querySelector('.vp-kundenansicht-band')).toHaveTextContent('Familie Kaiser');
     fireEvent.click(screen.getByRole('button', { name: 'Zur Plattform zurück' }));
     expect(onTenantChange).toHaveBeenCalledWith(null);
   });

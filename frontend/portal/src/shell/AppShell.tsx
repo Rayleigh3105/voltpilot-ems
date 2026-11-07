@@ -45,6 +45,7 @@ import type { VpOption } from '../picker/optionen';
 import type { AnlagenSub, Route } from '../nav';
 import { HealthBadgeButton } from './HealthBadgeButton';
 import { GlockeButton } from './GlockeButton';
+import { ADMIN_SUCHE_PLATZHALTER, ADMIN_SUCHE_SUCHTEXT, adminSucheOptionen, adminSucheWert, adminSucheZiel } from './adminSuche';
 import { meldungenApi } from '../meldungenApi';
 import './Shell.css';
 import { HelpProvider, HelpLink } from '../help/HelpProvider';
@@ -186,6 +187,7 @@ export function AppShell({
   tenants,
   tenantOverride,
   onTenantChange,
+  onKundeOeffnen,
   anlage = null,
   ebenen = null,
   ortsPfad = null,
@@ -237,6 +239,11 @@ export function AppShell({
   /** Admin only: the selected tenant id ('' = Alle Mandanten). */
   tenantOverride: string | null;
   onTenantChange: (tenantId: string | null) => void;
+  /**
+   * Admin: ein Kunde aus der Suche oben öffnet seine Kundensicht — derselbe Sprung wie „Wie der Kunde es sieht“
+   * in der Kundenakte (Mandant setzen UND dorthin navigieren). Fehlt er, setzt die Suche nur den Mandanten.
+   */
+  onKundeOeffnen?: (tenantId: string) => void;
   /** Die Anlagen-Navigation (fünf Bereiche + Pfad); null = keine Anlage offen. */
   anlage?: AnlageNav | null;
   /**
@@ -734,16 +741,16 @@ export function AppShell({
               <VpPicker
                 className="vp-context-picker"
                 ariaLabel="Box, Kunde, Anlage, Person suchen"
-                options={[
-                  ...tenants.map((t) => ({ value: `kunde:${t.id}`, label: t.name, sub: 'Kunde' })),
-                  ...PLATFORM_PAGES.map((p) => ({ value: `seite:${p.id}`, label: p.label, sub: 'Plattform' })),
-                ]}
-                value=""
+                options={adminSucheOptionen(tenants, PLATFORM_PAGES)}
+                // Das Feld nennt den Kunden, dessen Sicht offen ist — nie „Bitte wählen …“ über einer Kundensicht.
+                value={adminSucheWert(tenantOverride)}
+                placeholder={ADMIN_SUCHE_PLATZHALTER}
                 onChange={(v) => {
-                  if (v.startsWith('kunde:')) onTenantChange(v.slice('kunde:'.length));
-                  else if (v.startsWith('seite:')) onNavigate(v.slice('seite:'.length) as PageId);
+                  const ziel = adminSucheZiel(v);
+                  if (ziel?.art === 'kunde') (onKundeOeffnen ?? onTenantChange)(ziel.id);
+                  else if (ziel?.art === 'seite') onNavigate(ziel.id as PageId);
                 }}
-                searchPlaceholder="Box, Kunde, Anlage, Person suchen …"
+                searchPlaceholder={ADMIN_SUCHE_SUCHTEXT}
               />
             </span>
           )}

@@ -55,9 +55,10 @@ for (const [breite, breit] of [[1440, true], [375, false]] as const) {
       await expect(leiste.filter({ hasText: new RegExp(`^${name}$`) }), name).toHaveAttribute('aria-current', 'page');
       // Weiter im Mandanten: derselbe Kundenbereich, der Umschalter nennt ihn.
       expect(await page.evaluate(() => sessionStorage.getItem('vp-tenant-override')), name).toBe(MANDANT_ID);
-      // Scheibe S1 (E3 = A): die Suche zeigt keinen gewählten Wert mehr - das
-      // Rückweg-Band nennt stattdessen den Mandanten der Kundenansicht.
+      // Das Rückweg-Band nennt den Mandanten der Kundenansicht, und die Suche oben ebenso (Befund 07.11.2026:
+      // davor stand dort „Bitte wählen …“, auch mitten in der Kundensicht).
       await expect(page.locator('.vp-kundenansicht-band')).toContainText(MIT);
+      await expect(page.getByRole('combobox', { name: 'Box, Kunde, Anlage, Person suchen', exact: true }), name).toHaveText(new RegExp(MIT));
       if (name === 'Fahrplan' || name === 'Steuerung') await foto(page, `mandantensicht-${name.toLowerCase()}-${breite}`);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), name).toBeLessThanOrEqual(1);
     }

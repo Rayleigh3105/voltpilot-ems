@@ -1499,6 +1499,7 @@ function UnifiedPortal() {
       tenants={tenants}
       tenantOverride={tenantId}
       onTenantChange={changeTenant}
+      onKundeOeffnen={(id) => jumpToTenant(id, 'uebersicht')}
       anlage={leer ? null : anlageNav}
       ebenen={leer ? null : ebenenNav}
       ohneStandort={leer}
