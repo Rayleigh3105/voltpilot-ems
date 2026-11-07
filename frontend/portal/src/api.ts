@@ -8315,6 +8315,15 @@ function mitKennung(kennung: string | undefined): RequestInit {
   return kennung ? { headers: { [ANFRAGE_KENNUNG_KOPF]: kennung } } : {};
 }
 
+/**
+ * Obergrenze je lesender Anfrage, damit eine hängende Verbindung (Netz weg, Proxy ohne Antwort) den
+ * Boot nie unbegrenzt am Lade-Vorhang hält - vorher hatte der Boot-Abruf (`/me`, `/sites`, …) gar
+ * keine Zeitgrenze. Großzügig genug, um eine echte, nur langsame Antwort nicht fälschlich abzubrechen -
+ * dieselbe Größenordnung wie `auth.ts` `TOKEN_GRANT_TIMEOUT_MS`, aber für Fachaufrufe statt des
+ * Token-Endpunkts.
+ */
+const REQUEST_TIMEOUT_MS = 20_000;
+
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
   const angefragterMandant = tenantOverride;
   const angefragterKundenbereich = kundenbereich;
@@ -8336,6 +8345,11 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
       ...bereichKopf(path, angefragterKundenbereich, angefragterMandant),
       ...(init.headers ?? {}),
     },
+    // Ein eigenes Abbruch-Signal des Aufrufers (Komponenten-Unmount) bleibt UNVERÄNDERT wirksam -
+    // die Zeitgrenze tritt nur ein, wo bisher gar keines gesetzt war (der Boot-Fall), und nur beim
+    // Lesen: ein abgebrochener schreibender Aufruf (etwa ein Datei-Import) kann auf dem Server
+    // trotzdem fertig werden, und der Browser meldete dann einen Fehler für etwas, das geschah.
+    signal: init.signal ?? ((init.method ?? 'GET').toUpperCase() === 'GET' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined),
   };
   let res: Response;
   try {
