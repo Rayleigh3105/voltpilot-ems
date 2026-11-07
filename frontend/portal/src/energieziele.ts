@@ -5,7 +5,7 @@
  * Route; das Portal setzt nur Zahlen ins deutsche Format (`bezugsbasisVergleich.ts`) und wählt Wörter aus `glossar.ts`.
  * „Energieziel“, nie „Ziel“ allein (W6) — „Ziel: 2,2 kW“ gehört der Steuerung.
  */
-import { ApiError, type Energieziel, type EnergiezielEintrag, type EnergiezielErgebnis, type EnergiezielStand } from './api';
+import { ablehnungCode, ApiError, type Energieziel, type EnergiezielEintrag, type EnergiezielErgebnis, type EnergiezielStand } from './api';
 import { band, deltaText, deZahl, menge, monatWort, urteilWort } from './bezugsbasisVergleich';
 import {
   UEMS_ENERGIEZIEL,
@@ -289,10 +289,7 @@ export const ABLEHNUNG: Record<string, string> = {
 };
 
 /** Der Code einer Ablehnung (`VerbesserungAbgelehnt.code`), sonst `null`. */
-export function ablehnungCode(e: unknown): string | null {
-  const body = e instanceof ApiError && e.body && typeof e.body === 'object' ? (e.body as { code?: unknown }) : null;
-  return typeof body?.code === 'string' ? body.code : null;
-}
+export { ablehnungCode };
 
 export function ablehnungSatz(e: unknown): string {
   const body = e instanceof ApiError && e.body && typeof e.body === 'object' ? (e.body as { code?: unknown; message?: unknown }) : null;

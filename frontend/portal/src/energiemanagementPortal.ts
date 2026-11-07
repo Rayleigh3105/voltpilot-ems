@@ -6,6 +6,7 @@
  * trägt nur Ablage, Kennung, Adresse, Fassungsangabe, Tag und die im Browser gebildete Prüfsumme (G3).
  */
 import {
+  ablehnungCode,
   ApiError,
   type EnergiemanagementZuordnung,
   type EnergiemanagementBeleg,
@@ -565,10 +566,7 @@ const ABLEHNUNG: Record<string, string> = {
   beschluss_ungueltig: 'Bitte nennen Sie den Beschluss in der Form BR-2029-0001/B4.',
 };
 
-export const ablehnungCode = (e: unknown) =>
-  e instanceof ApiError && e.body && typeof e.body === 'object' && typeof (e.body as { code?: unknown }).code === 'string'
-    ? ((e.body as { code: string }).code)
-    : null;
+export { ablehnungCode };
 
 export function ablehnungSatz(e: unknown): string {
   const c = ablehnungCode(e);

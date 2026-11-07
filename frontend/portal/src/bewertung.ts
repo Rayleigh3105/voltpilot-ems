@@ -9,6 +9,7 @@
  * den Umfang festlegen nur mit `energieeinsatz.verwalten` am Unternehmen. Entscheiden tut weiter die Route.
  */
 import {
+  ablehnungCode,
   ApiError,
   type Bericht,
   type Bezugsgroesse,
@@ -364,11 +365,6 @@ export const namensVorschlag = (prozess: Pick<Prozess, 'name'> | undefined, trae
 
 // ------------------------------------------------------------------ Ablehnungen
 
-const code = (e: unknown): string | null =>
-  e instanceof ApiError && e.body && typeof e.body === 'object' && typeof (e.body as { code?: unknown }).code === 'string'
-    ? (e.body as { code: string }).code
-    : null;
-
 /**
  * Eine Ablehnung als Satz. „Zweiter laufender Einsatz“ (409 `einsatz_laeuft_bereits`, B1) nennt den laufenden Einsatz,
  * wenn die Liste ihn kennt; sonst spricht die Route ihren eigenen Satz.
@@ -377,7 +373,7 @@ export function ablehnung(
   e: unknown,
   kontext?: { prozess?: { id: string; name: string }; traeger?: EnergieTraeger; einsaetze?: readonly Energieeinsatz[] },
 ): string {
-  const c = code(e);
+  const c = ablehnungCode(e);
   if (c === 'einsatz_laeuft_bereits') {
     const laufend = kontext?.einsaetze?.find(
       (x) => x.prozess.id === kontext.prozess?.id && x.traeger === kontext.traeger && laeuft(x),

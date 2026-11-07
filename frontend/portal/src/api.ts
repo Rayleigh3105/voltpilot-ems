@@ -8165,6 +8165,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Der Code einer Ablehnung (`code` im JSON-Körper der Route), sonst `null`. */
+export function ablehnungCode(e: unknown): string | null {
+  const body = e instanceof ApiError && e.body && typeof e.body === 'object' ? (e.body as { code?: unknown }) : null;
+  return typeof body?.code === 'string' ? body.code : null;
+}
+
 /**
  * Portal-Admin tenant switcher: when set, every request carries the selected
  * tenant as `X-Tenant-Id`. The backend honors the header ONLY for
