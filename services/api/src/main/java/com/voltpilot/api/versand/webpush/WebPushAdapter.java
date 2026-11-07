@@ -29,16 +29,32 @@ public class WebPushAdapter {
     private static final Duration VAPID_GUELTIGKEIT = Duration.ofHours(12);
     private static final Duration STANDARD_TTL = Duration.ofHours(4);
 
+    /**
+     * Zeitgrenze für die gesamte Antwort des Push-Diensts, nicht nur den Verbindungsaufbau - ohne
+     * sie ließ ein Dienst, der die Verbindung annimmt und dann nie antwortet, den Versand-Thread
+     * unbegrenzt hängen ({@code HttpClient.connectTimeout} deckt das nicht ab). Dieselbe
+     * Größenordnung wie der Verbindungsaufbau, nach dem Muster von {@code TelegramBotAdapter}.
+     */
+    private static final Duration ANTWORT_ZEITGRENZE = Duration.ofSeconds(10);
+
     private final ECPrivateKeyParameters vapidPrivateKey;
     private final String vapidPublicKeyBase64Url;
     private final String subjectMailto;
     private final HttpClient http;
+    private final Duration antwortZeitgrenze;
     private final SecureRandom zufall = new SecureRandom();
 
     public WebPushAdapter(String vapidPublicKeyBase64Url, String vapidPrivateKeyBase64Url, String subjectMailto) {
+        this(vapidPublicKeyBase64Url, vapidPrivateKeyBase64Url, subjectMailto, ANTWORT_ZEITGRENZE);
+    }
+
+    /** Package-sichtbar für den Drahtebene-Test: eine kurze Zeitgrenze gegen einen hängenden Fänger. */
+    WebPushAdapter(String vapidPublicKeyBase64Url, String vapidPrivateKeyBase64Url, String subjectMailto,
+            Duration antwortZeitgrenze) {
         this.vapidPublicKeyBase64Url = vapidPublicKeyBase64Url;
         this.vapidPrivateKey = P256.schluesselPrivat(Base64Url.decode(vapidPrivateKeyBase64Url));
         this.subjectMailto = subjectMailto;
+        this.antwortZeitgrenze = antwortZeitgrenze;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     }
 
@@ -59,6 +75,7 @@ public class WebPushAdapter {
                 .header("Content-Type", "application/octet-stream")
                 .header("TTL", String.valueOf(STANDARD_TTL.toSeconds()))
                 .header("Authorization", "vapid t=" + jwt + ", k=" + vapidPublicKeyBase64Url)
+                .timeout(antwortZeitgrenze)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(koerper))
                 .build();
         try {
