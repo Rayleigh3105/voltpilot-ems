@@ -66,6 +66,11 @@ export interface GeraeteKarte {
    */
   zustandWort?: string;
   zustandZeit?: string | null;
+  /**
+   * Wann die Box die Quelle dieses Geräts zuletzt las (`/sources.readAt`, roh); null = unbekannt. Derselbe Zeitpunkt,
+   * aus dem `zustandZeit` entsteht - der Anlagenkopf nennt damit das Alter der Werte, die er aus diesen Zeilen bildet.
+   */
+  gelesenAm?: string | null;
   ton: GeraetTon;
   /** VoltPilot steuert das Gerät, statt es abzulesen (`PlantDevice.nurGesteuert`): kein Grund zur Aufmerksamkeit. */
   nurGesteuert?: boolean;
@@ -284,6 +289,7 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
       technischerName: customerName ? d.label : null,
       untertitel: geraeteArtWort(art, rolleVon(d.id), komponenten),
       ...(grund ? zustandFelder(BOX_LIEST_NICHT, null) : zustandFelder(d.state, alter(leseZeit(d.id), now))),
+      gelesenAm: leseZeit(d.id),
       ton: grund ? 'warn' : d.nurGesteuert ? 'ok' : HEALTH_TON[d.health],
       nurGesteuert: grund ? false : d.nurGesteuert,
       href: eigeneKomponenteId

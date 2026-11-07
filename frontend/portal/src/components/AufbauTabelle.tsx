@@ -473,6 +473,7 @@ function AnlageZeile({ z, p }: { z: Extract<TabellenZeile, { typ: 'anlage' }>; p
               {gatewayText(a) && ` · ${gatewayText(a)}`}
               {!a.aktuell && !p.standortSicht && ' · am selben Standort'}
               {a.wertStand === 'veraltet' && <span className="is-warn"> · keine aktuellen Werte</span>}
+              {a.wertAlter && <span> · Werte {a.wertAlter}</span>}
             </small>
           </span>
         </button>

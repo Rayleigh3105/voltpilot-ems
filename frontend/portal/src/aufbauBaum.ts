@@ -60,7 +60,7 @@ import type {
 import { boxLast, protokollName, quellWeg, quellZeile } from './boxUebersicht';
 import { technicalDeviceName } from './entityLabel';
 import { siteLiveFresh } from './fleet';
-import { fmtNum } from './format';
+import { fmtNum, fmtRelative } from './format';
 import type { GeraetTon } from './geraetSeite';
 import type { ComponentRole, PlantComponent } from './komponenten';
 import { anlagensteuerungGeraetId, chargerGeraetId, fuehrendeBoxOf, gatewaySeiteHash } from './geraetAdresse';
@@ -206,6 +206,8 @@ export interface AufbauAnlage {
   aktuell: boolean;
   werte: AufbauWert[];
   wertStand: WertStand;
+  /** Wie alt die Werte des Kopfs sind („vor 2 Min.") - nur, wenn sie nicht frisch sind (`KOPF_FRISCH_MS`); sonst null. */
+  wertAlter: string | null;
   boxen: AufbauBox[];
   /** Geräte, deren Box das Portal nicht sicher kennt (siehe Modulkopf). */
   ohneBox: AufbauGeraet[];
@@ -367,6 +369,126 @@ export function anlagenWerte(
     );
   }
   return { werte, stand: 'aktuell' };
+}
+
+/**
+ * Ab diesem Alter nennt der Anlagenkopf, wie alt seine Werte sind: zwei Abruftakte der Seite (`LIST_POLL_MS`).
+ * Jünger gilt als „jetzt" - die Box liest ihre Quellen alle paar Sekunden.
+ */
+export const KOPF_FRISCH_MS = 60_000;
+
+/** Der Kopf einer Anlage: seine Chips, ob sie aktuell sind, und - nur wenn nicht frisch - ihr Alter („vor 2 Min."). */
+export interface AnlagenKopf {
+  werte: AufbauWert[];
+  stand: WertStand;
+  alter: string | null;
+}
+
+/**
+ * Der Kopf der GEÖFFNETEN Anlage aus denselben Werten wie ihre Gerätezeilen (Schramm „Zuhause", 07.11.2026: der Kopf
+ * las den jüngsten Rohwert der Übersicht - „Netz Bezug 5,4 kW" -, die Zeile des Netzzählers das 30-s-Mittel der
+ * Topologie - „0,6 kW Einspeisung". Dieselbe Quelle auf zwei Zeitbasen, bei einer Hallenlast, die in Sekunden um
+ * mehrere kW springt.) Darum je Rolle:
+ *
+ * - PV: die Summe der PV-Zeilen mit aktuellem Wert - genau die Zahlen, die der Kunde darunter addiert.
+ * - Netz: die Zeile des einen Netzzählers. Bei mehreren Netz-Komponenten bleibt der Wert der Übersicht: eine
+ *   gespeicherte Netz-Zuordnung kann mehrere Zähler summieren, und keine einzelne Zeile ist dann „das Netz".
+ * - Speicher: der Ladestand der einen Speicher-Zeile; bei mehreren bleibt der Wert der Übersicht.
+ *
+ * Hat die Anlage keine Komponente einer Rolle, trägt die Übersicht den Chip (es gibt keine Zeile, der er
+ * widersprechen könnte). Gibt es Zeilen, aber keine mit aktuellem Wert, steht kein Chip - fehlend ist keine Null.
+ * `karten` null (noch nicht geladen) = der Kopf der Übersicht wie bisher.
+ */
+export function anlagenKopf(
+  karten: GeraeteKarte[] | null,
+  site: OverviewSite | null | undefined,
+  now: number,
+): AnlagenKopf {
+  const uebersicht = anlagenWerte(site, now);
+  const uebersichtAlter = (): number | null =>
+    uebersicht.stand === 'aktuell' && site?.live ? Date.parse(site.live.ts) : null;
+  if (karten == null) {
+    return { ...uebersicht, alter: alterText([uebersichtAlter()], now) };
+  }
+  const ausUebersicht = (art: AufbauWertArt) => uebersicht.werte.filter((w) => w.art === art);
+
+  // Jede Komponente einmal, mit der Lesezeit ihrer Karte.
+  const gesehen = new Set<string>();
+  const komps: { c: PlantComponent; gelesenAm: string | null }[] = [];
+  for (const k of karten) {
+    if (k.art === 'box') continue;
+    for (const c of k.komponenten) {
+      if (gesehen.has(c.id)) continue;
+      gesehen.add(c.id);
+      komps.push({ c, gelesenAm: k.gelesenAm ?? null });
+    }
+  }
+  const aktuell = (c: PlantComponent) => c.health === 'ok' && !c.orphaned && c.reading != null;
+
+  const werte: AufbauWert[] = [];
+  const zeiten: (number | null)[] = [];
+  let ausZeilen = false;
+  const nimmUebersicht = (art: AufbauWertArt) => {
+    const w = ausUebersicht(art);
+    if (w.length > 0) zeiten.push(uebersichtAlter());
+    werte.push(...w);
+  };
+
+  const pv = komps.filter((x) => x.c.role === 'pv');
+  if (pv.length === 0) nimmUebersicht('pv');
+  else {
+    ausZeilen = true;
+    const mitWert = pv.filter((x) => aktuell(x.c));
+    if (mitWert.length > 0) {
+      const summe = mitWert.reduce((s, x) => s + (x.c.reading?.value ?? 0), 0);
+      werte.push(wert('pv', fmtNum(Math.max(0, summe), 'kW')));
+      for (const x of mitWert) zeiten.push(zeitpunkt(x.gelesenAm));
+    }
+  }
+
+  const speicher = komps.filter((x) => x.c.role === 'storage');
+  if (speicher.length !== 1) nimmUebersicht('speicher');
+  else {
+    ausZeilen = true;
+    const { c, gelesenAm } = speicher[0];
+    if (aktuell(c) && c.reading?.unit === '%') {
+      werte.push(wert('speicher', fmtNum(c.reading.value, '%', 0)));
+      zeiten.push(zeitpunkt(gelesenAm));
+    }
+  }
+
+  const netz = komps.filter((x) => x.c.role === 'grid');
+  if (netz.length !== 1) nimmUebersicht('netz');
+  else {
+    ausZeilen = true;
+    const { c, gelesenAm } = netz[0];
+    if (aktuell(c) && c.reading) {
+      const wort = c.reading.caption;
+      werte.push(wert('netz', wort === 'ausgeglichen' || !wort ? 'ausgeglichen' : `${wort} ${fmtNum(c.reading.value, 'kW')}`));
+      zeiten.push(zeitpunkt(gelesenAm));
+    }
+  }
+
+  const art = (w: AufbauWert) => KOPF_REIHENFOLGE.indexOf(w.art);
+  werte.sort((a, b) => art(a) - art(b));
+  const stand: WertStand = werte.length > 0 ? 'aktuell' : ausZeilen ? 'veraltet' : uebersicht.stand;
+  return { werte, stand, alter: werte.length > 0 ? alterText(zeiten, now) : null };
+}
+
+const KOPF_REIHENFOLGE: AufbauWertArt[] = ['pv', 'speicher', 'netz'];
+
+function zeitpunkt(iso: string | null): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+
+/** Das Alter des ÄLTESTEN Werts im Kopf - nur, wenn er nicht mehr frisch ist; unbekannte Zeiten zählen nicht. */
+function alterText(zeiten: (number | null)[], now: number): string | null {
+  const bekannt = zeiten.filter((t): t is number => t != null);
+  if (bekannt.length === 0) return null;
+  const aeltester = Math.min(...bekannt);
+  return now - aeltester > KOPF_FRISCH_MS ? fmtRelative(new Date(aeltester).toISOString(), new Date(now)) : null;
 }
 
 /** „Sandgrabener Straße 10a" und „Sandgrabener Str. 10A" sind dieselbe Straße. */
@@ -852,13 +974,16 @@ function anlageKnoten(
   }
 
   const site = (input.overview ?? []).find((s) => s.id === id);
-  const live = anlagenWerte(site, input.now);
+  // Die geöffnete Anlage bildet ihren Kopf aus ihren Zeilen (eine Zeitbasis); die Nachbarn laden ihre Geräte ohne
+  // Messwerte (`ladeNachbar`), dort bleibt die Übersicht.
+  const live = aktuell ? anlagenKopf(karten, site, input.now) : { ...anlagenWerte(site, input.now), alter: null };
   return {
     id,
     name,
     aktuell,
     werte: live.werte,
     wertStand: live.stand,
+    wertAlter: live.alter,
     boxen: boxenSortiert.map((b) => {
       const lage = boxLage(b, input.devicesFetchedAt, input.now);
       return {

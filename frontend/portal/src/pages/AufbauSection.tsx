@@ -309,9 +309,15 @@ export function AufbauSection({
 
   // Die Werte altern: Live-Werte, Säulen und Zustandswörter frisch halten,
   // sonst stünde nach zehn Minuten ein alter Wert da, als wäre er aktuell.
+  // `/sources` gehört dazu: aus ihm stammen die Werte der Zähler ohne eigene Topologie und das „vor … Sek." jeder
+  // Zeile - einmal beim Öffnen geladen, stand dort sonst der Stand des Öffnens neben frischen Topologie-Werten.
   useFreshnessPoll(() => {
     setNow(Date.now());
-    api.topology(site.id).then(setTopology, () => {});
+    // Beide in EINEM Schritt übernehmen: die Zeilen lesen aus beiden, ein Zwischenstand mischte sonst zwei Abrufe.
+    void Promise.allSettled([api.topology(site.id), api.siteSources(site.id)]).then(([t, s]) => {
+      if (t.status === 'fulfilled') setTopology(t.value);
+      if (s.status === 'fulfilled') setSources(s.value);
+    });
     api.siteChargers(site.id).then(setCharging, () => {});
     api.overview().then(setOverview, () => {});
   }, LIST_POLL_MS);
