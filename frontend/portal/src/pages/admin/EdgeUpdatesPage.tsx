@@ -371,7 +371,9 @@ function LinienReleases({
           description="Ohne Register ist „veraltet“ keine Aussage. Ein Release trägt sich beim Bau selbst ein (CI signiert und registriert es)."
         />
       ) : (
-        <table className="vp-table responsive" data-testid="releases">
+        // Am Telefon (`vp-zeilen`): Version und Signatur oben, darunter Beschreibung, Commit, „Läuft auf“
+        // und „Verteilen ▸“ - vorher Etikett/Wert-Karten, die Beschreibung ragte rechts aus dem Blatt.
+        <table className="vp-table responsive vp-zeilen vp-releases-tabelle" data-testid="releases">
           <thead>
             <tr>
               <th>Version</th>
@@ -386,22 +388,22 @@ function LinienReleases({
               const sig = signatureLabel(r);
               return (
                 <tr key={r.releaseSeq}>
-                  <td data-label="Version">
+                  <td data-label="Version" data-zeile="haupt">
                     <button type="button" className="vp-gu-link" onClick={() => onRelease(r.releaseSeq)}>
                       <strong>{r.version}</strong>
                     </button>
                     {r.notes && <div className="vp-muted vp-text-sm">{r.notes}</div>}
                   </td>
-                  <td data-label="Commit" className="vp-muted">{r.targetCommit ?? '–'}</td>
-                  <td data-label="Signatur">
+                  <td data-label="Commit" data-zeile="neben" className="vp-muted vp-zeilen-etikett">{r.targetCommit ?? '–'}</td>
+                  <td data-label="Signatur" data-zeile="marke">
                     <Badge variant={toneVariant(sig.tone)} dot>{sig.label}</Badge>
                   </td>
-                  <td data-label="Läuft auf">
+                  <td data-label="Läuft auf" data-zeile="neben" className="vp-zeilen-etikett">
                     {r.runningOnDevices === 0
                       ? '–'
                       : `${r.runningOnDevices} Gerät${r.runningOnDevices === 1 ? '' : 'e'}`}
                   </td>
-                  <td>
+                  <td data-zeile="fuss">
                     {r.signed ? (
                       <Button variant="primary" size="sm" disabled={busy} onClick={() => onVerteilen(r)}>
                         Verteilen ▸

@@ -98,3 +98,22 @@ test('390 px: Fernwartung - Boxen und Zugänge als kompakte Zeilen, Zustand nebe
   }
   await keinUeberlauf(page);
 });
+
+test('390 px: Software › Blatt „Releases“ - je Release eine kompakte Zeile, nichts ragt aus dem Blatt', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.goto('/e2e/box-updates.html');
+  await page.getByTestId('linie-docker').getByRole('button', { name: 'Releases (2)' }).click();
+  const blatt = page.getByRole('dialog', { name: 'Releases · Docker-Box' });
+  const tabelle = blatt.getByTestId('releases');
+  await expect(tabelle).toBeVisible();
+  const mass = await blatt.evaluate((d) => {
+    const rand = d.getBoundingClientRect();
+    return {
+      ueber: [...d.querySelectorAll('td, td *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > rand.right + 1; }).length,
+      zeilen: [...d.querySelectorAll('[data-testid="releases"] tbody tr')].map((tr) => tr.getBoundingClientRect().height),
+    };
+  });
+  expect(mass.ueber, 'die Beschreibung ragte vorher rechts aus dem Blatt').toBe(0);
+  for (const h of mass.zeilen) expect(h, 'eine Release-Zeile unter 260 px (vorher ~ 330 px)').toBeLessThan(260);
+  await expect(tabelle.getByRole('button', { name: /Verteilen/ }).first()).toBeVisible();
+});

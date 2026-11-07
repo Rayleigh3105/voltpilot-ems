@@ -24,3 +24,8 @@
   .vp-edge-updates .vp-admin-head .actions .vp-row-gap { flex-wrap: nowrap; gap: var(--vp-space-2); justify-content: space-between; width: 100%; }
   .vp-edge-updates .vp-admin-head [data-testid="freshness"] { font-size: .75rem; }
 }
+
+/* Blatt „Releases · <Linie>“ am Telefon: die Zeilen stehen im Polster des Blatts (kein eigener Rand). */
+@media (max-width: 720px) {
+  .vp-releases-tabelle.vp-zeilen { --vp-zeilen-rand: 0; }
+}
