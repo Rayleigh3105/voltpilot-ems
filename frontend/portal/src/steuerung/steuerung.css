@@ -46,6 +46,10 @@
   --st-on: #15803d; --st-on-soft: #e3f3e8;
   --st-wait: #b45309; --st-wait-soft: #fdf1dc;
   --st-off: #64748b; --st-off-soft: #eef2f6;
+  /* Schrift AUF der weichen Fläche (Pille, Empfehlung, Schritt-Marke): je eine
+     Stufe dunkler, sonst 4,36 / 4,49 / 4,23 : 1 statt 4,5 : 1 (WCAG 1.4.3).
+     Punkte, Symbole und Schalter behalten den Grundton. */
+  --st-on-ink: #166534; --st-wait-ink: #92400e; --st-off-ink: #475569;
   --st-hand: #6d28d9; --st-hand-soft: #efe9fd;
   --st-lock: #b91c1c; --st-lock-soft: #fcebea;
   --st-done: #0e7490; --st-done-soft: #dcf0f5;
@@ -177,10 +181,10 @@
 /* Zustands-Pillen */
 :is(.stn, .stn-blatt) .pill{display:inline-flex;align-items:center;gap:6px;min-height:24px;padding:0 9px;border-radius:999px;font:700 12.5px var(--font);white-space:nowrap;font-variant-numeric:tabular-nums}
 :is(.stn, .stn-blatt) .pill i{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
-:is(.stn, .stn-blatt) .pill.on{background:var(--st-on-soft);color:var(--st-on)}
+:is(.stn, .stn-blatt) .pill.on{background:var(--st-on-soft);color:var(--st-on-ink)}
 :is(.stn, .stn-blatt) .pill.on i{animation:vp-fleet-pulse-ok 2.4s infinite}
-:is(.stn, .stn-blatt) .pill.wait{background:var(--st-wait-soft);color:var(--st-wait)}
-:is(.stn, .stn-blatt) .pill.off{background:var(--st-off-soft);color:var(--st-off)}
+:is(.stn, .stn-blatt) .pill.wait{background:var(--st-wait-soft);color:var(--st-wait-ink)}
+:is(.stn, .stn-blatt) .pill.off{background:var(--st-off-soft);color:var(--st-off-ink)}
 :is(.stn, .stn-blatt) .pill.hand{background:var(--st-hand-soft);color:var(--st-hand)}
 :is(.stn, .stn-blatt) .pill.lock{background:var(--st-lock-soft);color:var(--st-lock)}
 :is(.stn, .stn-blatt) .pill.done{background:var(--st-done-soft);color:var(--st-done)}
@@ -542,7 +546,7 @@
 :is(.stn, .stn-blatt) .lq-t{min-width:0;display:block}
 :is(.stn, .stn-blatt) .lq-t b{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font:800 15px/1.25 var(--font)}
 :is(.stn, .stn-blatt) .lq-t small{display:block;font:500 13px/1.35 var(--font);color:var(--c-muted-fg)}
-:is(.stn, .stn-blatt) .lq-empf{font:700 11px/1 var(--font);padding:3px 7px;border-radius:999px;background:var(--st-on-soft);color:var(--st-on);letter-spacing:0}
+:is(.stn, .stn-blatt) .lq-empf{font:700 11px/1 var(--font);padding:3px 7px;border-radius:999px;background:var(--st-on-soft);color:var(--st-on-ink);letter-spacing:0}
 /* Die Zeile auf der Karte: Name, Versprechen, Tagesband, zwei kurze Sätze. */
 :is(.stn, .stn-blatt) .lq-zeile{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;width:100%;padding:12px;border-radius:14px;border:1px solid var(--c-border);background:var(--c-bg);text-align:left;font:inherit;color:inherit}
 :is(.stn, .stn-blatt) button.lq-zeile{cursor:pointer}
@@ -608,7 +612,7 @@
 :is(.stn, .stn-blatt) .lq-rm small{display:block;font:500 12.5px/1.35 var(--font);color:var(--c-muted-fg)}
 :is(.stn, .stn-blatt) .lq-rm .pk{width:22px;height:22px;border-radius:999px;display:grid;place-items:center;background:var(--c-muted)}
 :is(.stn, .stn-blatt) .lq-rm .fertig .pk{background:var(--st-on-soft);color:var(--st-on)}
-:is(.stn, .stn-blatt) .lq-rm .laeuft .pk{background:var(--st-wait-soft);color:var(--st-wait);font:800 11px/1 var(--font)}
+:is(.stn, .stn-blatt) .lq-rm .laeuft .pk{background:var(--st-wait-soft);color:var(--st-wait-ink);font:800 11px/1 var(--font)}
 :is(.stn, .stn-blatt) .lq-rm .warn .pk{background:var(--st-wait-soft);color:var(--st-wait)}
 :is(.stn, .stn-blatt) .lq-rm .offen{color:var(--c-muted-fg)}
 :is(.stn, .stn-blatt) .lq-monat{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:8px;margin-bottom:4px}
