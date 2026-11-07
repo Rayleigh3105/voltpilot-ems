@@ -157,6 +157,11 @@ const FahrplanSection = lazy(() =>
 // Anlage-Flow a1 (D7, D9): die Karten „Ihre Anlage ist live“ und „Wo steht …?“ über dem Cockpit - ein
 // eigenes Stück, das nur lädt, wenn eine Karte ansteht (die Entscheidung kostet hier nichts).
 const AnlageHinweise = lazy(() => import('../components/AnlageHinweise'));
+// „Auto steckt · Jetzt schnell laden“ (F3 b): ein eigenes Stück, das nur lädt, wenn an einer Säule eine Ladung
+// läuft (`ladungLaeuft` unten) - das erste Bild jeder anderen Anlage trägt es nicht (Einstiegs-Budget).
+const SchnellLadenZeile = lazy(() =>
+  import('../components/SchnellLadenZeile').then((m) => ({ default: m.SchnellLadenZeile })),
+);
 // Die Einrichtungs-Karte („Ihr Weg zum fertigen EMS“) steht nur an einer neuen, noch leeren Anlage - sie kommt
 // nachgeladen, das erste Bild jeder laufenden Anlage trägt sie nicht (Einstiegs-Budget, Anlage-Flow a1 Paket 2).
 const AnlageSetup = lazy(() => import('../components/AnlageSetup').then((m) => ({ default: m.AnlageSetup })));
@@ -885,6 +890,8 @@ export function AnlageSeite({
   onHealthFacts,
   misstHier = false,
   standortId = null,
+  betriebsart,
+  ladepunktAnzahl,
 }: AnlagenPageProps & {
   site: Site;
   onOpenSub: (sub: AnlagenSub) => void;
@@ -1746,6 +1753,12 @@ export function AnlageSeite({
   // (Cockpit Phase 1 / C2): der Abzweig hinter dem Haus und - falls eine Säule
   // an einem EIGENEN Netzanschluss hängt - ein Kreis am Hub daneben.
   const ladeKreise = useMemo(() => ladeFlussKnoten(charging), [charging]);
+  // Läuft an einer verbundenen Säule eine Ladung (Sitzung oder Budget-Anspruch)? Nur dann lädt die Zeile
+  // „Jetzt schnell laden“ nach; ob sie etwas anbietet, entscheidet sie selbst (`schnellZeilen`).
+  const ladungLaeuft = useMemo(
+    () => (charging?.chargers ?? []).some((cp) => cp.connected && (cp.connectors ?? []).some((c) => c.charging === true || c.sessionSince != null)),
+    [charging],
+  );
 
   // --- Anwendungs-Programm Stufe 3 · das anpassbare Cockpit ------------------
   // Welche BAUSTEINE diese Anlage GERADE hat: dieselbe Ehrlichkeit wie bisher -
@@ -2585,6 +2598,33 @@ export function AnlageSeite({
         <div className={mitStaffel('vp-cockpit-stack', staffel)}>
           {sticky && !layout.anpassen && (
             <MobileStickyHead head={sticky} shown={scrolledPastMoney} />
+          )}
+
+          {/* „Auto steckt · Jetzt schnell laden“ (Kapitän 07.11.2026, F3 b): die
+              eine Handlung im Cockpit, nur solange ein Auto steckt und „Schnell“
+              etwas ändert, nur für Privatkunden. Beim Anordnen ruht sie. */}
+          {!layout.anpassen && ladungLaeuft && (
+            <Fehlergrenze>
+            <Suspense fallback={null}>
+            <SchnellLadenZeile
+              siteId={site.id}
+              charging={charging}
+              betriebsart={betriebsart}
+              ladepunktAnzahl={ladepunktAnzahl}
+              nowMs={now.getTime()}
+              onGesendet={() => {
+                // Die Box meldet alle 15 s; nicht erst mit dem nächsten Takt lesen (wie die Steuerung).
+                const id = site.id;
+                for (const ms of [4000, 12_000, 25_000]) {
+                  window.setTimeout(() => {
+                    if (id !== siteIdRef.current) return;
+                    api.siteChargers(id).then((c) => id === siteIdRef.current && setCharging(c), () => {});
+                  }, ms);
+                }
+              }}
+            />
+            </Suspense>
+            </Fehlergrenze>
           )}
 
           {/* Anwendungs-Programm Stufe 3 · der ANPASSEN-Modus (E4). Er liegt

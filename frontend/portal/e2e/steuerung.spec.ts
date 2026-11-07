@@ -391,6 +391,39 @@ test('Laden W-21: wo „Schnell“ nichts ändert, steht der Grund - auf der Kar
   expect(await ueberstehend(page)).toEqual([]);
 });
 
+// „Auto steckt · Jetzt schnell laden“ im Cockpit (Kapitän 07.11.2026, F3 b, F4 a, F5 a).
+const schnellZeile = (page: Page) => page.getByRole('region', { name: 'Jetzt schnell laden' });
+
+test('Cockpit: „Jetzt schnell laden“ für den Privatkunden, solange ein Auto auf Sonne wartet', async ({ page }) => {
+  const fehler: string[] = [];
+  page.on('pageerror', (e) => fehler.push(e.message));
+  await page.goto('/e2e/steuerung.html?state=single&wallbox=smart-ohne-sonne#/anlage/help-site');
+  const zeile = schnellZeile(page);
+  await expect(zeile).toContainText('Wallbox Werkstatt');
+  await expect(zeile).toContainText('Auto steckt · wartet auf Sonne');
+  // Die Zeile steht oben - vor der Bühne.
+  const oben = await zeile.boundingBox();
+  const buehne = await page.locator('[data-kachel="laden"]').boundingBox();
+  expect(oben && buehne && oben.y < buehne.y).toBe(true);
+  await zeile.getByRole('button', { name: 'Jetzt schnell laden' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Jetzt schnell laden' });
+  await expect(dialog).toContainText('bis Abstecken, höchstens 14 Std');
+  await expect(dialog).toContainText('Endet beim Abstecken, spätestens nach 14 Stunden - danach wieder Smart.');
+  await expect(dialog.getByRole('button', { name: 'Schnell laden bis zum Abstecken' })).toBeVisible();
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(fehler).toEqual([]);
+});
+
+test('Cockpit: keine Zeile, wo „Schnell“ nichts ändert, und keine für Betreiber', async ({ page }) => {
+  await page.goto('/e2e/steuerung.html?state=single&wallbox=voll#/anlage/help-site');
+  await expect(page.locator('[data-kachel="laden"]')).toBeVisible();
+  await expect(schnellZeile(page)).toHaveCount(0);
+  // Dieselbe Lage wie oben, aber beim Betreiber (Ladepark): das Cockpit bleibt, wie es war.
+  await page.goto('/e2e/steuerung.html?wallbox=smart-ohne-sonne#/anlage/help-site');
+  await expect(page.locator('[data-kachel="laden"]')).toBeVisible();
+  await expect(schnellZeile(page)).toHaveCount(0);
+});
+
 // Laden W-14 (Einspeisung - keine negative Hauslast, „frei“ höchstens der Anschluss): die Karte
 // „Netzanschluss" ist seit „Ein Ort fürs Laden" Scheibe 4 (E5 = A) von dieser Seite entfallen; die
 // geprüfte Rechnung (`band()`) bleibt unverändert und zeichengleich getestet in
