@@ -2783,6 +2783,52 @@ class PortalApiTest {
         assertThat(monthPower).hasSize(1);
         assertThat(monthPower.get(0)).containsEntry("start", "2026-06-14T22:00:00Z"); // Berlin day
 
+        // Energy per bucket (Unterverteilungen C2). Without a counter: power × duration of the
+        // 15-min buckets, (4+6)/2 × 0.25 h + 8 × 0.25 h = 3.25 kWh.
+        ResponseEntity<Map<String, Object>> energyDay = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId
+                        + "/energy?range=day&at=2026-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(energyDay.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(energyDay.getBody()).containsEntry("source", "leistung").containsEntry("bucketMinutes", 15)
+                .containsEntry("counterFalls", false);
+        assertThat(num(energyDay.getBody(), "totalKwh")).isEqualTo(3.25);
+        // With a counter the INCREASE wins: 100,0 → 101,5 → 102,0 across the two buckets = 2,0 kWh
+        // (not the power integration), and the week sums it from the hourly rollup.
+        exec("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, "
+                + "entity_id, channel, value) VALUES "
+                + "('2026-06-15T10:00:00Z','2026-06-15T10:00:01Z','" + tenantA + "','" + BERLIN_SITE
+                + "','" + deviceId + "','" + entityId + "','energy_kwh', 100.0), "
+                + "('2026-06-15T10:07:00Z','2026-06-15T10:07:01Z','" + tenantA + "','" + BERLIN_SITE
+                + "','" + deviceId + "','" + entityId + "','energy_kwh', 101.5), "
+                + "('2026-06-15T10:20:00Z','2026-06-15T10:20:01Z','" + tenantA + "','" + BERLIN_SITE
+                + "','" + deviceId + "','" + entityId + "','energy_kwh', 102.0)");
+        energyDay = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId
+                        + "/energy?range=day&at=2026-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(energyDay.getBody()).containsEntry("source", "zaehler");
+        assertThat(num(energyDay.getBody(), "totalKwh")).isEqualTo(2.0);
+        List<Map<String, Object>> energyBuckets = (List<Map<String, Object>>) energyDay.getBody().get("buckets");
+        assertThat(energyBuckets).hasSize(2);
+        assertThat(energyBuckets.get(0)).containsEntry("start", "2026-06-15T10:00:00Z");
+        assertThat(num(energyBuckets.get(0), "kwh")).isEqualTo(1.5);
+        assertThat(num(energyBuckets.get(1), "kwh")).isEqualTo(0.5);
+        exec("CALL refresh_telemetry_v2_rollups('2026-06-01T00:00:00Z')");
+        ResponseEntity<Map<String, Object>> energyWeek = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId
+                        + "/energy?range=week&at=2026-06-17"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(energyWeek.getBody()).containsEntry("source", "zaehler").containsEntry("bucketMinutes", 60);
+        assertThat(num(energyWeek.getBody(), "totalKwh")).isEqualTo(2.0);
+        ResponseEntity<String> foreignEnergy = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId + "/energy"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreignEnergy.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
         // Foreign site's tenant cannot read it (RLS 404 on the entity lookup).
         ResponseEntity<String> foreign = rest.exchange(
                 url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId + "/history"),

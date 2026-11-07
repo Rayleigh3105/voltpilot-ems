@@ -40,7 +40,13 @@ Die Vorzeichen folgen dem lokalen Vertrag. Der primäre Netzwert wird standardm�
 
   Batterie 0 gilt nur als Tatsache: alle Erzeuger nachweislich batterielos und kein Speicher in der Registry. Unterzähler gehen nicht in die Bilanz ein. Jeder Erzeuger meldet seine Lesung zusätzlich als Telemetrie seiner Komponente (`pv_power_kw`); die Komponente ergibt sich aus dem Pin oder der Ableitung des Pushs. Beides schweigt, solange ein Wechselrichter-Sample auf `edge/telemetry` ankommt.
 
-Quellen: `agent.onLocalTelemetry`, `agent.foldSiteSample`, `agent.plantControllerSample`, `agent.sourcesSiteSample`, `agent.producerEntityTelemetry`, `sources.BalanceSettings`, `inverter.FamilyHasBattery` im [Core](../edge-app/core/internal/).
+- Ein Shelly-Zähler (Pro 3EM, Pro 3EM-400) meldet neben dem Wert seiner Rolle seine Zählerstände und Phasen als Telemetrie seiner Komponente, auf jeder Box und höchstens alle 5 s je Komponente:
+  - Unterzähler (`sub-meter`, früher `generic-load`): `power_kw`, `energy_kwh` (Bezug), `energy_export_kwh` (Rückfluss), `power_l1_kw` bis `power_l3_kw`;
+  - Netz-Zähler: nur Zählerstände und Phasen. Seine Leistung trägt das Standort-Sample, die Cloud schreibt sie über die v1→v2-Brücke.
+
+  Hinaus geht nur ein Kanal, den die Komponente im Push nennt. „Vorzeichen umkehren“ dreht die Phasen und tauscht die beiden Zählerstände. Ein Unterzähler steht in der Hauslast: er geht nie in die Bilanz, in der Box-Ansicht ist er ein Verbraucher, nie der Netzknoten.
+
+Quellen: `agent.onLocalTelemetry`, `agent.foldSiteSample`, `agent.plantControllerSample`, `agent.sourcesSiteSample`, `agent.producerEntityTelemetry`, `agent.meterEntityTelemetry`, `sources.BalanceSettings`, `inverter.FamilyHasBattery` im [Core](../edge-app/core/internal/).
 
 ## Schutzgrenzen
 

@@ -115,6 +115,14 @@ public class ComponentService {
                 && DEVICE_TYPE_IO_MODULE.equals(template.deviceType())) {
             return ENTITY_TYPE_IO_MODULE;
         }
+        // Ein Zähler auf der Verbraucher-Seite ist ein UNTERZÄHLER (eine Unterverteilung, eine Halle):
+        // er misst einen Teil des Hauses und wird nie geschaltet. Als generic-load („Steuerbare Last")
+        // hieß er im Portal „Schaltbar per Regel" (Schramm „Zuhause", 07.11.2026; Konzept
+        // vp-unterzaehler-anzeige C1).
+        if (ROLE_CONSUMER.equals(role) && template != null
+                && ComponentDefaults.DEVICE_TYPE_METER.equals(template.deviceType())) {
+            return ComponentDefaults.TYPE_SUB_METER;
+        }
         return ROLE_ENTITY_TYPE.get(role);
     }
 
@@ -357,6 +365,7 @@ public class ComponentService {
 
         UUID tenantId = TenantContext.get();
         UUID entityId = resolveOrCreatePoint(siteId, tenantId, role, req, template);
+        netzZaehlerKanaele(siteId, entityId, role, template);
         int version = writeDefinition(siteId, tenantId, entityId, role, req, template, tested,
                 subject, "Angelegt");
         if (heizstabGeraet) {
@@ -474,7 +483,7 @@ public class ComponentService {
         // selbst neu bestimmt (Heizstab: aus der Ausgangsmenge; echter Typwechsel: Anlege-Vorgabe).
         String editType = entityTypeForEdit(role, template, existing);
         String editCapabilities = heizstabGeraet ? heizstab.capabilities(desired)
-                : capabilitiesForEdit(editType, role, existing);
+                : capabilitiesForEdit(editType, role, existing, template);
         boolean capabilitiesRetained = editCapabilities == null;
         boolean controlAfter = heizstabGeraet || (capabilitiesRetained && existing.control());
         String editGuards = heizstabGeraet ? heizstab.guards(desired)
@@ -1074,12 +1083,39 @@ public class ComponentService {
      * trägt) setzt sie neu - dann sind die alten Kanäle Aussagen über ein
      * anderes Gerät.
      */
-    private String capabilitiesForEdit(String targetType, String role, EntityRow existing) {
+    private String capabilitiesForEdit(String targetType, String role, EntityRow existing,
+            ComponentTemplateDto template) {
         String storedType = existing.entityType();
         if (targetType != null && storedType != null && targetType.equals(storedType.trim())) {
-            return null;
+            // Der Netz-Zähler bleibt grid-meter, aber seine Kanäle folgen dem GERÄT: über einen
+            // Zähler gelesen trägt er dessen Zählerstände und Phasen (netzZaehlerKanaele).
+            return ROLE_NETZ.equals(role)
+                    ? ComponentDefaults.netzZaehlerAbgleich(mapper, entityTypes, existing.capabilitiesJson(),
+                            template.communication())
+                    : null;
         }
         return ComponentDefaults.capabilities(mapper, entityTypes, targetType, role);
+    }
+
+    /**
+     * Ein Netz-Zähler, der über einen Zähler gelesen wird (Shelly Pro 3EM-400), meldet neben seiner
+     * Leistung Zählerstände und Phasen; seine Komponente muss sie nennen, sonst verwirft die Box sie
+     * (Box: {@code agent.meterEntityTelemetry}). Die Zeile ist meist die KOMPONIERTE grid-meter-Zeile
+     * der Anlage, die nur {@code power_kw} trägt - der Anlege-Weg ergänzt die Kanäle hier.
+     */
+    private void netzZaehlerKanaele(UUID siteId, UUID entityId, String role, ComponentTemplateDto template) {
+        if (!ROLE_NETZ.equals(role)) {
+            return;
+        }
+        EntityRow row = entityRepo.entityForSite(siteId, entityId);
+        if (row == null) {
+            return;
+        }
+        String caps = ComponentDefaults.netzZaehlerAbgleich(mapper, entityTypes, row.capabilitiesJson(),
+                template.communication());
+        if (caps != null) {
+            entityRepo.setCapabilities(entityId, caps);
+        }
     }
 
     /**

@@ -10,7 +10,7 @@ function komp(hausKw: number | null, n: number): VerbrauchKomposition {
     hausKw,
     gruppen: [{ id: 'sonstiges', label: 'Sonstiges', kw: null, headline: '', collapsed: false, collapsedText: null,
       teile: Array.from({ length: n }, (_, i) => teil(`e:${i}`, `Gerät ${i}`, n - i)) }],
-    rest: { kw: 0.4, note: null, konflikt: false, todayKwh: null },
+    rest: { label: 'übriger Haushalt', kw: 0.4, note: null, konflikt: false, todayKwh: null },
     verbraucherCount: n, subLine: null, ladenKw: null, ladepunktCount: 0, asOf: null,
   } as unknown as VerbrauchKomposition;
 }

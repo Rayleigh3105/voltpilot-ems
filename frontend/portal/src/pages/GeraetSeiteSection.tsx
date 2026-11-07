@@ -49,6 +49,7 @@ import {
   typWort,
   type Gesicht,
 } from '../geraetGesicht';
+import { zaehlerWerte } from '../zaehlerWerte';
 import { ANLAGENSTEUERUNG_TYPE, ioBindungenAus, plantModel, type PlantComponent } from '../komponenten';
 import { fmtNum } from '../format';
 import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment';
@@ -1435,6 +1436,25 @@ function GeraetSeiteKern({
         // --- Heute ----------------------------------------------------------
         const heute = heuteBaustein(site.id, gesichtView, view, setHeuteAusfall, heuteAusfall);
 
+        // --- Zählerwerte (Unterverteilungen, Entscheid UV-3 A) ----------------
+        // Phasen und Zählerstände eines Shelly-Zählers - als Unterzähler wie am Netzanschluss.
+        const zaehler = zaehlerWerte(view.komponenten.map((c) => c.entityId), topology?.entities);
+        const zaehlerBaustein: BausteinInhalt | null = zaehler
+          ? {
+            titel: 'Zählerwerte',
+            kopfRechts: (
+              <a href={verlaufHash(site.id, ['power_l1_kw', 'power_l2_kw', 'power_l3_kw']
+                .filter((k) => zaehler.zeilen.some((z) => z.kanal === k))
+                .map((channel) => ({ entityId: zaehler.entityId, channel })), 'day')}>
+                Messwerte <Icon name="chevron-right" size={14} />
+              </a>
+            ),
+            inhalt: zaehler.stumm
+              ? <p className="vp-note">{zaehler.stumm}</p>
+              : <ZeilenListe zeilen={zaehler.zeilen.map((z) => ({ label: z.label, wert: z.wert }))} />,
+          }
+          : null;
+
         // --- Aktivität ------------------------------------------------------
         const history = verlauf.history;
         const aktivitaet: BausteinInhalt | null = gesichtView.sektionen.includes('befehle')
@@ -1711,7 +1731,10 @@ function GeraetSeiteKern({
             brotkrume={{ anlageHref, komponentenHref }}
             kopf={{
               titel: view.kopf.titel,
-              typ: typWort(gesichtView),
+              // Ein Shelly in einer Unterverteilung ist ein Unterzähler, kein schaltbarer Verbraucher (UV-3 A).
+              typ: view.komponenten.some((c) => data?.entities.find((e) => e.id === c.entityId)?.entityType === 'sub-meter')
+                ? 'Unterzähler'
+                : typWort(gesichtView),
               modell: view.kopf.anschluss ?? view.kopf.modell,
               symbol: kopfSymbol(gesichtView),
               zustand: kopfJetzt,
@@ -1750,6 +1773,7 @@ function GeraetSeiteKern({
               buehne,
               steuerung: steuerungBaustein,
               heute,
+              modul: zaehlerBaustein,
               aktivitaet,
             }}
             details={details}

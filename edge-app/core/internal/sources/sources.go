@@ -326,6 +326,24 @@ const TopicWildcard = TopicPrefix + "+/telemetry"
 // (sibling of edge/inverter/config).
 const TopicConfig = "edge/sources/config"
 
+// The meter details a meter source (a Shelly three-phase meter as grid meter
+// or sub-meter) carries next to its role channel on edge/sources/{id}/telemetry
+// (Unterverteilungen, Konzept vp-unterzaehler-anzeige B1): the counters in kWh
+// and the power per phase in kW. The names are the ENTITY channels of a meter
+// (type catalog `sub-meter`; a grid meter read through a meter): energy_kwh is
+// the import counter, so the house rule "the energy of a period is the
+// counter's increase" applies to it unchanged.
+const (
+	MeterEnergyKwh       = "energy_kwh"
+	MeterEnergyExportKwh = "energy_export_kwh"
+	MeterPowerL1Kw       = "power_l1_kw"
+	MeterPowerL2Kw       = "power_l2_kw"
+	MeterPowerL3Kw       = "power_l3_kw"
+)
+
+// MeterDetailChannels are the meter details in a fixed order.
+var MeterDetailChannels = []string{MeterEnergyKwh, MeterEnergyExportKwh, MeterPowerL1Kw, MeterPowerL2Kw, MeterPowerL3Kw}
+
 // IDFromTopic extracts the source id from edge/sources/{id}/telemetry, or ""
 // when the topic does not match that shape.
 func IDFromTopic(topic string) string {

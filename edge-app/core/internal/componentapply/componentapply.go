@@ -298,6 +298,10 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 		return sources.RoleErzeuger, nil
 	case entities.TypeGridMeter:
 		return sources.RoleNetz, nil
+	case entities.TypeSubMeter:
+		// A sub-meter (Unterzähler) is read on the consumer side: its power is
+		// the load of that part of the plant, never the grid value.
+		return sources.RoleConsumer, nil
 	case entities.TypeHeatingRod:
 		// A heating rod is a consumer whatever its guards say. The cloud creates
 		// it READ-ONLY (no actuate until "Steuern freigeben"), so category()

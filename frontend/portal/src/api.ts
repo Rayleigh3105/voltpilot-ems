@@ -2204,6 +2204,23 @@ export interface EntityHistory {
   channels: Record<string, EntityHistoryBucket[]>;
 }
 
+/**
+ * Die Energie EINES Geräts je Eimer des Zeitraums (`GET …/entities/{id}/energy`, Unterverteilungen
+ * C2): der Zuwachs des Zählerstands (`source: 'zaehler'`), sonst Leistung × Dauer (`'leistung'`).
+ * Die Eimer sind die von `/history` für denselben Zeitraum. `kwh`/`totalKwh` `null` = nicht
+ * belegbar (der Zähler fiel), nie eine 0; die Werte sind ungerundet.
+ */
+export interface EntityEnergy {
+  range: HistoryRange;
+  from: string;
+  to: string;
+  bucketMinutes: number;
+  source: 'zaehler' | 'leistung' | null;
+  buckets: { start: string; kwh: number | null }[];
+  totalKwh: number | null;
+  counterFalls: boolean;
+}
+
 // --- UEMS: Messkanäle + berechnete Messstelle („Gesamtwert", AP-04 IP-13 / AP-10) ---
 
 /**
@@ -11416,6 +11433,11 @@ export const api = {
       `/api/v1/sites/${siteId}/entities/${entityId}/history?range=${range}${
         at ? `&at=${at}` : ''
       }`,
+    ),
+  /** Die Energie eines Geräts je Eimer nach der Zählerregel (Unterverteilungen C2). */
+  entityEnergy: (siteId: string, entityId: string, range: HistoryRange, at?: string) =>
+    request<EntityEnergy>(
+      `/api/v1/sites/${siteId}/entities/${entityId}/energy?range=${range}${at ? `&at=${at}` : ''}`,
     ),
   /**
    * Save the site's battery master data by hand and maintain its controlling

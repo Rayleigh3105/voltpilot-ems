@@ -44,6 +44,7 @@ const ART_WORT: Record<string, string> = {
   'battery-hybrid': 'Batteriespeicher',
   wallbox: 'Wallbox',
   'generic-load': 'Verbraucher',
+  'sub-meter': 'Unterzähler',
 };
 
 /** Das Protokoll in Kundenworten (`PROTOKOLLE`), ein unbekanntes Wort unverändert. */

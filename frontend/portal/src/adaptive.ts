@@ -110,6 +110,9 @@ export function iconFor(entityType: string, role: Role | null): IconName {
     case 'generic-load':
     case 'house-load':
       return 'home';
+    case 'sub-meter':
+      // Ein Zähler misst - dasselbe Symbol wie die Messung am Netzanschluss im Anlege-Weg.
+      return 'activity';
     default:
       return role ? ROLE_META[role].icon : 'activity';
   }

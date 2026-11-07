@@ -15,7 +15,7 @@ import { rollenStand, rollenView, teilSummeText } from './pvRolle';
 import type { VerbrauchGruppeId, VerbrauchKomposition } from './verbrauchKomposition';
 import { kw, kwh, TOTBAND_KW } from './leitungsplan';
 
-export type ZeilenIcon = 'car' | 'heatpump' | 'plug' | 'home' | 'panel' | 'plus' | 'flame' | 'sun';
+export type ZeilenIcon = 'car' | 'heatpump' | 'plug' | 'home' | 'panel' | 'plus' | 'flame' | 'sun' | 'activity';
 
 export interface ListenZeile {
   key: string;
@@ -82,7 +82,14 @@ function sortiere(z: ListenZeile[]): ListenZeile[] {
 /** Verbrauch im Detail - jetzt (kW) oder heute (kWh). */
 export function verbrauchListe(
   k: VerbrauchKomposition | null,
-  opts: { heute: boolean; max: number; /** Der Verbrauch des Flusses, falls die Box kein Haus-Mitglied meldet. */ hausKw?: number | null },
+  opts: {
+    heute: boolean;
+    max: number;
+    /** Der Verbrauch des Flusses, falls die Box kein Haus-Mitglied meldet. */
+    hausKw?: number | null;
+    /** Die Technik-Ebene (Plattform-Admin): Prüfhinweise an Unterzählern. */
+    technik?: boolean;
+  },
 ): Liste | null {
   if (!k) return null;
   const { heute } = opts;
@@ -105,25 +112,27 @@ export function verbrauchListe(
     for (const t of g.teile) {
       const zahl = heute ? t.todayKwh : t.kw;
       const aus = !heute && t.kw != null && t.kw <= TOTBAND_KW && !t.aktiv;
+      const sub = t.health === 'stale' ? t.note ?? 'meldet sich gerade nicht' : zahl == null ? t.word : aus ? 'aus' : t.note;
       zeilen.push({
         key: t.key,
         name: t.label,
-        sub: t.health === 'stale' ? t.note ?? 'meldet sich gerade nicht' : zahl == null ? t.word : aus ? 'aus' : t.note,
+        sub: opts.technik && t.pruefen ? [sub, t.pruefen].filter(Boolean).join(' · ') : sub,
         wert: zahl == null ? '—' : heute ? kwh(zahl) : kw(zahl),
         zahl,
         anteil: null,
         art: t.health === 'stale' ? 'still' : aus ? 'aus' : 'normal',
-        icon: t.heizstab ? 'flame' : GRUPPEN_ICON[g.id],
+        icon: t.heizstab ? 'flame' : t.unterzaehler ? 'activity' : GRUPPEN_ICON[g.id],
         title: t.title,
         href: t.href,
       });
     }
   }
   const restZahl = heute ? k.rest.todayKwh : k.rest.kw;
+  const restSub = restZahl == null ? k.rest.note ?? 'nicht bestimmbar' : 'berechnet';
   zeilen.push({
     key: 'rest',
-    name: 'übriger Haushalt',
-    sub: restZahl == null ? k.rest.note ?? 'nicht bestimmbar' : 'berechnet',
+    name: k.rest.label,
+    sub: opts.technik && k.rest.pruefen && !heute ? `${restSub} · ${k.rest.pruefen}` : restSub,
     wert: restZahl == null ? '—' : heute ? kwh(restZahl) : kw(restZahl),
     zahl: restZahl,
     anteil: null,

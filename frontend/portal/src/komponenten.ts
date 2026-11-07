@@ -74,7 +74,7 @@ import type {
   TopologyEntity,
 } from './api';
 import { deviceLiveStatus } from './api';
-import { channelLabel } from './channels';
+import { channelLabel, channelLabelFor } from './channels';
 import { deviceName } from './entityLabel';
 import { fmtNum } from './format';
 import { toComponentHealth, type ComponentHealth } from './komponentenHealth';
@@ -455,6 +455,10 @@ function componentSummary(
   if (entityType === 'ev-charger') {
     return 'Ladepunkt — die Ladeleistung verteilt das Lastmanagement';
   }
+  // Ein Unterzähler misst einen Teil des Hauses (eine Unterverteilung) und wird nie geschaltet.
+  if (entityType === 'sub-meter') {
+    return 'Unterzähler — misst einen Teil des Verbrauchs';
+  }
   switch (role) {
     case 'pv':
       return 'Erzeugt Solarstrom';
@@ -496,7 +500,7 @@ function componentChannels(entity: SiteEntity): Messwert[] {
   for (const m of entity.capabilities?.measure ?? []) {
     if (seen.has(m.channel)) continue;
     seen.add(m.channel);
-    out.push({ label: channelLabel(m.channel), raw: m.channel });
+    out.push({ label: channelLabelFor(m.channel, entity.entityType), raw: m.channel });
   }
   return out;
 }

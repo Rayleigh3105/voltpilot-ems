@@ -211,12 +211,13 @@ export function KomponentenSection({
         consumerStatus,
         hausTodayKwh: dayTotals?.consumptionKwh ?? null,
         ladenKachelSichtbar,
+        profil: site.profil ?? null,
         links: {
           charger: (id) => (boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null),
           komponente: (entityId) => komponenteHash(site.id, entityId),
         },
       }),
-    [adaptive, topology, charging, consumerStatus, dayTotals, ladenKachelSichtbar, boxRef, site.id],
+    [adaptive, topology, charging, consumerStatus, dayTotals, ladenKachelSichtbar, boxRef, site.id, site.profil],
   );
   const todayKwh = useVerbrauchHeute(
     site.id,
@@ -235,6 +236,7 @@ export function KomponentenSection({
             hausTodayKwh: dayTotals?.consumptionKwh ?? null,
             todayKwh,
             ladenKachelSichtbar,
+            profil: site.profil ?? null,
             links: {
               charger: (id) =>
                 boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null,

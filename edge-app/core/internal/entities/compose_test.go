@@ -150,3 +150,22 @@ func TestHouseLoadIsAConsumerNotAMeter(t *testing.T) {
 		t.Fatalf("grid-meter category regressed: %q", got)
 	}
 }
+
+// A sub-meter (Unterzähler, Konzept vp-unterzaehler-anzeige C1) is pinned to
+// consumer for the house-load reason: measure-only would make the hall's load
+// the Netz node of the box's own view. Must agree with the cloud type catalog
+// (entitytypes/catalog.json `sub-meter`: category consumer).
+func TestSubMeterIsAConsumerNotAMeter(t *testing.T) {
+	e := Entity{ID: "uv-halle", Type: TypeSubMeter,
+		Capabilities: Capabilities{Measure: []MeasureCap{{Channel: "power_kw"}, {Channel: "energy_kwh"},
+			{Channel: "power_l1_kw"}}},
+		Guards: Guards{Failsafe: Failsafe{Behavior: "measure-only"}}}
+	if got := e.Category(); got != "consumer" {
+		t.Fatalf("sub-meter category = %q, want consumer", got)
+	}
+	for _, cmd := range []string{CmdSetpointKw, CmdOnOff, CmdLimitKw, CmdLimitPct, CmdMode} {
+		if e.Supports(cmd) {
+			t.Fatalf("a sub-meter must never accept %s", cmd)
+		}
+	}
+}

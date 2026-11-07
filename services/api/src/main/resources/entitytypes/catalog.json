@@ -271,6 +271,42 @@
       ]
     },
     {
+      "type": "sub-meter",
+      "label": "Unterzähler",
+      "category": "consumer",
+      "controllable": false,
+      "composed": false,
+      "default_failsafe": "measure-only",
+      "_comment": "Ein reiner Zaehler in einer Unterverteilung (Konzept vp-unterzaehler-anzeige C1, heute der Shelly Pro 3EM): er misst einen Teil des Hauses und wird nie geschaltet. Bis 07.11.2026 entstand er als generic-load (Steuerbare Last). energy_kwh ist der Zaehlerstand Bezug, energy_export_kwh der Rueckfluss, power_l1_kw..power_l3_kw die Leistung je Phase; nur power_kw ist ein Topologie-Kanal (Verbraucher), die anderen sind Messwerte ohne Rolle. Ein Netz-Zaehler, der ueber einen solchen Zaehler gelesen wird, traegt dieselben Kanaele (ComponentDefaults.netzZaehlerCapabilities).",
+      "default_measure": [
+        {
+          "channel": "power_kw",
+          "unit": "kW"
+        },
+        {
+          "channel": "energy_kwh",
+          "unit": "kWh"
+        },
+        {
+          "channel": "energy_export_kwh",
+          "unit": "kWh"
+        },
+        {
+          "channel": "power_l1_kw",
+          "unit": "kW"
+        },
+        {
+          "channel": "power_l2_kw",
+          "unit": "kW"
+        },
+        {
+          "channel": "power_l3_kw",
+          "unit": "kW"
+        }
+      ],
+      "default_actuate": []
+    },
+    {
       "type": "io-module",
       "label": "I/O-Modul",
       "category": "consumer",

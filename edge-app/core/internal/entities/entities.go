@@ -43,6 +43,11 @@ const (
 	// is no inverter and no PV source - componentapply turns its driver into a
 	// plant-controller source the measurement binding resolves (EZ-21).
 	TypeAnlagensteuerung = "anlagensteuerung"
+	// TypeSubMeter is a pure meter in a sub-distribution (Unterzähler, cloud
+	// type catalog `sub-meter`, Konzept vp-unterzaehler-anzeige C1): it
+	// measures a part of the house and is never switched. Before it, the cloud
+	// created such a meter as a measure-only `generic-load`.
+	TypeSubMeter = "sub-meter"
 )
 
 // The D-14 command vocabulary, shared with edge-desired and mqtt-schedule-2.0.
@@ -664,6 +669,13 @@ func (e Entity) category() string {
 		// consumer - this keeps the edge's derivation in agreement with it.
 		// Guard-safe: with no actuate capability the capability gate (allows)
 		// refuses every command whatever the category says.
+		return catConsumer
+	case TypeSubMeter:
+		// Pinned like house-load and for the same reason: a sub-meter declares
+		// no actuate capability, so the inference below would call it a METER
+		// and the topology would put the hall's load into the Netz node. It is
+		// a part of the house - category consumer like in the cloud catalog.
+		// Guard-safe: without an actuate capability no command passes.
 		return catConsumer
 	}
 	if e.Guards.Failsafe.Behavior == "measure-only" || len(e.Capabilities.Actuate) == 0 {

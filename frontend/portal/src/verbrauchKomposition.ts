@@ -62,6 +62,9 @@ const CONSUMER_ROLE = 'consumer';
 /** Der komponierte Haus-Knoten selbst - er IST die Summe, nie ein Teil davon. */
 const HOUSE_LOAD = 'house-load';
 
+/** Ein reiner Zähler in einer Unterverteilung (Typkatalog `sub-meter`). */
+const UNTERZAEHLER_TYP = 'sub-meter';
+
 /**
  * ⚠ WORAUF DIESES MODUL SCHLÜSSELT: das MASCHINEN-Wort {@link LadeZustandKind}
  * von {@link ladeZustand}, nie der deutsche Satz. Die Haus-Regel des
@@ -81,6 +84,18 @@ export const VERBRAUCH_DEADBAND_KW = 0.05;
  * zusammen". Darunter ist es Rundung zweier Zähler, kein Widerspruch.
  */
 const KONFLIKT_DEADBAND_KW = 0.2;
+
+/** Der Prüfhinweis der Technik-Ebene an Unterzählern (Konzept vp-unterzaehler-anzeige, Abschnitt Admin). */
+export const UNTERZAEHLER_PRUEFEN = 'Wandlerrichtung oder Zuordnung prüfen';
+
+/**
+ * Das Wort für den Rest nach dem Anwendungsprofil der Anlage (Entscheid UV-4 A, 07.11.2026): privat
+ * „übriger Haushalt“, gewerbe „ohne eigenen Zähler“ - das Wort der Energiebilanz. Ohne Profil bleibt
+ * „übriger Haushalt“ (jede Bestandsanlage zeichengleich).
+ */
+export function restWort(profil: string | null | undefined): string {
+  return profil === 'gewerbe' ? 'ohne eigenen Zähler' : 'übriger Haushalt';
+}
 
 /** Die Gruppen der Aufschlüsselung (Konzept §3). */
 export type VerbrauchGruppeId = 'laden' | 'waerme' | 'sonstiges' | 'laden_eigen';
@@ -129,6 +144,14 @@ export interface VerbrauchTeil {
    * füllt nie die Kachel „Wärmepumpe“.
    */
   heizstab?: true;
+  /** Ein Unterzähler (eine Unterverteilung, Typ `sub-meter`): er trägt das Mess-Symbol statt des Steckers. */
+  unterzaehler?: true;
+  /**
+   * Der Hinweis für die Technik-Ebene (nur Plattform-Admin): ein Unterzähler, der in Gegenrichtung misst.
+   * Der Betrag zählt trotzdem - er ist die Last dieses Teils -, aber ein falsch herum eingebauter Wandler
+   * darf nicht unsichtbar werden.
+   */
+  pruefen?: string;
 }
 
 /** Eine Gruppe der Aufschlüsselung. */
@@ -152,6 +175,10 @@ export interface VerbrauchGruppe {
 
 /** Die letzte, leise Zeile: was vom Haus übrig bleibt. */
 export interface VerbrauchRest {
+  /** Das Wort der Zeile nach dem Anwendungsprofil ({@link restWort}). */
+  label: string;
+  /** Der Hinweis für die Technik-Ebene, wenn Unterzähler und Haus sich widersprechen. */
+  pruefen?: string;
   /** Haus − Σ gemessene Teile; `null`, wenn nicht bestimmbar. */
   kw: number | null;
   /** Der Grund, wenn `kw` null ist - oder der Widerspruchs-Satz. */
@@ -218,6 +245,8 @@ export interface VerbrauchInput {
   hausTodayKwh?: number | null;
   /** E4: die Kachel „Laden" ist im Layout sichtbar ⇒ die Gruppe kollabiert. */
   ladenKachelSichtbar?: boolean;
+  /** Das Anwendungsprofil der Anlage (`site.profil`) - es wählt das Wort für den Rest. */
+  profil?: string | null;
   /** Sprung-Adressen; ohne sie trägt eine Zeile keinen Chevron. */
   links?: {
     charger?: (chargePointId: string) => string | null;
@@ -432,6 +461,10 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
     if (chargers.some((c) => c.entityId != null && c.entityId === m.entity_id)) continue;
     const health = healthOf(e);
     const kw = m.value_kw == null ? null : round3(Math.abs(m.value_kw));
+    // ⚠ Der Betrag ist die Last dieses Teils - auch bei einem falsch herum eingebauten Wandler. Damit
+    // das nicht unsichtbar wird, trägt ein Unterzähler mit Gegenrichtung den Prüfhinweis der Technik.
+    const unterzaehler = e?.entityType === UNTERZAEHLER_TYP;
+    const gegenrichtung = unterzaehler && m.value_kw != null && m.value_kw < -VERBRAUCH_DEADBAND_KW;
     const status = statusById.get(m.entity_id);
     const label = deviceName({ storedLabel: m.label, typeLabel: e?.typeLabel }) ?? 'Gerät';
     let word: string;
@@ -461,6 +494,8 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
       href: links.komponente?.(m.entity_id) ?? null,
       entityId: m.entity_id,
       title: e?.typeLabel ?? null,
+      ...(unterzaehler ? { unterzaehler: true as const } : {}),
+      ...(gegenrichtung ? { pruefen: `misst in Gegenrichtung - ${UNTERZAEHLER_PRUEFEN}` } : {}),
     });
   }
 
@@ -476,7 +511,8 @@ export function verbrauchKomposition(input: VerbrauchInput): VerbrauchKompositio
     : teile.filter((t) => !eigeneKeys.has(t.key));
   const gemessen = hausTeile.filter((t) => t.kw != null);
   const summeTeile = gemessen.reduce((s, t) => s + (t.kw as number), 0);
-  const rest = restZeile(hausKw, summeTeile, hausTeile, input.hausTodayKwh ?? null, today);
+  const rest = restZeile(hausKw, summeTeile, hausTeile, input.hausTodayKwh ?? null, today,
+    restWort(input.profil));
 
   // --- 4. Gruppen -----------------------------------------------------------
   const kachel = input.ladenKachelSichtbar === true;
@@ -505,10 +541,12 @@ function restZeile(
   teile: VerbrauchTeil[],
   hausTodayKwh: number | null,
   today: Record<string, number | null>,
+  label: string,
 ): VerbrauchRest {
   const todayKwh = restToday(hausTodayKwh, teile, today);
   if (hausKw == null) {
     return {
+      label,
       kw: null,
       note: 'nicht bestimmbar - der Hausverbrauch wird gerade nicht gemeldet',
       konflikt: false,
@@ -522,6 +560,7 @@ function restZeile(
     ?? teile.find((t) => t.kw != null && t.health === 'stale');
   if (blocker) {
     return {
+      label,
       kw: null,
       note: blocker.kw == null
         ? `nicht bestimmbar (${blocker.label} ohne Leistungsmessung)`
@@ -533,13 +572,15 @@ function restZeile(
   const diff = round3(hausKw - summeTeile);
   if (diff < -KONFLIKT_DEADBAND_KW) {
     return {
+      label,
       kw: null,
       note: `Messwerte passen nicht zusammen (${kwText(diff)})`,
       konflikt: true,
       todayKwh,
+      ...(teile.some((t) => t.unterzaehler) ? { pruefen: UNTERZAEHLER_PRUEFEN } : {}),
     };
   }
-  return { kw: Math.max(diff, 0), note: null, konflikt: false, todayKwh };
+  return { label, kw: Math.max(diff, 0), note: null, konflikt: false, todayKwh };
 }
 
 /**

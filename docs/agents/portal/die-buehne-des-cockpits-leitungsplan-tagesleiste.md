@@ -26,6 +26,13 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   Hinweissatz entfallen. Beweis: `e2e/cockpit-buehne.spec.ts` (Wisch über CDP, Tipp, Lage der Leiste).
 - **Bewegung heißt live:** Punkte (`.vp-lp-punkte`, benannter Loop `vp-flow`) laufen nur bei `is-live`;
   unter `prefers-reduced-motion` entfallen sie im EINEN Block am Ende von `index.css`.
+- **Unterverteilungen** (Konzept `vp-unterzaehler-anzeige`, UV-1…UV-4 A, 07.11.2026): ein Unterzähler
+  (`sub-meter`) ist ein Mitglied des Verbraucher-Knotens und steht in „Verbrauch im Detail“ mit dem
+  Mess-Symbol, nie als eigener Kreis. Das Restwort folgt `site.profil` (`restWort`: privat „übriger Haushalt“,
+  gewerbe „ohne eigenen Zähler“). Die Technik-Ebene (`showTechnicalLayer`) hängt bei Gegenrichtung oder
+  Widerspruch „Wandlerrichtung oder Zuordnung prüfen“ an. Verlauf › Energie: Karte „Verbrauch nach Bereichen“
+  (`verbrauchBereiche`, dieselbe Restregel in kWh über `GET …/entities/{id}/energy`), nur mit Unterzähler.
+  Phasen und Zählerstände stehen auf der Geräteseite (`zaehlerWerte`) und unter Messwerte.
 - **Ein Gerät, eine Stelle:** Unter dem Fluss steht nur „Verbrauch im Detail“ (auch die Ladepunkte,
   `ladenKachelSichtbar: false`); die Erzeugung je Gerät steht nur im Blatt des Sonnen-Knotens. Die Blätter
   zeigen dieselbe Listenform vollständig (`ListeBlock` ohne `onOpen`, Zeilen verlinken auf Geräteseiten),

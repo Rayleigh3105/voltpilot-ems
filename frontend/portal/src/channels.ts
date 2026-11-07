@@ -32,6 +32,12 @@ const CHANNEL_LABELS: Record<string, string> = {
   grid_power_kw: 'Netzleistung',
   grid_limit_kw: 'Netzgrenze',
   energy_kwh: 'Energie',
+  // Ein Zähler (Unterzähler, Netz-Zähler über einen Shelly Pro 3EM; Konzept vp-unterzaehler-anzeige):
+  // Rückfluss bzw. Einspeisung und die Leistung je Phase.
+  energy_export_kwh: 'Zählerstand Einspeisung',
+  power_l1_kw: 'Leistung L1',
+  power_l2_kw: 'Leistung L2',
+  power_l3_kw: 'Leistung L3',
   temperature_c: 'Temperatur',
   current_a: 'Strom',
   voltage_v: 'Spannung',
@@ -54,6 +60,19 @@ const COMMAND_LABELS: Record<string, string> = {
  */
 export function channelLabel(channel: string): string {
   return CHANNEL_LABELS[channel] ?? channel;
+}
+
+/** Die Entitätstypen, die ein ZÄHLER sind: ihr `energy_kwh` ist ein Zählerstand, keine Energiemenge. */
+const ZAEHLER_TYPEN = new Set(['sub-meter', 'grid-meter']);
+
+/**
+ * Der Kanalname an EINER Komponente: an einem Zähler heißt `energy_kwh` „Zählerstand Bezug“ - der
+ * Wert ist der Stand des Zählwerks (70 802 kWh), nicht die Energie eines Zeitraums. Sonst wie
+ * {@link channelLabel}.
+ */
+export function channelLabelFor(channel: string, entityType: string | null | undefined): string {
+  if (channel === 'energy_kwh' && ZAEHLER_TYPEN.has((entityType ?? '').trim())) return 'Zählerstand Bezug';
+  return channelLabel(channel);
 }
 
 /**

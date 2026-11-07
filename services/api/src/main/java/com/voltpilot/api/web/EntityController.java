@@ -113,6 +113,17 @@ public class EntityController {
     public record EntityHistoryDto(String range, Instant from, Instant to, int bucketMinutes,
             Map<String, List<EntityHistoryRepository.Bucket>> channels) {}
 
+    /**
+     * Die Energie eines Geräts je Eimer des Zeitraums (Unterverteilungen, Konzept
+     * vp-unterzaehler-anzeige C2). {@code source} = {@code zaehler} (Zuwachs des Zählerstands),
+     * {@code leistung} (Leistung × Dauer) oder {@code null} (keine Reihe); {@code kwh} eines Eimers
+     * und {@code totalKwh} sind {@code null}, wo keine Zahl belegbar ist - nie eine 0.
+     */
+    public record EntityEnergyDto(String range, Instant from, Instant to, int bucketMinutes, String source,
+            List<EnergyBucketDto> buckets, Double totalKwh, boolean counterFalls) {}
+
+    public record EnergyBucketDto(Instant start, Double kwh) {}
+
     private final Geltungsbereich geltungsbereich;
     private final EntityRegistryRepository registry;
     private final EntityObservedRepository observed;
@@ -237,6 +248,41 @@ public class EntityController {
                         entity.entityType(), entity.deviceId());
         return new EntityHistoryDto(parsed.name().toLowerCase(), window.from(), window.to(),
                 parsed.bucketMinutes(), channels);
+    }
+
+    /**
+     * Energy of one entity per bucket of the range, by the counter rule
+     * ({@link com.voltpilot.api.history.GeraeteEnergie}): the increase of {@code energy_kwh}
+     * where the device counts, else {@code power_kw} × duration. Buckets are those of
+     * {@code /history} for the same range (day 15 min, week 1 h, month/year Berlin days), so a
+     * house value minus its measured parts adds up per bucket.
+     */
+    @GetMapping("/{entityId}/energy")
+    public EntityEnergyDto energy(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @RequestParam(defaultValue = "day") String range,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate at) {
+        requireSite(siteId);
+        EntityRow entity = registry.entityForSite(siteId, entityId);
+        if (entity == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
+        }
+        HistoryRange parsed = HistoryRange.parse(range);
+        if (parsed == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "range must be one of day|week|month|year");
+        }
+        LocalDate anchor = at != null ? at : LocalDate.now(HistoryRange.ZONE);
+        HistoryRange.Window window = parsed.window(anchor);
+        com.voltpilot.api.history.GeraeteEnergie.Ergebnis e = com.voltpilot.api.history.GeraeteEnergie.berechne(
+                history.energySeries(siteId, entityId.toString(), parsed, window.from(), window.to()),
+                EntityHistoryRepository.energySeriesBucket(parsed), parsed);
+        List<EnergyBucketDto> buckets = new ArrayList<>(e.eimer().size());
+        for (com.voltpilot.api.history.GeraeteEnergie.Eimer b : e.eimer()) {
+            buckets.add(new EnergyBucketDto(b.start(), b.kwh()));
+        }
+        return new EntityEnergyDto(parsed.name().toLowerCase(), window.from(), window.to(),
+                parsed.bucketMinutes(), e.quelle(), buckets, e.summeKwh(), e.zaehlerFaellt());
     }
 
     /**

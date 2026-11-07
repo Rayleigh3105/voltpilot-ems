@@ -2009,12 +2009,14 @@ export function AnlageSeite({
       hausTodayKwh: dayTotalsEffective?.consumptionKwh ?? null,
       // Die Ladepunkte stehen wie im Prototyp auch in „Verbrauch im Detail“.
       ladenKachelSichtbar: false,
+      // Das Wort für den Rest folgt dem Anwendungsprofil (privat „übriger Haushalt“, gewerbe „ohne eigenen Zähler“).
+      profil: site.profil ?? null,
       links: {
         charger: (id: string) => (boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null),
         komponente: (entityId: string) => komponenteHash(site.id, entityId),
       },
     }),
-    [adaptiveLive.adaptive, adaptiveLive.topology, charging, consumerStatus, dayTotalsEffective, boxRef, site.id],
+    [adaptiveLive.adaptive, adaptiveLive.topology, charging, consumerStatus, dayTotalsEffective, boxRef, site.id, site.profil],
   );
   const buehneVerbrauchRoh = useMemo(() => verbrauchKomposition(verbrauchEingabe), [verbrauchEingabe]);
   const verbrauchHeuteKwh = useVerbrauchHeute(site.id, buehneVerbrauchRoh, charging?.chargers ?? null, verbrauchBlattOffen);

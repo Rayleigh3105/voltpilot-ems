@@ -209,21 +209,34 @@ func TestSchrammSourcesAreReadByRoleAndLeaveReceipts(t *testing.T) {
 	if err := r.bus.Publish(sources.TopicConfig, cfg, true); err != nil {
 		t.Fatal(err)
 	}
+	// A meter carries its details next to the role's channel (Unterverteilungen
+	// B1): the counters in kWh and the power per phase - the real answers of
+	// Schramm's three meters. With invert_grid_sign (src-keller) the phases turn
+	// and the counters swap: "returned" is then what that part drew.
 	want := map[string]map[string]float64{
-		"src-wr2":    {"pv_power_kw": 1.67},
-		"src-wr3":    {"pv_power_kw": 1.64},
-		"src-netz":   {"power_kw": 6.994},
-		"src-halle":  {"load_kw": 12.024},
-		"src-keller": {"load_kw": -0.071},
+		"src-wr2": {"pv_power_kw": 1.67},
+		"src-wr3": {"pv_power_kw": 1.64},
+		"src-netz": {"power_kw": 6.994, "energy_kwh": 42654.393, "energy_export_kwh": 80964.02,
+			"power_l1_kw": 2.918, "power_l2_kw": 2.237, "power_l3_kw": 1.839},
+		"src-halle": {"load_kw": 12.024, "energy_kwh": 70802.308, "energy_export_kwh": 1.069,
+			"power_l1_kw": 4.021, "power_l2_kw": 4.407, "power_l3_kw": 3.596},
+		"src-keller": {"load_kw": -0.071, "energy_kwh": 6.8, "energy_export_kwh": 7647.388,
+			"power_l1_kw": -0.057, "power_l2_kw": -0.015, "power_l3_kw": 0.001},
 	}
+	samples := map[string]int{}
 	for id, w := range want {
 		msg := decodeJSON(t, r.wait(sources.TopicPrefix+id+"/telemetry", 1, 5*time.Second)[0])
+		if len(msg) != len(w)+1 {
+			t.Fatalf("%s: %v, erwartet genau %v + ts", id, msg, w)
+		}
 		for k, v := range w {
-			if msg[k] != v || len(msg) != 2 {
+			if msg[k] != v {
 				t.Fatalf("%s: %v, erwartet %s=%v + ts", id, msg, k, v)
 			}
 		}
+		samples[id] = len(w)
 	}
+	samples["DQ-7"] = samples["src-netz"]
 	if n := r.count(sources.TopicPrefix + "src-falsch/telemetry"); n != 0 {
 		t.Fatalf("ein Zaehler als Erzeuger liefert nichts: %d", n)
 	}
@@ -246,7 +259,7 @@ func TestSchrammSourcesAreReadByRoleAndLeaveReceipts(t *testing.T) {
 	}
 	for id, req := range map[string]int{"src-wr2": 6, "src-wr3": 6, "DQ-7": 1, "src-halle": 1, "src-keller": 1} {
 		ev, ok := byID[id]
-		if !ok || ev.Failed || ev.Samples != 1 || *ev.Requests != req {
+		if !ok || ev.Failed || ev.Samples != samples[id] || *ev.Requests != req {
 			t.Fatalf("Beleg %s: %+v (Anfragen %d erwartet)", id, ev, req)
 		}
 	}

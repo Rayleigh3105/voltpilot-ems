@@ -3,6 +3,7 @@ package layer1
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/shellyem"
@@ -20,7 +21,9 @@ import (
 // (+Bezug/-Einspeisung, the sign proven on the real Pro 3EM-400 at Schramm's,
 // 06.11.2026); a sub-meter (a sub-distribution, read as a consumer source)
 // publishes load_kw - the measured power of that part of the plant. An
-// Erzeuger has no meter channel. The Docker box does not read this way yet.
+// Erzeuger has no meter channel. Both meter roles add the meter's details
+// (counters, power per phase; shellyEMDetails) to the same reading. The Docker
+// box does not read this way yet.
 
 // CommShellyEM is the way's communication id (inverter.CommShellyEMHTTP).
 const CommShellyEM = shellyem.Communication
@@ -59,14 +62,60 @@ func (r *Runtime) readShellyEM(ctx context.Context, p *shellyEMPlan) (*shellyem.
 }
 
 // shellyEMValues is the role's channel of one reading, or why there is none.
+// Next to it ride the meter's own details (shellyEMDetails), which the core
+// reports as the telemetry of the meter's component (agent.meterEntityTelemetry).
 func shellyEMValues(m *shellyem.Messung, role string, invert bool) (map[string]float64, string) {
+	var values map[string]float64
 	switch role {
 	case sources.RoleNetz:
-		return map[string]float64{"power_kw": m.PowerKw(invert)}, ""
+		values = map[string]float64{"power_kw": m.PowerKw(invert)}
 	case sources.RoleConsumer:
-		return map[string]float64{"load_kw": m.PowerKw(invert)}, ""
+		values = map[string]float64{"load_kw": m.PowerKw(invert)}
+	default:
+		return nil, "ein Zähler liefert keinen PV-Wert - als Netz-Zähler oder als Unterzähler (Verbraucher) anlegen"
 	}
-	return nil, "ein Zähler liefert keinen PV-Wert - als Netz-Zähler oder als Unterzähler (Verbraucher) anlegen"
+	for k, v := range shellyEMDetails(m, invert) {
+		values[k] = v
+	}
+	return values, ""
+}
+
+// shellyEMDetails is what the meter measured beyond the role's channel. A
+// value the meter did not send stays absent - never a 0. With
+// invert_grid_sign (current transformers mounted against the arrow) the
+// phases turn with the total, and the two counters swap: what the meter
+// counts as "returned" is then what this part of the plant drew.
+func shellyEMDetails(m *shellyem.Messung, invert bool) map[string]float64 {
+	out := map[string]float64{}
+	bezug, einsp := m.BezugWh, m.EinspWh
+	if invert {
+		bezug, einsp = einsp, bezug
+	}
+	if bezug != nil {
+		out[sources.MeterEnergyKwh] = round3(*bezug / 1000)
+	}
+	if einsp != nil {
+		out[sources.MeterEnergyExportKwh] = round3(*einsp / 1000)
+	}
+	for i, ch := range []string{sources.MeterPowerL1Kw, sources.MeterPowerL2Kw, sources.MeterPowerL3Kw} {
+		if w := m.Phasen[i].LeistungW; w != nil {
+			v := *w
+			if invert {
+				v = -v
+			}
+			out[ch] = round3(v / 1000)
+		}
+	}
+	return out
+}
+
+// round3 rounds to 1 W (or 1 Wh) like shellyem.Messung.PowerKw; a -0 is 0.
+func round3(x float64) float64 {
+	v := math.Floor(x*1000+0.5) / 1000
+	if v == 0 {
+		return 0
+	}
+	return v
 }
 
 // shellyEMWhy names a failed read for the log.

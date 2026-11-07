@@ -239,7 +239,7 @@ public class EntityRegistryService {
                 case "pv-generation" -> repo.setEntityConfig(point.id(), TYPE_PRODUCER,
                         write(producerCapabilities(point)), write(producerGuards(point)));
                 case ROLE_GRID_METER -> repo.setEntityConfig(point.id(), TYPE_GRID_METER,
-                        write(gridMeterCapabilities()), write(gridMeterGuards()));
+                        write(gridMeterCapabilities(point)), write(gridMeterGuards()));
                 case ROLE_HOUSE_LOAD -> repo.setEntityConfig(point.id(), TYPE_HOUSE_LOAD,
                         write(houseLoadCapabilities()), write(houseLoadGuards()));
                 default -> {
@@ -445,7 +445,7 @@ public class EntityRegistryService {
                 }
                 case ROLE_GRID_METER -> {
                     hasGridPoint = true;
-                    ObjectNode caps = gridMeterCapabilities();
+                    ObjectNode caps = gridMeterCapabilities(point);
                     plan.add(new PlannedEntity(point.id(), action, TYPE_GRID_METER, point.label(),
                             rolesFor(TYPE_GRID_METER, caps), caps, gridMeterGuards()));
                 }
@@ -1667,6 +1667,16 @@ public class EntityRegistryService {
         ObjectNode caps = mapper.createObjectNode();
         caps.putArray("measure").add(measureCap("power_kw", "kW"));
         return caps;
+    }
+
+    /**
+     * Die Fähigkeiten eines VORHANDENEN Netz-Zählers: wird er über einen Zähler gelesen (Shelly Pro
+     * 3EM-400), trägt er dessen Zählerstände und Phasen - sonst nähme ein neues Komponieren sie ihm
+     * wieder, und die Box verwürfe sie (Konzept vp-unterzaehler-anzeige B1/C1).
+     */
+    private ObjectNode gridMeterCapabilities(EntityRow point) {
+        return com.voltpilot.api.components.ComponentDefaults.netzZaehlerCapabilities(mapper, catalog,
+                point.communication());
     }
 
     private ObjectNode gridMeterGuards() {

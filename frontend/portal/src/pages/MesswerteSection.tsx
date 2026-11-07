@@ -59,6 +59,7 @@ import type { BilanzReihe, TagReihe } from '../components/energie/EnergieCharts'
 import { CHART_CHUNK } from '../pageChunks';
 import { QuotenKarte, rollenFarbe, SpitzenKarte } from '../components/energie/EnergieKarten';
 import { EreignisKarte } from '../components/energie/EreignisKarte';
+import { BereicheKarte } from '../components/energie/BereicheKarte';
 import { EreignisSpurRahmen, type EreignisFokus } from '../components/energie/EreignisSpurRahmen';
 
 /**
@@ -531,6 +532,7 @@ export function MesswerteSection({
                 {ereignisKarte}
               </div>
               <div className="vp-vr-col">
+                <BereicheKarte site={site} range={range} at={at} history={stale ? null : history} />
                 <QuotenKarte quoten={quoten} />
                 {spitzen && <SpitzenKarte titel={spitzen.titel} zeilen={spitzen.zeilen} />}
               </div>

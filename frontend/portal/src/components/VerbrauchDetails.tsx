@@ -60,7 +60,7 @@ export function VerbrauchDetails({
               key: 'rest',
               weight: Math.max((rest.kw ?? 0) / (komposition.hausKw || 1), 0.001),
               className: 'vp-vbcomp-seg rest',
-              title: 'übriger Haushalt',
+              title: rest.label,
             },
           ]}
         />
@@ -77,7 +77,7 @@ export function VerbrauchDetails({
       {/* Der Rest ist eine DIFFERENZ, kein Gerät: kein Punkt, kein Sprung. */}
       <ul className="vp-vbcomp-rows">
         <li className="vp-vbcomp-row rest">
-          <span className="vp-vbcomp-name">übriger Haushalt</span>
+          <span className="vp-vbcomp-name">{rest.label}</span>
           {rest.kw == null ? (
             <span className="vp-vbcomp-word" title={rest.note ?? undefined}>
               {rest.note}

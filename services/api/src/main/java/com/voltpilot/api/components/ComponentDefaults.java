@@ -68,6 +68,103 @@ public final class ComponentDefaults {
         return write(mapper, caps);
     }
 
+    /** Der Entitätstyp eines reinen Zählers in einer Unterverteilung (Typkatalog, Konzept vp-unterzaehler-anzeige C1). */
+    public static final String TYPE_SUB_METER = "sub-meter";
+
+    /** Der Gerätetyp der Vorlage eines Zählers (Shelly Pro 3EM / Pro 3EM-400). */
+    public static final String DEVICE_TYPE_METER = "meter";
+
+    /**
+     * Die Kommunikationsarten, über die die Box einen ZÄHLER liest. Sie meldet dann
+     * neben der Leistung seine Zählerstände und Phasen (Box: {@code agent.meterEntityTelemetry}).
+     */
+    public static final java.util.Set<String> ZAEHLER_KOMMUNIKATION = java.util.Set.of("shelly_em_http");
+
+    /** Wird diese Komponente über einen Zähler gelesen? */
+    public static boolean ueberZaehler(String communication) {
+        return communication != null && ZAEHLER_KOMMUNIKATION.contains(communication.trim());
+    }
+
+    /**
+     * Die Fähigkeiten eines Netz-Zählers: {@code power_kw}, und wird er über einen Zähler gelesen,
+     * zusätzlich dessen Zählerstände und Phasen - genau die Kanäle des Katalogtyps
+     * {@value #TYPE_SUB_METER} (eine Wahrheit für beide Zählerorte). Die Leistung bleibt der einzige
+     * Topologie-Kanal; die anderen haben keine Rolle ({@code TopologyDeriver.defaultRole}).
+     */
+    public static ObjectNode netzZaehlerCapabilities(ObjectMapper mapper, EntityTypeCatalog catalog,
+            String communication) {
+        ObjectNode caps = mapper.createObjectNode();
+        ArrayNode measure = caps.putArray("measure");
+        measure.add(measure(mapper, "power_kw"));
+        if (ueberZaehler(communication)) {
+            EntityTypeCatalog.EntityType zaehler = catalog == null ? null : catalog.find(TYPE_SUB_METER);
+            if (zaehler != null && zaehler.defaultMeasure() != null && zaehler.defaultMeasure().isArray()) {
+                for (JsonNode m : zaehler.defaultMeasure()) {
+                    if (!"power_kw".equals(m.path("channel").asText())) {
+                        measure.add(m.deepCopy());
+                    }
+                }
+            }
+        }
+        return caps;
+    }
+
+    /**
+     * Gleicht die gespeicherten Fähigkeiten eines Netz-Zählers an sein Gerät an: über einen Zähler
+     * gelesen kommen dessen Zählerstände und Phasen dazu (und {@code power_kw}, falls es fehlt), sonst
+     * gehen genau diese Zählerkanäle wieder weg. Alles andere im Block bleibt stehen (ein vom Kunden
+     * zugeschalteter Kanal, {@code actuate}) - ohne Zähler wird nie etwas hinzugefügt.
+     * {@code null} = nichts zu ändern.
+     */
+    public static String netzZaehlerAbgleich(ObjectMapper mapper, EntityTypeCatalog catalog,
+            String storedCapabilitiesJson, String communication) {
+        ObjectNode stored;
+        try {
+            JsonNode parsed = storedCapabilitiesJson == null || storedCapabilitiesJson.isBlank() ? null
+                    : mapper.readTree(storedCapabilitiesJson);
+            stored = parsed instanceof ObjectNode o ? o.deepCopy() : mapper.createObjectNode();
+        } catch (Exception e) {
+            stored = mapper.createObjectNode();
+        }
+        java.util.Set<String> details = new java.util.LinkedHashSet<>();
+        for (JsonNode m : netzZaehlerCapabilities(mapper, catalog, ZAEHLER_KOMMUNIKATION.iterator().next())
+                .path("measure")) {
+            String ch = m.path("channel").asText();
+            if (!"power_kw".equals(ch)) {
+                details.add(ch);
+            }
+        }
+        boolean zaehler = ueberZaehler(communication);
+        ArrayNode before = stored.path("measure").isArray() ? (ArrayNode) stored.get("measure")
+                : mapper.createArrayNode();
+        ArrayNode after = mapper.createArrayNode();
+        java.util.Set<String> present = new java.util.HashSet<>();
+        for (JsonNode m : before) {
+            String ch = m.path("channel").asText();
+            if (!zaehler && details.contains(ch)) {
+                continue;
+            }
+            present.add(ch);
+            after.add(m.deepCopy());
+        }
+        if (zaehler) {
+            if (!present.contains("power_kw")) {
+                after.insert(0, measure(mapper, "power_kw"));
+                present.add("power_kw");
+            }
+            for (JsonNode m : netzZaehlerCapabilities(mapper, catalog, communication).path("measure")) {
+                if (present.add(m.path("channel").asText())) {
+                    after.add(m.deepCopy());
+                }
+            }
+        }
+        if (after.equals(before)) {
+            return null;
+        }
+        stored.set("measure", after);
+        return write(mapper, stored);
+    }
+
     /**
      * Die Schutz-Konfiguration. Ein Erzeuger bekommt seine Nennleistung als
      * Obergrenze (sie weitet zugleich die physikalische Plausibilitäts-Hülle der

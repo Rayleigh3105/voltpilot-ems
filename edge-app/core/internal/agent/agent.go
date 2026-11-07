@@ -398,6 +398,10 @@ type Agent struct {
 	// site sample - even on a box without a stored selection - and the sources
 	// never fold a second one beside it. Guarded by srcMu.
 	lastPrimaryAt time.Time
+	// lastMeterTelemetry is when meterEntityTelemetry last reported a meter's
+	// reading per COMPONENT (Unterverteilungen B1: at most every 5 s). Guarded
+	// by srcMu.
+	lastMeterTelemetry map[string]time.Time
 
 	// testReads correlates an in-flight "Verbindung testen" round-trip
 	// (edge/test-read/request -> Node-RED -> edge/test-read/result) to the
@@ -4520,6 +4524,14 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		RelayOn   *bool    `json:"relay_on"`
 		Inputs    []bool   `json:"inputs"`
 		Outputs   []bool   `json:"outputs"`
+		// The meter details of a meter source (sources.MeterDetailChannels):
+		// counters in kWh and power per phase, reported as the telemetry of the
+		// meter's component (meterEntityTelemetry), never part of the balance.
+		EnergyKwh       *float64 `json:"energy_kwh"`
+		EnergyExportKwh *float64 `json:"energy_export_kwh"`
+		PowerL1Kw       *float64 `json:"power_l1_kw"`
+		PowerL2Kw       *float64 `json:"power_l2_kw"`
+		PowerL3Kw       *float64 `json:"power_l3_kw"`
 		// Ts is the reading's own observation time (RFC 3339), as every Layer-1
 		// source publishes it; a plant-controller sample keeps it as the sample
 		// time (store-and-forward replays with the ORIGINAL time, like v1).
@@ -4559,6 +4571,18 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 	// Erzeuger reading is its component's telemetry, and the sources fold the
 	// site sample themselves (sources_site_sample.go).
 	a.producerEntityTelemetry(id, pv, m.Ts, now)
+	// A meter (sub-meter or grid meter) reports its reading, counters and
+	// phases as the telemetry of ITS component (meter_entity_telemetry.go).
+	details := map[string]float64{}
+	for ch, v := range map[string]*float64{
+		sources.MeterEnergyKwh: m.EnergyKwh, sources.MeterEnergyExportKwh: m.EnergyExportKwh,
+		sources.MeterPowerL1Kw: m.PowerL1Kw, sources.MeterPowerL2Kw: m.PowerL2Kw, sources.MeterPowerL3Kw: m.PowerL3Kw,
+	} {
+		if u := usable(v); u != nil {
+			details[ch] = *u
+		}
+	}
+	a.meterEntityTelemetry(id, meterReading{load: load, details: details}, m.Ts, now)
 	a.sourcesSiteSample(now)
 }
 

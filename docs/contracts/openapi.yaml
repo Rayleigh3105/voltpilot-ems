@@ -8333,6 +8333,32 @@ paths:
         "400": { description: Bad range. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Entity/site not found. }
+  /api/v1/sites/{siteId}/entities/{entityId}/energy:
+    get:
+      tags: [sites]
+      summary: Energy of one entity per bucket of the range, by the counter rule.
+      description: >
+        Unterverteilungen (Konzept vp-unterzaehler-anzeige C2). Where the entity
+        carries the counter `energy_kwh`, the energy of a bucket is its INCREASE
+        (end of bucket minus end of the previous bucket, max - min after a gap or
+        at the start); a counter that FALLS anywhere (swap, reset, overflow) gives
+        that bucket no number and the range no total (`counterFalls`). Without a
+        counter: `power_kw` average x bucket duration. Without either, no number
+        - never a 0. Fine buckets are 15 min (day, raw telemetry_v2) or 1 h
+        (telemetry_v2_rollup_1h); the answer's buckets are those of `/history`
+        for the same range (day 15 min, week 1 h, month/year Europe/Berlin days),
+        so a house value minus its measured parts adds up per bucket. Values are
+        unrounded. Pure v2, RLS-scoped.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: range, in: query, required: false, schema: { type: string, enum: [day, week, month, year], default: day } }
+        - { name: at, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200": { description: The energy per bucket., content: { application/json: { schema: { $ref: "#/components/schemas/EntityEnergy" } } } }
+        "400": { description: Bad range. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Entity/site not found. }
   /api/v1/component-templates:
     get:
       tags: [templates]
@@ -25826,6 +25852,28 @@ components:
                 max: { type: number, nullable: true }
                 last: { type: number, nullable: true }
                 n: { type: integer }
+    EntityEnergy:
+      type: object
+      properties:
+        range: { type: string, enum: [day, week, month, year] }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        bucketMinutes: { type: integer }
+        source:
+          type: string
+          nullable: true
+          enum: [zaehler, leistung]
+          description: zaehler = increase of energy_kwh, leistung = power_kw x duration, null = no series.
+        buckets:
+          type: array
+          description: Only buckets with data, ascending.
+          items:
+            type: object
+            properties:
+              start: { type: string, format: date-time }
+              kwh: { type: number, nullable: true, description: "null = the counter fell in this bucket." }
+        totalKwh: { type: number, nullable: true }
+        counterFalls: { type: boolean }
     ComponentAdoptionOutcome:
       type: object
       description: >

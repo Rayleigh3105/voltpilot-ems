@@ -246,6 +246,15 @@ public class EntityRegistryRepository {
     }
 
     /**
+     * Nur die Fähigkeiten einer Zeile - Typ und Schutz-Konfiguration bleiben (Netz-Zähler, der über
+     * einen Zähler gelesen wird: {@code ComponentDefaults.netzZaehlerAbgleich}).
+     */
+    public void setCapabilities(UUID pointId, String capabilitiesJson) {
+        jdbc.update("UPDATE measurement_point SET capabilities = ?::jsonb WHERE id = ?",
+                capabilitiesJson, pointId);
+    }
+
+    /**
      * Die Steuerbar-Marke einer Zeile. Seit E1b folgt sie dem Typkatalog ({@code controllable}); der
      * revisionierte Bearbeitungsweg ({@code applyEditDefinition}) bekommt sie vom Aufrufer; hier setzt
      * sie, wer sie ohne Bearbeitung nachtragen muss (Heizstab-Nachtrag).

@@ -5,6 +5,7 @@ import { KNOWN_ROLES, roleLabel, type SlotRole } from '../fahrplanWhy';
 import type { PlanWordingKind } from '../schedule';
 import type { RollenKanonischerWert } from '../api';
 import type { AnlagenSub } from '../nav';
+import { showTechnicalLayer } from '../rollen';
 import type { ErzeugerBuehne } from '../erzeuger';
 import type { JetztFluss } from '../flussJetzt';
 import { erzeugungListe, ohneAufteilung, rollenListe, verbrauchListe, type Liste } from '../flussListen';
@@ -209,7 +210,7 @@ export function EnergieBuehne({
   const vListe: Liste | null = erzeuger
     ? (zeit === 'live' && !heute ? erzeuger.liste : null)
     : heute || zeit === 'live'
-      ? verbrauchListe(verbrauch, { heute, max, hausKw: heute ? null : werte.load })
+      ? verbrauchListe(verbrauch, { heute, max, hausKw: heute ? null : werte.load, technik: showTechnicalLayer() })
       : verbrauch
         ? ohneAufteilung('Verbrauch im Detail', kw(werte.load), zeit === 'plan')
         : null;
@@ -650,7 +651,9 @@ function BlattInhalt({
         {(zeit === 'live' || heute) && (() => {
           const liste =
             (!heute ? rollenListe(rollen?.load) : null) ??
-            verbrauchListe(verbrauch, { heute, max: Number.MAX_SAFE_INTEGER, hausKw: heute ? null : werte.load });
+            verbrauchListe(verbrauch, {
+              heute, max: Number.MAX_SAFE_INTEGER, hausKw: heute ? null : werte.load, technik: showTechnicalLayer(),
+            });
           return liste ? <ListeBlock liste={liste} className="vp-rolle-consumer" /> : null;
         })()}
         {zeit === 'plan' && <p className="vp-eb-note">Für den Plan gibt es keine Aufteilung je Gerät.</p>}

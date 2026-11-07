@@ -67,6 +67,58 @@
   vertical-align: middle;
 }
 
+/* --- Verbrauch nach Bereichen (Konzept vp-unterzaehler-anzeige, UV-2 A) ------
+   Dieselbe Liste wie die Spitzenwerte, darunter Säulen je Stunde/Tag/Monat:
+   je Säule die Teile von unten, der berechnete Rest oben. */
+.vp-vr-bereiche .vp-vr-kv dt {
+  color: var(--vp-navy);
+}
+.vp-vr-bereiche .vp-vr-kv > div.is-rest dt {
+  color: var(--vp-text-gray);
+}
+/* Die Unterzeile („Unterzähler“, „berechnet: …“, der Grund) steht unter dem Namen, nie dazwischen. */
+.vp-vr-bereiche .vp-vr-kv dt small {
+  display: block;
+  padding-left: 14px;
+}
+.vp-vr-bereiche .vp-vr-kv dd {
+  white-space: nowrap;
+}
+.vp-vr-saeulen {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 96px;
+  margin-top: var(--vp-c-space-3);
+  border-bottom: 1px solid var(--vp-chart-axisline, var(--vp-neutral-soft));
+}
+.vp-vr-saeule {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.vp-vr-saeule-stapel {
+  width: 100%;
+  display: flex;
+  flex-direction: column-reverse;
+  border-radius: 2px 2px 0 0;
+  overflow: hidden;
+}
+.vp-vr-saeule-stapel > i {
+  display: block;
+  width: 100%;
+}
+.vp-vr-saeulen-achse {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-text-gray);
+  margin-top: 4px;
+}
+
 /* --- Ereignisse (Konzept `data/vp-verlauf-ereignisse-k1`) -------------------
    Spur am Diagramm + Chronik nach Tagen + „Nach Art". Die Farbe sagt den
    BEREICH — dieselben Rollenfarben wie im Diagramm —, das Symbol die Art. */
