@@ -87,6 +87,28 @@ test('Plattform › Übersicht: Braucht dich - erledigen, einklappbar wieder ans
   await expect(zeilen).toHaveCount(vorher);
 });
 
+test('Plattform › Übersicht: schnelles Hintereinander-Klicken auf mehrere Häkchen markiert ALLE Zeilen als erledigt', async ({ page }) => {
+  await page.goto('/e2e/plattform-uebersicht.html');
+  const zeilen = page.getByTestId('ueb-braucht-zeile');
+  const vorher = await zeilen.count();
+  expect(vorher).toBeGreaterThan(1);
+
+  // Alle Häkchen in einem Zug anklicken - kein Warten zwischen den Klicks,
+  // genau wie der Captain, der Zeile für Zeile schnell abhakt (Bug-Report).
+  await page.evaluate(() => {
+    document
+      .querySelectorAll<HTMLButtonElement>('.vp-ueb-braucht-erledigt-knopf')
+      .forEach((knopf) => knopf.click());
+  });
+
+  await expect(zeilen).toHaveCount(0);
+  await expect(page.getByText(/Keine Box braucht dich gerade/)).toBeVisible();
+  const auf = page.getByRole('button', { name: /Erledigte anzeigen/ });
+  await expect(auf).toContainText(`(${vorher})`);
+  await auf.click();
+  await expect(page.locator('.vp-ueb-braucht-erledigte-zeile')).toHaveCount(vorher);
+});
+
 test('Plattform › Übersicht: Software-Kachel führt auf die Software-Seite', async ({ page }) => {
   await page.goto('/e2e/plattform-uebersicht.html');
   await page.getByTestId('ueb-kacheln').getByRole('button', { name: /Software/ }).click();

@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminFleetSite } from '../../admin/fleetApi';
 import type { EdgeUpdates } from '../../adminEdgeUpdates';
 
@@ -72,6 +72,20 @@ const LEERE_EDGE_UPDATES: EdgeUpdates = {
   fleet: [], rollouts: [], journal: [], kpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null }, lines: [],
 };
 
+function standardBrauchtDichMocks() {
+  brauchtDichErledigt.mockImplementation(() => Promise.resolve({ erledigt: [...brauchtDichAblage.values()] }));
+  brauchtDichErledigen.mockImplementation((eintraege: { schluessel: string; stand: string }[]) => {
+    for (const e of eintraege) {
+      brauchtDichAblage.set(e.schluessel, { ...e, erledigtAm: new Date().toISOString(), erledigtVon: 'admin' });
+    }
+    return Promise.resolve();
+  });
+  brauchtDichWiederherstellen.mockImplementation((schluessel: string) => {
+    brauchtDichAblage.delete(schluessel);
+    return Promise.resolve();
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   brauchtDichAblage = new Map();
@@ -82,6 +96,15 @@ beforeEach(() => {
   werkstattDienst.mockResolvedValue(null);
   listPendingEnrollments.mockResolvedValue([]);
   plattformDienste.mockResolvedValue({ dienste: [] });
+  standardBrauchtDichMocks();
+});
+
+// Ein Fall setzt `mockImplementation` gezielt auf von Hand aufgelöste
+// Versprechen (Netz-Überholung nachbilden) - das überlebt `clearAllMocks()`
+// und muss daher IMMER zurückgesetzt werden, auch wenn der Fall selbst
+// fehlschlägt.
+afterEach(() => {
+  standardBrauchtDichMocks();
 });
 
 describe('PlattformUebersichtPage', () => {
@@ -191,6 +214,91 @@ describe('PlattformUebersichtPage', () => {
       const [[eintraege]] = brauchtDichErledigen.mock.calls;
       expect(eintraege).toHaveLength(2);
       await waitFor(() => expect(screen.queryByTestId('ueb-braucht-zeile')).toBeNull());
+    });
+
+    it('zwei schnelle Klicks auf unterschiedliche Zeilen bleiben BEIDE erledigt, auch wenn die Nachlade-Abfragen in anderer Reihenfolge zurückkommen', async () => {
+      fleet.mockResolvedValue({
+        sites: [
+          site('s1', 'Anlage A', { boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-9', name: 'Box 9', fuehrtAnlage: true, lastSeenAt: null, edge: null, update: null }] }),
+          site('s2', 'Anlage B', { tenantId: 't2', tenantName: 'Demo C&I 2', boxes: [{ deviceId: 'd2', externalRef: 'VP-BOX-10', name: 'Box 10', fuehrtAnlage: true, lastSeenAt: null, edge: null, update: null }] }),
+        ],
+      });
+      edgeUpdates.mockResolvedValue({
+        ...LEERE_EDGE_UPDATES,
+        fleet: [
+          { deviceId: 'd1', label: 'Box 9', externalRef: 'VP-BOX-9', siteId: 's1', siteName: 'Anlage A', tenantId: 't1', tenantName: 'Demo C&I', ist: null, soll: null, sollSeq: null, state: 'unbekannt', reason: null, since: null, reportedAt: null, rolloutId: null, boxArt: null, linie: null, stand: 'fehler', lastSeenAt: null, istRelease: null, releasesDahinter: null, istSeit: null, fakten: null },
+          { deviceId: 'd2', label: 'Box 10', externalRef: 'VP-BOX-10', siteId: 's2', siteName: 'Anlage B', tenantId: 't2', tenantName: 'Demo C&I 2', ist: null, soll: null, sollSeq: null, state: 'unbekannt', reason: null, since: null, reportedAt: null, rolloutId: null, boxArt: null, linie: null, stand: 'fehler', lastSeenAt: null, istRelease: null, releasesDahinter: null, istSeit: null, fakten: null },
+        ],
+      });
+
+      // POST (`erledigen`) und GET (`erledigt`) werden hier von Hand
+      // aufgelöst statt sofort, um eine Netz-Überholung nachzubilden: eine
+      // SPÄTER zurückkommende Antwort einer FRÜHER gestarteten Abfrage -
+      // genau das, was beim schnellen Hintereinander-Klicken auf einer
+      // echten Verbindung passiert.
+      function deferredPromise<T>() {
+        let resolve!: (value: T) => void;
+        const promise = new Promise<T>((res) => { resolve = res; });
+        return { promise, resolve };
+      }
+      const postDeferreds: ReturnType<typeof deferredPromise<void>>[] = [];
+      brauchtDichErledigen.mockImplementation(() => {
+        const d = deferredPromise<void>();
+        postDeferreds.push(d);
+        return d.promise;
+      });
+      const getDeferreds: ReturnType<typeof deferredPromise<{ erledigt: unknown[] }>>[] = [];
+      brauchtDichErledigt.mockImplementation(() => {
+        const d = deferredPromise<{ erledigt: unknown[] }>();
+        getDeferreds.push(d);
+        return d.promise;
+      });
+
+      render(<PlattformUebersichtPage />);
+      await waitFor(() => expect(getDeferreds).toHaveLength(1));
+      getDeferreds[0].resolve({ erledigt: [] }); // das anfängliche load()
+
+      const zeilen = await screen.findAllByTestId('ueb-braucht-zeile');
+      expect(zeilen).toHaveLength(2);
+
+      fireEvent.click(within(zeilen[0]).getByRole('button', { name: /als erledigt markieren/i }));
+      fireEvent.click(within(zeilen[1]).getByRole('button', { name: /als erledigt markieren/i }));
+
+      // Optimistisch verschwinden SOFORT beide Zeilen.
+      await waitFor(() => expect(screen.queryByTestId('ueb-braucht-zeile')).toBeNull());
+
+      await waitFor(() => expect(postDeferreds).toHaveLength(2));
+      const [eintrag1] = brauchtDichErledigen.mock.calls[0][0] as { schluessel: string; stand: string }[];
+      const [eintrag2] = brauchtDichErledigen.mock.calls[1][0] as { schluessel: string; stand: string }[];
+
+      // Klick 1 schreibt zuerst fertig und löst dadurch SEIN load() aus.
+      postDeferreds[0].resolve();
+      await waitFor(() => expect(getDeferreds).toHaveLength(2));
+      // Klick 2 schreibt danach fertig und löst SEIN (zweites) load() aus.
+      postDeferreds[1].resolve();
+      await waitFor(() => expect(getDeferreds).toHaveLength(3));
+
+      // Die NEUERE Abfrage (von Klick 2 ausgelöst) kommt zuerst zurück, mit
+      // dem vollständigen, korrekten Stand ...
+      getDeferreds[2].resolve({
+        erledigt: [
+          { schluessel: eintrag1.schluessel, stand: eintrag1.stand, erledigtAm: new Date().toISOString(), erledigtVon: 'admin' },
+          { schluessel: eintrag2.schluessel, stand: eintrag2.stand, erledigtAm: new Date().toISOString(), erledigtVon: 'admin' },
+        ],
+      });
+      await act(async () => { await Promise.resolve(); });
+      // ... und die ÄLTERE Abfrage (von Klick 1 ausgelöst) kommt erst danach
+      // zurück, mit einem veralteten Stand, der von Klick 2 noch nichts weiß.
+      getDeferreds[1].resolve({
+        erledigt: [
+          { schluessel: eintrag1.schluessel, stand: eintrag1.stand, erledigtAm: new Date().toISOString(), erledigtVon: 'admin' },
+        ],
+      });
+
+      // Beide Zeilen bleiben erledigt - die überholte, ältere Antwort darf
+      // die neuere nicht zurückdrehen.
+      await waitFor(() => expect(screen.queryByTestId('ueb-braucht-zeile')).toBeNull());
+      expect(screen.getByText(/Keine Box braucht dich gerade/)).toBeInTheDocument();
     });
   });
 
