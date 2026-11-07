@@ -434,7 +434,14 @@ export type LadeZustandKind =
   | 'beendet'
   | 'stoerung'
   | 'nicht_verfuegbar'
-  | 'reserviert';
+  | 'reserviert'
+  | 'kein_ladevorgang';
+
+// Die gemeinsame Regel „ein Ladevorgang läuft“ und „Auto steckt, kein
+// Ladevorgang“ wohnt in `ladeRegel.ts` - klein und ohne Abhängigkeiten, damit
+// auch das erste Bild des Cockpits sie fragen kann, ohne diese Datei zu laden.
+export { KEIN_LADEVORGANG_SATZ, keinLadevorgang, ladungLaeuft } from './ladeRegel';
+import { KEIN_LADEVORGANG_SATZ, keinLadevorgang, ladungLaeuft } from './ladeRegel';
 
 export interface LadeZustand {
   /** Das MASCHINEN-Wort des Zustands - worauf eine Fläche schlüsseln darf. */
@@ -484,6 +491,7 @@ const ZUSTAND_WORT: Record<LadeZustandKind, string> = {
   stoerung: 'Störung an der Säule',
   nicht_verfuegbar: 'Nicht verfügbar',
   reserviert: 'Reserviert',
+  kein_ladevorgang: 'Eingesteckt · kein Ladevorgang',
 };
 
 /**
@@ -508,6 +516,8 @@ const ZUSTAND_TON: Record<LadeZustandKind, LadeTone> = {
   stoerung: 'stoerung',
   nicht_verfuegbar: 'ruhig',
   reserviert: 'ruhig',
+  // Bernstein: hier muss jemand etwas tun (neu einstecken), sonst lädt nichts.
+  kein_ladevorgang: 'stoerung',
 };
 
 /** Unsere eigenen Zusätze - nur dort, wo der Zustand allein zu wenig sagt. */
@@ -591,13 +601,16 @@ export function ladeZustand(
     // ⚠ Bei einem Handeingriff steht der Urheber schon IM Wort - der Satz der
     // Box („pausiert — Handeingriff") wäre daneben dieselbe Aussage ein zweites
     // Mal, genau die Doppelung, gegen die `basisWort` gebaut ist.
-    reason:
-      handeingriff
+    // ⚠ „Kein Ladevorgang“ trägt IMMER seinen Ausweg - auch von einer Box,
+    // die den Satz noch nicht schickt.
+    reason: kind === 'kein_ladevorgang'
+      ? text(con.reasonText) ?? KEIN_LADEVORGANG_SATZ
+      : handeingriff
         || sameWord(con.reasonText, word)
         || sameWord(con.reasonText, ZUSTAND_WORT[kind])
         ? null
         : text(con.reasonText),
-    reasonCode: text(con.reason),
+    reasonCode: kind === 'kein_ladevorgang' ? 'kein_ladevorgang' : text(con.reason),
     detail,
   };
 }
@@ -653,6 +666,9 @@ function zustandKind(
   // damit auf den Zustand zurück, den es dafür längst gibt
   // (`laedt_ohne_messung`) - kein neues Wort, keine neue Farbe.
   const power = aktuelleLeistung(con, nowMs);
+  // Auto verbunden, aber kein Ladevorgang: kein „wartet“, denn worauf es
+  // wartet, kommt nie - erst neu einstecken hilft.
+  if (keinLadevorgang(con)) return 'kein_ladevorgang';
   switch (text(con.status)) {
     case 'Faulted':
       return 'stoerung';
@@ -725,6 +741,11 @@ export interface LadevorgangRow {
   connectorId: number;
   /** Diese Ladung läuft auf Wunsch des Kunden, ohne die Quellen-Bahn. */
   boost: boolean;
+  /**
+   * Läuft hier ein Ladevorgang ({@link ladungLaeuft})? Ohne ihn bietet keine
+   * Fläche „Schnell“, „Aus“ oder „bis Abstecken“ an - Server und Box lehnten ab.
+   */
+  ladungLaeuft: boolean;
   /** Läuft an dieser Ladung ein „Laden pausieren" des Kunden? (P3b) */
   handeingriff: boolean;
   /** Das Pseudonym der Karte, die hier lädt (P7); null = keine gemeldet. */
@@ -792,6 +813,7 @@ function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): Ladevorga
     chargePointId: c.chargePointId,
     connectorId: con.connectorId,
     boost: con.boost === true,
+    ladungLaeuft: ladungLaeuft(con),
     handeingriff: z.handeingriff,
     tagRef: con.tagRef ?? null,
     bahn: asPolicy(c.quelle?.source),
@@ -1109,6 +1131,8 @@ export function quellenBahnWirkt(
  * {@link schnellWirktNichtGrund} warum.
  */
 export function boostbar(budget: ChargingBudget | null, row: LadevorgangRow): boolean {
+  // ⚠ Zuerst die Regel des Servers: ohne laufenden Ladevorgang endete der Knopf in seinem 409.
+  if (!row.ladungLaeuft) return false;
   if (!quellenBahnWirkt(budget, row)) return false;
   if (row.boost) return false;
   // ⚠ Geprüft wird das MASCHINEN-Wort, nie der deutsche Satz: der trägt bei
@@ -1131,6 +1155,12 @@ export function schnellWirktNichtGrund(
 ): string | null {
   if (!row) return 'Schnell gilt für eine laufende Ladung.';
   if (row.boost || boostbar(budget, row)) return null;
+  if (row.kind === 'kein_ladevorgang') return KEIN_LADEVORGANG_SATZ;
+  if (!row.ladungLaeuft) {
+    if (row.kind === 'startet') return 'Schnell geht, sobald die Ladung begonnen hat.';
+    if (row.kind === 'beendet') return 'Diese Ladung ist beendet. Schnell gilt für eine laufende Ladung.';
+    return 'Schnell gilt für eine laufende Ladung.';
+  }
   if (!quellenBahnWirkt(budget, row)) {
     // Ohne Echo (ältere Box) weiß das Portal nur, dass die Box keine Bahn meldet - mehr wird nicht behauptet.
     return row.bahn === 'schnell'
@@ -1312,7 +1342,7 @@ const LAUFENDE_LADUNG: ReadonlySet<LadeZustandKind> = new Set<LadeZustandKind>([
  * - es gibt dort nichts zu übersteuern, aber sehr wohl etwas zu stoppen.
  */
 export function pausierbar(row: LadevorgangRow): boolean {
-  if (row.handeingriff) return false;
+  if (row.handeingriff || !row.ladungLaeuft) return false;
   return LAUFENDE_LADUNG.has(row.kind);
 }
 
@@ -1334,10 +1364,11 @@ export function ladepunktKeinEingriff(
   if (row.kind === 'getrennt' || row.kind === 'stoerung' || row.kind === 'nicht_verfuegbar') {
     return 'Dieser Ladepunkt meldet sich gerade nicht - ein Eingriff käme nicht an.';
   }
+  if (row.kind === 'kein_ladevorgang') return KEIN_LADEVORGANG_SATZ;
   // ⚠ Seit P3b bleibt für eine LAUFENDE Ladung immer mindestens „Laden
   // pausieren" übrig - dieser Zweig gilt also nur noch dem Stecker, an dem
   // (noch) kein Ladevorgang läuft, und sagt genau das.
-  if (!LAUFENDE_LADUNG.has(row.kind)) {
+  if (!LAUFENDE_LADUNG.has(row.kind) || !row.ladungLaeuft) {
     return 'An diesem Stecker läuft gerade kein Ladevorgang.';
   }
   if (!quellenBahnWirkt(budget, row)) {

@@ -2217,6 +2217,9 @@ test("a charging row says the state first, and a waiting one says WHY", () => {
     "wartet");
 
   assert.strictEqual(O.connectorLine({ charging: false, status: "Available" }, now), "frei");
+  // Auto steckt ohne Ladevorgang: der Satz der Box mit dem Ausweg, kein nacktes „SuspendedEVSE".
+  const ohne = "Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken.";
+  assert.strictEqual(O.connectorLine({ charging: false, status: "SuspendedEVSE", reason: "kein_ladevorgang", reason_text: ohne }, now), ohne);
   assert.strictEqual(O.connectorLine(null, now), "");
 });
 

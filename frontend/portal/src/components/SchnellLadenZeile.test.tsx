@@ -101,6 +101,20 @@ describe('SchnellLadenZeile', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: /Jetzt schnell laden/ })).toBeNull());
   });
 
+  it('zeigt bei einem Auto ohne Ladevorgang den Ausweg statt eines Knopfs', () => {
+    // Pilotanlage 07.11.2026: SuspendedEVSE, aber die Box kennt keinen Ladevorgang -
+    // „Schnell“ endete beim Server in „An diesem Stecker läuft gerade kein Ladevorgang.“
+    mitRecht(true);
+    const boost = vi.spyOn(api, 'chargingBoost');
+    zeige(charging(garage({ charging: false, sessionSince: null, allocatedKw: null, reason: null, powerKw: null })));
+    expect(screen.getByText('Auto steckt · kein Ladevorgang')).toBeTruthy();
+    expect(screen.getByRole('note').textContent).toBe(
+      'Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken.',
+    );
+    expect(screen.queryByRole('button', { name: /Jetzt schnell laden/ })).toBeNull();
+    expect(boost).not.toHaveBeenCalled();
+  });
+
   it('erscheint für Betreiber nicht (F5 a)', () => {
     mitRecht(true);
     const { container } = render(

@@ -492,11 +492,18 @@ func (a *Agent) OcppBoost(req lastmgmt.BoostRequest) (lastmgmt.BoostResult, erro
 			Note: "Für diesen Ladevorgang gilt wieder Ihre Überschuss-Priorität."}, nil
 	}
 
-	txID, ok := ocppTransactionOf(rt.srv.Snapshot(), id, req.Connector)
+	snap := rt.srv.Snapshot()
+	txID, ok := ocppTransactionOf(snap, id, req.Connector)
 	if !ok {
-		return lastmgmt.BoostResult{}, &lastmgmt.ValidationError{
-			Msg: "An diesem Stecker läuft gerade kein Ladevorgang.",
+		msg := "An diesem Stecker läuft gerade kein Ladevorgang."
+		// A car is plugged in without a transaction: the refusal names the
+		// way out instead of leaving the customer at a dead end.
+		if c, found := snap.ChargerByID(id); found {
+			if con := c.ConnectorByID(req.Connector); con != nil && ocpConnectorWithoutSession(*con) {
+				msg = "An diesem Stecker läuft gerade kein Ladevorgang. " + lastmgmt.NoSessionText
+			}
 		}
+		return lastmgmt.BoostResult{}, &lastmgmt.ValidationError{Msg: msg}
 	}
 	d := time.Duration(req.Minutes) * time.Minute
 	until := rt.boosts.grant(key, txID, now, d, req.Pause, req.UntilUnplug)

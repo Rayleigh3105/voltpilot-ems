@@ -374,6 +374,29 @@ for (const [fall, wer] of [['smart-ohne-sonne', 'Box im Feld'], ['smart-ohne-son
   });
 }
 
+// Pilotanlage 07.11.2026: Auto steckt (SuspendedEVSE), aber die Box kennt keinen Ladevorgang (`charging: false`).
+// „Schnell“, „Aus“ und „bis Abstecken“ endeten beim Server in „An diesem Stecker läuft gerade kein Ladevorgang.“ -
+// statt der Knöpfe steht der Ausweg da. Die Box im Feld schickt kein Wort dafür; das Portal erkennt den Fall selbst.
+const OHNE_LADEVORGANG = 'Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken.';
+for (const [fall, wer] of [['ohne-ladevorgang', 'Box im Feld'], ['ohne-ladevorgang-neu', 'Box nach dem Fix']] as const) {
+  test(`Laden: Auto steckt ohne Ladevorgang - kein Knopf ins Leere, der Ausweg steht da (${wer})`, async ({ page }) => {
+    const anfragen: string[] = [];
+    page.on('request', (r) => { if (/charging-boost/.test(r.url())) anfragen.push(r.url()); });
+    const fehler = await oeffnen(page, `/e2e/steuerung.html?wallbox=${fall}#/anlage/help-site/laden`);
+    const karte = lpKarte(page);
+    const schnell = karte.locator('.lmodes button[data-m="schnell"]');
+    await expect(schnell).toBeDisabled();
+    await expect(schnell).toContainText('gerade nicht');
+    await expect(karte.locator('.lmodes button[data-m="aus"]')).toBeDisabled();
+    await expect(karte.getByRole('note').filter({ hasText: OHNE_LADEVORGANG })).toBeVisible();
+    await expect(schnell).toHaveAttribute('aria-describedby', /.+/);
+    await expect(karte).not.toContainText('Wartet');
+    expect(anfragen).toEqual([]);
+    expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+    expect(fehler).toEqual([]);
+  });
+}
+
 test('Laden W-21: wo „Schnell“ nichts ändert, steht der Grund - auf der Karte und im Blatt gleich', async ({ page }) => {
   await oeffnen(page, '/e2e/steuerung.html?wallbox=voll#/anlage/help-site/laden');
   const karte = lpKarte(page);
@@ -410,6 +433,19 @@ test('Cockpit: „Jetzt schnell laden“ für den Privatkunden, solange ein Auto
   await expect(dialog).toContainText('bis Abstecken, höchstens 14 Std');
   await expect(dialog).toContainText('Endet beim Abstecken, spätestens nach 14 Stunden - danach wieder Smart.');
   await expect(dialog.getByRole('button', { name: 'Schnell laden bis zum Abstecken' })).toBeVisible();
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(fehler).toEqual([]);
+});
+
+test('Cockpit: Auto steckt ohne Ladevorgang - die Zeile nennt den Ausweg statt „Jetzt schnell laden“', async ({ page }) => {
+  const fehler: string[] = [];
+  page.on('pageerror', (e) => fehler.push(e.message));
+  await page.goto('/e2e/steuerung.html?state=single&wallbox=ohne-ladevorgang#/anlage/help-site');
+  const zeile = schnellZeile(page);
+  await expect(zeile).toContainText('Wallbox Werkstatt');
+  await expect(zeile).toContainText('Auto steckt · kein Ladevorgang');
+  await expect(zeile.getByRole('note')).toHaveText(OHNE_LADEVORGANG);
+  await expect(zeile.getByRole('button', { name: 'Jetzt schnell laden' })).toHaveCount(0);
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
   expect(fehler).toEqual([]);
 });

@@ -309,7 +309,14 @@ func (h *coreHandler) OnStatusNotification(id string, req *core.StatusNotificati
 // OnAuthorize uses the same durable local card policy as StartTransaction.
 func (h *coreHandler) OnAuthorize(id string, req *core.AuthorizeRequest) (*core.AuthorizeConfirmation, error) {
 	h.srv.touch(id, h.srv.opts.Now())
-	if !h.srv.authorized(req.IdTag) || !h.srv.startReady(id) {
+	if !h.srv.authorized(req.IdTag) {
+		return core.NewAuthorizationConfirmation(types.NewIdTagInfo(types.AuthorizationStatusInvalid)), nil
+	}
+	// The same set-up window as StartTransaction: a card held up right after
+	// the station's reconnect waits for the set-up instead of being refused.
+	h.srv.awaitStartReady(id, 0)
+	if why, ok := h.srv.startBlocked(id); ok {
+		h.srv.log.Warn("Karte abgelehnt", "charge_point_id", id, "reason", why)
 		return core.NewAuthorizationConfirmation(types.NewIdTagInfo(types.AuthorizationStatusInvalid)), nil
 	}
 	return core.NewAuthorizationConfirmation(types.NewIdTagInfo(types.AuthorizationStatusAccepted)), nil
@@ -317,8 +324,13 @@ func (h *coreHandler) OnAuthorize(id string, req *core.AuthorizeRequest) (*core.
 
 // OnStartTransaction opens a session and hands back its id.
 func (h *coreHandler) OnStartTransaction(id string, req *core.StartTransactionRequest) (*core.StartTransactionConfirmation, error) {
-	h.srv.authorized(req.IdTag) // also observes the pseudonym; admission is atomic below
+	allowed := h.srv.authorized(req.IdTag) // also observes the pseudonym; admission is atomic below
 	h.srv.observeStationClock(id, req.Timestamp.Time, h.srv.opts.Now())
+	if allowed {
+		// A start right after the station's BootNotification waits for the
+		// set-up instead of being refused for good (awaitStartReady).
+		h.srv.awaitStartReady(id, req.ConnectorId)
+	}
 	txID := h.srv.onStartTransaction(id, req.ConnectorId, req.IdTag, req.MeterStart, req.Timestamp.Time)
 	if txID == 0 {
 		if !h.srv.authorized(req.IdTag) || !h.srv.startReady(id) {

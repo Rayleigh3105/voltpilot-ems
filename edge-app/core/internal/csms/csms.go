@@ -147,6 +147,15 @@ type Server struct {
 	measurementDesired MeasurementConfiguration
 	// klopfen remembers refused identities for 24 h (klopftan.go).
 	klopfen klopfListe
+	// commissionWake is closed (and replaced) whenever a station's set-up
+	// state or connection moves, so a StartTransaction waiting for the set-up
+	// after a BootNotification re-checks at once (awaitStartReady).
+	commissionWake chan struct{}
+	// startPending counts per connector ("<id>#<connector>") the starts that
+	// are waiting for the set-up right now (awaitStartReady): such a plug is
+	// about to get its transaction and must not be reported as „kein
+	// Ladevorgang" in the meantime.
+	startPending map[string]int
 }
 
 // New builds the server and loads the persisted allowlist. It never opens a
@@ -186,6 +195,8 @@ func New(opts Options) (*Server, error) {
 		changed:            make(chan struct{}, 1),
 		observed:           make(chan struct{}, 1),
 		measurementDesired: measurementDesired,
+		commissionWake:     make(chan struct{}),
+		startPending:       map[string]int{},
 	}
 	journal.RestoreCommandMappings(commands.wireMappings())
 	if saved.Control != nil {

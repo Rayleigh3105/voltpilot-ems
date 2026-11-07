@@ -56,6 +56,7 @@ func (s *Server) onDisconnect(id string) {
 	c, ok := s.chargers[id]
 	if ok {
 		c.Connected = false
+		s.wakeStartWaitersLocked()
 	}
 	s.mu.Unlock()
 	if !ok {
@@ -256,6 +257,7 @@ func (s *Server) onStartTransaction(id string, connectorID int, idTag string, me
 	c, ok := s.chargers[id]
 	if !ok || connectorID < 1 || connectorID > maxConnectors {
 		s.mu.Unlock()
+		s.refuseStart(id, connectorID, "unbekannte Ladesäule oder ungültiger Stecker")
 		return 0
 	}
 	con := c.connector(connectorID)
@@ -271,14 +273,23 @@ func (s *Server) onStartTransaction(id string, connectorID int, idTag string, me
 			return txID
 		}
 		s.mu.Unlock()
+		s.refuseStart(id, connectorID, "am Stecker läuft schon ein anderer Ladevorgang")
 		return 0
 	}
-	if !s.startReadyLocked(id) || !s.control.Allows(s.tagRefOf(idTag)) {
+	if !s.control.Allows(s.tagRefOf(idTag)) {
 		s.mu.Unlock()
+		s.refuseStart(id, connectorID, "Karte nicht freigegeben")
+		return 0
+	}
+	if !s.startReadyLocked(id) {
+		why := s.startBlockReasonLocked(id)
+		s.mu.Unlock()
+		s.refuseStart(id, connectorID, why)
 		return 0
 	}
 	if at.IsZero() || at.Before(previousStart.At) || (stationAt.Equal(previousStart.stationTime()) && previousStart.MeterStartWh == meterStartWh && previousStart.TagRef == s.tagRefOf(idTag)) {
 		s.mu.Unlock()
+		s.refuseStart(id, connectorID, "Start ist nicht neuer als der zuletzt angenommene (Wiederholung eines beendeten Ladevorgangs)")
 		return 0
 	}
 	s.startWatermarks[key] = startWatermark{At: at, StationAt: stationAt, MeterStartWh: meterStartWh, TagRef: s.tagRefOf(idTag)}
@@ -314,6 +325,13 @@ func (s *Server) onStartTransaction(id string, connectorID int, idTag string, me
 		"charge_point_id", id, "connector", connectorID, "transaction_id", txID)
 	s.notifyChanged()
 	return txID
+}
+
+// refuseStart logs WHY a StartTransaction got no transaction id. A refused
+// start is the station's last word on that charge - it ends it and does not
+// try again while the car stays plugged in - so it must never be silent.
+func (s *Server) refuseStart(id string, connectorID int, why string) {
+	s.log.Warn("Ladevorgang abgelehnt", "charge_point_id", id, "connector", connectorID, "reason", why)
 }
 
 // onStopTransaction closes the session carrying txID, wherever it sits.

@@ -77,7 +77,21 @@ const (
 	// to the rule editor; this one is their own hand on this one charge, and
 	// the way back is the „Automatik fortsetzen" one tap away in the same row.
 	ReasonManual = "handeingriff"
+	// ReasonNoSession is NOT an allocation: a car is plugged in (the station
+	// reports Charging, SuspendedEV or SuspendedEVSE) but the box knows no
+	// transaction on that connector - so there is nothing to allocate, boost
+	// or pause, and „Smart" cannot charge it either. Seen at a pilot site: the
+	// station reconnected exactly when the charge began, its refused start was
+	// ended and never retried while the car stayed plugged in. The way out is
+	// the customer's: unplug and plug in again (NoSessionText). The box
+	// reports it next to the connector (agent.ocppInfo); the portal reads the
+	// same case from older boxes' fields (`ladeRegel.ts`).
+	ReasonNoSession = "kein_ladevorgang"
 )
+
+// NoSessionText is the sentence of ReasonNoSession - the box's refusal of a
+// boost or pause on such a connector says the same.
+const NoSessionText = "Die Wallbox hat für dieses Auto keinen Ladevorgang begonnen. Stecker kurz ziehen und wieder einstecken."
 
 // Text renders the customer-facing German sentence for a reason. Unknown
 // reasons yield "" — a word we do not understand must not become a sentence.
@@ -99,6 +113,8 @@ func Text(reason string) string {
 		return "pausiert — eine Regel oder ein Handeingriff hält diese Säule"
 	case ReasonManual:
 		return "pausiert — Handeingriff"
+	case ReasonNoSession:
+		return NoSessionText
 	}
 	return ""
 }

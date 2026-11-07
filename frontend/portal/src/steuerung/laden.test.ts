@@ -6,8 +6,9 @@ import { LADEQUELLE } from '../glossar';
 import type { GeraetBild } from './bild';
 import {
   FREIGABE_STUFE_TEXT, OPTION_SONNE_SPEICHER, UEBERSCHUSS_MODUS, band, grenzePruefung, hatSpeicherGrenze,
-  LADEMODUS_OHNE_AUTO, heutigerAnschluss, ladeModusSperre, ladeQuelle, ladeWahl, ladebudgetKw, lokalesDatum, smartSchritte, speicherZeile,
+  LADEMODUS_OHNE_AUTO, LADEMODUS_OHNE_LADUNG, heutigerAnschluss, ladeModusSperre, ladeQuelle, ladeWahl, ladebudgetKw, lokalesDatum, smartSchritte, speicherZeile,
 } from './laden';
+import { KEIN_LADEVORGANG_SATZ } from '../ladepunkte';
 
 function anschluss(bindungen: { anlage: string; ab: string; bis: string | null }[], vereinbart: string | number | null = '200'): Netzanschluss {
   return {
@@ -239,7 +240,7 @@ describe('Netzanschluss bei Einspeisung (Audit W-14)', () => {
  */
 describe('ladeModusSperre', () => {
   const lp = (over: Record<string, unknown> = {}) => ({
-    angesteckt: true, sperre: null, boostbar: true, schnellGrund: null, ...over,
+    angesteckt: true, laedt: true, keinLadevorgang: null, sperre: null, boostbar: true, schnellGrund: null, ...over,
   });
   const g = (ladepunkt: Record<string, unknown> | null, over: Record<string, unknown> = {}) => ({
     ladepunkt, eingriff: null, steuerart: { quelle: 'ueberschuss', herkunft: 'saeule' }, ...over,
@@ -255,6 +256,19 @@ describe('ladeModusSperre', () => {
     const x = g(lp({ boostbar: false, schnellGrund: grund }));
     expect(ladeModusSperre(x, null, 'schnell')).toEqual({ art: 'wirkt_nicht', satz: grund });
     expect(ladeModusSperre(x, null, 'aus')).toBeNull();
+  });
+
+  it('sperrt „Aus“ und „Schnell“ ohne laufenden Ladevorgang - mit dem Ausweg, wo das Auto ohne Ladevorgang steckt', () => {
+    // ⚠ Die Regel des Servers (`charging`): sonst endete der Knopf in
+    // „An diesem Stecker läuft gerade kein Ladevorgang.“.
+    const ohne = g(lp({ laedt: false, keinLadevorgang: KEIN_LADEVORGANG_SATZ }));
+    expect(ladeModusSperre(ohne, null, 'schnell')).toEqual({ art: 'kein_ladevorgang', satz: KEIN_LADEVORGANG_SATZ });
+    expect(ladeModusSperre(ohne, null, 'aus')).toEqual({ art: 'kein_ladevorgang', satz: KEIN_LADEVORGANG_SATZ });
+    // Steckt das Auto, ohne dass die Ladung schon begonnen hat (z. B. „startet“): kein Ausweg nötig.
+    const startet = g(lp({ laedt: false }));
+    expect(ladeModusSperre(startet, null, 'schnell')).toEqual({ art: 'kein_ladevorgang', satz: LADEMODUS_OHNE_LADUNG });
+    // Ruht die Steuerung, sagt das weiter zuerst die Ruhe.
+    expect(ladeModusSperre(ohne, 'ruht', 'schnell')).toEqual({ art: 'funktion', satz: 'ruht' });
   });
 
   it('sperrt nicht, was schon läuft oder immer gilt', () => {

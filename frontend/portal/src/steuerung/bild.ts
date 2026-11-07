@@ -39,8 +39,8 @@ import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { CONSUMER_REASON_TEXT, CONSUMER_STATE_TEXT, STATUS_UNKNOWN_TEXT } from '../consumers/status';
 import type { ManualOverride } from '../consumers/fulfillment';
 import { LADEQUELLE } from '../glossar';
-import type { ChargePoint, ChargeConnector, LadepunktSperre, LadeZustand, SiteCharging } from '../ladepunkte';
-import { budgetFuer, ladepunktSperre, ladeZustand, aktuelleLeistung, boostbar, ladevorgangRows, schnellWirktNichtGrund } from '../ladepunkte';
+import type { ChargePoint, ChargeConnector, LadepunktSperre, LadeZustand, LadeZustandKind, SiteCharging } from '../ladepunkte';
+import { budgetFuer, ladepunktSperre, ladeZustand, aktuelleLeistung, boostbar, ladevorgangRows, schnellWirktNichtGrund, KEIN_LADEVORGANG_SATZ, keinLadevorgang, ladungLaeuft } from '../ladepunkte';
 import type {
   RanglisteEintrag,
   SiteVerbraucher,
@@ -261,7 +261,16 @@ export interface LadepunktBezug {
   sitzungSeit: string | null;
   sitzungKwh: number | null;
   karte: string | null;
+  /**
+   * Läuft an diesem Stecker ein Ladevorgang? Die EINE Regel `ladungLaeuft`
+   * (dieselbe wie der Server) - nicht „fliesst gerade Strom“.
+   */
   laedt: boolean;
+  /**
+   * Steckt ein Auto, aber die Box kennt dazu keinen Ladevorgang? Dann der
+   * Satz mit dem Ausweg (neu einstecken), sonst null (`keinLadevorgang`).
+   */
+  keinLadevorgang: string | null;
   /** Gemessene Leistung des Steckers (kW); null = nicht gemeldet. */
   leistungKw: number | null;
   /** Wann der Stecker zuletzt gemessen hat (ISO). */
@@ -471,6 +480,9 @@ export const ANGEHALTEN_ZUSTAND: { pill: [PillArt, string]; kurz: string; lang: 
   lang: 'Die Steuerung ist angehalten: VoltPilot schaltet das Gerät nicht; es gilt sein sicherer Zustand.',
 };
 
+/** Die Zustandswörter, in denen ein Ladepunkt „an“ ist: die Säule meldet Charging. */
+const LADEPUNKT_AN: ReadonlySet<LadeZustandKind> = new Set<LadeZustandKind>(['laedt', 'laedt_ohne_messung', 'nimmt_nichts']);
+
 /** Der Ladepunkt eines Eintrags und sein (erster) Stecker. */
 function ladepunktVon(
   e: VerbraucherEintrag,
@@ -583,7 +595,9 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
       an = null;
     } else if (lp?.con) {
       jetztKw = aktuelleLeistung(lp.con, nowMs);
-      an = lp.con.charging === true;
+      // „An“ heisst: es fliesst (oder die Säule meldet Charging). `charging` allein ist die SITZUNG - die Box
+      // hält es auch für SuspendedEV/SuspendedEVSE wahr; ob geladen wird, sagt das Zustandswort (`ladeZustand`).
+      an = ladungLaeuft(lp.con) && LADEPUNKT_AN.has(ladeZustand(lp.con, lp.cp, nowMs).kind);
     } else if (st) {
       jetztKw = num(st.actualKw);
       an = /^running/.test(st.state) ? true : st.state === 'unknown' ? null : false;
@@ -645,7 +659,10 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
             sitzungSeit: lp.cp.connected ? lp.con?.sessionSince ?? null : null,
             sitzungKwh: num(lp.con?.sessionKwh),
             karte: lp.con?.tagRef ?? null,
-            laedt: lp.cp.connected && lp.con?.charging === true,
+            laedt: lp.cp.connected && ladungLaeuft(lp.con),
+            keinLadevorgang: lp.cp.connected && lp.con && keinLadevorgang(lp.con)
+              ? ladeZustand(lp.con, lp.cp, nowMs).reason ?? KEIN_LADEVORGANG_SATZ
+              : null,
             leistungKw: num(lp.con?.powerKw),
             gemessenAm: lp.con?.meteredAt ?? null,
             grund: ladepunktPausenGrund(s?.quelle, lp.con?.reason) ?? lp.con?.reasonText ?? null,
@@ -759,7 +776,8 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
             : lz.kind === 'stoerung' || lz.kind === 'nicht_verfuegbar' ? ['lock', 'Störung']
               : lz.kind === 'reserviert' ? ['off', 'reserviert']
                 : lz.kind === 'auto_pausiert' ? ['wait', 'Auto pausiert']
-                  : ['wait', 'wartet'];
+                  : lz.kind === 'kein_ladevorgang' ? ['wait', 'kein Ladevorgang']
+                    : ['wait', 'wartet'];
     return { pill, kurz, lang: `${kurz}.` };
   }
   // --- Verbraucher: Zustand und Grund, wie die Box sie meldet.

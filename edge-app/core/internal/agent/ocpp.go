@@ -1231,6 +1231,14 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 					}
 				}
 			}
+			// A car is plugged in but the box knows no transaction: name it,
+			// instead of leaving a bare SuspendedEVSE that every surface reads
+			// as „wartet" (lastmgmt.ReasonNoSession). Not while a start is
+			// waiting for the station's set-up - that one is about to begin.
+			if ocpConnectorWithoutSession(con) && !rt.srv.StartPending(c.ID, con.ID) {
+				ocn.Reason = lastmgmt.ReasonNoSession
+				ocn.ReasonText = lastmgmt.Text(lastmgmt.ReasonNoSession)
+			}
 			oc.Connectors = append(oc.Connectors, ocn)
 		}
 		sort.Slice(oc.Connectors, func(i, j int) bool { return oc.Connectors[i].ID < oc.Connectors[j].ID })
@@ -1241,6 +1249,13 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 		info.MeasuredKw = &measured
 	}
 	return info
+}
+
+// ocpConnectorWithoutSession: the station says a car is plugged in and a
+// charge should run (Charging, SuspendedEV, SuspendedEVSE), but the box holds
+// no transaction for that connector.
+func ocpConnectorWithoutSession(con csms.Connector) bool {
+	return con.Session == nil && csms.ChargingStatus(con.Status)
 }
 
 // ocppHost is the host an operator types into a station. The box does not

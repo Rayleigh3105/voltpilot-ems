@@ -68,14 +68,19 @@ export interface LadeModusSperre {
   /**
    * `sperre`: VoltPilot regelt die Wallbox nicht (`SperreHinweis` sagt es),
    * `kein_auto`: es steckt keins, `funktion`: die Steuerung ruht,
+   * `kein_ladevorgang`: es steckt eins, aber kein Ladevorgang läuft - Server
+   * und Box lehnten „Aus“ und „Schnell“ ab (`ladungLaeuft`),
    * `wirkt_nicht`: „Schnell“ hätte hier nichts zu übersteuern.
    */
-  art: 'sperre' | 'kein_auto' | 'funktion' | 'wirkt_nicht';
+  art: 'sperre' | 'kein_auto' | 'funktion' | 'kein_ladevorgang' | 'wirkt_nicht';
   satz: string;
 }
 
 /** Der Satz, wenn kein Auto steckt: Aus und Schnell gelten je Ladung. */
 export const LADEMODUS_OHNE_AUTO = 'Aus und Schnell gelten für eine Ladung, sobald ein Auto steckt.';
+
+/** Der Satz, wenn ein Auto steckt, die Ladung aber noch nicht begonnen hat (z. B. „startet“). */
+export const LADEMODUS_OHNE_LADUNG = 'Aus und Schnell gelten für eine laufende Ladung - sobald sie begonnen hat.';
 
 /**
  * Ist „Aus“ bzw. „Schnell“ an diesem Ladepunkt wählbar? `null` = ja.
@@ -98,6 +103,11 @@ export function ladeModusSperre(
   if (l.sperre) return { art: 'sperre', satz: `${l.sperre.satz}. ${l.sperre.folge}` };
   if (!l.angesteckt) return { art: 'kein_auto', satz: LADEMODUS_OHNE_AUTO };
   if (funktionSperre) return { art: 'funktion', satz: funktionSperre };
+  // ⚠ Die Regel des Servers: „Aus“ und „Schnell“ greifen nur in einen LAUFENDEN
+  // Ladevorgang (`ladungLaeuft`). Ohne ihn stünde hier ein Knopf, der in
+  // „An diesem Stecker läuft gerade kein Ladevorgang.“ endet. Steckt das Auto
+  // ohne Ladevorgang, nennt der Satz den Ausweg.
+  if (!l.laedt) return { art: 'kein_ladevorgang', satz: l.keinLadevorgang ?? LADEMODUS_OHNE_LADUNG };
   if (modus === 'schnell') {
     // Ein Ladepunkt auf „Sofort“ lädt immer voll („immer“), ein laufendes
     // „Schnell“ beendet „Smart“ - beides ist kein Übersteuern.
