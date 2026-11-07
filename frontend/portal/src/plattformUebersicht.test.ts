@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AdminFleetSite } from './admin/fleetApi';
+import type { AdminFleetBox, AdminFleetSite } from './admin/fleetApi';
 import type { EdgeUpdatesKpi, EdgeUpdatesLine, FleetRow as EdgeFleetRow, Rollout } from './adminEdgeUpdates';
 import { edgeUpdatesUrteil, kpiText, rolloutsLaufend } from './adminEdgeUpdates';
 import type { PendingEnrollment } from './admin/adminApi';
@@ -10,8 +10,10 @@ import {
   uebersichtAuffaellig,
   uebersichtBrauchtDich,
   uebersichtDienste,
-  uebersichtFlottenbild,
+  uebersichtFlotte,
   uebersichtKacheln,
+  flotteAmTelefon,
+  FLOTTE_TELEFON_KLAPPEN_AB,
 } from './plattformUebersicht';
 import { fleetBoxGroups } from './adminFleet';
 
@@ -338,49 +340,117 @@ describe('brauchtDichMitErledigt', () => {
   });
 });
 
-describe('uebersichtFlottenbild', () => {
-  it('gruppiert nach Kunde und setzt gestörte Gruppen zuerst', () => {
+describe('uebersichtFlotte (Gerätewand, Konzept vp-flottenbild-konzept Weg B)', () => {
+  const box = (over: Partial<AdminFleetBox> = {}): AdminFleetBox => ({
+    deviceId: 'd1', externalRef: 'VP-BOX-0001', name: null, fuehrtAnlage: true, lastSeenAt: ago(10_000), edge: null, update: null,
+    ...over,
+  });
+  const STILL = ago(3600_000);
+
+  it('nennt eine Box wie die Akte: Kunde und Anlage - nie nur die Kennung', () => {
+    // Beim Verbinden bekommt eine Box keinen Namen (`DeviceRepository.claim`).
     const groups = fleetBoxGroups([
-      site({ siteId: 's1', tenantName: 'Ruhiger Kunde' }),
-      site({
-        siteId: 's2', tenantName: 'Gestörter Kunde',
-        boxes: [{ deviceId: 'd2', externalRef: 'VP-BOX-0002', name: 'Box B', fuehrtAnlage: true, lastSeenAt: ago(3600_000), edge: null, update: null }],
-      }),
+      site({ siteName: 'Wohnhaus Hörmann', tenantName: 'Hörmann', boxes: [box({ externalRef: 'edge-k7q2m9x' })] }),
     ], NOW);
-    const bild = uebersichtFlottenbild(groups, []);
-    expect(bild.map((g) => g.kunde)).toEqual(['Gestörter Kunde', 'Ruhiger Kunde']);
-    expect(bild[0].felder[0].ton).toBe('aus');
-    expect(bild[1].felder[0].ton).toBe('ok');
+    const bild = uebersichtFlotte(groups, []);
+    expect(bild.boxen[0]).toMatchObject({ ref: 'edge-k7q2m9x', kunde: 'Hörmann', anlage: 'Wohnhaus Hörmann', zusatz: null, ton: 'ok' });
   });
 
-  it('markiert eine laufende Aktualisierung als „lauf", auch wenn die Verbindung steht', () => {
-    const groups = fleetBoxGroups([site()], NOW);
-    const bild = uebersichtFlottenbild(groups, [edgeRow({ stand: 'laeuft' })]);
-    expect(bild[0].felder[0].ton).toBe('lauf');
-  });
-
-  it('sortiert innerhalb EINER Kunden-Gruppe die auffälligen Boxen zuerst', () => {
+  it('unterscheidet mehrere Boxen EINER Anlage am Gerätenamen, sonst an der Kennung', () => {
     const groups = fleetBoxGroups([
       site({
-        tenantName: 'Ein Kunde',
-        boxes: [
-          { deviceId: 'd1', externalRef: 'VP-BOX-A', name: 'A (ok)', fuehrtAnlage: true, lastSeenAt: ago(10_000), edge: null, update: null },
-          { deviceId: 'd2', externalRef: 'VP-BOX-B', name: 'B (aus)', fuehrtAnlage: true, lastSeenAt: ago(3600_000), edge: null, update: null },
-        ],
+        siteName: 'Werk Süd',
+        boxes: [box({ externalRef: 'VP-BOX-2041' }), box({ deviceId: 'd2', externalRef: 'VP-BOX-2042', name: 'Halle 2', fuehrtAnlage: false })],
       }),
     ], NOW);
-    const bild = uebersichtFlottenbild(groups, []);
-    expect(bild[0].felder.map((f) => f.ton)).toEqual(['aus', 'ok']);
+    const bild = uebersichtFlotte(groups, []);
+    expect(bild.boxen.map((b) => b.zusatz)).toEqual(['Halle 2', 'VP-BOX-2041']);
   });
 
-  it('E6/S7: eine verzögerte Box bekommt ihren eigenen Ton - nicht „aus"', () => {
+  it('stellt Störungen vor Hinweise vor die ruhigen Boxen - darin nach Kunde', () => {
     const groups = fleetBoxGroups([
-      site({
-        boxes: [{ deviceId: 'd1', externalRef: 'VP-BOX-0001', name: 'Box A', fuehrtAnlage: true, lastSeenAt: ago(2 * 60_000), edge: null, update: null }],
-      }),
+      site({ siteId: 's1', tenantId: 't1', tenantName: 'Anton', boxes: [box({ externalRef: 'A' })] }),
+      site({ siteId: 's2', tenantId: 't2', tenantName: 'Berta', boxes: [box({ externalRef: 'B', lastSeenAt: STILL })] }),
+      site({ siteId: 's3', tenantId: 't3', tenantName: 'Cäsar', boxes: [box({ externalRef: 'C', lastSeenAt: ago(2 * 60_000) })] }),
+      site({ siteId: 's4', tenantId: 't4', tenantName: 'Dora', boxes: [box({ externalRef: 'D' })] }),
+      site({ siteId: 's5', tenantId: 't5', tenantName: 'Emil', boxes: [box({ externalRef: 'E', lastSeenAt: null })] }),
     ], NOW);
-    const bild = uebersichtFlottenbild(groups, []);
-    expect(bild[0].felder[0].ton).toBe('verzoegert');
+    const bild = uebersichtFlotte(groups, [edgeRow({ externalRef: 'D', stand: 'laeuft' })]);
+    expect(bild.boxen.map((b) => [b.ref, b.ton, b.stufe])).toEqual([
+      ['B', 'aus', 0], ['E', 'nie', 0], ['C', 'verzoegert', 1], ['D', 'lauf', 1], ['A', 'ok', 2],
+    ]);
+  });
+
+  it('die Verbindung schlägt das Update: eine Box, die sich nicht meldet, „läuft" nicht', () => {
+    const groups = fleetBoxGroups([site({ boxes: [box({ lastSeenAt: STILL })] })], NOW);
+    const bild = uebersichtFlotte(groups, [edgeRow({ stand: 'laeuft' })]);
+    expect(bild.boxen[0].ton).toBe('aus');
+  });
+
+  it('„nur von Hand" und die Linie kommen aus der Software-Zeile der Box; ohne sie bleibt die Linie unbekannt', () => {
+    const groups = fleetBoxGroups([
+      site({ siteId: 's1', boxes: [box({ externalRef: 'edge-a' })] }),
+      site({ siteId: 's2', siteName: 'Anlage B', boxes: [box({ deviceId: 'd2', externalRef: 'VP-BOX-B' })] }),
+    ], NOW);
+    const bild = uebersichtFlotte(groups, [edgeRow({ externalRef: 'edge-a', stand: 'hand', linie: 'light', boxArt: 'light' })]);
+    expect(bild.boxen.find((b) => b.ref === 'edge-a')).toMatchObject({ ton: 'hand', linie: 'light' });
+    expect(bild.boxen.find((b) => b.ref === 'VP-BOX-B')).toMatchObject({ ton: 'ok', linie: null });
+  });
+
+  it('eine Anlage ohne Box ist kein Feld der Wand, sondern ein Hinweis - keine Zeile „· 0"', () => {
+    const groups = fleetBoxGroups([
+      site({ siteId: 's1', tenantId: 't1', tenantName: 'Mit Box' }),
+      site({ siteId: 's2', tenantId: 't2', tenantName: 'Lena Brandl', siteName: 'PV Dach', boxes: [] }),
+    ], NOW);
+    const bild = uebersichtFlotte(groups, []);
+    expect(bild.boxen.map((b) => b.kunde)).toEqual(['Mit Box']);
+    expect(bild.ohneBox).toEqual([{ kunde: 'Lena Brandl', tenantId: 't2', anlage: 'PV Dach' }]);
+    expect(bild.kunden).toBe(1);
+  });
+
+  it('zählt Kunden, nicht Anlagen', () => {
+    const groups = fleetBoxGroups([
+      site({ siteId: 's1', siteName: 'Hof', boxes: [box({ externalRef: 'A' })] }),
+      site({ siteId: 's2', siteName: 'Scheune', boxes: [box({ deviceId: 'd2', externalRef: 'B' })] }),
+    ], NOW);
+    expect(uebersichtFlotte(groups, []).kunden).toBe(1);
+  });
+
+  it('Wächter: dieselbe Box heißt in der Flotte wie in „Braucht dich" (Kunde, Anlage)', () => {
+    const groups = fleetBoxGroups([
+      site({ siteName: 'Kleingarten Ostend', tenantName: 'Familie Beispiel', boxes: [box({ externalRef: 'edge-m4ng0q1', name: 'Box am Zaun' })] }),
+    ], NOW);
+    const row = edgeRow({
+      externalRef: 'edge-m4ng0q1', label: 'Box am Zaun', siteName: 'Kleingarten Ostend', tenantName: 'Familie Beispiel',
+      stand: 'hand', stufe1: true, linie: 'light',
+    });
+    const flotte = uebersichtFlotte(groups, [row]).boxen[0];
+    const brauchtDich = uebersichtBrauchtDich({ edgeFleet: [row], fernwartungBoxen: [], werkstatt: null, pending: [] }, NOW)[0];
+    expect(brauchtDich.art).toBe('stufe1');
+    expect([flotte.kunde, flotte.anlage]).toEqual([brauchtDich.kunde, brauchtDich.box]);
+  });
+});
+
+describe('flotteAmTelefon (E2=A)', () => {
+  const flotte = (anzahl: number, gestoert: number) => uebersichtFlotte(fleetBoxGroups(
+    Array.from({ length: anzahl }, (_, i) => site({
+      siteId: `s${i}`, tenantId: `t${i}`, tenantName: `Kunde ${String(i).padStart(2, '0')}`,
+      boxes: [{ deviceId: `d${i}`, externalRef: `VP-BOX-${i}`, name: null, fuehrtAnlage: true, lastSeenAt: i < gestoert ? ago(3600_000) : ago(10_000), edge: null, update: null }],
+    })),
+    NOW,
+  ), []);
+
+  it(`klappt unter ${FLOTTE_TELEFON_KLAPPEN_AB} Boxen nichts zu`, () => {
+    const { offen, zugeklappt } = flotteAmTelefon(flotte(FLOTTE_TELEFON_KLAPPEN_AB - 1, 1));
+    expect(offen).toHaveLength(FLOTTE_TELEFON_KLAPPEN_AB - 1);
+    expect(zugeklappt).toHaveLength(0);
+  });
+
+  it(`ab ${FLOTTE_TELEFON_KLAPPEN_AB} Boxen bleiben Störungen offen, die ruhigen klappen zu`, () => {
+    const { offen, zugeklappt } = flotteAmTelefon(flotte(FLOTTE_TELEFON_KLAPPEN_AB, 2));
+    expect(offen.map((b) => b.ton)).toEqual(['aus', 'aus']);
+    expect(zugeklappt).toHaveLength(FLOTTE_TELEFON_KLAPPEN_AB - 2);
+    expect(zugeklappt.every((b) => b.ton === 'ok')).toBe(true);
   });
 });
 

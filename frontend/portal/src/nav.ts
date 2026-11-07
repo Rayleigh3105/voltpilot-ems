@@ -683,7 +683,7 @@ export function canonicalPlatformHash(hash: string): string | null {
     return query ? `#/plattform/katalog${query}` : `#/plattform/katalog?sektion=${LEGACY_KATALOG_PAGES[head]}`;
   }
   // Scheibe S5: der geöffnete Mandant stand bis dahin als `?mandant=<id>` in der
-  // Adresse (`MandantenPage.mandantHash`), die Kundenakte adressiert ihn seitdem
+  // Adresse (`mandantHash`), die Kundenakte adressiert ihn seitdem
   // als PFAD-Segment (`#/plattform/geraete/{ref}`-Muster). Der Parameter reist
   // mit, nur eben ins Segment umgeschrieben statt angehängt.
   if (head === 'mandanten') {
@@ -1673,6 +1673,20 @@ export function parseGeraeteListeWerkzeug(hash: string): AnlageWerkzeug | null {
   if (rest.length === 0) return null;
   const value = new URLSearchParams(rest.join('?')).get('werkzeug');
   return value && ANLAGE_WERKZEUGE.has(value) ? (value as AnlageWerkzeug) : null;
+}
+
+/** Adresse der Kundenakte (Scheibe S5, §4.2); ohne Kennung die Kundenliste. */
+export function mandantHash(id: string | null): string {
+  return id ? `#/plattform/benutzer/${encodeURIComponent(id)}` : '#/plattform/benutzer';
+}
+
+/** Der geöffnete Kunde aus `#/plattform/benutzer/<id>`; alles andere ist die Liste. */
+export function mandantAusHash(hash: string): string | null {
+  const [pfad] = hash.replace(/^#\/?/, '').split('?');
+  const segments = pfad.split('/').filter(Boolean);
+  if (segments[0] !== 'plattform' || segments[1] !== 'benutzer' || !segments[2]) return null;
+  const id = decodeURIComponent(segments[2]).trim();
+  return id ? id : null;
 }
 
 /**

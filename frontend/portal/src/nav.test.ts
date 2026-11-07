@@ -52,6 +52,8 @@ import {
   geraeteListeHash,
   parseGeraeteListeFilter,
   parseGeraeteListeWerkzeug,
+  mandantHash,
+  mandantAusHash,
   aufbauHash,
   parseAufbauRef,
   ohneAufbauNeu,
@@ -597,6 +599,14 @@ describe('PLATTFORM_ROOMS - die drei Räume (Scheibe S1, Konzept vp-adminview-ko
     expect(geraeteListeHash()).toBe('#/plattform/geraete');
     expect(parseGeraeteListeFilter(geraeteListeHash('offline'))).toBe('offline');
     expect(parseGeraeteListeFilter('#/plattform/geraete')).toBeNull();
+  });
+
+  it('die Kundenakte steht als Pfad in der Adresse und wird nur von dort gelesen', () => {
+    expect(mandantAusHash(mandantHash('a b'))).toBe('a b');
+    expect(mandantAusHash('#/plattform/benutzer')).toBeNull();
+    expect(mandantAusHash('#/mandanten?mandant=t-1')).toBeNull();
+    expect(mandantAusHash('#/werkstatt?mandant=x')).toBeNull();
+    expect(mandantHash(null)).toBe('#/plattform/benutzer');
   });
 
   it('Scheibe S3 §4.2/4.4: der Reiter „Anlage" trägt ein Werkzeug mit vorgewählter Anlage', () => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Badge, type BadgeProps } from '../../../designsystem/components/core/Badge';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import {
@@ -23,20 +24,25 @@ import {
   uebersichtAuffaellig,
   uebersichtBrauchtDich,
   uebersichtDienste,
-  uebersichtFlottenbild,
+  uebersichtFlotte,
   uebersichtKacheln,
+  flotteAmTelefon,
   BRAUCHT_DICH_ART_LABEL,
+  FLOTTEN_WORT,
   type BrauchtDichArt,
   type BrauchtDichErledigtZeile,
   type BrauchtDichZeile,
-  type FlottenbildTon,
+  type FlottenBox,
+  type Flottenbild,
+  type FlottenOhneBox,
+  type FlottenTon,
   type UebersichtKachel,
 } from '../../plattformUebersicht';
 import { EmptyState, ErrorState } from '../../components/States';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { useIsPhone } from '../../useIsPhone';
 import { freshnessLabel } from '../../adminEdgeUpdates';
-import { geraeteAkteRoute, PLATFORM_TAB_PAGES, pageRoute, type PageId, type Route } from '../../nav';
+import { geraeteAkteRoute, mandantHash, PLATFORM_TAB_PAGES, pageRoute, type PageId, type Route } from '../../nav';
 import { AdminPageHead } from './AdminPageHead';
 import './PlattformUebersicht.css';
 import { LIST_POLL_MS } from '../../pollCadence';
@@ -155,7 +161,7 @@ export function PlattformUebersichtPage({
     [brauchtDichAlle, erledigt],
   );
   const groups = useMemo(() => (sites ? fleetBoxGroups(sites, jetzt, releases) : []), [sites, jetzt, releases]);
-  const flotte = useMemo(() => uebersichtFlottenbild(groups, edgeFleet), [groups, edgeFleet]);
+  const flotte = useMemo(() => uebersichtFlotte(groups, edgeFleet), [groups, edgeFleet]);
   const dienste = useMemo(
     () => uebersichtDienste(fernwartung, werkstatt, jetzt, plattformDienste),
     [fernwartung, werkstatt, jetzt, plattformDienste],
@@ -164,7 +170,6 @@ export function PlattformUebersichtPage({
     () => (sites ? uebersichtAuffaellig(sites, edgeFleet, jetzt) : []),
     [sites, edgeFleet, jetzt],
   );
-  const gesamtBoxen = useMemo(() => groups.reduce((n, g) => n + g.boxes.length, 0), [groups]);
 
   const openRoute = (route: Route) => onNavigate?.(route);
 
@@ -235,7 +240,9 @@ export function PlattformUebersichtPage({
         <>
           <Kacheln kacheln={kacheln} onNavigate={onNavigate} />
 
-          <div className="vp-ueb-spalten">
+          {/* Die Flotte steht in voller Breite darunter (Weg B): „Braucht dich" teilt
+              sich die Zeile nur mit „Auffällig", sonst nimmt es die ganze Breite. */}
+          <div className={`vp-ueb-spalten${auffaellig.length === 0 ? ' vp-ueb-spalten--eins' : ''}`}>
             <div className="vp-ueb-spalte">
               <BrauchtDichKarte
                 zeilen={brauchtDich}
@@ -247,12 +254,15 @@ export function PlattformUebersichtPage({
                 )}
                 onWiederherstellen={(schluessel) => void wiederherstellen(schluessel)}
               />
-              <AuffaelligKarte zeilen={auffaellig} />
             </div>
-            <div className="vp-ueb-spalte">
-              <FlottenbildKarte gruppen={flotte} gesamt={gesamtBoxen} onOpen={openRoute} />
-            </div>
+            {auffaellig.length > 0 && (
+              <div className="vp-ueb-spalte">
+                <AuffaelligKarte zeilen={auffaellig} />
+              </div>
+            )}
           </div>
+
+          <FlottenKarte bild={flotte} onOpen={openRoute} />
 
           <ReiterZeilen onNavigate={onNavigate} fernwartung={fernwartung} werkstatt={werkstatt} software={kacheln.find((k) => k.id === 'software') ?? null} />
         </>
@@ -417,88 +427,143 @@ function BrauchtDichKarte({
   );
 }
 
-// ── Flottenbild ─────────────────────────────────────────────────────────────
+// ── Flotte (Gerätewand) ─────────────────────────────────────────────────────
 
-function FlottenbildKarte({
-  gruppen,
-  gesamt,
-  onOpen,
-}: {
-  gruppen: ReturnType<typeof uebersichtFlottenbild>;
-  gesamt: number;
-  onOpen: (route: Route) => void;
-}) {
+/** Das Wort einer Abweichung als Badge des Designsystems (Töne wie die Akte, §5.3). */
+const FLOTTEN_BADGE: Record<Exclude<FlottenTon, 'ok'>, NonNullable<BadgeProps['variant']>> = {
+  verzoegert: 'warn',
+  aus: 'offline',
+  nie: 'off',
+  lauf: 'tint',
+  hand: 'off',
+};
+
+/**
+ * Die Gerätewand (Konzept `vp-flottenbild-konzept`, Weg B; E1=B, E2=A): jede
+ * Box ein kleines Gerät, die Leuchte trägt den Zustand, ein Wort steht nur bei
+ * einer Abweichung. Kunde groß, Anlage darunter - wie in der Akte; jede Kachel
+ * öffnet die Akte. Keine Legende: was nicht grün ist, sagt es selbst.
+ *
+ * Am Telefon klappen ab 13 Boxen die ruhigen zu, Störungen bleiben offen -
+ * eine echte Verzweigung in JS ({@link useIsPhone}), weil sich die Struktur
+ * ändert.
+ */
+function FlottenKarte({ bild, onOpen }: { bild: Flottenbild; onOpen: (route: Route) => void }) {
+  const istTelefon = useIsPhone();
+  const [ruhigeOffen, setRuhigeOffen] = useState(false);
+  const { offen, zugeklappt } = istTelefon ? flotteAmTelefon(bild) : { offen: bild.boxen, zugeklappt: [] };
+  const anzahl = bild.boxen.length;
   return (
-    <Card>
-      <div className="vp-admin-sec-head" style={{ padding: 0, marginBottom: 12 }}>
-        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span>Flotte</span>
-          <span className="vp-muted vp-text-sm">{gesamt} {gesamt === 1 ? 'Box' : 'Boxen'}</span>
-        </h2>
+    <Card className="vp-ueb-flotte" data-testid="ueb-flotte">
+      <div className="vp-ueb-flotte-kopf">
+        <h2>Flotte</h2>
+        {anzahl > 0 && (
+          <span className="vp-ueb-flotte-umfang">
+            {anzahl} {anzahl === 1 ? 'Box' : 'Boxen'} · {bild.kunden} {bild.kunden === 1 ? 'Kunde' : 'Kunden'}
+          </span>
+        )}
       </div>
-      {gruppen.length === 0 ? (
+      {anzahl === 0 ? (
         <span className="vp-muted">Noch keine Box verbunden.</span>
       ) : (
         <>
-          <div className="vp-ueb-flotte" data-testid="ueb-flotte">
-            {gruppen.map((g) => {
-              const auffaellig = g.felder.filter((f) => f.ton !== 'ok');
-              const ok = g.felder.filter((f) => f.ton === 'ok');
-              return (
-                <div className={`vp-ueb-flotte-gruppe${auffaellig.length > 0 ? ' vp-ueb-flotte-gruppe--stoerung' : ''}`} key={g.kunde}>
-                  <small>
-                    {g.kunde} · {g.felder.length}
-                    {auffaellig.length > 0 && <span className="vp-ueb-flotte-gruppe-warn"> · {auffaellig.length} auffällig</span>}
-                  </small>
-                  <div className="vp-ueb-flotte-felder">
-                    {auffaellig.map((f) => (
-                      <button
-                        key={f.ref}
-                        type="button"
-                        className={`vp-ueb-flotte-chip ${f.ton}`}
-                        title={`${f.name}: ${f.title}`}
-                        onClick={() => onOpen(geraeteAkteRoute(f.ref))}
-                      >
-                        <i className={`vp-ueb-flotte-chip-punkt ${f.ton}`} />
-                        {f.name}
-                      </button>
-                    ))}
-                    {ok.map((f) => (
-                      <button
-                        key={f.ref}
-                        type="button"
-                        className={`vp-ueb-flotte-feld ${f.ton}`}
-                        title={`${f.name}: ${f.title}`}
-                        onClick={() => onOpen(geraeteAkteRoute(f.ref))}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <Legende />
+          {offen.length > 0 && (
+            <div className="vp-ueb-flotte-wand">
+              {offen.map((b) => <FlottenKachel key={b.ref} box={b} onOpen={onOpen} />)}
+            </div>
+          )}
+          {zugeklappt.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="vp-ueb-flotte-klappe"
+                aria-expanded={ruhigeOffen}
+                aria-controls="ueb-flotte-ruhige"
+                onClick={() => setRuhigeOffen((v) => !v)}
+              >
+                <Icon name={ruhigeOffen ? 'chevron-down' : 'chevron-right'} size={16} />
+                <span>
+                  <b>{zugeklappt.length} {offen.length > 0 ? 'weitere Boxen' : 'Boxen'}</b> · alle verbunden
+                </span>
+              </button>
+              <div className="vp-ueb-flotte-wand" id="ueb-flotte-ruhige" hidden={!ruhigeOffen}>
+                {zugeklappt.map((b) => <FlottenKachel key={b.ref} box={b} onOpen={onOpen} />)}
+              </div>
+            </>
+          )}
         </>
       )}
+      <OhneBoxHinweis ohneBox={bild.ohneBox} />
     </Card>
   );
 }
 
-function Legende() {
-  const EINTRAEGE: { ton: FlottenbildTon; label: string }[] = [
-    { ton: 'ok', label: 'verbunden' },
-    { ton: 'verzoegert', label: 'verzögert' },
-    { ton: 'aus', label: 'meldet sich nicht' },
-    { ton: 'nie', label: 'nie gemeldet' },
-    { ton: 'lauf', label: 'Update läuft' },
-    { ton: 'hand', label: 'nur von Hand' },
-  ];
+function FlottenKachel({ box: b, onOpen }: { box: FlottenBox; onOpen: (route: Route) => void }) {
+  const name = `${b.kunde}, ${b.anlage}${b.zusatz ? ` (${b.zusatz})` : ''}`;
   return (
-    <div className="vp-ueb-flotte-legende">
-      {EINTRAEGE.map((e) => (
-        <span key={e.ton}><i className={e.ton} />{e.label}</span>
+    <button
+      type="button"
+      className={`vp-ueb-flotte-kachel ton-${b.ton}`}
+      data-testid="ueb-flotte-box"
+      aria-label={`${name}: ${FLOTTEN_WORT[b.ton]} - Geräteakte öffnen`}
+      onClick={() => onOpen(geraeteAkteRoute(b.ref))}
+    >
+      <BoxBild linie={b.linie} ton={b.ton} />
+      {b.ton !== 'ok' && (
+        <Badge variant={FLOTTEN_BADGE[b.ton]} className="vp-ueb-flotte-wort" style={{ padding: '0.25rem 0.55rem' }}>
+          {FLOTTEN_WORT[b.ton]}
+        </Badge>
+      )}
+      <span className="vp-ueb-flotte-kunde">{b.kunde}</span>
+      <span className="vp-ueb-flotte-anlage">{b.anlage}</span>
+      {b.zusatz && <span className="vp-ueb-flotte-anlage vp-ueb-flotte-zusatz">{b.zusatz}</span>}
+    </button>
+  );
+}
+
+/**
+ * Die Box als Gerät: grauer Umriss je Linie (Edge Light klein, Docker-Box breit
+ * mit Lüftungsschlitzen), die Leuchte im Ton des Zustands. Nur „Update läuft"
+ * bewegt sich - der eine animierte Zustand des Portals (`vp-ustate-pulse`).
+ */
+function BoxBild({ linie, ton }: { linie: FlottenBox['linie']; ton: FlottenTon }) {
+  if (linie === 'light') {
+    return (
+      <svg className={`vp-ueb-flotte-geraet ton-${ton}`} viewBox="0 0 44 32" width="44" height="32" aria-hidden="true">
+        <rect x="9" y="5" width="26" height="22" rx="6" className="koerper" />
+        <path d="M9.75 21.5h24.5" className="kante" />
+        <path d="M14.5 10.5h7" className="linie" />
+        <circle cx="29" cy="15.5" r="4.6" className="schein" />
+        <circle cx="29" cy="15.5" r="2.5" className="licht" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={`vp-ueb-flotte-geraet ton-${ton}`} viewBox="0 0 44 32" width="44" height="32" aria-hidden="true">
+      <rect x="3" y="8" width="38" height="17" rx="4.5" className="koerper" />
+      <path d="M3.75 20.5h36.5" className="kante" />
+      <path d="M9 12.5v4.5M12.5 12.5v4.5M16 12.5v4.5M19.5 12.5v4.5" className="linie" />
+      <circle cx="33.5" cy="14.75" r="4.6" className="schein" />
+      <circle cx="33.5" cy="14.75" r="2.5" className="licht" />
+    </svg>
+  );
+}
+
+/** Eine Anlage ohne Box ist kein Feld der Wand - ein leiser Hinweis mit Weg zur Kundenakte statt einer leeren Zeile. */
+function OhneBoxHinweis({ ohneBox }: { ohneBox: FlottenOhneBox[] }) {
+  if (ohneBox.length === 0) return null;
+  const kunden = [...new Map(ohneBox.map((o) => [o.tenantId, o])).values()];
+  return (
+    <p className="vp-ueb-flotte-ohnebox" data-testid="ueb-flotte-ohnebox">
+      <span>{ohneBox.length === 1 ? '1 Anlage ohne Box' : `${ohneBox.length} Anlagen ohne Box`}</span>
+      {kunden.slice(0, 3).map((o) => (
+        <a key={o.tenantId} href={mandantHash(o.tenantId)}>
+          {o.kunde}
+          <Icon name="chevron-right" size={14} />
+        </a>
       ))}
-    </div>
+      {kunden.length > 3 && <a href={mandantHash(null)}>{kunden.length - 3} weitere</a>}
+    </p>
   );
 }
 

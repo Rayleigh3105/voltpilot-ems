@@ -48,7 +48,7 @@ vi.mock('../../api', async () => {
   return { ...actual, api: { ...actual.api, selbstauskunft: (...a: unknown[]) => selbstauskunft(...a) } };
 });
 
-const { MandantenPage, mandantAusHash, mandantHash } = await import('./MandantenPage');
+const { MandantenPage } = await import('./MandantenPage');
 
 // Die Benutzer-Seite steht in der Adresse; jeder Fall beginnt auf der Liste.
 beforeEach(() => {
@@ -154,14 +154,6 @@ describe('MandantenPage - die Kundenakte', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Alle Kunden' }));
     expect(screen.getByRole('button', { name: `Details zu ${TENANT.name}` })).toBeInTheDocument();
     expect(window.location.hash).toBe('#/plattform/benutzer');
-  });
-
-  it('liest den Kunden nur aus der eigenen Pfad-Adresse', () => {
-    expect(mandantAusHash(mandantHash('a b'))).toBe('a b');
-    expect(mandantAusHash('#/plattform/benutzer')).toBeNull();
-    expect(mandantAusHash('#/mandanten?mandant=t-1')).toBeNull();
-    expect(mandantAusHash('#/werkstatt?mandant=x')).toBeNull();
-    expect(mandantHash(null)).toBe('#/plattform/benutzer');
   });
 
   it('bearbeitet einen Benutzer, ohne den Anmeldenamen anzufassen', async () => {

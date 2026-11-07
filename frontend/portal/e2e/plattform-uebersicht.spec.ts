@@ -41,17 +41,34 @@ test('Plattform › Übersicht: vier Kacheln, Braucht dich, Flotte, Dienste - An
   await expect(page.getByTestId('akte-zustand')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // Flottenbild: jede Box ein Feld, Tippen öffnet die Akte (eigener Aufruf,
-  // da die Vorschau ohne echtes Routing navigiert - kein Browserverlauf).
+  // Flotte als Gerätewand (Konzept vp-flottenbild-konzept, Weg B): jede Box ein
+  // Gerät mit Kunde und Anlage - auch die gesunden, „ich brauch ewig, bis ich da
+  // was erkenne" (Captain). Ein Wort steht nur bei einer Abweichung, eine Legende
+  // gibt es nicht; Tippen öffnet die Akte (eigener Aufruf, da die Vorschau ohne
+  // echtes Routing navigiert - kein Browserverlauf).
   await page.goto('/e2e/plattform-uebersicht.html');
   const flotte = page.getByTestId('ueb-flotte');
-  await expect(flotte).toBeVisible();
-  // Eine auffällige Box ist ein beschriftetes Element (Name sichtbar, nicht
-  // nur im Tooltip) - „ich brauch ewig, bis ich da was erkenne" (Captain).
-  const ersterChip = flotte.locator('.vp-ueb-flotte-chip').first();
-  await expect(ersterChip).toBeVisible();
-  await expect(ersterChip).toContainText(/Hof Lindenallee|Kleingarten Ostend|Pumpwerk Ost|Box Halle 3/);
-  await flotte.locator('button').first().click();
+  await expect(flotte).toContainText('9 Boxen · 4 Kunden');
+  const geraete = flotte.getByTestId('ueb-flotte-box');
+  await expect(geraete).toHaveCount(9);
+  // Störung vorn, dann Hinweise, dann die ruhigen.
+  await expect(geraete.nth(0)).toHaveAccessibleName(/^Familie Beispiel, Hof Lindenallee: offline/);
+  await expect(geraete.nth(1)).toHaveAccessibleName(/^Kunststoffwerk Ahrenberg, Werk Ahrenberg \(Box Halle 3\): verzögert/);
+  await expect(geraete.nth(2)).toHaveAccessibleName(/^Stadtwerke Musterstadt, Werkstatt am Bach: Update läuft/);
+  await expect(geraete.nth(3)).toHaveAccessibleName(/^Familie Beispiel, Kleingarten Ostend: nur von Hand/);
+  await expect(geraete.nth(0)).toContainText('offline');
+  // Mehrere Boxen an EINER Anlage tragen ihren Gerätenamen dazu - in einer eigenen Zeile.
+  await expect(geraete.nth(1)).toContainText('Box Halle 3');
+  await expect(flotte.getByText('Box Leitstand', { exact: true })).toBeVisible();
+  // Gesunde Boxen tragen kein Wort - nur ihre Leuchte.
+  await expect(geraete.nth(8)).toHaveAccessibleName(/: verbunden/);
+  await expect(geraete.nth(8)).not.toContainText('verbunden');
+  await expect(flotte).not.toContainText('meldet sich nicht');
+  // Eine Anlage ohne Box: ein Hinweis mit Weg zur Kundenakte statt einer Zeile „· 0".
+  const ohneBox = page.getByTestId('ueb-flotte-ohnebox');
+  await expect(ohneBox).toContainText('1 Anlage ohne Box');
+  await expect(ohneBox.getByRole('link', { name: /Familie Neumann/ })).toHaveAttribute('href', /^#\/plattform\/benutzer\/t\d+$/);
+  await geraete.nth(0).click();
   await expect(page.getByTestId('akte-zustand')).toBeVisible();
 
   // Dienste: Tunnel- und Werkstatt-Dienst mit Alter (E7).
@@ -148,3 +165,66 @@ test('Plattform › Übersicht am Telefon: Zeilen statt Reiterleiste, Wort-Budge
     expect(seite, `Seitenüberlauf bei ${width}px`).toBeLessThanOrEqual(1);
   }
 });
+
+test('Plattform › Übersicht: Flotte mit 40 Boxen - am Rechner alle, am Telefon klappen die ruhigen zu (E2=A)', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/e2e/plattform-uebersicht.html?flotte=gross');
+  const flotte = page.getByTestId('ueb-flotte');
+  await expect(flotte).toContainText('40 Boxen · 35 Kunden');
+  await expect(flotte.getByTestId('ueb-flotte-box')).toHaveCount(40);
+  await expect(flotte.getByRole('button', { name: /weitere Boxen/ })).toHaveCount(0);
+  // Fünf Geräte je Reihe: die Wand füllt die Breite unter „Braucht dich".
+  const reihe = await flotte.getByTestId('ueb-flotte-box').evaluateAll((els) => {
+    const top = els[0].getBoundingClientRect().top;
+    return els.filter((el) => Math.abs(el.getBoundingClientRect().top - top) < 2).length;
+  });
+  expect(reihe).toBe(5);
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(1);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/e2e/plattform-uebersicht.html?flotte=gross');
+  const klappe = flotte.getByRole('button', { name: /36 weitere Boxen · alle verbunden/ });
+  await expect(klappe).toHaveAttribute('aria-expanded', 'false');
+  // Offen bleiben die vier mit Abweichung (offline, verzögert, Update läuft, nur von Hand).
+  await expect(flotte.getByTestId('ueb-flotte-box').filter({ visible: true })).toHaveCount(4);
+  const zwei = await flotte.getByTestId('ueb-flotte-box').filter({ visible: true }).evaluateAll((els) =>
+    els.slice(0, 2).map((el) => Math.round(el.getBoundingClientRect().top)));
+  expect(zwei[0], 'zwei Geräte je Reihe am Telefon').toBe(zwei[1]);
+  await klappe.click();
+  await expect(klappe).toHaveAttribute('aria-expanded', 'true');
+  await expect(flotte.getByTestId('ueb-flotte-box').filter({ visible: true })).toHaveCount(40);
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(1);
+  // Das Wort und die Namen bleiben in ihrer Kachel - auch „nur von Hand" am schmalen Telefon.
+  for (const width of [360, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    // Gemessen gegen die INNENkante der Kachel (ohne Polster) - ein Wort, das ins
+    // Polster ragt, stößt sichtbar an den Rand, auch wenn nichts über die Karte hinausgeht.
+    const ueberstand = await flotte.getByTestId('ueb-flotte-box').evaluateAll((els) => els.flatMap((el) => {
+      const k = el.getBoundingClientRect();
+      const st = getComputedStyle(el);
+      const links = k.left + parseFloat(st.borderLeftWidth) + parseFloat(st.paddingLeft);
+      const rechts = k.right - parseFloat(st.borderRightWidth) - parseFloat(st.paddingRight);
+      const raus = (r: DOMRect) => r.width > 0 && (r.right > rechts + 0.5 || r.left < links - 2.5);
+      const out = [...el.querySelectorAll('*')].filter((c) => raus(c.getBoundingClientRect()))
+        .map((c) => `${el.getAttribute('aria-label')}: <${c.tagName.toLowerCase()}> ${c.textContent}`);
+      // Auch Text, der aus seinem Element läuft (ein gewollt abgeschnittener Text zählt mit seinem Kasten).
+      const gang = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = gang.nextNode(); n; n = gang.nextNode()) {
+        const eltern = n.parentElement!;
+        if (!n.textContent?.trim()) continue;
+        const geschnitten = getComputedStyle(eltern).overflowX === 'hidden';
+        const bereich = document.createRange();
+        bereich.selectNodeContents(n);
+        if (raus(geschnitten ? eltern.getBoundingClientRect() : bereich.getBoundingClientRect())) {
+          out.push(`${el.getAttribute('aria-label')}: Text „${n.textContent}"`);
+        }
+      }
+      return out;
+    }));
+    expect(ueberstand, `Überstand in Kacheln bei ${width}px`).toEqual([]);
+  }
+  expect(errors).toEqual([]);
+});
+

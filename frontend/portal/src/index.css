@@ -6728,7 +6728,10 @@ span.vp-swap-out {
   .vp-ustate-busy .vp-ustate-dot,
   /* Geräte & Updates G5: derselbe Punkt im Badge „Update läuft" und im laufenden Schritt. */
   .vp-gu .vp-gu-badge.lauf .p,
-  .vp-gu .vp-gu-tracker .aktiv i {
+  .vp-gu .vp-gu-tracker .aktiv i,
+  /* Plattform › Übersicht: die Leuchte einer Box, auf der gerade ein Update läuft. */
+  .vp-ueb-flotte-geraet.ton-lauf .schein,
+  .vp-ueb-flotte-geraet.ton-lauf .licht {
     animation: none;
   }
 
