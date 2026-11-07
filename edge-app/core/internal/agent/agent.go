@@ -79,6 +79,10 @@ type Agent struct {
 	State            *state.Store
 	Bus              *localbus.Bus
 
+	// sourceReads is the in-process source reader's answer (Edge Light's
+	// layer1.ReadsAsSource), set once before Start; nil on the Docker box.
+	sourceReads func(comm, role string) string
+
 	buf                 *buffer.Buffer
 	hist                *history.Ring
 	planStore           *plan.Store

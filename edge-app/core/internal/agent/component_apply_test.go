@@ -23,6 +23,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
+	edgelight "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/layer1"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 )
 
@@ -651,5 +652,50 @@ func TestTheRealGateRegistryHoldsAndNamesTheThreeOutputs(t *testing.T) {
 	if sum == nil || sum.HeldReason != noApplicableDeviceHint || sum.RefusedRevision != "" ||
 		len(sum.RejectedComponents) != 3 {
 		t.Fatalf("Herzschlag-Block: %+v", sum)
+	}
+}
+
+const shellyGridDriver = `{"brand":"shelly","model":"shelly-pro-3em","family":"shelly_em_triphase",
+  "communication":"shelly_em_http","connection":{"ip":"192.168.1.146","port":80}}`
+
+// Edge Light (07.11.2026, Schramm): a source its reader does not wire is not
+// applied but reported with the reader's reason - the portal shows it at the
+// device instead of "wartet auf die ersten Daten". The KOSTAL PIKO, which the
+// reader does wire, runs next to the grid meter.
+func TestEdgeLightReportsASourceItsReaderDoesNotWire(t *testing.T) {
+	a := newGateTestAgent(t)
+	a.SetSourceReads(edgelight.ReadsAsSource)
+	const fronius = "f0000000-0000-0000-0000-000000000001"
+	a.applyEntityRegistry(portalPush("r1",
+		applyEntity("7946cd6a-e656-40b5-86f4-e77c3c9e4fe9", entities.TypeGridMeter, shellyGridDriver),
+		applyEntity("693a7f91-07e5-4f36-9b7c-ccaf435c3bf9", entities.TypeProducer, `{"brand":"kostal","model":"piko-20",
+  "family":"kostal_piko","communication":"kostal_dxs","connection":{"ip":"192.168.1.122","port":80}}`),
+		applyEntity(fronius, entities.TypeProducer, `{"brand":"fronius","model":"fronius_solar_api",
+  "family":"fronius_solar_api","communication":"fronius_solar_api","connection":{"ip":"192.168.1.130","port":80}}`),
+	))
+	a.srcMu.Lock()
+	srcs := append([]sources.Source(nil), a.srcs...)
+	a.srcMu.Unlock()
+	comms := map[string]string{}
+	for _, s := range srcs {
+		comms[s.Communication] = s.Role
+	}
+	if len(srcs) != 2 || comms[inverter.CommKostalDxs] != sources.RoleErzeuger || comms[inverter.CommShellyEMHTTP] != sources.RoleNetz {
+		t.Fatalf("Netz-Zaehler und PIKO laufen, der Fronius nicht: %+v", srcs)
+	}
+	raw, _ := json.Marshal(a.componentApplySummary())
+	if !strings.Contains(string(raw), `"rejected_components":[{"entity_id":"`+fronius+`","reason":"Edge Light liest die Anbindung \"fronius_solar_api\" als Energiequelle noch nicht"}]`) {
+		t.Fatalf("Herzschlag-Block: %s", raw)
+	}
+
+	// Without the reader's answer (the Docker box) the same push applies all three.
+	b := newGateTestAgent(t)
+	b.applyEntityRegistry(portalPush("r1",
+		applyEntity("7946cd6a-e656-40b5-86f4-e77c3c9e4fe9", entities.TypeGridMeter, shellyGridDriver),
+		applyEntity(fronius, entities.TypeProducer, `{"brand":"fronius","model":"fronius_solar_api",
+  "family":"fronius_solar_api","communication":"fronius_solar_api","connection":{"ip":"192.168.1.130","port":80}}`),
+	))
+	if rec := b.componentRecord(); len(rec.Rejected) != 0 {
+		t.Fatalf("Docker-Box: %+v", rec)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goeapi"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/huaweidecode"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kacoserial"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/kostaldxs"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
@@ -212,6 +213,19 @@ func (r *Runtime) readSource(ctx context.Context, p sourcePlan) {
 	case CommShellyEM:
 		out = r.readShellyEMSource(rctx, p)
 		release()
+	case CommKostalDxs:
+		// The same bundle as the primary inverter's tick (kostaldxs.PollIDs),
+		// one GET; the PIKO's weak webserver never sees a second request at once
+		// (the lane).
+		res, err := r.getDxs(rctx, p.Kostal, kostaldxs.PollIDs)
+		release()
+		in := kostalDxsSourceReading(res, err)
+		in.requests, in.class = 1, errorClassOf(rctx, err, errors.Is(err, errKostalDxsBadResponse) ||
+			errors.Is(err, errHTTPStatus) || errors.Is(err, errBodyTooLarge))
+		if err == nil && in.reading == nil {
+			in.class = "invalid_response"
+		}
+		out = inverterOutcome(p, in)
 	default:
 		res, err := r.goeGet(rctx, p.URL)
 		release()
@@ -381,6 +395,19 @@ func kacoSourceReading(raw []byte, err error) inverterSourceReading {
 			return inverterSourceReading{why: "KACO seriell: Kommando-Byte " + strconv.Quote(string(c)) + " - ein anderes KACO-Protokoll, nicht die Powador-Serie 00"}
 		}
 		return inverterSourceReading{why: "KACO seriell: " + kacoNoAnswer}
+	}
+	return inverterSourceReading{reading: res.Reading}
+}
+
+// kostalDxsSourceReading is the source executor's view of one PIKO read: the
+// AC power as pv_power_kw, or why there is none (night: the webserver answers
+// without the AC id - absent, never 0).
+func kostalDxsSourceReading(res *kostaldxs.Result, err error) inverterSourceReading {
+	switch {
+	case err != nil:
+		return inverterSourceReading{why: "KOSTAL PIKO (Web-API): keine Antwort/ungueltige Antwort: " + err.Error()}
+	case res == nil || len(res.Reading) == 0:
+		return inverterSourceReading{why: "KOSTAL PIKO (Web-API): keine AC-Leistung in der Antwort"}
 	}
 	return inverterSourceReading{reading: res.Reading}
 }

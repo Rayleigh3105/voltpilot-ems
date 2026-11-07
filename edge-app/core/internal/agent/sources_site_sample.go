@@ -249,7 +249,7 @@ func (a *Agent) sourceEntityIDs() map[string]string {
 
 	m := map[string]string{}
 	if componentapply.IsPortalManaged(reg) {
-		if plan, err := componentapply.Derive(reg, a.invCat, running, time.Now()); err == nil {
+		if plan, err := a.deriveComponents(reg, running); err == nil {
 			for src, ent := range plan.SourceEntities {
 				m[src] = ent
 			}

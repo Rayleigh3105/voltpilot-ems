@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ablehnungenAus,
+  BOX_LIEST_NICHT,
   zentraleListe,
   zentraleSatz,
   type GeraeteKarte,
@@ -9,6 +11,7 @@ import { plantModel } from './komponenten';
 import type {
   Device,
   EntityLocalSetup,
+  SiteComponents,
   SiteEntity,
   SiteSource,
   SiteTopology,
@@ -441,5 +444,51 @@ describe('zentraleSatz · EIN Satz über die Gesundheit', () => {
     const s = zentraleSatz(leer);
     expect(s.ton).toBe('warn');
     expect(s.text).toMatch(/Noch kein Gerät verbunden/);
+  });
+});
+
+describe('zentraleListe · ein Gerät, das die Box nicht anwendet', () => {
+  // Schramm, 07.11.2026: ein im Portal angelegter Erzeuger, dessen Anbindung die Box nicht liest. Er hat keinen
+  // Pin und keine Werte - „Wartet auf die ersten Daten“ wäre gelogen, die Box hat ihn mit Grund abgelehnt.
+  const GRUND = 'Edge Light liest die Anbindung "fronius_solar_api" als Energiequelle noch nicht';
+  const piko = ent({
+    id: 'piko', entityType: 'producer', typeLabel: 'Erzeuger (PV)', role: 'pv', label: 'Kostal PIKO 20',
+    deviceId: null, edgeSourceId: null, capabilities: { measure: [{ channel: 'pv_power_kw' }] },
+  });
+  const model = plantModel([...ENTITIES, piko], TOPOLOGY, LOCAL, SOURCES);
+  const karteVon = (k: GeraeteKarte[], entityId: string) =>
+    k.find((x) => x.art === 'geraet' && x.komponenten.some((c) => c.entityId === entityId))!;
+
+  it('sagt „Box liest es nicht“ mit dem Grund der Box statt „Wartet auf die ersten Daten“', () => {
+    const k = karteVon(zentraleListe(input({ model, abgelehnt: new Map([['piko', GRUND]]) })), 'piko');
+    expect(k.zustandWort).toBe(BOX_LIEST_NICHT);
+    expect(k.zustand).toBe(BOX_LIEST_NICHT);
+    expect(k.ton).toBe('warn');
+    expect(k.zusatz).toBe(`Die Box wendet dieses Gerät nicht an: ${GRUND}.`);
+  });
+
+  it('bleibt ohne Meldung der Box beim alten Wort (nichts wird behauptet)', () => {
+    const k = karteVon(zentraleListe(input({ model })), 'piko');
+    expect(k.zustandWort).not.toBe(BOX_LIEST_NICHT);
+    expect(k.zusatz).toBeNull();
+  });
+
+  it('lässt ein Gerät, das liefert, beim Liefern', () => {
+    const k = karte(zentraleListe(input({ abgelehnt: new Map([['fr1', GRUND]]) })), 'src-a')!;
+    expect(k.zustandWort).not.toBe(BOX_LIEST_NICHT);
+    expect(k.ton).toBe('ok');
+  });
+
+  it('liest die Gründe aus den Komponenten-Zeilen, leere zählen nicht', () => {
+    const rows = {
+      componentAuthority: 'portal',
+      components: [
+        { id: 'piko', definitionVersion: 2, rejectedReason: GRUND },
+        { id: 'fr1', definitionVersion: 1, rejectedReason: '  ' },
+        { id: 'grid', definitionVersion: 1 },
+      ],
+    } as unknown as SiteComponents;
+    expect([...ablehnungenAus(rows)]).toEqual([['piko', GRUND]]);
+    expect(ablehnungenAus(null).size).toBe(0);
   });
 });

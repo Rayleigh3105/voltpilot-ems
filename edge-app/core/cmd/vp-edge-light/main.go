@@ -27,7 +27,8 @@ import (
 )
 
 func main() {
-	edgemain.Main(edgemain.Options{Name: "vp-edge-light", BoxArt: geraetesuche.BoxArtEdgeLight, Extra: startLayer1})
+	edgemain.Main(edgemain.Options{Name: "vp-edge-light", BoxArt: geraetesuche.BoxArtEdgeLight, Extra: startLayer1,
+		SourceReads: layer1.ReadsAsSource})
 }
 
 // startLayer1 connects the Go Layer 1 to the core's local bus. The device

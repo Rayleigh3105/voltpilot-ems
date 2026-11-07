@@ -31,7 +31,7 @@ import {
 } from '../komponenten';
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
 import { fuehrendeBoxOf, boxRefOf } from '../geraetSeite';
-import { zentraleListe, zentraleSatz, type GeraeteKarte } from '../zentraleListe';
+import { ablehnungenAus, ablehnungSatz, BOX_LIEST_NICHT, zentraleListe, zentraleSatz, type GeraeteKarte } from '../zentraleListe';
 import {
   aufbauBaum,
   type AufbauAnlage,
@@ -338,10 +338,11 @@ export function AufbauSection({
             localSetup: data?.localSetup ?? null,
             sources,
             charging,
+            abgelehnt: ablehnungenAus(components),
             now,
           })
         : null,
-    [model, site.id, eigeneBoxen, devicesFetchedAt, boxRef, data, sources, charging, now],
+    [model, site.id, eigeneBoxen, devicesFetchedAt, boxRef, data, sources, charging, components, now],
   );
 
   // GE-3: die Erzeugungseinheiten jeder Anlagensteuerung stehen als Geräte unter ihr — mit Ist und Zustand aus den
@@ -524,10 +525,12 @@ export function AufbauSection({
   const ablehnung = ablehnungText(components?.refusedRevision, components?.refusedReason);
   const halt = haltGrund(components?.components[0]?.syncStatus, components?.heldReason);
   const verwaltung = components ? verwaltungsHinweis(components.componentAuthority, components.adoptedAt) : null;
-  const ohneMesswertById = useMemo(() => {
+  const zeilenHinweisById = useMemo(() => {
     const out = new Map<string, { badge: string; satz: string }>();
     for (const row of components?.components ?? []) {
-      const h = ohneMesswertHinweis(row.connection);
+      // Die Box wendet das Gerät nicht an: ihr Grund steht an der Zeile (wiegt mehr als ein fehlender Kanal).
+      const grund = row.rejectedReason?.trim();
+      const h = grund ? { badge: BOX_LIEST_NICHT, satz: ablehnungSatz(grund) } : ohneMesswertHinweis(row.connection);
       if (h) out.set(row.id, h);
     }
     return out;
@@ -914,7 +917,7 @@ export function AufbauSection({
           onBoxHinzufuegen={() => setBoxAnmelden(true)}
           onAnlageHinzufuegen={() => setAnlageAnlegen(true)}
           onBoxVerwalten={(b) => setBoxVerwalten(b.id)}
-          hinweisFor={(g) => g.karte.komponenten.map((c) => ohneMesswertById.get(c.entityId)).find(Boolean) ?? null}
+          hinweisFor={(g) => g.karte.komponenten.map((c) => zeilenHinweisById.get(c.entityId)).find(Boolean) ?? null}
           mehrFor={mehrFor}
           showTechnical={showTechnical}
           technik={
@@ -958,7 +961,7 @@ export function AufbauSection({
             }
             sofortFor={(c) => consumers.find((x) => x.id === c.entityId && x.connection === 'connected') ?? null}
             // Die Ausnahme gilt dem Speicher: die PV-Zeile desselben Hybrids trägt sie nicht.
-            ohneMesswertFor={(c) => (c.aspect === 'main' ? ohneMesswertById.get(c.entityId) ?? null : null)}
+            ohneMesswertFor={(c) => (c.aspect === 'main' ? zeilenHinweisById.get(c.entityId) ?? null : null)}
             onSofort={(consumer, action) => ausKurzblick(() => setSofort({ consumer, action }))}
             onFreigabe={(c) => ausKurzblick(() => setFreigabe(c))}
             onRepin={(c) => ausKurzblick(() => setRepin(c))}

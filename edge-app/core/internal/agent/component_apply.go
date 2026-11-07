@@ -122,7 +122,7 @@ func (a *Agent) applyComponentsFromRegistry(reg entities.Registry) {
 	running := append([]sources.Source(nil), a.srcs...)
 	a.srcMu.Unlock()
 
-	plan, err := componentapply.Derive(reg, a.invCat, running, time.Now())
+	plan, err := a.deriveComponents(reg, running)
 	for _, r := range plan.Rejected {
 		slog.Warn("Gerät aus dem Portal nicht angewandt (die übrigen schon)",
 			"revision", reg.Revision, "entity", r.EntityID, "grund", r.Reason)
@@ -275,6 +275,20 @@ const noConfigurationHint = "Im Portal ist für diese Anlage kein verbundenes Ge
 // noApplicableDeviceHint is the hold sentence when the portal DOES name
 // connected devices, but the box can assign none of them a role (each one is
 // listed with its own reason in rejected_components).
+// SetSourceReads hands the agent the in-process source reader's answer to
+// "do you wire this transport in this role?" (edgemain, before Start). A portal
+// plan is then derived with it: a source the reader cannot wire is skipped and
+// reported (component_apply.rejected_components) instead of being applied and
+// never delivering a value.
+func (a *Agent) SetSourceReads(reads func(comm, role string) string) { a.sourceReads = reads }
+
+// deriveComponents is THE derivation of a portal plan on this box - the apply
+// and the source-to-entity map must agree on what runs.
+func (a *Agent) deriveComponents(reg entities.Registry, running []sources.Source) (componentapply.Plan, error) {
+	return componentapply.DeriveWith(reg, a.invCat, running, time.Now(),
+		componentapply.Options{SourceReads: a.sourceReads})
+}
+
 const noApplicableDeviceHint = "Die Box kann keines der im Portal verbundenen Geräte anwenden; " +
 	"sie behält deshalb den zuletzt angewandten Stand."
 

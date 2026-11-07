@@ -1024,3 +1024,70 @@ test('both new ways run in ONE sequential cycle, each publishing its own source'
     ks.server.close();
   }
 });
+
+// --- KOSTAL PIKO (kostal_dxs) als QUELLE ---
+// Der klassische PIKO 20 bei Schramm (07.11.2026) als weiterer Erzeuger: derselbe
+// gebuendelte GET auf /api/dxs.json wie der Hauptweg, veroeffentlicht nur
+// pv_power_kw. Vorher: "NICHT VERDRAHTET: unbekannte Kommunikation".
+function pikoServer(values) {
+  return new Promise((resolve) => {
+    const hits = [];
+    const server = http.createServer((req, res) => {
+      const u = new URL(req.url, 'http://x');
+      hits.push(req.method + ' ' + u.pathname);
+      if (req.method !== 'GET' || u.pathname !== '/api/dxs.json') { res.statusCode = 404; res.end('no'); return; }
+      const entries = u.searchParams.getAll('dxsEntries').map(Number).filter((id) => id in values).map((id) => ({ dxsId: id, value: values[id] }));
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ dxsEntries: entries, session: { sessionId: 0, roleId: 0 }, status: { code: 0 } }));
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, hits }));
+  });
+}
+
+function pikoSource(port, overrides = {}) {
+  return Object.assign({
+    id: 'src-piko', role: 'pv-generation', brand: 'kostal', model: 'piko-20', family: 'kostal_piko',
+    communication: 'kostal_dxs', connection: { ip: '127.0.0.1', port }, interval_s: 5,
+  }, overrides);
+}
+
+test('a KOSTAL PIKO Erzeuger source (kostal_dxs) is read over its Web-API and publishes pv_power_kw', async () => {
+  const piko = await pikoServer({ 67109120: 3964.4 });
+  try {
+    const flow = {}, sends = [], health = [];
+    await runFunctionNode(byId['sources-store'].func, { msg: { payload: [pikoSource(piko.port, { data_source_id: 'DQ-9' })] }, flow });
+    assert.equal(flow.source_plans.length, 1);
+    assert.equal(flow.source_plans[0].adapter, 'kostal_dxs');
+    await runFunctionNode(byId['sources-read'].func, { flow, sends, health });
+    assert.equal(sends.length, 1);
+    const [erzeuger, netz, verbraucher] = sends[0];
+    assert.equal(netz, null);
+    assert.equal(verbraucher, null);
+    assert.equal(erzeuger.source_id, 'src-piko');
+    assert.equal(erzeuger.payload.pv_power_kw, 3.964, '3964,4 W -> 3,964 kW');
+    assert.deepEqual(Object.keys(erzeuger.payload).sort(), ['pv_power_kw', 'ts']);
+    assert.equal(health.length, 1);
+    assert.equal(health[0].id, 'DQ-9');
+    assert.equal(health[0].failed, false);
+    assert.equal(health[0].requests, 1, 'one bundled GET per read');
+    assert.ok(piko.hits.every((h) => h === 'GET /api/dxs.json'), 'nur lesen: ' + piko.hits.join(', '));
+  } finally {
+    piko.server.close();
+  }
+});
+
+test('a KOSTAL PIKO at night (no AC id) publishes nothing and names it; as a grid meter it is NOT wired', async () => {
+  const piko = await pikoServer({ 16780544: 'PIKO 20' });
+  try {
+    const { flow, sends, warns } = await storeAndRead([
+      pikoSource(piko.port),
+      pikoSource(piko.port, { id: 'src-piko-netz', role: 'grid-meter' }),
+    ]);
+    assert.equal(flow.source_plans.length, 1, 'only the Erzeuger is planned');
+    assert.equal(sends.length, 0, 'absent, never 0');
+    assert.ok(warns.some((w) => /src-piko .*keine AC-Leistung/.test(w)), warns.join('\n'));
+    assert.ok(warns.some((w) => /src-piko-netz \(grid-meter\) NICHT VERDRAHTET: ein KOSTAL PIKO liefert nur seine Erzeugung/.test(w)), warns.join('\n'));
+  } finally {
+    piko.server.close();
+  }
+});

@@ -36,6 +36,12 @@ type Options struct {
 	// ends. It returns a stop function called BEFORE the agent stops, so an
 	// in-process Layer 1 never talks to a bus that is going away. nil = none.
 	Extra func(ctx context.Context, cfg config.Config, a *agent.Agent) (stop func(), err error)
+	// SourceReads is the in-process source reader's answer to "do you wire
+	// this transport in this role?" ("" = yes, else the reason). Handed to the
+	// agent BEFORE it starts, so no portal plan is ever applied without it: a
+	// source the reader cannot wire is reported to the portal instead of being
+	// applied. nil = the sources are read elsewhere (the Docker box's flow).
+	SourceReads func(comm, role string) string
 }
 
 // Main runs the box process and exits the program on a fatal error. As
@@ -73,6 +79,7 @@ func Main(o Options) {
 	// beim Start - das Geraet wechselt nicht, solange das Programm laeuft.
 	erkannt := geraet.Erkennen(os.DirFS("/"), runtime.GOARCH)
 	a.SetGeraet(erkannt)
+	a.SetSourceReads(o.SourceReads)
 	slog.Info("device detected", "model", erkannt.Modell, "arch", erkannt.Arch)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

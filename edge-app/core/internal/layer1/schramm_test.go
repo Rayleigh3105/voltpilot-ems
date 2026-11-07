@@ -378,3 +378,70 @@ func TestSunSpecAndShellyMeterConnectionTests(t *testing.T) {
 		t.Fatal("ein Verbindungstest liest nur Shelly.GetStatus")
 	}
 }
+
+// The KOSTAL PIKO 20 at Schramm (192.168.1.122, added 07.11.2026 as a further
+// Erzeuger): Edge Light reads it as a source over the same /api/dxs.json bundle
+// as the primary path - pv_power_kw only, one request per read, a receipt per
+// read. Before, the source was "NICHT VERDRAHTET" and the portal waited for its
+// first value forever.
+func TestSchrammPikoIsReadAsAnErzeugerSource(t *testing.T) {
+	p := startPikoSim(t)
+	o := fastKostalDxs()
+	o.SourcesFirstPoll, o.SourcesPoll = 50*time.Millisecond, 150*time.Millisecond
+	r := newRig(t, o)
+	r.collectSources()
+	r.collectReceipts()
+	h, port := p.hostPort()
+	piko := asSource(pikoDxsSel(h, port), "src-piko", "pv-generation")
+	piko["data_source_id"] = "DQ-9"
+	falsch := asSource(pikoDxsSel(h, port), "src-piko-netz", "grid-meter")
+	if err := r.bus.Publish(sources.TopicConfig, sourcesConfig(piko, falsch), true); err != nil {
+		t.Fatal(err)
+	}
+	msg := decodeJSON(t, r.wait(sources.TopicPrefix+"src-piko/telemetry", 1, 5*time.Second)[0])
+	if msg["pv_power_kw"] != 1.235 || len(msg) != 2 {
+		t.Fatalf("PIKO als Erzeuger: nur pv_power_kw + ts: %v", msg)
+	}
+	var ev datasourcestatus.Event
+	_ = json.Unmarshal(r.wait(datasourcestatus.Topic, 1, 5*time.Second)[0], &ev)
+	if ev.ID != "DQ-9" || ev.Failed || ev.Samples != 1 || ev.Requests == nil || *ev.Requests != 1 {
+		t.Fatalf("Beleg: %+v", ev)
+	}
+	if n := r.count(sources.TopicPrefix + "src-piko-netz/telemetry"); n != 0 {
+		t.Fatalf("ein PIKO als Netz-Zaehler liefert nichts: %d", n)
+	}
+
+	// Night: the webserver answers without the AC id - a failed read, never 0.
+	p.mu.Lock()
+	delete(p.values, 67109120)
+	p.mu.Unlock()
+	if e := r.receiptWhere(t, func(e datasourcestatus.Event) bool { return e.Failed }); e.ErrorClass != "invalid_response" || e.Samples != 0 {
+		t.Fatalf("PIKO nachts: %+v", e)
+	}
+	// An unreachable webserver: unreachable.
+	dh, dp, _ := net.SplitHostPort(freeAddr(t))
+	if err := r.bus.Publish(sources.TopicConfig, sourcesConfig(asSource(pikoDxsSel(dh, dp), "src-piko-tot", "pv-generation")), true); err != nil {
+		t.Fatal(err)
+	}
+	if e := r.receiptWhere(t, func(e datasourcestatus.Event) bool { return e.SourceID == "src-piko-tot" }); !e.Failed || e.ErrorClass != "unreachable" {
+		t.Fatalf("toter PIKO: %+v", e)
+	}
+}
+
+// receiptWhere waits up to 5 s for a read receipt that matches.
+func (r *rig) receiptWhere(t *testing.T, match func(datasourcestatus.Event) bool) datasourcestatus.Event {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, raw := range r.wait(datasourcestatus.Topic, 1, time.Second) {
+			var e datasourcestatus.Event
+			_ = json.Unmarshal(raw, &e)
+			if match(e) {
+				return e
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("kein passender Lese-Beleg")
+	return datasourcestatus.Event{}
+}

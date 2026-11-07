@@ -16,9 +16,11 @@ const TopicSourcesConfig = sources.TopicConfig
 
 // sourcePlan is one source Edge Light reads - the Go twin of a plan the
 // flow's "sources-store" node builds (build-flows.js): a go-e over HTTP, a
-// Huawei SUN2000 over Modbus TCP, a Powador behind its RS485 converter or a
-// SunSpec inverter (sunspec_tcp / fronius_sunspec). Every other transport is
-// named in the log, never silently skipped.
+// Huawei SUN2000 over Modbus TCP, a Powador behind its RS485 converter, a
+// SunSpec inverter (sunspec_tcp / fronius_sunspec), a Shelly meter or a classic
+// KOSTAL PIKO over its Web-API (kostal_dxs). Every other transport is named in
+// the log, never silently skipped - and ReadsAsSource tells the core the same
+// before it applies a portal plan.
 type sourcePlan struct {
 	ID   string
 	Role string
@@ -32,6 +34,7 @@ type sourcePlan struct {
 	Kaco     *kacoSerialPlan // kaco_serial
 	Sunspec  *sunspecPlan    // sunspec_tcp / fronius_sunspec
 	ShellyEM *shellyEMPlan   // shelly_em_http
+	Kostal   *kostalDxsPlan  // kostal_dxs
 
 	// DataSourceID is the assigned data source (DQ-…) the push named, the
 	// identity of the read receipt (else the local id).
@@ -50,6 +53,37 @@ type sourceNote struct {
 var knownSourceComms = map[string]bool{
 	"modbus_tcp": true, "fronius_sunspec": true, "sunspec_tcp": true, "kaco_http": true,
 	"kaco_modbus": true, "goe_http_api": true, "solarman_v5": true, "fronius_solar_api": true,
+	"kostal_dxs": true,
+}
+
+// ReadsAsSource is THE answer to "does Edge Light read this transport as an
+// additional source in this role?" - "" when it does, else the German reason
+// (without the source id). parseSourcesConfig wires nothing it refuses, and the
+// core asks it before applying a portal plan (componentapply.Options), so a
+// device the box cannot read is reported to the portal with this reason instead
+// of waiting forever for its first value (Schramm, KOSTAL PIKO 20, 07.11.2026).
+//
+// It judges the transport and the role only; a connection the plan cannot use
+// (no IP, a bad unit id) is the plan's own, per-device refusal.
+func ReadsAsSource(comm, role string) string {
+	switch comm {
+	case goeapi.Family, CommHuaweiModbus, CommKacoSerial, CommSunSpecTCP, CommFroniusSunSpec:
+		return ""
+	case CommShellyEM:
+		if role == sources.RoleErzeuger {
+			return "ein Zähler liefert keinen PV-Wert (als Netz-Zähler oder Unterzähler/Verbraucher anlegen)"
+		}
+		return ""
+	case CommKostalDxs:
+		if role != sources.RoleErzeuger {
+			return "ein KOSTAL PIKO liefert nur seine Erzeugung (PV-Leistung), keinen Netz- oder Verbrauchswert (als Erzeuger anlegen)"
+		}
+		return ""
+	}
+	if knownSourceComms[comm] {
+		return "Edge Light liest die Anbindung \"" + comm + "\" als Energiequelle noch nicht"
+	}
+	return "unbekannte Kommunikation \"" + comm + "\""
 }
 
 // parseSourcesConfig is vp-sources-config (structural validation) followed by
@@ -119,6 +153,10 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 			notes = append(notes, sourceNote{true, "Quelle " + id + " NICHT VERDRAHTET: unbekannte Rolle \"" + role + "\""})
 			continue
 		}
+		if why := ReadsAsSource(comm, role); why != "" {
+			notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+			continue
+		}
 		ip = strings.TrimSpace(ip)
 		switch {
 		case comm == goeapi.Family:
@@ -154,10 +192,6 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
 				continue
 			}
-			if role == sources.RoleErzeuger {
-				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: ein Zaehler liefert keinen PV-Wert (Netz-Zaehler oder Unterzaehler/Verbraucher)"})
-				continue
-			}
 			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: sp.IP, Port: sp.Port, Addr: sp.Addr, ShellyEM: sp})
 			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): shelly_em_http " + sp.Addr + " -> Leseplan (Shelly.GetStatus, em:0)"})
 		case isSunSpecComm(comm):
@@ -170,10 +204,14 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 			}
 			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: sp.IP, Port: sp.Port, Addr: sp.Addr, Sunspec: sp})
 			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): " + comm + " " + sp.Addr + " -> Leseplan sunspec_live (unit " + strconv.Itoa(int(sp.UnitID)) + ", model_type " + sp.ModelType + ")"})
-		case knownSourceComms[comm]:
-			notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + "): Edge Light liest die Anbindung \"" + comm + "\" als Energiequelle noch nicht"})
-		default:
-			notes = append(notes, sourceNote{true, "Quelle " + id + " NICHT VERDRAHTET: unbekannte Kommunikation \"" + comm + "\""})
+		case comm == CommKostalDxs:
+			kp, why := planKostalDxs(&selection{Family: family, Communication: comm, Connection: conn})
+			if kp == nil {
+				notes = append(notes, sourceNote{true, "Quelle " + id + " (" + role + ") NICHT VERDRAHTET: " + why})
+				continue
+			}
+			plans = append(plans, sourcePlan{ID: id, Role: role, Comm: comm, IP: kp.IP, Port: kp.Port, Addr: kp.Addr, Kostal: kp})
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role + "): kostal_dxs " + kp.Addr + " -> Leseplan (PIKO Web-API /api/dxs.json)"})
 		}
 	}
 	for i := range plans {

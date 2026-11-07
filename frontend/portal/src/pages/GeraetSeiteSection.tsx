@@ -173,7 +173,7 @@ import './GeraetSeite.css';
 import { AUFBAU_REITER } from '../ebenenNav';
 import { anlagensteuerungGeraetId, anlagensteuerungIdOf, boxRefOf } from '../geraetAdresse';
 import { aufbauBaum } from '../aufbauBaum';
-import { zentraleListe } from '../zentraleListe';
+import { ablehnungenAus, zentraleListe } from '../zentraleListe';
 import { anbindungen as anbindungenVon, anbindungKurz, geraetImAufbau, kopfZustand } from '../geraetAnbindung';
 import { AnbindungAbschnitt, AnbindungVerlauf } from '../components/GeraetAnbindung';
 import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
@@ -539,6 +539,7 @@ function GeraetSeiteKern({
       localSetup: data.localSetup,
       sources,
       charging,
+      abgelehnt: ablehnungenAus(components),
       now,
     });
     const baum = aufbauBaum({
@@ -557,7 +558,7 @@ function GeraetSeiteKern({
       now,
     });
     return geraetImAufbau(baum, view.komponenten.map((c) => c.entityId));
-  }, [model, data, view, uemsGeraete, datenquellen, devices, site.id, site.name, devicesFetchedAt, sources, charging, now]);
+  }, [model, data, view, uemsGeraete, datenquellen, devices, site.id, site.name, devicesFetchedAt, sources, charging, components, now]);
   const steuerquelleDa = Boolean(imAufbau?.geraet.anbindungen
     .some((a) => datenquellen?.find((q) => q.id === a.quelleId)?.steuerquelle));
   useEffect(() => {

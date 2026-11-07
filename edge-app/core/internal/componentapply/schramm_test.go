@@ -108,3 +108,73 @@ func TestARelayShellyStaysUnassignableAsAMeasureOnlyLoad(t *testing.T) {
 		t.Fatalf("Ablehnung: %+v", plan.Rejected)
 	}
 }
+
+func pikoDriver(ip string) string {
+	return `{"brand":"kostal","model":"piko-20","family":"kostal_piko","communication":"kostal_dxs",
+  "connection":{"ip":"` + ip + `","port":80}}`
+}
+
+// The KOSTAL PIKO 20 Schramm added on 07.11.2026 as a further Erzeuger, next to
+// a device whose transport the box's source reader does NOT wire (Fronius over
+// its Solar API on Edge Light). With the reader's answer (Options.SourceReads)
+// the box applies everything it reads and reports the other device by id with
+// the reader's reason - the portal shows that instead of "wartet auf die ersten
+// Daten". Without it (the Docker box: the flow reads the sources) nothing
+// changes: both are applied.
+func TestASourceTheReaderDoesNotWireIsReportedNotApplied(t *testing.T) {
+	const piko, fronius = "a0000000-0000-0000-0000-000000000007", "a0000000-0000-0000-0000-000000000008"
+	reg := portal(
+		ent("a0000000-0000-0000-0000-000000000002", entities.TypeProducer, kacoDriver("powador-20.0-tl3", "192.168.1.113")),
+		ent("a0000000-0000-0000-0000-000000000004", entities.TypeGridMeter, shellyMeterDriver("192.168.1.146", "")),
+		ent(piko, entities.TypeProducer, pikoDriver("192.168.1.122")),
+		ent(fronius, entities.TypeProducer, `{"brand":"fronius","model":"fronius_solar_api","family":"fronius_solar_api",
+  "communication":"fronius_solar_api","connection":{"ip":"192.168.1.130","port":80}}`),
+	)
+	var asked []string
+	reads := func(comm, role string) string {
+		asked = append(asked, comm+"/"+role)
+		if comm == inverter.CommFroniusSolarAPI {
+			return `Edge Light liest die Anbindung "fronius_solar_api" als Energiequelle noch nicht`
+		}
+		return ""
+	}
+	plan, err := DeriveWith(reg, cat(), nil, now, Options{SourceReads: reads})
+	if err != nil {
+		t.Fatalf("Derive: %v", err)
+	}
+	if len(plan.Rejected) != 1 || plan.Rejected[0].EntityID != fronius ||
+		!strings.Contains(plan.Rejected[0].Reason, "fronius_solar_api") {
+		t.Fatalf("genau der Fronius wird gemeldet: %+v", plan.Rejected)
+	}
+	if len(plan.Sources) != 3 {
+		t.Fatalf("KACO, Netz-Zaehler und PIKO laufen: %+v", plan.Sources)
+	}
+	var pikoSrc *sources.Source
+	for i, s := range plan.Sources {
+		if s.Communication == inverter.CommKostalDxs {
+			pikoSrc = &plan.Sources[i]
+		}
+	}
+	if pikoSrc == nil || pikoSrc.Role != sources.RoleErzeuger || pikoSrc.Connection.IP != "192.168.1.122" ||
+		plan.SourceEntities[pikoSrc.ID] != piko {
+		t.Fatalf("PIKO als Erzeuger: %+v", pikoSrc)
+	}
+	if len(asked) != 4 {
+		t.Fatalf("jede Quelle wird gefragt, der Wechselrichter nie: %v", asked)
+	}
+
+	plain, err := Derive(reg, cat(), nil, now)
+	if err != nil || len(plain.Rejected) != 0 || len(plain.Sources) != 4 {
+		t.Fatalf("ohne Leser-Antwort (Docker-Box) unveraendert: %+v %v", plain, err)
+	}
+}
+
+// Every source the reader refuses: nothing applicable is left, and the plan
+// still names the rejections, so the box can say WHY.
+func TestOnlyUnreadSourcesLeaveNoConfigurationButTheirReasons(t *testing.T) {
+	reg := portal(ent("a0000000-0000-0000-0000-000000000007", entities.TypeProducer, pikoDriver("192.168.1.122")))
+	plan, err := DeriveWith(reg, cat(), nil, now, Options{SourceReads: func(string, string) string { return "nein" }})
+	if err != ErrNoConfiguration || len(plan.Rejected) != 1 || plan.Rejected[0].Reason != "nein" {
+		t.Fatalf("%+v %v", plan, err)
+	}
+}

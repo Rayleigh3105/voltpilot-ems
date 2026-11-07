@@ -125,8 +125,8 @@ func TestSourcesConfigIsPlannedLikeTheFlow(t *testing.T) {
 		all += n.text + "\n"
 	}
 	for _, want := range []string{
-		`Quelle src-fro (pv-generation): Edge Light liest die Anbindung "fronius_solar_api" als Energiequelle noch nicht`,
-		`Quelle src-x NICHT VERDRAHTET: unbekannte Kommunikation "zauberei"`,
+		`Quelle src-fro (pv-generation) NICHT VERDRAHTET: Edge Light liest die Anbindung "fronius_solar_api" als Energiequelle noch nicht`,
+		`Quelle src-x (consumer) NICHT VERDRAHTET: unbekannte Kommunikation "zauberei"`,
 		`Quelle src-rolle NICHT VERDRAHTET: unbekannte Rolle "speicher"`,
 		`Quelle verworfen - Eintrag #6: keine id`,
 		`Quelle verworfen - src-noip: keine connection.ip`,
@@ -283,5 +283,50 @@ func TestGoeConnectionTestClassifiesLikeTestReadJS(t *testing.T) {
 
 	if res := testRead(t, r, "noip", goeSel("  ", 80)); res["error_code"] != "invalid_request" || res["message"] != "keine IP-Adresse" {
 		t.Errorf("ohne IP: %v", res)
+	}
+}
+
+// ReadsAsSource is what the core reports to the portal before it applies a
+// plan, parseSourcesConfig what the reader then wires: they must never
+// disagree. For every transport and role with a usable connection, a plan
+// exists exactly when ReadsAsSource says "".
+func TestReadsAsSourceAgreesWithTheReader(t *testing.T) {
+	type fx struct{ comm, family string }
+	for _, f := range []fx{
+		{"goe_http_api", "goe_http_api"},
+		{CommHuaweiModbus, "huawei_sun2000_luna"},
+		{CommKacoSerial, "kaco_serial"},
+		{CommSunSpecTCP, "sunspec_live"},
+		{CommFroniusSunSpec, "sunspec_live"},
+		{CommShellyEM, "shelly_em_triphase"},
+		{CommKostalDxs, "kostal_piko"},
+		{"fronius_solar_api", "fronius_solar_api"},
+		{"kaco_http", "kaco_nh3"},
+		{"solarman_v5", "deye_hybrid"},
+		{"modbus_tcp", "sma"},
+		{"kostal_modbus", "kostal_plenticore"},
+		{"kostal_piko_rtu", "kostal_piko"},
+		{"zauberei", "f"},
+	} {
+		for _, role := range []string{sources.RoleErzeuger, sources.RoleNetz, sources.RoleConsumer} {
+			id := "src-" + f.comm + "-" + role
+			plans, notes, _, ok := parseSourcesConfig(sourcesConfig(map[string]any{
+				"id": id, "role": role, "communication": f.comm, "family": f.family,
+				"connection": map[string]any{"ip": "10.0.0.7", "port": 80, "unit_id": 1, "address": 1},
+			}))
+			if !ok {
+				t.Fatalf("%s: Konfiguration unbrauchbar", id)
+			}
+			why := ReadsAsSource(f.comm, role)
+			if (why == "") != (len(plans) == 1) {
+				t.Errorf("%s: ReadsAsSource=%q, Leseplaene=%d, Hinweise=%+v", id, why, len(plans), notes)
+			}
+			if why != "" && (len(notes) != 1 || !strings.HasSuffix(notes[0].text, "NICHT VERDRAHTET: "+why)) {
+				t.Errorf("%s: das Log nennt denselben Grund wie das Portal: %+v", id, notes)
+			}
+		}
+	}
+	if why := ReadsAsSource(CommKostalDxs, sources.RoleErzeuger); why != "" {
+		t.Fatalf("PIKO als Erzeuger: %q", why)
 	}
 }

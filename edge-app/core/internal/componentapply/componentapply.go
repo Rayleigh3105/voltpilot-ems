@@ -36,6 +36,12 @@
 //     know, two inverters, two devices on one connection - still refuses the
 //     whole push.
 //
+//     The same skip-and-report holds for an additional source whose TRANSPORT
+//     the box's own source reader does not wire in that role (Options.
+//     SourceReads, Edge Light only): it would be applied and then never read,
+//     and the portal would wait for its first value forever. It too has no
+//     place in this box's read path; the rest of the push is applied.
+//
 //   - AN EMPTY SOLL IS NOT A SOLL - UNTIL THE PORTAL OWNS THE BOX. A push that
 //     names no device at all yields ErrNoConfiguration, never an empty plan.
 //     Wiping a working box because the portal has not been filled in yet would
@@ -164,7 +170,9 @@ type Plan struct {
 	// (agent.producerEntityTelemetry). Derived, never persisted - SameAs ignores it.
 	SourceEntities map[string]string
 	// Rejected are the devices of this push the box did NOT apply because it
-	// cannot assign them a role (sorted by entity id, like the push). They are
+	// cannot assign them a role or its source reader does not read their
+	// transport in that role (Options.SourceReads) - sorted by entity id, like
+	// the push. They are
 	// not part of what runs; SameAs therefore ignores them. With
 	// ErrNoConfiguration Derive still returns them (and the revision), so the
 	// caller can say WHY nothing applicable is left.
@@ -357,6 +365,24 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 // running.
 func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Source,
 	now time.Time) (Plan, error) {
+	return DeriveWith(reg, cat, current, now, Options{})
+}
+
+// Options are what the box running Derive knows about itself.
+type Options struct {
+	// SourceReads answers, for an additional source (not the inverter, not a
+	// plant controller), whether THIS box's reader wires the transport in that
+	// role: "" = yes, else the German reason. A source it refuses is skipped and
+	// reported (Plan.Rejected) like a device without a role - the box does not
+	// read it, and saying so beats "wartet auf die ersten Daten" forever (the
+	// KOSTAL PIKO at Schramm, 07.11.2026). nil = no such check: on the Docker box
+	// the Node-RED flow reads the sources and names what it cannot read itself.
+	SourceReads func(comm, role string) string
+}
+
+// DeriveWith is Derive with what the box knows about its own reader.
+func DeriveWith(reg entities.Registry, cat inverter.Catalog, current []sources.Source,
+	now time.Time, opts Options) (Plan, error) {
 	plan := Plan{Revision: reg.Revision}
 	keep := keepLocalIDs(current)
 	byFingerprint := map[string]string{} // transport identity -> entity id that claimed it
@@ -431,6 +457,12 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 			}, now)
 			if err != nil {
 				return Plan{}, fmt.Errorf("Gerät %q: %s", e.ID, message(err))
+			}
+			if opts.SourceReads != nil {
+				if why := opts.SourceReads(src.Communication, src.Role); why != "" {
+					plan.Rejected = append(plan.Rejected, Rejection{EntityID: e.ID, Reason: why})
+					continue
+				}
 			}
 		}
 		// The clash check keys on the TRANSPORT IDENTITY, not on the final id:

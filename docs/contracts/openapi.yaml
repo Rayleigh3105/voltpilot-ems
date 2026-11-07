@@ -24340,8 +24340,9 @@ components:
                 description: >
                   Warum die Box GENAU DIESE Komponente nicht anwendet, wörtlich
                   von der Box (Herzschlag `component_apply.rejected_components`):
-                  sie kann ihr keine Rolle zuordnen und hat den Rest des Pushs
-                  trotzdem angewandt. Abwesend = nicht übersprungen, oder die Box
+                  sie kann ihr keine Rolle zuordnen, oder ihr Quellen-Leser
+                  liest die Anbindung in dieser Rolle nicht (Edge Light), und sie
+                  hat den Rest des Pushs trotzdem angewandt. Abwesend = nicht übersprungen, oder die Box
                   meldet das Feld nicht. `syncStatus` bleibt daneben, wie er ist.
     SaveComponentRequest:
       type: object

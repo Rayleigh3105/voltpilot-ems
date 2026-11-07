@@ -24,7 +24,11 @@ Was HIER gelten muss:
   `measure-only`) wird uebersprungen und mit Kennung und Grund gemeldet (`Plan.Rejected` →
   `components-applied.json`/Herzschlag `component_apply.rejected_components` → `device_component_apply`
   → `rejectedReason` an der Komponente); alles andere wird angewandt. Ein `heating-rod` ist vom Typ her
-  Verbraucher, auch ohne `actuate`.
+  Verbraucher, auch ohne `actuate`. **Ebenso auf Edge Light: eine Quelle, deren Anbindung der eigene
+  Leser in dieser Rolle nicht verdrahtet** (`componentapply.Options.SourceReads` = `layer1.ReadsAsSource`,
+  vor dem Start über `edgemain` gesetzt; die Docker-Box hat keine solche Prüfung, ihr Flow benennt es
+  selbst). Wer einen Lesezweig in `layer1/sources.go` ergänzt, ändert `ReadsAsSource` mit
+  (`TestReadsAsSourceAgreesWithTheReader`).
 - **Ein leeres Soll ist KEIN Soll — bis zur Uebernahme** (`ErrNoConfiguration`): ein Push ohne eine
   einzige `driver.connection` loescht VOR dem ersten angewandten Portal-Plan nichts (Halt, `held_*`) —
   sonst naehme ein noch leeres Portal einer laufenden Anlage ihren Lesepfad. NACH der Uebernahme stammt

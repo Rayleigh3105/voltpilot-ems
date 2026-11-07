@@ -27,7 +27,7 @@
  * Rein + framework-frei (das `komponenten.ts`/`geraetSeite.ts`-Muster): die
  * Fläche rendert nur, was hier entschieden wird.
  */
-import type { Device, EntityLocalSetup, SiteSource } from './api';
+import type { Device, EntityLocalSetup, SiteComponents, SiteSource } from './api';
 import { deviceName } from './entityLabel';
 import { fmtRelative } from './format';
 import {
@@ -180,7 +180,35 @@ export interface ZentraleListeInput {
   sources: SiteSource[] | null;
   /** `GET /sites/{id}/chargers`, fail-soft geholt; null = nicht gemeldet. */
   charging: SiteCharging | null;
+  /**
+   * Die Geräte, die die Box NICHT anwendet, je Komponente mit ihrem Grund
+   * (`ablehnungenAus`, wörtlich von der Box). Ein solches Gerät wartet nicht
+   * auf Daten - die Box liest es gar nicht; ohne die Angabe gilt das alte Wort.
+   */
+  abgelehnt?: ReadonlyMap<string, string> | null;
   now?: number;
+}
+
+/** Das Zustandswort eines Geräts, das die Box nicht anwendet (statt „Wartet auf die ersten Daten“). */
+export const BOX_LIEST_NICHT = 'Box liest es nicht';
+
+/** Der Satz zum Grund - derselbe Wortlaut wie an der Geräteseite (Einrichtung). */
+export function ablehnungSatz(grund: string): string {
+  return `Die Box wendet dieses Gerät nicht an: ${grund}.`;
+}
+
+/**
+ * Die von der Box übersprungenen Geräte je Komponente (`rejectedReason` der
+ * Komponenten-Zeilen; Schramm, KOSTAL PIKO 07.11.2026). Leer, wenn nichts
+ * geladen ist - dann behauptet die Liste nichts.
+ */
+export function ablehnungenAus(components: SiteComponents | null | undefined): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const row of components?.components ?? []) {
+    const grund = row.rejectedReason?.trim();
+    if (grund) out.set(row.id, grund);
+  }
+  return out;
 }
 
 /**
@@ -245,21 +273,25 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
     // Eine Komponente, die sich selbst trägt (noch an keinem gemeldeten Gerät), hat keine
     // Geräteseite - ihre Karte führt auf ihre Zeile im Anlagen-Modell.
     const eigeneKomponenteId = komponenteIdOf(d.id);
+    // Die Box wendet das Gerät nicht an (sie liest seine Anbindung nicht): das sagt der Zustand, nicht
+    // „Wartet auf die ersten Daten“. Liefert es trotzdem (eine andere Komponente derselben Karte), gilt das.
+    const grund = d.health === 'ok' ? undefined
+      : komponenten.map((c) => input.abgelehnt?.get(c.entityId)).find((g): g is string => Boolean(g));
     karten.push({
       id: d.id,
       art: 'geraet',
       titel: customerName || d.label,
       technischerName: customerName ? d.label : null,
       untertitel: geraeteArtWort(art, rolleVon(d.id), komponenten),
-      ...zustandFelder(d.state, alter(leseZeit(d.id), now)),
-      ton: d.nurGesteuert ? 'ok' : HEALTH_TON[d.health],
-      nurGesteuert: d.nurGesteuert,
+      ...(grund ? zustandFelder(BOX_LIEST_NICHT, null) : zustandFelder(d.state, alter(leseZeit(d.id), now))),
+      ton: grund ? 'warn' : d.nurGesteuert ? 'ok' : HEALTH_TON[d.health],
+      nurGesteuert: grund ? false : d.nurGesteuert,
       href: eigeneKomponenteId
         ? komponenteHash(siteId, eigeneKomponenteId)
         : boxRef && geraetAdressierbar(d.id) ? geraetSeiteHash(siteId, boxRef, d.id) : null,
       komponenten,
       // R4: eine Karte OHNE Zeile sagt das - sonst stünde ein leerer Rahmen da.
-      zusatz: komponenten.length === 0 ? 'Misst noch nichts.' : null,
+      zusatz: grund ? ablehnungSatz(grund) : komponenten.length === 0 ? 'Misst noch nichts.' : null,
     });
   }
 
