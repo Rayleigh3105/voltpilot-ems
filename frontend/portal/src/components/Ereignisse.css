@@ -9,10 +9,9 @@
 /* F5: wo ein Balken in seinen Tag führt, sagt der Zeiger es auch. Der ganze
    Zeichenbereich ist das Ziel (der Klick wird über die Kategorie-Achse
    aufgelöst, nicht über den gezeichneten Balken), deshalb hängt der Zeiger am
-   Diagramm-Container und nicht an einer einzelnen Reihe. */
-.vp-chart-clickable {
-  cursor: pointer;
-}
+   Diagramm-Container und nicht an einer einzelnen Reihe.
+   `.vp-chart-clickable` selbst (Cursor + Fokus-Ring) steht in `index.css` -
+   mehrere, sonst getrennte Chart-Komponenten setzen dieselbe Marke. */
 
 .vp-ereignis-spur {
   margin-top: 12px;

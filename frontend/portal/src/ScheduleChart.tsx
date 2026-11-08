@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import type { SchedulePlan } from './api';
 import {
   AXIS,
@@ -47,6 +47,7 @@ import {
   measuredNote,
   measuredPvLine,
   needsPointMarkers,
+  nowSlotIndex,
   planInsightParts,
   planKernaussage,
   planSentence,
@@ -1509,6 +1510,47 @@ export function ScheduleChart({
       : measuredNote(plan.slots, new Date(), plan.slotMinutes || 15);
 
 
+  // Tastatur-Äquivalent zum Tipp auf die Zeichenfläche (WCAG 2.1.1): der
+  // zrender-Klick oben wählt einen Slot nur per Maus/Finger auf dem Canvas -
+  // ohne `onSlotClick` bleibt der Container unverändert (kein tabIndex, kein
+  // Ring), mit ihm trägt er GENAU dieselbe Auswahl über Pfeiltasten/Pos1/Ende
+  // und Eingabe/Leertaste. Ohne Auswahl startet der Tastaturfokus bei "jetzt"
+  // (wie die Tagesleiste), nicht beim ersten Slot des Tages.
+  const kbSlots = plan.slots;
+  const kbNow = nowSlotIndex(kbSlots, new Date());
+  const kbCurrent = selectedIndex ?? (kbNow >= 0 ? kbNow : 0);
+  const kbSlot = kbSlots[kbCurrent] ?? null;
+  const kbZeit = kbSlot
+    ? new Date(kbSlot.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+    : null;
+  const kbValueText = kbZeit
+    ? [`${kbZeit} Uhr`, kbSlot && slotAktionSatz(kbSlot)].filter(Boolean).join(', ')
+    : undefined;
+  const onBandKeyDown = onSlotClick
+    ? (e: KeyboardEvent<HTMLDivElement>) => {
+        if (kbSlots.length === 0) return;
+        const nav =
+          e.key === 'ArrowRight' || e.key === 'ArrowUp'
+            ? Math.min(kbSlots.length - 1, kbCurrent + 1)
+            : e.key === 'ArrowLeft' || e.key === 'ArrowDown'
+              ? Math.max(0, kbCurrent - 1)
+              : e.key === 'Home'
+                ? 0
+                : e.key === 'End'
+                  ? kbSlots.length - 1
+                  : null;
+        if (nav != null) {
+          e.preventDefault();
+          if (nav !== kbCurrent) onSlotClick(nav);
+          return;
+        }
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSlotClick(kbCurrent);
+        }
+      }
+    : undefined;
+
   // ⚠ Die vier Bausteine werden EINMAL gebaut und in ZWEI Reihenfolgen
   //   ausgegeben — so kann der Verlauf-Rahmen nie einen anderen Inhalt zeigen
   //   als die Fahrplan-Seite, nur eine andere Ordnung.
@@ -1550,7 +1592,15 @@ export function ScheduleChart({
           zu stauchen. */}
       <div
         ref={ref}
-        className={`vp-chart ${twoPanel ? 'panels' : 'tall'}${showPhaseBand ? ' band' : ''}`}
+        className={`vp-chart ${twoPanel ? 'panels' : 'tall'}${showPhaseBand ? ' band' : ''}${onSlotClick ? ' vp-chart-clickable' : ''}`}
+        tabIndex={onSlotClick ? 0 : undefined}
+        role={onSlotClick ? 'slider' : undefined}
+        aria-label={onSlotClick ? 'Fahrplan: Zeitpunkt wählen' : undefined}
+        aria-valuemin={onSlotClick ? 0 : undefined}
+        aria-valuemax={onSlotClick ? Math.max(0, kbSlots.length - 1) : undefined}
+        aria-valuenow={onSlotClick ? kbCurrent : undefined}
+        aria-valuetext={onSlotClick ? kbValueText : undefined}
+        onKeyDown={onBandKeyDown}
       />
       {/* K10: Farbe nie allein - jede vorkommende Phase mit Wort UND Farbe.
           Außerhalb des Verlauf-Rahmens trägt sie die EINE Legende (V-06). */}

@@ -87,18 +87,10 @@ const BLAETTER: ReadonlyArray<{
   // Blattes geschlossen — die Ratsche geht damit auf 0 und nie wieder hoch.
   { reiter: 'Messwerte', datei: 'components/Verlauf.css', offen: 0, bekannt: [] },
   { reiter: 'Messwerte', datei: 'components/Messwerte.css', offen: 0, bekannt: [] },
-  {
-    reiter: 'Messwerte',
-    datei: 'components/Ereignisse.css',
-    offen: 1,
-    /* ⚠ KEIN Mangel, sondern dieselbe Grenze der statischen Prüfung wie beim
-       Erlöse-`summary`: `.vp-chart-clickable` ist das DIAGRAMM (260 px hoch,
-       `.vp-chart.tall` in `index.css`), nicht ein Chip — der Wächter liest
-       Regeln, nicht Höhen aus einem fremden Blatt. P3 hat die echten Ziele
-       dieses Blattes geschlossen: die Ereignis-Chips tragen jetzt das
-       44-px-Overlay und ihre Telefon-Grenze ist die Haus-Grenze 720. */
-    bekannt: ['.vp-chart-clickable'],
-  },
+  // P3 hat die echten Ziele dieses Blattes geschlossen (die Ereignis-Chips
+  // tragen das 44-px-Overlay). `.vp-chart-clickable` - das Diagramm selbst, kein
+  // Chip - steht seit der Barrierefreiheits-Wartung zentral in `index.css`.
+  { reiter: 'Messwerte', datei: 'components/Ereignisse.css', offen: 0, bekannt: [] },
   // Die neuen Bausteine des Rumpfes (P3) — von Anfang an auf 0.
   { reiter: 'Messwerte', datei: 'components/VerlaufLedger.css', offen: 0, bekannt: [] },
   // UEMS AP-13 IP-4: der Verlauf einer Messstelle — das Bild ist Ziel über die volle Höhe, ‹ › mit 44 px.

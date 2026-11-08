@@ -421,7 +421,9 @@ button.vp-k-kopf:focus-visible {
 }
 .vp-k-fenster .is-guenstig b,
 .vp-k-fenster .is-negativ b {
-  color: var(--vp-chart-guenstig, #15803d);
+  /* Schrift auf `--vp-k-batt-soft`: das Ink dieser Fläche (6,4 : 1). Das
+     Diagramm-Grün `--vp-chart-guenstig` hielt hier nur 4,49 : 1 (WCAG 1.4.3). */
+  color: var(--vp-flow-batt-ink, #166534);
 }
 .vp-k-fenster .is-teuer {
   background: color-mix(in srgb, var(--vp-chart-discharge, #e53935) 9%, var(--vp-c-card, #fff));

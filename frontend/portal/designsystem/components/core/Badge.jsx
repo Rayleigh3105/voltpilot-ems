@@ -30,8 +30,13 @@ export function Badge({
       background: 'var(--vp-grad-badge)',
       color: 'var(--vp-action)',
     },
+    // `--vp-primary-deep` (#5A8DE8) trug hier weiss bei nur 3,27:1 (axe-core,
+    // WCAG 1.4.3 verlangt 4,5:1 für diese kleine Schrift) - derselbe Fehler,
+    // den `tint` oben schon einmal hatte. `--vp-action` ist laut Token-Kommentar
+    // in `colors.css` GENAU für "weiss auf Füllung bei WCAG AA" gebaut
+    // (~8:1) und wird bereits für Buttons/Links benutzt - kein neuer Farbwert.
     solid: {
-      background: 'var(--vp-primary-deep)',
+      background: 'var(--vp-action)',
       color: '#fff',
     },
     ok: {

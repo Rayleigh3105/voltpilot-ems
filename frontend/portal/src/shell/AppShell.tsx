@@ -299,6 +299,7 @@ export function AppShell({
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const topbarRef = useRef<HTMLElement | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const topbar = topbarRef.current;
     const app = topbar?.closest<HTMLElement>('.vp-app');
@@ -615,6 +616,12 @@ export function AppShell({
 
   return (
     <HelpProvider><div className="vp-app">
+      {/* Ein Knopf, kein `<a href="#…">`: jeder Hash ist hier eine Route - ein
+          Anker sprang auf `#vp-main`, `parseRoute` fiel auf die Übersicht
+          zurück, und der Navigations-Wächter fragte bei offenem Formular nach. */}
+      <button type="button" className="vp-skip-link" onClick={() => mainRef.current?.focus()}>
+        Zum Inhalt springen
+      </button>
       {sidebar}
 
       <div className="vp-content">
@@ -877,7 +884,7 @@ export function AppShell({
           </div>
         )}
 
-        <main className="vp-main has-bottombar">
+        <main className="vp-main has-bottombar" ref={mainRef} tabIndex={-1}>
           {helpArticle && <div className="vp-context-help"><HelpLink article={helpArticle} /></div>}
           {teilansicht && <p className="vp-alert" role="status">{teilansicht}</p>}
           {selbst?.konto === 'partner' && <div className="vp-kundenbereich-wechsel"><VpPicker label="Kundenbereich"

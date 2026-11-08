@@ -268,6 +268,13 @@ a {
 a:hover {
   color: var(--vp-link-hover);
 }
+/* Ein Link MITTEN IM SATZ braucht mehr als die Farbe (WCAG 1.4.1): gegen die
+   graue Hinweisschrift trennt das Blau nur 1,6 : 1. Unterstrichen wie
+   `.vp-linklike`; Links mit eigener Klasse (Knöpfe, Karten) bleiben, wie sie sind. */
+:is(.vp-note, .vp-tb-fein, .vp-einst-grenze) a:not([class]) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 button {
   font-family: var(--vp-font-heading);
@@ -320,6 +327,50 @@ svg[tabindex]:focus-visible,
 svg [tabindex]:focus-visible {
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;
+}
+
+/* Ein Diagramm-Container, dessen Fläche einen Zeitpunkt wählt oder einen Tag
+   öffnet (`ScheduleChart`/`HistoryEnergieChart`): dieselbe Maus-Geste muss mit
+   Pfeiltasten + Enter bedienbar sein (WCAG 2.1.1), also derselbe Haus-Ring wie
+   bei der Tagesleiste (`.vp-tl:focus-visible`). Die Marke selbst wird von
+   mehreren, sonst getrennten Chart-Komponenten gesetzt - EIN Ort statt einer
+   Kopie je Diagramm. */
+.vp-chart-clickable {
+  cursor: pointer;
+}
+.vp-chart-clickable:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 4px;
+}
+
+/* Erster Tab-Stopp jeder Seite (`AppShell`): ohne ihn tabbt eine
+   Tastaturbedienung auf JEDER Seite erst durch die ganze Seitenleiste und
+   Kopfzeile, bevor der Inhalt beginnt (WCAG 2.4.1 "Bypass Blocks").
+   Unsichtbar, bis er den Tastaturfokus trägt. Er setzt den Fokus auf
+   `<main tabindex="-1">`; das ist kein Bedienelement, ein Ring um die ganze
+   Spalte sagte nichts - der nächste Tab landet im Inhalt. */
+.vp-skip-link {
+  position: absolute;
+  top: -100px;
+  left: 8px;
+  z-index: 100;
+  padding: 8px 16px;
+  border: 0;
+  background: var(--vp-surface);
+  color: var(--vp-action);
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--vp-radius-sm);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+.vp-skip-link:focus-visible {
+  top: 8px;
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-main:focus {
+  outline: none;
 }
 
 /* ============================================================
@@ -2306,7 +2357,9 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 .vp-alert-info {
   background: var(--vp-paleblue-start);
-  color: var(--vp-primary-deep);
+  /* Wie `--vp-link`: `--vp-primary-deep` hielt als Schrift nur 2,98 : 1,
+     `--vp-action` hält 7,2 : 1 (WCAG 1.4.3). */
+  color: var(--vp-action);
 }
 .vp-alert-warn {
   background: #fff4e5;
@@ -6706,18 +6759,24 @@ span.vp-swap-out {
     --vp-motion-scale: 0;
   }
 
+  /* ⚠ `:root` vorneweg bei den nächsten zwei Regeln: ihr Loop steht in einem
+     NACHGELADENEN Stück (`EnergieBuehne.css`, `steuerung.css`), dessen Blatt
+     erst NACH dieser Datei eingehängt wird. Bei gleicher Spezifität gewann es
+     über die Quell-Reihenfolge - im Browser gemessen liefen die Fluss-Punkte
+     und der Puls der Pille unter reduzierter Bewegung weiter. */
+
   /* Leitungsplan (Cockpit-Bühne): die Punkte SIND die Aussage „live“ -
      unter reduzierter Bewegung entfallen sie ganz; die Richtung trägt dort
      die Herkunftsfarbe der Spur (Grün kommt immer aus dem Speicher …). */
-  .vp-lp.is-live .vp-lp-punkte {
+  :root .vp-lp.is-live .vp-lp-punkte {
     display: none;
     animation: none;
   }
 
   /* Die Zustands-Pille der Steuerung („läuft"): derselbe Herzschlag wie der
      Flotten-Punkt - das Wort „läuft" trägt die Aussage auch ohne ihn. */
-  .stn .pill.on i,
-  .stn-blatt .pill.on i {
+  :root .stn .pill.on i,
+  :root .stn-blatt .pill.on i {
     animation: none;
   }
 
