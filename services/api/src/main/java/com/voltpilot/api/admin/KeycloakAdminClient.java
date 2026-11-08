@@ -47,8 +47,10 @@ public class KeycloakAdminClient {
 
     public KeycloakAdminClient(KeycloakAdminProperties props) {
         this.props = props;
-        this.http = RestClient.builder().baseUrl(props.getBaseUrl())
-                .requestFactory(new org.springframework.http.client.SimpleClientHttpRequestFactory()).build();
+        var anfragen = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        anfragen.setConnectTimeout(props.getConnectTimeout());
+        anfragen.setReadTimeout(props.getReadTimeout());
+        this.http = RestClient.builder().baseUrl(props.getBaseUrl()).requestFactory(anfragen).build();
     }
 
     /** A provisioned/queried Keycloak user, projected to what the portal needs. */

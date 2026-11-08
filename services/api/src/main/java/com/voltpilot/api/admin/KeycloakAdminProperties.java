@@ -1,5 +1,6 @@
 package com.voltpilot.api.admin;
 
+import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -27,6 +28,13 @@ public class KeycloakAdminProperties {
     private String clientId = "voltpilot-api";
     /** Client secret (env/config only). */
     private String clientSecret = "voltpilot-api-dev-secret";
+    /**
+     * Upper bounds for one admin call. Without them the JDK connection waits forever, and a Keycloak that accepts
+     * the connection but never answers would hold the calling request thread (public registration, user admin)
+     * indefinitely - and every other caller behind the {@code synchronized} token fetch with it.
+     */
+    private Duration connectTimeout = Duration.ofSeconds(5);
+    private Duration readTimeout = Duration.ofSeconds(20);
 
     public String getBaseUrl() {
         return baseUrl;
@@ -58,5 +66,21 @@ public class KeycloakAdminProperties {
 
     public void setClientSecret(String clientSecret) {
         this.clientSecret = clientSecret;
+    }
+
+    public Duration getConnectTimeout() {
+        return connectTimeout;
+    }
+
+    public void setConnectTimeout(Duration connectTimeout) {
+        this.connectTimeout = connectTimeout;
+    }
+
+    public Duration getReadTimeout() {
+        return readTimeout;
+    }
+
+    public void setReadTimeout(Duration readTimeout) {
+        this.readTimeout = readTimeout;
     }
 }
