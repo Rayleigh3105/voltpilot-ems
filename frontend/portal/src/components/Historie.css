@@ -954,6 +954,9 @@
   padding: 0;
   border-radius: 10px;
   overflow: hidden;
+  /* Die Schiene schrumpft nie: mit `overflow: hidden` löst ihr `min-width: auto` auf 0 auf, und
+     bei 768 px (Finger-Tablet) schnitt sie „Jahr“ zu „Jah“ ab. Platz gibt die Beschriftung ab. */
+  flex-shrink: 0;
 }
 
 .vp-zeitleiste .vp-seg > button {
@@ -966,6 +969,16 @@
   background: var(--vp-c-primary, #2563eb);
   color: #fff;
   box-shadow: none;
+}
+
+/* Tablet (721-1023 px, Seitenleiste als Schiene): bei 768 px hat die EINE Zeile ~638 px, ihre
+   Bedienelemente brauchten ~670 - der Zeitraum stand als „So., 08.1…“. Schmalere Polster im
+   Segment geben ihm seine Breite zurück; die Höhe von 44 px bleibt. In dieser Breite gibt es nur
+   die Schreibtisch-Leiste (die Mobil-Fassung gilt bis 720 px). */
+@media (min-width: 721px) and (max-width: 1023px) {
+  .vp-zeitleiste .vp-seg > button {
+    padding-inline: 0.6rem;
+  }
 }
 
 .vp-zeitleiste .vp-period-nav > .step {
