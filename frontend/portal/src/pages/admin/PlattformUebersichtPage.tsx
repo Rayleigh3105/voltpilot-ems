@@ -367,9 +367,7 @@ function BrauchtDichKarte({
         </div>
       )}
       {zeilen.length === 0 ? (
-        <div style={{ padding: '0 16px 16px' }}>
-          <span className="vp-muted">Keine Box braucht dich gerade.</span>
-        </div>
+        <p className="vp-ueb-braucht-leer">Keine Box braucht dich gerade.</p>
       ) : (
         <div className="vp-ueb-braucht-liste" data-testid="ueb-braucht-dich">
           {zeilen.map((z) => (

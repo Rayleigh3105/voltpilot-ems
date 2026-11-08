@@ -9,6 +9,7 @@ import {
   fleetBoxGroups,
   fleetPulse,
   fleetRows,
+  relAge,
   releaseIsRunning,
   sollRelease,
   sourceHealth,
@@ -642,6 +643,12 @@ describe('boxVerbindung - die EINE Online-Regel (E6: drei Stufen)', () => {
       zustand: 'offline', tone: 'warn', text: 'Meldet sich nicht',
     });
     expect(boxVerbindung(ago(3 * 3600_000), NOW).lastSeenText).toBe('vor 3 Std.');
+  });
+
+  it('ein Tag steht in der Einzahl („vor 1 Tag“, nicht „vor 1 Tagen“)', () => {
+    expect(relAge(30 * 3600_000)).toBe('vor 1 Tag');
+    expect(relAge(36 * 3600_000)).toBe('vor 2 Tagen');
+    expect(boxVerbindung(ago(5 * 86400_000), NOW).lastSeenText).toBe('vor 5 Tagen');
   });
 
   it('ohne Meldung ist unbekannt, nie online', () => {

@@ -612,7 +612,8 @@ export function relAge(ms: number): string {
   if (s < 60) return `vor ${Math.round(s)} Sek.`;
   if (s < 3600) return `vor ${Math.round(s / 60)} Min.`;
   if (s < 86400) return `vor ${Math.round(s / 3600)} Std.`;
-  return `vor ${Math.round(s / 86400)} Tagen`;
+  const tage = Math.round(s / 86400);
+  return tage === 1 ? 'vor 1 Tag' : `vor ${tage} Tagen`;
 }
 
 /**

@@ -2256,6 +2256,9 @@ button.vp-cl-item.is-off .vp-cl-label {
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
+  /* Ein Link richtet sich nach seinem Text, ein <button> zentriert von Haus aus: in einer
+     linksbündigen Spalte (Geräteliste) stand der Boxname sonst mittig und brach mittig um. */
+  text-align: inherit;
 }
 .vp-linklike:hover {
   color: var(--vp-link-hover);

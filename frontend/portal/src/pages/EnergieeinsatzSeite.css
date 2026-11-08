@@ -5,6 +5,7 @@
  */
 
 .vp-ee-zurueck {
+  position: relative;
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
@@ -16,6 +17,12 @@
   color: var(--vp-c-primary, #2563eb);
   font: 600 0.875rem var(--vp-c-font);
   cursor: pointer;
+}
+/* Die Zurück-Zeile bleibt 36 px hoch, ihre Tippfläche wächst unsichtbar auf 44 px (Muster `.vp-vb-schritt`). */
+.vp-ee-zurueck::before {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
 }
 .vp-ee-zurueck:focus-visible,
 .vp-ee-zaehler-ziel:focus-visible {
