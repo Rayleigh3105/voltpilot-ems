@@ -129,6 +129,10 @@ class KundenbereichLoeschenApiTest {
     void seed() throws Exception {
         root = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
                 POSTGRES.getPassword()));
+        // Der Sparzeilen-Job (V20261105090000, stündlich, sofort fällig) schriebe sonst mitten im Test 35 Tage je
+        // Anlage nach schedule_savings_1d - die Zeilenzählung des Bereichs hinge an der Uhr des Schedulers.
+        root.queryForList("SELECT alter_job(job_id, scheduled => false) FROM timescaledb_information.jobs"
+                + " WHERE proc_name = 'schedule_savings_1d_job'");
         String nr = UUID.randomUUID().toString().substring(0, 8);
         name = "Kunststoffwerk Ahrenberg " + nr;
         // Über die Plattform-Route angelegt: das legt auch Unternehmen und Protokollzeile an wie im Betrieb.
