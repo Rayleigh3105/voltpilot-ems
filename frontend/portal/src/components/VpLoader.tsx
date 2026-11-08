@@ -1,4 +1,4 @@
-import { useId, useState, type CSSProperties, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { readBootPulsePhase } from '../bootHandoff';
 // ⚠ Das Wortmarken-PNG wird über `build.assetsInlineLimit` (vite.config.ts) IMMER
 // als Data-URI ins Bündel gebacken - beim Mount sofort da (kein Netz-Request,
@@ -14,10 +14,12 @@ import wordmarkUrl from '../../designsystem/assets/voltpilot-wordmark.png';
  * 2026-09-30).
  *
  * Ein einziger Marken-Lader für das ganze Portal - vom allerersten Bild bis zum
- * ersten echten Inhalt. Die Marke steht ruhig (Kopf + Blitz im Marken-Verlauf);
- * weiche Ringe strahlen in gleichmässigem Rhythmus aus - klar als „lädt"
- * lesbar, kein generischer Kreisel. Zwischen Marke und Ringen bleibt Luft
- * (die Ringe beginnen AUSSERHALB der Marke, kollidieren also nie mit dem Kopf).
+ * ersten echten Inhalt. Die Marke steht ruhig - das echte Zeichen der Marke
+ * ({@link VP_MARK}: der schwarze Punkt über dem schräg stehenden hellblauen
+ * Blitz, das „i" der Wortmarke und das App-Symbol); weiche Ringe strahlen in
+ * gleichmässigem Rhythmus aus - klar als „lädt" lesbar, kein generischer
+ * Kreisel. Zwischen Marke und Ringen bleibt Luft (die Ringe beginnen AUSSERHALB
+ * der Marke, kollidieren also nie mit ihr).
  *
  * ## Regeln (alle load-bearing)
  * - **Nur SVG + CSS.** Keine schwere Abhängigkeit, kein GIF/Lottie. Die Bewegung
@@ -26,12 +28,12 @@ import wordmarkUrl from '../../designsystem/assets/voltpilot-wordmark.png';
  *   auch der `prefers-reduced-motion`-Halt, der EINE Schalter des Portals).
  * - **CLS 0.** Der Mark-Rahmen hat feste Grösse je `size`, die Fläche
  *   reserviert ihre Höhe.
- * - **⚠ Eindeutige IDs je Instanz** (`useId`). Inline-Lader (`index.html`) und
- *   React-Lader laufen bei der Übergabe GLEICHZEITIG, dazu eingebettete Lader in
- *   mehreren Karten. Doppelte SVG-`id`s sind ungültiges HTML, und `url(#id)`
- *   löst immer auf das ERSTE passende Element im Dokument auf - liegt das in
- *   einem `display:none`- oder gerade entfernten Teilbaum, malt Chrome den
- *   Verlauf falsch. Gegenprobe: `VpLoader.test.tsx` rendert zwei Instanzen.
+ * - **⚠ Keine SVG-`id`s.** Inline-Lader (`index.html`) und React-Lader laufen
+ *   bei der Übergabe GLEICHZEITIG, dazu eingebettete Lader in mehreren Karten.
+ *   Doppelte `id`s wären ungültiges HTML, und `url(#id)` löst immer auf das
+ *   ERSTE passende Element im Dokument auf. Das Zeichen ist deshalb flächig
+ *   gefüllt (wie im Logo), ohne Verlauf und ohne `id`. Gegenprobe:
+ *   `VpLoader.test.tsx` rendert mehrere Instanzen.
  * - **Barrierefreiheit.** `role="status"` + `aria-live="polite"` + ein
  *   Screenreader-Text; unter reduzierter Bewegung ruhen die Ringe, die Marke
  *   steht, die Aussage trägt dann der Text.
@@ -53,6 +55,27 @@ export const LOADER_HINT_SLOW = 'Das dauert gerade etwas länger als sonst …'
 type LoaderSize = 'boot' | 'page' | 'section';
 
 /**
+ * DAS ZEICHEN DER MARKE im 64er-Rahmen des Laders - nachgezogen aus dem
+ * freigegebenen App-Symbol `public/icons/icon-512.png` (dasselbe Zeichen wie
+ * das „i" der Wortmarke), nicht frei gezeichnet: die Blitz-Ecken sind die
+ * Schnittpunkte der dort vermessenen Kanten, der Punkt sitzt in Lage und Grösse
+ * wie im Symbol, beide in den Farben des Symbols (Punkt schwarz, Blitz
+ * `--vp-primary`). Massstab und Lage: der kleinste umschliessende Kreis des
+ * Zeichens steht mit Radius 16,5 in der Mitte (32/32), innerhalb der Ringe
+ * (Radius 19). Deckungsgleich mit dem Symbol geprüft: in Chromium auf 512 px
+ * zurückgerechnet deckt es sich zu 99,5 % mit dem Symbol (Schnitt durch
+ * Vereinigung), keine Kante weicht um ein Pixel ab. ⚠ `index.html`
+ * (`.vp-bs-mark`) trägt dieselben Zahlen - Wächter: `VpLoader.test.tsx`.
+ */
+export const VP_MARK = {
+  dot: { cx: 36.87, cy: 19.64, r: 3.22, fill: '#000000' },
+  bolt: {
+    d: 'M33.9 24.29 L40.03 24.29 L34.76 32.17 L39.9 32.17 L25.98 47.36 L31.89 35.7 L27.95 35.7 Z',
+    fill: '#95B9FF',
+  },
+} as const;
+
+/**
  * Der reine Lade-Block (Marke + Text). Für Vollbild/Boot nutzt {@link VpLoaderScreen}
  * ihn in der Marken-Bühne; eingebettet (Karte/Bereich) steht er für sich.
  */
@@ -67,16 +90,6 @@ export function VpLoader({
   size?: LoaderSize;
   className?: string;
 }) {
-  // ⚠ Eindeutig je Instanz - siehe Kopf. `useId` liefert stabile IDs; die
-  // Doppelpunkte müssen für `url(#…)` raus (sonst ungültiger Selektor).
-  const raw = useId();
-  const uid = raw.replace(/:/g, '');
-  const fill = `vplFill-${uid}`;
-  // ⚠ SAUBERER, geschlossener Blitz-Pfad (kein Selbstschnitt) - die Form der
-  // Wortmarke, nur skaliert/positioniert. Der Kopf-Punkt steht FREI ÜBER dem
-  // Blitz (Lücke über Position, nicht durch Verzerren des Pfads); die Ringe
-  // (Basis-Radius 19) lassen rundum Luft.
-  const bolt = 'M34 25 L25 37.5 L31 37.5 L30 46 L39 33.5 L33 33.5 Z';
   return (
     <div
       className={`vp-loader vp-loader-${size}${className ? ` ${className}` : ''}`}
@@ -85,23 +98,15 @@ export function VpLoader({
       aria-live="polite"
     >
       <svg className="vp-loader-mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-        <defs>
-          <linearGradient id={fill} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#B8D4FF" />
-            <stop offset="0.5" stopColor="#7BA3F7" />
-            <stop offset="1" stopColor="#5A8DE8" />
-          </linearGradient>
-        </defs>
         {/* Ausstrahlende Puls-Ringe (gleichmässiger Rhythmus = „lädt"). Sie
             beginnen AUSSERHALB der Marke (r=19 > Marken-Radius) - keine Kollision
-            mit dem Kopf. */}
+            mit dem Zeichen. */}
         <circle className="vp-loader-ring r1" cx="32" cy="32" r="19" stroke="#95B9FF" strokeWidth="2" />
         <circle className="vp-loader-ring r2" cx="32" cy="32" r="19" stroke="#95B9FF" strokeWidth="2" />
         <circle className="vp-loader-ring r3" cx="32" cy="32" r="19" stroke="#95B9FF" strokeWidth="2" />
-        {/* Die ruhige Marke: Kopf (Pilot) FREI über dem Blitz + Blitz im
-            Marken-Verlauf. */}
-        <circle cx="32" cy="19" r="3.4" fill="#12151b" />
-        <path d={bolt} fill={`url(#${fill})`} />
+        {/* Die ruhige Marke: das echte Zeichen (Punkt über dem Blitz). */}
+        <circle cx={VP_MARK.dot.cx} cy={VP_MARK.dot.cy} r={VP_MARK.dot.r} fill={VP_MARK.dot.fill} />
+        <path d={VP_MARK.bolt.d} fill={VP_MARK.bolt.fill} />
       </svg>
       <span className="vp-loader-text">{text}</span>
       {hint ? <span className="vp-loader-hint">{hint}</span> : null}
