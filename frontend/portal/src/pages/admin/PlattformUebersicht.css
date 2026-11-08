@@ -80,6 +80,14 @@
 }
 .vp-ueb-spalte { display: flex; flex-direction: column; gap: var(--vp-space-6); }
 
+/* Der leere Zustand steht unter seinem Titel (gleicher Einzug wie `.vp-admin-sec-head`, Abstand zur Linie)
+   und in der Schrift der Nachbarkarte „Auffällig“; vorher klebte er an der Linie, 8 px links vom Titel und größer. */
+.vp-ueb-braucht-leer {
+  margin: 0;
+  padding: var(--vp-space-3) var(--vp-space-5) var(--vp-space-5);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted);
+}
 .vp-ueb-braucht-sammel { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 10px; }
 .vp-ueb-braucht-sammel button {
   border: 1px solid var(--vp-c-border);
