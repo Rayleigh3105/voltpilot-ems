@@ -23,6 +23,12 @@
         (--vp-grad-hero, --vp-surface, --vp-text-dark, --vp-text-gray,
         --vp-border, --vp-action) - die Tokens selbst kommen erst mit dem
         Stylesheet der App, das hier fehlt.
+      - Das Zeichen neben „VoltPilot" (Punkt ueber dem Blitz in `.vp-mark`)
+        traegt GENAU die Zahlen von `VP_MARK` in src/components/VpLoader.tsx
+        (aus dem App-Symbol nachgezogen, flaechig, ohne `id`); der Ausschnitt
+        `25 15.5 16 33` umfasst nur das Zeichen (Hoehe wie der Kreis um das
+        Zeichen im 64er-Rahmen, Breite knapp), damit es dicht beim Wort steht.
+        Waechter: src/pwaShell.test.ts.
       - Die Copy ist EHRLICH: die Anlage laeuft weiter, nur die Anzeige braucht
         Netz. Nichts wird versprochen, was offline nicht geht.
 
@@ -60,10 +66,10 @@
           max(20px, env(safe-area-inset-right));
         flex: none;
       }
-      .vp-brand svg {
+      .vp-brand .vp-mark {
         display: block;
-        width: 22px;
-        height: 22px;
+        width: 12px;
+        height: 25px;
         flex: none;
       }
       .vp-word {
@@ -141,14 +147,9 @@
   <body>
     <div class="vp-strip"></div>
     <div class="vp-brand">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path
-          d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"
-          fill="#95b9ff"
-          stroke="#95b9ff"
-          stroke-width="2"
-          stroke-linejoin="round"
-        />
+      <svg class="vp-mark" viewBox="25 15.5 16 33" aria-hidden="true">
+        <circle cx="36.87" cy="19.64" r="3.22" fill="#000000" />
+        <path d="M33.9 24.29 L40.03 24.29 L34.76 32.17 L39.9 32.17 L25.98 47.36 L31.89 35.7 L27.95 35.7 Z" fill="#95B9FF" />
       </svg>
       <span class="vp-word">VoltPilot</span>
     </div>
