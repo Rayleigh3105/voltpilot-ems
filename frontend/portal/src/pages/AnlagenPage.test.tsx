@@ -1,5 +1,5 @@
 import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageSeite, AnlagenPage } from './AnlagenPage';
 import { api, type Site } from '../api';
@@ -10,6 +10,7 @@ import { GELD_UNTERSEITEN, ohneGeld } from '../anlageGeld';
 import { periodLabel } from '../anlage';
 import { readFace, rememberFace } from '../anlageFace';
 import { ReportFirstPaint } from '../bootReady';
+import { SUB_CHUNK } from '../pageChunks';
 
 /**
  * M3 (#531) — der Cockpit-Beweis, erweitert um die Captain-Nachtrag-Invarianten
@@ -458,6 +459,13 @@ describe('„Ein Ort fürs Laden" §4.6/§7.1 · Ladevorgänge entfällt für Pr
       />,
     );
   }
+
+  // Die Seite lädt `LadevorgaengeSection` nach (React.lazy). Unter Last dauerte der erste Import länger als die Frist
+  // eines `findBy` (1 s), und der erste Fall, der sie zeigt, scheiterte zufällig (1 von 5 Läufen, 1029 ms);
+  // vorgewärmt löst `lazy` sofort auf - geprüft wird die Seite, nicht die Ladezeit des Testlaufs.
+  beforeAll(async () => {
+    await SUB_CHUNK.ladevorgaenge();
+  });
 
   beforeEach(() => {
     vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] } as never);
