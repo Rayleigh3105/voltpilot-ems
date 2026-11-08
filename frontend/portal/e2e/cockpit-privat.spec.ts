@@ -98,45 +98,44 @@ test.describe('1440 px', () => {
     });
     expect(abstand.oben).toBe(abstand.unten);
     expect(fehler).toEqual([]);
-});
-
-test('Haushalt mittags: der Rest des Tages steht schraffiert als „noch erwartet“', async ({ page }) => {
-  await oeffnen(page, 'mittag', 1440);
-  expect(await text(page, '[data-kachel="heute"]')).toContain('noch erwartet');
-  await expect(page.locator('[data-kachel="heute"] .vp-k-heute-balken i.is-plan')).toBeVisible();
-});
-
-test('Haushalt mit Speicher: die Steuerzeile schließt die Spalte unten ab', async ({ page }) => {
-  await oeffnen(page, 'speicher', 1440);
-  expect(await text(page, '[data-kachel="heute"]')).toContain('Speicher');
-  const steuer = page.locator('.vp-eb-reihe > .vp-hero-side > .vp-hero-steuer .vp-steuer');
-  await expect(steuer).toBeVisible();
-  const unten = await page.evaluate(() => {
-    const s = document.querySelector('.vp-eb-reihe > .vp-hero-side')!.getBoundingClientRect();
-    const z = document.querySelector('.vp-eb-reihe > .vp-hero-side > .vp-hero-steuer')!.getBoundingClientRect();
-    return Math.round(s.bottom - z.bottom);
   });
-  expect(unten).toBeLessThanOrEqual(1);
-});
 
-test('der Stern des Kunden auf „Unterm Strich“ holt den Euro als Leitkachel zurück', async ({ page }) => {
-  await oeffnen(page, 'abend', 1440, '&stern=erloes-komposition');
-  await expect(page.locator('.vp-eb-reihe > .vp-hero-side [data-kachel="geld"] .vp-k-stern')).toBeVisible();
-  await expect(page.locator('[data-kachel="heute"]')).toHaveCount(0);
-  await expect(page.locator('.vp-k-geldzeile')).toHaveCount(0);
-});
+  test('Haushalt mittags: der Rest des Tages steht schraffiert als „noch erwartet“', async ({ page }) => {
+    await oeffnen(page, 'mittag', 1440);
+    expect(await text(page, '[data-kachel="heute"]')).toContain('noch erwartet');
+    await expect(page.locator('[data-kachel="heute"] .vp-k-heute-balken i.is-plan')).toBeVisible();
+  });
 
-test('Gewerbe mit Lastspitze, 1440 px: die Leitkachel steht nur neben dem Fluss (E4), sonst wie bisher', async ({ page }) => {
-  const fehler = await oeffnen(page, 'gewerbe', 1440);
-  await expect(page.locator('.vp-eb-reihe > .vp-hero-side [data-kachel="lastspitze"] .vp-k-stern')).toBeVisible();
-  await expect(page.locator('[data-kachel="heute"]')).toHaveCount(0);
-  await expect(page.locator('.vp-k-geldzeile')).toHaveCount(0);
-  const m = await messen(page);
-  expect(m.ueberlauf).toBeLessThanOrEqual(0);
-  expect(m.spalteHoehe!).toBeLessThanOrEqual(m.flussHoehe! + 1);
-  expect(fehler).toEqual([]);
-});
+  test('Haushalt mit Speicher: die Steuerzeile schließt die Spalte unten ab', async ({ page }) => {
+    await oeffnen(page, 'speicher', 1440);
+    expect(await text(page, '[data-kachel="heute"]')).toContain('Speicher');
+    const steuer = page.locator('.vp-eb-reihe > .vp-hero-side > .vp-hero-steuer .vp-steuer');
+    await expect(steuer).toBeVisible();
+    const unten = await page.evaluate(() => {
+      const s = document.querySelector('.vp-eb-reihe > .vp-hero-side')!.getBoundingClientRect();
+      const z = document.querySelector('.vp-eb-reihe > .vp-hero-side > .vp-hero-steuer')!.getBoundingClientRect();
+      return Math.round(s.bottom - z.bottom);
+    });
+    expect(unten).toBeLessThanOrEqual(1);
+  });
 
+  test('der Stern des Kunden auf „Unterm Strich“ holt den Euro als Leitkachel zurück', async ({ page }) => {
+    await oeffnen(page, 'abend', 1440, '&stern=erloes-komposition');
+    await expect(page.locator('.vp-eb-reihe > .vp-hero-side [data-kachel="geld"] .vp-k-stern')).toBeVisible();
+    await expect(page.locator('[data-kachel="heute"]')).toHaveCount(0);
+    await expect(page.locator('.vp-k-geldzeile')).toHaveCount(0);
+  });
+
+  test('Gewerbe mit Lastspitze, 1440 px: die Leitkachel steht nur neben dem Fluss (E4), sonst wie bisher', async ({ page }) => {
+    const fehler = await oeffnen(page, 'gewerbe', 1440);
+    await expect(page.locator('.vp-eb-reihe > .vp-hero-side [data-kachel="lastspitze"] .vp-k-stern')).toBeVisible();
+    await expect(page.locator('[data-kachel="heute"]')).toHaveCount(0);
+    await expect(page.locator('.vp-k-geldzeile')).toHaveCount(0);
+    const m = await messen(page);
+    expect(m.ueberlauf).toBeLessThanOrEqual(0);
+    expect(m.spalteHoehe!).toBeLessThanOrEqual(m.flussHoehe! + 1);
+    expect(fehler).toEqual([]);
+  });
 });
 
 // 390 px aus dem Auftrag, 375 px aus der Portal-Regel (Browserprüfung bei 1440 und 375).

@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { HistoryTotals, SiteEarnings } from '../../api';
 import FIXTURES from '../../erloeseFixtures.json';
 import { speicherAussage } from '../../speicherAussage';
-import { AutarkieKachel, FahrplanKachel, GeldKachel, GeldZeile, HeuteKachel, NetzKachel, WertKachel } from './CockpitKacheln';
+import { peakBand, serverQuarterHourMean } from '../../peakBand';
+import { AutarkieKachel, FahrplanKachel, GeldKachel, GeldZeile, HeuteKachel, LastspitzeKachel, NetzKachel, WertKachel } from './CockpitKacheln';
 
 /**
  * Die Kacheln unter der Bühne (Konzept „Cockpit als Tagesfilm“): eine Hülle
@@ -146,5 +147,15 @@ describe('Führt der Fluss (Konzept vp-cockpit-privat-konzept)', () => {
     expect(container.querySelector('.is-kosten, .vp-k-stern')).toBeNull();
     fireEvent.click(getByRole('button', { name: /Erlöse öffnen/ }));
     expect(onOpen).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Lastspitze', () => {
+  it('nennt das Ziel einmal: „Ziel 8 kW“, nicht „Ziel · Ziel 8 kW“', () => {
+    const peak = peakBand({ current: serverQuarterHourMean(0.4), targetKw: 8, peak: null });
+    const { container } = render(<LastspitzeKachel peak={peak} tag={null} zielKw={8} lead />);
+    const zeilen = [...container.querySelectorAll('.vp-k-mini')].map((li) => (li.textContent ?? '').replace(/\u00a0/g, ' '));
+    expect(zeilen).toEqual(['Ziel8 kW']);
+    expect(container.textContent).not.toMatch(/Ziel\s*Ziel/);
   });
 });

@@ -34,7 +34,11 @@ if (lageParam === 'gewerbe') {
   // Die Hilfe-Anlage als Betrieb mit Lastspitzenkappung (Leistungspreis 80 €/kW).
   const profile = await api.siteProfiles('help-site');
   const nutzung = await api.usageProfile('help-site');
+  const geld = await api.siteEarnings('help-site', 'day');
   Object.assign(api, {
+    // Das laufende Viertelstunden-Mittel des Servers, passend zum Satz der Bühne (Netzbezug 0,0 kW):
+    // ohne es zeigte die Lastspitzen-Kachel nur „—“ und „Aktueller Live-Wert liegt gerade nicht vor“.
+    siteEarnings: result({ ...geld, peakShaving: geld.peakShaving ? { ...geld.peakShaving, currentQuarterMeanKw: 0 } : null }),
     // Leistungspreis + Lastspitzenkappung: das abgeleitete Nutzungsprofil ist `peak` (Vertrag usage-profile-vectors).
     usageProfile: result({ ...nutzung, usageProfile: 'peak', derivedProfile: 'peak', emphasis: { money: 'secondary', peak: 'prominent', flow: 'secondary', devices: 'secondary' } }),
     siteProfiles: result({
