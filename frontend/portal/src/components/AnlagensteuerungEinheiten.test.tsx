@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import { ENTITY_GORE, GERAET_GORE, goreGeraet, goreWerte, JETZT, SITE_GORE } from '../test/anlagensteuerungFixtures';
@@ -25,7 +25,8 @@ describe('AnlagensteuerungEinheiten', () => {
     const karte = await screen.findByTestId('geraet-karte');
     expect(within(karte).getByText('Erzeugungseinheiten')).toBeInTheDocument();
     expect(within(karte).queryByText('Energiekarten')).not.toBeInTheDocument();
-    expect(lesen).toHaveBeenCalledWith(SITE_GORE, GERAET_GORE);
+    // Die Werte holt erst der Effekt, der nach dem Bild mit der Gerätekennung läuft - nicht derselbe Schritt.
+    await waitFor(() => expect(lesen).toHaveBeenCalledWith(SITE_GORE, GERAET_GORE));
     const einheiten = within(karte).getByTestId('geraet-einheiten');
     expect(within(einheiten).getByText('Wechselrichter 1')).toBeInTheDocument();
     expect(within(einheiten).getByText('WR Dach Nord')).toBeInTheDocument();
