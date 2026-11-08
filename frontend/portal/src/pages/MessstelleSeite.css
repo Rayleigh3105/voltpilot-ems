@@ -16,6 +16,7 @@
 }
 
 .vp-mss-zurueck {
+  position: relative;
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
@@ -28,6 +29,13 @@
   font-size: var(--vp-c-fs-14);
   font-weight: var(--vp-c-fw-600);
   cursor: pointer;
+}
+
+/* Die Zurück-Zeile bleibt 30 px hoch, ihre Tippfläche wächst unsichtbar auf 44 px (Muster `.vp-vb-schritt`). */
+.vp-mss-zurueck::before {
+  content: '';
+  position: absolute;
+  inset: -7px 0;
 }
 
 .vp-mss-zurueck:focus-visible,

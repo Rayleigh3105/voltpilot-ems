@@ -236,6 +236,12 @@
   cursor: pointer;
   flex-shrink: 0;
 }
+/* Die Tippfläche wächst unsichtbar von 36 auf 44 px, ohne den Kopf zu verschieben (Muster `.vp-vb-schritt`). */
+.vp-glocke::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
 .vp-glocke:hover {
   border-color: var(--vp-text-gray);
 }
