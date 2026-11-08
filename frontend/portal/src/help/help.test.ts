@@ -90,6 +90,9 @@ describe('Hilfe „Geräte suchen“ spricht die Wörter des Such-Modals (Konzep
 describe('help search', () => {
   it('prioritizes the task title and searches paragraphs, not just metadata', () => {
     expect(searchHelp(HELP_ARTICLES, 'Fahrplan')[0].id).toBe('fahrplan');
+    // Cockpit privat (E1/E2): „Heute“ neben dem Fluss, der Euro als Zeile, der Stern holt ihn zurück.
+    expect(searchHelp(HELP_ARTICLES, 'Autarkie')[0].id).toBe('cockpit');
+    expect(searchHelp(HELP_ARTICLES, 'Stern Unterm Strich').some((a) => a.id === 'cockpit')).toBe(true);
     expect(searchHelp(HELP_ARTICLES, 'Ausschaltbare Phantomfunktion')).toEqual([]);
     // Nur im Absatz, nicht in Titel oder Stichworten: die Suche liest den Text.
     expect(searchHelp(HELP_ARTICLES, 'Viertelstunde').some((a) => a.id === 'prognosen')).toBe(true);

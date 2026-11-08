@@ -24,6 +24,11 @@ import './CockpitBlocks.css';
  * Der obere Cockpit-Bereich: **die Bühne** (abgenommenes Konzept
  * `data/vp-cockpit-konzept-f4`, Richtung A; Captain-Go 30.07.2026).
  *
+ * Seit Konzept `vp-cockpit-privat-konzept` (E4 = A, 08.11.2026) steht die
+ * rechte Spalte IN der Bühne neben Kopf, Satz und Leitungsplan; Tagesleiste und
+ * Listen laufen darunter über die volle Kartenbreite. Der Abschnitt zur
+ * Bilanz-Leiste unten beschreibt den Stand davor.
+ *
  * Links, auf ~62 % der Kartenbreite, das **bestehende** Energiefluss-Diagramm —
  * `AdaptiveEnergyFlow` für eine migrierte Anlage (die vorhandene
  * `hasTopology`-Weiche entscheidet), sonst `EnergyFlow`. **Es wird KEIN neues
@@ -185,10 +190,20 @@ export function CockpitHero({
   // während drei Wechselrichter lieferten.
   const hasFlow = erzeuger != null || flowHasValues(rollenTopologie, snapshot) || composition?.totalKw != null;
   // Rechts neben dem Fluss steht am Rechner die LEITKACHEL (Konzept „Cockpit
-  // als Tagesfilm“) - „Unterm Strich“, der Börsenpreis oder die Lastspitze.
-  // Ohne sie wird die Bühne einspaltig. Einen Werteblock „Dieser Moment“ gibt
+  // als Tagesfilm“) - „Unterm Strich“, der Börsenpreis oder die Lastspitze -,
+  // und wenn der Fluss selbst führt, der Block „Heute“ (Konzept
+  // `vp-cockpit-privat-konzept`, E1/E4). Einen Werteblock „Dieser Moment“ gibt
   // es dort nicht mehr (Konzept b1, E1): die Werte stehen an den Knoten.
-  const hasRail = showRail && seite != null;
+  // Die Spalte steht IN der Bühne, nur neben Kopf, Satz und Leitungsplan; nur
+  // wenn es keinen Fluss gibt (V14), bleibt sie die rechte Spalte der Karte.
+  const spalte = showRail && seite != null;
+  const seitenInhalt = spalte ? (
+    <>
+      <div className="vp-hero-leit">{seite}</div>
+      {steuerung && <div className="vp-hero-steuer">{steuerung}</div>}
+    </>
+  ) : null;
+  const hasRail = spalte && !hasFlow;
   return (
     <Card
       padding="lg"
@@ -215,6 +230,7 @@ export function CockpitHero({
             onBlatt={buehne?.onBlatt}
             onOpenSub={onOpenSub}
             erzeuger={erzeuger}
+            seite={seitenInhalt}
           />
           </Suspense>
         ) : (
@@ -230,17 +246,12 @@ export function CockpitHero({
             steht im Blatt des jeweiligen Knotens - nicht noch einmal hier. */}
       </div>
 
-      {hasRail && (
-        <div className="vp-hero-side">
-          {seite && <div className="vp-hero-leit">{seite}</div>}
-          {steuerung && <div className="vp-hero-steuer">{steuerung}</div>}
-        </div>
-      )}
+      {hasRail && <div className="vp-hero-side">{seitenInhalt}</div>}
 
-      {(footer || (steuerung && !hasRail)) && (
+      {(footer || (steuerung && !spalte)) && (
         <div className="vp-stage-foot">
           {footer}
-          {!hasRail && steuerung}
+          {!spalte && steuerung}
         </div>
       )}
     </Card>

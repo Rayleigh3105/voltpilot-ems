@@ -9,15 +9,17 @@ import {
   eigenverbrauchKachel,
   fahrplanKachel,
   handelKachel,
+  heuteKachel,
   netzKachel,
   sonneKachel,
   speicherKachel,
   type AnteilKachel,
+  type HeuteTeil,
 } from '../../kacheln';
 import { kwh, prozent, zahl } from '../../leitungsplan';
 import type { PeakBandView } from '../../peakBand';
 import type { PlanWordingKind } from '../../schedule';
-import type { Tag } from '../../tagesleiste';
+import { uhrzeit, type Tag } from '../../tagesleiste';
 import type { VerbrauchTeil } from '../../verbrauchKomposition';
 import { SwapNumber } from '../SwapNumber';
 import { roleMark } from '../FahrplanWhy';
@@ -102,6 +104,113 @@ export function GeldKachel({
       {/* Die Marke nur, wenn die Zeile darüber das Wort nicht schon sagt („Zwischenstand Steuerung + 0,09 €"). */}
       {money?.attributionInterim && !/Zwischenstand/i.test(`${money.attribution ?? ''} ${money.attributionZweit ?? ''}`) && (
         <Marke>Zwischenstand</Marke>
+      )}
+    </Kachel>
+  );
+}
+
+/**
+ * **Unterm Strich als ruhige Zeile** (Konzept `vp-cockpit-privat-konzept`, E2 = A): führt der Fluss,
+ * steht der Euro am Ende des Cockpits - dieselbe Zahl wie auf der Erlöse-Seite, ohne Rot, ohne Stern
+ * und ohne Zeitraum-Umschalter; ein Tipp öffnet die Erlöse-Seite.
+ */
+export function GeldZeile({ money, onOpen }: { money: HeroMoney | null; onOpen: () => void }) {
+  if (!money) return null;
+  const zeitraum = money.label.replace(/^Unterm Strich\s*·\s*/, '');
+  const wann = zeitraum === 'Heute' ? (money.laeuft ? 'heute bisher' : 'heute') : zeitraum;
+  return (
+    <button type="button" className="vp-k-geldzeile" onClick={onOpen} aria-label={`Unterm Strich ${wann}: ${money.value} · Erlöse öffnen`}>
+      <span className="vp-k-ico" aria-hidden="true">
+        <Icon name="euro" size={16} />
+      </span>
+      <span className="vp-k-geldzeile-text">
+        Unterm Strich <small>{wann}</small>
+      </span>
+      <b className="vp-k-geldzeile-wert">{money.value}</b>
+      <span className="vp-k-geldzeile-weg" aria-hidden="true">
+        <span>Erlöse</span>
+        <Icon name="chevron-right" size={16} />
+      </span>
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------ Heute */
+
+function HeuteBalken({ teile, summe }: { teile: HeuteTeil[]; summe: number }) {
+  return (
+    <span className="vp-k-heute-balken" aria-hidden="true">
+      {teile.map((t) => (
+        <i key={t.key} className={`is-${t.key}`} style={{ flexGrow: t.kwh / Math.max(summe, 0.001) }} />
+      ))}
+    </span>
+  );
+}
+
+function HeuteLegende({ teile }: { teile: HeuteTeil[] }) {
+  return (
+    <p className="vp-k-heute-legende">
+      {teile.map((t) => (
+        <span key={t.key}>
+          <i className={`is-${t.key}`} aria-hidden="true" />
+          {t.label} <b>{kwh(t.kwh)}</b>
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/**
+ * **Heute** (Konzept `vp-cockpit-privat-konzept`, E1 = A): neben dem Fluss, wenn der Fluss führt -
+ * der Tag in zwei Balken. Die große Zahl ist die Autarkie; die Balken darunter zeigen die kWh, aus
+ * denen sie entsteht. Am Telefon ist es die erste Kachel unter der Bühne.
+ */
+export function HeuteKachel({
+  totals,
+  tag,
+  now,
+  mitSpeicher,
+  spalte = false,
+  ...b
+}: Basis & { totals: HistoryTotals | null; tag: Tag | null; now: Date; mitSpeicher: boolean; spalte?: boolean }) {
+  const h = heuteKachel(totals, tag, mitSpeicher);
+  if (!h) return null;
+  const erzeugtSumme = h.sonne.reduce((x, t) => x + t.kwh, 0);
+  return (
+    <Kachel
+      {...b}
+      id="heute"
+      name={`Heute bis ${uhrzeit(now.getTime())}`}
+      icon="home"
+      ton="load"
+      ziel="Verlauf"
+      groesse={b.groesse ?? 'breit'}
+      className={`vp-k-heute${spalte ? ' is-spalte' : ''}`}
+    >
+      {h.autarkiePct != null && (
+        <div className="vp-k-heute-held">
+          <Gross wert={String(Math.round(h.autarkiePct))} einheit="%" xl />
+          <p className="vp-k-sub">Ihres Stroms kam heute aus eigener Sonne</p>
+        </div>
+      )}
+      <div className="vp-k-heute-reihe">
+        <p className="vp-k-heute-kopf">
+          <span>Verbraucht</span>
+          <b>{kwh(h.verbrauchtKwh)}</b>
+        </p>
+        <HeuteBalken teile={h.herkunft} summe={h.herkunft.reduce((x, t) => x + t.kwh, 0)} />
+        <HeuteLegende teile={h.herkunft} />
+      </div>
+      {h.erzeugtKwh != null && h.sonne.length > 0 && (
+        <div className="vp-k-heute-reihe">
+          <p className="vp-k-heute-kopf">
+            <span>Sonne erzeugt</span>
+            <b>{kwh(h.erzeugtKwh)}</b>
+          </p>
+          <HeuteBalken teile={h.sonne} summe={erzeugtSumme} />
+          <HeuteLegende teile={h.sonne} />
+          {h.eigenverbrauchPct != null && <p className="vp-k-sub">{prozent(h.eigenverbrauchPct)} selbst genutzt</p>}
+        </div>
       )}
     </Kachel>
   );
@@ -405,7 +514,8 @@ function SonnenBogen({ f, ghi, w, h }: { f: number | null; ghi: number | null; w
   return (
     <svg className="vp-k-bild" viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden="true">
       <path d={d} fill="none" style={{ stroke: 'var(--vp-c-border, #e2e8f0)' }} strokeWidth={1.5} />
-      {f != null && (
+      {/* Nur solange die Sonne unterwegs ist: nach Sonnenuntergang sähe ein voll oranger Bogen wie volle Sonne aus (N4). */}
+      {f != null && f > 0 && f < 1 && (
         <path d={d} fill="none" style={{ stroke: FARBE.pv }} strokeWidth={2.5} strokeDasharray={`${(p * (x1 - x0) * 1.25).toFixed(0)} 999`} />
       )}
       <line x1={0} x2={w} y1={base} y2={base} style={{ stroke: 'var(--vp-c-border, #e2e8f0)' }} />
@@ -594,6 +704,8 @@ export function WertKachel({
 /** Ein Auftrag an das nachgeladene Stück: welche Kachel mit welchen Daten. */
 export type KachelAuftrag =
   | ({ art: 'geld' } & ComponentProps<typeof GeldKachel>)
+  | ({ art: 'geld-zeile' } & ComponentProps<typeof GeldZeile>)
+  | ({ art: 'heute' } & ComponentProps<typeof HeuteKachel>)
   | ({ art: 'autarkie' } & ComponentProps<typeof AutarkieKachel>)
   | ({ art: 'eigenverbrauch' } & ComponentProps<typeof EigenverbrauchKachel>)
   | ({ art: 'netz' } & ComponentProps<typeof NetzKachel>)
@@ -614,6 +726,8 @@ export type KachelAuftrag =
 export default function KachelSchalter(a: KachelAuftrag) {
   switch (a.art) {
     case 'geld': return <GeldKachel {...a} />;
+    case 'geld-zeile': return <GeldZeile {...a} />;
+    case 'heute': return <HeuteKachel {...a} />;
     case 'autarkie': return <AutarkieKachel {...a} />;
     case 'eigenverbrauch': return <EigenverbrauchKachel {...a} />;
     case 'netz': return <NetzKachel {...a} />;

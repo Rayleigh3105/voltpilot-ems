@@ -44,8 +44,8 @@ describe('peakBand - the render-ready view', () => {
       peak: PEAK,
     });
     expect(view.currentLabel).toContain('142');
-    expect(view.targetLabel).toContain('Ziel');
-    expect(view.targetLabel).toContain('180');
+    // Nur der Wert: das Wort „Ziel“ steht schon in der Zeile, die ihn zeigt (sonst „Ziel · Ziel 180 kW“).
+    expect(view.targetLabel).toBe('180 kW');
     // barMax = 180 * 1.2 = 216 → fill 142/216, limit 180/216
     expect(view.fillPct).toBeCloseTo((142 / 216) * 100, 5);
     expect(view.limitPct).toBeCloseTo((180 / 216) * 100, 5);

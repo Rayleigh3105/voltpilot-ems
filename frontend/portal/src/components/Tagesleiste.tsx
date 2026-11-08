@@ -26,6 +26,12 @@ import { uhrzeit, type Tag } from '../tagesleiste';
  */
 /** So weit darf sich ein Finger zwischen Aufsetzen und Loslassen bewegen, damit es ein Tipp bleibt. */
 const TIPP_PX = 10;
+/**
+ * Lastspitze: die Skala reicht mindestens so weit über das Ziel. Bleibt der Netzbezug weit darunter (der
+ * gute Fall), stünde die Ziel-Linie sonst am oberen Rand - „Ziel“ würde abgeschnitten und die Linie
+ * liefe durch „Netzbezug“.
+ */
+const ZIEL_LUFT = 1.3;
 
 export function Tagesleiste({
   tag,
@@ -169,11 +175,12 @@ export function Tagesleiste({
   } else if (betrieb === 'spitze') {
     beschriftung = 'Netzbezug';
     const g = (i: number) => (i <= tag.jetzt ? V[i].gemessen?.grid ?? null : V[i].plan?.grid ?? null);
-    const zy = zielKw != null ? top + (base - top) * (1 - Math.min(1, zielKw / skala)) : null;
+    const skalaZ = zielKw != null ? Math.max(skala, zielKw * ZIEL_LUFT) : skala;
+    const zy = zielKw != null ? top + (base - top) * (1 - Math.min(1, zielKw / skalaZ)) : null;
     spuren = (
       <>
-        {linie(gem(g), 0, tag.jetzt, skala, T.flowGridLine)}
-        {!heute && linie(pl(g), tag.jetzt, N - 1, skala, T.flowGridLine, true)}
+        {linie(gem(g), 0, tag.jetzt, skalaZ, T.flowGridLine)}
+        {!heute && linie(pl(g), tag.jetzt, N - 1, skalaZ, T.flowGridLine, true)}
         {zy != null && (
           <>
             <line x1={0} x2={w} y1={zy} y2={zy} stroke={T.plan} strokeWidth={1.2} strokeDasharray="5 3" />

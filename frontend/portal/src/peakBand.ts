@@ -21,7 +21,7 @@
 // measured period each degrade to an honest null/note, never a 0.
 
 import type { PeakShaving } from './api';
-import { eurAmount, fmtNum, NBSP } from './format';
+import { eurAmount, fmtNum } from './format';
 
 /** Headroom above the larger of {current, Ziel} so both sit inside the bar. */
 const BAR_HEADROOM = 1.2;
@@ -149,7 +149,8 @@ export function peakBand(input: {
   return {
     currentLabel: currentKw != null ? fmtNum(currentKw, 'kW', 0) : '—',
     fresh: current.fresh,
-    targetLabel: targetKw != null ? `Ziel${NBSP}${fmtNum(targetKw, 'kW', 0)}` : null,
+    // Nur der Wert: das Wort „Ziel“ setzt, wer ihn zeigt - sonst stand in der Lastspitzen-Kachel „Ziel · Ziel 8 kW“.
+    targetLabel: targetKw != null ? fmtNum(targetKw, 'kW', 0) : null,
     hasTarget,
     fillPct,
     limitPct,

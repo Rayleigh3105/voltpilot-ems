@@ -92,6 +92,42 @@
   overflow-wrap: anywhere;
 }
 
+/* --- Die Spalte neben dem Fluss (Konzept vp-cockpit-privat-konzept, E4 = A) ---
+   Ab 900 px steht sie rechts neben Kopf, Satz und Leitungsplan; Tagesleiste und
+   Listen laufen darunter über die volle Breite, die Spalte ist so nie höher als
+   der Fluss. Schmaler löst sich die Reihe auf (`display: contents`) und die
+   Spalte rückt ans Ende der Bühne - die Tagesleiste bleibt direkt unter dem
+   Fluss (Konzept b1). Rand und Abstände der Spalte kommen aus `.vp-hero-side`.
+   Kopf, Satz und Leitungsplan bleiben in jeder Breite eine echte Box mit dem
+   Abstand der Bühne: ihr Behälter hat so ein Maß (Wächter `layout-waechter`). */
+.vp-eb-reihe {
+  display: contents;
+}
+.vp-eb-links {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.vp-eb-reihe > .vp-hero-side {
+  order: 1;
+}
+@media (min-width: 900px) {
+  .vp-eb-reihe {
+    display: grid;
+    grid-template-columns: minmax(0, 1.68fr) minmax(0, 1fr);
+    gap: var(--vp-space-4, 16px);
+    min-width: 0;
+  }
+  .vp-eb-reihe > .vp-hero-side {
+    order: 0;
+  }
+  /* Die Steuerzeile schließt die Spalte unten ab, auf Höhe des Hauses im Fluss. */
+  .vp-eb-reihe > .vp-hero-side > .vp-hero-steuer {
+    margin-top: auto;
+  }
+}
+
 /* --- Der Leitungsplan ---------------------------------------------------- */
 .vp-lp {
   position: relative;

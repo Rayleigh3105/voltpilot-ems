@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { KNOWN_ROLES, roleLabel, type SlotRole } from '../fahrplanWhy';
@@ -74,6 +74,7 @@ export function EnergieBuehne({
   onOpenSub,
   erzeuger = null,
   bilanz = null,
+  seite = null,
 }: {
   jetzt: JetztFluss;
   stale?: boolean;
@@ -106,6 +107,13 @@ export function EnergieBuehne({
    * Befund (Erzeugeranlage, Prüfbühnen ohne Topologie).
    */
   bilanz?: Pick<FlussBilanz, 'luecken' | 'stimmig' | 'weitereErzeuger'> | null;
+  /**
+   * Die Spalte NEBEN dem Fluss am Rechner (Konzept `vp-cockpit-privat-konzept`, E4 = A): Leitkachel
+   * oder „Heute“, darunter die Steuerzeile. Sie steht nur neben Kopf, Satz und Leitungsplan - Tagesleiste
+   * und Listen laufen darunter über die volle Breite. So ist sie nie höher als der Fluss; vorher war sie
+   * so hoch wie Fluss, Tagesleiste und Geräteliste zusammen und blieb zu drei Vierteln leer.
+   */
+  seite?: ReactNode;
 }) {
   const [ansicht, setAnsicht] = useState<Ansicht>('jetzt');
   const [gewaehlt, setGewaehlt] = useState<number | null>(null);
@@ -245,8 +253,8 @@ export function EnergieBuehne({
     if (el && document.contains(el)) el.focus({ preventScroll: true });
   };
 
-  return (
-    <div className={`vp-eb${heute ? ' is-heute' : ''}`}>
+  const oben = (
+    <>
       {/* Feste Plätze: Uhrzeit und Umschalter oben, die Marke darunter (am Rechner in einer
           Zeile). Eine lange Marke bricht in ihrer eigenen Zeile um, nie der Umschalter. */}
       <div className="vp-eb-kopf">
@@ -291,6 +299,20 @@ export function EnergieBuehne({
         symbol={erzeuger?.knoten.symbol === 'motor' ? 'motor' : 'sonne'}
         onKnoten={(r, el) => oeffne(r, el)}
       />
+    </>
+  );
+
+  return (
+    <div className={`vp-eb${heute ? ' is-heute' : ''}${seite ? ' is-zweispaltig' : ''}`}>
+      {seite ? (
+        <div className="vp-eb-reihe">
+          <div className="vp-eb-links">{oben}</div>
+          {/* Dieselbe Klasse wie die frühere rechte Spalte der Karte: Rand, Abstände und die Prüfungen bleiben. */}
+          <div className="vp-hero-side">{seite}</div>
+        </div>
+      ) : (
+        oben
+      )}
 
       {tag && (
         <div className="vp-eb-zeit">

@@ -628,10 +628,13 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).toBeTruthy());
   });
 
-  it('Eigenverbrauch: Autarkie und Eigenverbrauch sind eigene Kacheln für heute', async () => {
+  it('Eigenverbrauch ohne Tagesverbrauch: Autarkie und Eigenverbrauch bleiben eigene Kacheln', async () => {
     // Konzept „Cockpit als Tagesfilm“: keine Ringe mehr in der Geldkarte -
     // die Tageskennzahlen stehen als eigene Kacheln im Raster (eine Kennzahl,
-    // ein Ort). Der Energiefluss selbst bleibt „jetzt gerade“.
+    // ein Ort). Der Energiefluss selbst bleibt „jetzt gerade“. Kennt der Tag
+    // seinen Verbrauch, ziehen beide in den Block „Heute“ neben dem Fluss
+    // (vp-cockpit-privat-konzept, E1 = A; eigene Fälle unten) - ohne ihn gibt
+    // es keinen Block, dessen Balken nichts zeigten.
     mockAdaptive(true);
     mockSurface(PRIVAT);
     const { container } = renderSeite();
@@ -943,10 +946,11 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     expect(text).toContain('bestätigt');
     expect(text).toContain('Warum?');
     expect(zeile.querySelectorAll('.vp-steuer-pfeil')).toHaveLength(2);
-    // Rechts unter der Leitkachel, wenn es die rechte Spalte gibt - sonst am Bühnenfuß; nie im Fluss.
+    // Rechts unter der Leitkachel, wenn es die Spalte neben dem Fluss gibt - sonst am Bühnenfuß; nie in der
+    // Fluss-Spalte selbst (die Spalte steht seit vp-cockpit-privat-konzept E4 IN der Bühne, neben dem Fluss).
     const ort = container.querySelector('.vp-hero-side') ? '.vp-hero-side .vp-hero-steuer .vp-steuer' : '.vp-stage-foot .vp-steuer';
     expect(container.querySelector(ort)).toBe(zeile);
-    expect(container.querySelector('.vp-hero-flow .vp-steuer')).toBeNull();
+    expect(container.querySelector('.vp-eb-links .vp-steuer')).toBeNull();
     // Kein Fließtext unter der Zeile mehr (Konzept b1): die Gründe stehen im Blatt „Warum?“.
     expect(container.querySelector('.vp-control-reason, .vp-guard-line')).toBeNull();
     // Die Bestätigung steht EINMAL - in der Steuerzeile, nicht noch am Speicher-Knoten.
@@ -2059,5 +2063,169 @@ describe('Rang 4a · Erstbild ohne /overview', () => {
       </ReportFirstPaint.Provider>,
     );
     await waitFor(() => expect(gemeldet).toHaveBeenCalled());
+  });
+});
+
+/**
+ * **Führt der Fluss, steht neben ihm der Tag** (Konzept `vp-cockpit-privat-konzept`, Captain-Entscheid
+ * E1–E4 = A vom 08.11.2026). Ein Haushalt ohne Lastspitzenkappung und ohne Vermarktung: die Leit-Regel
+ * ergibt „Energiefluss“ - dieselbe, die „Cockpit anpassen“ zeigt. Daneben steht der Block „Heute“, der
+ * Euro wird eine ruhige Zeile am Ende, und ein Stern des Kunden holt ihn zurück.
+ */
+describe('Führt der Fluss: „Heute“ neben dem Fluss, der Euro als ruhige Zeile (vp-cockpit-privat-konzept)', () => {
+  const OHNE_SPEICHER = { roleCounts: { pv: 1, storage: 0, consumer: 1, grid: 1 } };
+  const frist = { timeout: 5000 };
+  const text = (el: Element | null) => (el?.textContent ?? '').replace(/[\u00a0\u202f]/g, ' ');
+
+  function telefon(isPhone: boolean) {
+    (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+      matches: isPhone && query.includes('720px'),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    });
+  }
+
+  function haushalt(overview: Record<string, unknown> = OHNE_SPEICHER) {
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+    stubApi(overview);
+    // Der Abend aus dem Bild des Captains: 22,0 kWh Sonne, 58,4 kWh Verbrauch, 29 % / 77 %.
+    vi.spyOn(api, 'history').mockResolvedValue({
+      totals: { consumptionKwh: 58.4, pvGenerationKwh: 22, gridImportKwh: 41.5, gridExportKwh: 5.1, autarkiePct: 29, eigenverbrauchPct: 77 },
+      buckets: [],
+      protocol: [],
+      plan: [],
+    } as never);
+    const mitternacht = new Date();
+    mitternacht.setHours(0, 0, 0, 0);
+    vi.spyOn(api, 'siteEarnings').mockResolvedValue({
+      range: 'day',
+      from: mitternacht.toISOString(),
+      to: new Date(mitternacht.getTime() + 24 * 3600_000).toISOString(),
+      nettoErgebnisEur: -5.56,
+      einspeiseErloesEur: 0.4,
+      eigenverbrauchsWertEur: 4.11,
+      stromkostenEur: 10.07,
+      savedEur: 0,
+      steuerungSplitReason: 'no_battery_data',
+    } as never);
+    mockAdaptive(true, TOPO);
+    mockSurface(PRIVAT);
+  }
+
+  afterEach(() => {
+    delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+  });
+
+  it('am Rechner steht „Heute“ in der Spalte neben dem Fluss; Autarkie, Eigenverbrauch und Sonne ziehen ein', async () => {
+    haushalt();
+    telefon(false);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-hero-side [data-kachel="heute"]')).toBeTruthy(), frist);
+    const heute = container.querySelector('.vp-hero-side [data-kachel="heute"]');
+    expect(text(heute)).toMatch(/29\s*%/);
+    expect(text(heute)).toContain('Ihres Stroms kam heute aus eigener Sonne');
+    expect(text(heute)).toContain('Verbraucht');
+    expect(text(heute)).toContain('77 % selbst genutzt');
+    // Keine Leitkachel, kein Stern - der Fluss führt.
+    expect(container.querySelector('.vp-k-stern')).toBeNull();
+    for (const weg of ['autarkie', 'eigenverbrauch', 'sonne', 'geld']) {
+      expect(container.querySelector(`[data-kachel="${weg}"]`)).toBeNull();
+    }
+  });
+
+  it('der Euro steht als ruhige Zeile am Ende - ohne Rot, ohne Stern, ohne Steuerungs-Zeile (E2, N1)', async () => {
+    haushalt();
+    telefon(false);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-k-geldzeile')).toBeTruthy(), frist);
+    const zeile = container.querySelector('.vp-k-geldzeile') as HTMLElement;
+    expect(text(zeile)).toContain('Unterm Strich');
+    expect(text(zeile)).toContain('heute bisher');
+    expect(text(zeile)).toContain('5,56');
+    expect(container.querySelector('.is-kosten')).toBeNull();
+    expect(text(container)).not.toContain('Steuerung —');
+    expect(text(container)).not.toContain('Zwischenstand');
+    // Am Ende: hinter dem Kachelraster, vor dem Zustand.
+    await waitFor(() => expect(container.querySelector('.vp-kraster')).toBeTruthy(), frist);
+    const raster = container.querySelector('.vp-kraster') as HTMLElement;
+    expect(raster.compareDocumentPosition(zeile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('ohne Speicher kein Netzladen-Abzeichen im Kopf, mit Speicher wie bisher (N3)', async () => {
+    haushalt();
+    telefon(false);
+    const ohne = renderSeite();
+    await waitFor(() => expect(ohne.container.querySelector('.vp-hero-side [data-kachel="heute"]')).toBeTruthy(), frist);
+    expect(text(ohne.container.querySelector('.vp-anlage-badges'))).not.toMatch(/Solarladen|Netzladen/);
+    ohne.unmount();
+
+    haushalt({ roleCounts: { pv: 1, storage: 1, consumer: 1, grid: 1 } });
+    telefon(false);
+    const mit = renderSeite();
+    await waitFor(() => expect(text(mit.container.querySelector('.vp-anlage-badges'))).toMatch(/Netzladen aktiv/), frist);
+  });
+
+  it('der Stern des Kunden auf „Unterm Strich“ holt den Euro als Leitkachel zurück (E3)', async () => {
+    haushalt();
+    telefon(false);
+    vi.spyOn(api, 'cockpitLayout').mockResolvedValue({
+      surface: 'cockpit',
+      profil: null,
+      presetLayout: null,
+      tenantVorgabe: null,
+      siteVorgabe: null,
+      eigen: { document: { order: [], hidden: [], shown: [], lead: 'erloes-komposition' }, updatedBy: null, updatedAt: null },
+      bausteine: [],
+      darfVorgabe: false,
+    } as never);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-hero-side [data-kachel="geld"] .vp-k-stern')).toBeTruthy(), frist);
+    expect(container.querySelector('[data-kachel="heute"]')).toBeNull();
+    expect(container.querySelector('.vp-k-geldzeile')).toBeNull();
+    // Ohne „Heute“ stehen die Tageskacheln wieder im Raster.
+    await waitFor(() => expect(container.querySelector('.vp-kraster [data-kachel="autarkie"]')).toBeTruthy(), frist);
+  });
+
+  it('auch bei Marktoptimierung gilt der Stern des Kunden auf dem Energiefluss: „Heute“ statt Börsenpreis, der Euro genau einmal', async () => {
+    haushalt({ roleCounts: { pv: 1, storage: 1, consumer: 1, grid: 1 } });
+    // Netzladen + dynamischer Tarif = Marktoptimierung (Block „Handel“ mit Geld-Strom), ohne Leistungspreis.
+    mockSurface({ ...MULTI, signals: { ...MULTI.signals!, hasLeistungspreis: false }, config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch', netzladenErlaubt: true } });
+    telefon(false);
+    vi.spyOn(api, 'cockpitLayout').mockResolvedValue({
+      surface: 'cockpit',
+      profil: null,
+      presetLayout: null,
+      tenantVorgabe: null,
+      siteVorgabe: null,
+      eigen: { document: { order: [], hidden: [], shown: [], lead: 'energiefluss' }, updatedBy: null, updatedAt: null },
+      bausteine: [],
+      darfVorgabe: false,
+    } as never);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-hero-side [data-kachel="heute"]')).toBeTruthy(), frist);
+    expect(container.querySelector('.vp-hero-side [data-kachel="strompreis"]')).toBeNull();
+    expect(container.querySelector('.vp-k-stern')).toBeNull();
+    // Der Euro steht genau einmal: als Zeile am Ende, nicht zusätzlich als Kachel im Raster („@geld“).
+    await waitFor(() => expect(container.querySelector('.vp-k-geldzeile')).toBeTruthy(), frist);
+    await waitFor(() => expect(container.querySelector('.vp-kraster [data-kachel]')).toBeTruthy(), frist);
+    expect(container.querySelector('[data-kachel="geld"]')).toBeNull();
+  });
+
+  it('am Telefon ist „Heute“ die erste Kachel unter der Bühne, und die Kopfzeile trägt keinen Euro', async () => {
+    haushalt();
+    telefon(true);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-kraster [data-kachel="heute"]')).toBeTruthy(), frist);
+    const erste = container.querySelector('.vp-kraster [data-kachel]') as HTMLElement;
+    expect(erste.getAttribute('data-kachel')).toBe('heute');
+    expect(container.querySelector('.vp-hero-side')).toBeNull();
+    expect(container.querySelector('.vp-mob-sticky-money')).toBeNull();
+    await waitFor(() => expect(container.querySelector('.vp-k-geldzeile')).toBeTruthy(), frist);
   });
 });

@@ -21,6 +21,9 @@ const STEUERUNG_UHR = '2026-09-29T11:10:00Z';
 
 const SEITEN: { name: string; seite?: string; query?: string; hash?: string; uhr?: string }[] = [
   { name: 'Cockpit', hash: plant() },
+  // Ein Haushalt, bei dem der Fluss führt: „Heute“ neben dem Fluss, der Euro als Zeile (vp-cockpit-privat-konzept).
+  { name: 'Cockpit · Haushalt', seite: 'cockpit-privat', query: 'lage=abend', hash: '#/anlage/muehlbach', uhr: '2026-11-07T18:47:00Z' },
+  { name: 'Cockpit · Haushalt mit Speicher', seite: 'cockpit-privat', query: 'lage=speicher', hash: '#/anlage/birkenweg', uhr: '2026-11-07T18:47:00Z' },
   { name: 'Fahrplan', hash: plant('fahrplan') },
   { name: 'Verlauf · Energie', hash: plant('messwerte') },
   { name: 'Verlauf · Erlöse', hash: plant('erloese') },

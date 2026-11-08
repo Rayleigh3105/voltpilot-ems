@@ -62,18 +62,24 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   Netz heute, Steuerspalten). Börsenpreis und Laden tragen die Hülle selbst (`kachel`-Prop). Der
   Börsenpreis zeigt Stundenbalken (`strompreis.boersenKachel`: Mittel je Berliner Stunde, Drittel wie das
   Urteil, Lücke bleibt Lücke) und die zwei Fenster aus `streifenFenster` mit Ø-Preis.
-- **Rechte Spalte der Bühne (Rechner):** die Leitkachel. Den Werteblock „Dieser Moment“ (die vier
+- **Rechte Spalte der Bühne (Rechner):** die Leitkachel oder, wenn der Fluss führt, „Heute“.
+  Sie steht nur neben Kopf, Satz und Leitungsplan (`EnergieBuehne seite`, `.vp-eb-reihe`, Konzept `vp-cockpit-privat-konzept` E4); Tagesleiste und Listen laufen darunter über die volle Breite.
+  Wächter: nie höher als die Fluss-Reihe, keine Lücke über 160 px (`e2e/cockpit-privat.spec.ts`).
+  Den Werteblock „Dieser Moment“ (die vier
   Werte noch einmal, mit Menü ⋯ „Überwachen“) gibt es seit Konzept b1 nicht mehr (Entscheide E1/E3,
   20.10.2026): die Werte stehen an den Knoten, und eine Überwachung entsteht nur unter Meldungen ›
   Überwachungen („+ Überwachung“, `NeueUeberwachung.tsx`; Wächter `ueberwachenNurMeldungen.test.ts`).
-  Ohne Leitkachel ist die Bühne einspaltig. Unter der Liste „Zahlen als Liste“ (Tabelle Moment/Tag). Das Cockpit spricht in `--vp-c-font` (Plus Jakarta
+  Ohne Spalte ist die Bühne einspaltig. Unter der Liste „Zahlen als Liste“ (Tabelle Moment/Tag). Das Cockpit spricht in `--vp-c-font` (Plus Jakarta
   Sans) wie der Prototyp; der Zustand ist eine schmale Zeile ohne Modus-Fuß (`ZustandCard kompakt`).
 - **Leitkachel:** am Rechner rechts neben dem Fluss (`CockpitHero seite`), am Telefon erste Kachel:
-  Marktoptimierung → Börsenpreis, Lead `peak-band` → Lastspitze, sonst „Unterm Strich“. Sie steht dann
+  Marktoptimierung → Börsenpreis, Lead `peak-band` → Lastspitze, Lead `erloes-komposition` (Geld-Strom oder Stern) → „Unterm Strich“. Sie steht dann
   nicht noch einmal im Raster.
+  Führt der Fluss (`energiefluss`, E3: Leit-Regel und Stern, kein Merkmal „privat“), gibt es keine Leitkachel.
+  Dann steht „Heute“ (`kacheln.heuteKachel`) neben dem Fluss bzw. als erste Kachel und ersetzt Autarkie, Eigenverbrauch und Sonne.
+  Der Euro wird die `GeldZeile` vor dem Zustand, die Telefon-Kopfzeile trägt kein Geld.
 - **Steuerzeile (Konzept b1, 20.10.2026, Entscheid E2):** EINE Zeile Auftrag › Gerät › Wirkung
-  (`steuerSpalten`, `ControlStrip variant="zeile"`), am Rechner rechts unter der Leitkachel, am Telefon und
-  ohne Leitkachel am Bühnenfuß; die Wirkung nennt die Leistung nur, wenn sie vom Auftrag abweicht. Die
+  (`steuerSpalten`, `ControlStrip variant="zeile"`), am Rechner unten in der Spalte, am Telefon und
+  ohne Spalte am Bühnenfuß; die Wirkung nennt die Leistung nur, wenn sie vom Auftrag abweicht. Die
   Sätze (Plan, Gerät, Einspeisung, Ausblick, Einspeisegrenze) stehen unverändert, aber je Herkunft
   gegliedert im Blatt „Warum?“ (Telefon `BottomSheet`, Rechner `Modal`) - vorher bis zu drei Absätze unter
   der Bühne. Die Abweichung der Einspeisegrenze im Wechselrichter (`deviceLimitLine`) zählt die Zeile als
@@ -107,6 +113,7 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
 - **Beweise:** `leitungsplan.test.ts`, `tagesleiste.test.ts`, `flussListen.test.ts`, `kacheln.test.ts`,
   `kacheln/CockpitKacheln.test.tsx`, `kachelGroessen.test.ts`, `AnlagenPage.test.tsx`; E2E
   `cockpit-buehne`, `cockpit-rollen`, `cockpit-fluss-bilanz` (Zuordnung, veralteter Erzeuger, Teilverbrauch),
-  `laden-bei-bezug`, `summenwert-abnahme` (Rollen im Blatt), `layout-waechter`; Vitest `flussBilanz.test.ts`. Browserprüfung: `e2e/help.html?betrieb=eigen#/anlage/help-site` (Eigenverbrauch)
+  `laden-bei-bezug`, `summenwert-abnahme` (Rollen im Blatt), `layout-waechter`, `cockpit-privat`
+  (`cockpit-privat.html?lage=abend|mittag|speicher|gewerbe`); Vitest `flussBilanz.test.ts`. Browserprüfung: `e2e/help.html?betrieb=eigen#/anlage/help-site` (Eigenverbrauch)
   bzw. ohne Parameter (Marktoptimierung), Uhr auf `2026-09-10T10:00:00Z`, `TZ=Europe/Berlin`. Bündel:
   Einstieg 210,6 kB gz (Grenze 230).

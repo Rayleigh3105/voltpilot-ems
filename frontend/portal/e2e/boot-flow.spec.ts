@@ -208,11 +208,16 @@ function tor(): { zu: Promise<void>; auf: () => void } {
  *
  * ⚠ Die Reihenfolge trägt den Fall: `pauseAt` springt vor und löst dabei fällige Zeitgeber EINMAL aus. Liefe die
  * 3-s-Grenze schon, ginge die Bühne durch diesen Sprung - darum kommt die Anlagenliste erst nach dem Anhalten.
+ * Aus demselben Grund springt die Uhr nur kurz vor: seit jede lesende Anfrage eine Zeitgrenze hat (`api.ts`
+ * `REQUEST_TIMEOUT_MS`, 20 s), brach ein Sprung um 60 s die zurückgehaltene Anlagenliste ab, und statt der Seite
+ * stand „Daten konnten nicht geladen werden“. Zwei Sekunden Vorlauf, weil die Uhr der Seite weiterläuft, bis
+ * `pauseAt` ankommt (unter Last mehr als 50 ms: „Cannot fast-forward to the past“).
  */
 async function uhrAnhaltenDannAnlagenliste(page: Page, anlagenliste: { auf: () => void }) {
   // Die Bühne steht schon: der Start des Portals lief mit laufender Uhr.
   await expect(page.locator('.vp-loader-screen')).toBeVisible();
-  await page.clock.pauseAt(new Date(Date.now() + 60_000));
+  const jetzt = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(new Date(jetzt + 2_000));
   anlagenliste.auf();
 }
 

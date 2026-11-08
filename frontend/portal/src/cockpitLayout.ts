@@ -265,9 +265,14 @@ export function betriebAus(blocks: readonly CockpitBlock[] | null | undefined): 
  * dann Laden und Fahrplan; Marktoptimierung - der Börsenpreis führt;
  * Lastspitzenkappung - die Kacheln mit der Lastspitze vorn. Rechner und
  * Telefon teilen die Folge; am Rechner steht die Leitkachel neben dem Fluss.
+ *
+ * Beim Eigenverbrauch steht „Unterm Strich“ am Ende (Konzept
+ * `vp-cockpit-privat-konzept`, E2 = A): führt der Fluss, ist der Euro dort eine
+ * ruhige Zeile vor dem Zustand; führt er (Stern des Kunden), rückt er als
+ * Leitkachel neben den Fluss bzw. am Telefon an den Anfang seines Rasters.
  */
 const TAGESFILM: Record<CockpitBetrieb, BausteinId[]> = {
-  eigenverbrauch: ['status', 'energiefluss', 'geld', 'steuerung', 'kacheln', 'laden', 'fahrplan', 'strompreis', 'komponenten', 'zustand'],
+  eigenverbrauch: ['status', 'energiefluss', 'steuerung', 'kacheln', 'laden', 'fahrplan', 'strompreis', 'geld', 'komponenten', 'zustand'],
   markt: ['status', 'energiefluss', 'strompreis', 'steuerung', 'kacheln', 'geld', 'laden', 'fahrplan', 'komponenten', 'zustand'],
   spitze: ['status', 'energiefluss', 'steuerung', 'kacheln', 'geld', 'laden', 'strompreis', 'fahrplan', 'komponenten', 'zustand'],
 };
@@ -608,9 +613,17 @@ export function layoutResolve<T extends string = BausteinId>(
     if (baustein(id)?.pflicht) hidden.delete(id);
   }
 
-  const present = new Set((input.blocks ?? []).map((b) => b.id));
+  const present = new Set<string>((input.blocks ?? []).map((b) => b.id));
+  // Ein GESETZTER Stern gilt auch, wenn sein Block nur über einen verfügbaren Baustein
+  // getragen wird: „Unterm Strich“ (`geld` → `erloes-komposition`) rendert auf jeder Anlage
+  // mit Erlösen, auch ohne Geld-Strom - sonst holte der Stern des Kunden den Euro nie
+  // zurück (Konzept `vp-cockpit-privat-konzept`, E2/E3). Ohne Stern bleibt es bei der Regel.
+  for (const id of verfuegbar) {
+    const traeger = baustein(id)?.lead_block;
+    if (traeger) present.add(traeger);
+  }
   const wantedLead =
-    lead != null && LEAD_CANDIDATES.includes(lead as CockpitBlockId) && present.has(lead as CockpitBlockId)
+    lead != null && LEAD_CANDIDATES.includes(lead as CockpitBlockId) && present.has(lead)
       ? (lead as CockpitBlockId)
       : // Ein Lead, den es hier nicht (mehr) gibt, wird still übersprungen wie
         // jeder andere Baustein — die M0-Regel peak → Geld → Fluss übernimmt.

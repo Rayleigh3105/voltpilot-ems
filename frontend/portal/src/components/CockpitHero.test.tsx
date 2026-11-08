@@ -69,10 +69,25 @@ function renderStage(
 }
 
 describe('Die Leitkachel neben dem Fluss (Konzept „Cockpit als Tagesfilm“)', () => {
-  it('steht rechts neben dem Fluss, die Bühne wird zweispaltig', () => {
+  it('steht IN der Bühne rechts neben dem Fluss - nur neben Kopf, Satz und Leitungsplan (vp-cockpit-privat-konzept, E4)', async () => {
     const { container } = renderStage({ seite: <div className="leit">Unterm Strich</div> });
-    const rail = container.querySelector('.vp-hero-side');
-    expect(rail?.querySelector('.leit')?.textContent).toBe('Unterm Strich');
+    await waitFor(() => expect(container.querySelector('.vp-eb-reihe > .vp-hero-side')).not.toBeNull());
+    const spalte = container.querySelector('.vp-eb-reihe > .vp-hero-side') as HTMLElement;
+    expect(spalte.querySelector('.leit')?.textContent).toBe('Unterm Strich');
+    // Links steht der Fluss; Tagesleiste und Listen laufen UNTER der Reihe über die volle Breite.
+    expect(container.querySelector('.vp-eb-reihe > .vp-eb-links .vp-lp')).not.toBeNull();
+    // Die Karte selbst ist einspaltig: die Spalte ist kein zweites Kartenfeld mehr, das so hoch würde wie die Bühne.
+    expect(container.querySelector('.vp-cockpit-hero.vp-stage-norail')).not.toBeNull();
+    expect(container.querySelector('.vp-cockpit-hero > .vp-hero-side')).toBeNull();
+  });
+
+  it('ohne Fluss (das Gerät schweigt) bleibt sie die rechte Spalte der Karte', () => {
+    const still: LiveSnapshot = { pvKw: null, loadKw: null, gridKw: null, battKw: null, socPct: null, socAt: null };
+    const { container } = render(
+      <CockpitHero topology={null} snapshot={still} onOpenSub={() => {}} seite={<div className="leit">Unterm Strich</div>} />,
+    );
+    expect(container.querySelector('.vp-hero-noflow')).not.toBeNull();
+    expect(container.querySelector('.vp-cockpit-hero > .vp-hero-side .leit')?.textContent).toBe('Unterm Strich');
     expect(container.querySelector('.vp-cockpit-hero.vp-stage-norail')).toBeNull();
   });
 
@@ -106,8 +121,9 @@ describe('Die Steuerzeile (Konzept b1, Entscheid E2)', () => {
     />
   );
 
-  it('steht am Rechner rechts unter der Leitkachel - kein Bühnenfuß', () => {
+  it('steht am Rechner rechts unter der Leitkachel - kein Bühnenfuß', async () => {
     const { container } = renderStage({ seite: <div className="leit" />, steuerung: zeile });
+    await waitFor(() => expect(container.querySelector('.vp-hero-side .vp-hero-steuer')).not.toBeNull());
     const steuer = container.querySelector('.vp-hero-side .vp-hero-steuer');
     expect(steuer?.textContent).toContain('regelt gerade auf');
     expect(container.querySelector('.vp-hero-leit + .vp-hero-steuer')).toBe(steuer);

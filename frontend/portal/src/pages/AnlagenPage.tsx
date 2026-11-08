@@ -199,6 +199,8 @@ const BoxSeiteSection = lazy(() =>
 );
 /** Die Bausteine, die im Kachelraster unter der Bühne stehen. */
 const RASTER_BAUSTEINE = new Set<string>(['geld', 'strompreis', 'fahrplan', 'laden', 'kacheln']);
+/** Führt der Fluss, steht „Unterm Strich“ als Zeile über die volle Breite, nicht im Raster (E2 = A). */
+const GELD_ALS_ZEILE: ReadonlySet<string> = new Set(['geld']);
 const LEIT_BAUSTEIN: Record<'strompreis' | 'lastspitze' | 'geld', string> = {
   strompreis: 'strompreis',
   lastspitze: 'kacheln',
@@ -209,12 +211,15 @@ const LEIT_BAUSTEIN: Record<'strompreis' | 'lastspitze' | 'geld', string> = {
  * Der Stapel des Cockpits (Konzept „Cockpit als Tagesfilm“): aufeinander
  * folgende Kachel-Bausteine teilen EIN Raster, alles andere (Kopf, Bühne,
  * Zustand) steht über die volle Breite. Die Reihenfolge bleibt die aufgelöste;
- * am Telefon rückt die Leitkachel an den Anfang ihres Rasters.
+ * am Telefon rückt die Leitkachel an den Anfang ihres Rasters. `breit` nennt
+ * Raster-Bausteine, die gerade als Zeile über die volle Breite stehen („Unterm
+ * Strich“, wenn der Fluss führt).
  */
 function stapelMitRaster(
   order: readonly string[],
   knoten: (id: string) => ReactNode,
   leit: 'strompreis' | 'lastspitze' | 'geld' | null,
+  breit: ReadonlySet<string> = new Set(),
 ): ReactNode[] {
   const out: ReactNode[] = [];
   let lauf: { id: string; node: ReactNode }[] = [];
@@ -235,7 +240,7 @@ function stapelMitRaster(
   for (const id of order) {
     const node = knoten(id);
     if (node == null) continue;
-    if (RASTER_BAUSTEINE.has(id)) {
+    if (RASTER_BAUSTEINE.has(id) && !breit.has(id)) {
       lauf.push({ id, node });
     } else if (istEigen(id)) {
       lauf.push({ id, node: <div className="vp-k-platz is-breit">{node}</div> });
@@ -1636,7 +1641,12 @@ export function AnlageSeite({
   // v3 M2 · das Live-Cockpit: Hero (bestehendes Energiefluss-Diagramm groß +
   // Ringe + Geld + Fahrplan-Zeile) und das Widget-Raster. Beide Ableitungen
   // sind rein (`cockpitWidgets.ts`); hier wird nur gefüttert und gerendert.
+  // Hat die Anlage einen Speicher? Aus den ROLLEN der Übersichts-Zeile, nie aus der Telemetrie;
+  // `null` = noch unbekannt. Ohne Speicher gibt es keine Steuerungs-Aussage am Geld und kein
+  // Netzladen-Abzeichen (Konzept `vp-cockpit-privat-konzept`, N1/N3).
+  const mitSpeicher = ovSite?.roleCounts ? (ovSite.roleCounts.storage ?? 0) > 0 : null;
   const heroView = cockpitHero({
+    mitSpeicher,
     totals: rangeTotals,
     money: siteEarnings,
     range,
@@ -1720,10 +1730,6 @@ export function AnlageSeite({
   const strompreisVerfuegbar = gateStrompreis(modes, site.tarifArt);
   // Der Fahrplan ist eine Kachel (Tagesuhr); gated wie die Fahrplan-Ansicht.
   const fahrplanVerfuegbar = (surface?.deepViews ?? []).includes('fahrplan');
-  // Die geschrumpfte Kopfzahl beim Scrollen: die zwei Anker (Geld + Zustand).
-  const sticky = isPhone
-    ? stickyHead({ money: heroView.money, status: showSetup ? null : (sentence ?? null) })
-    : null;
 
   // Die Referenz der Box dieser Anlage - dieselbe ehrliche Regel wie auf der
   // Box-Seite: eine Anlage hat GENAU EINE Box, und mehr als ein eigenes Gerät
@@ -2035,6 +2041,9 @@ export function AnlageSeite({
     // Wie im Prototyp: die Sonne ist beim Eigenverbrauch breit, sonst klein -
     // solange niemand eine Größe gewählt hat.
     if (id === 'sonne' && buehneBetrieb !== 'eigenverbrauch' && !layout.resolved.groessen[id]) return 'klein';
+    // Steht „Heute“, fehlen Autarkie und Eigenverbrauch neben ihm: dann steht der Speicher breit (eine Reihe
+    // mit dem Fahrplan) - solange niemand eine Größe gewählt hat.
+    if (id === 'speicher' && heuteDa && !layout.resolved.groessen[id]) return 'breit';
     return kachelGroesse(id, layout.resolved.groessen);
   };
   const groessenFuss = (id: string, label: string): ReactNode => {
@@ -2058,17 +2067,47 @@ export function AnlageSeite({
   const widgetIds = new Set(widgets.map((w) => w.id));
   const geldDa = heroView.money != null || hasBlock(blocks, 'erloes-komposition');
   // Die LEITKACHEL: am Rechner rechts neben dem Fluss, am Telefon die erste
-  // Kachel. Marktoptimierung führt mit dem Börsenpreis, Lastspitzenkappung
-  // mit der Lastspitze, sonst „Unterm Strich“.
+  // Kachel. Sie folgt der Leit-Regel des Layouts - Lastspitze, dann Geld-Strom,
+  // dann Fluss, und der Stern des Kunden gewinnt -, also derselben, die
+  // „Cockpit anpassen“ zeigt (Konzept `vp-cockpit-privat-konzept`, E3 = A).
+  // Marktoptimierung führt mit dem Börsenpreis, Lastspitzenkappung mit der
+  // Lastspitze, ein Geld-Strom oder der Stern auf „Unterm Strich“ mit dem Euro.
+  // Steht der Stern auf dem Energiefluss, gibt es keine Leitkachel - auch bei
+  // Marktoptimierung, deren Geld-Strom sonst die Leitung hätte.
   const leitArt: 'strompreis' | 'lastspitze' | 'geld' | null =
-    // Eine Erzeugeranlage führt wie im Bild des Konzepts mit dem Börsenpreis, wo es ihn gibt.
-    (buehneBetrieb === 'markt' || erzLage != null) && zeigt('strompreis') && strompreisVerfuegbar
-      ? 'strompreis'
-      : effektiverLead === 'peak-band' && peakView != null && zeigt('kacheln')
-        ? 'lastspitze'
-        : zeigt('geld') && geldDa
-          ? 'geld'
-          : null;
+    effektiverLead === 'energiefluss' && erzLage == null
+      ? null
+      : // Eine Erzeugeranlage führt wie im Bild des Konzepts mit dem Börsenpreis, wo es ihn gibt.
+        (buehneBetrieb === 'markt' || erzLage != null) && zeigt('strompreis') && strompreisVerfuegbar
+        ? 'strompreis'
+        : effektiverLead === 'peak-band' && peakView != null && zeigt('kacheln')
+          ? 'lastspitze'
+          : (effektiverLead === 'erloes-komposition' || erzLage != null) && zeigt('geld') && geldDa
+            ? 'geld'
+            : null;
+  // Führt der FLUSS (keine Lastspitzenkappung, keine Vermarktung, kein Stern auf dem Euro - fast jeder
+  // Haushalt), steht neben ihm der Tag: der Block „Heute“ (E1 = A), und der Euro wird eine ruhige Zeile
+  // am Ende (E2 = A). „Heute“ gehört zu den Kennzahlen: wer sie ausblendet, blendet ihn mit aus.
+  const flussFuehrt = leitArt == null && erzLage == null && effektiverLead === 'energiefluss';
+  const heuteDa = flussFuehrt && zeigt('kacheln') && dayTotalsEffective?.consumptionKwh != null;
+  const heuteKnoten = (spalte: boolean) => (
+    <KachelSpaet
+      art="heute"
+      totals={dayTotalsEffective}
+      tag={buehneTag}
+      now={now}
+      mitSpeicher={mitSpeicher !== false}
+      spalte={spalte}
+      groesse="breit"
+      onOpen={() => onOpenSub('messwerte')}
+      platzRef={isPhone ? moneyRef : undefined}
+    />
+  );
+  // Die geschrumpfte Kopfzahl beim Scrollen: die zwei Anker (Geld + Zustand). Führt der Fluss, trägt
+  // sie keinen Euro (E2 = A) und erscheint nur noch, wenn der Zustand etwas meldet.
+  const sticky = isPhone
+    ? stickyHead({ money: flussFuehrt ? null : heroView.money, status: showSetup ? null : (sentence ?? null) })
+    : null;
   const inSeite = (art: string) => !isPhone && leitArt === art;
   const geldKachel = (seite: boolean) =>
     erzGeldStrich ? (
@@ -2148,10 +2187,17 @@ export function AnlageSeite({
   // Eine Erzeugeranlage zeigt ihre Einheiten und wer heute geregelt hat (Bild Cockpit des Konzepts);
   // Speicher-, Autarkie- und Handelskacheln haben dort keine Grundlage.
   // Bei Biogas steht „Unterm Strich“ („—“) als dritte Kachel hinter den Einheiten, wie im Bild.
-  const kachelReihe = erzLage ? (erzGeldStrich ? ['einheiten', 'geregelt', '@geld'] : ['einheiten', 'geregelt']) : KACHEL_REIHE[buehneBetrieb];
+  const kachelReiheRoh = erzLage ? (erzGeldStrich ? ['einheiten', 'geregelt', '@geld'] : ['einheiten', 'geregelt']) : KACHEL_REIHE[buehneBetrieb];
+  // Steht „Heute“, trägt er Autarkie, Eigenverbrauch und „PV heute“ - diese Kacheln entfallen. Am Telefon ist
+  // „Heute“ selbst die erste Kachel; am Rechner steht er neben dem Fluss.
+  const kachelReihe = heuteDa
+    ? [...(isPhone ? ['heute'] : []), ...kachelReiheRoh.filter((id) => id !== 'autarkie' && id !== 'eigenverbrauch' && id !== 'sonne')]
+    : kachelReiheRoh;
   const reihe = layout.resolved.order;
   const geldImRaster =
     !layout.anpassen &&
+    // Führt der Fluss, steht der Euro als Zeile am Ende - nie zusätzlich im Raster.
+    !flussFuehrt &&
     !inSeite('geld') &&
     kachelReihe.includes('@geld') &&
     (erzGeldStrich || reihe.indexOf('geld') === reihe.indexOf('kacheln') + 1) &&
@@ -2159,6 +2205,8 @@ export function AnlageSeite({
   const kachelKnoten = (id: string): ReactNode => {
     const basis = { groesse: groesseVon(id), fuss: groessenFuss(id, kachelDef(id)?.label ?? id) };
     switch (id) {
+      case 'heute':
+        return heuteKnoten(false);
       case 'autarkie':
         return <KachelSpaet {...basis} art="autarkie" totals={dayTotalsEffective} tag={buehneTag} onOpen={() => onOpenSub('messwerte')} />;
       case 'eigenverbrauch':
@@ -2266,7 +2314,15 @@ export function AnlageSeite({
           /* Rechts neben dem Fluss: die Leitkachel (am Rechner). */
           showRail={!isPhone}
           seite={
-            inSeite('geld') ? geldKachel(true) : inSeite('strompreis') ? strompreisKachel(true) : inSeite('lastspitze') ? lastspitzeKachel() : null
+            inSeite('geld')
+              ? geldKachel(true)
+              : inSeite('strompreis')
+                ? strompreisKachel(true)
+                : inSeite('lastspitze')
+                  ? lastspitzeKachel()
+                  : heuteDa && !isPhone
+                    ? heuteKnoten(true)
+                    : null
           }
           /* Der Stift in der PV-Zusammensetzung — die Abkürzung zum
              Umbenennen dort, wo der Wunsch entsteht. Nach dem Speichern
@@ -2308,7 +2364,13 @@ export function AnlageSeite({
       ),
     /* Die Kacheln (Konzept „Cockpit als Tagesfilm“). Die Leitkachel steht
        am Rechner in der Bühne und deshalb nicht noch einmal im Raster. */
-    geld: inSeite('geld') || geldImRaster ? null : geldKachel(false),
+    geld: flussFuehrt
+      ? zeigt('geld') && heroView.money
+        ? <KachelSpaet art="geld-zeile" money={heroView.money} onOpen={() => onOpenSub('erloese')} />
+        : null
+      : inSeite('geld') || geldImRaster
+        ? null
+        : geldKachel(false),
     fahrplan: fahrplanVerfuegbar ? (
       <KachelSpaet
         art="fahrplan"
@@ -2486,8 +2548,9 @@ export function AnlageSeite({
           {/* Stammdaten-Abzeichen: sie ändern sich nie und beantworten keine
               Tagesfrage — am Telefon wohnen sie in den Einstellungen. */}
           {!isPhone && <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>}
-          {/* Netzladen betrifft einen Speicher - eine Erzeugeranlage, die VoltPilot nur liest, hat keinen. */}
-          {!isPhone && !erzZeile && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}
+          {/* Netzladen betrifft einen Speicher - eine Erzeugeranlage, die VoltPilot nur liest, hat keinen, und
+              eine Anlage ohne Speicher-Rolle auch nicht (Konzept `vp-cockpit-privat-konzept`, N3). */}
+          {!isPhone && !erzZeile && mitSpeicher !== false && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}
           <div className="vp-anlage-actions">
             {/* Anwendungs-Programm Stufe 3 (E4): der Einstieg in den
                 Anpassen-Modus wohnt in der Cockpit-Kopfzeile - dort, wo der
@@ -2713,7 +2776,8 @@ export function AnlageSeite({
                 const node = istEigen(id) ? eigenerKnoten(id) : bausteinNodes[id as BausteinId];
                 return node == null ? node : mitMessstellenWeg(id, node);
               },
-              isPhone ? leitArt : null)}
+              isPhone ? leitArt : null,
+              flussFuehrt ? GELD_ALS_ZEILE : undefined)}
           {/* Hat der Kunde die Bühne ausgeblendet, steht der Weg am Fuß des Stapels statt gar nicht. */}
           {!layout.resolved.order.includes('energiefluss') && (
             <CockpitMessstellenWeg siteId={site.id} misst={misstHier} />

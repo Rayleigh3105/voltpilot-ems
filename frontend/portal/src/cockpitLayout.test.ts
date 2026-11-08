@@ -275,6 +275,28 @@ describe('layoutResolve — Reihenfolge', () => {
     expect(r.lead).toBe('erloes-komposition');
   });
 
+  it('der Stern auf „Unterm Strich“ gilt auch ohne Geld-Strom, solange der Baustein da ist (E2/E3)', () => {
+    // Ein Haushalt ohne Vermarktung und ohne Lastspitzenkappung: die Regel sagt „Energiefluss“.
+    const ohneStern = layoutResolve({ canonical: CANONICAL_DESKTOP, verfuegbar: ALLE, blocks: blocks('energiefluss') });
+    expect(ohneStern.lead).toBe('energiefluss');
+    // Setzt der Kunde den Stern auf „Unterm Strich“, holt er den Euro als Leitkachel zurück ...
+    const mitStern = layoutResolve({
+      canonical: CANONICAL_DESKTOP,
+      verfuegbar: ALLE,
+      blocks: blocks('energiefluss'),
+      eigen: doc({ lead: 'erloes-komposition' }),
+    });
+    expect(mitStern.lead).toBe('erloes-komposition');
+    // ... aber nur, wo es den Baustein gibt (eine geldfreie Anlage hat ihn nicht).
+    const geldfrei = layoutResolve({
+      canonical: CANONICAL_DESKTOP,
+      verfuegbar: ALLE.filter((id) => id !== 'geld'),
+      blocks: blocks('energiefluss'),
+      eigen: doc({ lead: 'erloes-komposition' }),
+    });
+    expect(geldfrei.lead).toBe('energiefluss');
+  });
+
   it('der Kunde darf den Lead auf einen vorhandenen Block umlegen', () => {
     const r = layoutResolve({
       canonical: CANONICAL_DESKTOP,
