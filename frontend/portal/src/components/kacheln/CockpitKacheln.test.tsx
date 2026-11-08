@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { HistoryTotals, SiteEarnings } from '../../api';
 import FIXTURES from '../../erloeseFixtures.json';
 import { speicherAussage } from '../../speicherAussage';
-import { AutarkieKachel, FahrplanKachel, GeldKachel, NetzKachel, WertKachel } from './CockpitKacheln';
+import { AutarkieKachel, FahrplanKachel, GeldKachel, GeldZeile, HeuteKachel, NetzKachel, WertKachel } from './CockpitKacheln';
 
 /**
  * Die Kacheln unter der Bühne (Konzept „Cockpit als Tagesfilm“): eine Hülle
@@ -98,5 +98,53 @@ describe('Kacheln ohne Daten', () => {
     );
     expect(container.querySelector('.vp-k-gross')?.textContent).toBe('65%');
     expect(container.querySelector('.vp-k-legende')?.textContent).toContain('Netz');
+  });
+});
+
+describe('Führt der Fluss (Konzept vp-cockpit-privat-konzept)', () => {
+  const ABEND = {
+    consumptionKwh: 58.4,
+    pvGenerationKwh: 22,
+    gridImportKwh: 41.5,
+    gridExportKwh: 5.1,
+    autarkiePct: 29,
+    eigenverbrauchPct: 77,
+  } as unknown as HistoryTotals;
+  const text = (el: Element) => (el.textContent ?? '').replace(/[\u00a0\u202f]/g, ' ');
+
+  it('„Heute“: die Autarkie groß, darunter die zwei Balken mit den kWh, aus denen sie entsteht', () => {
+    const { container } = render(<HeuteKachel totals={ABEND} tag={null} now={new Date(2026, 10, 7, 19, 47)} mitSpeicher={false} spalte />);
+    expect(container.querySelector('.vp-k-heute.is-spalte')).not.toBeNull();
+    expect(text(container)).toContain('Heute bis 19:47');
+    expect(container.querySelector('.vp-k-gross.is-xl')?.textContent).toBe('29%');
+    expect(text(container)).toContain('Verbraucht58,4 kWh');
+    expect(text(container)).toContain('Sonne 16,9 kWh');
+    expect(text(container)).toContain('Netz 41,5 kWh');
+    expect(text(container)).toContain('Sonne erzeugt22,0 kWh');
+    expect(text(container)).toContain('ins Netz 5,1 kWh');
+    expect(text(container)).toContain('77 % selbst genutzt');
+    expect(container.querySelectorAll('.vp-k-heute-balken')).toHaveLength(2);
+    // Keine Leitkachel: der Fluss führt, kein Stern.
+    expect(container.querySelector('.vp-k-stern')).toBeNull();
+  });
+
+  it('„Heute“ ohne Tagesverbrauch gibt es nicht (fehlend ist keine Null)', () => {
+    const { container } = render(
+      <HeuteKachel totals={{ ...ABEND, consumptionKwh: null } as unknown as HistoryTotals} tag={null} now={new Date()} mitSpeicher={false} />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('die Geld-Zeile: dieselbe Zahl, in Textfarbe, ohne Stern, mit dem Weg zur Erlöse-Seite', () => {
+    const onOpen = vi.fn();
+    const { container, getByRole } = render(
+      <GeldZeile money={{ label: 'Unterm Strich · Heute', value: '− 5,56 €', kosten: true, speicher: null, attribution: null, laeuft: true }} onOpen={onOpen} />,
+    );
+    expect(text(container)).toContain('Unterm Strich');
+    expect(text(container)).toContain('heute bisher');
+    expect(text(container)).toContain('− 5,56 €');
+    expect(container.querySelector('.is-kosten, .vp-k-stern')).toBeNull();
+    fireEvent.click(getByRole('button', { name: /Erlöse öffnen/ }));
+    expect(onOpen).toHaveBeenCalledOnce();
   });
 });

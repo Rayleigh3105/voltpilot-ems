@@ -23,7 +23,7 @@
       },
       {
         "x": 64.74,
-        "y": 47.23,
+        "y": 52.63,
         "text": "Die Steuerzeile nennt Auftrag, Bestätigung und Wirkung; „Warum?“ öffnet die Gründe."
       }
     ]
@@ -70,8 +70,8 @@
         "text": "Hier erkennen und wechseln Sie die geöffnete Anlage."
       },
       {
-        "x": 41.79,
-        "y": 26.07,
+        "x": 35.64,
+        "y": 23.19,
         "text": "Hilfe & Kontakt öffnet das vollständige Hilfe-Center."
       },
       {
@@ -679,6 +679,30 @@
         "x": 1.77,
         "y": 53.37,
         "text": "Das Tagesbild zeigt bis jetzt Gemessenes, danach Plan und Erwartung."
+      }
+    ]
+  },
+  "cockpit-zuhause": {
+    "title": "Cockpit eines Haushalts: „Heute“ neben dem Energiefluss",
+    "file": "cockpit-zuhause.png",
+    "width": 1192,
+    "height": 1216,
+    "alt": "Cockpit eines Haushalts: „Heute“ neben dem Energiefluss. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 64.74,
+        "y": 23.04,
+        "text": "Wie viel Ihres Stroms heute aus eigener Sonne kam, vom Morgen bis jetzt."
+      },
+      {
+        "x": 64.74,
+        "y": 31.38,
+        "text": "Woher der Verbrauch kam: Sonne, Speicher oder Netz. Darunter, wohin die Sonne ging."
+      },
+      {
+        "x": 4.36,
+        "y": 91.12,
+        "text": "Der Betrag „Unterm Strich“ steht als ruhige Zeile am Ende; ein Tipp öffnet die Erlöse."
       }
     ]
   }

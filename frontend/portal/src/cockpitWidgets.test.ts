@@ -378,6 +378,29 @@ describe('Der Hero', () => {
     expect(hero.money?.value).toBe(`+ 15,40${NBSP}€`);
   });
 
+  it('eine Anlage ohne Speicher hat keine Steuerungs-Zeile, auch wenn der Server „no_battery_data“ meldet (N1)', () => {
+    const tag = money({
+      savedEur: 0.02,
+      savedSpeicherEur: null,
+      savedSteuerungEur: null,
+      steuerungSplitReason: 'no_battery_data',
+      range: 'day',
+      to: '2026-07-23T00:00:00+02:00',
+    } as Partial<EarningsSite>);
+    // Unbekannt (Übersicht noch nicht da) bleibt es beim bisherigen Bild ...
+    const unbekannt = cockpitHero({ totals: TOTALS, money: tag, range: 'day', now: NOW });
+    expect(unbekannt.money?.attribution).toBe('Steuerung —');
+    expect(unbekannt.money?.attributionInterim).toBe(true);
+    // ... ohne Speicher-Rolle steht dort nichts, auch kein „Zwischenstand“.
+    const ohne = cockpitHero({ totals: TOTALS, money: tag, range: 'day', now: NOW, mitSpeicher: false });
+    expect(ohne.money?.attribution).toBeNull();
+    expect(ohne.money?.attributionInterim).toBe(false);
+    expect(ohne.money?.speicher).toBeNull();
+    // Dass der Tag noch läuft, sagt die Zahl trotzdem („heute bisher“).
+    expect(ohne.money?.laeuft).toBe(true);
+    expect(ohne.money?.value).toBe(unbekannt.money?.value);
+  });
+
   it('nennt keine Fahrplan-Zeile ohne Plan', () => {
     expect(cockpitHero({ range: 'month', now: NOW }).planSentence).toBeNull();
   });

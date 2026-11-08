@@ -141,6 +141,13 @@ Die ECharts-Option, also das gezeichnete Bild, ist unverändert; neu sind `nowSl
 Ohne `onSlotClick` (jeder Aufruf außer „Alle Werte" im Fahrplan) bleibt der Behälter ohne neue Attribute.
 Das ist die beauftragte Änderung dieser Fläche, keine gefundene Abweichung; keine HTML-Aufnahme ändert sich.
 
+**Die Spalte steht neben dem Fluss (08.11.2026, Konzept `vp-cockpit-privat-konzept`, Captain-Entscheid E4 = A):**
+`cockpit.html` (Fixture mit Lastspitzenkappung, die Lastspitze führt) verschiebt genau die rechte Spalte.
+Sie ist kein zweites Kartenfeld mehr, das so hoch wurde wie Fluss, Tagesleiste und Geräteliste zusammen, sondern steht in der Bühne neben Kopf, Satz und Leitungsplan (`vp-eb is-zweispaltig` > `vp-eb-reihe` > `vp-eb-links` + `vp-hero-side`); die Karte trägt dafür `vp-stage-norail`.
+Die Lastspitzen-Kachel samt Stern und alle Wörter und Zahlen sind unverändert.
+Das ist die beschlossene Änderung dieser Fläche, keine gefundene Abweichung.
+Neu geschrieben mit `vitest -u` am Produktstand; der Token-Vergleich alt/neu zeigt nur die zwei Hüllen und den Umzug der Spalte (19 400 → 19 493 Bytes).
+
 Aus `frontend/portal` gezielt ausführen (auch nach einem Rebase):
 
 ```bash

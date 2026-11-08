@@ -62,6 +62,102 @@ export function autarkieKachel(totals: HistoryTotals | null | undefined, tag: Ta
   return { pct, teile };
 }
 
+/* ------------------------------------------------------------------- Heute */
+
+/** Ein Teil eines Balkens im Block „Heute“ (kWh seit 0 Uhr). */
+export interface HeuteTeil {
+  key: 'pv' | 'batt' | 'grid' | 'load' | 'plan';
+  label: string;
+  kwh: number;
+}
+
+export interface HeuteKachelView {
+  /** Die Autarkie des Tages in Prozent (die des Servers, wie im Verlauf); null = unbekannt. */
+  autarkiePct: number | null;
+  /** Der Eigenverbrauch des Tages in Prozent; null ohne Erzeugung. */
+  eigenverbrauchPct: number | null;
+  verbrauchtKwh: number;
+  /** Woher der Verbrauch kam: Sonne, Speicher, Netz (bilanziell, Sonne zuerst). */
+  herkunft: HeuteTeil[];
+  /** PV seit 0 Uhr; null ohne Messung (dann kein zweiter Balken). */
+  erzeugtKwh: number | null;
+  /** Wohin die Sonne ging: ins Haus, in den Speicher, ins Netz - und mittags der noch erwartete Rest (Plan). */
+  sonne: HeuteTeil[];
+}
+
+/** Unter dieser Menge ist ein Rest „nichts mehr“ (eine Viertelstunde Grundlicht). */
+const HEUTE_REST_KWH = 0.2;
+
+/**
+ * **Heute** (Konzept `vp-cockpit-privat-konzept`, E1 = A): der Tag in zwei Balken - woher der Strom kam
+ * und wohin die Sonne ging. Er steht neben dem Fluss, wenn der Fluss führt, und trägt die Kennzahlen der
+ * Kacheln Autarkie, Eigenverbrauch und „PV heute“; die Prozentzahlen sind die des Servers, die Balken
+ * zeigen dieselben kWh, aus denen sie entstehen.
+ *
+ * Die Herkunft kommt aus den Viertelstunden (`energieBis`, Sonne zuerst ins Haus, dann in den Speicher,
+ * dann ins Netz). Ohne Speicher-Messung gibt es dort keine Herkunft; dann ergeben die Tagessummen
+ * dieselbe Aufteilung: was nicht bezogen wurde, kam von der Sonne. Mit Speicher, aber ohne vollständige
+ * Viertelstunden, wird nichts erfunden: der eigene Teil heißt dann „selbst“, wie in der Autarkie-Kachel.
+ */
+export function heuteKachel(
+  totals: HistoryTotals | null | undefined,
+  tag: Tag | null,
+  mitSpeicher: boolean,
+): HeuteKachelView | null {
+  const verbraucht = n(totals?.consumptionKwh);
+  if (verbraucht == null) return null;
+  const bezug = n(totals?.gridImportKwh);
+  const einspeisung = n(totals?.gridExportKwh);
+  const erzeugt = n(totals?.pvGenerationKwh);
+  const h = tag ? energieBis(tag, tag.jetzt).herkunft : null;
+  const hatHerkunft = h != null && Object.values(h).some((x) => x > 0);
+  let herkunft: HeuteTeil[];
+  let sonne: HeuteTeil[];
+  if (hatHerkunft && h) {
+    herkunft = [
+      { key: 'pv', label: 'Sonne', kwh: h['pv>load'] },
+      { key: 'batt', label: 'Speicher', kwh: h['batt>load'] },
+      { key: 'grid', label: 'Netz', kwh: h['grid>load'] },
+    ];
+    sonne = [
+      { key: 'load', label: 'im Haus', kwh: h['pv>load'] },
+      { key: 'batt', label: 'in den Speicher', kwh: h['pv>batt'] },
+      { key: 'grid', label: 'ins Netz', kwh: h['pv>grid'] },
+    ];
+  } else {
+    if (bezug == null) return null;
+    const selbst = Math.max(0, verbraucht - bezug);
+    herkunft = [
+      { key: 'pv', label: mitSpeicher ? 'selbst' : 'Sonne', kwh: selbst },
+      { key: 'grid', label: 'Netz', kwh: bezug },
+    ];
+    sonne =
+      erzeugt != null && einspeisung != null
+        ? [
+            { key: 'load', label: mitSpeicher ? 'selbst genutzt' : 'im Haus', kwh: Math.max(0, erzeugt - einspeisung) },
+            { key: 'grid', label: 'ins Netz', kwh: einspeisung },
+          ]
+        : [];
+  }
+  // Was die Sonne heute laut Plan noch bringt: der schraffierte Rest des zweiten Balkens.
+  let rest = 0;
+  if (tag) {
+    for (let i = tag.jetzt + 1; i < tag.viertel.length; i++) {
+      const p = tag.viertel[i].plan?.pv;
+      if (p != null && p > 0) rest += (p * VIERTEL_MS) / 3_600_000;
+    }
+  }
+  if (erzeugt != null && rest >= HEUTE_REST_KWH) sonne = [...sonne, { key: 'plan', label: 'noch erwartet', kwh: rest }];
+  return {
+    autarkiePct: n(totals?.autarkiePct),
+    eigenverbrauchPct: erzeugt != null && erzeugt > 0 ? n(totals?.eigenverbrauchPct) : null,
+    verbrauchtKwh: verbraucht,
+    herkunft: herkunft.filter((t) => t.kwh > 0.05),
+    erzeugtKwh: erzeugt != null && erzeugt > 0.05 ? erzeugt : null,
+    sonne: erzeugt != null && erzeugt > 0.05 ? sonne.filter((t) => t.kwh > 0.05) : [],
+  };
+}
+
 /**
  * **Eigenverbrauch heute**: der Anteil der Erzeugung, der nicht ins Netz ging
  * (`1 − Einspeisung / Erzeugung`, wie im Verlauf). Der eigene Teil verteilt
@@ -283,7 +379,7 @@ export interface SonneKachelView {
   bogen: number | null;
   /** PV heute gemessen (kWh). */
   heuteKwh: number | null;
-  /** Gemessen bis jetzt + Plan danach (kWh); null ohne Plan. */
+  /** Gemessen bis jetzt + Plan danach (kWh); null ohne Plan oder wenn heute keine Sonne mehr kommt. */
   erwartetKwh: number | null;
 }
 
@@ -321,7 +417,8 @@ export function sonneKachel(points: WeatherPoint[] | null, now: Date, totals: Hi
       const p = tag.viertel[i].plan?.pv;
       if (p != null) { rest += (p * VIERTEL_MS) / 3_600_000; plan = true; }
     }
-    if (plan) erwartetKwh = heuteKwh + rest;
+    // Nach Sonnenuntergang ist „erwartet“ gleich „gemessen“ - eine Zeile ohne Aussage (Nebenbefund N4).
+    if (plan && rest >= HEUTE_REST_KWH) erwartetKwh = heuteKwh + rest;
   }
   if (ghi == null && heuteKwh == null) return null;
   return { ghi, bogen, heuteKwh, erwartetKwh };

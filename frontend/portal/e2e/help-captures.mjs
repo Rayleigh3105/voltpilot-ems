@@ -10,6 +10,12 @@ export const captures = [
     point('.vp-tl', 'Ein Tipp auf die Tagesleiste zeigt eine andere Viertelstunde, ‹ › gehen je 15 Minuten weiter.'),
     point('.vp-steuer', 'Die Steuerzeile nennt Auftrag, Bestätigung und Wirkung; „Warum?“ öffnet die Gründe.'),
   ] },
+  // Ein Haushalt, bei dem der Fluss führt (Konzept vp-cockpit-privat-konzept): eigene Bühne, eigene Uhr.
+  { id: 'cockpit-zuhause', title: 'Cockpit eines Haushalts: „Heute“ neben dem Energiefluss', seite: 'cockpit-privat', uhr: '2026-11-07T18:47:00Z', query: 'lage=abend', hash: '#/anlage/muehlbach', root: 'main', maxHeight: 1216, points: [
+    point('.vp-k-heute-held', 'Wie viel Ihres Stroms heute aus eigener Sonne kam, vom Morgen bis jetzt.'),
+    point('.vp-k-heute-reihe', 'Woher der Verbrauch kam: Sonne, Speicher oder Netz. Darunter, wohin die Sonne ging.'),
+    point('.vp-k-geldzeile', 'Der Betrag „Unterm Strich“ steht als ruhige Zeile am Ende; ein Tipp öffnet die Erlöse.'),
+  ] },
   { id: 'orientierung', title: 'Navigation auf dem Rechner', hash: plant(), viewportOnly: true, points: [
     point('.vp-anlagenav', 'Die Bereiche führen zu den täglichen Aufgaben dieser Anlage.'),
     point('[data-testid="seitenleiste-hoch"]', 'Der Eintrag mit „‹“ ganz oben führt eine Ebene höher.'),

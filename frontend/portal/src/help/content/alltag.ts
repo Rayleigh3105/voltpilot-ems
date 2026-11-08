@@ -22,14 +22,15 @@ export const everydayArticles: HelpArticle[] = [
   {
     id: 'cockpit', category: 'alltag', title: 'Das Cockpit lesen',
     summary: 'Zustand, Energieflüsse und aktuelle Messwerte Ihrer Anlage auf einen Blick.',
-    keywords: ['Dashboard', 'Übersicht', 'Live', 'Energiefluss', 'Status', 'Warnung', 'Anpassen'],
+    keywords: ['Dashboard', 'Übersicht', 'Live', 'Energiefluss', 'Status', 'Warnung', 'Anpassen', 'Heute', 'Autarkie', 'Leitkachel', 'Stern'],
     sections: [
       { id: 'blick', title: 'Zuerst Zustand und Datenstand prüfen', paragraphs: [
         "Prüfen Sie zuerst Zustand und Datenstand. Die Bausteine folgen Ihrer Ausstattung; unter Anpassen können Sie die angebotenen Bausteine ordnen oder ausblenden. Alte Messwerte beschreiben einen früheren Zustand.",
       ], figure: 'cockpit' },
       { id: 'lesen', title: 'Von den Flüssen zu den Einzelwerten', paragraphs: [
         "Lesen Sie Erzeugung, Verbrauch, Netz und Speicher zusammen. Pfeile zeigen die Richtung, Einheiten unterscheiden Leistung und Ladestand. Komponenten und kompakter Verlauf helfen, die Anlagenzahl einzuordnen.",
-      ] },
+        "Neben dem Energiefluss steht, was bei Ihrer Anlage zählt: mit Leistungspreis die Lastspitze, mit Vermarktung der Börsenpreis. Sonst steht dort „Heute“: wie viel Ihres Stroms heute aus eigener Sonne kam, woher der Verbrauch kam und wohin die Sonne ging. Der Betrag „Unterm Strich“ folgt dann als ruhige Zeile am Ende; wer ihn oben sehen möchte, setzt unter „Cockpit anpassen“ den Stern auf „Unterm Strich“.",
+      ], figure: 'cockpit-zuhause' },
       { id: 'weiter', title: 'Was tun bei einem Hinweis?', paragraphs: [
         "Öffnen Sie einen Hinweis für seine Ursache. Geplante Aktionen stehen im Fahrplan, vergangene Messungen unter Verlauf → Energie und Geräteverbindungen unter Anlage. Prüfen Sie bei fehlenden Zahlen zuerst Quelle und Datenstand.",
       ] },
