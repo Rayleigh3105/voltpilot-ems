@@ -53,11 +53,13 @@ class RechtRoutenArchitekturTest {
                         + "docs/contracts/fernwartung-rueckmeldung-v1.md).");
         String werkstattDienst = "SecurityConfig bindet /api/v1/werkstatt-dienst/** an hasRole('werkstatt-dienst') - "
                 + "das Dienstkonto des Werkstatt-Dienstes, kein Kundenkonto, kein Kundenbereich (Boxen vor dem "
-                + "Versand, ungekoppelt); Kunden-, Admin- und andere Dienst-Token bekommen 403 (WerkstattEinloesenApiTest).";
+                + "Versand, ungekoppelt); Kunden-, Admin- und andere Dienst-Token bekommen 403 (WerkstattEinloesenApiTest, "
+                + "für den Gehäuse-Upload WerkstattApiTest#boxDruckdateiHochUndHerunterladen).";
         m.put("WerkstattDienstController#code", werkstattDienst);
         m.put("WerkstattDienstController#fensterSchliessen", werkstattDienst);
         m.put("WerkstattDienstController#abnahme", werkstattDienst);
         m.put("WerkstattDienstController#ansicht", werkstattDienst);
+        m.put("WerkstattDienstController#gehaeuseHochladen", werkstattDienst);
         m.put("WerkstattEinloesenController#einloesen",
                 "öffentlich (SecurityConfig permitAll, exakter Pfad) wie die Zertifikatsanfrage: die frisch "
                         + "eingerichtete Box hat kein Konto; Nachweis sind Einmal-Code und Signatur mit dem "

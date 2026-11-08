@@ -12,6 +12,7 @@ Hintergrund und Laborbefunde: `firstmate/data/vp-tenant-attribut-diagnose/report
 | `tenant_attribut.py` | Auswertung (nur Python-Standardbibliothek), spricht selbst mit niemandem |
 | `db-wahrheit.sql` | DB-Teil des Sweep, rein lesend, Muster `tools/betriebsabfragen` |
 | `keycloak-dump-zeitlinie.sql` | Zeitlinie aus der Keycloak-DB (Tages-Dumps oder laufend), rein lesend |
+| `test_tenant_attribut.py` | Die Tore der Reparatur gegen Fixtures: `python3 -m unittest discover -s tools/keycloak-tenant-attribut -p 'test_*.py'` |
 
 ## Schnellweg für den Betreiber
 

@@ -65,6 +65,9 @@ class LaeuferBeendetArchitekturTest {
                     + " Kundenbereich gleich — keine neue Zeile"),
             entry("GeraetesucheAufraeumen", "Aufbewahrung: löscht Suchen und Funde nach 30 Tagen (SQL-Funktion), für jeden"
                     + " Kundenbereich gleich — keine neue Zeile; das Protokoll bleibt"),
+            entry("CertificateNotAfterBackfillRunner", "Rückfüllung: liest not_after aus dem schon gespeicherten"
+                    + " Zertifikat derselben Zeile (device_enrollment, global ohne Kundenbereich) — keine neue Zeile,"
+                    + " spricht keine Box an"),
             entry("OcppActionService", "schließt abgelaufene OCPP-Aufträge ab und räumt nach Frist (SQL-Funktion);"
                     + " spricht keine Box an"),
             entry("ControlCertificationService", "Schutz: das Freigaberegister geht an jede Box — eine Verkleinerung"

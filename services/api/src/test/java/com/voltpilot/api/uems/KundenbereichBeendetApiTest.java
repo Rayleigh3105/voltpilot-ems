@@ -90,6 +90,13 @@ class KundenbereichBeendetApiTest {
         m.put("POST /api/v1/admin/tenants", "legt einen neuen Kundenbereich an");
         m.put("POST /api/v1/admin/provisioned-devices", "vorregistrierte Box, noch in keinem Kundenbereich");
         m.put("DELETE /api/v1/admin/provisioned-devices/{externalRef}", "vorregistrierte Box, noch in keinem Kundenbereich");
+        m.put("DELETE /api/v1/admin/enrollments/pending/{externalRef}",
+                "tote Anmeldung einer Box, die kein Kunde gekoppelt hat (AdminEnrollmentRepository#delete prüft das"
+                        + " beim Löschen), noch in keinem Kundenbereich");
+        // Adminview S7: die Liste „Braucht dich" der Plattform (`plattform_braucht_dich_erledigt`, V20261106170000)
+        // trägt keinen Mandanten.
+        m.put("POST /api/v1/admin/plattform/braucht-dich/erledigen", "Merkliste der Plattform, kein Kundenbereich");
+        m.put("DELETE /api/v1/admin/plattform/braucht-dich/{schluessel}", "Merkliste der Plattform, kein Kundenbereich");
         m.put("POST /api/v1/admin/forecast-models", "Plattform-Modell");
         m.put("POST /api/v1/admin/simulation", "Plattform-Simulation ohne Kundendaten");
         m.put("POST /api/v1/admin/edge-releases", "Box-Software der Plattform");

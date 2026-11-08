@@ -114,7 +114,7 @@ public class SiteSupplyPriceController {
     }
 
     /** A component value: null clears it; otherwise a non-negative ct/kWh amount. */
-    private static BigDecimal componentValue(String field, Object raw) {
+    static BigDecimal componentValue(String field, Object raw) {
         if (raw == null) {
             return null;
         }
@@ -126,7 +126,7 @@ public class SiteSupplyPriceController {
         return v;
     }
 
-    private static BigDecimal ustValue(Object raw) {
+    static BigDecimal ustValue(Object raw) {
         BigDecimal v = number(raw, "ustPct");
         if (v.signum() < 0 || v.compareTo(new BigDecimal("100")) > 0) {
             throw badRequest("Der USt-Satz muss zwischen 0 und 100 % liegen.");
@@ -134,7 +134,7 @@ public class SiteSupplyPriceController {
         return v;
     }
 
-    private static LocalDate dateValue(Object raw) {
+    static LocalDate dateValue(Object raw) {
         if (raw == null) {
             return null;
         }

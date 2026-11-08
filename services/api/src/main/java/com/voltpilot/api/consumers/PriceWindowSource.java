@@ -59,7 +59,8 @@ public class PriceWindowSource implements ConsumerPolicyCompiler.WindowSource {
         Instant openFrom = null;
         Instant openTo = null;
         for (PricePointDto p : points) {
-            if (p.end().isBefore(from) || !p.ts().isBefore(to)) {
+            // Halboffen [ts, end): ein Slot, der genau bei from endet, liegt schon davor.
+            if (!p.end().isAfter(from) || !p.ts().isBefore(to)) {
                 continue;
             }
             Double ct = ctFor(signal, economics, p.priceEurMwh().doubleValue());

@@ -563,6 +563,18 @@ class WerkstattApiTest {
         assertThat(putGehaeuse(dienst, ref("wrkgeh"), "gehaeuse-x.3mf", sha1, erster).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
 
+        // Hochladen darf nur das Dienstkonto: die Datei bietet die Werkstatt-Box-Seite dem Admin zum Druck an.
+        byte[] fremd = ("PK\u0003\u0004 fremd").getBytes();
+        String shaFremd = sha256(fremd);
+        for (String t : List.of(token("demo", "demo"), admin,
+                serviceToken("voltpilot-tunnel-dienst", "voltpilot-tunnel-dienst-dev-secret"))) {
+            assertThat(putGehaeuse(t, BOX, "gehaeuse-" + BOX + ".3mf", shaFremd, fremd).getStatusCode())
+                    .isEqualTo(HttpStatus.FORBIDDEN);
+        }
+        assertThat(putGehaeuse(null, BOX, "gehaeuse-" + BOX + ".3mf", shaFremd, fremd).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(getJson(BASE + "/boxen/" + BOX, admin).get("gehaeuse").get("sha256").asText()).isEqualTo(sha1);
+
         // Nachdruck: überschreibt mit dem neueren Stand, 200 statt 201.
         byte[] zweiter = ("PK\u0003\u0004 " + "gehaeuse-" + BOX + " v2").getBytes();
         String sha2 = sha256(zweiter);
