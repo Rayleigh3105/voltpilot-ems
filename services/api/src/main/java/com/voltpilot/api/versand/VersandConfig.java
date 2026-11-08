@@ -4,6 +4,7 @@ import com.voltpilot.api.versand.telegram.TelegramAdapter;
 import com.voltpilot.api.versand.telegram.TelegramBotAdapter;
 import com.voltpilot.api.versand.webhook.WebhookVersandAdapter;
 import com.voltpilot.api.versand.webpush.WebPushAdapter;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.Properties;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +27,15 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 @Configuration
 public class VersandConfig {
 
+    /**
+     * Obergrenze für den Verbindungsaufbau, jede Antwort des SMTP-Servers und jedes Schreiben. Ohne sie wartet
+     * Jakarta Mail unbegrenzt: ein Server, der die Verbindung annimmt und dann schweigt, hielte den
+     * {@link ZustellLaeufer} fest - und mit ihm jeden {@code @Scheduled}-Job der api, denn Springs Scheduler hat
+     * hier genau einen Thread. Großzügig genug für einen Server, der am Ende von DATA langsam prüft: ein Abbruch
+     * nach einer schon angenommenen Mail führte über die Wiederholung des {@link Zusteller} zu einer doppelten.
+     */
+    static final Duration SMTP_ZEITGRENZE = Duration.ofSeconds(30);
+
     @Bean
     JavaMailSender javaMailSender(
             @Value("${spring.mail.host:}") String host,
@@ -34,6 +44,12 @@ public class VersandConfig {
             @Value("${spring.mail.password:}") String password,
             @Value("${spring.mail.properties.mail.smtp.auth:true}") boolean auth,
             @Value("${spring.mail.properties.mail.smtp.starttls.enable:true}") boolean starttls) {
+        return mailSender(host, port, username, password, auth, starttls, SMTP_ZEITGRENZE);
+    }
+
+    /** Der SMTP-Adapter mit wählbarer Zeitgrenze - der Test prüft sie gegen einen schweigenden Fänger. */
+    static JavaMailSenderImpl mailSender(String host, int port, String username, String password,
+            boolean auth, boolean starttls, Duration zeitgrenze) {
         JavaMailSenderImpl sender = new JavaMailSenderImpl();
         sender.setHost(host);
         sender.setPort(port);
@@ -42,6 +58,10 @@ public class VersandConfig {
         Properties eigenschaften = sender.getJavaMailProperties();
         eigenschaften.put("mail.smtp.auth", String.valueOf(auth));
         eigenschaften.put("mail.smtp.starttls.enable", String.valueOf(starttls));
+        String millis = String.valueOf(zeitgrenze.toMillis());
+        eigenschaften.put("mail.smtp.connectiontimeout", millis);
+        eigenschaften.put("mail.smtp.timeout", millis);
+        eigenschaften.put("mail.smtp.writetimeout", millis);
         return sender;
     }
 
