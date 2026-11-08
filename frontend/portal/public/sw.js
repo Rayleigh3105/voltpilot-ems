@@ -37,7 +37,7 @@
  * Benachrichtigung oeffnet das Meldungs-Center in einem vorhandenen Tab,
  * sonst einen neuen.
  */
-const SW_VERSION = 'v3';
+const SW_VERSION = 'v4';
 const CACHE = `vp-shell-${SW_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 

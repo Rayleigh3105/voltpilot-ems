@@ -3374,3 +3374,58 @@ test("Rollen: die Rollen-Liste deckt das Vokabular der Go-Topologie ab", () => {
     assert.ok(R.ROLE_NODE_LABEL[wort], "Rolle " + wort + " hat kein Kunden-Wort");
   }
 });
+
+/* =================== Das Zeichen der Marke im Kopf ===================
+   Der Kopf beider Seiten (Startseite, Einrichten) zeigt das echte Zeichen
+   der Marke - Punkt über dem schräg stehenden Blitz, das „i" der Wortmarke -
+   mit denselben Zahlen wie `VP_MARK` im Portal
+   (frontend/portal/src/components/VpLoader.tsx), nicht mehr den generischen
+   Blitz. Das Kästchen ist weiß, das Zeichen steht in seinen eigenen Farben.
+   ==================================================================== */
+
+const VP_MARK_DOT = '<circle cx="36.87" cy="19.64" r="3.22" fill="#000000"/>';
+const VP_MARK_BOLT =
+  '<path d="M33.9 24.29 L40.03 24.29 L34.76 32.17 L39.9 32.17 L25.98 47.36 L31.89 35.7 L27.95 35.7 Z" fill="#95B9FF"/>';
+
+test("brand-mark: beide Köpfe tragen das echte Zeichen, nicht mehr den generischen Blitz", () => {
+  for (const datei of ["index.html", "einrichten.html"]) {
+    const html = fs.readFileSync(path.join(STATIC, datei), "utf8");
+    const m = /<span class="brand-mark"[^>]*>\s*(<svg[\s\S]*?<\/svg>)/.exec(html);
+    assert.ok(m, datei + ": kein .brand-mark mit SVG");
+    const svg = m[1];
+    assert.ok(svg.includes(VP_MARK_DOT), datei + ": Punkt der Marke fehlt");
+    assert.ok(svg.includes(VP_MARK_BOLT), datei + ": Blitz der Marke fehlt");
+    assert.ok(!/currentColor/.test(svg), datei + ": Zeichen hängt an currentColor");
+    assert.ok(!html.includes("M13 2 4.5 13.5"), datei + ": der alte Blitz steht noch da");
+  }
+});
+
+test("brand-mark: Kästchen weiß, kein blauer Grund unter dem hellblauen Blitz", () => {
+  const css = fs.readFileSync(path.join(STATIC, "shell.css"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, " ");
+  const regel = /\.brand-mark\s*\{([^}]*)\}/.exec(css);
+  assert.ok(regel, "shell.css: keine .brand-mark-Regel");
+  assert.match(regel[1], /background:\s*#fff\s*;/);
+  assert.ok(!/gradient|--vp-primary/.test(regel[1]), "blauer Grund unter dem Zeichen");
+  for (const datei of ["shell.css", "dashboard.css"]) {
+    const c = fs.readFileSync(path.join(STATIC, datei), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
+    for (const r of c.matchAll(/\.brand-mark\s*\{([^}]*)\}/g)) {
+      assert.ok(!/background/.test(r[1]) || r[1] === regel[1], datei + ": zweiter Grund für .brand-mark");
+    }
+  }
+});
+
+test("brand-mark: dieselben Zahlen wie VP_MARK im Portal (wenn das Portal daneben liegt)", (t) => {
+  const quelle = path.join(__dirname, "..", "..", "..", "..", "..", "frontend", "portal",
+    "src", "components", "VpLoader.tsx");
+  if (!fs.existsSync(quelle)) {
+    t.skip("Portal-Quelle nicht im Baum (Einzelbau des Core)");
+    return;
+  }
+  const tsx = fs.readFileSync(quelle, "utf8");
+  assert.match(tsx, /dot: \{ cx: 36\.87, cy: 19\.64, r: 3\.22, fill: '#000000' \}/);
+  const d = /d: 'M33\.9 24\.29 L40\.03[^']*'/.exec(tsx);
+  assert.ok(d, "VP_MARK.bolt.d nicht gefunden");
+  assert.ok(VP_MARK_BOLT.includes(d[0].slice(4, -1)), "Blitz weicht von VP_MARK ab");
+  assert.match(tsx, /fill: '#95B9FF'/);
+});
