@@ -20,6 +20,10 @@ flowchart LR
 
 Quellen: [Workflow](../.forgejo/workflows/deploy.yaml), [Fast-Workflow](../.forgejo/workflows/deploy-fast.yaml), [Tag-Bump-Werkzeug](../tools/deploy/gitops-image-bump.sh).
 
+## Nächtlicher Testlauf
+
+Unabhängig vom releasegebundenen Testjob in **Build & Deploy** läuft nachts automatisch **Nightly test gate** (`.forgejo/workflows/nightly-tests.yaml`) gegen `main`: dieselben Testsuiten (api/ingest/timescale-writer per Maven, die Python-Dienste per Pytest, Portal-Typecheck/Vitest/Build), aber ohne Image-Build, Push oder gitops-Tag-Bump - reine Meldung, keine Secrets nötig. Ein roter Lauf ist im Actions-Tab des Repos sichtbar (Commit-Status); ein zusätzlicher Push-Kanal existiert noch nicht.
+
 ## CI-Zugangsdaten
 
 | Secret | Zweck |
