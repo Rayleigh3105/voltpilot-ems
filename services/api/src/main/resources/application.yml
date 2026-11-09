@@ -319,6 +319,12 @@ voltpilot:
     bot-token: ${VOLTPILOT_TELEGRAM_BOT_TOKEN:}
     bot-username: ${VOLTPILOT_TELEGRAM_BOT_USERNAME:}
     webhook-secret: ${VOLTPILOT_TELEGRAM_WEBHOOK_SECRET:}
+  # Wartung Befund 6 (vp-wartung-perf-p1): der gemeinsame Erstverbindungs-Takt aller
+  # MQTT-Zuhörer/-Sender über BrokerVerbindung - fehlt der Broker beim api-Start,
+  # versucht sicherstellen() auf diesem Takt weiter, statt es (wie vor diesem Fix)
+  # bei genau einem gescheiterten Erstversuch zu belassen.
+  mqtt:
+    erstverbindung-takt-ms: ${VOLTPILOT_MQTT_ERSTVERBINDUNG_TAKT_MS:5000}
   ocpp:
     mqtt-listener-enabled: ${VOLTPILOT_OCPP_MQTT_LISTENER_ENABLED:false}
     # Stable per API deployment: clean-session=false lets EMQX queue QoS1

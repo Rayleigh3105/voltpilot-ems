@@ -2,14 +2,12 @@ package com.voltpilot.api.consumers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import jakarta.annotation.PreDestroy;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,8 +43,7 @@ public class ConsumerOverridePublisher {
     private final String username;
     private final String password;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Object lock = new Object();
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public ConsumerOverridePublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -55,6 +52,8 @@ public class ConsumerOverridePublisher {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
+        this.verbindung = new BrokerVerbindung(log, "consumer override", brokerUrl,
+                "voltpilot-api-override-" + UUID.randomUUID(), true, username, password, null, null);
     }
 
     private static String topic(UUID tenantId, UUID siteId, UUID deviceId) {
@@ -121,10 +120,9 @@ public class ConsumerOverridePublisher {
     private boolean publish(UUID tenantId, UUID siteId, UUID deviceId, String payload,
             UUID entityId) {
         try {
-            synchronized (lock) {
-                connected().publish(topic(tenantId, siteId, deviceId),
-                        payload.getBytes(StandardCharsets.UTF_8), 1, false);
-            }
+            verbindung.verbundenerClient()
+                    .publish(topic(tenantId, siteId, deviceId), payload.getBytes(StandardCharsets.UTF_8), 1, false)
+                    .waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             return true;
         } catch (Exception e) {
             log.warn("Could not publish consumer override for entity {} (device {}): {}", entityId,
@@ -133,43 +131,8 @@ public class ConsumerOverridePublisher {
         }
     }
 
-    private MqttClient connected() throws Exception {
-        if (client != null && client.isConnected()) {
-            return client;
-        }
-        if (client == null) {
-            client = new MqttClient(brokerUrl, "voltpilot-api-override-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-        }
-        if (!client.isConnected()) {
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-        return client;
-    }
-
     @PreDestroy
     public void close() {
-        synchronized (lock) {
-            if (client == null) {
-                return;
-            }
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-                client.close(true);
-            } catch (Exception e) {
-                log.debug("override publisher close failed: {}", e.getMessage());
-            }
-            client = null;
-        }
+        verbindung.schliessen();
     }
 }

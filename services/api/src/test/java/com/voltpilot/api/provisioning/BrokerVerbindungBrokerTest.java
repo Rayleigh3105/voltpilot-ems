@@ -7,6 +7,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.chargers.ChargerStatusListener;
 import com.voltpilot.api.measurement.MeasurementConfigPublisher;
 import com.voltpilot.api.measurement.MeasurementConfigStatusListener;
 import com.voltpilot.api.uems.ErwarteteKadenz;
@@ -241,6 +242,61 @@ class BrokerVerbindungBrokerTest {
                 assertThat(w.kanarie().groessteLueckeMs()).as("(c) der zweite getaktete Job lief weiter")
                         .isLessThan(2_000);
             }
+        }
+    }
+
+    /**
+     * Befund 6 (vp-wartung-perf-p1): vor der Migration auf {@link BrokerVerbindung} verband
+     * {@code ChargerStatusListener} (Vertreter der 15 betroffenen Zuhörer) sich nach einem
+     * gescheiterten Erstversuch nie wieder - dieselbe Störung wie oben, hier stellvertretend
+     * für einen Zuhörer MIT eigenem Herzschlag-Topic ({@code .../status}, nicht {@code .../v2/...}).
+     */
+    @Test
+    @Timeout(60)
+    void chargerStatusListenerVerbindetErstNachdemDerBrokerErreichbarWird() throws Exception {
+        try (StoerProxy proxy = new StoerProxy(); Box box = box()) {
+            proxy.haengen(true);
+            Charger charger = new Charger(proxy.url());
+            charger.start();
+            Thread.sleep(300);
+            String waehrendAusfall = "charger-waehrend-" + UUID.randomUUID();
+            box.publish(statusTopic(DEVICE), waehrendAusfall.getBytes(UTF_8), false);
+            Thread.sleep(500);
+            assertThat(charger.zaehler.hat(waehrendAusfall))
+                    .as("während des Ausfalls kommt keine Nachricht an").isFalse();
+
+            proxy.haengen(false);
+            String marke = "charger-" + UUID.randomUUID();
+            long bis = System.nanoTime() + Duration.ofSeconds(BrokerVerbindung.ZEITGRENZE_MS / 1000 + 30).toNanos();
+            while (!charger.zaehler.hat(marke)) {
+                if (System.nanoTime() >= bis) {
+                    assertThat(charger.zaehler.hat(marke))
+                            .as("Charger-Status-Listener empfängt nach der Heilung").isTrue();
+                    break;
+                }
+                box.publish(statusTopic(DEVICE), marke.getBytes(UTF_8), false);
+                charger.ensureConnected(); // simuliert den nächsten @Scheduled-Takt
+                Thread.sleep(500);
+            }
+            charger.close();
+        }
+    }
+
+    private static String statusTopic(UUID device) {
+        return "ems/" + TENANT + "/" + SITE + "/" + device + "/status";
+    }
+
+    /** Stellvertreter der 15 migrierten Zuhörer mit eigenem {@code .../status}-Topic. */
+    static final class Charger extends ChargerStatusListener {
+        final Zaehler zaehler = new Zaehler();
+
+        Charger(String url) {
+            super(url, "", "", null, null, null, null, null);
+        }
+
+        @Override
+        public void handle(String topic, byte[] payload) {
+            zaehler.zaehlen(payload);
         }
     }
 

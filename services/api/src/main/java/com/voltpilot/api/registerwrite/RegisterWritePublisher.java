@@ -1,14 +1,12 @@
 package com.voltpilot.api.registerwrite;
 
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -59,7 +57,7 @@ public class RegisterWritePublisher {
     private final String username;
     private final String password;
 
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public RegisterWritePublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -68,6 +66,8 @@ public class RegisterWritePublisher {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
+        this.verbindung = new BrokerVerbindung(log, "register write", brokerUrl,
+                "voltpilot-api-register-write-" + UUID.randomUUID(), true, username, password, null, null);
     }
 
     /** Das Auftrags-Topic eines Geräts - im {@code v2/#}-Teilbaum, den die per-Gerät-ACL längst deckt (D-2). */
@@ -103,7 +103,8 @@ public class RegisterWritePublisher {
                 envelope(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy, order));
         message.setQos(1);
         message.setRetained(false);
-        connected().publish(requestTopic(tenantId, siteId, deviceId), message);
+        verbindung.verbundenerClient().publish(requestTopic(tenantId, siteId, deviceId), message)
+                .waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
         // ⚠ Die LAN-Adresse des Kunden wird bewusst NICHT protokolliert (die
         // Probe-Regel): sie ist Netz-Topologie und erscheint auf diesem Pfad in
         // keiner anderen Zeile. Register und Modus schon - sie sind die
@@ -169,39 +170,8 @@ public class RegisterWritePublisher {
         return new String(JsonStringEncoder.getInstance().quoteAsString(s));
     }
 
-    private MqttClient connected() throws Exception {
-        if (client != null && client.isConnected()) {
-            return client;
-        }
-        if (client == null) {
-            client = new MqttClient(brokerUrl,
-                    "voltpilot-api-register-write-" + UUID.randomUUID(), new MemoryPersistence());
-        }
-        if (!client.isConnected()) {
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-        return client;
-    }
-
     @PreDestroy
     void close() {
-        if (client != null) {
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-                client.close();
-            } catch (Exception e) {
-                log.debug("closing register-write publisher: {}", e.getMessage());
-            }
-        }
+        verbindung.schliessen();
     }
 }

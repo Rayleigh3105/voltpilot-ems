@@ -1,15 +1,13 @@
 package com.voltpilot.api.ota;
 
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,7 +47,7 @@ public class OtaTargetPublisher {
     private final String username;
     private final String password;
 
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public OtaTargetPublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -58,6 +56,8 @@ public class OtaTargetPublisher {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
+        this.verbindung = new BrokerVerbindung(log, "OTA target", brokerUrl,
+                "voltpilot-api-otatarget-" + UUID.randomUUID(), true, username, password, null, null);
     }
 
     /**
@@ -79,7 +79,7 @@ public class OtaTargetPublisher {
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
             message.setRetained(true);
-            connected().publish(topic, message);
+            verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             log.info("published OTA target {} (seq {}) retained to {}", release, releaseSeq, topic);
             return true;
         } catch (Exception e) {
@@ -104,7 +104,7 @@ public class OtaTargetPublisher {
             MqttMessage empty = new MqttMessage(new byte[0]);
             empty.setQos(1);
             empty.setRetained(true);
-            connected().publish(topic, empty);
+            verbindung.verbundenerClient().publish(topic, empty).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             log.info("cleared retained OTA target on {}", topic);
             return true;
         } catch (Exception e) {
@@ -151,39 +151,8 @@ public class OtaTargetPublisher {
         return new String(JsonStringEncoder.getInstance().quoteAsString(s));
     }
 
-    private MqttClient connected() throws Exception {
-        if (client != null && client.isConnected()) {
-            return client;
-        }
-        if (client == null) {
-            client = new MqttClient(brokerUrl, "voltpilot-api-otatarget-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-        }
-        if (!client.isConnected()) {
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-        return client;
-    }
-
     @PreDestroy
     void close() {
-        if (client != null) {
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-                client.close();
-            } catch (Exception e) {
-                log.debug("closing OTA target publisher: {}", e.getMessage());
-            }
-        }
+        verbindung.schliessen();
     }
 }

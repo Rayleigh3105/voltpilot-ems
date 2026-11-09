@@ -1,16 +1,14 @@
 package com.voltpilot.api.control;
 
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.repo.ControlCertificationRepository.Certification;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -52,7 +50,7 @@ public class ControlCertificationPublisher {
     private final String username;
     private final String password;
 
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public ControlCertificationPublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -61,6 +59,8 @@ public class ControlCertificationPublisher {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
+        this.verbindung = new BrokerVerbindung(log, "control certification", brokerUrl,
+                "voltpilot-api-controlcert-" + UUID.randomUUID(), true, username, password, null, null);
     }
 
     /** Das Zertifizierungs-Topic eines Geräts (v2/#-Teilbaum, D-2). */
@@ -81,7 +81,7 @@ public class ControlCertificationPublisher {
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
             message.setRetained(true);
-            connected().publish(topic, message);
+            verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             log.info("published control certification (activated={}, {} certified models) retained to {}",
                     activated, register.size(), topic);
             return true;
@@ -106,7 +106,7 @@ public class ControlCertificationPublisher {
             MqttMessage empty = new MqttMessage(new byte[0]);
             empty.setQos(1);
             empty.setRetained(true);
-            connected().publish(topic, empty);
+            verbindung.verbundenerClient().publish(topic, empty).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             log.info("cleared retained control certification on {}", topic);
             return true;
         } catch (Exception e) {
@@ -165,45 +165,8 @@ public class ControlCertificationPublisher {
         return v == null ? "" : new String(JsonStringEncoder.getInstance().quoteAsString(v));
     }
 
-    private MqttClient connected() throws Exception {
-        if (client != null && client.isConnected()) {
-            return client;
-        }
-        if (client == null) {
-            client = new MqttClient(brokerUrl, "voltpilot-api-controlcert-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-        }
-        if (!client.isConnected()) {
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-        return client;
-    }
-
     @PreDestroy
-    public synchronized void close() {
-        if (client == null) {
-            return;
-        }
-        try {
-            if (client.isConnected()) {
-                client.disconnect();
-            }
-        } catch (Exception e) {
-            log.debug("control-certification publisher disconnect failed: {}", e.getMessage());
-        }
-        try {
-            client.close(true);
-        } catch (Exception e) {
-            log.debug("control-certification publisher close failed: {}", e.getMessage());
-        }
-        client = null;
+    public void close() {
+        verbindung.schliessen();
     }
 }

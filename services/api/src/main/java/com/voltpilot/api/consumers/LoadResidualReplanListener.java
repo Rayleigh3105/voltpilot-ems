@@ -3,6 +3,7 @@ package com.voltpilot.api.consumers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ScheduleRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -16,16 +17,14 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /** Tenant-safe telemetry-to-plan residual trigger for prompt bounded replans. */
@@ -44,7 +43,7 @@ public class LoadResidualReplanListener extends Rueckmeldeweg {
     private final Duration maxSampleAge;
     private final ObjectMapper mapper = new ObjectMapper();
     private final ScheduledExecutorService scheduler;
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public LoadResidualReplanListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -72,41 +71,28 @@ public class LoadResidualReplanListener extends Rueckmeldeweg {
             t.setDaemon(true);
             return t;
         });
+        this.verbindung = new BrokerVerbindung(log, "load-residual", brokerUrl,
+                "voltpilot-api-load-residual-" + UUID.randomUUID(), true, username, password,
+                (client, quittung) -> client.subscribe(FILTER, 1, null, quittung), this::empfangen);
     }
 
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
         scheduler.scheduleWithFixedDelay(this::fireDue, 1, 1, TimeUnit.SECONDS);
-        try { connect(); } catch (Exception e) {
-            log.warn("load-residual listener could not connect to {} yet: {}", brokerUrl, e.getMessage());
-        }
+        ensureConnected();
     }
 
-    private synchronized void connect() throws Exception {
-        if (client != null) return;
-        client = new MqttClient(brokerUrl, "voltpilot-api-load-residual-" + UUID.randomUUID(),
-                new MemoryPersistence());
-        client.setCallback(new MqttCallbackExtended() {
-            @Override public void connectComplete(boolean reconnect, String uri) {
-                try { client.subscribe(FILTER, 1, (topic, message) -> handle(topic, message.getPayload(), Instant.now())); }
-                catch (Exception e) { log.warn("load-residual subscribe failed: {}", e.getMessage()); }
-            }
-            @Override public void connectionLost(Throwable cause) {
-                log.warn("load-residual listener lost broker connection: {}",
-                        cause == null ? "unknown" : cause.getMessage());
-            }
-            @Override public void messageArrived(String topic, org.eclipse.paho.client.mqttv3.MqttMessage message) {}
-            @Override public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken token) {}
-        });
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setCleanSession(true);
-        options.setAutomaticReconnect(true);
-        options.setConnectionTimeout(5);
-        if (username != null && !username.isBlank()) {
-            options.setUserName(username);
-            options.setPassword(password == null ? new char[0] : password.toCharArray());
-        }
-        client.connect(options);
+    /** Starts the initial connect until the first one succeeds; from then on only Paho reconnects. */
+    @Scheduled(fixedDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}",
+            initialDelayString = "${voltpilot.mqtt.erstverbindung-takt-ms:5000}")
+    public void ensureConnected() {
+        verbindung.sicherstellen();
+    }
+
+    boolean connectedForTest() { return verbindung.verbunden(); }
+
+    private void empfangen(String topic, MqttMessage message) {
+        handle(topic, message.getPayload(), Instant.now());
     }
 
     /** Package-visible deterministic seam used by identity/freshness tests. */
@@ -162,10 +148,9 @@ public class LoadResidualReplanListener extends Rueckmeldeweg {
         }
     }
 
-    @PreDestroy public synchronized void stop() {
+    @PreDestroy public void stop() {
         scheduler.shutdownNow();
-        if (client != null) try { client.disconnect(); client.close(); } catch (Exception ignored) {}
-        client = null;
+        verbindung.schliessen();
     }
 
     private static UUID uuid(String value) {

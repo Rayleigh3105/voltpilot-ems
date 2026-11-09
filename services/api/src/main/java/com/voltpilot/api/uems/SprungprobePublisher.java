@@ -1,11 +1,9 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import jakarta.annotation.PreDestroy;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,7 +24,7 @@ public class SprungprobePublisher implements SprungprobeVersand {
     private final String brokerUrl;
     private final String username;
     private final String password;
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public SprungprobePublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -35,6 +33,8 @@ public class SprungprobePublisher implements SprungprobeVersand {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
+        this.verbindung = new BrokerVerbindung(log, "sprungprobe", brokerUrl,
+                "voltpilot-api-sprungprobe-" + UUID.randomUUID(), true, username, password, null, null);
     }
 
     @Override
@@ -43,7 +43,7 @@ public class SprungprobePublisher implements SprungprobeVersand {
             MqttMessage message = new MqttMessage(nutzlast);
             message.setQos(1);
             message.setRetained(false);
-            connected().publish(topic, message);
+            verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             log.info("published sprungprobe to {}", topic);
             return true;
         } catch (Exception e) {
@@ -52,39 +52,8 @@ public class SprungprobePublisher implements SprungprobeVersand {
         }
     }
 
-    private MqttClient connected() throws Exception {
-        if (client != null && client.isConnected()) {
-            return client;
-        }
-        if (client == null) {
-            client = new MqttClient(brokerUrl, "voltpilot-api-sprungprobe-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-        }
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setCleanSession(true);
-        options.setConnectionTimeout(5);
-        options.setAutomaticReconnect(true);
-        if (username != null && !username.isBlank()) {
-            options.setUserName(username);
-            options.setPassword(password == null ? new char[0] : password.toCharArray());
-        }
-        client.connect(options);
-        return client;
-    }
-
     @PreDestroy
-    public synchronized void close() {
-        if (client == null) {
-            return;
-        }
-        try {
-            if (client.isConnected()) {
-                client.disconnect();
-            }
-            client.close(true);
-        } catch (Exception e) {
-            log.debug("sprungprobe publisher close failed: {}", e.getMessage());
-        }
-        client = null;
+    public void close() {
+        verbindung.schliessen();
     }
 }
