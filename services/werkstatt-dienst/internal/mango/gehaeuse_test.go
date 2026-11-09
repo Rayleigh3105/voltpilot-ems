@@ -30,6 +30,8 @@ func (s *schlange) Bestelle(ref, kennung string, neu bool) (gehaeuse.Auftrag, er
 	return gehaeuse.Auftrag{Referenz: ref, Lauf: kennung, Zustand: gehaeuse.Wartet}, nil
 }
 
+func (s *schlange) Offene() []gehaeuse.Auftrag { return nil }
+
 // Schritt 19: Nach der Übergabe ist die Druckdatei des Gehäuses bestellt, für
 // genau diese Referenz und diesen Lauf; der Lauf wartet nicht auf den Bau.
 func TestNachDerUebergabeIstDasGehaeuseBestellt(t *testing.T) {

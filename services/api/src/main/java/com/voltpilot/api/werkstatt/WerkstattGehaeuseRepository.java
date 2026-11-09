@@ -1,6 +1,7 @@
 package com.voltpilot.api.werkstatt;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -39,6 +40,20 @@ public class WerkstattGehaeuseRepository {
     public Optional<Datei> datei(String edgeRef) {
         return jdbc.query("SELECT name, sha256, bytes, daten FROM werkstatt_gehaeuse_datei WHERE edge_ref = ?",
                 WerkstattGehaeuseRepository::datei, edgeRef).stream().findFirst();
+    }
+
+    /**
+     * Edge-Refs abgenommener Boxen dieser Art ohne Druckdatei im Portal (Abgleich für den
+     * Werkstatt-Dienst, vp-mango-3mf-pro-box): auch eine Box, die vor dieser Funktion abgenommen
+     * wurde und deren Werkstatt-Lauf die Bestellung nie ausgelöst hat.
+     */
+    public List<String> offen(String boxArt) {
+        return jdbc.query("SELECT DISTINCT a.edge_ref FROM werkstatt_abnahme a "
+                        + "JOIN werkstatt_box b ON b.id = a.box_id "
+                        + "WHERE b.box_art = ? "
+                        + "AND NOT EXISTS (SELECT 1 FROM werkstatt_gehaeuse_datei g WHERE g.edge_ref = a.edge_ref) "
+                        + "ORDER BY a.edge_ref",
+                (rs, n) -> rs.getString("edge_ref"), boxArt);
     }
 
     /** Legt die Datei an oder überschreibt sie (Nachdruck, neuer Bau): neuer Stand, idempotent je Referenz. */

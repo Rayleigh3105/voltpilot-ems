@@ -7428,6 +7428,26 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Liegt noch nicht im Portal. }
+  /api/v1/admin/werkstatt/boxen/{ref}/gehaeuse/neu:
+    post:
+      tags: [werkstatt]
+      summary: „Erneut erstellen“ für die Box-Druckdatei (Gehäuse, P10).
+      description: >
+        Ein Auftrag an den Werkstatt-Dienst, den Bau dieser Referenz noch
+        einmal einzureihen - auch einen schon fertigen (Nachdruck, nach einem
+        behobenen Fehler). Anders als bei einer nie bestellten Box (die der
+        Dienst über den Abgleich `/gehaeuse/offen` selbst einreiht) braucht es
+        hier keinen angehaltenen Werkstatt-Lauf: ein Gehäuse-Auftrag scheitert
+        unabhängig davon. Der Dienst holt ihn mit seiner nächsten Meldung der
+        Ansicht ab, wie „Nochmal versuchen“.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "201": { description: Auftrag erteilt., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattAuftrag" } } } }
+        "200": { description: Schon ein offener Auftrag für diese Box., content: { application/json: { schema: { $ref: "#/components/schemas/WerkstattAuftrag" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: Referenz fehlt oder hat nicht die Form. }
   /api/v1/admin/werkstatt/boxen/{ref}/abnahme:
     post:
       tags: [werkstatt]
@@ -7820,6 +7840,28 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Keine Box dieser Referenz im Register. }
         "422": { description: Kein gültiger Dateiname oder die Prüfsumme passt nicht zu den Bytes. }
+  /api/v1/werkstatt-dienst/gehaeuse/offen:
+    get:
+      tags: [werkstatt-dienst]
+      summary: Abgenommene Boxen (Mango) ohne Druckdatei im Portal (Abgleich Portal ↔ Ablage).
+      description: >
+        Grundlage für den automatischen Abgleich des Werkstatt-Dienstes
+        (services/werkstatt-dienst/internal/gehaeuse, Laufe): eine Referenz
+        hier und ohne Auftrag in seiner Ablage reiht er von selbst ein, auch
+        eine Box, deren Werkstatt-Lauf die Bestellung nie ausgelöst hat (zu
+        alt für vp-mango-3mf-pro-box). Ein schon gescheiterter Auftrag bleibt
+        bewusst draußen - er wartet auf „Erneut erstellen“.
+      responses:
+        "200":
+          description: Die offenen Edge-Refs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  edgeRefs: { type: array, items: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/werkstatt-dienst/ansicht:
     put:
       tags: [werkstatt-dienst]

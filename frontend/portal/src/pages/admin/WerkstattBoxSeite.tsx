@@ -27,14 +27,16 @@ import {
   einrichtung,
   freigabeDerBox,
   fruehereAbnahmen,
-  GEHAEUSE_ALT_SATZ,
+  gehaeuseFehlerSatz,
+  GEHAEUSE_BAUT_SATZ,
   gehaeuseStand,
   GEHAEUSE_WARTET_SATZ,
   kundenStand,
   type EinrichtungZeile,
 } from '../../werkstattEinrichtung';
+import type { GehaeuseAuftragAnsicht } from '../../werkstattBank';
 import { PhasenListe } from './WerkstattBank';
-import { schrittTitel } from '../../werkstattLauf';
+import { liveSeitSek, schrittTitel, seitText } from '../../werkstattLauf';
 import { AbnahmeAnzeige, BeschriftungKarte, DirektlinkQr, STAND_BADGE } from './WerkstattTeile';
 
 type Bindung = { art: 'laedt' } | { art: 'keine' } | { art: 'fehler'; text: string } | { art: 'da'; box: FernwartungBox; uebersicht: FernwartungUebersicht | null };
@@ -60,6 +62,36 @@ function GehaeuseDownloadKnopf({ edgeRef }: { edgeRef: string }) {
         {laedt ? 'Lädt …' : 'Box-Druckdatei (3MF) laden'}
       </Button>
       {fehler && <p role="alert" className="vp-alert vp-alert-err" data-testid="ws-gehaeuse-fehler">{fehler}</p>}
+    </div>
+  );
+}
+
+/** „Erneut erstellen" nach einem echten Fehler beim Bau der Druckdatei: legt einen Auftrag an, zeigt ihn an. */
+function GehaeuseErneutKnopf({ edgeRef }: { edgeRef: string }) {
+  const [laedt, setLaedt] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const [angelegt, setAngelegt] = useState(false);
+  async function erneut() {
+    setLaedt(true);
+    setFehler(null);
+    try {
+      await adminApi.werkstattGehaeuseErneut(edgeRef);
+      setAngelegt(true);
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Der Auftrag ließ sich nicht anlegen.');
+    } finally {
+      setLaedt(false);
+    }
+  }
+  if (angelegt) {
+    return <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-erneut-angelegt">Eingereiht; der Dienst holt den Auftrag mit seiner nächsten Meldung ab.</p>;
+  }
+  return (
+    <div data-testid="ws-gehaeuse-erneut">
+      <Button variant="outline" size="sm" onClick={() => void erneut()} disabled={laedt}>
+        {laedt ? 'Lädt …' : 'Erneut erstellen'}
+      </Button>
+      {fehler && <p role="alert" className="vp-alert vp-alert-err" data-testid="ws-gehaeuse-erneut-fehler">{fehler}</p>}
     </div>
   );
 }
@@ -115,6 +147,7 @@ export function WerkstattBoxSeite({
   boxen,
   freigaben,
   jetzt,
+  gehaeuseAuftraege,
   onZurueck,
   onGeloescht,
 }: {
@@ -122,6 +155,8 @@ export function WerkstattBoxSeite({
   boxen: readonly WerkstattBox[];
   freigaben: readonly WerkstattFreigabe[];
   jetzt: Date;
+  /** Offene Gehäuse-Aufträge aus der Ansicht des Dienstes (additiv); fehlt ohne Stand des Dienstes. */
+  gehaeuseAuftraege?: readonly GehaeuseAuftragAnsicht[] | null;
   onZurueck: () => void;
   /** Nach dem Löschen: zurück zur Liste ohne diese Box. */
   onGeloescht?: (ref: string) => void;
@@ -236,7 +271,7 @@ export function WerkstattBoxSeite({
           <Card padding="md" radius="lg" className="vp-ws-karte vp-ws-breit" data-testid="ws-gehaeuse">
             <h3 className="vp-ws-kartenkopf">Gehäuse-Druckdatei (3MF)</h3>
             {(() => {
-              const stand = gehaeuseStand(box);
+              const stand = gehaeuseStand(box, gehaeuseAuftraege);
               if (stand.art === 'bereit') {
                 return (
                   <>
@@ -247,10 +282,30 @@ export function WerkstattBoxSeite({
                   </>
                 );
               }
+              if (stand.art === 'fehler') {
+                return (
+                  <>
+                    <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-hinweis">{gehaeuseFehlerSatz(stand.grund)}</p>
+                    <GehaeuseErneutKnopf edgeRef={ref} />
+                  </>
+                );
+              }
+              if (stand.art === 'baut') {
+                const seitSek = liveSeitSek(stand.seit, jetzt.getTime());
+                return (
+                  <ul className="vp-wsb-liste" data-testid="ws-gehaeuse-baut">
+                    <li className="vp-wsb-zeile vp-wsb-lauf">
+                      <span className="vp-wsb-punkt" aria-hidden />
+                      <span>
+                        {GEHAEUSE_BAUT_SATZ}
+                        {seitSek != null && <small data-testid="ws-gehaeuse-seit">seit {seitText(seitSek)}</small>}
+                      </span>
+                    </li>
+                  </ul>
+                );
+              }
               return (
-                <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-hinweis">
-                  {stand.art === 'alt' ? GEHAEUSE_ALT_SATZ : GEHAEUSE_WARTET_SATZ}
-                </p>
+                <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-hinweis">{GEHAEUSE_WARTET_SATZ}</p>
               );
             })()}
           </Card>

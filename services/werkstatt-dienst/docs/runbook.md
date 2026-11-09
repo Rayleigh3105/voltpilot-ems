@@ -289,9 +289,16 @@ nicht an, nur Bericht und `ausgabe.log`.
 Mit `VP_WERKSTATT_API_URL` gesetzt lädt der Dienst `gehaeuse-<referenz>.3mf` zusätzlich zur Portal-API hoch
 (vp-mango-3mf-pro-box): Die Werkstatt-Box-Seite bietet sie dort zum Download an, `kubectl exec`/Download aus der
 Anzeige bleiben trotzdem der Weg zum Drucken. Ein Fehlschlag beim Hochladen blockiert den Lauf an der Box nicht;
-der nächste Anlauf des Dienstes holt ihn nach - kein eigener Befehl dafür nötig.
+`Laufe` holt ihn im eigenen Takt nach, ganz ohne Neustart und ohne eigenen Befehl.
 
-Noch einmal bauen (Nachdruck, nach einem behobenen Fehler):
+Derselbe Takt gleicht mit dem Portal ab (`GET …/werkstatt-dienst/gehaeuse/offen`): eine abgenommene Box ohne
+Druckdatei UND ohne Auftrag in der Ablage reiht er von selbst ein - auch eine Box, deren Werkstatt-Lauf die
+Bestellung nie ausgelöst hat (zu alt für diese Funktion). Ein schon gescheiterter Auftrag wird dabei NICHT
+automatisch wieder eingereiht (das wäre ein endloser Nachbau bei einem echten Fehler im Programm); die Box-Seite
+im Portal zeigt den Grund und einen Knopf „Erneut erstellen“ dafür.
+
+Noch einmal bauen (Nachdruck, nach einem behobenen Fehler): über den Knopf „Erneut erstellen“ auf der Box-Seite im
+Portal (legt einen Auftrag an, den der Dienst mit seiner nächsten Meldung abholt), oder direkt am Dienst:
 `kubectl -n werkstatt-prod exec deploy/werkstatt-dienst -- vp-werkstatt-dienst gehaeuse <referenz> neu`; für eine
 Box ohne Lauf dasselbe ohne `neu`.
 

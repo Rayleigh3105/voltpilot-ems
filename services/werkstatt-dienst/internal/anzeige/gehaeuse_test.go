@@ -33,7 +33,7 @@ func (bau) Baue(_ context.Context, ref, ziel string, _ func(string)) error {
 
 func TestGehaeuseInDerAnzeige(t *testing.T) {
 	d, ablage, _ := aufbau(t)
-	g, err := gehaeuse.Neu(t.TempDir(), bau{}, nil, time.Minute, logs.Neu(io.Discard, "text", nil))
+	g, err := gehaeuse.Neu(t.TempDir(), bau{}, nil, time.Minute, time.Hour, logs.Neu(io.Discard, "text", nil))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -242,6 +242,20 @@ public class WerkstattDienstController {
     public record GehaeuseDto(String edgeRef, String name, String sha256, long bytes, Instant hochgeladenAm) {
     }
 
+    /** Abgenommene Boxen (Mango) ohne Druckdatei im Portal (Abgleich Portal ↔ Ablage). */
+    public record GehaeuseOffenDto(List<String> edgeRefs) {
+    }
+
+    /**
+     * Welche abgenommenen Boxen (Mango) noch keine Druckdatei im Portal haben (Abgleich Portal ↔
+     * Ablage, vp-mango-3mf-pro-box): der Dienst reiht ihren Bau-Auftrag im Takt automatisch ein,
+     * auch für eine Box, deren Werkstatt-Lauf ihn nie bestellt hat (vor dieser Funktion abgenommen).
+     */
+    @GetMapping("/gehaeuse/offen")
+    public GehaeuseOffenDto gehaeuseOffen() {
+        return new GehaeuseOffenDto(gehaeuseDateien.offen(WerkstattService.EDGE_LIGHT));
+    }
+
     /**
      * Die Box-Druckdatei (3MF, mit Referenz und QR-Code dieser Box) hochladen (vp-mango-3mf-pro-box):
      * 201 neu, 200 überschrieben (Nachdruck, neuer Bau); 404 keine Box dieser Referenz im Register;

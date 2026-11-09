@@ -201,6 +201,20 @@ func (c Client) GehaeuseHochladen(ctx context.Context, edgeRef, name string, dat
 	return nil
 }
 
+// GehaeuseOffen fragt, welche abgenommenen Boxen (Mango) noch keine
+// Box-Druckdatei im Portal haben (GET …/gehaeuse/offen): der Dienst reiht sie
+// im Takt automatisch ein, auch eine, deren Werkstatt-Lauf die Bestellung nie
+// ausgelöst hat (Abgleich Portal ↔ Ablage, zu alt für diese Funktion).
+func (c Client) GehaeuseOffen(ctx context.Context) ([]string, error) {
+	var out struct {
+		EdgeRefs []string `json:"edgeRefs"`
+	}
+	if err := c.rufe(ctx, http.MethodGet, "/gehaeuse/offen", nil, http.StatusOK, &out); err != nil {
+		return nil, err
+	}
+	return out.EdgeRefs, nil
+}
+
 func (c Client) rufe(ctx context.Context, methode, pfad string, rein any, erwartet int, raus any) error {
 	_, err := c.rufeMit(ctx, methode, pfad, rein, raus, erwartet)
 	return err

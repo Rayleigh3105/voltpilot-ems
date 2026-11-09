@@ -590,6 +590,58 @@ class WerkstattApiTest {
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
+    /**
+     * vp-mango-3mf-pro-box, automatisch nachholen: der Abgleich (GET
+     * …/werkstatt-dienst/gehaeuse/offen) nennt nur abgenommene Boxen OHNE Druckdatei - BOX aus
+     * Order(6) hat schon eine, bleibt also draußen. „Erneut erstellen“ (POST
+     * …/admin/werkstatt/boxen/{ref}/gehaeuse/neu) legt einen Auftrag an, den der Dienst wie
+     * „Nochmal versuchen“ abholt (Tabelle werkstatt_auftrag, Art gehaeuse, lauf = Edge-Referenz).
+     */
+    @Test
+    @Order(7)
+    void gehaeuseOffenUndErneutErstellen() throws Exception {
+        String admin = token("admin", "admin");
+        String dienst = serviceToken("voltpilot-werkstatt-dienst", "voltpilot-werkstatt-dienst-dev-secret");
+        String ref = aufnehmen(admin, "wrkerz");
+        UUID boxId = adminJdbc.queryForObject("SELECT id FROM werkstatt_box WHERE edge_ref = ?", UUID.class, ref);
+        adminJdbc.update("INSERT INTO werkstatt_abnahme (box_id, edge_ref, host_schluessel, fassung, "
+                        + "tunnel_adresse, lan_netz, pruefungen, probe, erfasst_von) "
+                        + "VALUES (?, ?, ?, 'edge-light-g9c3368e3a', '10.10.16.9'::inet, '10.213.0.1/24', "
+                        + "'[]'::jsonb, '{}'::jsonb, 'admin')",
+                boxId, ref, HOST);
+
+        List<String> offen = new ArrayList<>();
+        getJson("/api/v1/werkstatt-dienst/gehaeuse/offen", dienst).get("edgeRefs").forEach(n -> offen.add(n.asText()));
+        assertThat(offen).contains(ref).doesNotContain(BOX);
+
+        // Nur die Rolle werkstatt-dienst liest den Abgleich.
+        assertThat(send(HttpMethod.GET, "/api/v1/werkstatt-dienst/gehaeuse/offen", admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(send(HttpMethod.GET, "/api/v1/werkstatt-dienst/gehaeuse/offen", null, null).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        String erneutPfad = BASE + "/boxen/" + ref + "/gehaeuse/neu";
+        ResponseEntity<String> erneut = send(HttpMethod.POST, erneutPfad, admin, null);
+        assertThat(erneut.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        JsonNode a = json.readTree(erneut.getBody());
+        assertThat(a.get("art").asText()).isEqualTo("gehaeuse");
+        assertThat(a.get("lauf").asText()).isEqualTo(ref);
+
+        // Ein zweiter Aufruf, solange der erste noch offen ist: derselbe Auftrag, 200 statt 201.
+        ResponseEntity<String> nochmal = send(HttpMethod.POST, erneutPfad, admin, null);
+        assertThat(nochmal.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(json.readTree(nochmal.getBody()).get("id").asText()).isEqualTo(a.get("id").asText());
+        Long n = adminJdbc.queryForObject("SELECT count(*) FROM werkstatt_auftrag WHERE lauf = ? AND art = 'gehaeuse'",
+                Long.class, ref);
+        assertThat(n).as("kein Doppelauftrag").isEqualTo(1);
+
+        // Nur platform-admin darf „Erneut erstellen“ auslösen.
+        assertThat(send(HttpMethod.POST, erneutPfad, dienst, null).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(send(HttpMethod.POST, erneutPfad, null, null).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(send(HttpMethod.POST, BASE + "/boxen/" + TIPPFEHLER + "/gehaeuse/neu", admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
     private ResponseEntity<String> putGehaeuse(String token, String edgeRef, String name, String sha256,
             byte[] daten) {
         HttpHeaders h = bearer(token);

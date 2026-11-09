@@ -12,33 +12,44 @@
  */
 import { boxOrt, type FernwartungBox } from './adminFernwartung';
 import { beschriftung, type WerkstattAbnahme, type WerkstattBox, type WerkstattGehaeuseDatei } from './werkstatt';
-import type { WerkstattFreigabe } from './werkstattBank';
+import type { GehaeuseAuftragAnsicht, WerkstattFreigabe } from './werkstattBank';
 
 /** Die Hardware der Mango, wie das Gehäuse-Programm sie nennt. */
 export const MANGO_HARDWARE = 'GL.iNet GL-MT300N-V2 („Mango“)';
 
 /**
- * Der Stand der Box-Druckdatei für die Karte: `bereit` bietet den Download an;
- * `wartet` (noch kein Lauf ohne Fehler) und `alt` (schon abgenommen, aber noch
- * in der alten internen Ablage des Dienstes - vor vp-mango-3mf-pro-box) sagen
- * beide ehrlich, warum (noch) kein Download da ist - kein toter Knopf, kein
- * Rückfall auf eine allgemeine Datei.
+ * Der Stand der Box-Druckdatei für die Karte (automatisch nachholen,
+ * vp-mango-3mf-pro-box): `bereit` bietet den Download an. `baut` sagt ehrlich,
+ * dass sie noch entsteht - auch eine abgenommene Box ohne Auftrag in der
+ * Ansicht (der Dienst reiht sie im eigenen Takt von selbst ein, Abgleich
+ * Portal ↔ Ablage; kein Handgriff nötig). `fehler` nennt den Grund und bietet
+ * „Erneut erstellen“ an, statt endlos selbst neu zu bauen. `wartet`: die Box
+ * ist noch nicht abgenommen.
  */
 export type GehaeuseStand =
   | ({ art: 'bereit' } & WerkstattGehaeuseDatei)
-  | { art: 'wartet' }
-  | { art: 'alt' };
+  | { art: 'baut'; seit: string | null }
+  | { art: 'fehler'; grund: string | null }
+  | { art: 'wartet' };
 
-export function gehaeuseStand(box: WerkstattBox | null): GehaeuseStand {
+export function gehaeuseStand(
+  box: WerkstattBox | null,
+  auftraege?: readonly GehaeuseAuftragAnsicht[] | null,
+): GehaeuseStand {
   if (box?.gehaeuse) return { art: 'bereit', ...box.gehaeuse };
-  if (box && box.abnahmen.length > 0) return { art: 'alt' };
+  const a = box ? auftraege?.find((x) => x.referenz === box.edgeRef) ?? null : null;
+  if (a?.zustand === 'fehler') return { art: 'fehler', grund: a.grund ?? null };
+  if (a) return { art: 'baut', seit: a.bestellt };
+  if (box && box.abnahmen.length > 0) return { art: 'baut', seit: null };
   return { art: 'wartet' };
 }
 
 export const GEHAEUSE_WARTET_SATZ =
   'Die Box-Druckdatei (mit Referenz und QR-Code dieser Box) wird nach einem Werkstatt-Lauf ohne Fehler hier abgelegt.';
-export const GEHAEUSE_ALT_SATZ =
-  'Diese Box wurde vor dieser Funktion abgenommen; die Druckdatei liegt noch in der alten internen Ablage des Dienstes. Sie wird beim nächsten Werkstatt-Lauf hier abgelegt.';
+export const GEHAEUSE_BAUT_SATZ = 'Druckdatei wird erstellt …';
+export function gehaeuseFehlerSatz(grund: string | null): string {
+  return grund ? `Die Druckdatei konnte nicht erstellt werden: ${grund}` : 'Die Druckdatei konnte nicht erstellt werden.';
+}
 
 export interface EinrichtungZeile {
   /** Stabiler Schlüssel, auch für Tests. */

@@ -74,10 +74,15 @@ type Bauer interface {
 
 // Hochlader lädt die fertige Box-Druckdatei zur API hoch (vp-mango-3mf-pro-box):
 // die Werkstatt-Box-Seite im Portal bietet danach genau SIE zum Download an.
-// nil: kein Portal (Datei-Freigabe V1a), die Druckdatei bleibt nur in der
-// internen Ablage.
+// Dazu der Abgleich Portal ↔ Ablage (GehaeuseOffen): welche abgenommenen
+// Boxen im Portal noch keine Druckdatei haben, auch eine, deren Werkstatt-Lauf
+// sie nie bestellt hat (zu alt für diese Funktion - vp-mango-3mf-pro-box kam
+// erst später). nil: kein Portal (Datei-Freigabe V1a), die Druckdatei bleibt
+// nur in der internen Ablage, kein Abgleich.
 type Hochlader interface {
 	GehaeuseHochladen(ctx context.Context, edgeRef, name string, daten []byte, sha256 string) error
+	// GehaeuseOffen gibt die Edge-Refs abgenommener Boxen ohne Druckdatei im Portal.
+	GehaeuseOffen(ctx context.Context) ([]string, error)
 }
 
 // Name der Ausgabe des Programms je Auftrag (stdout und stderr).
@@ -95,6 +100,7 @@ type Werkstatt struct {
 	bauer     Bauer
 	hochlader Hochlader
 	frist     time.Duration
+	takt      time.Duration
 	log       *slog.Logger
 	jetzt     func() time.Time
 
@@ -106,12 +112,15 @@ type Werkstatt struct {
 
 // Neu liest die Ablage. Was vor einem Neustart wartete oder baute, kommt
 // wieder in die Schlange (ein Bau ist wiederholbar und baut gleich). h: nil
-// ohne Portal (Datei-Freigabe V1a) - die Druckdatei bleibt dann nur lokal.
-func Neu(ablage string, b Bauer, h Hochlader, frist time.Duration, log *slog.Logger) (*Werkstatt, error) {
+// ohne Portal (Datei-Freigabe V1a) - die Druckdatei bleibt dann nur lokal, kein
+// Hochladen und kein Abgleich. takt: wie oft Laufe das Hochladen und den
+// Abgleich mit dem Portal wiederholt, solange die Schlange leer ist (Vorgabe:
+// derselbe Takt wie der Rest des Dienstes, VP_WERKSTATT_TAKT).
+func Neu(ablage string, b Bauer, h Hochlader, frist, takt time.Duration, log *slog.Logger) (*Werkstatt, error) {
 	if err := os.MkdirAll(ablage, 0o750); err != nil {
 		return nil, fmt.Errorf("Ablage der Gehäuse: %w", err)
 	}
-	w := &Werkstatt{ablage: ablage, bauer: b, hochlader: h, frist: frist, log: log, jetzt: time.Now,
+	w := &Werkstatt{ablage: ablage, bauer: b, hochlader: h, frist: frist, takt: takt, log: log, jetzt: time.Now,
 		auftraege: map[string]*Auftrag{}, wecken: make(chan struct{}, 1)}
 	eintraege, err := os.ReadDir(ablage)
 	if err != nil {
@@ -180,11 +189,21 @@ func (w *Werkstatt) Bestelle(ref, lauf string, neu bool) (Auftrag, error) {
 }
 
 // Laufe arbeitet die Schlange ab, einen Auftrag zur Zeit, bis ctx endet.
-// Vor der Schlange holt es Uploads nach, die beim letzten Anlauf scheiterten
-// (Fehlschlag blockiert den Werkstatt-Lauf nicht - nachholen beim nächsten
-// Anlauf genügt).
+// Vor der Schlange und danach, solange sie leer ist, im Takt (w.takt): holt
+// es Uploads nach, die beim letzten Anlauf scheiterten (Fehlschlag blockiert
+// den Werkstatt-Lauf nicht - nachholen im Takt genügt), und reiht Boxen ein,
+// die abgenommen sind, aber im Portal noch keine Druckdatei und noch keinen
+// Auftrag haben (Abgleich Portal ↔ Ablage): auch eine Box, deren Lauf die
+// Bestellung nie ausgelöst hat (zu alt für diese Funktion).
 func (w *Werkstatt) Laufe(ctx context.Context) {
 	w.hochladenNachholen(ctx)
+	w.abgleich(ctx)
+	takt := w.takt
+	if takt <= 0 {
+		takt = 10 * time.Second
+	}
+	tick := time.NewTicker(takt)
+	defer tick.Stop()
 	for {
 		ref, ok := w.naechster()
 		if !ok {
@@ -193,11 +212,46 @@ func (w *Werkstatt) Laufe(ctx context.Context) {
 				return
 			case <-w.wecken:
 				continue
+			case <-tick.C:
+				w.hochladenNachholen(ctx)
+				w.abgleich(ctx)
+				continue
 			}
 		}
 		w.baue(ctx, ref)
 		if ctx.Err() != nil {
 			return
+		}
+	}
+}
+
+// abgleich fragt das Portal, welche abgenommenen Boxen noch keine Druckdatei
+// haben, und reiht jede ein, die die Werkstatt noch GAR NICHT kennt (kein
+// Auftrag in der Ablage): eine Box mit einem laufenden Auftrag (wartet, baut)
+// braucht keinen zweiten, und eine mit Fehler wartet bewusst auf „Erneut
+// erstellen“ aus dem Portal statt auf einen endlosen automatischen Nachbau.
+// Ein Fehlschlag ist nur eine Warnung; der nächste Takt versucht es wieder.
+func (w *Werkstatt) abgleich(ctx context.Context) {
+	if w.hochlader == nil {
+		return
+	}
+	refs, err := w.hochlader.GehaeuseOffen(ctx)
+	if err != nil {
+		w.log.Warn("Gehäuse: Abgleich mit dem Portal gescheitert, nächster Takt versucht es wieder", "fehler", err)
+		return
+	}
+	for _, ref := range refs {
+		if ctx.Err() != nil {
+			return
+		}
+		w.mu.Lock()
+		_, bekannt := w.auftraege[ref]
+		w.mu.Unlock()
+		if bekannt {
+			continue
+		}
+		if _, err := w.Bestelle(ref, "", false); err != nil {
+			w.log.Warn("Gehäuse: automatisch eingereiht gescheitert", "referenz", ref, "fehler", err)
 		}
 	}
 }
@@ -439,6 +493,24 @@ func (w *Werkstatt) Auftraege() []Auftrag {
 		out = append(out, *a)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Bestellt.After(out[j].Bestellt) })
+	return out
+}
+
+// Offene gibt die Aufträge, die im Portal noch nicht als Druckdatei stehen
+// (wartet, baut, fehler, oder fertig ohne hochgeladen zu sein), älteste
+// Bestellung zuerst - für die Ansicht des Dienstes (Werkstatt-Box-Seite im
+// Portal, additiv): ein fertiger und hochgeladener Auftrag zeigt sich dort
+// schon über seine Druckdatei, er braucht keinen zweiten Platz in der Ansicht.
+func (w *Werkstatt) Offene() []Auftrag {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var out []Auftrag
+	for _, a := range w.auftraege {
+		if a.Zustand != Fertig || !a.Hochgeladen {
+			out = append(out, *a)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Bestellt.Before(out[j].Bestellt) })
 	return out
 }
 

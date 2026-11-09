@@ -811,6 +811,16 @@ export const adminApi = {
   /** Was der Werkstatt-Dienst gerade tut (Ansicht mit Alter, Läufe), für die Werkstatt-Bildschirme. */
   werkstattDienst: () => request<WerkstattDienst>('/api/v1/admin/werkstatt/dienst'),
 
+  /**
+   * „Erneut erstellen" für die Box-Druckdatei (Gehäuse, P10): ein Auftrag an den Werkstatt-Dienst,
+   * ihren Bau noch einmal einzureihen - auch einen schon fertigen (Nachdruck). 201/200; 422 Referenz.
+   */
+  werkstattGehaeuseErneut: (ref: string) =>
+    request<{ id: string; art: string; lauf: string; erteiltAm: string }>(
+      `/api/v1/admin/werkstatt/boxen/${encodeURIComponent(ref)}/gehaeuse/neu`,
+      { method: 'POST' },
+    ),
+
   // ── S6 Lesemodelle (Adminview-Konzept Abschnitt 3.4) ─────────────────────
 
   /** L1: die Dienste-Zeile der Übersicht. */

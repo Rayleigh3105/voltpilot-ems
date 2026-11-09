@@ -324,6 +324,20 @@ public class AdminWerkstattController {
                 .body(d.daten());
     }
 
+    /**
+     * „Erneut erstellen“ für die Box-Druckdatei (Gehäuse, P10): ein Auftrag an den Werkstatt-Dienst,
+     * ihren Bau noch einmal einzureihen - auch einen schon fertigen (Nachdruck, nach einem
+     * behobenen Fehler). 201 neu, 200 schon offen; 422 Referenz. Der Dienst holt ihn mit seiner
+     * nächsten Meldung der Ansicht ab (wie „Nochmal versuchen“ der Lauf-Seite).
+     */
+    @PostMapping("/boxen/{ref}/gehaeuse/neu")
+    public ResponseEntity<AuftragDto> gehaeuseErneut(@PathVariable String ref, @AuthenticationPrincipal Jwt caller) {
+        LaufSeiteService.Angelegt<LaufSeiteService.Auftrag> a = laufSeite.gehaeuseErneut(referenz(ref), Akteur.aus(caller));
+        LaufSeiteService.Auftrag x = a.wert();
+        return ResponseEntity.status(a.neu() ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(new AuftragDto(x.id(), x.art(), x.lauf(), x.erteiltAm()));
+    }
+
     // ── Abnahme ───────────────────────────────────────────────────────────
 
     /** Das Abnahmeprotokoll anlegen: 201. Die Regeln stehen an {@link WerkstattService#abnahme}. */

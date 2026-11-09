@@ -24,6 +24,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/faelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/freigabe"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/gehaeuse"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/geheim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/lauf"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/werkstatt-dienst/internal/mango"
@@ -55,6 +56,32 @@ type Ansicht struct {
 	AnschlussFall    string          `json:"anschluss_fall,omitempty"`
 	AnschlussLoesung *faelle.Loesung `json:"anschluss_loesung,omitempty"`
 	Lauf             *lauf.Stand     `json:"lauf,omitempty"`
+	// Gehaeuse: Box-Druckdateien, die im Portal noch nicht liegen (additiv,
+	// Schritt 19/P10) - für die Box-Seite im Portal: „Druckdatei wird
+	// erstellt …“ oder, bei fehler, ein ruhiger Satz mit „Erneut erstellen“.
+	// Fehlt ohne Gehäuse-Bau; leer, solange jede offene Box fertig ist.
+	Gehaeuse []GehaeuseAnsicht `json:"gehaeuse,omitempty"`
+}
+
+// GehaeuseAnsicht ist ein offener Gehäuse-Auftrag (noch nicht als Druckdatei
+// im Portal): referenz, zustand (wartet, baut, fertig, fehler) und grund nur
+// bei fehler.
+type GehaeuseAnsicht struct {
+	Referenz string    `json:"referenz"`
+	Zustand  string    `json:"zustand"`
+	Grund    string    `json:"grund,omitempty"`
+	Bestellt time.Time `json:"bestellt"`
+}
+
+func gehaeuseAnsicht(offen []gehaeuse.Auftrag) []GehaeuseAnsicht {
+	if len(offen) == 0 {
+		return nil
+	}
+	out := make([]GehaeuseAnsicht, 0, len(offen))
+	for _, a := range offen {
+		out = append(out, GehaeuseAnsicht{Referenz: a.Referenz, Zustand: string(a.Zustand), Grund: a.Grund, Bestellt: a.Bestellt})
+	}
+	return out
 }
 
 // WerkbankAnsicht ist der Stand der Brücke.
@@ -174,6 +201,9 @@ func (d *Dienst) Ansicht() Ansicht {
 		s := d.letzter.Stand()
 		a.Lauf = &s
 	}
+	if d.Mango != nil && d.Mango.Gehaeuse != nil {
+		a.Gehaeuse = gehaeuseAnsicht(d.Mango.Gehaeuse.Offene())
+	}
 	return a
 }
 
@@ -279,26 +309,40 @@ func (d *Dienst) melde(ctx context.Context) {
 // noch, beginnt ihr neuer Lauf nach der üblichen Startprüfung. Nichts an der
 // Box wird gelöscht. Ins Protokoll des beendeten Laufs schreibt der Auftrag
 // nichts (sonst gälte er als offen); er steht im Log und als nochmal_seit im
-// Stand. Jeder andere Auftrag steht nur im Log.
+// Stand. "gehaeuse" (Box-Seite, „Erneut erstellen“ P10): a.Lauf trägt hier die
+// Edge-Referenz, kein Lauf; der Auftrag reiht ihren Bau noch einmal ein, auch
+// einen schon fertigen (Nachdruck, nach einem behobenen Fehler). Jeder andere
+// Auftrag steht nur im Log.
 func (d *Dienst) auftrag(a portal.Auftrag) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	log := d.Log.With("auftrag", a.ID, "art", a.Art, "request_id", a.Lauf)
-	if a.Art != "nochmal" {
+	switch a.Art {
+	case "nochmal":
+		if d.aktiv != nil || d.letzter == nil || d.letzter.Kennung() != a.Lauf {
+			log.Warn("Nochmal versuchen: nicht der letzte angehaltene Lauf, nichts getan")
+			return
+		}
+		if !d.letzter.Nochmal(d.Jetzt()) {
+			log.Warn("Nochmal versuchen: dieser Lauf darf nicht neu angestoßen werden", "fall", d.letzter.Stand().Fall)
+			return
+		}
+		delete(d.gesperrt, d.letzterMAC)
+		d.kandidat = nil
+		log.Info("Nochmal versuchen: Sperre der Box frei, der Dienst beginnt neu", "mac", d.letzterMAC)
+	case "gehaeuse":
+		if d.Mango == nil || d.Mango.Gehaeuse == nil {
+			log.Warn("Druckdatei erneut erstellen: kein Gehäuse-Bau eingerichtet, nichts getan")
+			return
+		}
+		if _, err := d.Mango.Gehaeuse.Bestelle(a.Lauf, "", true); err != nil {
+			log.Warn("Druckdatei erneut erstellen: nicht eingereiht", "fehler", err)
+			return
+		}
+		log.Info("Druckdatei erneut erstellen: eingereiht")
+	default:
 		log.Warn("Auftrag des Portals unbekannt, nicht ausgeführt")
-		return
 	}
-	if d.aktiv != nil || d.letzter == nil || d.letzter.Kennung() != a.Lauf {
-		log.Warn("Nochmal versuchen: nicht der letzte angehaltene Lauf, nichts getan")
-		return
-	}
-	if !d.letzter.Nochmal(d.Jetzt()) {
-		log.Warn("Nochmal versuchen: dieser Lauf darf nicht neu angestoßen werden", "fall", d.letzter.Stand().Fall)
-		return
-	}
-	delete(d.gesperrt, d.letzterMAC)
-	d.kandidat = nil
-	log.Info("Nochmal versuchen: Sperre der Box frei, der Dienst beginnt neu", "mac", d.letzterMAC)
 }
 
 // StartFrist: So lange wartet der Dienst nach dem ersten Erkennen einer Box

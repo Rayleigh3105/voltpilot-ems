@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api';
 import { FEHLER_IM_BEREICH, Fehlergrenze } from '../../components/Fehlergrenze';
-import { SCHRITTE, type LaufStand, type WerkstattAnsicht, type WerkstattDienst, type WerkstattFreigabe } from '../../werkstattBank';
+import { SCHRITTE, type GehaeuseAuftragAnsicht, type LaufStand, type WerkstattAnsicht, type WerkstattDienst, type WerkstattFreigabe } from '../../werkstattBank';
 
 const werkstattBoxen = vi.fn();
 const werkstattDienst = vi.fn();
@@ -16,6 +16,7 @@ const fernwartung = vi.fn();
 const werkstattBoxLoeschen = vi.fn();
 const werkstattNochmal = vi.fn();
 const werkstattZurSeite = vi.fn();
+const werkstattGehaeuseErneut = vi.fn();
 const edgeUpdates = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
@@ -30,6 +31,7 @@ vi.mock('../../admin/adminApi', () => ({
     werkstattBoxLoeschen: (r: string) => werkstattBoxLoeschen(r),
     werkstattNochmal: (l: string) => werkstattNochmal(l),
     werkstattZurSeite: (l: string) => werkstattZurSeite(l),
+    werkstattGehaeuseErneut: (r: string) => werkstattGehaeuseErneut(r),
     edgeUpdates: () => edgeUpdates(),
   },
 }));
@@ -52,8 +54,16 @@ function freigabe(over: Partial<WerkstattFreigabe> = {}): WerkstattFreigabe {
   };
 }
 
-function dienst(lauf: Partial<LaufStand> | null, over: Partial<WerkstattDienst> = {}): WerkstattDienst {
-  const ansicht: WerkstattAnsicht = { ...vektor, lauf: lauf === null ? null : { ...(vektor.lauf as LaufStand), ...lauf } };
+function dienst(
+  lauf: Partial<LaufStand> | null,
+  over: Partial<WerkstattDienst> = {},
+  gehaeuse?: GehaeuseAuftragAnsicht[],
+): WerkstattDienst {
+  const ansicht: WerkstattAnsicht = {
+    ...vektor,
+    lauf: lauf === null ? null : { ...(vektor.lauf as LaufStand), ...lauf },
+    gehaeuse,
+  };
   return { ansicht, gemeldetAm: new Date().toISOString(), dienstZeit: ansicht.zeit, alterSekunden: 4, aktuell: true, laeufe: [], ...over };
 }
 
@@ -204,14 +214,41 @@ describe('Werkstatt: Einrichtungs-Detailseite einer Box', () => {
     expect(screen.getByTestId('ws-einrichtung')).toBeInTheDocument();
   });
 
-  it('3MF: eine schon abgenommene Box ohne Datei im Portal bekommt den ehrlichen Hinweis auf die alte Ablage', async () => {
+  it('3MF: eine abgenommene Box ohne Datei im Portal und ohne Auftrag der Ansicht: wird automatisch erstellt (kein Handgriff)', async () => {
     window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
     render(<WerkstattPage />);
     const g = await screen.findByTestId('ws-gehaeuse');
-    expect(within(g).getByTestId('ws-gehaeuse-hinweis')).toHaveTextContent('alten internen Ablage des Dienstes');
+    expect(within(g).getByTestId('ws-gehaeuse-baut')).toHaveTextContent('Druckdatei wird erstellt');
     expect(within(g).queryByRole('button')).toBeNull();
     // Oben: die Druckdatei ist die erste Karte der Seite, vor der Einrichtung.
     expect(g.compareDocumentPosition(screen.getByTestId('ws-einrichtung')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('3MF: mit einem offenen Auftrag der Ansicht (wartet/baut) zeigt die Karte seit wann', async () => {
+    werkstattDienst.mockResolvedValue(dienst({}, {}, [
+      { referenz: 'edge-5t2dcy6', zustand: 'baut', bestellt: new Date(Date.now() - 60_000).toISOString() },
+    ]));
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const g = await screen.findByTestId('ws-gehaeuse');
+    const baut = within(g).getByTestId('ws-gehaeuse-baut');
+    expect(baut).toHaveTextContent('Druckdatei wird erstellt');
+    expect(within(baut).getByTestId('ws-gehaeuse-seit')).toHaveTextContent('seit');
+  });
+
+  it('3MF: ein echter Fehler zeigt einen ruhigen Satz mit Grund und „Erneut erstellen“ - kein endloser Nachbau', async () => {
+    werkstattDienst.mockResolvedValue(dienst({}, {}, [
+      { referenz: 'edge-5t2dcy6', zustand: 'fehler', grund: 'Ruhezone 2,1 Module (mindestens 3)', bestellt: '2026-11-09T09:00:00Z' },
+    ]));
+    werkstattGehaeuseErneut.mockResolvedValue({ id: 'a1', art: 'gehaeuse', lauf: 'edge-5t2dcy6', erteiltAm: '2026-11-09T09:05:00Z' });
+    window.location.hash = '#/werkstatt?box=edge-5t2dcy6';
+    render(<WerkstattPage />);
+    const g = await screen.findByTestId('ws-gehaeuse');
+    expect(within(g).getByTestId('ws-gehaeuse-hinweis')).toHaveTextContent('Ruhezone 2,1 Module');
+    const knopf = within(g).getByRole('button', { name: 'Erneut erstellen' });
+    fireEvent.click(knopf);
+    await waitFor(() => expect(werkstattGehaeuseErneut).toHaveBeenCalledWith('edge-5t2dcy6'));
+    expect(await within(g).findByTestId('ws-gehaeuse-erneut-angelegt')).toHaveTextContent('Eingereiht');
   });
 
   it('3MF: ohne Abnahme (noch kein Werkstatt-Lauf) sagt die Karte ehrlich, dass sie noch gebaut wird', async () => {

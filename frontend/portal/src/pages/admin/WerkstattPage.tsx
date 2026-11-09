@@ -208,6 +208,7 @@ export function WerkstattPage({ tabs }: { tabs?: ReactNode } = {}) {
               boxen={boxen}
               freigaben={freigaben}
               jetzt={jetzt}
+              gehaeuseAuftraege={dienst?.ansicht?.gehaeuse}
               onZurueck={() => waehle(null)}
               onGeloescht={(ref) => {
                 setBoxen((alt) => (alt ? alt.filter((b) => b.edgeRef !== ref) : alt));

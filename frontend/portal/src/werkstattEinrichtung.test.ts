@@ -13,11 +13,26 @@ describe('gehaeuseStand (vp-mango-3mf-pro-box)', () => {
     expect(gehaeuseStand(box({ abnahmen: [] }))).toEqual({ art: 'wartet' });
   });
 
-  it('mit Abnahme, aber ohne Datei im Portal: die alte interne Ablage', () => {
-    expect(gehaeuseStand(box({ abnahmen: [abnahme()] }))).toEqual({ art: 'alt' });
+  it('mit Abnahme, aber ohne Datei im Portal und ohne Auftrag in der Ansicht: baut (der Dienst reiht sie im Takt selbst ein)', () => {
+    expect(gehaeuseStand(box({ abnahmen: [abnahme()] }))).toEqual({ art: 'baut', seit: null });
   });
 
-  it('mit Datei: bereit zum Download, mit ihren Feldern - unabhängig von der Abnahme', () => {
+  it('mit einem offenen Auftrag der Ansicht (wartet/baut): baut, mit seinem Bestelldatum', () => {
+    const auftrag = { referenz: 'edge-x', zustand: 'baut' as const, bestellt: '2026-11-09T09:00:00Z' };
+    expect(gehaeuseStand(box({ abnahmen: [abnahme()] }), [auftrag])).toEqual({ art: 'baut', seit: auftrag.bestellt });
+  });
+
+  it('mit einem Auftrag im Zustand fehler: fehler mit seinem Grund, kein endloser Nachbau', () => {
+    const auftrag = { referenz: 'edge-x', zustand: 'fehler' as const, grund: 'Ruhezone 2,1 Module', bestellt: '2026-11-09T09:00:00Z' };
+    expect(gehaeuseStand(box({ abnahmen: [abnahme()] }), [auftrag])).toEqual({ art: 'fehler', grund: 'Ruhezone 2,1 Module' });
+  });
+
+  it('ein Auftrag einer anderen Referenz betrifft diese Box nicht', () => {
+    const auftrag = { referenz: 'edge-y', zustand: 'fehler' as const, bestellt: '2026-11-09T09:00:00Z' };
+    expect(gehaeuseStand(box({ abnahmen: [abnahme()] }), [auftrag])).toEqual({ art: 'baut', seit: null });
+  });
+
+  it('mit Datei: bereit zum Download, mit ihren Feldern - unabhängig von der Abnahme und einem Auftrag', () => {
     const datei = { name: 'gehaeuse-edge-x.3mf', sha256: '0'.repeat(64), bytes: 4_700_000, hochgeladenAm: '2026-11-05T08:00:00Z' };
     expect(gehaeuseStand(box({ gehaeuse: datei }))).toEqual({ art: 'bereit', ...datei });
   });
