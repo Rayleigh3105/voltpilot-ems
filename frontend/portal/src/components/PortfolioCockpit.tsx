@@ -115,6 +115,10 @@ export function PortfolioCockpit({
 }: PortfolioCockpitProps) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
+  // CLS-Befund 8: „Heute" braucht den Erlös-Abruf für die Steuerzeile; ohne
+  // dieses Zeichen pop-t sie Zeilen nach dem ersten Bild rein, statt eines
+  // reservierten Platzes (die Fläche selbst bleibt fail-soft, siehe unten).
+  const [earningsLoaded, setEarningsLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
@@ -150,9 +154,14 @@ export function PortfolioCockpit({
     let active = true;
     api.earnings('day').then(
       (e) => {
-        if (active) setEarnings(e);
+        if (active) {
+          setEarnings(e);
+          setEarningsLoaded(true);
+        }
       },
-      () => {},
+      () => {
+        if (active) setEarningsLoaded(true);
+      },
     );
     return () => {
       active = false;
@@ -379,7 +388,9 @@ export function PortfolioCockpit({
         ]}
         bloecke={bloecke}
         heute={heute}
+        heuteLaedt={!earningsLoaded}
         kurve={historien ? tagesKurve(historien, now) : null}
+        kurveLaedt={tagesHistorie.loading}
         jetzt={jetztBlock(overview, now)}
         anlagen={anlagenKarten({ overview, aggregat: heute.aggregat, historien, now })}
         hrefFor={(id) => hashForRoute(anlageRoute(id))}

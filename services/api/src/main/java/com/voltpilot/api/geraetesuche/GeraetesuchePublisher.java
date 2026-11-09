@@ -1,15 +1,15 @@
 package com.voltpilot.api.geraetesuche;
 
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import jakarta.annotation.PreDestroy;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,7 +26,7 @@ public class GeraetesuchePublisher implements GeraetesucheVersand {
     private final String brokerUrl;
     private final String username;
     private final String password;
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public GeraetesuchePublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -35,6 +35,21 @@ public class GeraetesuchePublisher implements GeraetesucheVersand {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
+        this.verbindung = new BrokerVerbindung(log, "geraetesuche", brokerUrl,
+                "voltpilot-api-geraetesuche-" + UUID.randomUUID(), true, username, password, null, null);
+    }
+
+    /**
+     * Stößt den Erstaufbau beim Start nur AN, blockiert den Start-Thread nie (Review-Fix: ein beim api-Start
+     * fehlender Broker hätte den Start sonst um bis zu {@link BrokerVerbindung#ZEITGRENZE_MS} je Weg verlängert -
+     * Risiko einer Neustart-Schleife der {@code startupProbe}). Der erste Versand wartet dafür selbst begrenzt auf
+     * den Erstaufbau ({@link BrokerVerbindung#verbundenerClient()}, wie vor der Migration das synchrone
+     * {@code MqttClient.connect()}); danach wartet kein Senden mehr auf die Verbindung, und Paho verbindet selbst
+     * neu.
+     */
+    @EventListener(ContextRefreshedEvent.class)
+    public void start() {
+        verbindung.sicherstellen();
     }
 
     @Override
@@ -43,7 +58,7 @@ public class GeraetesuchePublisher implements GeraetesucheVersand {
             MqttMessage message = new MqttMessage(nutzlast);
             message.setQos(1);
             message.setRetained(false);
-            connected().publish(topic, message);
+            verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             log.info("published geraetesuche to {}", topic);
             return true;
         } catch (Exception e) {
@@ -52,39 +67,8 @@ public class GeraetesuchePublisher implements GeraetesucheVersand {
         }
     }
 
-    private MqttClient connected() throws Exception {
-        if (client != null && client.isConnected()) {
-            return client;
-        }
-        if (client == null) {
-            client = new MqttClient(brokerUrl, "voltpilot-api-geraetesuche-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-        }
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setCleanSession(true);
-        options.setConnectionTimeout(5);
-        options.setAutomaticReconnect(true);
-        if (username != null && !username.isBlank()) {
-            options.setUserName(username);
-            options.setPassword(password == null ? new char[0] : password.toCharArray());
-        }
-        client.connect(options);
-        return client;
-    }
-
     @PreDestroy
-    public synchronized void close() {
-        if (client == null) {
-            return;
-        }
-        try {
-            if (client.isConnected()) {
-                client.disconnect();
-            }
-            client.close(true);
-        } catch (Exception e) {
-            log.debug("geraetesuche publisher close failed: {}", e.getMessage());
-        }
-        client = null;
+    public void close() {
+        verbindung.schliessen();
     }
 }

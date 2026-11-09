@@ -1,20 +1,20 @@
 package com.voltpilot.api.probe;
 
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
@@ -56,7 +56,7 @@ public class ProbePublisher {
     private final String username;
     private final String password;
 
-    private MqttClient client;
+    private final BrokerVerbindung verbindung;
 
     public ProbePublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
@@ -65,6 +65,21 @@ public class ProbePublisher {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
+        this.verbindung = new BrokerVerbindung(log, "probe", brokerUrl,
+                "voltpilot-api-probe-" + UUID.randomUUID(), true, username, password, null, null);
+    }
+
+    /**
+     * Stößt den Erstaufbau beim Start nur AN, blockiert den Start-Thread nie (Review-Fix: ein beim api-Start
+     * fehlender Broker hätte den Start sonst um bis zu {@link BrokerVerbindung#ZEITGRENZE_MS} je Weg verlängert -
+     * Risiko einer Neustart-Schleife der {@code startupProbe}). Der erste Versand wartet dafür selbst begrenzt auf
+     * den Erstaufbau ({@link BrokerVerbindung#verbundenerClient()}, wie vor der Migration das synchrone
+     * {@code MqttClient.connect()}); danach wartet kein Senden mehr auf die Verbindung, und Paho verbindet selbst
+     * neu.
+     */
+    @EventListener(ContextRefreshedEvent.class)
+    public void start() {
+        verbindung.sicherstellen();
     }
 
     /**
@@ -103,7 +118,7 @@ public class ProbePublisher {
                 envelope(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy, kopf, ops));
         message.setQos(1);
         message.setRetained(false);
-        connected().publish(topic, message);
+        verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
         // ⚠ The customer's LAN address is deliberately NOT logged: it is their
         // network topology, it appears in no other log line on this path, and a
         // preview is not worth a permanent record of where their devices sit.
@@ -126,7 +141,7 @@ public class ProbePublisher {
                 requestedAt, requestedBy, opId, brand, model, family, role, connection));
         message.setQos(1);
         message.setRetained(false);
-        connected().publish(topic, message);
+        verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
         // ⚠ Same rule as the read probe: the customer's LAN address is NOT
         // logged - it is their network topology, and a wizard step is not worth
         // a permanent record of where their devices sit.
@@ -146,7 +161,7 @@ public class ProbePublisher {
                 deviceId, requestId, requestedAt, requestedBy, opId, "shelly", null, null, null, connection));
         message.setQos(1);
         message.setRetained(false);
-        connected().publish(topic, message);
+        verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
         log.debug("published nach_stromausfall_aus {} (NON-retained)", requestId);
     }
 
@@ -164,7 +179,7 @@ public class ProbePublisher {
                 requestedAt, requestedBy, op));
         message.setQos(1);
         message.setRetained(false);
-        connected().publish(topic, message);
+        verbindung.verbundenerClient().publish(topic, message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
         // ⚠ The customer's LAN address is NOT logged here either - and a write
         // is exactly the record someone would want; the audit trail names WHO
         // and WHAT, never WHERE in their network.
@@ -414,39 +429,8 @@ public class ProbePublisher {
         return new String(JsonStringEncoder.getInstance().quoteAsString(s));
     }
 
-    private MqttClient connected() throws Exception {
-        if (client != null && client.isConnected()) {
-            return client;
-        }
-        if (client == null) {
-            client = new MqttClient(brokerUrl, "voltpilot-api-probe-" + UUID.randomUUID(),
-                    new MemoryPersistence());
-        }
-        if (!client.isConnected()) {
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(true);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-        return client;
-    }
-
     @PreDestroy
     void close() {
-        if (client != null) {
-            try {
-                if (client.isConnected()) {
-                    client.disconnect();
-                }
-                client.close();
-            } catch (Exception e) {
-                log.debug("closing probe publisher: {}", e.getMessage());
-            }
-        }
+        verbindung.schliessen();
     }
 }
