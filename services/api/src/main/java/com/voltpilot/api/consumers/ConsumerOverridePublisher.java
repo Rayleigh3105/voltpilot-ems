@@ -12,6 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
@@ -54,6 +56,19 @@ public class ConsumerOverridePublisher {
         this.password = password;
         this.verbindung = new BrokerVerbindung(log, "consumer override", brokerUrl,
                 "voltpilot-api-override-" + UUID.randomUUID(), true, username, password, null, null);
+    }
+
+    /**
+     * Verbindet beim Start und wartet darauf höchstens {@link BrokerVerbindung#ZEITGRENZE_MS}: der erste Versand
+     * gleich danach soll noch durchgehen wie vor der Migration auf {@link BrokerVerbindung} (Befund 6/7,
+     * vp-perf-robust-folge) - vorher verband ein synchrones {@code MqttClient.connect()} bis zu 5 s. Später wartet
+     * kein Senden mehr auf die Verbindung; fehlt sie, meldet der Aufrufer es wie jeden anderen Verbindungsfehler,
+     * und Paho verbindet selbst neu.
+     */
+    @EventListener(ContextRefreshedEvent.class)
+    public void start() {
+        verbindung.sicherstellen();
+        verbindung.erstaufbauAbwarten();
     }
 
     private static String topic(UUID tenantId, UUID siteId, UUID deviceId) {

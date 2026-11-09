@@ -282,6 +282,40 @@ class BrokerVerbindungBrokerTest {
         }
     }
 
+    /**
+     * Befund 7 (vp-wartung-perf-p1): ein frischer Publisher (Vertreter der 13 betroffenen, hier
+     * {@link ProvisioningPublisher}) verband beim ALLERERSTEN Senden bislang SYNCHRON (bis zu 5 s) - der
+     * erste Versand nach dem api-Start ging dadurch noch durch. Ohne den Erstaufbau-Takt beim Start
+     * ({@link ProvisioningPublisher#start()}) würfe {@code verbundenerClient()} sofort
+     * {@code REASON_CODE_CLIENT_NOT_CONNECTED}, weil der asynchrone Aufbau noch läuft - der Rückschritt,
+     * den dieser Test gegen einen echten Broker belegt.
+     */
+    @Test
+    @Timeout(60)
+    void ersterVersandEinesFrischenPublishersGelingtWennDerBrokerDaIstUndScheitertBegrenztSonst() throws Exception {
+        // Broker beim Start erreichbar: start() wartet begrenzt auf den Erstaufbau, der erste Versand geht durch.
+        ProvisioningPublisher da = new ProvisioningPublisher(direkt(), "", "");
+        da.start();
+        assertThat(da.publishConfig("test-box-da", TENANT, SITE, DEVICE))
+                .as("erster Versand gelingt, wenn der Broker beim Start erreichbar ist").isTrue();
+        da.close();
+
+        // Broker beim Start weg: start() wartet höchstens ZEITGRENZE_MS, der erste Versand scheitert dann - statt
+        // zu hängen wie ein Fehlschlag ohne Zeitgrenze es täte.
+        try (StoerProxy proxy = new StoerProxy()) {
+            proxy.haengen(true);
+            ProvisioningPublisher weg = new ProvisioningPublisher(proxy.url(), "", "");
+            long begin = System.nanoTime();
+            weg.start();
+            long dauerMs = (System.nanoTime() - begin) / 1_000_000;
+            assertThat(dauerMs).as("start() wartet höchstens die Zeitgrenze, hängt nicht")
+                    .isLessThan(BrokerVerbindung.ZEITGRENZE_MS + 5_000);
+            assertThat(weg.publishConfig("test-box-weg", TENANT, SITE, DEVICE))
+                    .as("erster Versand scheitert begrenzt, statt zu hängen").isFalse();
+            weg.close();
+        }
+    }
+
     private static String statusTopic(UUID device) {
         return "ems/" + TENANT + "/" + SITE + "/" + device + "/status";
     }
