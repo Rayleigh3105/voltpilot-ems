@@ -38,6 +38,8 @@ public class LaufSeiteService {
     /** So lange wartet ein Auftrag auf die Abholung; danach gilt er als verfallen. */
     public static final Duration AUFTRAG_FRIST = Duration.ofMinutes(10);
     public static final String NOCHMAL = "nochmal";
+    /** „Erneut erstellen“ der Box-Druckdatei (Gehäuse, P10): {@code lauf} trägt hier die Edge-Referenz. */
+    public static final String GEHAEUSE = "gehaeuse";
 
     private static final Pattern KENNUNG = Pattern.compile("^[A-Za-z0-9._:-]{1,80}$");
 
@@ -97,6 +99,31 @@ public class LaufSeiteService {
         return new Angelegt<>(a, true);
     }
 
+    /**
+     * „Erneut erstellen“ für die Box-Druckdatei dieser Referenz (Gehäuse, P10): ein Auftrag an den
+     * Werkstatt-Dienst, ihren Bau noch einmal einzureihen - auch einen schon fertigen (Nachdruck,
+     * nach einem behobenen Fehler). 201 neu, 200 schon offen. Anders als „nochmal“ braucht es keinen
+     * angehaltenen Lauf: ein Gehäuse-Auftrag scheitert unabhängig vom Werkstatt-Lauf der Box, und der
+     * Dienst reiht eine nie bestellte Box ohnehin selbst ein (Abgleich); das hier ist nur der
+     * Handgriff für einen echten Fehler, den der automatische Abgleich bewusst nicht wiederholt.
+     */
+    public Angelegt<Auftrag> gehaeuseErneut(String edgeRef, Akteur von) {
+        pruefeKennung(edgeRef);
+        Instant jetzt = ansichten.jetzt();
+        Optional<Auftrag> offen = jdbc.query("SELECT id, art, lauf, erteilt_am FROM werkstatt_auftrag "
+                        + "WHERE lauf = ? AND art = ? AND abgeholt_am IS NULL AND erteilt_am > ? ORDER BY erteilt_am DESC LIMIT 1",
+                (rs, n) -> new Auftrag(rs.getObject("id", UUID.class), rs.getString("art"), rs.getString("lauf"),
+                        rs.getTimestamp("erteilt_am").toInstant()),
+                edgeRef, GEHAEUSE, Timestamp.from(jetzt.minus(AUFTRAG_FRIST))).stream().findFirst();
+        if (offen.isPresent()) {
+            return new Angelegt<>(offen.get(), false);
+        }
+        Auftrag a = new Auftrag(UUID.randomUUID(), GEHAEUSE, edgeRef, jetzt);
+        jdbc.update("INSERT INTO werkstatt_auftrag (id, art, lauf, erteilt_am, erteilt_von) VALUES (?, ?, ?, ?, ?)",
+                a.id(), a.art(), a.lauf(), Timestamp.from(jetzt), von.sub());
+        return new Angelegt<>(a, true);
+    }
+
     /** Der Dienst holt die offenen Aufträge ab (jeder genau einmal); verfallene bleiben liegen. */
     public List<Auftrag> abholen() {
         Instant jetzt = ansichten.jetzt();
@@ -151,9 +178,9 @@ public class LaufSeiteService {
         return s == null || s.isBlank() ? null : (s.length() > 2000 ? s.substring(0, 2000) : s);
     }
 
-    private static void pruefeKennung(String lauf) {
-        if (lauf == null || !KENNUNG.matcher(lauf).matches()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "lauf fehlt oder hat nicht die Form einer Laufkennung.");
+    private static void pruefeKennung(String kennung) {
+        if (kennung == null || !KENNUNG.matcher(kennung).matches()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Kennung fehlt oder hat nicht die Form (lauf oder edgeRef).");
         }
     }
 
