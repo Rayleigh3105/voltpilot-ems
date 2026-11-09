@@ -327,8 +327,11 @@ class UemsBestandSteuerungAusEinemStueckTest {
         assertPublishersSilent("Migrationen + Spring-Start");
         Set<String> called = new TreeSet<>();
         try (var files = Files.walk(Path.of("src/main/java"))) {
+            // Wer über die gemeinsame Verbindung sendet — nicht am paho-Import erkennen: ein Sender
+            // ohne eigenes MqttMessage (reiner byte[]-Aufruf, #1798) braucht ihn nicht und fiele
+            // sonst durch (siehe AnlageUmzugApiTest/OrtVerschiebenApiTest).
             List<String> actualSenders = files.filter(p -> p.toString().endsWith(".java")).filter(p -> {
-                try { String source = Files.readString(p); return source.contains("import org.eclipse.paho") && source.contains(".publish("); }
+                try { String source = Files.readString(p); return source.contains("BrokerVerbindung") && source.contains(".publish("); }
                 catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
             }).map(p -> p.getFileName().toString().replace(".java", "")).toList();
             assertThat(senders().keySet()).as("AnlageUmzugApiTest: kein neuer MQTT-Sender bleibt ungezaehlt")
