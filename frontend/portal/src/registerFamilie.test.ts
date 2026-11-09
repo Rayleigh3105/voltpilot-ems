@@ -64,6 +64,7 @@ describe('expandFamilien - der Zwilling von MeasurementCatalogFamilies.expand', 
     expect(expandFamilien(['sunspec_live'])).toEqual(expandFamilien(['sunspec']));
     expect(expandFamilien(['goe_http_api'])).toEqual(['goe.api_v2']);
     expect(expandFamilien(['shelly_http'])).toEqual(['shelly.gen1', 'shelly.gen2plus']);
+    expect(expandFamilien(['shelly_em_triphase'])).toEqual(['shelly.gen2plus']);
     expect(expandFamilien(['ocpp'])).toEqual(['ocpp.1_6']);
     expect(expandFamilien(['ocpp.1_6'])).toEqual(['ocpp.1_6']);
     expect(expandFamilien(['hybrid_3p'])).toEqual(['hybrid_3p']);
@@ -86,7 +87,8 @@ describe('expandFamilien - der Zwilling von MeasurementCatalogFamilies.expand', 
     // nachgezogen werden; dieser Wächter macht das Vergessen rot.
     const zweige = Array.from(javaQuelle.matchAll(/family\.(?:equals|startsWith)\("([^"]+)"\)/g))
       .map((m) => m[1]).sort();
-    expect(zweige).toEqual(['goe_http_api', 'ocpp', 'shelly_http', 'sunspec', 'sunspec_live']);
+    expect(zweige).toEqual(
+      ['goe_http_api', 'ocpp', 'shelly_em_triphase', 'shelly_http', 'sunspec', 'sunspec_live']);
   });
 });
 

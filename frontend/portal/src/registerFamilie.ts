@@ -100,6 +100,7 @@ function abbilden(bindung: string): string[] {
   }
   if (bindung === 'goe_http_api') return ['goe.api_v2'];
   if (bindung === 'shelly_http') return KATALOG_FAMILIEN.filter((f) => f.startsWith('shelly.'));
+  if (bindung === 'shelly_em_triphase') return ['shelly.gen2plus'];
   if (bindung.startsWith('ocpp')) return ['ocpp.1_6'];
   return [bindung];
 }
