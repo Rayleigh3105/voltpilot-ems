@@ -471,7 +471,10 @@ class OrtVerschiebenApiTest {
         List<String> imQuelltext;
         try (Stream<Path> dateien = Files.walk(Path.of("src", "main", "java"))) {
             imQuelltext = dateien.filter(p -> p.toString().endsWith(".java"))
-                    .filter(p -> inhalt(p).contains("import org.eclipse.paho") && inhalt(p).contains(".publish("))
+                    // Wer über die gemeinsame Verbindung sendet — die Listener empfangen nur. Nicht
+                    // am paho-Import erkennen: ein Sender ohne eigenes MqttMessage (reiner
+                    // byte[]-Aufruf, #1798) braucht ihn nicht und fiele sonst durch.
+                    .filter(p -> inhalt(p).contains("BrokerVerbindung") && inhalt(p).contains(".publish("))
                     .map(p -> p.getFileName().toString().replace(".java", ""))
                     .sorted().toList();
         }

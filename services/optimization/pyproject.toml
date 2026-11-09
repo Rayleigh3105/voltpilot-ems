@@ -38,12 +38,17 @@ convert = [
 # jsonschema validates published payloads against the frozen contract in tests;
 # openpyxl lets the bdew-convert tests build their synthetic workbooks;
 # pytest-timeout turns any wedged test (e.g. a deadlocked process pool) into a
-# loud failure instead of hanging the CI runner for hours.
+# loud failure instead of hanging the CI runner for hours. psycopg is pulled in
+# here too (duplicating `db`): test_engine.py, test_migration_dryrun.py and
+# test_persistence_v2.py exercise the DB-backed inputs/persistence loaders
+# directly, so the documented test command (`.[dev,solver]`) needs a driver
+# present, not just importorskip-guarded.
 dev = [
     "pytest>=8.0",
     "pytest-timeout>=2.3",
     "jsonschema>=4.21",
     "openpyxl>=3.1",
+    "psycopg[binary]>=3.1",
 ]
 
 # NOTE: the forecast-fallback (voltpilot_optimization.fallback) additionally

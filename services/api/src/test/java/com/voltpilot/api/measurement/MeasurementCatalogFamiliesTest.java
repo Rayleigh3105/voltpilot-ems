@@ -11,7 +11,8 @@ import org.junit.jupiter.api.Test;
 class MeasurementCatalogFamiliesTest {
 
     /** Families whose device socket the box core owns alone (no measurement runtime). */
-    private static final Set<String> CORE_OWNED_WITHOUT_POINTS = Set.of("ebyte_m31", "huawei_sun2000_luna");
+    private static final Set<String> CORE_OWNED_WITHOUT_POINTS =
+            Set.of("ebyte_m31", "huawei_sun2000_luna", "kostal_piko");
 
     @Test
     void everyBuiltinBindingFamilyResolvesToCanonicalCatalogPoints() throws Exception {
@@ -29,14 +30,20 @@ class MeasurementCatalogFamiliesTest {
         assertThat(configured).containsExactlyInAnyOrder(
                 "string", "hybrid_1p", "hybrid_3p", "micro",
                 "sunspec", "sunspec_live", "fronius_solar_api",
-                "kaco_http", "kaco_http_hybrid", "kostal_plenticore", "kaco_serial", "huawei_sun2000_luna",
-                "goe_http_api", "shelly_http", "ebyte_m31");
+                "kaco_http", "kaco_http_hybrid", "kostal_plenticore", "kostal_piko", "kaco_serial", "huawei_sun2000_luna",
+                "goe_http_api", "shelly_http", "shelly_em_triphase", "ebyte_m31");
         for (String family : configured) {
             if (CORE_OWNED_WITHOUT_POINTS.contains(family)) {
                 // The Ebyte I/O module is read ONLY by the box core (one socket
                 // owner): a measurement point would make the Node-RED runtime
                 // open a second connection to the same device. Its states
                 // travel as the device entity's di_k/do_k telemetry instead.
+                // kostal_piko (classic PIKO Web-API /api/dxs.json): same shape -
+                // edge-app/core/internal/layer1/kostaldxs.go only ever calls
+                // r.publishTelemetry (the core's own inverter channel); nothing
+                // in layer1 wires this family into the measurement-selection
+                // runtime, so a catalog point would open a second connection to
+                // the same web server for values the core already reads itself.
                 assertThat(MeasurementCatalogFamilies.expand(Set.of(family), catalog.families()))
                         .as("core-owned family %s offers no measurement points", family)
                         .isEmpty();

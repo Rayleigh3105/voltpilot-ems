@@ -18,6 +18,7 @@ import com.voltpilot.api.flows.FlowDeploymentPublisher;
 import com.voltpilot.api.measurement.MeasurementConfigPublisher;
 import com.voltpilot.api.ota.OtaTargetPublisher;
 import com.voltpilot.api.probe.ProbePublisher;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.registerwrite.*;
 import com.voltpilot.api.tenant.TenantContext;
@@ -32,6 +33,7 @@ import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
 import org.junit.jupiter.api.*;
 import org.mockito.MockedStatic;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
@@ -77,8 +79,9 @@ import org.testcontainers.utility.DockerImageName;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class UemsBestandSteuerungAusEinemStueckTest {
     // Aufgenommen auf 4aa1e7fb, bei den Nachzügen auf 8b8b6a03b, 308a5cc91, 3a8519f1d, db32a784c und
-    // 690806300 bytegleich nachgemessen (resources/uems/nw2/README.md).
-    static final String MAIN = "690806300a125e6329b4e91b450d23ef2e6981be";
+    // 690806300 bytegleich nachgemessen; beim Nachzug auf 5fb9ab912 hat sich genau ein Eintrag geändert
+    // (resources/uems/nw2/README.md).
+    static final String MAIN = "5fb9ab9124283b20ff1dc1cb5e611a573b336189";
     static final boolean CAPTURE = System.getProperty("nw2.capture") != null;
     static final UUID TENANT = id(1), SITE = id(2), BOX = id(3), BATTERY = id(4), CONSUMER = id(5);
     static final UUID U2_TENANT = id(21), U2_HALLE_1 = id(22), U2_HALLE_2 = id(23), U2_LINDACH = id(24);
@@ -266,7 +269,6 @@ class UemsBestandSteuerungAusEinemStueckTest {
         connect(certificationPublisher);
         doCallRealMethod().when(certificationPublisher).publish(any(), any(), any(), anyBoolean(), anyList(), any());
         ReflectionTestUtils.setField(consumerPublisher, "mapper", new ObjectMapper());
-        ReflectionTestUtils.setField(consumerPublisher, "lock", new Object());
         doCallRealMethod().when(consumerPublisher).publishOverride(any(), any(), any(), any(), nullable(Boolean.class),
                 nullable(BigDecimal.class), anyInt(), any());
         doCallRealMethod().when(consumerPublisher).publishWithdraw(any(), any(), any(), any());
@@ -294,14 +296,26 @@ class UemsBestandSteuerungAusEinemStueckTest {
         TenantContext.clear();
     }
 
+    /**
+     * #1798 zog alle Sender auf {@code BrokerVerbindung} (EIN Paho-Client je Weg, nie verworfen) um: der Publisher
+     * hält keinen eigenen {@code client}-Feldnamen mehr, sondern ein {@code verbindung}-Feld. {@code publisher} ist
+     * hier ein {@code @MockBean} (Objenesis baut ihn ohne Konstruktor), also ist {@code verbindung} dort null -
+     * eine frische, echte {@link BrokerVerbindung} (reiner Sender: kein Abo, kein Eingang; der Konstruktor tut
+     * nichts Blockierendes) wird gebaut, auf den vorgetäuschten {@link MqttAsyncClient} gesetzt und danach ERST dem
+     * Mock zugewiesen.
+     */
     private void connect(Object publisher) throws Exception {
-        MqttClient client = mock(MqttClient.class);
+        MqttAsyncClient client = mock(MqttAsyncClient.class);
         when(client.isConnected()).thenReturn(true);
-        ReflectionTestUtils.setField(publisher, "client", client);
+        BrokerVerbindung verbindung = new BrokerVerbindung(LoggerFactory.getLogger(getClass()), "test",
+                "tcp://localhost:1883", "test-" + UUID.randomUUID(), true, "", "", null, null);
+        ReflectionTestUtils.setField(verbindung, "client", client);
+        ReflectionTestUtils.setField(verbindung, "jeVerbunden", true);
+        ReflectionTestUtils.setField(publisher, "verbindung", verbindung);
         doAnswer(call -> {
             wire.add(call.getArgument(0, String.class) + " qos=" + call.getArgument(2) + " retained="
                     + call.getArgument(3) + "\n" + new String(call.getArgument(1, byte[].class), StandardCharsets.UTF_8));
-            return null;
+            return mock(IMqttDeliveryToken.class);
         }).when(client).publish(anyString(), any(byte[].class), anyInt(), anyBoolean());
         doAnswer(call -> {
             String topic = call.getArgument(0);
@@ -319,7 +333,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
                 payload = payload.replace("\"request_id\":\"" + correlation + "\"", "\"request_id\":\"0000000000000000\"");
             }
             wire.add(topic + " qos=" + message.getQos() + " retained=" + message.isRetained() + "\n" + payload);
-            return null;
+            return mock(IMqttDeliveryToken.class);
         }).when(client).publish(anyString(), any(MqttMessage.class));
     }
 
@@ -327,8 +341,11 @@ class UemsBestandSteuerungAusEinemStueckTest {
         assertPublishersSilent("Migrationen + Spring-Start");
         Set<String> called = new TreeSet<>();
         try (var files = Files.walk(Path.of("src/main/java"))) {
+            // Wer über die gemeinsame Verbindung sendet — nicht am paho-Import erkennen: ein Sender
+            // ohne eigenes MqttMessage (reiner byte[]-Aufruf, #1798) braucht ihn nicht und fiele
+            // sonst durch (siehe AnlageUmzugApiTest/OrtVerschiebenApiTest).
             List<String> actualSenders = files.filter(p -> p.toString().endsWith(".java")).filter(p -> {
-                try { String source = Files.readString(p); return source.contains("import org.eclipse.paho") && source.contains(".publish("); }
+                try { String source = Files.readString(p); return source.contains("BrokerVerbindung") && source.contains(".publish("); }
                 catch (java.io.IOException e) { throw new java.io.UncheckedIOException(e); }
             }).map(p -> p.getFileName().toString().replace(".java", "")).toList();
             assertThat(senders().keySet()).as("AnlageUmzugApiTest: kein neuer MQTT-Sender bleibt ungezaehlt")
@@ -384,8 +401,10 @@ class UemsBestandSteuerungAusEinemStueckTest {
         }
         runAllRunners();
         same("startup publisher counts; main ApplicationReadyEvent (including control certification)", startup);
-        assertThat(startNeu).as("neue Sender seit main senden beim Start nichts").containsOnlyKeys(NEU_SEIT_MAIN)
-                .allSatisfy((name, n) -> assertThat(n).as(name).isZero());
+        // main 5fb9ab912 gibt JEDEM BrokerVerbindung-Sender denselben ContextRefreshedEvent-Anstoss
+        // (siehe oben) - auch diesen dreien; das VERBINDET nur, wie bei MeasurementConfigPublisher.
+        assertThat(startNeu).as("neue Sender seit main senden beim Start nichts, verbinden nur (main 5fb9ab912)")
+                .containsOnlyKeys(NEU_SEIT_MAIN).allSatisfy((name, n) -> assertThat(n).as(name).isOne());
         assertPublishersSilent("NW-2 nichts wird geschaltet; alle 12 MQTT-Publisher");
         assertThat((List<?>) ReflectionTestUtils.invokeMethod(Class.forName("com.voltpilot.api.uems.Bestandsschutz"),
                 "abweichungen", before, fingerprint())).as("main → UEMS: alle Bestandstabellen; Bestandsschutz").isEmpty();
