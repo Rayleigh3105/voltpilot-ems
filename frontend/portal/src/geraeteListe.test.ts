@@ -50,6 +50,17 @@ describe('geraeteListeZeilen: eine Zeile je Box, jeder Lebensabschnitt genau ein
     expect(zeilen[0]).toMatchObject({ lebensabschnitt: 'wartet', ref: 'edge-wartend' });
   });
 
+  it('eine wartende Anmeldung trägt ihre Erreichbarkeit (`boxVerbindung`), ein anderer Lebensabschnitt nicht (Firstmate vp-werkstatt-laeuft-anzeige)', () => {
+    const zeilen = geraeteListeZeilen({ fleet: [], devices: [deviceRow()], pending: [pending()], werkstattBoxen: [werkstattBox()] }, now);
+    const wartet = zeilen.find((z) => z.lebensabschnitt === 'wartet')!;
+    expect(wartet).not.toHaveProperty('erreichbar', null);
+    expect((wartet as { erreichbar: { zustand: string } }).erreichbar.zustand).toBe('verzoegert');
+    const gedruckt = zeilen.find((z) => z.lebensabschnitt === 'gedruckt')!;
+    expect((gedruckt as { erreichbar: unknown }).erreichbar).toBeNull();
+    const werkstatt = zeilen.find((z) => z.lebensabschnitt === 'werkstatt')!;
+    expect((werkstatt as { erreichbar: unknown }).erreichbar).toBeNull();
+  });
+
   it('zeigt eine Werkstatt-Box, die noch nicht verbunden ist, als „werkstatt"', () => {
     const zeilen = geraeteListeZeilen({ fleet: [], devices: [], pending: [], werkstattBoxen: [werkstattBox()] }, now);
     expect(zeilen).toHaveLength(1);

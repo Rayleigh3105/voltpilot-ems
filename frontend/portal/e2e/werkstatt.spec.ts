@@ -160,6 +160,20 @@ for (const breite of [1440, 390, 375]) {
       await expect(page.getByTestId('wsb-fall-banner')).toContainText('Der Dienst wartet.');
       await expect(page.getByTestId('wsb-knoepfe')).toHaveCount(0);
     } },
+    { lauf: 'bruecke_unterspannung', art: 'fall', name: 'fall-bruecke-unterspannung', pruefe: async (page) => {
+      await expect(page.getByTestId('wsb-fall-banner')).toContainText('Einmal kurz du.');
+      await expect(page.getByTestId('wsb-fall-banner')).toContainText('Danach macht der Dienst weiter.');
+      await expect(page.getByTestId('wsb-fall-titel')).toHaveText('Die Brücke hat zu wenig Strom.');
+      await expect(page.getByTestId('wsb-bild')).toHaveAttribute('data-bild', 'pi');
+      const live = page.getByTestId('wsb-live');
+      const zeilen = live.locator('li');
+      await expect(zeilen).toHaveCount(2);
+      await expect(zeilen.nth(0)).toHaveAttribute('data-zustand', 'ok');
+      await expect(zeilen.nth(1)).toHaveAttribute('data-zustand', 'lauf');
+      await expect(zeilen.nth(1)).toContainText('Der Dienst fragt alle 10 Sekunden wieder');
+      await expect(zeilen.nth(1)).toContainText('Strom');
+      await expect(zeilen.nth(1).getByTestId('wsb-live-seit')).toContainText('zuletzt geprüft');
+    } },
     { lauf: 'wartet', art: 'du', name: 'wartet-auf-eingabe', pruefe: async (page) => {
       await expect(page.getByTestId('wsb-du-hinweis')).toContainText('Tunnel-Adresse');
     } },

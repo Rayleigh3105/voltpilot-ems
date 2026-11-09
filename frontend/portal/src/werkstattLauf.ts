@@ -122,10 +122,25 @@ export interface PhasenZeile {
   rechts: string;
 }
 
-function seitSek(s: LaufStand, jetztMs: number): number | null {
-  if (!s.schritt_seit) return null;
-  const t = Date.parse(s.schritt_seit);
+function seitSekVonIso(iso: string | null | undefined, jetztMs: number): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
   return Number.isFinite(t) ? Math.max(0, (jetztMs - t) / 1000) : null;
+}
+
+function seitSek(s: LaufStand, jetztMs: number): number | null {
+  return seitSekVonIso(s.schritt_seit, jetztMs);
+}
+
+/** Sekunden seit einem beliebigen ISO-Zeitpunkt (Läuft-Anzeige außerhalb eines Laufs, z. B. Werkbank-Meldung). */
+export function liveSeitSek(iso: string | null | undefined, jetztMs: number): number | null {
+  return seitSekVonIso(iso, jetztMs);
+}
+
+/** „vor 4 s“, ab einer Minute „vor 1:15“ - das Lebenszeichen eines Checks, den der Dienst selbst wiederholt. */
+export function seitText(sek: number): string {
+  const s = Math.max(0, Math.round(sek));
+  return s < 60 ? `vor ${s} s` : `vor ${dauerText(s)}`;
 }
 
 /** Alle Schritte des Laufs nach Phasen, jeder mit Belegzeile und Dauer (E3 A). */
@@ -293,6 +308,10 @@ export interface Knopf {
 export interface LivePunkt {
   zustand: 'ok' | 'lauf' | 'offen' | 'warn';
   text: string;
+  /** Nur am laufenden Punkt: ein Satz in Alltagssprache, was der Dienst dabei gerade tut. */
+  tut?: string;
+  /** Nur am laufenden Punkt, wenn der Dienst selbst wiederholt prüft: seit wann zuletzt (ISO), für die mitzählende Anzeige. */
+  seit?: string | null;
 }
 
 export interface FallSeite {
@@ -396,9 +415,16 @@ export interface FallEingabe {
 function kabelPunkte(a: WerkstattAnsicht): LivePunkt[] {
   const kabel = a.werkbank.status?.werkstatt?.kabel ?? false;
   const meldet = (a.werkbank.status?.antworten ?? []).some((x) => (x.macs ?? []).length > 0);
+  const seit = a.werkbank.status_zeit ?? null;
   return [
-    { zustand: kabel ? 'ok' : 'lauf', text: 'Kabel steckt' },
-    { zustand: meldet ? 'ok' : kabel ? 'lauf' : 'offen', text: 'Mango meldet sich' },
+    kabel
+      ? { zustand: 'ok', text: 'Kabel steckt' }
+      : { zustand: 'lauf', text: 'Kabel steckt', tut: 'Wartet, bis das orange Kabel WERKSTATT eingesteckt ist.', seit },
+    meldet
+      ? { zustand: 'ok', text: 'Mango meldet sich' }
+      : kabel
+        ? { zustand: 'lauf', text: 'Mango meldet sich', tut: 'Prüft, ob sich die Mango meldet.', seit }
+        : { zustand: 'offen', text: 'Mango meldet sich' },
     { zustand: 'offen', text: 'Lauf beginnt von selbst' },
   ];
 }
@@ -407,31 +433,60 @@ function kabelPunkte(a: WerkstattAnsicht): LivePunkt[] {
 function live(code: string, wo: 'anschluss' | 'lauf', a: WerkstattAnsicht, selbst: boolean, nochmal: boolean): LivePunkt[] {
   if (!selbst) return [];
   const amAnschluss = a.anschluss_fall ?? null;
+  const seit = a.werkbank.status_zeit ?? null;
   if (RESET_FAELLE.has(code)) {
     const weg = amAnschluss === 'keine_box' || amAnschluss === 'kein_kabel';
     const startet = amAnschluss === 'startet';
     return [
-      { zustand: weg || startet ? 'ok' : 'lauf', text: 'Warten auf den Reset' },
-      { zustand: startet ? 'ok' : weg ? 'lauf' : 'offen', text: 'Mango startet neu (bis 5 Minuten)' },
-      { zustand: startet ? 'lauf' : 'offen', text: 'Neuer Lauf beginnt von selbst' },
+      weg || startet
+        ? { zustand: 'ok', text: 'Warten auf den Reset' }
+        : { zustand: 'lauf', text: 'Warten auf den Reset', tut: 'Wartet, bis du den Reset-Knopf drückst.', seit },
+      startet
+        ? { zustand: 'ok', text: 'Mango startet neu (bis 5 Minuten)' }
+        : weg
+          ? { zustand: 'lauf', text: 'Mango startet neu (bis 5 Minuten)', tut: 'Prüft, ob die Mango nach dem Reset wieder antwortet.', seit }
+          : { zustand: 'offen', text: 'Mango startet neu (bis 5 Minuten)' },
+      startet
+        ? { zustand: 'lauf', text: 'Neuer Lauf beginnt von selbst', tut: 'Mango antwortet; der Dienst startet gleich einen neuen Lauf.', seit }
+        : { zustand: 'offen', text: 'Neuer Lauf beginnt von selbst' },
     ];
   }
   if (STARTLADER.has(code)) {
     const startet = amAnschluss === 'startet';
     return [
-      { zustand: startet ? 'ok' : 'offen', text: 'Frisches OpenWrt meldet sich am orangen Kabel' },
-      { zustand: startet ? 'lauf' : 'offen', text: 'Lauf beginnt von selbst' },
+      startet
+        ? { zustand: 'ok', text: 'Frisches OpenWrt meldet sich am orangen Kabel' }
+        : {
+            zustand: 'lauf',
+            text: 'Frisches OpenWrt meldet sich am orangen Kabel',
+            tut: 'Prüft, ob sich frisches OpenWrt am orangen Kabel meldet.',
+            seit,
+          },
+      startet
+        ? { zustand: 'lauf', text: 'Lauf beginnt von selbst', tut: 'Meldet sich; der Dienst startet gleich einen neuen Lauf.', seit }
+        : { zustand: 'offen', text: 'Lauf beginnt von selbst' },
     ];
   }
   if (code === 'kein_kabel' || code === 'keine_box') return kabelPunkte(a);
   if (code === 'startet') {
     const [k, m] = kabelPunkte(a);
-    return [k, m, { zustand: 'lauf', text: 'Mango nimmt die Anmeldung an' }, { zustand: 'offen', text: 'Lauf beginnt von selbst' }];
+    return [
+      k,
+      m,
+      { zustand: 'lauf', text: 'Mango nimmt die Anmeldung an', tut: 'Prüft, ob die Mango zweimal hintereinander gleich antwortet.', seit },
+      { zustand: 'offen', text: 'Lauf beginnt von selbst' },
+    ];
   }
   if (PI.has(code) && wo === 'anschluss') {
+    const bereit = a.werkbank.bereit;
     return [
-      { zustand: a.werkbank.bereit ? 'ok' : 'warn', text: a.werkbank.bereit ? 'Brücke antwortet' : 'Brücke antwortet nicht' },
-      { zustand: 'offen', text: 'Der Dienst fragt alle 10 Sekunden wieder' },
+      { zustand: bereit ? 'ok' : 'warn', text: bereit ? 'Brücke antwortet' : 'Brücke antwortet nicht' },
+      {
+        zustand: 'lauf',
+        text: 'Der Dienst fragt alle 10 Sekunden wieder',
+        tut: bereit ? 'Prüft gerade, ob die Brücke wieder genug Strom hat.' : 'Prüft gerade, ob die Brücke wieder antwortet.',
+        seit,
+      },
     ];
   }
   if (wo === 'lauf') {

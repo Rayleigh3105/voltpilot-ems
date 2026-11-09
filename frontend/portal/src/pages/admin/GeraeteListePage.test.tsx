@@ -87,6 +87,31 @@ describe('GeraeteListePage (§4.4, Scheibe S2): jede Box in jedem Lebensabschnit
     expect(screen.getByTestId('geraete-liste')).toHaveTextContent('VP-0001');
   });
 
+  it('zeigt bei „Meldet sich" Erreichbarkeit (grün, solange frisch) und „Noch bei keinem Kunden eingerichtet" (Firstmate vp-werkstatt-laeuft-anzeige)', async () => {
+    listPendingEnrollments.mockResolvedValue([{
+      externalRef: 'edge-cyhchfr', deviceInfo: null, csrUpdatedAt: new Date().toISOString(), everIssued: false, issuedAt: null,
+    }]);
+    render(<GeraeteListePage onOpen={vi.fn()} />);
+    const zeile = (await screen.findAllByText('edge-cyhchfr'))[0].closest('tr')!;
+    expect(within(zeile).getByText('Noch bei keinem Kunden eingerichtet')).toBeInTheDocument();
+    const erreichbar = within(zeile).getByTestId('geraete-wartet-erreichbar');
+    expect(erreichbar).toHaveTextContent('Online');
+    expect(erreichbar).toHaveClass('online');
+    // der bestehende Hinweis (gray/amber Badge) bleibt stehen.
+    expect(within(zeile).getByText('Frisch — normal während der Einrichtung')).toBeInTheDocument();
+  });
+
+  it('eine alte Meldung („Meldet sich nicht") bleibt von der grünen Erreichbarkeit unterschieden', async () => {
+    listPendingEnrollments.mockResolvedValue([{
+      externalRef: 'edge-alt', deviceInfo: null, csrUpdatedAt: new Date(Date.now() - 10 * 60_000).toISOString(), everIssued: false, issuedAt: null,
+    }]);
+    render(<GeraeteListePage onOpen={vi.fn()} />);
+    const zeile = (await screen.findAllByText('edge-alt'))[0].closest('tr')!;
+    const erreichbar = within(zeile).getByTestId('geraete-wartet-erreichbar');
+    expect(erreichbar).toHaveTextContent('Meldet sich nicht');
+    expect(erreichbar).toHaveClass('offline');
+  });
+
   const boxRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
     deviceId: 'd1', label: 'edge-a1', externalRef: 'edge-a1', siteId: 's1', siteName: 'Pilsting',
     tenantId: 't1', tenantName: 'Kunde A', ist: 'edge-2026.08.0', soll: 'edge-2026.08.0', sollSeq: 12,

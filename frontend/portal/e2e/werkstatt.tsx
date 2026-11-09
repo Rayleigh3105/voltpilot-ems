@@ -2,7 +2,7 @@
  * Die echte Werkstatt-Seite mit fiktiven Daten; alle API-Aufrufe bleiben im Speicher. Der
  * Werkstatt-Dienst meldet seine Ansicht (Vertrag werkstatt-ansicht-v1) frisch; welcher Lauf gerade an
  * der Werkbank steht, wählt `?lauf=` (laeuft, wartet, fertig, problem, startlader, still, ohne; dazu die Fälle der
- * Lauf-Seite: gl_passwort, bruecke_weg, passwort_fremd, startet). `problem` und `startlader` sind Stände eines älteren
+ * Lauf-Seite: gl_passwort, bruecke_weg, passwort_fremd, startet, bruecke_unterspannung). `problem` und `startlader` sind Stände eines älteren
  * Dienstes ohne `fall`, `belege` und `nochmal_moeglich`: daran zeigt sich, dass die Seite dann wie bisher bleibt.
  *
  * Im Register: edge-5t2dcy6 (vom Dienst abgenommen, mit Belegen), edge-k7m2xq3 (der Lauf an der
@@ -76,6 +76,9 @@ const LOESUNG: Record<string, Loesung> = {
   passwort_fremd: { titel: 'Diese Mango gehört nicht zur Werkstatt.', selbst: false, zur_seite: true, schritte: ['Nicht zurücksetzen.', ZUR_SEITE] },
   startet: { titel: 'Die Mango startet noch.', selbst: true, zur_seite: false,
     schritte: ['Nichts tun und nicht abziehen. Der Dienst fängt an, sobald sie fertig gestartet ist.'] },
+  bruecke_unterspannung: { titel: 'Die Brücke hat zu wenig Strom.', selbst: true, zur_seite: false,
+    schritte: ['Die Mango nicht am USB des Raspberry Pi betreiben, sondern an einem eigenen USB-Netzteil.',
+      'Ein stärkeres Netzteil für den Pi nehmen, wenn es wieder kommt.'] },
 };
 let nochmalSeit: string | null = null;
 let zurSeite: ZurSeite[] = [{ id: 'z1', lauf: 'lauf-20261101-1530', box: 'edge-p3n8rv4', fall: 'schritt_gescheitert',
@@ -126,15 +129,20 @@ function ansicht(): WerkstattAnsicht {
     zeit: new Date().toISOString(),
     werkbank: { adresse: '10.10.40.2', bereit: true, fassung_soll: 'brueckpi-2026.11.1', host_schluessel: 'SHA256:' + 'W'.repeat(43),
       status: { fassung: 'brueckpi-2026.11.1', werkstatt: { kabel: true },
-        antworten: szenario === 'ohne' ? [] : [{ adresse: szenario === 'gl_passwort' ? '192.168.8.1' : '192.168.1.1', macs: ['94:83:c4:12:34:56'] }] },
+        antworten: szenario === 'ohne' ? [] : [{ adresse: szenario === 'gl_passwort' ? '192.168.8.1' : '192.168.1.1', macs: ['94:83:c4:12:34:56'] }],
+        ...(szenario === 'bruecke_unterspannung' ? { strom: { unterspannung_jetzt: true, quelle: 'adc' } } : {}) },
       status_zeit: new Date().toISOString() },
     freigabe: f
       ? { laufend: true, boxen: 2, freigabe: { kennung: f.kennung, box_art: 'mango', gueltig_bis: f.gueltigBis,
           openwrt: { fassung: f.openwrt.fassung, datei: f.openwrt.datei, sha256: f.openwrt.sha256, quelle: f.openwrt.quelle },
           edge_light: { fassung: f.edgeLight.fassung, quelle: f.edgeLight.quelle } } }
       : { laufend: false, boxen: 0, grund: 'keine laufende Freigabe für mango', freigabe: null },
-    anschluss: szenario === 'startet' ? 'Mango erkannt unter 192.168.1.1; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen.' : 'eth1 (orange)',
+    anschluss: szenario === 'startet' ? 'Mango erkannt unter 192.168.1.1; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen.'
+      : szenario === 'bruecke_unterspannung' ? 'Mango erkannt unter 192.168.1.1; der Dienst wartet, bis sie fertig gestartet ist. Nicht abziehen. '
+        + 'Die Brücke meldet Unterspannung: die Mango an ein eigenes USB-Netzteil.'
+        : 'eth1 (orange)',
     ...(szenario === 'startet' ? { anschluss_fall: 'startet', anschluss_loesung: LOESUNG.startet } : {}),
+    ...(szenario === 'bruecke_unterspannung' ? { anschluss_fall: 'bruecke_unterspannung', anschluss_loesung: LOESUNG.bruecke_unterspannung } : {}),
     lauf: f ? laufAnDerBank() : null,
   };
 }

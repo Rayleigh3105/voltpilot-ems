@@ -20,6 +20,7 @@
 import type { AdminDeviceRow, AdminGeraeteListeEintrag, PendingEnrollment } from './admin/adminApi';
 import type { BoxArt, FleetRow } from './adminEdgeUpdates';
 import { BOX_ART_LABELS, BOX_ART_UNBEKANNT } from './adminEdgeUpdates';
+import type { BoxVerbindung } from './adminFleet';
 import { boxZeile, LINIEN, type BoxZeile } from './geraeteUpdates';
 import { pendingRows } from './onboardingFunnel';
 import { loeschbar, type WerkstattBox } from './werkstatt';
@@ -35,6 +36,8 @@ export interface RohZeile {
   seit: string | null;
   suspect: boolean;
   suchtext: string;
+  /** Nur bei `wartet`: Erreichbarkeit der Box (`boxVerbindung`), sonst null - kein Fakt zu diesem Lebensabschnitt. */
+  erreichbar: BoxVerbindung | null;
 }
 
 export type GeraeteListeZeile =
@@ -88,6 +91,7 @@ export function geraeteListeZeilen(args: {
       suspect: p.suspect,
       suchtext: [p.externalRef, p.deviceInfo].filter(Boolean).join(' ').toLocaleLowerCase('de'),
       fassungAbweichung: false,
+      erreichbar: p.erreichbar,
     });
   }
 
@@ -105,6 +109,7 @@ export function geraeteListeZeilen(args: {
       suspect: false,
       suchtext: [b.edgeRef, geraet, b.notiz].filter(Boolean).join(' ').toLocaleLowerCase('de'),
       fassungAbweichung: false,
+      erreichbar: null,
     });
   }
 
@@ -123,6 +128,7 @@ export function geraeteListeZeilen(args: {
       suspect: false,
       suchtext: [d.externalRef, d.label, d.note].filter(Boolean).join(' ').toLocaleLowerCase('de'),
       fassungAbweichung: false,
+      erreichbar: null,
     });
   }
 
@@ -139,6 +145,7 @@ export function geraeteListeZeilen(args: {
       suspect: false,
       suchtext: [g.externalRef, g.name].filter(Boolean).join(' ').toLocaleLowerCase('de'),
       fassungAbweichung: false,
+      erreichbar: null,
     });
   }
 
