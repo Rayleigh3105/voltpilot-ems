@@ -6783,6 +6783,14 @@ span.vp-swap-out {
     animation: none;
   }
 
+  /* Werkstatt-Läuft-Anzeige (Fall- und Lauf-Seite, lazy geladenes Werkstatt.css):
+     der Satz und das mitzählende Lebenszeichen „zuletzt geprüft vor …“ bleiben
+     stehen, nur der Ring ruht (E5). `:root` davor, weil Werkstatt.css NACH
+     dieser Datei eingehängt wird und bei gleicher Spezifität gewänne. */
+  :root .vp-wsb-lauf .vp-wsb-punkt {
+    animation: none;
+  }
+
   .vp-flow-on,
   .vp-flow-rev,
   .vp-spinner,

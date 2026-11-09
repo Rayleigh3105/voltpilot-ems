@@ -575,6 +575,7 @@
 .vp-wsb-lauf .vp-wsb-punkt {
   border: 3px solid var(--vp-primary);
   border-top-color: var(--vp-action);
+  animation: vp-spin 0.9s linear infinite;
 }
 
 .vp-wsb-offen .vp-wsb-punkt {

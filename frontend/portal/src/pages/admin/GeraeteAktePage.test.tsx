@@ -152,6 +152,18 @@ describe('GeraeteAktePage (§4.4, Scheiben S2/S3): EIN Ort je Box, inline statt 
     expect(await screen.findByText(/nichts in der Einrichtung verzeichnet/)).toBeInTheDocument();
   });
 
+  it('Reiter Einrichtung „Meldet sich": dieselbe Sprache wie die Geräte-Liste - Erreichbarkeit grün, kein Kunde eingerichtet (Firstmate vp-werkstatt-laeuft-anzeige)', async () => {
+    listPendingEnrollments.mockResolvedValue([{
+      externalRef: 'edge-cyhchfr', deviceInfo: null, csrUpdatedAt: new Date().toISOString(), everIssued: false, issuedAt: null,
+    }]);
+    render(<GeraeteAktePage boxRef="edge-cyhchfr" reiter="einrichtung" />);
+    const erreichbar = await screen.findByTestId('akte-wartet-erreichbar');
+    expect(erreichbar).toHaveTextContent('Online');
+    expect(erreichbar).toHaveClass('online');
+    expect(screen.getByText('Noch bei keinem Kunden eingerichtet.')).toBeInTheDocument();
+    expect(screen.getByText('Frisch — normal während der Einrichtung')).toBeInTheDocument();
+  });
+
   describe('Reiter Anlage (§4.4, Scheibe S3): Plan, Steuerung, Fassung, Werkzeuge aus vorhandenen Antworten', () => {
     beforeEach(() => {
       edgeUpdates.mockResolvedValue({ ...emptyEdgeUpdates(), fleet: [connectedRow] });

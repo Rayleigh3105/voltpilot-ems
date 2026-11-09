@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { LaufStand, WerkstattAnsicht, WerkstattLauf } from './werkstattBank';
-import { dauerText, fallSeite, jetzt, meistDauer, neueresRelease, PRUEFUNGEN_WORT, schrittListe, software, WAS } from './werkstattLauf';
+import { dauerText, fallSeite, jetzt, liveSeitSek, meistDauer, neueresRelease, PRUEFUNGEN_WORT, schrittListe, seitText, software, WAS } from './werkstattLauf';
 
 /** Die Ansicht, wie Go sie schreibt (TestAnsichtVektor), mit Belegen, vorher und Schritt-Zeit. */
 const vektor: WerkstattAnsicht = JSON.parse(
@@ -80,5 +80,69 @@ describe('Lauf-Seite aus der Ansicht des Dienstes', () => {
     const angenommen = fallSeite({ code: 'box_weg', loesung: null, wo: 'lauf', ansicht: vektor,
       lauf: { ...lauf, zustand: 'angehalten', nochmal_moeglich: true, nochmal_seit: vektor.zeit } });
     expect(angenommen.knoepfe.map((k) => k.art)).toEqual(['zur-seite']);
+  });
+});
+
+describe('Läuft-Anzeige: der wiederholte Check ist ein laufender Punkt, nie ein leerer offener (Firstmate vp-werkstatt-laeuft-anzeige)', () => {
+  const loesungSelbst = { titel: 't', schritte: ['s'], selbst: true, zur_seite: false };
+
+  it('Brücke unterspannung: „fragt alle 10 Sekunden“ läuft, trägt einen Alltagssatz und das Lebenszeichen der Werkbank', () => {
+    const s = fallSeite({ code: 'bruecke_unterspannung', loesung: loesungSelbst, wo: 'anschluss', ansicht: vektor, lauf: null });
+    expect(s.live).toHaveLength(2);
+    expect(s.live[0]).toMatchObject({ zustand: 'ok', text: 'Brücke antwortet' });
+    expect(s.live[1].zustand).toBe('lauf');
+    expect(s.live[1].text).toBe('Der Dienst fragt alle 10 Sekunden wieder');
+    expect(s.live[1].tut).toMatch(/Strom/);
+    expect(s.live[1].seit).toBe(vektor.werkbank.status_zeit);
+  });
+
+  it('Brücke nicht bereit: der Check läuft weiter, auch wenn die Brücke selbst „warn“ zeigt', () => {
+    const nichtBereit = { ...vektor, werkbank: { ...vektor.werkbank, bereit: false } };
+    const s = fallSeite({ code: 'bruecke_nicht_bereit', loesung: loesungSelbst, wo: 'anschluss', ansicht: nichtBereit, lauf: null });
+    expect(s.live[0]).toMatchObject({ zustand: 'warn', text: 'Brücke antwortet nicht' });
+    expect(s.live[1].zustand).toBe('lauf');
+    expect(s.live[1].tut).toMatch(/antwortet/);
+  });
+
+  it('Startlader: der Check auf frisches OpenWrt läuft, bis es sich meldet - dann startet der nächste Lauf von selbst', () => {
+    const wartend = fallSeite({ code: 'ssh_zu', loesung: loesungSelbst, wo: 'anschluss', ansicht: vektor, lauf: null });
+    expect(wartend.live[0]).toMatchObject({ zustand: 'lauf', text: 'Frisches OpenWrt meldet sich am orangen Kabel' });
+    expect(wartend.live[0].seit).toBe(vektor.werkbank.status_zeit);
+    expect(wartend.live[1]).toMatchObject({ zustand: 'offen', text: 'Lauf beginnt von selbst' });
+    const gemeldet = fallSeite({ code: 'ssh_zu', loesung: loesungSelbst, wo: 'anschluss', ansicht: { ...vektor, anschluss_fall: 'startet' }, lauf: null });
+    expect(gemeldet.live[0]).toMatchObject({ zustand: 'ok' });
+    expect(gemeldet.live[1]).toMatchObject({ zustand: 'lauf', text: 'Lauf beginnt von selbst' });
+  });
+
+  it('Reset: wartet aufs Drücken, dann prüft es den Neustart, dann beginnt der neue Lauf - immer genau ein laufender Punkt', () => {
+    const wartetAufDruck = fallSeite({ code: 'gl_passwort', loesung: loesungSelbst, wo: 'anschluss', ansicht: vektor, lauf: null });
+    expect(wartetAufDruck.live.filter((p) => p.zustand === 'lauf')).toHaveLength(1);
+    expect(wartetAufDruck.live[0]).toMatchObject({ zustand: 'lauf', text: 'Warten auf den Reset' });
+    expect(wartetAufDruck.live[0].tut).toMatch(/Reset-Knopf/);
+    const weg = fallSeite({ code: 'gl_passwort', loesung: loesungSelbst, wo: 'anschluss', ansicht: { ...vektor, anschluss_fall: 'kein_kabel' }, lauf: null });
+    expect(weg.live.filter((p) => p.zustand === 'lauf')).toHaveLength(1);
+    expect(weg.live[1]).toMatchObject({ zustand: 'lauf', text: 'Mango startet neu (bis 5 Minuten)' });
+    const startet = fallSeite({ code: 'gl_passwort', loesung: loesungSelbst, wo: 'anschluss', ansicht: { ...vektor, anschluss_fall: 'startet' }, lauf: null });
+    expect(startet.live.filter((p) => p.zustand === 'lauf')).toHaveLength(1);
+    expect(startet.live[2]).toMatchObject({ zustand: 'lauf', text: 'Neuer Lauf beginnt von selbst' });
+  });
+
+  it('ohne „selbst“ gibt es keine Läuft-Anzeige (der Dienst fasst die Box nicht an)', () => {
+    const s = fallSeite({ code: 'box_in_gebrauch', loesung: { titel: 't', schritte: ['s'], selbst: false, zur_seite: false }, wo: 'lauf', ansicht: vektor, lauf: null });
+    expect(s.live).toEqual([]);
+  });
+});
+
+describe('seitText/liveSeitSek: das Lebenszeichen eines wiederholten Checks', () => {
+  it('zählt in Sekunden, ab einer Minute mm:ss', () => {
+    expect(seitText(0)).toBe('vor 0 s');
+    expect(seitText(4)).toBe('vor 4 s');
+    expect(seitText(75)).toBe('vor 1:15');
+  });
+
+  it('liveSeitSek liest einen beliebigen ISO-Zeitpunkt, null ohne einen', () => {
+    expect(liveSeitSek('2026-11-02T10:11:58Z', Date.parse('2026-11-02T10:11:58Z') + 4000)).toBe(4);
+    expect(liveSeitSek(null, Date.now())).toBeNull();
+    expect(liveSeitSek(undefined, Date.now())).toBeNull();
   });
 });

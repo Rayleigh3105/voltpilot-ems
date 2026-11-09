@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api';
 import { FEHLER_IM_BEREICH, Fehlergrenze } from '../../components/Fehlergrenze';
@@ -565,6 +565,38 @@ describe('Werkstatt: Ansichten des Dienstes vom 04.11.2026', () => {
     render(<Fehlergrenze><WerkstattPage /></Fehlergrenze>);
     fireEvent.click(await screen.findByTestId('wsb-mango'));
     expect(screen.getByTestId('wsb-fall-titel')).toHaveTextContent(titel);
+  });
+
+  it('Läuft-Anzeige „Brücke hat zu wenig Strom“: der wiederholte Check läuft sichtbar, statt leer offen zu stehen, und zählt sein Lebenszeichen mit', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.setSystemTime(new Date(zustaende.unterspannung.werkbank.status_zeit!));
+      window.location.hash = '#/werkstatt?werkbank=1';
+      werkstattDienst.mockResolvedValue(ausZustand('unterspannung', laeufeZu('unterspannung')));
+      render(<Fehlergrenze><WerkstattPage /></Fehlergrenze>);
+      fireEvent.click(await screen.findByTestId('wsb-mango'));
+      expect(screen.getByTestId('wsb-fall-banner')).toHaveTextContent('Einmal kurz du.');
+      expect(screen.getByTestId('wsb-fall-banner')).toHaveTextContent('Danach macht der Dienst weiter.');
+
+      const live = screen.getByTestId('wsb-live');
+      const zeilen = within(live).getAllByRole('listitem');
+      expect(zeilen).toHaveLength(2);
+      expect(zeilen[0]).toHaveTextContent('Brücke antwortet');
+      expect(zeilen[0]).toHaveAttribute('data-zustand', 'ok');
+      // der frühere leere graue Kreis ist jetzt ein laufender Punkt mit Satz und Lebenszeichen - kein technischer Begriff.
+      expect(zeilen[1]).toHaveAttribute('data-zustand', 'lauf');
+      expect(zeilen[1]).toHaveTextContent('Der Dienst fragt alle 10 Sekunden wieder');
+      expect(zeilen[1]).toHaveTextContent(/Strom/);
+      expect(zeilen[1].textContent).not.toMatch(/bruecke_unterspannung/);
+      const seit1 = within(zeilen[1]).getByTestId('wsb-live-seit').textContent;
+      expect(seit1).toMatch(/^zuletzt geprüft vor \d+(:\d\d)? s?$/);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+      const seit2 = within(screen.getByTestId('wsb-live')).getAllByRole('listitem')[1].querySelector('[data-testid="wsb-live-seit"]')!.textContent;
+      expect(seit2).not.toBe(seit1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   /** So meldete der Dienst bis 724ebdde9 einen Lauf ohne erledigten Schritt; die API hält solche Stände je Lauf fest. */

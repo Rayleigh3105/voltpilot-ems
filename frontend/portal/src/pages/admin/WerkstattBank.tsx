@@ -30,9 +30,11 @@ import {
 import {
   dauerText,
   jetzt as jetztKarte,
+  liveSeitSek,
   meistDauer,
   PRUEFUNGEN_WORT,
   schrittListe,
+  seitText,
   software,
   type Bild,
   type FallSeite,
@@ -123,20 +125,36 @@ function FallBild({ bild }: { bild: Bild }) {
 
 type Punkt = 'ok' | 'lauf' | 'offen' | 'warn';
 
-function Punktliste({ zeilen, testId }: { zeilen: { zustand: Punkt; text: string; klein?: string }[]; testId: string }) {
+function Punktliste({
+  zeilen,
+  testId,
+  uhr,
+}: {
+  zeilen: { zustand: Punkt; text: string; klein?: string; tut?: string; seit?: string | null }[];
+  testId: string;
+  /** Jetzt-Zeitstempel (ms), damit ein wiederholter Check sein Lebenszeichen mitzählt (E1). */
+  uhr?: number;
+}) {
   return (
     <ul className="vp-wsb-liste" data-testid={testId}>
-      {zeilen.map((z) => (
-        <li key={z.text} className={`vp-wsb-zeile vp-wsb-${z.zustand}`} data-zustand={z.zustand}>
-          <span className="vp-wsb-punkt" aria-hidden>
-            {z.zustand === 'ok' ? '✓' : z.zustand === 'warn' ? '!' : ''}
-          </span>
-          <span>
-            {z.text}
-            {z.klein && <small>{z.klein}</small>}
-          </span>
-        </li>
-      ))}
+      {zeilen.map((z) => {
+        const seitSek = uhr != null ? liveSeitSek(z.seit, uhr) : null;
+        return (
+          <li key={z.text} className={`vp-wsb-zeile vp-wsb-${z.zustand}`} data-zustand={z.zustand}>
+            <span className="vp-wsb-punkt" aria-hidden>
+              {z.zustand === 'ok' ? '✓' : z.zustand === 'warn' ? '!' : ''}
+            </span>
+            <span>
+              {z.text}
+              {z.klein && <small>{z.klein}</small>}
+              {z.tut && <small data-testid="wsb-live-tut">{z.tut}</small>}
+              {seitSek != null && (
+                <small data-testid="wsb-live-seit">zuletzt geprüft {seitText(seitSek)}</small>
+              )}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -430,7 +448,19 @@ function KnopfLeiste({
 }
 
 /** Die Seite eines Falls (angehaltener Lauf oder Fall am Anschluss). */
-function FallHaupt({ seite, lauf, ansicht, aktionen }: { seite: FallSeite; lauf: LaufStand | null; ansicht: WerkstattAnsicht; aktionen: Aktionen }) {
+function FallHaupt({
+  seite,
+  lauf,
+  ansicht,
+  aktionen,
+  uhr,
+}: {
+  seite: FallSeite;
+  lauf: LaufStand | null;
+  ansicht: WerkstattAnsicht;
+  aktionen: Aktionen;
+  uhr: number;
+}) {
   const b = BANNER[seite.art];
   return (
     <>
@@ -459,7 +489,7 @@ function FallHaupt({ seite, lauf, ansicht, aktionen }: { seite: FallSeite; lauf:
           </div>
           {seite.live.length > 0 && (
             <div className="vp-wsb-karte">
-              <Punktliste testId="wsb-live" zeilen={seite.live} />
+              <Punktliste testId="wsb-live" zeilen={seite.live} uhr={uhr} />
             </div>
           )}
         </>
@@ -508,9 +538,9 @@ export function WerkstattBank({
   const weg = (kennung: string) => setErledigt((alt) => new Set([...alt, kennung]));
   const zweiSpalten = s.art === 'laeuft' || s.art === 'du' || s.art === 'fall' || s.art === 'fertig';
 
-  // „läuft seit“ zählt zwischen den Meldungen weiter.
+  // „läuft seit“ und das Lebenszeichen eines wiederholten Checks zählen zwischen den Meldungen weiter.
   useEffect(() => {
-    if (s.art !== 'laeuft' && s.art !== 'du') return undefined;
+    if (s.art !== 'laeuft' && s.art !== 'du' && s.art !== 'fall') return undefined;
     const t = window.setInterval(() => setUhr(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, [s.art]);
@@ -572,7 +602,7 @@ export function WerkstattBank({
           {hinweisZeile}
           {sw && <SoftwareZeile sw={sw} titel={swTitel} neuer={neuerEdgeLight} />}
           {(s.art === 'laeuft' || s.art === 'du') && <Laeuft lauf={s.lauf} meist={meist} uhr={uhr} phasen={phasenZeilen!} />}
-          {s.art === 'fall' && <FallHaupt seite={s.seite} lauf={s.lauf} ansicht={ansicht} aktionen={aktionen} />}
+          {s.art === 'fall' && <FallHaupt seite={s.seite} lauf={s.lauf} ansicht={ansicht} aktionen={aktionen} uhr={uhr} />}
           {s.art === 'fertig' && <Fertig lauf={s.lauf} onNaechste={() => weg(s.lauf.kennung)} />}
         </section>
         <aside className="vp-wsl-seite" aria-label="Software und Box">

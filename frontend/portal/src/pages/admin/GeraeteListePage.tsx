@@ -18,6 +18,7 @@ import {
   filterGeraeteListe, geraeteListeLinien, geraeteListeZeilen, listeChipZahlen, loeschKandidat,
   LEERER_LISTE_FILTER, type GeraeteListeZeile, type ListeFilter, type LoeschKandidat,
 } from '../../geraeteListe';
+import { PENDING_KONTEXT, pendingErreichbarText } from '../../onboardingFunnel';
 import type { FlottenAnlage } from '../../adminKomponentenFlotte';
 import type { WerkstattBox } from '../../werkstatt';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
@@ -296,13 +297,20 @@ function GeraeteZeile({ z, jetzt, onOpen, werkstattBoxen, onLoeschenAnfragen }: 
         </span>
       </td>
       <td data-label="Kunde und Anlage" data-zeile="neben">
-        {z.lebensabschnitt === 'verbunden' ? z.zeile.ort : <span className="vp-muted">{LEBENSABSCHNITT_LABEL[z.lebensabschnitt]}</span>}
+        {z.lebensabschnitt === 'verbunden'
+          ? z.zeile.ort
+          : <span className="vp-muted">{z.lebensabschnitt === 'wartet' ? PENDING_KONTEXT : LEBENSABSCHNITT_LABEL[z.lebensabschnitt]}</span>}
       </td>
       <td data-label="Verbindung" data-zeile="neben">
         {z.lebensabschnitt === 'verbunden' ? (
           <div className={`vp-gu-verb ${z.zeile.verbindung.zustand}`}>
             <b><i aria-hidden="true" />{z.zeile.verbindung.text}</b>
             {z.zeile.verbindung.gesehen && <small>{z.zeile.verbindung.gesehen}</small>}
+          </div>
+        ) : z.lebensabschnitt === 'wartet' && z.erreichbar ? (
+          <div className={`vp-gu-verb ${z.erreichbar.zustand}`} data-testid="geraete-wartet-erreichbar">
+            <b><i aria-hidden="true" />{pendingErreichbarText(z.erreichbar)}</b>
+            <small>{z.erreichbar.lastSeenText}</small>
           </div>
         ) : (
           <span className="vp-muted">{z.seit ? fmtRelative(z.seit, jetzt) : '–'}</span>

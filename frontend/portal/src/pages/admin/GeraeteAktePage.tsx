@@ -20,7 +20,7 @@ import {
   boxFakten, linieDerBox, messwerteLuecke, stufe1Hinweis, verbindungSicht, verlaufSicht,
   type BoxVerbindungSicht,
 } from '../../geraeteUpdates';
-import { pendingRows } from '../../onboardingFunnel';
+import { PENDING_KONTEXT, pendingErreichbarText, pendingRows } from '../../onboardingFunnel';
 import { fmtRelative } from '../../format';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { LIVE_POLL_MS } from '../../pollCadence';
@@ -873,13 +873,23 @@ function EinrichtungReiter({ boxRef, deviceRow, pendingRow, werkstattZeile, werk
           <p className="vp-muted">Für diese Referenz steht nichts in der Aufkleber-Registry.</p>
         )}
       </Card>
-      {pendingRow && (
-        <Card padding="lg" radius="lg" className="vp-geraet-sek">
-          <h2><Icon name="wifi" size={18} /> Meldet sich, wartet auf Zuordnung</h2>
-          <p>{pendingRows([pendingRow], jetzt)[0]?.hint}</p>
-          <p className="vp-muted vp-text-sm">Meldet sich seit {fmtRelative(pendingRow.csrUpdatedAt, jetzt)}{pendingRow.deviceInfo ? ` · ${pendingRow.deviceInfo}` : ''}.</p>
-        </Card>
-      )}
+      {pendingRow && (() => {
+        const p = pendingRows([pendingRow], jetzt)[0];
+        return (
+          <Card padding="lg" radius="lg" className="vp-geraet-sek">
+            <h2><Icon name="wifi" size={18} /> Meldet sich, wartet auf Zuordnung</h2>
+            {p && (
+              <div className={`vp-gu-verb ${p.erreichbar.zustand}`} data-testid="akte-wartet-erreichbar">
+                <b><i aria-hidden="true" />{pendingErreichbarText(p.erreichbar)}</b>
+                <small>{p.erreichbar.lastSeenText}</small>
+              </div>
+            )}
+            <p className="vp-muted">{PENDING_KONTEXT}.</p>
+            <p>{p?.hint}</p>
+            <p className="vp-muted vp-text-sm">Meldet sich seit {fmtRelative(pendingRow.csrUpdatedAt, jetzt)}{pendingRow.deviceInfo ? ` · ${pendingRow.deviceInfo}` : ''}.</p>
+          </Card>
+        );
+      })()}
       {!deviceRow && !pendingRow && (
         <Card padding="lg" radius="lg" className="vp-geraet-sek">
           <p className="vp-muted" style={{ margin: 0 }}>Für „{boxRef}“ ist nichts in der Einrichtung verzeichnet.</p>
