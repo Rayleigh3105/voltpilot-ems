@@ -48,16 +48,16 @@ public class FlowDeploymentPublisher {
     }
 
     /**
-     * Verbindet beim Start und wartet darauf höchstens {@link BrokerVerbindung#ZEITGRENZE_MS}: der erste Versand
-     * gleich danach soll noch durchgehen wie vor der Migration auf {@link BrokerVerbindung} (Befund 6/7,
-     * vp-perf-robust-folge) - vorher verband ein synchrones {@code MqttClient.connect()} bis zu 5 s. Später wartet
-     * kein Senden mehr auf die Verbindung; fehlt sie, meldet der Aufrufer es wie jeden anderen Verbindungsfehler,
-     * und Paho verbindet selbst neu.
+     * Stößt den Erstaufbau beim Start nur AN, blockiert den Start-Thread nie (Review-Fix: ein beim api-Start
+     * fehlender Broker hätte den Start sonst um bis zu {@link BrokerVerbindung#ZEITGRENZE_MS} je Weg verlängert -
+     * Risiko einer Neustart-Schleife der {@code startupProbe}). Der erste Versand wartet dafür selbst begrenzt auf
+     * den Erstaufbau ({@link BrokerVerbindung#verbundenerClient()}, wie vor der Migration das synchrone
+     * {@code MqttClient.connect()}); danach wartet kein Senden mehr auf die Verbindung, und Paho verbindet selbst
+     * neu.
      */
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
         verbindung.sicherstellen();
-        verbindung.erstaufbauAbwarten();
     }
 
     /** The retained deployment topic of one device (contract x-topic). */

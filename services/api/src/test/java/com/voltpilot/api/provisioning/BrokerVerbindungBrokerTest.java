@@ -283,35 +283,47 @@ class BrokerVerbindungBrokerTest {
     }
 
     /**
-     * Befund 7 (vp-wartung-perf-p1): ein frischer Publisher (Vertreter der 13 betroffenen, hier
-     * {@link ProvisioningPublisher}) verband beim ALLERERSTEN Senden bislang SYNCHRON (bis zu 5 s) - der
-     * erste Versand nach dem api-Start ging dadurch noch durch. Ohne den Erstaufbau-Takt beim Start
-     * ({@link ProvisioningPublisher#start()}) würfe {@code verbundenerClient()} sofort
-     * {@code REASON_CODE_CLIENT_NOT_CONNECTED}, weil der asynchrone Aufbau noch läuft - der Rückschritt,
-     * den dieser Test gegen einen echten Broker belegt.
+     * Befund 7 (vp-wartung-perf-p1) + zweites Review (vp-perf-robust-folge): ein frischer Publisher (Vertreter
+     * der 13 betroffenen, hier {@link ProvisioningPublisher}) verband beim ALLERERSTEN Senden bislang SYNCHRON
+     * (bis zu 5 s) - der erste Versand nach dem api-Start ging dadurch noch durch. Die erste Fassung dieses
+     * Fixes ließ dafür {@code start()} selbst bis zu {@link BrokerVerbindung#ZEITGRENZE_MS} im Start-Thread
+     * warten - bei einem beim Start fehlenden Broker (genau Befund 6) hätte das den api-Start je betroffenem
+     * Weg verlängert (13 Wege nacheinander, Risiko der {@code startupProbe}-Neustart-Schleife). {@code start()}
+     * STÖSST den Erstaufbau jetzt nur an; der erste VERSAND selbst wartet begrenzt
+     * ({@link BrokerVerbindung#verbundenerClient()}).
      */
     @Test
     @Timeout(60)
-    void ersterVersandEinesFrischenPublishersGelingtWennDerBrokerDaIstUndScheitertBegrenztSonst() throws Exception {
-        // Broker beim Start erreichbar: start() wartet begrenzt auf den Erstaufbau, der erste Versand geht durch.
+    void startKehrtSofortZurueckUndNurDerErsteVersandWartetBegrenztAufDenErstaufbau() throws Exception {
+        // Broker beim Start erreichbar: start() kehrt sofort zurück, der erste Versand geht trotzdem durch.
         ProvisioningPublisher da = new ProvisioningPublisher(direkt(), "", "");
+        long beginDa = System.nanoTime();
         da.start();
+        long startDauerDaMs = (System.nanoTime() - beginDa) / 1_000_000;
+        assertThat(startDauerDaMs).as("start() blockiert nie, auch nicht, wenn der Broker sofort antwortet")
+                .isLessThan(2_000);
         assertThat(da.publishConfig("test-box-da", TENANT, SITE, DEVICE))
-                .as("erster Versand gelingt, wenn der Broker beim Start erreichbar ist").isTrue();
+                .as("erster Versand gelingt, wenn der Broker erreichbar ist").isTrue();
         da.close();
 
-        // Broker beim Start weg: start() wartet höchstens ZEITGRENZE_MS, der erste Versand scheitert dann - statt
-        // zu hängen wie ein Fehlschlag ohne Zeitgrenze es täte.
+        // Broker beim Start weg: start() kehrt trotzdem sofort zurück (stößt nur an) - der erste VERSAND wartet
+        // höchstens die Zeitgrenze und scheitert dann, statt zu hängen.
         try (StoerProxy proxy = new StoerProxy()) {
             proxy.haengen(true);
             ProvisioningPublisher weg = new ProvisioningPublisher(proxy.url(), "", "");
-            long begin = System.nanoTime();
+            long beginWeg = System.nanoTime();
             weg.start();
-            long dauerMs = (System.nanoTime() - begin) / 1_000_000;
-            assertThat(dauerMs).as("start() wartet höchstens die Zeitgrenze, hängt nicht")
+            long startDauerWegMs = (System.nanoTime() - beginWeg) / 1_000_000;
+            assertThat(startDauerWegMs)
+                    .as("start() blockiert nicht, wenn der Broker beim Start weg ist (Befund 6/Review-Fix)")
+                    .isLessThan(2_000);
+
+            long beginVersand = System.nanoTime();
+            boolean gelungen = weg.publishConfig("test-box-weg", TENANT, SITE, DEVICE);
+            long versandDauerMs = (System.nanoTime() - beginVersand) / 1_000_000;
+            assertThat(gelungen).as("erster Versand scheitert, statt zu hängen").isFalse();
+            assertThat(versandDauerMs).as("der erste Versand wartet höchstens die Zeitgrenze")
                     .isLessThan(BrokerVerbindung.ZEITGRENZE_MS + 5_000);
-            assertThat(weg.publishConfig("test-box-weg", TENANT, SITE, DEVICE))
-                    .as("erster Versand scheitert begrenzt, statt zu hängen").isFalse();
             weg.close();
         }
     }

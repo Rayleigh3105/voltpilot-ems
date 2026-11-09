@@ -111,7 +111,11 @@ public final class BrokerVerbindung {
         aufbauSeit = start;
     }
 
-    /** Wartet höchstens {@link #ZEITGRENZE_MS} auf den laufenden Erstaufbau (Start des Senders). */
+    /**
+     * Wartet höchstens {@link #ZEITGRENZE_MS} auf den laufenden Erstaufbau - vom Sendepfad selbst
+     * ({@link #verbundenerClient()}, nur vor der allerersten Verbindung) oder, bei einem reinen Sender ohne
+     * eigenen Sendepfad-Rückgriff, explizit beim Start.
+     */
     public void erstaufbauAbwarten() {
         IMqttToken laufend;
         synchronized (this) { laufend = aufbau; }
@@ -129,9 +133,20 @@ public final class BrokerVerbindung {
         return c != null && c.isConnected();
     }
 
-    /** Der verbundene Client, sonst {@code REASON_CODE_CLIENT_NOT_CONNECTED}; Paho verbindet selbst neu. */
+    /**
+     * Der verbundene Client, sonst {@code REASON_CODE_CLIENT_NOT_CONNECTED}; Paho verbindet selbst neu.
+     *
+     * <p><b>⚠ Wartet NUR vor der allerersten Verbindung</b> ({@link #erstaufbauAbwarten()}, begrenzt auf
+     * {@link #ZEITGRENZE_MS}) - genau wie ein Sender es vor dieser Klasse tat ({@code MqttClient.connect()}
+     * synchron). Ein SPÄTERER Wiederaufbau (Pahos eigener Reconnect nach einem Abriss) lässt einen Sendepfad nie
+     * warten; der Start selbst stößt den Erstaufbau nur AN ({@code sicherstellen()} in {@code start()}, nicht
+     * blockierend) - sonst würde ein beim api-Start fehlender Broker den Start um die Zeitgrenze JE WEG verlängern
+     * (Befund 7, Review: bis zu 13 × 10 s im Start-Thread, mit Risiko für die Neustart-Schleife der
+     * {@code startupProbe}).
+     */
     public MqttAsyncClient verbundenerClient() throws MqttException {
         sicherstellen();
+        if (!jeVerbunden) erstaufbauAbwarten();
         MqttAsyncClient c;
         synchronized (this) { c = client; }
         if (c == null || !c.isConnected()) {
