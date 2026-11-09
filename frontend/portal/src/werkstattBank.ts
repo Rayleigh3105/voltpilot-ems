@@ -110,6 +110,16 @@ export interface WerkstattAnsicht {
   anschluss_fall?: string;
   anschluss_loesung?: Loesung | null;
   lauf?: LaufStand | null;
+  /** Box-Druckdateien, die im Portal noch nicht liegen (additiv, vp-mango-3mf-pro-box). */
+  gehaeuse?: GehaeuseAuftragAnsicht[];
+}
+
+/** Ein offener Gehäuse-Auftrag der Ansicht (noch keine Druckdatei im Portal). */
+export interface GehaeuseAuftragAnsicht {
+  referenz: string;
+  zustand: 'wartet' | 'baut' | 'fertig' | 'fehler';
+  grund?: string;
+  bestellt: string;
 }
 
 export interface WerkstattLauf {
