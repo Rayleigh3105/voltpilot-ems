@@ -473,6 +473,10 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     # `anteile_aktiv` (P4); jede andere Anlage fehlt und bleibt, wie sie war.
     verbuende = verbund.load_verbund(dsn, jetzt, site_id)
     fuehrende = load_fuehrende_boxen(dsn, site_id)
+    # Die am Wechselrichter gelesene Entladegrenze je Anlage (api
+    # V20261109090000, WechselrichterUntergrenze): hebt die Untergrenze des
+    # SoC-Bandes an. Eine Anlage ohne Zeile bleibt Wort fuer Wort wie vorher.
+    untergrenzen = load_wechselrichter_untergrenzen(dsn, site_id)
     sites: list[BatterySite] = []
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -529,7 +533,8 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                 )
                 continue
             soc_min_fraction, soc_max_fraction = _soc_band(
-                site_id, soc_min_pct, soc_max_pct
+                site_id, soc_min_pct, soc_max_pct,
+                untergrenzen.get(_uuid(site_id)),
             )
             sites.append(
                 BatterySite(
@@ -682,6 +687,36 @@ def load_fuehrende_boxen(dsn: str, site_id: UUID | None = None) -> dict[UUID, UU
     return {_uuid(sid): _uuid(box) for sid, box in rows}
 
 
+def load_wechselrichter_untergrenzen(
+    dsn: str, site_id: UUID | None = None
+) -> dict[UUID, float]:
+    """``{site_id: soc_min_pct}`` - die am Wechselrichter gelesene Entladegrenze.
+
+    Die api uebernimmt die juengste plausible Lesung der Box (Deye-Hybrid
+    "Battery Low SOC") je Anlage in ``wechselrichter_untergrenze``
+    (``WechselrichterUntergrenzeAbgleich``); die Zeile bleibt stehen, wenn die
+    Box schweigt - die letzte gueltige Lesung gilt weiter, nie ein stiller
+    Rueckfall auf 5 %. Vor der api-Migration ``V20261109090000`` gibt es die
+    Tabelle nicht: das ist genau "keine Lesung" (Muster
+    :func:`load_fuehrende_boxen`).
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    sql = "SELECT site_id, soc_min_pct FROM wechselrichter_untergrenze"
+    params: tuple = ()
+    if site_id is not None:
+        sql += " WHERE site_id = %s"
+        params = (site_id,)
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("wechselrichter_untergrenze.schema_missing")
+        return {}
+    return {_uuid(sid): float(pct) for sid, pct in rows if pct is not None}
+
+
 def _uuid(value) -> UUID:
     return value if isinstance(value, UUID) else UUID(str(value))
 
@@ -791,7 +826,9 @@ def _opt_float(value) -> float | None:
     return float(value) if value is not None else None
 
 
-def _soc_band(site_id, soc_min_pct, soc_max_pct) -> tuple[float, float]:
+def _soc_band(
+    site_id, soc_min_pct, soc_max_pct, wechselrichter_pct=None
+) -> tuple[float, float]:
     """Resolve the per-asset usable SoC band (``asset.soc_min_pct``/
     ``soc_max_pct``, api migration V20260710020000, admin-tuned) into
     :class:`BatteryParams` fractions.
@@ -801,6 +838,13 @@ def _soc_band(site_id, soc_min_pct, soc_max_pct) -> tuple[float, float]:
     it crosses the other side's default) falls back to the platform defaults
     with a loud warning instead of crashing the site's every run: master data
     to fix, never a dead optimizer.
+
+    ``wechselrichter_pct`` is the discharge limit read from the inverter
+    (:func:`load_wechselrichter_untergrenzen`). The effective minimum is the
+    LARGER of it and the VoltPilot value: never plan below what the inverter
+    allows, and a higher VoltPilot value stays as a deliberate reserve. A
+    reading at or above the upper limit (or outside 0-100 %) is ignored with a
+    warning. ``None`` (no reading) leaves the band exactly as before.
     """
     soc_min = (
         float(soc_min_pct) / 100.0
@@ -827,8 +871,23 @@ def _soc_band(site_id, soc_min_pct, soc_max_pct) -> tuple[float, float]:
                 }
             },
         )
-        return DEFAULT_SOC_MIN_FRACTION, DEFAULT_SOC_MAX_FRACTION
-    return soc_min, soc_max
+        soc_min, soc_max = DEFAULT_SOC_MIN_FRACTION, DEFAULT_SOC_MAX_FRACTION
+    if wechselrichter_pct is None:
+        return soc_min, soc_max
+    gelesen = float(wechselrichter_pct) / 100.0
+    if not 0.0 <= gelesen < soc_max:
+        logger.warning(
+            "site.wechselrichter_untergrenze_ignored",
+            extra={
+                "context": {
+                    "site_id": str(site_id),
+                    "wechselrichter_pct": str(wechselrichter_pct),
+                    "soc_max_fraction": soc_max,
+                }
+            },
+        )
+        return soc_min, soc_max
+    return max(soc_min, gelesen), soc_max
 
 
 def gather_inputs(

@@ -222,6 +222,19 @@ public class AdminOptimizerController {
         }
     }
 
+    /** Die am Wechselrichter gelesene Entladegrenze; ohne Spring (Tests mit {@code new …}) keine. */
+    private com.voltpilot.api.entities.WechselrichterUntergrenzeRepository untergrenzen;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void untergrenzen(com.voltpilot.api.entities.WechselrichterUntergrenzeRepository untergrenzen) {
+        this.untergrenzen = untergrenzen;
+    }
+
+    private java.math.BigDecimal gelesenSocMinPct(UUID siteId) {
+        var e = untergrenzen == null ? null : untergrenzen.eintrag(siteId);
+        return e == null ? null : e.stand().socMinPct();
+    }
+
     private SiteContext requireSite(UUID siteId) {
         SiteContext site = diagnostics.siteContext(siteId);
         if (site == null) {
@@ -237,9 +250,11 @@ public class AdminOptimizerController {
                 ? (site.wearCostCtPerKwh() != null
                         ? site.wearCostCtPerKwh().doubleValue() : defaultWear)
                 : null;
+        // Wirksam ist das Größere von VoltPilot-Wert und der am Wechselrichter gelesenen Grenze
+        // (WechselrichterUntergrenze); ohne Lesung genau der Wert von vorher.
         Double effMin = site.hasBattery()
-                ? (site.socMinPct() != null
-                        ? site.socMinPct().doubleValue() : OptimizerProperties.DEFAULT_SOC_MIN_PCT)
+                ? com.voltpilot.api.entities.WechselrichterUntergrenze.wirksamPct(site.socMinPct(),
+                        gelesenSocMinPct(site.siteId()), site.socMaxPct(), OptimizerProperties.DEFAULT_SOC_MIN_PCT)
                 : null;
         Double effMax = site.hasBattery()
                 ? (site.socMaxPct() != null

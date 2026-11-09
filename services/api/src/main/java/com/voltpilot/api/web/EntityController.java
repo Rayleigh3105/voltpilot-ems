@@ -8,6 +8,9 @@ import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryRepository.RegistryState;
 import com.voltpilot.api.entities.EntityTypeCatalog;
+import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.entities.WechselrichterUntergrenze;
+import com.voltpilot.api.entities.WechselrichterUntergrenzeRepository;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.EntityHistoryRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
@@ -70,7 +73,21 @@ public class EntityController {
     public record EntityDto(UUID id, String entityType, String typeLabel, String role,
             String label, boolean control, UUID deviceId, JsonNode capabilities, JsonNode guards,
             String syncStatus, ObservedDto observed, String edgeSourceId, Boolean orphanedPin,
-            java.math.BigDecimal capacityKwp, String sourceKind, String certificationStatus) {}
+            java.math.BigDecimal capacityKwp, String sourceKind, String certificationStatus,
+            SocMinDto socMin) {}
+
+    /**
+     * Woher der Min. Ladestand eines Speichers kommt - nur an der Speicher-Komponente einer Anlage, deren
+     * Entladegrenze am Wechselrichter gelesen wurde ({@code WechselrichterUntergrenze}); sonst {@code null} und die
+     * Anzeige bleibt wie vorher. {@code wirksamPct}: das Größere von VoltPilot-Wert und Lesung. {@code quelle}:
+     * {@code wechselrichter} (die Lesung bestimmt den Wert) oder {@code voltpilot}. {@code gelesenAm}: die letzte
+     * gültige Lesung; {@code aktuell} falsch, wenn sie älter als eine Stunde ist - der Wert gilt dann weiter.
+     * {@code letzteLesungVerworfen}: {@code unplausibel}/{@code veraltet}, wenn die jüngste Lesung nicht übernommen
+     * wurde.
+     */
+    public record SocMinDto(double wirksamPct, String quelle, java.math.BigDecimal wechselrichterPct,
+            java.math.BigDecimal voltpilotPct, Instant gelesenAm, Instant seit, boolean aktuell,
+            String letzteLesungVerworfen) {}
 
     /** One edge-local commissioning item. {@code adoptedEntityId} != null when a
      *  v2 entity was already adopted from this source (U2 "Vom Gerät gemeldet").
@@ -130,6 +147,14 @@ public class EntityController {
     private final EntityHistoryRepository history;
     private final EntityTypeCatalog catalog;
     private final ObjectMapper mapper;
+
+    /** Die am Wechselrichter gelesene Entladegrenze; ohne Spring (Tests mit {@code new …}) keine. */
+    private WechselrichterUntergrenzeRepository untergrenzen;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void untergrenzen(WechselrichterUntergrenzeRepository untergrenzen) {
+        this.untergrenzen = untergrenzen;
+    }
 
     public EntityController(Geltungsbereich geltungsbereich, EntityRegistryRepository registry,
             EntityObservedRepository observed, EntityHistoryRepository history,
@@ -192,6 +217,8 @@ public class EntityController {
                     link == null ? null : link.intervalS()));
         }
 
+        WechselrichterUntergrenzeRepository.Eintrag gelesen = untergrenzen == null ? null
+                : untergrenzen.eintrag(siteId);
         List<EntityDto> entities = new ArrayList<>();
         for (EntityRow row : rows) {
             ObservedRow obs = byEntity.remove(row.id().toString());
@@ -209,7 +236,8 @@ public class EntityController {
                                     LenientJson.parse(mapper, obs.channelsJson()), obs.entityType(),
                                     obs.reportedAt()),
                     row.edgeSourceId(), orphanedPin, row.capacityKwp(), row.sourceKind(),
-                    certificationStatus(row.entityType())));
+                    certificationStatus(row.entityType()),
+                    gelesen != null && row.id().equals(gelesen.entityId()) ? socMin(siteId, gelesen) : null));
         }
         // Whatever the edge still reports that the registry no longer knows.
         List<String> staleOnDevice = new ArrayList<>(byEntity.keySet());
@@ -218,6 +246,19 @@ public class EntityController {
                 : new RegistrySummaryDto(state.revision(), state.composedAt(), state.deviceId(),
                         reportedRevision, reportedAt);
         return new SiteEntitiesDto(summary, entities, localSetup, staleOnDevice);
+    }
+
+    private SocMinDto socMin(UUID siteId, WechselrichterUntergrenzeRepository.Eintrag gelesen) {
+        EntityRegistryRepository.BatteryAsset speicher = registry.batteryAsset(siteId);
+        java.math.BigDecimal voltpilot = speicher == null ? null : speicher.socMinPct();
+        java.math.BigDecimal ober = speicher == null ? null : speicher.socMaxPct();
+        java.math.BigDecimal wr = gelesen.stand().socMinPct();
+        double wirksam = WechselrichterUntergrenze.wirksamPct(voltpilot, wr, ober, EntityRegistryService.SOC_MIN_VORGABE_PCT);
+        boolean vomWr = WechselrichterUntergrenze.vomWechselrichter(voltpilot, wr, ober,
+                EntityRegistryService.SOC_MIN_VORGABE_PCT);
+        return new SocMinDto(wirksam, vomWr ? "wechselrichter" : "voltpilot", wr, voltpilot,
+                gelesen.stand().gelesenAm(), gelesen.stand().seit(),
+                WechselrichterUntergrenze.aktuell(gelesen.stand(), Instant.now()), gelesen.letzteLesungVerworfen());
     }
 
     /**

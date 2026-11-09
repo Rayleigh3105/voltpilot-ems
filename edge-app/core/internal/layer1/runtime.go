@@ -11,6 +11,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/deyedecode"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/solarmanv5"
 )
 
@@ -85,6 +86,13 @@ type Runtime struct {
 	// sunspecSeen: the SunSpec identity last logged per address (sunspec.go).
 	sunspecSeen sync.Map
 
+	// the settings Edge Light reads itself (einstellungen.go): the retained
+	// measurement plan and when each point was last attempted.
+	einstMu     sync.Mutex
+	plan        *messplan
+	planRaw     []byte
+	einstLetzte map[string]time.Time
+
 	// bootID + receiptSeq make each source receipt's event_id unique
 	// (edge/data-sources/poll; receiptSeq under srcMu).
 	bootID     string
@@ -144,7 +152,8 @@ func New(bus Bus, opts Options) *Runtime {
 	return &Runtime{bus: bus, opts: opts, log: opts.Logger, lanes: newLanes(),
 		pollKick: make(chan struct{}, 1), ready: make(chan struct{}),
 		http: newHTTPClient(opts.HTTPTimeout), srcTrace: map[string]traceState{},
-		bootID: "l1-" + strconv.FormatInt(time.Now().UnixNano(), 36)}
+		einstLetzte: map[string]time.Time{},
+		bootID:      "l1-" + strconv.FormatInt(time.Now().UnixNano(), 36)}
 }
 
 // Run subscribes the bus topics and polls until ctx ends.
@@ -158,6 +167,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return err
 	}
 	if err := r.bus.Subscribe(TopicSourcesConfig, r.onSourcesConfig); err != nil {
+		return err
+	}
+	if err := r.bus.Subscribe(measurements.LocalConfigTopic, r.onMessplan); err != nil {
 		return err
 	}
 	close(r.ready)
@@ -197,6 +209,7 @@ func (r *Runtime) onInverterConfig(_ string, payload []byte) {
 	if s != nil {
 		r.log.Info("Wechselrichter-Auswahl uebernommen", "marke", s.Brand, "modell", s.Model, "familie", s.Family, "anbindung", s.Communication)
 	}
+	r.messplanNeuBewerten()
 	select {
 	case r.pollKick <- struct{}{}:
 	default:
@@ -294,6 +307,15 @@ func (r *Runtime) pollSolarman(ctx context.Context, p *solarmanPlan) {
 	}
 	sess.SetSequence(seq)
 	blocks, err := sess.ReadPlan(ctx, p.Reads)
+	// The settings Edge Light reads itself ride in the SAME session (one
+	// logger, one client), only after a successful poll and only when due.
+	var plan *messplan
+	var einst []einstellungsLesung
+	if err == nil {
+		var due []messplanPunkt
+		plan, due = r.faelligeEinstellungen(p.Decode.Family, r.opts.Now())
+		einst = r.leseEinstellungen(ctx, sess, due)
+	}
 	_ = sess.Close()
 	r.mu.Lock()
 	r.seq = sess.Sequence()
@@ -302,6 +324,8 @@ func (r *Runtime) pollSolarman(ctx context.Context, p *solarmanPlan) {
 		r.readFailed(p, err)
 		return
 	}
+
+	r.publishEinstellungen(plan, einst, r.opts.Now())
 
 	res := deyedecode.Decode(toBlocks(blocks), p.Decode)
 	if res == nil {

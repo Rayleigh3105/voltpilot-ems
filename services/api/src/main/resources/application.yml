@@ -518,6 +518,13 @@ voltpilot:
     # kein Push, kein Kommando. `enabled` ist der Not-Aus - Vorgabe AN, im Testlauf AUS (surefire).
     wago-anschluss-nachtrag:
       enabled: ${VOLTPILOT_COMPONENTS_WAGO_ANSCHLUSS_NACHTRAG_ENABLED:true}
+  # Die Entladegrenze, die am Wechselrichter eingestellt ist (Deye-Hybrid „Battery
+  # Low SOC“): der Läufer legt den Messpunkt in den Messplan der Box und übernimmt
+  # die jüngste plausible Lesung je Anlage (WechselrichterUntergrenzeAbgleich).
+  # Vorgabe AN, im Testlauf AUS (surefire).
+  wechselrichter-untergrenze:
+    enabled: ${VOLTPILOT_WECHSELRICHTER_UNTERGRENZE_ENABLED:true}
+    interval-ms: ${VOLTPILOT_WECHSELRICHTER_UNTERGRENZE_INTERVAL_MS:120000}
   # UEMS AP-02 IP-9: die BESTANDSÜBERNAHME der Standorte läuft AUTOMATISCH bei
   # jedem Start (BestandsuebernahmeLaeufer, kein Takt): ein Kundenbereich mit
   # genau einer Anlage bekommt seinen Standort (Entwurf, Adresse fehlt) samt

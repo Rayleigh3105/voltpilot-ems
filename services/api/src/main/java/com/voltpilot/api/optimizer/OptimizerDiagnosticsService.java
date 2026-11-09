@@ -247,6 +247,14 @@ public class OptimizerDiagnosticsService {
     }
 
     /** The effective battery parameters, or null for battery-less sites. */
+    /** Die am Wechselrichter gelesene Entladegrenze; ohne Spring (Tests mit {@code new …}) keine. */
+    private com.voltpilot.api.entities.WechselrichterUntergrenzeRepository untergrenzen;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void untergrenzen(com.voltpilot.api.entities.WechselrichterUntergrenzeRepository untergrenzen) {
+        this.untergrenzen = untergrenzen;
+    }
+
     BatteryContext batteryContext(SiteContext site) {
         if (!site.hasBattery()) {
             return null;
@@ -255,8 +263,12 @@ public class OptimizerDiagnosticsService {
         double wearCt = overridden
                 ? site.wearCostCtPerKwh().doubleValue()
                 : properties.defaultWearCostCtPerKwh();
-        double socMin = site.socMinPct() != null
-                ? site.socMinPct().doubleValue() : OptimizerProperties.DEFAULT_SOC_MIN_PCT;
+        // Wirksam ist das Größere von VoltPilot-Wert und der am Wechselrichter gelesenen Grenze
+        // (WechselrichterUntergrenze); ohne Lesung genau der Wert von vorher.
+        var gelesen = untergrenzen == null ? null : untergrenzen.eintrag(site.siteId());
+        double socMin = com.voltpilot.api.entities.WechselrichterUntergrenze.wirksamPct(site.socMinPct(),
+                gelesen == null ? null : gelesen.stand().socMinPct(), site.socMaxPct(),
+                OptimizerProperties.DEFAULT_SOC_MIN_PCT);
         double socMax = site.socMaxPct() != null
                 ? site.socMaxPct().doubleValue() : OptimizerProperties.DEFAULT_SOC_MAX_PCT;
         return new BatteryContext(

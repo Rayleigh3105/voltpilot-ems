@@ -63,7 +63,7 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 | Probe-Kanal (Register einmal lesen, aus dem Portal) | `vp-modbus-probe` | ⬜ |
 | Schalt-Test (Freigabe-Assistent) | `vp-modbus-switch-test` | ⬜ |
 | Register schreiben (Portal und `:8484`) | `vp-installer-write-*`, `vp-register-write` | ⬜ |
-| Messwerte-Bibliothek (Zusatzmesswerte nach Katalog) | `measurements/*.js`, `vp-measurements` | ⬜ |
+| Messwerte-Bibliothek (Zusatzmesswerte nach Katalog) | `measurements/*.js`, `vp-measurements` | 🟡 nur die Entladegrenze am Deye-Hybrid („Battery Low SOC“, 3P Register 117, 1P 219; `internal/layer1/einstellungen.go`): gelesen in der Sitzung des Telemetrie-Polls im Takt des Messplans, jeder andere Punkt mit `edge_too_old` abgelehnt, ein Punkt der anderen Deye-Familie mit `binding_unavailable`. Seitdem bestätigt Edge Light jeden Messplan · ⬜ übrige Punkte |
 | Modbus-Datenspiegel: Lernblöcke lesen | `vp-register-want/raw` | ⬜ |
 
 ## E. Automationen und Regeln
