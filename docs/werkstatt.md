@@ -64,13 +64,17 @@ Der Werkstatt-Dienst baut sie nach der Übergabe (`gehaeuse-<referenz>.3mf`,
 Fehler fertig ist, zur API hoch (`PUT /api/v1/werkstatt-dienst/gehaeuse/{edgeRef}`, Prüfsumme serverseitig
 geprüft, Nachdruck überschreibt). Die API legt sie in `werkstatt_gehaeuse_datei` ab; die Karte lädt sie über
 `GET /api/v1/admin/werkstatt/boxen/{ref}/gehaeuse` (platform-admin, `model/3mf`).
-Ein Fehlschlag beim Hochladen blockiert den Werkstatt-Lauf an der Box nicht; der nächste Anlauf des Dienstes
-holt ihn nach.
+Ein Fehlschlag beim Hochladen blockiert den Werkstatt-Lauf an der Box nicht; der Dienst holt ihn im eigenen Takt
+nach, auch ohne Neustart (`services/werkstatt-dienst/internal/gehaeuse`, `Laufe`).
 
-Liegt noch keine Datei vor (kein Werkstatt-Lauf ohne Fehler), sagt die Karte das ehrlich statt eines toten
-Knopfs. Für eine Box, die schon vor dieser Funktion abgenommen wurde, liegt die Datei noch in der alten
-internen Ablage des Dienstes (`kubectl port-forward`, keine API) - die Karte nennt das; ein Rück-Import ist
-keine Aufgabe dieser Funktion, sie kommt beim nächsten Werkstatt-Lauf der Box nach.
+Derselbe Takt gleicht mit dem Portal ab (`GET /api/v1/werkstatt-dienst/gehaeuse/offen`): eine abgenommene Box
+ohne Druckdatei und ohne Auftrag in der Ablage des Dienstes reiht er von selbst ein - auch eine Box, die vor
+dieser Funktion abgenommen wurde und deren Werkstatt-Lauf die Bestellung nie ausgelöst hat; kein Handgriff, kein
+Rück-Import nötig. Liegt noch keine Datei vor, sagt die Karte „Druckdatei wird erstellt …“ mit einer
+Läuft-Anzeige statt eines toten Knopfs. Ein schon gescheiterter Auftrag wird NICHT automatisch wieder
+eingereiht (sonst bauten persistente Fehler endlos neu); die Karte zeigt dann einen ruhigen Satz mit dem Grund
+und „Erneut erstellen“ (`POST /api/v1/admin/werkstatt/boxen/{ref}/gehaeuse/neu`), das wie „Nochmal versuchen“
+der Lauf-Seite einen Auftrag an den Dienst anlegt.
 Was von den Teilen gedruckt und bestätigt ist, steht in [druck/README.md](../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/README.md), die Seite wiederholt es nur.
 
 ## Die Abnahme

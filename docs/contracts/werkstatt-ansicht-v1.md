@@ -24,6 +24,7 @@ Vektor: [`werkstatt-ansicht-v1.example.json`](werkstatt-ansicht-v1.example.json)
 | `lauf.nochmal_moeglich` | der angehaltene Lauf darf aus dem Portal neu angestoßen werden („Nochmal versuchen“): nur Fälle ohne Handgriff an der Box (`faelle.Nochmal`) |
 | `lauf.nochmal_seit` | seit wann der Dienst den Auftrag „nochmal“ ausführt (er hat die Sperre der Box freigegeben) |
 | `werkbank.status.strom` | Versorgung der Brücke (`vp-werkbank-status.v1`, additiv): `unterspannung_jetzt`, `unterspannung_seit_start` (fehlen, wenn der Pi es nicht meldet), `quelle` (`vcgencmd` oder `keine`) |
+| `gehaeuse` | additiv (vp-mango-3mf-pro-box, automatisch nachholen): Liste der Box-Druckdateien, die im Portal noch nicht liegen - `referenz`, `zustand` (`wartet`, `baut`, `fertig`, `fehler`), `grund` (nur bei `fehler`), `bestellt` (Zeit). Fehlt ohne Gehäuse-Bau; leer, solange jede offene Box fertig und hochgeladen ist. Grundlage für die Werkstatt-Box-Seite: „Druckdatei wird erstellt …“ bzw. bei `fehler` ein ruhiger Satz mit „Erneut erstellen“ (`POST …/admin/werkstatt/boxen/{ref}/gehaeuse/neu`) |
 
 Fehlt `lauf`, gab es seit dem Start des Dienstes keinen.
 
