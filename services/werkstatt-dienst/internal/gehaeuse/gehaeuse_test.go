@@ -88,7 +88,7 @@ func TestFertigLegtDruckdateienAbUndNichtDasGeslicte(t *testing.T) {
 		job("gehaeuse-" + ref + "-120000")
 		schreibeBau(t, ziel, ref)
 		return nil
-	}), nil, time.Minute, stumm)
+	}), nil, time.Minute, time.Hour, stumm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestFehlerImBerichtGibtKeineDruckdatei(t *testing.T) {
 	w, _ := Neu(t.TempDir(), bauerFunc(func(_ context.Context, ref, ziel string, _ func(string)) error {
 		schreibeBau(t, ziel, ref, "Ruhezone 2,1 Module (mindestens 3)")
 		return errors.New("bauen.sh endete mit 1")
-	}), nil, time.Minute, stumm)
+	}), nil, time.Minute, time.Hour, stumm)
 	starte(t, w)
 	_, _ = w.Bestelle(refA, "", false)
 	a := warteAuf(t, w, refA, Fehler)
@@ -165,7 +165,7 @@ func TestRueckgabeNullOhneSatzImBerichtIstNichtFertig(t *testing.T) {
 		_ = os.MkdirAll(dir, 0o755)
 		_ = os.WriteFile(filepath.Join(dir, "gehaeuse-"+ref+".3mf"), []byte("x"), 0o644)
 		return nil
-	}), nil, time.Minute, stumm)
+	}), nil, time.Minute, time.Hour, stumm)
 	starte(t, w)
 	_, _ = w.Bestelle(refA, "", false)
 	if a := warteAuf(t, w, refA, Fehler); !strings.Contains(a.Grund, "kein Prüfbericht") {
@@ -192,7 +192,7 @@ func TestEinerZurZeitInDerReihenfolgeDerBestellung(t *testing.T) {
 		schreibeBau(t, ziel, ref)
 		atomic.AddInt32(&aktiv, -1)
 		return nil
-	}), nil, time.Minute, stumm)
+	}), nil, time.Minute, time.Hour, stumm)
 	for _, r := range []string{refA, refB, refC} {
 		_, _ = w.Bestelle(r, "", false)
 	}
@@ -212,7 +212,7 @@ func TestBestellenIstJeReferenzEinmalUndNeuBautNochEinmal(t *testing.T) {
 		atomic.AddInt32(&baue, 1)
 		schreibeBau(t, ziel, ref)
 		return nil
-	}), nil, time.Minute, stumm)
+	}), nil, time.Minute, time.Hour, stumm)
 	if _, err := w.Bestelle("edge-k7m2xqz", "", false); err == nil {
 		t.Error("Referenz mit falschem Prüfzeichen angenommen")
 	}
@@ -243,7 +243,7 @@ func TestNachDemNeustartKommtDerAbgebrocheneBauWiederInDieSchlange(t *testing.T)
 		close(begonnen)
 		<-ctx.Done()
 		return ctx.Err()
-	}), nil, time.Minute, stumm)
+	}), nil, time.Minute, time.Hour, stumm)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { w.Laufe(ctx); close(done) }()
@@ -258,7 +258,7 @@ func TestNachDemNeustartKommtDerAbgebrocheneBauWiederInDieSchlange(t *testing.T)
 	w2, err := Neu(ablage, bauerFunc(func(_ context.Context, ref, ziel string, _ func(string)) error {
 		schreibeBau(t, ziel, ref)
 		return nil
-	}), nil, time.Minute, stumm)
+	}), nil, time.Minute, time.Hour, stumm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestFristBeendetEinenHaengendenBau(t *testing.T) {
 	w, _ := Neu(t.TempDir(), bauerFunc(func(ctx context.Context, _, _ string, _ func(string)) error {
 		<-ctx.Done()
 		return ctx.Err()
-	}), nil, 50*time.Millisecond, stumm)
+	}), nil, 50*time.Millisecond, time.Hour, stumm)
 	starte(t, w)
 	_, _ = w.Bestelle(refA, "", false)
 	if a := warteAuf(t, w, refA, Fehler); !strings.Contains(a.Grund, "nicht in 50ms fertig") {

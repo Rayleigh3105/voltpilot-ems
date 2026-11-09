@@ -118,6 +118,9 @@ type Spuren interface {
 // Gehaeuse ist die Schlange der Druckdateien (gehaeuse.Werkstatt).
 type Gehaeuse interface {
 	Bestelle(ref, lauf string, neu bool) (gehaeuse.Auftrag, error)
+	// Offene gibt die Aufträge, die im Portal noch nicht als Druckdatei stehen
+	// (für die Ansicht des Dienstes, Werkstatt-Box-Seite im Portal).
+	Offene() []gehaeuse.Auftrag
 }
 
 // Probe ist, was ein Lauf von der Probe über den Tunnel braucht (wartung.Probe).

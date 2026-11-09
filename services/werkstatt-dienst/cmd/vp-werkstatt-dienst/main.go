@@ -363,7 +363,7 @@ func gehaeuseWerkstatt(k konfig.Konfig, h gehaeuse.Hochlader, log *slog.Logger) 
 		}
 		b = kb
 	}
-	w, err := gehaeuse.Neu(g.Ablage, b, h, g.Frist, log)
+	w, err := gehaeuse.Neu(g.Ablage, b, h, g.Frist, k.Takt, log)
 	if err != nil {
 		return nil, err
 	}
