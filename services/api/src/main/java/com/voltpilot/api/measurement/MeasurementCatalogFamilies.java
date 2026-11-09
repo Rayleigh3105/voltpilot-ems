@@ -27,6 +27,11 @@ public final class MeasurementCatalogFamilies {
             } else if (family.equals("shelly_http")) {
                 catalogFamilies.stream().filter(f -> f.startsWith("shelly."))
                         .forEach(result::add);
+            } else if (family.equals("shelly_em_triphase")) {
+                // Pro 3EM / Pro 3EM-400 speak the Gen2+ RPC only (em[*]/emdata[*]);
+                // the classic Gen1 /status protocol is not read for this family
+                // (edge-app/core/internal/shellyem: ErrKeineRPC on a Gen1 reply).
+                result.add("shelly.gen2plus");
             } else if (family.startsWith("ocpp")) {
                 result.add("ocpp.1_6");
             } else {
