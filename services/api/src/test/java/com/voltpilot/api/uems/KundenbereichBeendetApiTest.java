@@ -151,6 +151,12 @@ class KundenbereichBeendetApiTest {
                 "Werkstatt: Nochmal versuchen, Auftrag an den Werkstatt-Dienst, Box vor dem Versand, kein Kundenbereich");
         m.put("POST /api/v1/admin/werkstatt/zur-seite",
                 "Werkstatt: Box zur Seite legen, Lauf der Werkstatt, Box vor dem Versand, kein Kundenbereich");
+        // vp-mango-3mf-pro-box, automatisch nachholen (main 3617c49e0/70b58565a): „Erneut erstellen“ für die
+        // Box-Druckdatei legt denselben Auftrag wie „Nochmal versuchen“ an (werkstatt_auftrag, Art gehaeuse,
+        // Spalte lauf trägt die Edge-Referenz) - die Box steht noch im Werkstatt-Register, nicht in einem
+        // Kundenbereich.
+        m.put("POST /api/v1/admin/werkstatt/boxen/{ref}/gehaeuse/neu",
+                "Werkstatt: Druckdatei des Gehäuses erneut erstellen, Box vor dem Versand, kein Kundenbereich");
         return m;
     }
 
