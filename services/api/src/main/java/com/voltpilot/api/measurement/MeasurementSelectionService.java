@@ -316,6 +316,47 @@ public class MeasurementSelectionService {
         return new Automatik(true, revision, List.copyOf(gewaehlt.keySet()), List.copyOf(ausgelassen));
     }
 
+    /** Wer die Entladegrenze des Wechselrichters in den Messplan legt (WechselrichterUntergrenze). */
+    public static final String UNTERGRENZE_AKTEUR = "system:wechselrichter-untergrenze";
+
+    /**
+     * Legt EINEN Punkt für eine Komponente in den Messplan der Box, die sie ausführt — nur, wenn es für genau
+     * (Box, Komponente, Punkt) noch keine Zeile gibt. Eine Abwahl von Hand ist eine Zeile und bleibt also stehen.
+     * Anders als {@link #automatischAuswaehlen} darf die Komponente schon andere Punkte haben. Takt aus dem Katalog,
+     * dasselbe harte Budget wie die Handauswahl; wirft für keinen erwarteten Zustand.
+     */
+    @Transactional
+    public Automatik punktErgaenzen(UUID deviceId, UUID entityId, String pointKey, String akteur) {
+        DeviceScope scope = repository.lockDevice(deviceId);
+        if (scope == null || entityId == null || !scope.siteId().equals(repository.entitySiteId(entityId))) {
+            return Automatik.NICHTS;
+        }
+        List<Row> current = repository.current(deviceId);
+        if (current.stream().anyMatch(r -> entityId.equals(r.entityId()) && pointKey.equals(r.pointKey()))) {
+            return Automatik.NICHTS;
+        }
+        Resolved resolved;
+        try {
+            resolved = resolveCatalog(pointKey, null);
+        } catch (ResponseStatusException e) {
+            return new Automatik(false, 0, List.of(), List.of(new Auslassung(pointKey, "nicht_im_katalog")));
+        }
+        List<MeasurementBudget.Candidate> candidates = candidates(current);
+        candidates.add(resolved.candidate(candidateKey(entityId, pointKey), true, resolved.cadenceS()));
+        if (estimate(candidates).hardRejected()) {
+            return new Automatik(false, 0, List.of(), List.of(new Auslassung(pointKey, "budget")));
+        }
+        long revision = repository.revision(deviceId) + 1;
+        Row saved = repository.save(scope, entityId, pointKey, true, resolved.cadenceS(), revision, catalog.version(),
+                akteur, ANSTOSS_NAME, PENDING_REASON, null, resolved.retention());
+        repository.appendEvent(scope, entityId, pointKey, revision,
+                UUID.nameUUIDFromBytes(("punkt-ergaenzen:" + deviceId + ":" + revision)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                true, resolved.cadenceS(), saved.enabledAt(), saved.disabledAt(), catalog.version(), akteur,
+                ANSTOSS_NAME, PENDING_REASON, null, resolved.retention());
+        return new Automatik(true, revision, List.of(pointKey), List.of());
+    }
+
     public static State notDelivered(State state, String reason) {
         return new State(state.deviceId(), state.siteId(), state.entityId(), state.desiredRevision(),
                 state.catalogVersion(), state.status(), reason, state.activationNotice(),

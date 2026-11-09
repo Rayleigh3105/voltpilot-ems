@@ -8,6 +8,7 @@ import type {
   EntityObserved,
   EntitySyncStatus,
   SiteEntity,
+  SocMinHerkunft,
 } from './api';
 
 /** One sync verdict rendered as a badge: tone + short + long copy. */
@@ -124,18 +125,52 @@ export interface GuardRow {
   value: string;
 }
 
+const ZAHL = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
+const UHRZEIT = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' });
+const TAG = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit' });
+
+/** „hh:mm“ am selben Tag (Europe/Berlin), sonst „TT.MM. hh:mm“. */
+function stand(iso: string, jetzt: Date): string {
+  const t = new Date(iso);
+  const zeit = UHRZEIT.format(t);
+  return TAG.format(t) === TAG.format(jetzt) ? zeit : `${TAG.format(t)} ${zeit}`;
+}
+
+/**
+ * Der Min. Ladestand mit seiner Herkunft, z. B. „15 % · vom Wechselrichter gelesen, Stand 07:50“. Eine Lesung,
+ * die älter als eine Stunde ist, gilt weiter und wird als nicht aktuell benannt.
+ */
+export function socMinText(herkunft: SocMinHerkunft, jetzt: Date = new Date()): string {
+  const wert = `${ZAHL.format(herkunft.wirksamPct)} %`;
+  const zeit = stand(herkunft.gelesenAm, jetzt);
+  const nichtAktuell = herkunft.aktuell ? '' : ' – Lesung nicht aktuell';
+  if (herkunft.quelle === 'wechselrichter') {
+    return `${wert} · vom Wechselrichter gelesen, Stand ${zeit}${nichtAktuell}`;
+  }
+  return `${wert} · in VoltPilot eingestellt (Wechselrichter ${ZAHL.format(herkunft.wechselrichterPct)} %, `
+    + `Stand ${zeit}${nichtAktuell})`;
+}
+
 /** The guard-config limits + failsafe as read-only rows for the card. */
-export function guardRows(entity: SiteEntity): GuardRow[] {
+export function guardRows(entity: SiteEntity, jetzt: Date = new Date()): GuardRow[] {
   const rows: GuardRow[] = [];
   const limits = entity.guards?.limits ?? {};
+  const socMin = entity.socMin ?? null;
   for (const [key, raw] of Object.entries(limits)) {
     const label = GUARD_LIMIT_LABELS[key] ?? key;
-    if (typeof raw === 'boolean') {
+    if (key === 'soc_min_pct' && socMin) {
+      rows.push({ label, value: socMinText(socMin, jetzt) });
+    } else if (typeof raw === 'boolean') {
       rows.push({ label, value: raw ? 'ja' : 'nein' });
     } else {
       const unit = key.endsWith('_pct') ? ' %' : ' kW';
       rows.push({ label, value: `${raw}${unit}` });
     }
+  }
+  // Eine Komponente ohne eigene Grenze im Schutz (sie stammt nicht aus dem Speicher-Stammsatz) zeigt die gelesene
+  // Grenze trotzdem: sie ist, was der Plan verwendet.
+  if (socMin && !('soc_min_pct' in limits)) {
+    rows.unshift({ label: GUARD_LIMIT_LABELS.soc_min_pct, value: socMinText(socMin, jetzt) });
   }
   const behavior = entity.guards?.failsafe?.behavior;
   if (behavior) {

@@ -25776,6 +25776,26 @@ components:
                       per_device); null = the type carries none. The portal
                       says "Von VoltPilot freigegeben" only for certified
                       types (or types without a state).
+                  socMin:
+                    type: object
+                    nullable: true
+                    description: >
+                      Woher der Min. Ladestand des Speichers kommt. Nur an der
+                      Speicher-Komponente einer Anlage, deren Entladegrenze am
+                      Wechselrichter gelesen wurde (Deye „Battery Low SOC“);
+                      sonst null und die Anzeige bleibt wie vorher. Wirksam ist
+                      das Größere von VoltPilot-Wert und Lesung. aktuell=false:
+                      die letzte gültige Lesung ist älter als eine Stunde, sie
+                      gilt mit ihrem Zeitpunkt weiter.
+                    properties:
+                      wirksamPct: { type: number }
+                      quelle: { type: string, enum: [wechselrichter, voltpilot] }
+                      wechselrichterPct: { type: number }
+                      voltpilotPct: { type: number, nullable: true }
+                      gelesenAm: { type: string, format: date-time }
+                      seit: { type: string, format: date-time }
+                      aktuell: { type: boolean }
+                      letzteLesungVerworfen: { type: string, nullable: true, enum: [unplausibel, veraltet, null] }
                   observed:
                     type: object
                     nullable: true

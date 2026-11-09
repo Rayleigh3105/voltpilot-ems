@@ -1687,6 +1687,22 @@ export interface EntityObserved {
   reportedAt: string;
 }
 
+/**
+ * Der wirksame Min. Ladestand eines Speichers und seine Herkunft: das Größere von VoltPilot-Wert und der am
+ * Wechselrichter gelesenen Grenze. `aktuell` false = die letzte gültige Lesung ist älter als eine Stunde; sie gilt
+ * mit ihrem Zeitpunkt weiter (nie ein stiller Rückfall auf 5 %).
+ */
+export interface SocMinHerkunft {
+  wirksamPct: number;
+  quelle: 'wechselrichter' | 'voltpilot';
+  wechselrichterPct: number;
+  voltpilotPct: number | null;
+  gelesenAm: string;
+  seit: string;
+  aktuell: boolean;
+  letzteLesungVerworfen: 'unplausibel' | 'veraltet' | null;
+}
+
 /** One v2 entity with its capabilities, guard config and drift verdict. */
 export interface SiteEntity {
   id: string;
@@ -1720,6 +1736,12 @@ export interface SiteEntity {
    * Backend lässt das Feld weg. Das Abzeichen „Von VoltPilot freigegeben" steht nur ohne Einschränkung.
    */
   certificationStatus?: string | null;
+  /**
+   * Woher der Min. Ladestand eines Speichers kommt — nur an der Speicher-Komponente einer Anlage, deren
+   * Entladegrenze am Wechselrichter gelesen wurde (Deye „Battery Low SOC“). null/absent = keine Lesung (oder ein
+   * älteres Backend); dann bleibt die Anzeige wie vorher.
+   */
+  socMin?: SocMinHerkunft | null;
   /**
    * true = the pinned edge source is no longer among the device's reported
    * sources (identity churn - offer "Wieder verbinden"); false = pinned +

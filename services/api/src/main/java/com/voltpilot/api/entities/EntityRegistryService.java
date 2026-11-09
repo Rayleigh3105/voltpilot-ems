@@ -57,6 +57,8 @@ public class EntityRegistryService {
 
     /** Platform SoC window defaults, mirroring the optimizer's 5-95 % band. */
     private static final double DEFAULT_SOC_MIN_PCT = 5;
+    /** Die Plattform-Vorgabe des Min. Ladestands (für die Anzeige der Herkunft). */
+    public static final double SOC_MIN_VORGABE_PCT = DEFAULT_SOC_MIN_PCT;
     private static final double DEFAULT_SOC_MAX_PCT = 95;
 
     static final String TYPE_BATTERY_HYBRID = "battery-hybrid";
@@ -155,6 +157,17 @@ public class EntityRegistryService {
         this.uebergabe = uebergabe;
     }
 
+    /**
+     * Die am Wechselrichter gelesene Entladegrenze je Anlage ({@link WechselrichterUntergrenze}); ohne Spring
+     * (Tests mit {@code new …}) keine - dann gilt der VoltPilot-Wert allein, wie vorher.
+     */
+    private WechselrichterUntergrenzeRepository untergrenzen;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void untergrenzen(WechselrichterUntergrenzeRepository untergrenzen) {
+        this.untergrenzen = untergrenzen;
+    }
+
     /** UEMS EZ-21: Treiber und Pin, die erst je Box entstehen; ohne Spring (Tests mit {@code new …}) keine. */
     private PushAnbindungen anbindungen;
 
@@ -227,7 +240,7 @@ public class EntityRegistryService {
             }
             repo.setEntityConfig(pointId, TYPE_BATTERY_HYBRID,
                     write(batteryCapabilities(battery)),
-                    write(batteryGuards(battery, repo.netzladenErlaubt(siteId))));
+                    write(batteryGuards(siteId, battery, repo.netzladenErlaubt(siteId))));
         } else {
             skipped.add("battery-hybrid: no battery asset on this site");
         }
@@ -421,7 +434,7 @@ public class EntityRegistryService {
         if (battery != null) {
             UUID pointId = repo.batteryHybridPointId(siteId);
             ObjectNode caps = batteryCapabilities(battery);
-            ObjectNode guards = batteryGuards(battery, repo.netzladenErlaubt(siteId));
+            ObjectNode guards = batteryGuards(siteId, battery, repo.netzladenErlaubt(siteId));
             // LOCKSTEP with bootstrap(): a CREATE composes no label at all
             // (Label-Hygiene), a REFRESH keeps whatever a human named it - the
             // preview must never claim the conversion renames a customer's row.
@@ -1620,7 +1633,52 @@ public class EntityRegistryService {
         return caps;
     }
 
-    private ObjectNode batteryGuards(BatteryAsset battery, boolean netzladenErlaubt) {
+    /**
+     * Die wirksame Untergrenze des Speichers in %: der VoltPilot-Wert ({@code asset.soc_min_pct}, sonst
+     * {@link #DEFAULT_SOC_MIN_PCT}), angehoben auf die am Wechselrichter gelesene Grenze, wenn eine übernommen ist
+     * ({@link WechselrichterUntergrenze#wirksamPct}). Ohne Lesung genau der Wert von vorher.
+     */
+    public double socMinWirksamPct(UUID siteId, BatteryAsset battery) {
+        WechselrichterUntergrenzeRepository.Eintrag gelesen = untergrenzen == null ? null : untergrenzen.eintrag(siteId);
+        return WechselrichterUntergrenze.wirksamPct(battery.socMinPct(),
+                gelesen == null ? null : gelesen.stand().socMinPct(), battery.socMaxPct(), DEFAULT_SOC_MIN_PCT);
+    }
+
+    /**
+     * Zieht {@code guards.limits.soc_min_pct} der Speicher-Komponente auf die wirksame Untergrenze nach und stellt
+     * die Registry zu - der Abgleich ruft das, wenn sich die gelesene Grenze am Wechselrichter geändert hat. Nur an
+     * einer Zeile, die ihre Grenzen aus dem Speicher-Stammsatz trägt ({@link #composedFromAsset}); jede andere bleibt
+     * unberührt. Gibt zurück, ob etwas geändert wurde.
+     */
+    @Transactional
+    public boolean untergrenzeNachziehen(UUID siteId) {
+        BatteryAsset battery = repo.batteryAsset(siteId);
+        UUID pointId = repo.batteryHybridPointId(siteId);
+        if (battery == null || pointId == null) {
+            return false;
+        }
+        EntityRow row = repo.entityForSite(siteId, pointId);
+        if (row == null) {
+            return false;
+        }
+        JsonNode guards = parseOr(row.guardConfigJson(), mapper.createObjectNode());
+        if (!(guards instanceof ObjectNode g) || !(g.path("limits") instanceof ObjectNode limits)
+                || !limits.has("soc_min_pct")) {
+            return false;
+        }
+        double wirksam = socMinWirksamPct(siteId, battery);
+        if (limits.path("soc_min_pct").asDouble() == wirksam) {
+            return false;
+        }
+        limits.put("soc_min_pct", wirksam);
+        repo.setEntityConfig(pointId, row.entityType() == null ? TYPE_BATTERY_HYBRID : row.entityType(),
+                row.capabilitiesJson() == null ? write(mapper.createObjectNode()) : row.capabilitiesJson(),
+                write(g));
+        pushRegistryBestEffort(siteId);
+        return true;
+    }
+
+    private ObjectNode batteryGuards(UUID siteId, BatteryAsset battery, boolean netzladenErlaubt) {
         ObjectNode guards = mapper.createObjectNode();
         ObjectNode limits = guards.putObject("limits");
         if (battery.maxChargeKw() != null) {
@@ -1629,7 +1687,7 @@ public class EntityRegistryService {
         if (battery.maxDischargeKw() != null) {
             limits.put("max_discharge_kw", battery.maxDischargeKw().doubleValue());
         }
-        limits.put("soc_min_pct", numberOr(battery.socMinPct(), DEFAULT_SOC_MIN_PCT));
+        limits.put("soc_min_pct", socMinWirksamPct(siteId, battery));
         limits.put("soc_max_pct", numberOr(battery.socMaxPct(), DEFAULT_SOC_MAX_PCT));
         limits.put("charge_from_grid_allowed", netzladenErlaubt);
         guards.putObject("failsafe").put("behavior", "self-consumption");
