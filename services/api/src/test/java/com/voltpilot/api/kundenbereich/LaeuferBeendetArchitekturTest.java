@@ -39,7 +39,8 @@ class LaeuferBeendetArchitekturTest {
             entry("ViertelstundeLaeufer", List.of("ViertelstundeVerdichter")),
             entry("WetterArchivLaeufer", List.of("WetterArchivAbruf")),
             entry("RolloutWatcher", List.of("RolloutService")),
-            entry("ZustellLaeufer", List.of("VersandRepository")));
+            entry("ZustellLaeufer", List.of("VersandRepository")),
+            entry("WechselrichterUntergrenzeLaeufer", List.of("WechselrichterUntergrenzeAbgleich")));
 
     /** Läufer ohne Sperre — mit dem Grund, warum sie auch für einen beendeten Kundenbereich laufen dürfen. */
     static final Map<String, String> OHNE_SPERRE = Map.ofEntries(
@@ -54,6 +55,28 @@ class LaeuferBeendetArchitekturTest {
             entry("MeasurementConfigStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
                     + " Rueckmeldeweg"),
             entry("GeraetesucheListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("ChargerStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("DataSourceStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("ConsumerReplanTriggerListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("ConsumerRuntimeStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("ControlStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("CurtailmentStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("EntityStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("FlowNodeStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("LoadResidualReplanListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("ProbeResultListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("PurgeRequestListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("RegisterWriteResultListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("RegisterWriteUplinkListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
+                    + " Rueckmeldeweg"),
+            entry("SourceStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
+            entry("UpdateStatusListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
             entry("PlanResultListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein Rueckmeldeweg"),
             entry("SprungprobeBerichtListener", "der Takt verbindet nur den MQTT-Client; der Eingang ist ein"
                     + " Rueckmeldeweg"),
