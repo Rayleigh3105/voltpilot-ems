@@ -92,6 +92,23 @@ Die Referenzdatei ist wieder **unverändert**. Aufnahme auf `690806300a125e6329b
 (12 035 Bytes, alle 13 Einträge). Die zwei neuen Routen und die Migration sind von diesem Nachweis ungenutzt;
 `MAIN` nennt seither 690806300.
 
+## Nachgemessen beim Nachzug main 5fb9ab912 (09.11.2026, MQTT-Erstverbindung mit Backoff)
+
+Die Referenzdatei hat sich in **genau einem** der 13 Einträge geändert: `startup publisher counts`
+steigt für alle elf schon vorhandenen Publisher (außer `MeasurementConfigPublisher`, das seit #1508
+schon den gemeinsamen `BrokerVerbindung`-Zuschnitt trägt) von 0 auf 1, und für
+`ControlCertificationPublisher` von 1 auf 2 (main `5fb9ab912`, „MQTT-Erstverbindung mit Backoff,
+Publish-Zeitgrenzen"). Der Commit zieht ALLE MQTT-Sender auf `BrokerVerbindung` um (ein Paho-Client je
+Weg, nie verworfen, asynchron mit `waitForCompletion`) und gibt jedem Publisher denselben
+`@EventListener(ContextRefreshedEvent.class) start()`-Anstoß, den die Rückmeldewege schon hatten - für
+den Mock jetzt sichtbar wie seinerzeit bei `MeasurementConfigPublisher`. Das VERBINDET nur; kein
+Publisher veröffentlicht dadurch zusätzlich etwas (die übrigen zwölf Einträge sind unverändert).
+`connect()` musste mitziehen: der Publisher hält keinen eigenen `client` mehr, sondern `verbindung`
+(auf einem `@MockBean` ohne echten Konstruktorlauf null) - der Test baut jetzt selbst eine
+`BrokerVerbindung`, setzt ihren `client` (ein `MqttAsyncClient`, nicht mehr `MqttClient`) und
+`jeVerbunden` und weist sie dem Mock zu; `ConsumerOverridePublisher` verlor sein `lock`-Feld (die
+Synchronisation sitzt jetzt in `BrokerVerbindung`). `MAIN` nennt seither 5fb9ab912.
+
 ## Bewusste Differenzen main → uems
 
 Entscheid vom 18.09.2026; weitere Unterschiede benötigen einen eigenen Befund.
