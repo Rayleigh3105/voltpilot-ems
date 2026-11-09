@@ -115,6 +115,12 @@ class SiteScopeArchitekturTest {
                     "web/EntityController.java", "geltungsbereich.requireSite"),
             new Erlaubt("repo/EntityHistoryRepository.java", "telemetry_v2_rollup_1h", 1, Grund.ANLAGE_GEPRUEFT,
                     "web/EntityController.java", "geltungsbereich.requireSite"),
+            // Energie je Komponente (#1776): energy() ruft vorher requireSite und sucht die
+            // Komponente über entityForSite, bevor energySeries die Reihen liest.
+            new Erlaubt("repo/EntityHistoryRepository.java", "telemetry_v2", 1, Grund.ANLAGE_GEPRUEFT,
+                    "web/EntityController.java", "geltungsbereich.requireSite"),
+            new Erlaubt("repo/EntityHistoryRepository.java", "telemetry_v2_rollup_1h", 1, Grund.ANLAGE_GEPRUEFT,
+                    "web/EntityController.java", "geltungsbereich.requireSite"),
             // Alerting Scheibe 2 (§6.4, §6.8 Entwurf 1): der 30-Tage-Probelauf. Bezug `anlage` prüft
             // ProbelaufService vorher selbst (telemetry_v2_rollup_15m trägt nur den Mandanten-Zaun);
             // Bezug `komponente` kommt nur über die site_scope-gezäunte measurement_point-Auflösung.
@@ -211,6 +217,10 @@ class SiteScopeArchitekturTest {
                     "erzeuger/VorgabenLaeufer.java", "@Scheduled"),
             new Erlaubt("repo/FleetMetricsRepository.java", "telemetry", 1, Grund.OHNE_ANFRAGE,
                     "metrics/FleetMetricsCollector.java", "@Scheduled"),
+            // L1-Plattform-Dienste (#1758): newestTelemetryAt() liefert nur einen Zeitstempel,
+            // der ganze Controller trägt den platform-admin-Zaun.
+            new Erlaubt("repo/FleetMetricsRepository.java", "telemetry", 1, Grund.PLATTFORM,
+                    "web/AdminPlattformDiensteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             // AP-07 IP-16: systemweiter, taeglich gecachter Speicher-Waechter
             // ueber die BYPASSRLS-Admin-Rolle; nie in einem Kunden-Request.
             new Erlaubt("repo/DbHealthMetricsRepository.java", "device_measurement_sample", 1,
@@ -221,6 +231,10 @@ class SiteScopeArchitekturTest {
                     Grund.KEIN_SQL, "metrics/DbHealthMetrics.java", "STORAGE_PLAN"),
             new Erlaubt("repo/ConsumerRequirementStateRepository.java", "telemetry_v2", 1, Grund.OHNE_ANFRAGE,
                     "consumers/ConsumerRuntimeStatusListener.java", "client.subscribe(STATUS_FILTER"),
+            // Entladegrenze am Deye-Wechselrichter (#1797): der Abgleich läuft über alle Anlagen im Takt,
+            // nie aus einem Kundenrequest.
+            new Erlaubt("entities/WechselrichterUntergrenzeRepository.java", "device_measurement_sample", 1,
+                    Grund.OHNE_ANFRAGE, "entities/WechselrichterUntergrenzeLaeufer.java", "@Scheduled"),
 
             // --- Plattform
             // boxes() und deviceStatsPerSite(): ausschließlich der plattformweiten Admin-Flotte
