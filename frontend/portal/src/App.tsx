@@ -1031,6 +1031,14 @@ function UnifiedPortal() {
     );
   }, [tenantReady, selbst]);
   useFreshnessPoll(refreshDevices, LIVENESS_POLL_MS, tenantReady && selbst !== null && !ohneStandort(selbst));
+  // N3 (vp-box-verbinden-konzept): die Box-Liste des Kopfs lief unabhängig von der des
+  // Einrichtungs-Assistenten - bis zu 30 s nach einem Verbinden sagte der Kopf noch
+  // „noch nicht verbunden", während die Seite darunter schon „Box verbunden" sagte.
+  useEffect(() => {
+    const neu = () => refreshDevices();
+    window.addEventListener('vp-geraet-verbunden', neu);
+    return () => window.removeEventListener('vp-geraet-verbunden', neu);
+  }, [refreshDevices]);
 
   // Device liveness of the Anlage in scope, judged against the moment the
   // server answered - never against a clock that ran past a snapshot we could

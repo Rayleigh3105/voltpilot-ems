@@ -14,6 +14,7 @@ import type {
 import { BOX_FAEHIGKEITEN } from './boxUebersicht';
 import { CONTROL_STALE_MS, EXECUTION_MODE_LABEL } from './control';
 import { curtailTruth, netzKwText, releaseNote, type CurtailTruth } from './curtailment';
+import { seitDauer } from './format';
 import { faehigkeiten } from './uemsDatenquelle';
 
 /**
@@ -459,6 +460,12 @@ function fleetBoxRow(
   releases: AdminFleetRelease[],
 ): FleetBoxRow {
   const verbindung = boxVerbindung(box.lastSeenAt, now);
+  // N5 (vp-box-verbinden-konzept): eine Box, die sich seit dem Verbinden nie
+  // angemeldet hat (keine Zertifikatsanfrage), sah bisher wie eine normal
+  // langsame aus ("Wartet auf erste Meldung" + "—"). Mit der Anmelde-Angabe
+  // (S2) sagt die Zeile das jetzt ausdrücklich - der Fall vom 10.11. wäre
+  // sofort aufgefallen.
+  const nieAngemeldetSeit = verbindung.zustand === 'nie' && box.anmeldung == null ? seitDauer(box.createdAt, now) : null;
   const version = box.update?.version ?? box.edge?.coreVersion ?? null;
   const release = version === null
     ? null
@@ -480,10 +487,10 @@ function fleetBoxRow(
       : box.fuehrtAnlage === false
         ? 'Weitere Box'
         : 'Führende Box nicht festgelegt',
-    connectionText: verbindung.text,
+    connectionText: nieAngemeldetSeit ? 'Nie angemeldet' : verbindung.text,
     connectionTone: verbindung.tone,
     connectionZustand: verbindung.zustand,
-    lastSeenText: verbindung.lastSeenText,
+    lastSeenText: nieAngemeldetSeit ?? verbindung.lastSeenText,
     software: edgeStand(box.edge, box.update, releases, box.boxArt),
     capabilities: capabilityResult.faehigkeiten.map((capability, index) => ({
       code: capability.code,

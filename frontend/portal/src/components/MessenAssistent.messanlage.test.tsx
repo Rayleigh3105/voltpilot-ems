@@ -144,14 +144,14 @@ describe('MessenAssistent — „Messanlage anlegen" öffnet den Anlege-Fluss im
     fireEvent.click(within(fluss).getByRole('button', { name: 'Box verbinden' }));
     await waitFor(() => expect(claimDevice).toHaveBeenCalledTimes(1));
     // Das Ergebnis nach dem Verbinden (QE-4 A) - weiter ohne Warten.
-    expect(await within(fluss).findByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
+    expect(await within(fluss).findByRole('heading', { name: 'Wir hören noch nichts von Ihrer Box' })).toBeInTheDocument();
     schweigt('Schritt 2 · Box, verbunden');
     fireEvent.click(within(fluss).getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }));
 
     // Schritt 3: Anlage - und danach ohne Fertig-Bildschirm zurück in den Assistenten (D7).
-    expect(await within(fluss).findByText('Ihre Box hat sich noch nicht gemeldet')).toBeInTheDocument();
+    expect(await within(fluss).findByText('So geht es weiter')).toBeInTheDocument();
     schweigt('Schritt 3 · Anlage');
-    fireEvent.click(within(fluss).getByRole('button', { name: 'Stimmt so' }));
+    fireEvent.click(within(fluss).getByRole('button', { name: 'Weiter' }));
 
     // Zurück im Assistenten auf Schritt 2 — die neue Anlage steht da, keine Adresse gewechselt.
     await schritt2();

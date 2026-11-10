@@ -23,7 +23,8 @@ import { DangerZone } from './DangerZone';
 import { VpPicker } from './VpPicker';
 import { HelpLink } from '../help/HelpProvider';
 import { DEVICE_ID_FIELD, DEVICE_ID_TAKEN_MSG, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
-import { BoxErgebnis, BoxFremdKonto } from './BoxVerbunden';
+import { BoxFremdKonto } from './BoxVerbunden';
+import { BoxWeg } from '../boxweg/BoxWeg';
 import { KoppelBand } from './KoppelBand';
 import { kennungWieGedruckt, vergissKoppelRef } from '../koppelLink';
 import { BLATT } from '../koppelTexte';
@@ -136,6 +137,8 @@ export function AddDeviceDrawer({
       setExternalRef('');
       setAbgeschickt(false);
       onClaimed(device);
+      // N3: stößt den Kopf an, seine eigene (sonst bis zu 30 s alte) Geräteliste neu zu fragen.
+      window.dispatchEvent(new Event('vp-geraet-verbunden'));
     } catch (e) {
       if (!nachfolgerVon && e instanceof ApiError && e.status === 409) {
         setFremd(kennung);
@@ -250,7 +253,7 @@ export function AddDeviceDrawer({
           {/* M8/M9 (QE-4 A): ehrlich, ob sich die Box schon meldet - die Knöpfe trägt der Fuß des Blatts. */}
           {!nachfolgerVon && (
             <>
-              <BoxErgebnis box={claimed} anlageName={siteName(claimed.siteId)} />
+              <BoxWeg box={claimed} anlageName={siteName(claimed.siteId)} />
               {onGeraeteSuchen && (
                 <p className="vp-note">Danach findet „Geräte suchen“ Wechselrichter, Zähler, Wallboxen und Schalter in Ihrem Heimnetz – es wird nur gelesen.</p>
               )}

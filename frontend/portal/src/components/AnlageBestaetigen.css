@@ -1,77 +1,28 @@
-/* Schritt 3 des Anlege-Flusses (AnlageBestaetigen.tsx): was die Box gefunden hat, Solar und Speicher. */
+/* Schritt 3 des Anlege-Flusses (AnlageBestaetigen.tsx): der Überblick nach dem Verbinden, Solar und Speicher. */
 
-/* ---- Die Liste „Das hat Ihre Box gefunden“ ---- */
-.vp-fund {
+/* ---- „So geht es weiter“ (vp-box-verbinden-konzept, Runde 1/E5) ---- */
+.vp-weiter-ueberblick {
   display: grid;
   gap: var(--vp-space-2);
   margin: 0 0 var(--vp-space-5);
-  padding: 0;
-  list-style: none;
-}
-.vp-fund-zeile {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--vp-space-3);
   padding: var(--vp-space-3) var(--vp-space-4);
   border: 1px solid var(--vp-border);
   border-radius: var(--vp-radius-btn);
   background: var(--vp-surface);
-  min-width: 0;
-}
-.vp-fund-symbol {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--vp-flow-pv-soft);
-  color: var(--vp-flow-pv);
-}
-.vp-fund-zeile.rolle-netz .vp-fund-symbol {
-  background: var(--vp-flow-grid-soft);
-  color: var(--vp-flow-grid);
-}
-.vp-fund-zeile.rolle-last .vp-fund-symbol {
-  background: var(--vp-flow-load-soft);
-  color: var(--vp-flow-load);
-}
-.vp-fund-zeile.is-sucht .vp-fund-symbol {
-  background: var(--vp-paleblue-start);
-  color: var(--vp-action);
-}
-/* „wird gesucht“: der Laufpunkt der Zustandszeile (`.vp-ustate-busy .vp-ustate-dot` in index.css) - derselbe
-   gezählte Dauer-Loop, derselbe Schalter für reduzierte Bewegung; hier kein eigener. */
-.vp-fund-text {
-  display: grid;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
+  list-style: none;
   font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
 }
-.vp-fund-text strong {
+.vp-weiter-ueberblick .is-done {
+  color: var(--vp-ok-ink, #2e7d32);
   font-weight: var(--vp-weight-semibold);
+}
+.vp-weiter-ueberblick .is-done::before {
+  content: '✓ ';
+}
+.vp-weiter-ueberblick .is-current {
   color: var(--vp-text-dark);
-}
-.vp-fund-text .vp-note {
-  margin: 2px 0 0;
-}
-.vp-fund-fehler {
-  margin-top: 4px;
-  font-size: 0.82rem;
-  color: var(--vp-industry-end);
-}
-.vp-fund-marke {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  align-self: center;
-  font-size: 0.78rem;
   font-weight: var(--vp-weight-semibold);
-  color: var(--vp-ok-ink);
 }
 
 /* ---- Solar und Speicher ---- */

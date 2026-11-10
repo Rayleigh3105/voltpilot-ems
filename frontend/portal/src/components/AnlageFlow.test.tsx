@@ -8,7 +8,6 @@ import {
   type MastrPreview,
   type Site,
   type SiteAsset,
-  type EntityLocalSetup,
   type SiteEntities,
 } from '../api';
 import { entitiesApi } from '../entitiesApi';
@@ -155,25 +154,6 @@ const emptyEntities: SiteEntities = {
   staleOnDevice: [],
 };
 
-/** Was eine Box meldet (`/entities` → `localSetup`). */
-function gemeldet(over: Partial<EntityLocalSetup>): EntityLocalSetup {
-  return {
-    id: 'src-1',
-    kind: 'source',
-    role: 'pv-generation',
-    brand: 'Fronius',
-    model: 'Symo 10.0',
-    label: null,
-    reportedAt: '2026-10-23T10:00:00Z',
-    adoptedEntityId: null,
-    ...over,
-  };
-}
-
-function mitFund(localSetup: EntityLocalSetup[]): SiteEntities {
-  return { ...emptyEntities, localSetup };
-}
-
 /** Schritt 1 (Bestand ohne Standort-Objekt) und Schritt 2 durchlaufen - mit Box oder ohne. */
 async function bisSchritt3(box: 'verbinden' | 'versuchen' | 'spaeter') {
   fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
@@ -186,8 +166,8 @@ async function bisSchritt3(box: 'verbinden' | 'versuchen' | 'spaeter') {
   fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
   if (box === 'versuchen') return;
-  // QE-4 A: nach dem Verbinden das ehrliche Ergebnis (M8) - weiter geht es ohne Warten.
-  expect(await screen.findByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
+  // E1 = B (Der Weg): nach dem Verbinden fünf Stationen statt eines Warte-Bildschirms - weiter geht es ohne Warten.
+  expect(await screen.findByRole('heading', { name: 'Ihre Box startet' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }));
 }
 
@@ -200,19 +180,13 @@ beforeEach(() => {
 });
 
 describe('AnlageFlow - Adresse · Box · Anlage (Anlage-Flow a1, Paket 2)', () => {
-  it('mit Box: verbinden, die gefundenen Geräte bestätigen, die kWp gehen EINMAL an den Erzeuger - und ab ins Cockpit', async () => {
+  it('mit Box: Schritt 3 zeigt den Überblick statt einer Gerätesuche, die kWp gehen an die Anlage (PUT /pv) - und ab ins Cockpit (Runde 1/E5, N1/N2)', async () => {
     vi.spyOn(api, 'createSite').mockResolvedValue(site);
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
     const claimDevice = vi.spyOn(api, 'claimDevice').mockResolvedValue({ ...device, externalRef: 'edge-k7m2xq3' });
-    vi.spyOn(api, 'siteEntities').mockResolvedValue(
-      mitFund([
-        gemeldet({ id: 'wr', kind: 'inverter', role: null, brand: 'Deye', model: 'SUN-10K' }),
-        gemeldet({ id: 'pv-1' }),
-        gemeldet({ id: 'zaehler', role: 'grid-meter', brand: 'Eastron', model: 'SDM630' }),
-      ]),
-    );
-    const adopt = vi.spyOn(entitiesApi, 'adopt').mockResolvedValue({} as never);
-    const savePv = vi.spyOn(api, 'savePv');
+    const siteEntities = vi.spyOn(api, 'siteEntities');
+    const adopt = vi.spyOn(entitiesApi, 'adopt');
+    const savePv = vi.spyOn(api, 'savePv').mockResolvedValue(undefined as never);
     const onDone = vi.fn();
 
     render(<AnlageFlow sites={[]} wirt="dialog" onDone={onDone} />);
@@ -222,64 +196,30 @@ describe('AnlageFlow - Adresse · Box · Anlage (Anlage-Flow a1, Paket 2)', () =
       expect(claimDevice).toHaveBeenCalledWith('s-1', 'edge-k7m2xq3', expect.stringMatching(/:box:edge-k7m2xq3$/)),
     );
 
-    // Kein Warte-Bildschirm (D7): Schritt 3 zeigt, was die Box gefunden hat.
-    expect(await screen.findByRole('heading', { name: 'Das hat Ihre Box gefunden' })).toBeInTheDocument();
-    expect(screen.getByText('Wechselrichter')).toBeInTheDocument();
-    expect(screen.getByText('PV-Erzeuger')).toBeInTheDocument();
-    expect(screen.getByText('Netz-Zähler')).toBeInTheDocument();
+    // Kein Warte-Bildschirm und keine Gerätesuche mehr (Runde 1): ein Überblick, was als Nächstes kommt.
+    expect(await screen.findByRole('heading', { name: 'So geht es weiter' })).toBeInTheDocument();
+    expect(screen.getByText('Box verbunden')).toBeInTheDocument();
+    expect(screen.getByText('Dann im Cockpit: Geräte verbinden')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Leistung der Solarmodule (kWp)'), { target: { value: '9,8' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Stimmt so' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(anlageRoute('s-1')));
-    expect(adopt).toHaveBeenCalledWith('s-1', { sourceId: 'pv-1', entityType: 'producer', capacityKwp: 9.8, registryUnitId: undefined });
-    expect(adopt).toHaveBeenCalledWith('s-1', { sourceId: 'zaehler', entityType: 'grid-meter', capacityKwp: undefined, registryUnitId: undefined });
-    expect(adopt).toHaveBeenCalledTimes(2);
-    // Die kWp stehen genau einmal in der Summe: mit gemeldetem Erzeuger über ihn, nie zusätzlich an der Anlage.
-    expect(savePv).not.toHaveBeenCalled();
+    expect(savePv).toHaveBeenCalledWith('s-1', 9.8);
+    // Keine Gerätesuche/Übernahme mehr in diesem Schritt (Runde 1): das lebt jetzt im Cockpit.
+    expect(siteEntities).not.toHaveBeenCalled();
+    expect(adopt).not.toHaveBeenCalled();
     // Die Karte „Ihre Anlage ist live“ steht an (D7), der Entwurf ist weg (F9).
     expect(localStorage.getItem('vp.erste-werte.s-1')).toBe('1');
     expect(Object.keys(sessionStorage)).toEqual([]);
   });
 
-  it('die Box meldet sich im Hintergrund: erst „wird gesucht“, dann die Liste - ohne zu warten', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      vi.spyOn(api, 'createSite').mockResolvedValue(site);
-      vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-      vi.spyOn(api, 'claimDevice').mockResolvedValue({ ...device, externalRef: 'edge-k7m2xq3' });
-      const entities = vi.spyOn(api, 'siteEntities').mockResolvedValue(emptyEntities);
-      render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
-      await bisSchritt3('verbinden');
-      // „meldet gerade“ nur mit echtem Lebenszeichen (Konzept vp-qr-einstieg §7): erst die stumme Box, dann ihr Herzschlag.
-      expect(await screen.findByRole('heading', { name: 'Ihre Box hat sich noch nicht gemeldet' })).toBeInTheDocument();
-      expect(screen.getByText('wartet auf erste Daten der Box')).toBeInTheDocument();
-      vi.mocked(api.listDevices).mockResolvedValue({
-        eintraege: [{ ...device, siteId: 's-1', lastSeenAt: new Date().toISOString() }],
-        teilansicht: null,
-      } as never);
-      await vi.advanceTimersByTimeAsync(5000);
-      expect(await screen.findByRole('heading', { name: /^Ihre Box meldet gerade ihre Geräte/ })).toBeInTheDocument();
-      expect(screen.getByText('werden gesucht')).toBeInTheDocument();
-      // Weiter geht es trotzdem: der Knopf steht.
-      expect(screen.getByRole('button', { name: 'Stimmt so' })).toBeEnabled();
-
-      entities.mockResolvedValue(mitFund([gemeldet({ id: 'pv-1' })]));
-      await vi.advanceTimersByTimeAsync(5000);
-      expect(await screen.findByRole('heading', { name: 'Das hat Ihre Box gefunden' })).toBeInTheDocument();
-      expect(screen.getByText('Fronius Symo 10.0')).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('F17: kennt die Anlage die kWp schon (Register), steht sie als Tatsache da - der Erzeuger kommt ohne zweite Buchung', async () => {
+  it('F17: kennt die Anlage die kWp schon (Register), steht sie als Tatsache da - keine zweite Frage', async () => {
     vi.spyOn(api, 'siteAssets').mockResolvedValue([
       batteryAsset({ id: 'pv', type: 'pv', pvCapacityKwp: 9.8, capacityKwh: null, registry: 'mastr', registryUnitId: 'SEE900000012345' }),
       batteryAsset(),
     ]);
     vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [device], teilansicht: null } as never);
-    vi.spyOn(api, 'siteEntities').mockResolvedValue(mitFund([gemeldet({ id: 'pv-1' })]));
-    const adopt = vi.spyOn(entitiesApi, 'adopt').mockResolvedValue({} as never);
+    const siteEntities = vi.spyOn(api, 'siteEntities');
     const onDone = vi.fn();
     render(<AnlageFlow sites={[site]} wirt="assistent" onDone={onDone} />);
 
@@ -289,14 +229,9 @@ describe('AnlageFlow - Adresse · Box · Anlage (Anlage-Flow a1, Paket 2)', () =
     expect(screen.queryByLabelText('Leistung der Solarmodule (kWp)')).toBeNull();
     // Was die Anlagen-Daten wissen, fragt der Schritt nicht - der Register-Link entfällt.
     expect(screen.queryByRole('button', { name: 'Aus dem Register holen' })).toBeNull();
-    fireEvent.click(await screen.findByRole('button', { name: 'Stimmt so' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(adopt).toHaveBeenCalledWith('s-1', {
-      sourceId: 'pv-1',
-      entityType: 'producer',
-      capacityKwp: undefined,
-      registryUnitId: 'SEE900000012345',
-    });
+    expect(siteEntities).not.toHaveBeenCalled();
   });
 
   it('ohne Box: „Was haben Sie?“ - Solar und Speicher als Zahlen, die kWp an die Anlage (PUT /pv)', async () => {
@@ -423,8 +358,8 @@ describe('AnlageFlow - Adresse · Box · Anlage (Anlage-Flow a1, Paket 2)', () =
     sessionStorage.clear();
     devices.mockResolvedValue({ eintraege: [device], teilansicht: null } as never);
     render(<AnlageFlow sites={[site]} wirt="assistent" onDone={() => {}} />);
-    // Die Box hat nie ein Lebenszeichen gegeben: der Schritt sagt das, statt „meldet gerade“ zu behaupten.
-    expect(await screen.findByRole('heading', { name: 'Ihre Box hat sich noch nicht gemeldet' })).toBeInTheDocument();
+    // Landet direkt bei Schritt 3 (mitBox aus dem Entwurf) statt wieder bei der Box.
+    expect(await screen.findByRole('heading', { name: 'So geht es weiter' })).toBeInTheDocument();
   });
 
   it('maps the 422 claim refusal to the shared unknown-ID message', async () => {

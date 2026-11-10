@@ -65,9 +65,9 @@ async function bisZurAnlage() {
   const box = flussHtml();
   fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-  expect(await screen.findByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Wir hören noch nichts von Ihrer Box' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }));
-  expect(await screen.findByText('Ihre Box hat sich noch nicht gemeldet')).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'So geht es weiter' })).toBeInTheDocument();
   await ruhe();
   return { box, anlage: flussHtml() };
 }
@@ -104,7 +104,7 @@ describe('Anlege-Fluss eines Kunden mit Steuern — Zeichen für Zeichen (Stand 
     await expect(box).toMatchFileSnapshot('./__snapshots__/anlage-bestand-geraet.html');
     await expect(anlage).toMatchFileSnapshot('./__snapshots__/anlage-bestand-anlage.html');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Stimmt so' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(anlageRoute('s-neu')));
   });
 });

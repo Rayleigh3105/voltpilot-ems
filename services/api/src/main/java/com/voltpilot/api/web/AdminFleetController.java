@@ -158,7 +158,7 @@ public class AdminFleetController {
                     leading == null ? null : leading.equals(box.deviceId()),
                     box.lastSeenAt(), box.herzschlagAm(), box.messwertAm(),
                     edgeDto(box.edge()), updateDto(box.update()), box.supports(),
-                    boxArt(box.edge(), box.update()))).toList();
+                    boxArt(box.edge(), box.update()), box.createdAt(), box.anmeldung())).toList();
             DeviceStats stats = deviceStats.get(id);
             int deviceCount = stats == null ? 0 : stats.deviceCount();
             int onlineCount = stats == null ? 0 : stats.onlineCount();

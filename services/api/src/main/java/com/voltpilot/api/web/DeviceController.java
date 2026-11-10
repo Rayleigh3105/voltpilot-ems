@@ -151,7 +151,8 @@ public class DeviceController {
         return new SichtbareListe<>(liste.stream().map(d -> new DeviceDto(
                 d.id(), d.siteId(), d.externalRef(), d.kind(), d.name(), d.status(),
                 d.lastSeenAt(), d.createdAt(), d.lanHost(), d.lanSeenAt(), d.lanSource(),
-                fuehrend.get(d.siteId()) == null ? null : d.id().equals(fuehrend.get(d.siteId()))))
+                fuehrend.get(d.siteId()) == null ? null : d.id().equals(fuehrend.get(d.siteId())),
+                d.anmeldung()))
                 .toList(), teilansicht.jetzt());
     }
 

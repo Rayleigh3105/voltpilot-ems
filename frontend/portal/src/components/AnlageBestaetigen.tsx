@@ -2,28 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
-import { api, ApiError, deviceLiveStatus, type Site, type SiteAsset, type SiteEntities } from '../api';
-import {
-  bekannterSpeicher,
-  erzeugerPlaene,
-  gefundeneZeilen,
-  kwhText,
-  kwpText,
-  pruefeKwp,
-  pruefeSpeicher,
-  pvLage,
-  type GefundeneZeile,
-} from '../anlageBestaetigen';
-import { entitiesApi } from '../entitiesApi';
-import { ADOPT_FAILED_MSG, ADOPT_FORBIDDEN_MSG, UNGUIDED_HINT } from '../setupPath';
+import { api, ApiError, type Site, type SiteAsset } from '../api';
+import { bekannterSpeicher, kwhText, kwpText, pruefeKwp, pruefeSpeicher, pvLage } from '../anlageBestaetigen';
+import { SETUP_TITLE } from '../setupPath';
 import { alsOrtFehler } from '../standorte';
 import type { TeileEntwurf } from '../anlageEntwurf';
 import { Recht } from './Recht';
 import { RegisterHolen } from './RegisterHolen';
 import './AnlageBestaetigen.css';
 
-/** Wie oft der Schritt fragt, was die Box inzwischen gefunden hat. */
-export const FUND_TAKT_MS = 5000;
+/** Wie lang die kurze Bestätigung von „Später eintragen“ steht, bevor es ins Cockpit geht. */
+export const SPAETER_BESTAETIGT_MS = 1400;
 
 type Feld = 'kwp' | 'kwh' | 'kw';
 const FELD_ID: Record<Feld, string> = { kwp: 'flow-kwp', kwh: 'flow-speicher-kwh', kw: 'flow-speicher-kw' };
@@ -37,18 +26,26 @@ function feldDesServers(feld: string | undefined): Feld | null {
 }
 
 /**
- * Schritt 3 · Anlage - „Was gehört zu Ihrer Anlage?“ (Anlage-Flow a1, Paket 2).
+ * Schritt 3 · Anlage - „Was gehört zu Ihrer Anlage?“ (Anlage-Flow a1, Paket 2;
+ * mit Box seit vp-box-verbinden-konzept Runde 1/E5: kein Warten auf eine
+ * Gerätesuche mehr - eine neue Box sucht nicht von selbst, und das Suchen und
+ * Übernehmen lebt seit Runde 1 im Cockpit, nicht mehr im Assistenten, N1/N2).
  *
- * Mit Box: die Liste dessen, was die Box meldet, wächst im Hintergrund (kein Warte-Bildschirm, D7) und
- * wird mit „Stimmt so“ übernommen; die Leistung der Solarmodule ist vorbelegt, wenn die Anlagen-Daten sie
- * kennen (F17), und wird dann nie ein zweites Mal gebucht. Ohne Box: zwei Kacheln, Solar und Speicher, je
- * mit ihren Zahlen. Die MaStR-Nummer ist ein Link „Aus dem Register holen“ (R4).
+ * Mit Box zeigt der Schritt zuerst einen Überblick, was jetzt kommt, dann
+ * zwei Kacheln (Solar, Speicher) mit ihren Zahlen, beides freiwillig; die
+ * Leistung der Solarmodule ist vorbelegt, wenn die Anlagen-Daten sie schon
+ * kennen (F17). Ohne Box: dieselben zwei Kacheln, ohne den Überblick. Die
+ * MaStR-Nummer ist ein Link „Aus dem Register holen“ (R4).
  *
- * „Später ergänzen“ lässt alles offen und erfindet nichts. Die reinen Regeln: `../anlageBestaetigen.ts`.
+ * „Später eintragen“ bestätigt kurz und lässt die Zahlen offen - die
+ * Einrichtungs-Karte im Cockpit erinnert daran. Die reinen Regeln:
+ * `../anlageBestaetigen.ts`.
  */
 export function AnlageBestaetigen({
   site,
   mitBox,
+  boxOnline = false,
+  zeigtSteuerung = true,
   plz,
   ort,
   onFertig,
@@ -58,6 +55,10 @@ export function AnlageBestaetigen({
   site: Site;
   /** Eine Box ist verbunden (eben oder schon vorher). */
   mitBox: boolean;
+  /** Meldet diese Box gerade ein Lebenszeichen (sonst nur „verbunden“, nie „online“ behaupten)? */
+  boxOnline?: boolean;
+  /** Nur-Messen-Konten haben keine Steuerung - der Überblick nennt dann keinen Steuerungs-Schritt. */
+  zeigtSteuerung?: boolean;
   /** Postleitzahl und Ort der Anlage (Schritt 1) für den Abgleich mit dem Register. */
   plz: string | null;
   ort: string | null;
@@ -66,10 +67,6 @@ export function AnlageBestaetigen({
   entwurf?: TeileEntwurf | null;
   onEntwurf?: (e: TeileEntwurf) => void;
 }) {
-  const [entities, setEntities] = useState<SiteEntities | null>(null);
-  // Ob die Box dieser Anlage gerade ein Lebenszeichen gibt (Konzept vp-qr-einstieg §7): null = noch
-  // unbekannt. „meldet gerade ihre Geräte“ nur mit echtem Lebenszeichen, nie für eine stumme Box.
-  const [meldetSich, setMeldetSich] = useState<boolean | null>(null);
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
   const [solarAn, setSolarAn] = useState(entwurf?.solarAn ?? true);
   const [speicherAn, setSpeicherAn] = useState(entwurf?.speicherAn ?? false);
@@ -83,11 +80,9 @@ export function AnlageBestaetigen({
   }, [solarAn, speicherAn, kwp, kwh, kw]);
   const [register, setRegister] = useState(false);
   const [fehler, setFehler] = useState<Partial<Record<Feld, string>>>({});
-  const [zeilenFehler, setZeilenFehler] = useState<Record<string, string>>({});
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const busyRef = useRef(false);
-  busyRef.current = busy;
+  const [spaeterBestaetigt, setSpaeterBestaetigt] = useState(false);
 
   useEffect(() => {
     let aktiv = true;
@@ -100,43 +95,15 @@ export function AnlageBestaetigen({
     };
   }, [site.id]);
 
-  // Was die Box findet, kommt im Hintergrund dazu - der Kunde wartet nicht davor (D7).
+  // „Später eintragen“: kurz bestätigen, dann ins Cockpit (Bericht Abschnitt 6.1).
   useEffect(() => {
-    if (!mitBox) return;
-    let aktiv = true;
-    const lesen = () => {
-      if (busyRef.current) return;
-      api.siteEntities(site.id).then(
-        (d) => aktiv && setEntities(d),
-        () => {
-          // Ein Aussetzer lässt die Liste stehen, wie sie ist.
-        },
-      );
-      api.listDevices().then(
-        (liste) => {
-          if (!aktiv) return;
-          const boxen = liste.eintraege.filter((d) => d.siteId === site.id);
-          setMeldetSich(boxen.some((d) => deviceLiveStatus(d) === 'online'));
-        },
-        () => {
-          // Ein Aussetzer lässt die Aussage stehen, wie sie ist.
-        },
-      );
-    };
-    lesen();
-    const takt = setInterval(lesen, FUND_TAKT_MS);
-    return () => {
-      aktiv = false;
-      clearInterval(takt);
-    };
-  }, [mitBox, site.id]);
+    if (!spaeterBestaetigt) return;
+    const t = setTimeout(onFertig, SPAETER_BESTAETIGT_MS);
+    return () => clearTimeout(t);
+  }, [spaeterBestaetigt, onFertig]);
 
-  const zeilen = gefundeneZeilen(entities?.localSetup ?? []);
-  const plaene = zeilen.flatMap((z) => (z.plan ? [z.plan] : []));
-  const erzeuger = erzeugerPlaene(zeilen);
-  const pv = pvLage(assets, erzeuger);
+  const pv = pvLage(assets, []);
   const speicher = bekannterSpeicher(assets);
-  const gefunden = zeilen.length > 0;
 
   function setzeFehler(f: Partial<Record<Feld, string>>) {
     setFehler(f);
@@ -177,35 +144,6 @@ export function AnlageBestaetigen({
       if (kwpWert != null && pv.art === 'frage' && pv.ziel === 'anlage') {
         await api.savePv(site.id, kwpWert);
       }
-      const offen: Record<string, string> = {};
-      for (const plan of plaene) {
-        const ersterErzeuger = plan.entityType === 'producer' && plan.sourceId === erzeuger[0]?.sourceId;
-        try {
-          await entitiesApi.adopt(site.id, {
-            sourceId: plan.sourceId,
-            entityType: plan.entityType,
-            // Die kWp nur einmal: bekannt ist sie schon in der Summe, getippt geht sie an den ersten Erzeuger.
-            capacityKwp: ersterErzeuger && pv.art === 'frage' && pv.ziel === 'erzeuger' ? kwpWert ?? undefined : undefined,
-            registryUnitId:
-              plan.entityType === 'producer' && pv.art === 'bekannt' && pv.ausRegister ? pv.mastrNummer ?? undefined : undefined,
-          });
-        } catch (e) {
-          const abgelehnt = e instanceof ApiError ? alsOrtFehler(e.body) : null;
-          const feld = abgelehnt ? feldDesServers(abgelehnt.feld) : null;
-          if (abgelehnt && feld) {
-            setzeFehler({ [feld]: abgelehnt.message });
-            return;
-          }
-          const status = e instanceof ApiError ? e.status : 0;
-          offen[plan.sourceId] = status === 401 || status === 403 || status === 404 ? ADOPT_FORBIDDEN_MSG : ADOPT_FAILED_MSG;
-        }
-      }
-      setZeilenFehler(offen);
-      if (Object.keys(offen).length > 0) {
-        // Übernommenes bleibt übernommen; die Liste zeigt es beim nächsten Lesen.
-        void api.siteEntities(site.id).then(setEntities, () => {});
-        return;
-      }
       onFertig();
     } catch (e) {
       const abgelehnt = e instanceof ApiError ? alsOrtFehler(e.body) : null;
@@ -238,22 +176,18 @@ export function AnlageBestaetigen({
     );
   }
 
-  const titel = mitBox
-    ? gefunden
-      ? 'Das hat Ihre Box gefunden'
-      : meldetSich === true
-        ? 'Ihre Box meldet gerade ihre Geräte\u00a0…'
-        : meldetSich === false
-          ? 'Ihre Box hat sich noch nicht gemeldet'
-          : 'Ihre Box und ihre Geräte'
-    : 'Was haben Sie?';
-  const unterzeile = mitBox
-    ? gefunden
-      ? 'Stimmt das? Dann übernehmen wir es so.'
-      : meldetSich === true
-        ? 'Sie können schon weitermachen, bevor sie fertig ist.'
-        : 'Sobald sie Strom und Internet hat, meldet sie ihre Geräte. Sie können schon weitermachen.'
-    : 'Zwei Zahlen genügen für die Sonnenprognose. Alles ist freiwillig.';
+  const titel = mitBox ? 'So geht es weiter' : 'Was haben Sie?';
+  const unterzeile = 'Zwei Zahlen genügen für die Sonnenprognose. Alles ist freiwillig.';
+
+  if (spaeterBestaetigt) {
+    return (
+      <div className="vp-onboarding-step vp-anlage-bestaetigen">
+        <p className="vp-muted" role="status">
+          Gut, dann später – im Cockpit erinnert Sie die Karte „{SETUP_TITLE}“ daran.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="vp-onboarding-step vp-anlage-bestaetigen">
@@ -261,21 +195,12 @@ export function AnlageBestaetigen({
       <p className="vp-muted">{unterzeile}</p>
 
       {mitBox && (
-        <ul className="vp-fund" aria-live="polite" aria-busy={!gefunden}>
-          {gefunden ? (
-            zeilen.map((z) => <FundZeile key={z.id} zeile={z} fehler={zeilenFehler[z.id] ?? null} />)
-          ) : (
-            <li className="vp-fund-zeile is-sucht">
-              <span className="vp-fund-symbol vp-ustate-busy" aria-hidden="true">
-                <span className="vp-ustate-dot" />
-              </span>
-              <span className="vp-fund-text">
-                <strong>Wechselrichter, Speicher und Zähler</strong>
-                <span className="vp-muted">{meldetSich === true ? 'werden gesucht' : 'wartet auf erste Daten der Box'}</span>
-              </span>
-            </li>
-          )}
-        </ul>
+        <ol className="vp-weiter-ueberblick" aria-label="So geht es weiter">
+          <li className="is-done">Box {boxOnline ? 'online' : 'verbunden'}</li>
+          <li className="is-current">Jetzt: Ihre Anlage</li>
+          <li>Dann im Cockpit: Geräte verbinden</li>
+          {zeigtSteuerung && <li>Zum Schluss: Steuerung wählen</li>}
+        </ol>
       )}
 
       <div className="vp-anlage-teile" role="group" aria-label="Ihre Anlage">
@@ -349,43 +274,15 @@ export function AnlageBestaetigen({
       )}
       <Recht aktion="geraet.einrichten">
         <Button variant="primary" size="lg" fullWidth onClick={stimmtSo} disabled={busy} style={{ marginTop: 20 }}>
-          {busy ? 'Wird gespeichert…' : mitBox ? 'Stimmt so' : 'Weiter'}
+          {busy ? 'Wird gespeichert…' : 'Weiter'}
         </Button>
       </Recht>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
-        <button type="button" className="vp-linklike" onClick={onFertig} disabled={busy}>
-          Später ergänzen
+        <button type="button" className="vp-linklike" onClick={mitBox ? () => setSpaeterBestaetigt(true) : onFertig} disabled={busy}>
+          {mitBox ? 'Nicht zur Hand? Später eintragen' : 'Später ergänzen'}
         </button>
       </p>
     </div>
-  );
-}
-
-function FundZeile({ zeile, fehler }: { zeile: GefundeneZeile; fehler: string | null }) {
-  // Farbe und Symbol nach der Rolle (die Rollenfarben des Cockpits), nicht nach dem Zustand der Zeile.
-  const rolle = zeile.titel.includes('PV') || zeile.titel === 'Wechselrichter' ? 'pv' : zeile.titel.includes('Zähler') ? 'netz' : 'last';
-  const symbol: IconName = rolle === 'pv' ? 'sun' : rolle === 'netz' ? 'activity' : 'zap';
-  return (
-    <li className={`vp-fund-zeile is-${zeile.art} rolle-${rolle}`}>
-      <span className="vp-fund-symbol" aria-hidden="true">
-        <Icon name={symbol} size={16} />
-      </span>
-      <span className="vp-fund-text">
-        <strong>{zeile.titel}</strong>
-        <span className="vp-muted">{zeile.zeile}</span>
-        {zeile.art === 'einordnung' && <span className="vp-note">{UNGUIDED_HINT}</span>}
-        {fehler && (
-          <span className="vp-fund-fehler" role="alert">
-            {fehler}
-          </span>
-        )}
-      </span>
-      {zeile.art === 'uebernommen' && (
-        <span className="vp-fund-marke">
-          <Icon name="check" size={12} strokeWidth={3} aria-hidden="true" /> übernommen
-        </span>
-      )}
-    </li>
   );
 }
 

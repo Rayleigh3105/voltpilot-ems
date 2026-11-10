@@ -102,6 +102,19 @@ describe('fleetRows', () => {
     expect(groups[0].boxes[0].capabilities.every((capability) => capability.status === 'fehlt')).toBe(true);
   });
 
+  it('N5 (vp-box-verbinden-konzept): a box that never enrolled says so, not "wartet auf erste Meldung"', () => {
+    const groups = fleetBoxGroups([site({
+      boxes: [
+        // never sent a CSR at all - the case from the 10.11. report that looked like a slow box.
+        { deviceId: 'd3', externalRef: 'edge-cyhchfr', name: null, fuehrtAnlage: null, lastSeenAt: null, edge: null, update: null, createdAt: ago(3 * 3600_000), anmeldung: null },
+        // sent a CSR but no heartbeat yet - still reads as "wartet auf erste Meldung", a different case.
+        { deviceId: 'd4', externalRef: 'edge-abcdefg', name: null, fuehrtAnlage: null, lastSeenAt: null, edge: null, update: null, createdAt: ago(30_000), anmeldung: { zuletztAngefragtAm: ago(10_000), schluesselAbgeholtAm: ago(10_000) } },
+      ],
+    })], NOW, []);
+    expect(groups[0].boxes.find((b) => b.deviceId === 'd3')).toMatchObject({ connectionText: 'Nie angemeldet', lastSeenText: 'seit 3 Std.' });
+    expect(groups[0].boxes.find((b) => b.deviceId === 'd4')).toMatchObject({ connectionText: 'Wartet auf erste Meldung', lastSeenText: '—' });
+  });
+
   it('uses each box report even when its version is unknown to the table', () => {
     const groups = fleetBoxGroups([site({ boxes: [
       { deviceId: 'new', externalRef: 'VP-new', name: null, fuehrtAnlage: true,
