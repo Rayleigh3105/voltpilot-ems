@@ -164,14 +164,14 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     schweigt('Schritt 2 · Box, abgelehnt');
     fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
     // Das Ergebnis nach dem Verbinden (QE-4 A) spricht auch kein Steuer- oder Geldwort.
-    expect(await screen.findByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Wir hören noch nichts von Ihrer Box' })).toBeInTheDocument();
     schweigt('Schritt 2 · Box, verbunden');
     fireEvent.click(screen.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }));
 
     // Schritt 3: Anlage — die Box wartet auf erste Daten, Solar und Speicher, das Register mit Vorschau.
-    expect(await screen.findByText('Ihre Box hat sich noch nicht gemeldet')).toBeInTheDocument();
+    expect(await screen.findByText('So geht es weiter')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Speicher' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Stimmt so' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     expect(await screen.findByText(/Kapazität des Speichers als Zahl/)).toBeInTheDocument();
     schweigt('Schritt 3 · Anlage');
     fireEvent.click(screen.getByRole('button', { name: 'Speicher' }));
@@ -185,7 +185,7 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     fireEvent.click(screen.getByRole('button', { name: 'Ohne Register weiter' }));
 
     // Das Ende: ohne Umweg zu den Messstellen - kein „Betrieb", kein Fertig-Bildschirm (D6, D7).
-    fireEvent.click(await screen.findByRole('button', { name: 'Stimmt so' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(MESSSTELLEN_LINDACH));
     for (const abruf of betrieb) expect(abruf).not.toHaveBeenCalled();
     // Die Karte „Ihre Anlage ist live“ spricht vom Strompreis - ein Messkunde bekommt sie nicht.

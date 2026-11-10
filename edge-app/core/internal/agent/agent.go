@@ -1511,11 +1511,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				}
 			})
 			if connected {
-				a.kick()
-				a.republishMeasurementStatus(link)
-				// A purge requested while the device was offline is queued on
-				// disk; (re-)send it now that the cloud is reachable again.
-				a.trySendPurgeRequest()
+				a.onCloudConnected(link)
 			} else {
 				// A drifted identity is rejected by the broker as a connection
 				// failure; re-check the identity promptly instead of waiting for
@@ -1567,6 +1563,20 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		})
 	}()
 	return nil
+}
+
+// onCloudConnected runs once per connect (and each reconnect): wakes the
+// buffered publisher, resends what a reconnect owes the cloud (the last
+// measurement-config receipt, a purge requested while offline), and asks for
+// an immediate status heartbeat. Without the kick, the portal only learns the
+// box is online on the next statusHeartbeatEvery tick, up to 15 s later
+// (vp-box-verbinden-konzept S3: the setup assistant's first "online" signal
+// should follow the connect handshake, not a fixed cadence).
+func (a *Agent) onCloudConnected(link measurementStatusLink) {
+	a.kick()
+	a.republishMeasurementStatus(link)
+	a.trySendPurgeRequest()
+	a.requestStatusHeartbeat()
 }
 
 // onLocalTelemetry ingests one Layer-1 measurement sample: update the guard

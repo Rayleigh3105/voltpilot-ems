@@ -1168,6 +1168,19 @@ export interface Device {
   lanSource?: 'erreicht' | 'schnittstelle' | null;
   /** Server-derived role; absent on older backends. Never infer it from list order. */
   fuehrtAnlage?: boolean | null;
+  /**
+   * vp-box-verbinden-konzept S2: die eigenen Anmelde-Momente der Box
+   * (`device_enrollment`, nur fürs eigene Gerät). `null`/fehlend = die Box
+   * hat sich seit dem Verbinden nie angemeldet, oder ein älteres Backend
+   * sendet den Block gar nicht - beides liest sich wie „nie", nie wie „aus".
+   */
+  anmeldung?: DeviceAnmeldung | null;
+}
+
+/** Siehe {@link Device.anmeldung}. */
+export interface DeviceAnmeldung {
+  zuletztAngefragtAm: string | null;
+  schluesselAbgeholtAm: string | null;
 }
 
 /** AP-06 IP-19: Ergebnis der Nachfolger-Anmeldung; `zugestellt=false` ist erst vorbereitet. */

@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, type Device, type Site } from '../api';
 import { KOPPEL_VORMERKER, merkeKoppelRef, offeneKoppelRef } from '../koppelLink';
 import { AnlageFlow } from './AnlageFlow';
-import { BoxErgebnis, BoxFremdKonto, ERGEBNIS_TAKT_MS } from './BoxVerbunden';
+import { BoxFremdKonto } from './BoxVerbunden';
+import { BoxWeg, WEG_TAKT_MS } from '../boxweg/BoxWeg';
 import { AddDeviceDrawer } from './DeviceDrawers';
 import { KoppelEmpfang } from './KoppelEmpfang';
 import { KoppelSeite } from './KoppelSeite';
@@ -74,33 +75,54 @@ describe('M1/M2 · Empfang ohne Sitzung (QE-1 A)', () => {
   });
 });
 
-describe('M8/M9 · das ehrliche Ergebnis nach dem Verbinden (QE-4 A)', () => {
-  it('wartet, solange kein Lebenszeichen kam, und geht von selbst auf „Ihre Box ist online“ über', async () => {
+describe('Der Weg (E1 = B, vp-box-verbinden-konzept) · fünf Stationen statt online/wartet', () => {
+  it('startet, meldet die Anmeldung, und geht von selbst auf „Ihre Box ist online“ über', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const liste = vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [box()], teilansicht: null } as never);
     const weiter = vi.fn();
-    render(<BoxErgebnis box={box()} anlageName="Zuhause" onWeiter={weiter} onSpaeter={() => {}} />);
-    expect(screen.getByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
-    expect(screen.getByText(/EDGE-K7M2XQ3 gehört jetzt zur Anlage „Zuhause“/)).toBeInTheDocument();
+    render(<BoxWeg box={box()} anlageName="Zuhause" onWeiter={weiter} onSpaeter={() => {}} />);
+    expect(screen.getByRole('heading', { name: 'Ihre Box startet' })).toBeInTheDocument();
+    expect(screen.getByText('Meist ist sie 2½ Minuten nach dem Einstecken online.')).toBeInTheDocument();
     expect(screen.getByText('Letzter Kontakt: noch keiner')).toBeInTheDocument();
     expect(screen.queryByText(/meldet sich\./)).toBeNull();
     expect(screen.queryByText(/Seit 15 Minuten/)).toBeNull();
 
-    liste.mockResolvedValue({ eintraege: [box({ lastSeenAt: new Date().toISOString() })], teilansicht: null } as never);
+    liste.mockResolvedValue({
+      eintraege: [box({ anmeldung: { zuletztAngefragtAm: new Date().toISOString(), schluesselAbgeholtAm: new Date().toISOString() }, lastSeenAt: new Date().toISOString() })],
+      teilansicht: null,
+    } as never);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(ERGEBNIS_TAKT_MS);
+      await vi.advanceTimersByTimeAsync(WEG_TAKT_MS);
     });
     expect(await screen.findByRole('heading', { name: 'Ihre Box ist online' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter: Geräte übernehmen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter: Ihre Anlage' }));
     expect(weiter).toHaveBeenCalled();
+  });
+
+  it('ab 5:00 ohne Signal: Bitte prüfen mit den drei Fragen, Station Box startet wird zum Problem', () => {
+    vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [], teilansicht: null } as never);
+    const alt = box({ createdAt: new Date(Date.now() - 6 * 60 * 1000).toISOString() });
+    render(<BoxWeg box={alt} anlageName="Zuhause" onSpaeter={() => {}} />);
+    expect(screen.getByText('Das Netzteil steckt in der Buchse „5V“ und in der Steckdose.')).toBeInTheDocument();
+    expect(screen.getByText('Steht unten auf Ihrer Box dieselbe Kennung?')).toBeInTheDocument();
+    expect(screen.queryByText(/Seit 15 Minuten/)).toBeNull();
   });
 
   it('nach 15 Minuten ohne Lebenszeichen der Weg zum Support, mit der Kennung', () => {
     vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [], teilansicht: null } as never);
     const alt = box({ createdAt: new Date(Date.now() - 16 * 60 * 1000).toISOString() });
-    render(<BoxErgebnis box={alt} anlageName="Zuhause" onSpaeter={() => {}} />);
-    expect(screen.getByText('Seit 15 Minuten kein Lebenszeichen. Schreiben Sie uns mit der Kennung EDGE-K7M2XQ3, wir sehen nach.')).toBeInTheDocument();
+    render(<BoxWeg box={alt} anlageName="Zuhause" onSpaeter={() => {}} />);
+    expect(
+      screen.getByText('Seit 15 Minuten kein Lebenszeichen von der Box, die jetzt zur Anlage „Zuhause“ gehört. Schreiben Sie uns mit der Kennung EDGE-K7M2XQ3, wir sehen nach.'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Support kontaktieren/ })).toHaveAttribute('href', expect.stringContaining('kontakt'));
+  });
+
+  it('Anmeldung da, aber 75 s später noch kein Herzschlag: "Die Datenverbindung kommt nicht durch"', () => {
+    vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [], teilansicht: null } as never);
+    const gesperrt = box({ anmeldung: { zuletztAngefragtAm: new Date(Date.now() - 80 * 1000).toISOString(), schluesselAbgeholtAm: new Date(Date.now() - 80 * 1000).toISOString() } });
+    render(<BoxWeg box={gesperrt} anlageName="Zuhause" onSpaeter={() => {}} />);
+    expect(screen.getByRole('heading', { name: 'Die Datenverbindung kommt nicht durch' })).toBeInTheDocument();
   });
 });
 
@@ -170,7 +192,7 @@ describe('M6 · Assistent, Schritt „Box“ mit der Kennung aus dem QR-Code', (
     expect(screen.getByText('Wir merken uns die Kennung bis morgen in diesem Browser.')).toBeInTheDocument();
     expect(claim).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-    expect(await screen.findByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Ihre Box startet' })).toBeInTheDocument();
     expect(claim).toHaveBeenCalledWith('s-1', REF, expect.any(String));
     expect(offeneKoppelRef()).toBeNull();
     expect(localStorage.getItem(KOPPEL_VORMERKER)).toBeNull();
@@ -214,8 +236,7 @@ describe('M7 · Aufbau-Blatt „VoltPilot-Box hinzufügen“ mit QR-Band', () =>
     vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [], teilansicht: null } as never);
     render(<AddDeviceDrawer open onClose={() => {}} sites={[site]} onClaimed={() => {}} vorschlag={REF} />);
     fireEvent.click(screen.getByRole('button', { name: 'VoltPilot-Box hinzufügen' }));
-    expect(await screen.findByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeInTheDocument();
-    expect(screen.getByText('Das Netzteil steckt in der Buchse „5V“ und in der Steckdose.')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Ihre Box startet' })).toBeInTheDocument();
     await waitFor(() => expect(offeneKoppelRef()).toBeNull());
   });
 });

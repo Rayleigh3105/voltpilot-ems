@@ -42,6 +42,22 @@ public class DeviceRepository {
                 + ".site_id AND v.device_id = " + alias + ".id AND v.time >= now() - interval '7 days')))";
     }
 
+    /**
+     * Anmeldung (vp-box-verbinden-konzept S2): the box's own enrollment
+     * moments, by scalar subquery against the global, pre-claim
+     * {@code device_enrollment} table keyed on the row's OWN
+     * {@code external_ref} - never a join that could leak another tenant's
+     * reference. {@code refExpr} is a SQL expression for that ref (a column
+     * reference such as {@code "d.external_ref"}, or {@code "?"} bound
+     * alongside the caller's own parameters).
+     */
+    static String anmeldungColumns(String refExpr) {
+        return "(SELECT e.csr_updated_at FROM device_enrollment e WHERE e.external_ref = " + refExpr
+                + ") AS anmeldung_angefragt_am, "
+                + "(SELECT e.issued_at FROM device_enrollment e WHERE e.external_ref = " + refExpr
+                + ") AS anmeldung_abgeholt_am";
+    }
+
     public List<DeviceDto> findAll() {
         // Only boxes that take part in operation: an ausgebaut box (UEMS AP-07
         // IP-11) keeps its row and its recordings, but is no device of the
@@ -49,7 +65,7 @@ public class DeviceRepository {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
-                        + lastSeen("d") + " AS last_seen "
+                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref") + " "
                         + "FROM device d WHERE d.ausgebaut_am IS NULL ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
     }
@@ -59,7 +75,7 @@ public class DeviceRepository {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
-                        + lastSeen("d") + " AS last_seen "
+                        + lastSeen("d") + " AS last_seen, " + anmeldungColumns("d.external_ref") + " "
                         + "FROM device d WHERE d.id = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice, deviceId).stream().findFirst();
     }
@@ -72,7 +88,8 @@ public class DeviceRepository {
     public Optional<DeviceDto> findByExternalRef(String externalRef) {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
-                        + "d.lan_host, d.lan_seen_at, d.lan_source, " + lastSeen("d") + " AS last_seen "
+                        + "d.lan_host, d.lan_seen_at, d.lan_source, " + lastSeen("d") + " AS last_seen, "
+                        + anmeldungColumns("d.external_ref") + " "
                         + "FROM device d "
                         + "WHERE d.external_ref = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice,
@@ -94,9 +111,10 @@ public class DeviceRepository {
                         + "VALUES (?, ?, ?, ?, 'claimed') "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
-                        + "NULL::timestamptz AS last_seen",
+                        + "NULL::timestamptz AS last_seen, " + anmeldungColumns("?"),
                 DeviceRepository::mapDevice,
-                tenantId, siteId, externalRef, kind == null || kind.isBlank() ? "inverter" : kind);
+                tenantId, siteId, externalRef, kind == null || kind.isBlank() ? "inverter" : kind,
+                externalRef, externalRef);
     }
 
     /**
@@ -109,7 +127,7 @@ public class DeviceRepository {
                 "UPDATE device SET kind = ?, name = ? WHERE id = ? AND ausgebaut_am IS NULL "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
-                        + lastSeen("device") + " AS last_seen",
+                        + lastSeen("device") + " AS last_seen, " + anmeldungColumns("device.external_ref"),
                 DeviceRepository::mapDevice, kind, name, deviceId).stream().findFirst();
     }
 
@@ -235,6 +253,25 @@ public class DeviceRepository {
                 createdAt == null ? null : createdAt.toInstant(),
                 rs.getString("lan_host"),
                 lanSeen == null ? null : lanSeen.toInstant(),
-                rs.getString("lan_source"));
+                rs.getString("lan_source"),
+                null,
+                anmeldung(rs));
+    }
+
+    /**
+     * Null when the box has never requested a certificate since being
+     * claimed ("nie angemeldet") rather than two null instants - see
+     * {@link AnmeldungDto}.
+     */
+    private static com.voltpilot.api.web.dto.AnmeldungDto anmeldung(java.sql.ResultSet rs)
+            throws java.sql.SQLException {
+        java.sql.Timestamp angefragt = rs.getTimestamp("anmeldung_angefragt_am");
+        java.sql.Timestamp abgeholt = rs.getTimestamp("anmeldung_abgeholt_am");
+        if (angefragt == null && abgeholt == null) {
+            return null;
+        }
+        return new com.voltpilot.api.web.dto.AnmeldungDto(
+                angefragt == null ? null : angefragt.toInstant(),
+                abgeholt == null ? null : abgeholt.toInstant());
     }
 }

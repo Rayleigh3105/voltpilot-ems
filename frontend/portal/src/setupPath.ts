@@ -25,6 +25,7 @@
  * („außerhalb des geführten Pfads bleibt Adoption admin-first").
  */
 
+import { UEMS_GERAETE_SUCHEN } from './glossar';
 import type { AdoptableSource } from './rollen';
 
 // ---------------------------------------------------------------------------
@@ -162,9 +163,9 @@ export function setupPath(input: SetupPathInput | null | undefined): SetupPathVi
     : uebernehmenDone
       ? 'Ihre Geräte sind übernommen - VoltPilot kennt sie jetzt.'
       : reported.length > 0
-        ? `Ihr Gerät meldet: ${reportedNames(reported)}. Mit einem Klick werden daraus Ihre Geräte.`
-        : 'Ihr Gerät meldet noch keine Geräte. Richten Sie Wechselrichter und Zähler direkt am '
-          + 'Gerät ein - danach erscheinen sie hier zum Übernehmen.';
+        ? `Ihre Box meldet: ${reportedNames(reported)}. Mit einem Klick werden daraus Ihre Geräte.`
+        : `Ihre Box meldet noch keine Geräte. Nutzen Sie „${UEMS_GERAETE_SUCHEN}“, oder richten Sie `
+          + 'Wechselrichter und Zähler direkt an der Box ein - danach erscheinen sie hier zum Übernehmen.';
 
   const uebernehmen: SetupStep = {
     id: 'uebernehmen',

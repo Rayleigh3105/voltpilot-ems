@@ -76,6 +76,10 @@ export interface AdminFleetBox {
   update: AdminFleetUpdate | null;
   /** Die Linie der Box (`ota.BoxArt`, additiv seit S0); `null`/fehlend = unbekannt. */
   boxArt?: string | null;
+  /** Geclaimt am - Grundlage für "nie angemeldet seit …" (vp-box-verbinden-konzept N5). */
+  createdAt?: string | null;
+  /** `null`/fehlend = die Box hat sich seit dem Verbinden nie angemeldet. */
+  anmeldung?: { zuletztAngefragtAm: string | null; schluesselAbgeholtAm: string | null } | null;
 }
 
 /**

@@ -27686,6 +27686,27 @@ components:
             Schnittstelle ohne Container); `erreicht` = kompatibler Fallback
             aus einem Browser-Aufruf, der auch über ein Service-VPN erfolgt
             sein kann.
+        anmeldung:
+          allOf: [{ $ref: '#/components/schemas/Anmeldung' }]
+          nullable: true
+          description: >
+            vp-box-verbinden-konzept S2: die eigenen Anmelde-Momente der Box
+            (device_enrollment, nur fuers eigene Geraet). null/fehlend = die
+            Box hat sich seit dem Verbinden nie angemeldet, oder ein aelteres
+            Backend sendet den Block gar nicht.
+    Anmeldung:
+      type: object
+      properties:
+        zuletztAngefragtAm:
+          type: string
+          format: date-time
+          nullable: true
+          description: Neueste Zertifikatsanfrage der Box (device_enrollment.csr_updated_at).
+        schluesselAbgeholtAm:
+          type: string
+          format: date-time
+          nullable: true
+          description: Wann die Cloud zuletzt ein Zertifikat fuer diese Anfrage ausgestellt hat (device_enrollment.issued_at).
     BelegeImWeg:
       type: object
       description: >

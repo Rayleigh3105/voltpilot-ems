@@ -122,7 +122,11 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
     public record FleetBoxDto(UUID deviceId, String externalRef, String name,
             Boolean fuehrtAnlage, Instant lastSeenAt, Instant herzschlagAm, Instant messwertAm,
             FleetEdgeDto edge, FleetUpdateDto update,
-            List<String> supports, String boxArt) {
+            List<String> supports, String boxArt,
+            /** Geclaimt am - Grundlage für "nie angemeldet seit …" (vp-box-verbinden-konzept N5). */
+            Instant createdAt,
+            /** null = die Box hat sich seit dem Verbinden nie angemeldet. */
+            AnmeldungDto anmeldung) {
     }
 
     /**

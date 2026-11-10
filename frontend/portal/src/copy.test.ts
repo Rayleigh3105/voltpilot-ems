@@ -4905,9 +4905,16 @@ describe('QR-Einstieg · die Seiten nach dem Scan sprechen das Kunden-Wörterbuc
   });
 
   it('„meldet sich“ nur mit Lebenszeichen: der Wartezustand behauptet es nie', () => {
-    const warten = [koppelTexte.ERGEBNIS.wartetChip, koppelTexte.ERGEBNIS.wartetTitel, koppelTexte.ERGEBNIS.stillTitel];
+    const warten = [
+      koppelTexte.WEG.titelStartet,
+      koppelTexte.WEG.titelLaenger,
+      koppelTexte.WEG.titelHoertNichts,
+      koppelTexte.WEG.titelImInternet,
+      koppelTexte.WEG.titelDatensperre,
+      koppelTexte.WEG.stillTitel,
+    ];
     for (const t of warten) expect(t).not.toMatch(/meldet sich(?! gerade nicht| noch nicht)|ist online/);
-    expect(koppelTexte.ERGEBNIS.onlineTitel).toBe('Ihre Box ist online');
+    expect(koppelTexte.WEG.onlineTitel).toBe('Ihre Box ist online');
   });
 
   it('vor der Anmeldung sagt die Empfangsseite nichts, was nur der Server wissen kann', () => {

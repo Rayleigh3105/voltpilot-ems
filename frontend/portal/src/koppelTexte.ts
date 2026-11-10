@@ -76,28 +76,66 @@ export const WAHL = {
   spaeter: 'Später verbinden',
 } as const;
 
-/** M8/M9 · das Ergebnis nach dem Verbinden (QE-4 A). */
+/** M11 (`BoxFremdKonto`): der Weg zum Support bei einer fremden Box. */
 export const ERGEBNIS = {
-  wartetChip: 'Wartet auf erste Daten',
-  wartetTitel: 'Box verbunden – sie hat sich noch nicht gemeldet',
-  wartetZeile: (gedruckt: string, anlage: string) =>
-    `${gedruckt} gehört jetzt zur Anlage „${anlage}“. Sobald die Box Strom und Internet hat, meldet sie sich, meist nach wenigen Minuten. Diese Seite aktualisiert sich von selbst.`,
+  support: 'Support kontaktieren',
+} as const;
+
+/**
+ * Der Weg (vp-box-verbinden-konzept, E1 = B): fünf Stationen nach dem
+ * Verbinden - Eingesteckt · Box startet · Anmeldung · Datenverbindung · Ihre
+ * Anlage. Ersetzt M8/M9 (`ERGEBNIS`) vollständig; `boxweg/wegLage.ts` wählt
+ * daraus nach den Umschaltpunkten aus Bericht Abschnitt 4.3.
+ *
+ * Grundregel wie oben: „meldet sich“ nur mit echtem Lebenszeichen; keine
+ * Gerätesuche mehr in diesen Sätzen (N1 - eine neue Box sucht nicht von
+ * selbst, und die Suche lebt seit Runde 1 nur noch im Cockpit).
+ */
+export const WEG = {
+  stationLabel: {
+    eingesteckt: 'Eingesteckt',
+    startet: 'Box startet',
+    anmeldung: 'Anmeldung',
+    datenverbindung: 'Datenverbindung',
+    anlage: 'Ihre Anlage',
+  },
+  /** Qualifiziert die Station „Eingesteckt“, solange sie nur eine Annahme ist (das Portal weiß es nicht). */
+  eingestecktSie: 'Sie',
+  chipStartet: (zeit: string) => `Startet · ${zeit}`,
+  chipAngemeldet: (zeit: string) => `Angemeldet · ${zeit}`,
+  titelStartet: 'Ihre Box startet',
+  satzStartet: 'Meist ist sie 2½ Minuten nach dem Einstecken online.',
+  satzLaenger: 'Das ist noch normal.',
+  titelLaenger: 'Heute dauert es länger als meist',
+  titelHoertNichts: 'Wir hören noch nichts von Ihrer Box',
+  satzPruefen: 'Das dauert länger als meist. Bitte prüfen Sie Netzteil, Netzwerkkabel und Router.',
+  satzSupport: 'Das ist länger als normal - bitte prüfen Sie die drei Punkte unten.',
+  titelImInternet: 'Ihre Box ist im Internet',
+  satzGleich: 'Gleich meldet sie sich mit ihren ersten Daten.',
+  satzLiefSchon: 'Sie lief schon, bevor Sie verbunden haben. In spätestens 1½ Minuten ist sie online.',
+  titelDatensperre: 'Die Datenverbindung kommt nicht durch',
+  satzDatensperre: 'Ihre Box ist angemeldet, aber ihre Daten erreichen uns nicht. Das deutet auf eine Firewall oder ein Gastnetz hin.',
+  datensperreHilfe: (gedruckt: string) =>
+    `Prüfen Sie, ob Ihr Hauptrouter die Verbindung zulässt (Port 8883), oder schreiben Sie uns mit der Kennung ${gedruckt}.`,
+  onlineTitel: 'Ihre Box ist online',
+  onlineSatz: 'Weiter geht es mit Ihrer Anlage.',
+  stillTitel: 'Box verbunden – sie meldet sich gerade nicht',
+  stillSatz: 'Sie meldete sich schon einmal und ist gerade still. Das kann an Strom oder Internet liegen.',
+  weiter: 'Weiter: Ihre Anlage',
+  spaeter: 'Später anschließen – weiter zur Anlage',
+  letzterKontakt: (zeile: string) => `Letzter Kontakt ${zeile}`,
+  letzterKontaktKeiner: 'Letzter Kontakt: noch keiner',
   pruefenTitel: 'Bitte prüfen',
   pruefen: [
     'Das Netzteil steckt in der Buchse „5V“ und in der Steckdose.',
     'Ein Netzwerkkabel führt von der Buchse „WAN“ zu Ihrem Router.',
     'Ihr Router ist mit dem Internet verbunden.',
   ],
-  letzterKontaktKeiner: 'Letzter Kontakt: noch keiner',
-  zuLange: (gedruckt: string) => `Seit 15 Minuten kein Lebenszeichen. Schreiben Sie uns mit der Kennung ${gedruckt}, wir sehen nach.`,
+  frage3: 'Steht unten auf Ihrer Box dieselbe Kennung?',
+  erwarteteKennung: (gedruckt: string) => `Erwartete Kennung: ${gedruckt}`,
   support: 'Support kontaktieren',
-  spaeter: 'Später anschließen – weiter zur Anlage',
-  onlineChip: 'Verbunden',
-  onlineTitel: 'Ihre Box ist online',
-  onlineZeile: 'Sie meldet gerade, welche Geräte sie vor Ort findet: Wechselrichter, Speicher und Zähler. Das dauert meist eine Minute.',
-  weiter: 'Weiter: Geräte übernehmen',
-  /** Die Box meldete sich früher, jetzt nicht mehr (nach dem Verbinden selten, aber möglich). */
-  stillTitel: 'Box verbunden – sie meldet sich gerade nicht',
+  zuLange: (gedruckt: string, anlage: string) =>
+    `Seit 15 Minuten kein Lebenszeichen von der Box, die jetzt zur Anlage „${anlage}“ gehört. Schreiben Sie uns mit der Kennung ${gedruckt}, wir sehen nach.`,
 } as const;
 
 /** M10 · Diese Box gehört schon zu Ihnen. */

@@ -1,6 +1,7 @@
 package com.voltpilot.api.repo;
 
 import com.voltpilot.api.uems.GrenzeAufloesung;
+import com.voltpilot.api.web.dto.AnmeldungDto;
 import com.voltpilot.api.web.dto.ControlStatusDto;
 import com.voltpilot.api.web.dto.CurtailmentStatusDto;
 import java.math.BigDecimal;
@@ -92,10 +93,20 @@ public class AdminFleetRepository {
      */
     public record FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
             Instant lastSeenAt, Instant herzschlagAm, Instant messwertAm,
-            EdgeVersionRow edge, UpdateStatusRow update, List<String> supports) {
+            EdgeVersionRow edge, UpdateStatusRow update, List<String> supports,
+            /** Geclaimt am (device.created_at) - Grundlage für "nie angemeldet seit …" (N5). */
+            Instant createdAt,
+            /** vp-box-verbinden-konzept N5: null = die Box hat sich seit dem Verbinden nie angemeldet. */
+            AnmeldungDto anmeldung) {
+        public FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
+                Instant lastSeenAt, Instant herzschlagAm, Instant messwertAm,
+                EdgeVersionRow edge, UpdateStatusRow update, List<String> supports) {
+            this(deviceId, siteId, externalRef, name, lastSeenAt, herzschlagAm, messwertAm,
+                    edge, update, supports, null, null);
+        }
         public FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
                 Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update) {
-            this(deviceId, siteId, externalRef, name, lastSeenAt, null, null, edge, update, null);
+            this(deviceId, siteId, externalRef, name, lastSeenAt, null, null, edge, update, null, null, null);
         }
     }
 
@@ -179,6 +190,7 @@ public class AdminFleetRepository {
     public List<FleetBoxRow> boxes() {
         return jdbc.query("""
                 SELECT d.id AS device_id, d.site_id, d.external_ref, d.name, d.supports,
+                       d.created_at,
                        coalesce(d.device_status_seen_at, telemetry.last_seen) AS last_seen,
                        d.device_status_seen_at AS herzschlag_am,
                        telemetry.last_seen AS messwert_am,
@@ -186,7 +198,9 @@ public class AdminFleetRepository {
                        edge.reported_at AS edge_reported_at,
                        update.version, update.backend, update.current_version,
                        update.target_version, update.state, update.reason,
-                       update.last_known_good, update.reported_at AS update_reported_at
+                       update.last_known_good, update.reported_at AS update_reported_at,
+                       anmeldung.csr_updated_at AS anmeldung_angefragt_am,
+                       anmeldung.issued_at AS anmeldung_abgeholt_am
                   FROM device d
                   LEFT JOIN LATERAL (
                        SELECT max(t.received_at) AS last_seen
@@ -203,14 +217,21 @@ public class AdminFleetRepository {
                          FROM device_update_status u WHERE u.device_id = d.id
                         ORDER BY u.reported_at DESC LIMIT 1
                   ) update ON true
+                  LEFT JOIN LATERAL (
+                       SELECT e.csr_updated_at, e.issued_at
+                         FROM device_enrollment e WHERE e.external_ref = d.external_ref
+                  ) anmeldung ON true
                  WHERE d.ausgebaut_am IS NULL
                  ORDER BY d.site_id, d.created_at, d.id
                 """, (rs, i) -> {
+                    Timestamp createdAt = rs.getTimestamp("created_at");
                     Timestamp lastSeen = rs.getTimestamp("last_seen");
                     Timestamp herzschlagAm = rs.getTimestamp("herzschlag_am");
                     Timestamp messwertAm = rs.getTimestamp("messwert_am");
                     Timestamp edgeReported = rs.getTimestamp("edge_reported_at");
                     Timestamp updateReported = rs.getTimestamp("update_reported_at");
+                    Timestamp angefragtAm = rs.getTimestamp("anmeldung_angefragt_am");
+                    Timestamp abgeholtAm = rs.getTimestamp("anmeldung_abgeholt_am");
                     return new FleetBoxRow(
                             rs.getObject("device_id", UUID.class),
                             rs.getObject("site_id", UUID.class),
@@ -232,7 +253,11 @@ public class AdminFleetRepository {
                                     rs.getString("reason"),
                                     rs.getString("last_known_good"),
                                     updateReported.toInstant()),
-                            com.voltpilot.api.uems.EdgeSupports.fromJson(rs.getString("supports")));
+                            com.voltpilot.api.uems.EdgeSupports.fromJson(rs.getString("supports")),
+                            createdAt == null ? null : createdAt.toInstant(),
+                            angefragtAm == null && abgeholtAm == null ? null : new AnmeldungDto(
+                                    angefragtAm == null ? null : angefragtAm.toInstant(),
+                                    abgeholtAm == null ? null : abgeholtAm.toInstant()));
                 });
     }
 

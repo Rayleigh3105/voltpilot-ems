@@ -30,14 +30,25 @@ public record DeviceDto(UUID id, UUID siteId, String externalRef, String kind, S
         String status, Instant lastSeenAt, Instant createdAt,
         String lanHost, Instant lanSeenAt, String lanSource,
         /** Additive portal fact: this is the one box that currently leads its Anlage. */
-        Boolean fuehrtAnlage) {
+        Boolean fuehrtAnlage,
+        /** vp-box-verbinden-konzept S2: null when the box has never requested a certificate. */
+        AnmeldungDto anmeldung) {
+
+    /** The pre-S2 shape, without the enrollment fact. */
+    public DeviceDto(UUID id, UUID siteId, String externalRef, String kind, String name,
+            String status, Instant lastSeenAt, Instant createdAt,
+            String lanHost, Instant lanSeenAt, String lanSource,
+            Boolean fuehrtAnlage) {
+        this(id, siteId, externalRef, kind, name, status, lastSeenAt, createdAt,
+                lanHost, lanSeenAt, lanSource, fuehrtAnlage, null);
+    }
 
     /** The pre-UEMS-box-overview shape, without the derived leading-box fact. */
     public DeviceDto(UUID id, UUID siteId, String externalRef, String kind, String name,
             String status, Instant lastSeenAt, Instant createdAt,
             String lanHost, Instant lanSeenAt, String lanSource) {
         this(id, siteId, externalRef, kind, name, status, lastSeenAt, createdAt,
-                lanHost, lanSeenAt, lanSource, null);
+                lanHost, lanSeenAt, lanSource, null, null);
     }
 
     /**
@@ -49,6 +60,6 @@ public record DeviceDto(UUID id, UUID siteId, String externalRef, String kind, S
     public DeviceDto(UUID id, UUID siteId, String externalRef, String kind, String name,
             String status, Instant lastSeenAt, Instant createdAt) {
         this(id, siteId, externalRef, kind, name, status, lastSeenAt, createdAt,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 }

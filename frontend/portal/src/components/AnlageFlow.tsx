@@ -2,11 +2,12 @@ import { Recht } from './Recht';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, neueAnfrageKennung, type Device, type Site, type Funktionen } from '../api';
+import { api, ApiError, deviceLiveStatus, neueAnfrageKennung, type Device, type Site, type Funktionen } from '../api';
 import { anlegeWeg, type AnlegeWeg } from '../anlageOrt';
 import { kennungSendbar, pruefeKennung } from '../edgeRef';
 import { KennungFeld } from './KennungFeld';
-import { BoxErgebnis, BoxFremdKonto } from './BoxVerbunden';
+import { BoxFremdKonto } from './BoxVerbunden';
+import { BoxWeg } from '../boxweg/BoxWeg';
 import { KoppelBand } from './KoppelBand';
 import { kennungWieGedruckt, vergissKoppelRef } from '../koppelLink';
 import { bandText, SCHRITT_BOX } from '../koppelTexte';
@@ -146,6 +147,7 @@ export function AnlageFlow({
   const [site, setSite] = useState<Site | null>(start?.anlage ?? sites[0] ?? null);
   const [createdHere, setCreatedHere] = useState(start?.anlage != null);
   const [mitBox, setMitBox] = useState(start?.e.mitBox ?? false);
+  const [boxOnline, setBoxOnline] = useState(false);
   const [ortDerAnlage, setOrtDerAnlage] = useState<OrtDerAnlage | null>(start?.e.ort ?? null);
   const [step, setStep] = useState<FlowStep>(start?.e.schritt ?? (sites.length > 0 ? 2 : 1));
   const [wiedereinstiegBereit, setWiedereinstiegBereit] = useState(sites.length === 0 || start != null);
@@ -316,8 +318,9 @@ export function AnlageFlow({
             sites={createdHere ? [site] : locationSites}
             site={site}
             onSiteChange={setSite}
-            onClaimed={() => {
+            onClaimed={(device) => {
               setMitBox(true);
+              setBoxOnline(deviceLiveStatus(device) === 'online');
               setStep(3);
             }}
             onSkip={() => {
@@ -333,6 +336,8 @@ export function AnlageFlow({
           <AnlageBestaetigen
             site={site}
             mitBox={mitBox}
+            boxOnline={boxOnline}
+            zeigtSteuerung={!nurMessen}
             plz={ortDerAnlage?.plz ?? null}
             ort={ortDerAnlage?.ort ?? null}
             onFertig={fertig}
@@ -424,6 +429,10 @@ function GeraetStep({
       // Verbunden: die Box aus dem QR-Code ist erledigt, Tab und Browser vergessen sie.
       if (ausQr && gesendet === ausQr) vergissKoppelRef();
       setVerbunden(device);
+      // N3: der Kopf fragt seine eigene Geräteliste unabhängig ab (bis zu 30 s Takt) -
+      // ohne diesen Anstoß sagte er "noch nicht verbunden", während diese Seite schon
+      // "Box verbunden" zeigte.
+      window.dispatchEvent(new Event('vp-geraet-verbunden'));
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setFremd(gesendet);
@@ -443,9 +452,10 @@ function GeraetStep({
   if (verbunden) {
     return (
       <div className="vp-onboarding-step">
-        <BoxErgebnis
+        <BoxWeg
           box={verbunden}
           anlageName={sites.find((s) => s.id === verbunden.siteId)?.name ?? site.name}
+          onStandChange={setVerbunden}
           onWeiter={() => onClaimed(verbunden)}
           onSpaeter={() => onClaimed(verbunden)}
         />
