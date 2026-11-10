@@ -240,17 +240,22 @@ node -e '
 ' "$map"
 echo "ok"
 
-echo "== 4/6 · Chart-Bündel unter 210 kB gz =="
+echo "== 4/6 · Chart-Bündel unter 225 kB gz =="
 # Nur benötigte ECharts-Module: 344,50 -> 203,28 kB gz (09.09.2026).
 # AP-01 registrierte `Graphic`+`VisualMap` für REPLACE_MERGE: 219,92 kB gz,
 # rot. V-01 (24.09.2026) nimmt `VisualMap` wieder heraus (kein Diagramm setzt
 # ihn; Wächter `src/chartRegistrierung.test.ts`): 208,5 kB gz.
+# echarts 5.5.1 -> 6.1.0 (D10, Sicherheitsbericht vp-wartung-security-s1,
+# GHSA-fgmj-fm8m-jvvx): dieselben Module, 223,83 kB gz (10.11.2026) - das
+# Mehrgewicht liegt in echarts/zrender 6 selbst (u. a. das neue
+# Token-Theme-System und die Achsen-Überlappungsprüfung, beide ab v6 immer
+# mitgebaut), nicht in dieser Datei. Grenze mit knappem Kopfraum auf 225.
 # Ein erneuter Vollimport muss am ausgelieferten Artefakt auffallen.
 chart_line=$(grep -E 'assets/useEChart-[^ ]+\.js[[:space:]]' /tmp/vp-bundle-build.log | tail -1)
 chart_gz_kb=$(printf '%s' "$chart_line" | sed -nE 's/.*gzip:[[:space:]]*([0-9.,]+) kB.*/\1/p' | tr -d ',')
 [ -n "$chart_gz_kb" ] || { echo "FAIL: Chart-Bündel fehlt in der Build-Ausgabe"; exit 1; }
-awk -v g="$chart_gz_kb" 'BEGIN{ exit !(g <= 210) }' || {
-  echo "FAIL: Chart-Bündel ${chart_gz_kb} kB gz (Grenze 210 kB)."
+awk -v g="$chart_gz_kb" 'BEGIN{ exit !(g <= 225) }' || {
+  echo "FAIL: Chart-Bündel ${chart_gz_kb} kB gz (Grenze 225 kB)."
   exit 1
 }
 echo "ok: ${chart_gz_kb} kB gz"
