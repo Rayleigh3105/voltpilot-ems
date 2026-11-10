@@ -21,10 +21,16 @@ spring:
       resolve-lazily: true
 
   # Runtime connection: the NON-privileged app role so Row-Level-Security applies.
+  #
+  # Security-Wartung (vp-wartung-security-s1 C2): no dev-password fallback here -
+  # the local/test profile supplies one (application-local.yml, pom.xml surefire
+  # env), so a production start (empty SPRING_PROFILES_ACTIVE, docs/deploy.md)
+  # aborts with a clear "could not resolve placeholder" instead of silently
+  # connecting with a publicly known default.
   datasource:
     url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
     username: ${APP_DB_USER:voltpilot_app}
-    password: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
+    password: ${APP_DB_PASSWORD}
     # Pool size as an ENV knob (docs/k8s-readiness.md): the Hikari default of
     # 10 is kept so nothing changes today, but a multi-replica deployment sizes
     # it per replica against the DB's max_connections without a rebuild.
@@ -38,7 +44,8 @@ spring:
     enabled: true
     url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
     user: ${POSTGRES_USER:voltpilot}
-    password: ${POSTGRES_PASSWORD:voltpilot_dev_pw}
+    # C2: no dev-password fallback, see the datasource.password comment above.
+    password: ${POSTGRES_PASSWORD}
     baseline-on-migrate: true
     baseline-version: 0
     locations: classpath:db/migration
@@ -79,11 +86,12 @@ spring:
     out-of-order: true
     placeholders:
       appDbUser: ${APP_DB_USER:voltpilot_app}
-      appDbPassword: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
+      # C2: no dev-password fallback, see the datasource.password comment above.
+      appDbPassword: ${APP_DB_PASSWORD}
       # V4 creates the dedicated cross-tenant admin role (BYPASSRLS) used only by
       # the platform-admin API. Password is a placeholder like the app role.
       adminDbUser: ${ADMIN_DB_USER:voltpilot_admin}
-      adminDbPassword: ${ADMIN_DB_PASSWORD:voltpilot_admin_dev_pw}
+      adminDbPassword: ${ADMIN_DB_PASSWORD}
 
   security:
     oauth2:
@@ -338,7 +346,8 @@ voltpilot:
   # credentials differ. Set voltpilot.admin-datasource.url only to point elsewhere.
   admin-datasource:
     username: ${ADMIN_DB_USER:voltpilot_admin}
-    password: ${ADMIN_DB_PASSWORD:voltpilot_admin_dev_pw}
+    # C2: no dev-password fallback, see the datasource.password comment above.
+    password: ${ADMIN_DB_PASSWORD}
   # Zero-touch device onboarding (docs/contracts/mqtt-provisioning.schema.json):
   # on claim, publish the retained provision/{ref}/config to the broker so a
   # waiting device is configured immediately. Best-effort; off by default so
@@ -874,7 +883,8 @@ voltpilot:
       base-url: ${KEYCLOAK_ADMIN_BASE_URL:http://keycloak:8080}
       realm: ${KEYCLOAK_REALM:voltpilot}
       client-id: ${KEYCLOAK_API_CLIENT_ID:voltpilot-api}
-      client-secret: ${KEYCLOAK_API_CLIENT_SECRET:voltpilot-api-dev-secret}
+      # C2: no dev-secret fallback, see the datasource.password comment above.
+      client-secret: ${KEYCLOAK_API_CLIENT_SECRET}
 
 # Expose actuator at the root so health is reachable at /health (and /info).
 #

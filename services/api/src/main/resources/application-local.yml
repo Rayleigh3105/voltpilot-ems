@@ -3,15 +3,32 @@
 # SPRING_PROFILES_ACTIVE=local (set on the api service in docker-compose.yml)
 # and by the integration tests.
 spring:
+  # Security-Wartung (vp-wartung-security-s1 C2): the base application.yml dropped
+  # its dev-password fallbacks so a PRODUCTION start (empty SPRING_PROFILES_ACTIVE)
+  # aborts without the real env var. This profile restores the well-known dev
+  # values so local dev-compose and the @ActiveProfiles("local") test suite are
+  # unaffected; docker-compose.yml already supplies the same values at the
+  # compose level, this is only the direct (non-compose) run/IDE path.
+  datasource:
+    password: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
   flyway:
     locations: classpath:db/migration,classpath:db/dev
+    password: ${POSTGRES_PASSWORD:voltpilot_dev_pw}
+    placeholders:
+      appDbPassword: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
+      adminDbPassword: ${ADMIN_DB_PASSWORD:voltpilot_admin_dev_pw}
 
 # Legacy local fixtures retain the old admin switcher explicitly; production defaults to false.
 voltpilot:
+  admin-datasource:
+    password: ${ADMIN_DB_PASSWORD:voltpilot_admin_dev_pw}
   # Persistent local databases may carry another development branch's migrations.
   # Effective ONLY with the sole active profile local; blank/mixed profiles stay strict.
   flyway:
     startwaechter: ${VOLTPILOT_FLYWAY_STARTWAECHTER:nur-warnen}
+  keycloak:
+    admin:
+      client-secret: ${KEYCLOAK_API_CLIENT_SECRET:voltpilot-api-dev-secret}
   uems:
     unterstuetzung:
       umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:true}

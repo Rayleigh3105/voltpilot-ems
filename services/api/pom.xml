@@ -472,6 +472,19 @@
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>
+                        <!-- Security-Wartung (vp-wartung-security-s1 C2): application.yml dropped its
+                             dev-password fallbacks (production must abort without the real env var).
+                             Most test classes activate the local profile (application-local.yml restores
+                             these), but a handful of real-Postgres/Testcontainers tests run with NO active
+                             profile and only override the specific properties their own scenario touches
+                             (e.g. OrtAenderungenApiTest never binds voltpilot.admin-datasource.password).
+                             These four cover every such gap with the same well-known dev values so the
+                             placeholder always resolves; a test that cares about the real value still sets
+                             its own @DynamicPropertySource/testcontainer credential, which wins. -->
+                        <APP_DB_PASSWORD>voltpilot_app_dev_pw</APP_DB_PASSWORD>
+                        <POSTGRES_PASSWORD>voltpilot_dev_pw</POSTGRES_PASSWORD>
+                        <ADMIN_DB_PASSWORD>voltpilot_admin_dev_pw</ADMIN_DB_PASSWORD>
+                        <KEYCLOAK_API_CLIENT_SECRET>voltpilot-api-dev-secret</KEYCLOAK_API_CLIENT_SECRET>
                     </environmentVariables>
                 </configuration>
             </plugin>
