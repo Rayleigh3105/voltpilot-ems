@@ -153,6 +153,13 @@ Neu geschrieben mit `vitest -u` am Produktstand; der Token-Vergleich alt/neu zei
 `historyChartZoom.test.tsx` gerendert (mit gelöscht). Sein Eintrag in `diagramme.json` entfällt dadurch; die
 übrigen drei geschützten Dateien sind unverändert.
 
+**Ladevorgänge hat jetzt eine h1 (10.11.2026, Wartung Barrierefreiheit `vp-wartung-a11y-w1` Welle 2, WCAG 1.3.1):**
+`verlauf-ladevorgaenge.html` ändert genau ein Element: eine `vp-sr-only`-`<h1>Ladevorgänge</h1>` ganz am Anfang.
+Die Unterseite hatte (anders als „Einstellungen"/„Aufbau") kein `vp-page-head` und darum keine eigene h1; die
+sichtbare h2 „Ladevorgänge" weiter unten blieb die einzige Überschrift der Seite. Das ist die beauftragte
+Änderung dieser Fläche, keine gefundene Abweichung. Neu geschrieben mit `vitest -u` am Produktstand; der
+Zeichenvergleich alt/neu zeigt nur dieses eine Element (5 459 → 5 500 Bytes).
+
 Aus `frontend/portal` gezielt ausführen (auch nach einem Rebase):
 
 ```bash

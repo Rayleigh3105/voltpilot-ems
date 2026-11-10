@@ -1032,7 +1032,8 @@ function Gruppe({
 }) {
   return (
     <section id={`technik-${id}`} className="vp-einst-grp" aria-labelledby={`technik-${id}-h`}>
-      <h3 id={`technik-${id}-h`}>{titel}</h3>
+      {/* h2, nicht h3: die Seite trägt bereits ein h1, kein h2 dazwischen (1.3.1). */}
+      <h2 id={`technik-${id}-h`}>{titel}</h2>
       {vorne}
       <ul className="vp-einst-liste">{children}</ul>
     </section>

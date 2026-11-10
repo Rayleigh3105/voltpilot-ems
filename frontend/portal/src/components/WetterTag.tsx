@@ -5,6 +5,7 @@ import { withAlpha } from '../chartStyle';
 import { haptik } from '../haptik';
 import { abstand } from '../preisZeitstrahl';
 import { useContainerWidth } from '../useContainerWidth';
+import { useIsPhone } from '../useIsPhone';
 import {
   grad,
   gradSpanne,
@@ -268,6 +269,12 @@ export function TagesKarten({
   gewaehlt: number;
   onWahl: (i: number) => void;
 }) {
+  // `.vp-wt-tag-wort` ist unter 721px per CSS `display: none` (Platz auf der
+  // schmalen Kachel) - der Name darf dann das Himmel-Wort nicht nennen, sonst
+  // bricht die Wortfolge mit dem sichtbaren Text (WCAG 2.5.3/`label-content-
+  // name-mismatch`). Verzweigt in JS wie `useIsPhone` es für genau solche
+  // Struktur-Unterschiede vorsieht, nicht nur in CSS.
+  const istPhone = useIsPhone();
   return (
     <div
       className="vp-wt-tage"
@@ -278,6 +285,15 @@ export function TagesKarten({
     >
       {m.tage.map((t, i) => {
         const spanne = gradSpanne(t.tmin, t.tmax);
+        const ertragWort =
+          t.kwh != null
+            ? `≈ ${kwh0(t.kwh)} kWh`
+            : t.sonnenStunden != null
+              ? t.sonnenStunden < 1
+                ? 'kaum Sonne'
+                : `${t.sonnenStunden} Std Sonne`
+              : null;
+        const himmelWort = !istPhone ? (t.art ? HIMMEL_WORT[t.art] : 'ohne Angabe') : null;
         return (
           <button
             key={t.beginn}
@@ -285,13 +301,16 @@ export function TagesKarten({
             role="tab"
             className="vp-wt-tag"
             aria-selected={gewaehlt === i}
-            aria-label={`${t.wort}: ${t.art ? HIMMEL_WORT[t.art] : 'ohne Angabe'}${spanne ? `, ${spanne}` : ''}`}
+            aria-label={`${t.wort}${himmelWort ? `: ${himmelWort}` : ''}${spanne ? `, ${spanne}` : ''}${ertragWort ? `, ${ertragWort}` : ''}`}
             onClick={() => onWahl(i)}
           >
             <span className="vp-wt-tag-name">{t.wort}</span>
+            {' '}
             <WetterSymbol art={t.art} groesse={32} />
             {t.art && <span className="vp-wt-tag-wort">{HIMMEL_WORT[t.art]}</span>}
+            {spanne && ' '}
             {spanne && <span className="vp-wt-tag-temp">{spanne}</span>}
+            {' '}
             <span className="vp-wt-tag-ertrag">
               {t.kwh != null ? (
                 <>

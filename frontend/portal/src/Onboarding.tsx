@@ -29,6 +29,10 @@ export function OnboardingWizard({
   return (
     <div className="vp-onboarding">
       <Card padding="lg" radius="lg">
+        {/* Dieser Vollbild-Assistent (ganzseitiger Wirt ohne Reiter oder Seitenleiste) hat sonst
+            kein h1; „Willkommen …" bleibt h2, damit ein Schritt-h3 (z. B. „Ihre VoltPilot-Box")
+            keine Stufe überspringt (1.3.1). */}
+        <h1 className="vp-sr-only">Anlage anlegen</h1>
         <h2 style={{ marginBottom: 4 }}>Willkommen bei VoltPilot</h2>
         <AnlageFlow
           wirt="assistent"

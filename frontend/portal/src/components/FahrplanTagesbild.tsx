@@ -56,6 +56,7 @@ import { JetztMesswerte } from './FahrplanJetzt';
 import { FahrplanUhr } from './FahrplanUhr';
 import { roleColor } from './FahrplanWhy';
 import { ProvBadge } from './HistorieWelt';
+import { PROVENIENZ } from '../provenienz';
 import './FahrplanTagesbild.css';
 
 export interface FahrplanTagesbildProps {
@@ -249,6 +250,13 @@ export function FahrplanTagesbild({
 
   const hatWarum = Boolean(band?.warum || w);
 
+  /* Der Name (2.5.3) beginnt mit dem sichtbaren Text in derselben Reihenfolge
+     wie `statusInhalt` (Kopf, Titel, „Geplant", Unterzeile) und hängt die
+     Frage an. */
+  const statusKopf = jz && !mitJetzt ? (art === 'heute' ? jz.kopf : `${art === 'gestern' ? 'Gestern' : 'Morgen'} · ${jz.kopf}`) : null;
+  const statusGeplant = jz && mitJetzt && jz.geplant && !jz.zustand ? PROVENIENZ.geplant.label : null;
+  const statusName = jz ? [statusKopf, jz.titel ?? 'Kein Plan', statusGeplant, jz.unterzeile].filter(Boolean).join('. ') : '';
+
   /** Wer was tut, darunter höchstens drei Stichworte; ein Tipp öffnet das Warum. */
   const statusInhalt = jz ? (
     <>
@@ -263,12 +271,14 @@ export function FahrplanTagesbild({
         {jz.role && <Icon name={ROLLEN_SYMBOL[jz.role]} size={20} strokeWidth={2.1} />}
       </span>
       <span className="vp-tb-status-t">
-        {!mitJetzt && <span className="vp-tb-status-kopf">{art === 'heute' ? jz.kopf : `${art === 'gestern' ? 'Gestern' : 'Morgen'} · ${jz.kopf}`}</span>}
+        {statusKopf && <span className="vp-tb-status-kopf">{statusKopf}</span>}{statusKopf && ' '}
         <b className="vp-tb-status-titel">
           {jz.titel ?? 'Kein Plan'}
           {/* „Geplant" nur ohne Gerätezeile: die sagt schon, dass nichts bestätigt ist. */}
-          {mitJetzt && jz.geplant && !jz.zustand && <ProvBadge art="geplant" />}
+          {statusGeplant && ' '}
+          {statusGeplant && <ProvBadge art="geplant" />}
         </b>
+        {jz.unterzeile && ' '}
         {jz.unterzeile && <span className="vp-tb-status-unter">{jz.unterzeile}</span>}
       </span>
     </>
@@ -276,7 +286,7 @@ export function FahrplanTagesbild({
 
   const statusZeile = jz ? (
     hatWarum ? (
-      <button type="button" className="vp-tb-status" onClick={warumOeffnen} aria-label={`${jz.titel ?? ''}. ${jz.unterzeile ?? ''}. Warum?`}>
+      <button type="button" className="vp-tb-status" onClick={warumOeffnen} aria-label={`${statusName}. Warum?`}>
         {statusInhalt}
         <Icon name="help-circle" size={18} className="vp-tb-status-warum" aria-hidden="true" />
       </button>
@@ -542,7 +552,8 @@ export function FahrplanTagesbild({
         </section>
         <div className="vp-tb-unten">
           <section className="vp-tb-karte2" aria-label={tagTitel}>
-            <h3 className="vp-tb-karte2-titel">{tagTitel}</h3>
+            {/* h2, nicht h3: die Seite trägt bereits ein h1, kein h2 dazwischen (1.3.1). */}
+            <h2 className="vp-tb-karte2-titel">{tagTitel}</h2>
             {stationenListe}
           </section>
           {sonnenstromListe && (

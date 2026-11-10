@@ -169,6 +169,12 @@
      zuvor - nur benannt. */
   --vp-ok-ink:         #2e7d32;  /* positives Ergebnis: Ertrag, erledigt, „ok" */
   --vp-warn-ink:       #b45309;  /* Hinweis/Warnung als TEXT (Bernstein) */
+  /* PV-Zahlen als TEXT (Ertrag, Leistung): --vp-chart-pv-line/--vp-c-chart-pv
+     (#e65100) ist eine LINIEN-Stufe (3,8:1 fuer Nicht-Text) und reisst als
+     Schrift die 4,5:1-Grenze (1,4,3: 3,56:1 auf #f5f8ff, 3,78:1 auf Weiss).
+     --vp-pv-ink ist eine Stufe dunkler und roeter: 5,18:1 auf Weiss,
+     4,87:1 auf #f5f8ff. Linien und Icons behalten #e65100. */
+  --vp-pv-ink:         #c2410c;
 
   /* Neutrale weiche Flaeche: Fortschritts-/Abdeckungs-Spuren und „geplant"-
      Chips (der noch unentschiedene Zustand). */

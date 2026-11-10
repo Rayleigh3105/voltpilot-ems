@@ -59,17 +59,7 @@ const BREITEN = [
  * größeres Feld) und sind darum hier benannt statt still abgeschaltet. Wer
  * einen behebt, streicht seine Zeile.
  */
-const OFFEN: { regel: string; ziel: RegExp; warum: string }[] = [
-  { regel: 'color-contrast', ziel: /\.vp-wt-tag-ertrag > b$/, warum: 'PV-Orange #e65100 als Schrift (3,56 : 1), braucht ein PV-Ink' },
-  { regel: 'color-contrast', ziel: /\.l-top > b$/, warum: 'PV-Orange #e65100 als Schrift (3,78 : 1), braucht ein PV-Ink' },
-  { regel: 'label-content-name-mismatch', ziel: /\.vp-tb-status$/, warum: 'Name ohne Kopf/„Geplant“ der sichtbaren Zeile' },
-  { regel: 'label-content-name-mismatch', ziel: /\.vp-antw-knopf$/, warum: 'Name ist die Frage, sichtbar ist die Kurzantwort' },
-  { regel: 'label-content-name-mismatch', ziel: /\.vp-wt-tag$/, warum: 'Name ohne den sichtbaren Ertrag' },
-  { regel: 'label-content-name-mismatch', ziel: /\.vp-help-image-button$/, warum: 'Name „Screenshot vergrößern: …“ statt sichtbarem „Vergrößern“' },
-  { regel: 'label-content-name-mismatch', ziel: /\.vp-healthbadge$/, warum: 'Name mit „Zustand der Anlage:“ und Gedankenstrich' },
-  { regel: 'label-content-name-mismatch', ziel: /aria-label="Womit laden: /, warum: 'Name ohne die sichtbare Erklärzeile' },
-  { regel: 'label-content-name-mismatch', ziel: /\.vp-ueb-flotte-kachel/, warum: 'Gerätewand (#1787): Zustandswort steht sichtbar vor Kunde/Anlage, im Namen dahinter' },
-];
+const OFFEN: { regel: string; ziel: RegExp; warum: string }[] = [];
 
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 

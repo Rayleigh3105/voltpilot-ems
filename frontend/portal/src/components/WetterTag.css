@@ -209,7 +209,9 @@
 }
 
 .vp-wt-tag-ertrag b {
-  color: var(--vp-chart-pv-line, #e65100);
+  /* --vp-pv-ink statt der LINIEN-Stufe --vp-chart-pv-line: als Schrift
+     braucht die Zahl 4,5:1, nicht nur 3:1 (WCAG 1.4.3). */
+  color: var(--vp-pv-ink, #c2410c);
   font-weight: var(--vp-c-fw-800, 800);
 }
 

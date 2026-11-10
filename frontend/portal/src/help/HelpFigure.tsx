@@ -9,7 +9,11 @@ function AnnotatedImage({ figure, eager = false }: { figure: FigureData; eager?:
     : { maxWidth: Math.min(figure.width, 600 * figure.width / figure.height), margin: '0 auto' };
   return <div className="vp-help-image" style={style}>
     <img src={figureUrl(figure)} alt={figure.alt} width={figure.width} height={figure.height} loading={eager ? 'eager' : 'lazy'} decoding="async" />
-    {figure.callouts.map((point, i) => <span key={i} className="vp-help-marker" aria-hidden="true" style={{ left: `${point.x}%`, top: `${point.y}%` }}>{i + 1}</span>)}
+    {/* Die Zahl kommt aus CSS (`content: attr(data-n)`), nicht als Text-Kind:
+        ein echter Textknoten zählte sonst zum SICHTBAREN Text des Knopfs
+        darüber (axe `label-content-name-mismatch`), obwohl er trotz
+        `aria-hidden` nur die Bild-Stelle markiert, nicht den Knopf benennt. */}
+    {figure.callouts.map((point, i) => <span key={i} className="vp-help-marker" aria-hidden="true" data-n={i + 1} style={{ left: `${point.x}%`, top: `${point.y}%` }} />)}
   </div>;
 }
 
@@ -29,7 +33,7 @@ export function HelpScreenshot({ id }: { id: string }) {
   if (!figure || !figureUrl(figure)) return <p className="vp-help-note">Die Abbildung ist gerade nicht verfügbar. Die Schritte und Erklärungen können Sie weiterhin lesen.</p>;
   return <figure className="vp-help-figure">
     <div className="vp-help-figure-head"><span>{figure.title}</span><span>Beispieldaten</span></div>
-    <button type="button" className="vp-help-image-button" aria-label={`Screenshot vergrößern: ${figure.title}`} onClick={(event) => { event.currentTarget.focus(); setOpen(true); }}>
+    <button type="button" className="vp-help-image-button" aria-label={`Vergrößern: Screenshot ${figure.title}`} onClick={(event) => { event.currentTarget.focus(); setOpen(true); }}>
       <AnnotatedImage figure={figure} />
       <span className="vp-help-enlarge"><Icon name="search" size={14} />Vergrößern</span>
     </button>

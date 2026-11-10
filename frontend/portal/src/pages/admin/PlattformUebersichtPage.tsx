@@ -497,13 +497,19 @@ function FlottenKarte({ bild, onOpen }: { bild: Flottenbild; onOpen: (route: Rou
 }
 
 function FlottenKachel({ box: b, onOpen }: { box: FlottenBox; onOpen: (route: Route) => void }) {
-  const name = `${b.kunde}, ${b.anlage}${b.zusatz ? ` (${b.zusatz})` : ''}`;
+  // Die Reihenfolge folgt der sichtbaren Kachel (WCAG 2.5.3): das
+  // Zustandswort (nur sichtbar, wenn der Zustand nicht „ok" ist), dann Kunde,
+  // Anlage, Zusatz. Leerzeichen statt Komma: Kunde/Anlage/Zusatz stehen im
+  // CSS-Grid je in einer eigenen Zeile ohne Trennzeichen - ein Komma im Namen
+  // wäre kein Teilstring des sichtbaren Texts mehr (axe label-content-name-mismatch).
+  const zustandWort = b.ton !== 'ok' ? FLOTTEN_WORT[b.ton] : null;
+  const name = [zustandWort, b.kunde, b.anlage, b.zusatz].filter(Boolean).join(' ');
   return (
     <button
       type="button"
       className={`vp-ueb-flotte-kachel ton-${b.ton}`}
       data-testid="ueb-flotte-box"
-      aria-label={`${name}: ${FLOTTEN_WORT[b.ton]} - Geräteakte öffnen`}
+      aria-label={`${name}: Geräteakte öffnen`}
       onClick={() => onOpen(geraeteAkteRoute(b.ref))}
     >
       <BoxBild linie={b.linie} ton={b.ton} />
@@ -512,8 +518,10 @@ function FlottenKachel({ box: b, onOpen }: { box: FlottenBox; onOpen: (route: Ro
           {FLOTTEN_WORT[b.ton]}
         </Badge>
       )}
-      <span className="vp-ueb-flotte-kunde">{b.kunde}</span>
+      {b.ton !== 'ok' && ' '}
+      <span className="vp-ueb-flotte-kunde">{b.kunde}</span>{' '}
       <span className="vp-ueb-flotte-anlage">{b.anlage}</span>
+      {b.zusatz && ' '}
       {b.zusatz && <span className="vp-ueb-flotte-anlage vp-ueb-flotte-zusatz">{b.zusatz}</span>}
     </button>
   );
