@@ -13,6 +13,7 @@ UEMS AP-20 IP-20, Entscheid E12 = A vom 25.09.2026 (Regel BT6). Dieses Blatt ist
 | Passwort-Vorgabe | `length(12) and notUsername and passwordHistory(3)`: mindestens 12 Zeichen, nicht der Benutzername, keines der letzten drei |
 | Browser-Anmeldung | Ablauf `voltpilot-browser`: für `platform-admin` ist der zweite Faktor (TOTP) Pflicht, für alle anderen Konten wählbar |
 | Passwort-Grant | Ablauf `voltpilot-direct-grant`: kein Token für `platform-admin`; wer den zweiten Faktor eingerichtet hat, braucht ihn auch hier |
+| Sitzungsdauern | `rememberMe=true`; normal 12 Stunden Leerlauf / 24 Stunden Höchstdauer, mit „Angemeldet bleiben“ 90/180 Tage, für alle Konten gleich (vp-login-dauer-d1) |
 
 `platform-admin` ist das Konto des VoltPilot-Betriebs. Das API macht aus genau dieser Rolle das Plattform-Konto (`KeycloakRealmRoleConverter`).
 
@@ -27,7 +28,7 @@ UEMS AP-20 IP-20, Entscheid E12 = A vom 25.09.2026 (Regel BT6). Dieses Blatt ist
 
 Das Skript [`live-realm-anmeldung.sh`](live-realm-anmeldung.sh) setzt dieselben Werte und baut dieselben Abläufe wie der Import. Es nutzt nur `kcadm.sh` und Bash, weil das Keycloak-Image kein `jq` hat.
 
-- `pruefen` liest nur. Es vergleicht die Werte des Realms und beide Abläufe Schritt für Schritt mit dem Import: Anbieter, Anforderung, Reihenfolge und die Rollen-Bedingung je Unterablauf. Jede Abweichung bekommt eine Zeile, auch ein leerer Ablauf.
+- `pruefen` liest nur. Es vergleicht die Werte des Realms (samt `rememberMe` und den vier Sitzungsdauern) und beide Abläufe Schritt für Schritt mit dem Import: Anbieter, Anforderung, Reihenfolge und die Rollen-Bedingung je Unterablauf. Jede Abweichung bekommt eine Zeile, auch ein leerer Ablauf.
 - `angleichen` bindet die Abläufe erst, wenn beide vollständig sind. Ein zweiter Lauf legt nichts doppelt an.
 - `ProduktionsRealmImportTest` fährt beides gegen einen Realm ohne Härtung und vergleicht das Ergebnis mit dem Import. Er bricht außerdem einen Lauf mittendrin ab, verstellt die Rollen-Bedingungen und fährt die zwei Befehle unter „Zurück“ so, wie sie hier stehen.
 
