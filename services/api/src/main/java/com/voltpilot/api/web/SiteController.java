@@ -21,6 +21,7 @@ import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
+import com.voltpilot.api.tenant.AnfrageZeitgrenze;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.AnlageStandortService;
 import com.voltpilot.api.uems.BelegeImWeg;
@@ -326,6 +327,14 @@ public class SiteController {
     @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public ResponseEntity<Void> deleteSite(@PathVariable UUID siteId, Authentication auth) {
+        // vp-db-zeitgrenze: das Löschen der Serien-Daten unten räumt die GANZE Telemetrie-/
+        // Rollup-Historie der Anlage ohne Datumsgrenze ab (SeriesRepository#deleteForSite) - bei
+        // einer lange laufenden
+        // Anlage kann das realistisch an die 30-s-Anfrage-Zeitgrenze kommen. Eine Anlagenlöschung ist
+        // ohnehin durch das 409-„noch Geräte vorhanden"-Gate selten und bewusst endgültig; ausgenommen
+        // statt asynchron gemacht, weil kein Teilerfolg sinnvoll wäre (die Anlage soll danach restlos
+        // weg sein, nicht „noch in Arbeit").
+        AnfrageZeitgrenze.ausnahme();
         geltungsbereich.requireSite(siteId);
         int deviceCount = devices.countForSite(siteId);
         if (deviceCount > 0) {

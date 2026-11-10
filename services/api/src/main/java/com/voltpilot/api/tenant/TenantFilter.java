@@ -24,6 +24,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * makes RLS default-deny (no tenant => no rows). The context is always cleared
  * in {@code finally} so pooled threads never leak a tenant.
  *
+ * <p>Independently of the tenant, this filter also brackets the request with
+ * {@link AnfrageZeitgrenze}, which is how {@link AnfragePfadDataSource} tells an
+ * HTTP request's queries (statement/socket timeout) apart from a scheduled
+ * job's or listener's (none) - see its Javadoc.
+ *
  * <p><b>Admin tenant switcher.</b> A Portal-Admin token (realm role
  * {@code platform-admin}, no {@code tenant_id} claim) may select a tenant via
  * the {@code X-Tenant-Id} header: the portal's tenant switcher sends it and the
@@ -51,11 +56,13 @@ public class TenantFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
         boolean gescheitert = true;
+        AnfrageZeitgrenze.start();
         try {
             resolveTenant(request).ifPresent(TenantContext::set);
             filterChain.doFilter(request, response);
             gescheitert = false;
         } finally {
+            AnfrageZeitgrenze.ende();
             UUID tenant = TenantContext.get();
             TenantContext.clear();
             if (gescheitert && tenant != null) {

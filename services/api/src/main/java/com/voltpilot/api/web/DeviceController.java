@@ -18,6 +18,7 @@ import com.voltpilot.api.repo.CommandLogRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
 import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.tenant.AnfrageZeitgrenze;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.DeviceClaimRequest;
@@ -312,6 +313,14 @@ public class DeviceController {
     @PostMapping("/{deviceId}/purge-data")
     @Recht(value = "aufzeichnungen.loeschen", ziel = RechtZiel.DEVICE)
     public com.voltpilot.api.web.dto.DevicePurgeResultDto purgeData(@PathVariable UUID deviceId) {
+        // vp-db-zeitgrenze: DevicePurgeService rebuilt die Rollups der Anlage aus ihrer GANZEN
+        // Roh-Historie neu (SeriesRepository#recomputeRollupsForSite) - bei einer lange laufenden
+        // Anlage kann das realistisch an die 30-s-Anfrage-Zeitgrenze kommen oder sie überschreiten.
+        // Ein Abbruch mitten im Rebuild wäre zwar transaktional sicher (Rollback), aber nutzlos: ein
+        // Retry träfe dieselbe Dauer erneut. Ausgenommen statt asynchron gemacht, weil die Dienst-
+        // eigene Sitzungssperre (DevicePurgeService) ohnehin nur einen Purge je Gerät gleichzeitig
+        // zulässt - kein zusätzlicher Job-Status nötig.
+        AnfrageZeitgrenze.ausnahme();
         DeviceDto device = devices.findById(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
         DevicePurgeService.Result r = purge.purge(device);

@@ -60,6 +60,24 @@ def _dsn_from_env(env: dict[str, str]) -> str:
     )
 
 
+def _mit_statement_zeitgrenze(dsn: str, env: dict[str, str]) -> str:
+    """Appends libpq's ``options=-c statement_timeout=...`` to a DSN already
+    built by :func:`_dsn_from_env` (vp-db-zeitgrenze).
+
+    Only for connections that serve a SYNCHRONOUS admin HTTP request -
+    what-if and replan (§4.3/D8, "a real MILP solve in the request thread").
+    The year-long Ersparnis-Simulation job's own DSN (``/simulations``, a
+    background thread polled later, not a blocking request) and the 15-min
+    tick loop's DSN (``plan``/``serve``, a separate process) stay on the
+    plain DSN from :func:`_dsn_from_env` - unlike the request-bound pool in
+    the Java api, every call here opens its own short-lived connection, so
+    the DSN string itself is the only lever needed, no pool split.
+    """
+    ms = env.get("OPTIMIZER_ANFRAGE_STATEMENT_TIMEOUT_MS", "30000")
+    trenner = "&" if "?" in dsn else "?"
+    return f"{dsn}{trenner}options=-c%20statement_timeout%3D{quote(ms, safe='')}"
+
+
 def _resolve_horizon_slots(args, env) -> int:
     """The cycle's requested horizon in slots: the flag, else the platform default.
 
@@ -358,6 +376,11 @@ def _simulate_serve(args, env: dict[str, str]) -> int:
     from voltpilot_optimization.simulation.server import serve
 
     dsn = _dsn_from_env(env)
+    # what-if/replan block the request thread (§4.3/D8) and get the Statement-
+    # Zeitgrenze; the async year-simulation job below keeps the plain `dsn` -
+    # it runs in a background thread, polled later, not inside an HTTP
+    # response (vp-db-zeitgrenze).
+    anfrage_dsn = _mit_statement_zeitgrenze(dsn, env)
     deps = SimulationDeps(
         load_prices=lambda zone, slots: sim_data.load_year_prices(dsn, zone, slots),
         load_market_values=lambda months: sim_data.load_market_values(dsn, months),
@@ -366,8 +389,8 @@ def _simulate_serve(args, env: dict[str, str]) -> int:
     )
     store = JobStore(lambda request, publish: run_simulation(request, deps, publish))
     httpd = serve(store, args.port,
-                  what_if=_what_if_handler(dsn, args.max_what_if),
-                  replan=_replan_handler(dsn, env, args.max_replan))
+                  what_if=_what_if_handler(anfrage_dsn, args.max_what_if),
+                  replan=_replan_handler(anfrage_dsn, env, args.max_replan))
     # SIGTERM handling (docs/k8s-readiness.md): a Python PID 1 without an
     # explicit handler IGNORES SIGTERM, so the container would always be
     # SIGKILLed after the full grace period. shutdown() lets serve_forever
