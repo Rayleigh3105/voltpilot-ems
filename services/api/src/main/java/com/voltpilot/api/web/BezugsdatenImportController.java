@@ -19,6 +19,7 @@ import com.voltpilot.api.uems.CsvLeser;
 import com.voltpilot.api.uems.ImportVorschau;
 import com.voltpilot.api.uems.ImportVorschauService;
 import com.voltpilot.api.uems.BezugsdatenZuordnung;
+import com.voltpilot.api.tenant.AnfrageZeitgrenze;
 import com.voltpilot.api.web.dto.BezugsdatenImportDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -78,6 +79,13 @@ public class BezugsdatenImportController {
             @RequestPart(value = "vorlage_id", required = false) String vorlageIdText,
             @RequestPart("bestaetigung") String bestaetigung,
             Authentication auth) throws IOException {
+        // vp-db-zeitgrenze: ImportUebernahmeService#uebernehmen prüft/schreibt JE ZEILE einzeln
+        // (mehrere Abfragen pro Zeile, eine Transaktion fürs Ganze) - das 5-MB-Limit
+        // (application.yml, multipart.max-file-size) begrenzt die Bytes, nicht die Zeilenzahl, bei
+        // kurzen Zeilen können das deutlich mehr als 30 s Zeilenverarbeitung werden. Ausgenommen statt
+        // asynchron gemacht: eine Teilübernahme mitten in der Vier-Augen-/Konflikt-Prüfung wäre
+        // fachlich nicht sauber abzubilden (siehe die Teilübernahme-Logik unten).
+        AnfrageZeitgrenze.ausnahme();
         ImportUebernahmeService.Bestaetigung b;
         try { b = streng.readValue(bestaetigung, ImportUebernahmeService.Bestaetigung.class); }
         catch (JsonProcessingException e) { throw BezugsgroesseAbgelehnt.anfrage("bestaetigung"); }

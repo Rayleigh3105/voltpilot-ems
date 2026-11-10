@@ -61,9 +61,19 @@ spring:
   # Naechtliche/geplante Jobs (@Scheduled) und MQTT-Listener laufen nie durch
   # TenantFilter, setzen AnfrageZeitgrenze also nie und landen deshalb immer
   # hier (DataSourceConfig#backgroundDataSource, AnfragePfadDataSource).
+  # vp-db-zeitgrenze, Steer-Nachweis Punkt 3: das war vorher KEIN eigenes
+  # Budget - Hintergrundarbeit teilte sich die 30 Verbindungen des einen Pools
+  # mit dem Anfrage-Pfad. 4 (wie der bestehende Admin-Pool, der dieselbe Art
+  # Last seit Produktionsbetrieb unauffaellig bedient) haelt das GESAMTBUDGET
+  # je Instanz nahe am bisherigen Stand (30+4 Admin -> 30+4+4), statt zusaetzlich
+  # auf die volle Anfrage-Pool-Groesse zu gehen. Ohne dokumentierten
+  # max_connections-Wert der Produktions-DB in diesem oder im GitOps-Repo ist
+  # das eine vorsichtige, keine belegte Zahl - bei Rueckstand sichtbar an
+  # voltpilot_ueberwachung_rueckstand_s und per Hikari-Pool-Metrik, dann hier
+  # per ENV hochsetzen.
   background-datasource:
     hikari:
-      maximum-pool-size: ${DB_POOL_BACKGROUND_MAX_SIZE:6}
+      maximum-pool-size: ${DB_POOL_BACKGROUND_MAX_SIZE:4}
       pool-name: voltpilot-background-pool
 
   # Migrations run as the Postgres SUPERUSER (owns schema, creates the app role
