@@ -435,24 +435,45 @@
   cursor: pointer;
 }
 
-/* Der Anlagen-Umschalter am RECHNER (Navigations-Runde „zwei Ebenen", E3).
-   Seit die Picker-KARTE der Seitenleiste entfallen ist, ist der Pfad der
-   EINZIGE Wechsler - er darf also nicht länger telefon-only sein.
-   ⚠ Der Anker ist hier der NAMEN-Block, nicht die ganze Kopfzeile: sonst läge
-   die unsichtbare Fläche über dem Rückweg („Portfolio ›") und über dem
-   Zustands-Abzeichen, und beide wären tot. Am Telefon bleibt es beim Anker
-   `.vp-topbar-anlage` (Block unten) - `.vp-crumb-anlage` ist dort `static`,
-   also greift dieselbe `inset: 0`-Regel eine Ebene höher. */
+/* Der Anlagen-Umschalter - am Rechner wie am Telefon (Navigations-Runde
+   „zwei Ebenen", E3; B1-Nachtrag UI/UX-Wartung u1).
+   ⚠ Der Anker ist hier der NAMEN-Block, nicht die ganze Kopfzeile/der ganze
+   Anlagen-Kopf: sonst läge die unsichtbare Fläche über dem Rückweg
+   („Portfolio ›") UND über dem Zustands-Abzeichen, und beide wären tot bzw.
+   könnten nicht auf eigene 44 px wachsen. Früher war der Anker am Telefon der
+   ganze `.vp-topbar-anlage`-Block (größere Trefferfläche für den Wechsler) -
+   das nahm der Zustandszeile darunter aber genau die Höhe, die B1 ihr
+   verschafft; `.vp-crumb-anlage` ist jetzt auf jeder Breite der Anker. */
 .vp-crumb-anlage {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
   min-width: 0;
 }
+/* Der Name reagiert sichtbar auf den Zeiger/die Tastatur - sonst sähe der
+   Wechsler wie reiner Text aus (er IST die Fläche, die den Picker öffnet).
+   B1-Nachtrag: unbedingt statt nur ab 721px, denn der Anker ist jetzt auf
+   jeder Breite `.vp-crumb-anlage` (Hover ist am Finger-Gerät ohnehin inert). */
+.vp-crumb-anlage:hover .here,
+.vp-crumb-anlage:focus-within .here {
+  color: var(--vp-action);
+}
+.vp-crumb-anlage:focus-within {
+  border-radius: var(--vp-radius-sm);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+/* Mit der TASTATUR derselbe Rahmen wie an jedem Knopf (`.vp-btn:focus-visible`): der weiche
+   Schein allein war auf Weiß kaum zu sehen (UI-Runde Kundenseiten, Befund #42). */
+.vp-crumb-anlage:has(.vp-tb-switch:focus-visible) {
+  /* Nach innen: der Kopf schneidet oben und unten ab, was über den Namen hinausragt.
+     4 px Luft links/rechts, ohne den Namen zu verschieben (Polster gegen Rand). */
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: -2px;
+  padding-inline: 6px;
+  margin-inline: -6px;
+}
 @media (min-width: 721px) {
-  .vp-crumb-anlage {
-    position: relative;
-  }
   .vp-app .vp-tb-switchwrap {
     display: block;
     position: absolute;
@@ -466,26 +487,6 @@
     flex: 0 0 auto;
     color: var(--vp-text-gray);
   }
-  /* Der Name reagiert sichtbar auf den Zeiger - sonst sähe der Wechsler wie
-     reiner Text aus (er IST die Fläche, die den Picker öffnet). */
-  .vp-crumb-anlage:hover .here,
-  .vp-crumb-anlage:focus-within .here {
-    color: var(--vp-action);
-  }
-  .vp-crumb-anlage:focus-within {
-    border-radius: var(--vp-radius-sm);
-    box-shadow: 0 0 0 3px var(--vp-focus-ring);
-  }
-  /* Mit der TASTATUR derselbe Rahmen wie an jedem Knopf (`.vp-btn:focus-visible`): der weiche
-     Schein allein war auf Weiß kaum zu sehen (UI-Runde Kundenseiten, Befund #42). */
-  .vp-crumb-anlage:has(.vp-tb-switch:focus-visible) {
-    /* Nach innen: der Kopf schneidet oben und unten ab, was über den Namen hinausragt.
-       4 px Luft links/rechts, ohne den Namen zu verschieben (Polster gegen Rand). */
-    outline: 2px solid var(--vp-focus-ring-color);
-    outline-offset: -2px;
-    padding-inline: 6px;
-    margin-inline: -6px;
-  }
 }
 
 /* ---------- Phone bottom bar: up to four areas + Mehr ---------- */
@@ -498,21 +499,12 @@
      (concept §3) — an Einmal-im-Leben action must not own the biggest tap
      target of the chrome. */
   .vp-app .vp-topbar-anlage {
-    position: relative;
     flex: 1 1 auto;
     flex-direction: column;
     align-items: stretch;
     justify-content: center;
     align-self: stretch;
     gap: 0;
-  }
-  .vp-app .vp-topbar-anlage:focus-within {
-    border-radius: var(--vp-radius-sm);
-    box-shadow: 0 0 0 3px var(--vp-focus-ring);
-  }
-  .vp-app .vp-topbar-anlage:has(.vp-tb-switch:focus-visible) {
-    outline: 2px solid var(--vp-focus-ring-color);
-    outline-offset: -2px;
   }
   /* An admin phone hides the breadcrumb to make room for the tenant switcher
      (index.css). The plant NAME is not a breadcrumb though - it is the thing
@@ -532,8 +524,8 @@
     flex: 0 0 auto;
     color: var(--vp-text-gray);
   }
-  /* The native picker is the best plant switcher a thumb can get. It covers
-     the WHOLE block, so the tap target is the full 68px top-bar height. */
+  /* The native picker is the plant switcher; its anchor is `.vp-crumb-anlage`
+     (die Namenszeile) auf jeder Breite - siehe Kommentar dort. */
   /* Spiegelbildlich einen Schritt höher, damit sie die Basis-Regel oben
      wieder gewinnt. */
   .vp-app .vp-tb-switchwrap {
@@ -545,34 +537,39 @@
     height: 100%;
   }
   /* Die Trefferfläche selbst steht als EINE Regel weiter oben (beide
-     Breiten teilen sie); hier zählt nur der ANKER: am Telefon ist es der
-     ganze 68-px-Block, nicht nur der Name. */
-  /* The state is the sub-line, not a pill: dot + word + cause, no chrome. It
-     keeps its own hit area (and stays ABOVE the switcher overlay), so the
-     findings popover is still one tap away. */
+     Breiten teilen sie). */
+  /* B1 (UI/UX-Wartung u1): der Wechsler deckt jetzt nur noch den Namen ab
+     (`.vp-crumb-anlage`), die Zustandszeile bekommt deshalb ihre eigene
+     unsichtbare 44-px-Trefferfläche (Muster `.vp-vb-schritt`) und darf die
+     Ursache umbrechen statt sie mit „…" abzuschneiden - die sichtbare Zeile
+     bleibt für den üblichen Fall (kurze Ursache) so kompakt wie bisher, der
+     „single 44px block, centered with avatar"-Anker in shell-layout.spec.ts
+     gilt also unverändert. */
   .vp-app .vp-topbar-anlage .vp-healthbadge {
-    position: relative;
-    z-index: 2;
     align-self: flex-start;
+    flex-wrap: wrap;
     align-items: center;
     max-width: 100%;
     min-height: 20px;
     padding: 0;
     border: none;
     background: none;
-    gap: 0.3rem;
+    gap: 0.2rem 0.4rem;
     font-weight: 500;
   }
-  /* Der Zustands-Zeile so viel Trefferfläche geben, wie ohne Übergriff auf die
-     Namenszeile geht (≈31px). Sie ist die ZWEITE Handlung des Blocks — der
-     Wechsler darunter nimmt die ganzen 68px —, und ihre Aussage steht ohnehin
-     schon als Text da; der Klick öffnet nur die vollständige Befund-Liste. */
   .vp-app .vp-topbar-anlage .vp-healthbadge::before {
-    inset: 0 -8px -11px;
+    inset: -4px -8px -20px;
   }
   /* The state WORD belongs in the sub-line (the pill drops it for room). */
   .vp-app .vp-topbar-anlage .vp-healthbadge-lbl {
     display: inline;
+  }
+  /* Die Ursache bricht um statt abzuschneiden, bleibt aber in derselben
+     Zeile wie Punkt und Wort, solange sie dort hinpasst (nur eine wirklich
+     lange Ursache zieht per `flex-wrap` auf eine zweite Zeile um). */
+  .vp-app .vp-topbar-anlage .vp-healthbadge-cause {
+    overflow: visible;
+    white-space: normal;
   }
   .vp-app .vp-topbar-anlage .vp-healthbadge-cause::before {
     content: '· ';
@@ -800,11 +797,16 @@
     padding: var(--vp-space-3) 0;
     justify-content: center;
   }
-  /* The wordmark is wider than the rail - scale it to fit instead of letting
-     it spill over the content column. */
-  .vp-app > .vp-sidebar .brand img {
-    height: auto;
-    width: 40px;
+  /* B3: die Wortmarke bleibt auf 56 px Schienenbreite unlesbar (Schrift ~4 px
+     hoch, Prüfbefund) - die Schiene zeigt statt ihrer nur das Bildzeichen
+     (`vp-brand-zeichen`, `public/favicon.svg`), die Wortmarke verschwindet. */
+  .vp-app > .vp-sidebar .brand .vp-brand-wortmarke {
+    display: none;
+  }
+  .vp-app > .vp-sidebar .brand .vp-brand-zeichen {
+    display: block;
+    width: 28px;
+    height: 28px;
     object-fit: contain;
   }
   .vp-app > .vp-sidebar nav,

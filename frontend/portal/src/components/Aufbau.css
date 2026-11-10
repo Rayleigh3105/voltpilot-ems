@@ -532,8 +532,11 @@
 .vp-auf-t-kopf,
 .vp-auf-t-zeile {
   display: grid;
+  /* B2 (UI/UX-Wartung u1): „Art" stand oft halb leer, während „Zustand" nebenan
+     abschnitt („Wartet auf die erste Verbi…", 207 von 234 px) - der Anteil
+     wandert von Art zu Zustand, die Summe bleibt 2,95fr. */
   grid-template-columns:
-    minmax(0, 2.5fr) minmax(0, 1.5fr) minmax(0, 1.45fr) minmax(0, 1.05fr)
+    minmax(0, 2.5fr) minmax(0, 1.2fr) minmax(0, 1.75fr) minmax(0, 1.05fr)
     3.5rem;
   column-gap: var(--vp-space-3);
   align-items: center;
@@ -825,11 +828,21 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   align-items: center;
   min-width: 0;
 }
+/* B2: zweizeilig statt einzeilig abzuschneiden - der Zustandssatz („Wartet
+   auf die erste Rückmeldung …") passte einzeilig oft nicht, auch nicht nach
+   der Spaltenkorrektur oben. Die Zeilenhöhe trägt das (gemessen an allen
+   `.vp-auf-t-zeile`-Varianten, deren `min-height` bereits zweizeilige `Art`
+   kennt). */
 .vp-auf-t-zustand .w {
   min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
   color: var(--vp-text-dark);
   font-weight: var(--vp-weight-semibold);
 }
@@ -903,6 +916,7 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
 }
 .vp-auf-t-plus,
 .vp-auf-t-mehr {
+  position: relative;
   border: 1px solid var(--vp-auf-haar);
   background: var(--vp-surface);
   color: var(--vp-action);
@@ -1057,9 +1071,12 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   }
   /* Der Name behält am Telefon mindestens knapp die Hälfte der Zeile: ein langes Zustandswort („Noch keine
      Rückmeldung", „Wartet auf die ersten Daten") nahm der Namensspalte sonst alles - der Gerätename stand mit
-     ein, zwei Buchstaben da oder gar nicht (Live-Fall „Zuhause", 02.11.2026). Das Wort bricht stattdessen um. */
+     ein, zwei Buchstaben da oder gar nicht (Live-Fall „Zuhause", 02.11.2026). Das Wort bricht stattdessen um.
+     B2-Nachtrag (UI/UX-Wartung u1): 46 % reichten nicht - die rechte `auto`-Spalte wächst beim Layout VOR der
+     `1fr`-Namensspalte auf ihren eigenen Bedarf (Wert ODER Zustand, je nachdem, was länger ist), auch wenn der
+     Zustand dieser Zeile kurz ist. Der Name bekommt deshalb klar mehr als die Hälfte als Mindestmaß. */
   .vp-auf-t-zeile {
-    grid-template-columns: minmax(46%, 1fr) auto;
+    grid-template-columns: minmax(60%, 1fr) auto;
     grid-template-areas:
       'name wert'
       'name zustand';
@@ -1087,6 +1104,11 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     padding-bottom: 8px;
   }
   .vp-auf-t-zeile > .vp-auf-t-zustand .w {
+    /* Die Rechner-Klemme auf zwei Zeilen gilt hier nicht: die Spalte ist
+       ohnehin schmal, ein langer Zustandssatz darf so viele Zeilen brauchen
+       wie er will, statt ab der zweiten mit „…" zu enden. */
+    display: block;
+    -webkit-line-clamp: unset;
     white-space: normal;
     text-align: right;
   }

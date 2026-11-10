@@ -304,6 +304,7 @@
 }
 
 .vp-mss-aendern {
+  position: relative;
   padding: 4px 0;
   border: 0;
   background: none;
