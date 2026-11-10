@@ -21,6 +21,9 @@ spring:
       resolve-lazily: true
 
   # Runtime connection: the NON-privileged app role so Row-Level-Security applies.
+  # This is the REQUEST pool (DataSourceConfig#realDataSource) - every HTTP
+  # request's queries run through it. Scheduled jobs and listeners use the
+  # background pool below instead (same role, no timeout).
   #
   # Security-Wartung (vp-wartung-security-s1 C2): no dev-password fallback here -
   # the local/test profile supplies one (application-local.yml, pom.xml surefire
@@ -36,6 +39,32 @@ spring:
     # it per replica against the DB's max_connections without a rebuild.
     hikari:
       maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      pool-name: voltpilot-request-pool
+      # Wartung Datenbank-Zeitgrenze (vp-db-zeitgrenze): die langsamsten
+      # legitimen Leser lagen frisch gemessen bei unter 1 s SQL-Zeit, der
+      # langsamste Nutzerweg (earnings/year) unter 1 s TTFB im Labor - 30 s hat
+      # also reichlich Abstand nach oben und faengt nur eine wirklich
+      # haengende Abfrage ab. SET statement_timeout ist eine Sitzungsgroesse:
+      # connection-init-sql setzt sie EINMAL je physischer Verbindung, danach
+      # gilt sie fuer deren ganze Lebenszeit - kein SET/RESET je Anfrage noetig,
+      # weil dieser Pool NUR waehrend einer HTTP-Anfrage geliehen wird
+      # (AnfragePfadDataSource).
+      connection-init-sql: SET statement_timeout = ${DB_STATEMENT_TIMEOUT_MS:30000}
+      data-source-properties:
+        # pgjdbc, Sekunden: der Client-seitige Riegel, falls Postgres selbst
+        # gar nicht mehr antwortet (Netz-/Prozessausfall) - etwas groesser als
+        # statement_timeout, damit dessen eigene Abbruch-Antwort noch ankommt,
+        # statt vom rohen Socket-Timeout ueberholt zu werden.
+        socketTimeout: ${DB_SOCKET_TIMEOUT_S:35}
+
+  # Hintergrund-Pool: dieselbe Rolle/Datenbank wie oben, ohne Zeitgrenze.
+  # Naechtliche/geplante Jobs (@Scheduled) und MQTT-Listener laufen nie durch
+  # TenantFilter, setzen AnfrageZeitgrenze also nie und landen deshalb immer
+  # hier (DataSourceConfig#backgroundDataSource, AnfragePfadDataSource).
+  background-datasource:
+    hikari:
+      maximum-pool-size: ${DB_POOL_BACKGROUND_MAX_SIZE:6}
+      pool-name: voltpilot-background-pool
 
   # Migrations run as the Postgres SUPERUSER (owns schema, creates the app role
   # and the RLS policies). baseline-version 0 lets the idempotent V1 run even on
