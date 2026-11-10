@@ -76,15 +76,18 @@ public class SiteComponentController {
     private final ComponentConnectionReceipts receipts;
     private final ProbeService probes;
     private final SelfBuildComponentService selfBuild;
+    private final com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum;
 
     public SiteComponentController(Geltungsbereich geltungsbereich, ComponentService components,
             ComponentConnectionReceipts receipts,
-            ProbeService probes, SelfBuildComponentService selfBuild) {
+            ProbeService probes, SelfBuildComponentService selfBuild,
+            com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum) {
         this.selfBuild = selfBuild;
         this.geltungsbereich = geltungsbereich;
         this.components = components;
         this.receipts = receipts;
         this.probes = probes;
+        this.zaehlerbaum = zaehlerbaum;
     }
 
     /** Die Komponenten dieser Anlage samt Autoritäts- und Soll/Ist-Stand. */
@@ -107,6 +110,33 @@ public class SiteComponentController {
     public SiteComponentsDto update(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody SaveComponentRequest request, @AuthenticationPrincipal Jwt jwt) {
         return components.update(siteId, entityId, request, subject(jwt));
+    }
+
+    /**
+     * Umhängen (Zählerbaum-Konzept, R5 „Seit wann?"): dieselbe Prüfung wie
+     * beim Anlegen (R6), nur mit der Tages-Mechanik eines Bestandswerts.
+     */
+    @PutMapping("/components/{entityId}/haengt-an")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public SiteComponentsDto haengtAnSetzen(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @RequestBody com.voltpilot.api.web.dto.HaengtAnRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String seitWannWort = request.seitWann();
+        com.voltpilot.api.components.ZaehlerbaumService.SeitWann seitWann;
+        if (com.voltpilot.api.web.dto.HaengtAnRequest.SCHON_IMMER.equals(seitWannWort)) {
+            seitWann = com.voltpilot.api.components.ZaehlerbaumService.SeitWann.SCHON_IMMER;
+        } else if (com.voltpilot.api.web.dto.HaengtAnRequest.AB_TAG.equals(seitWannWort)) {
+            if (request.ab() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "„Umgebaut am …“ braucht ein Datum.");
+            }
+            seitWann = com.voltpilot.api.components.ZaehlerbaumService.SeitWann.AB_TAG;
+        } else {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "„Seit wann?“ fehlt: schon_immer oder ab_tag.");
+        }
+        zaehlerbaum.umhaengen(siteId, entityId, request.haengtAn(), seitWann, request.ab(), subject(jwt));
+        return components.list(siteId);
     }
 
     /** Die Fassungen einer Komponente, neueste zuerst. */

@@ -442,6 +442,91 @@ class ComponentApiTest {
     }
 
     /**
+     * Zählerbaum-Konzept (E1-E5 = A, 10.11.2026): „hängt an" beim Anlegen
+     * UND beim Umhängen, mit R6-Plausibilität und der Tages-Mechanik (R5).
+     */
+    @Test
+    void zaehlerbaumHaengtAnBeimAnlegenUndUmhaengen() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Zählerbaum-Anlage");
+        try {
+            String shelly = "builtin:shelly:shelly-pro-3em";
+
+            // Netzanschluss - die Wurzel, bekommt selbst nie ein haengtAn.
+            receipts.record(site, GENERIC, 1, Map.of("ip", "192.168.0.11", "port", 502, "unit_id", 1));
+            ResponseEntity<String> netz = post("/api/v1/sites/" + site + "/components", customer,
+                    saveBody(GENERIC, "grid-meter", Map.of("ip", "192.168.0.11", "port", 502, "unit_id", 1)));
+            assertThat(netz.getStatusCode()).isEqualTo(HttpStatus.OK);
+            UUID netzId = UUID.fromString(byRole(json.readTree(netz.getBody()), "grid-meter").get("id").asText());
+
+            // UV Halle - ein Unterzähler, hängt beim Anlegen an der Wurzel (kein haengtAn gesetzt).
+            Map<String, Object> halleConn = Map.of("ip", "192.168.0.10");
+            receipts.record(site, shelly, 1, halleConn);
+            Map<String, Object> halleBody = saveBody(shelly, "consumer", halleConn);
+            ResponseEntity<String> halle = post("/api/v1/sites/" + site + "/components", customer, halleBody);
+            assertThat(halle.getStatusCode()).as(halle.getBody()).isEqualTo(HttpStatus.OK);
+            JsonNode halleRow = rowsByRole(json.readTree(halle.getBody()), "consumer").get(0);
+            assertThat(halleRow.has("haengtAn")).as("an der Wurzel: kein Feld, nie ein erfundenes null im JSON wäre nötig, aber abwesend ist auch richtig").isFalse();
+            UUID halleId = UUID.fromString(halleRow.get("id").asText());
+
+            // Kompressor - hängt beim Anlegen an UV Halle, nicht an der Wurzel.
+            Map<String, Object> kompConn = new LinkedHashMap<>(halleConn);
+            kompConn.put("ip", "192.168.0.12");
+            receipts.record(site, shelly, 1, kompConn);
+            Map<String, Object> kompBody = saveBody(shelly, "consumer", kompConn);
+            kompBody.put("haengtAn", halleId.toString());
+            ResponseEntity<String> kompressor = post("/api/v1/sites/" + site + "/components", customer, kompBody);
+            assertThat(kompressor.getStatusCode()).as(kompressor.getBody()).isEqualTo(HttpStatus.OK);
+            List<JsonNode> consumers = rowsByRole(json.readTree(kompressor.getBody()), "consumer");
+            JsonNode kompRow = consumers.stream()
+                    .filter(r -> !r.get("id").asText().equals(halleId.toString())).findFirst().orElseThrow();
+            assertThat(kompRow.get("haengtAn").asText()).isEqualTo(halleId.toString());
+            UUID kompressorId = UUID.fromString(kompRow.get("id").asText());
+
+            // R6: der Netzanschluss hängt nirgends.
+            ResponseEntity<String> wurzelUmhaengen = put(
+                    "/api/v1/sites/" + site + "/components/" + netzId + "/haengt-an", customer,
+                    Map.of("haengtAn", halleId.toString(), "seitWann", "schon_immer"));
+            assertThat(wurzelUmhaengen.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(wurzelUmhaengen.getBody()).contains("hängt nirgends");
+
+            // R6: kein Zyklus - UV Halle darf nicht an ihren eigenen Kompressor hängen.
+            ResponseEntity<String> zyklus = put(
+                    "/api/v1/sites/" + site + "/components/" + halleId + "/haengt-an", customer,
+                    Map.of("haengtAn", kompressorId.toString(), "seitWann", "schon_immer"));
+            assertThat(zyklus.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(zyklus.getBody()).contains("Kreis");
+
+            // Umhängen „schon immer": der Kompressor hängt jetzt an der Wurzel.
+            ResponseEntity<String> umgehaengt = put(
+                    "/api/v1/sites/" + site + "/components/" + kompressorId + "/haengt-an", customer,
+                    Map.of("seitWann", "schon_immer"));
+            assertThat(umgehaengt.getStatusCode()).as(umgehaengt.getBody()).isEqualTo(HttpStatus.OK);
+            JsonNode nachher = getJson("/api/v1/sites/" + site + "/components", customer);
+            JsonNode kompNachher = byId(nachher, kompressorId);
+            assertThat(kompNachher.has("haengtAn")).as("zurück an der Wurzel").isFalse();
+        } finally {
+            // Wie messstelle_stellung/-ort/-quelle vor ihr (ON DELETE RESTRICT, nichts
+            // mit Historie wird automatisch gelöscht): das Aufräumen räumt die
+            // Zuordnung ausdrücklich ab, bevor die Komponenten der Anlage fallen.
+            try (Connection c = superuser(); Statement st = c.createStatement()) {
+                st.execute("DELETE FROM komponente_haengt_an WHERE komponente_id IN "
+                        + "(SELECT id FROM measurement_point WHERE site_id = '" + site + "')");
+            } catch (SQLException e) {
+                throw new IllegalStateException(e);
+            }
+            deleteSite(customer, site);
+        }
+    }
+
+    private static JsonNode byId(JsonNode response, UUID id) {
+        for (JsonNode row : response.get("components")) {
+            if (id.toString().equals(row.path("id").asText())) return row;
+        }
+        throw new AssertionError("keine Komponente mit id " + id);
+    }
+
+    /**
      * Das Ebyte-I/O-Modul wird als EIN Gerät der Verbraucher-Seite angelegt,
      * aber als Entitätstyp {@code io-module}: es liest Zustände und wird selbst
      * nie gesteuert (kein {@code generic-load}, das die Steuerart anböte). Sein
