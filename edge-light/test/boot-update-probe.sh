@@ -125,13 +125,15 @@ EOF
 chmod 0755 '$1'"
 }
 
-# kandidat <verhalten> <seq> <zuweisung> [kaputt] - wie das Programm (K3) ihn ablegt
+# kandidat <verhalten> <seq> <zuweisung> [kaputt] - wie das Programm (K3) ihn
+# ablegt; size/gz_size sind echt (daraus leitet der Loader seine Schwelle ab).
 kandidat() {
   programm /probe/kandidat-roh "$NEU" "$1"
   x "mkdir -p $RAM && gzip -9 -n -c /probe/kandidat-roh >$RAM/kandidat.gz
      sha=\$(sha256sum /probe/kandidat-roh | cut -d' ' -f1); gz=\$(sha256sum $RAM/kandidat.gz | cut -d' ' -f1)
+     size=\$(wc -c </probe/kandidat-roh); gzsize=\$(wc -c <$RAM/kandidat.gz)
      [ '${4:-}' = kaputt ] && printf 'x' >>$RAM/kandidat.gz
-     printf '{\"release\":\"$NEU\",\"release_seq\":$2,\"arch\":\"linux/mipsle\",\"sha256\":\"%s\",\"size\":1,\"gz_sha256\":\"%s\",\"gz_size\":1,\"zuweisung\":\"$3\",\"state_schema\":1}' \"\$sha\" \"\$gz\" >$RAM/kandidat.json"
+     printf '{\"release\":\"$NEU\",\"release_seq\":$2,\"arch\":\"linux/mipsle\",\"sha256\":\"%s\",\"size\":%s,\"gz_sha256\":\"%s\",\"gz_size\":%s,\"zuweisung\":\"$3\",\"state_schema\":1}' \"\$sha\" \"\$size\" \"\$gz\" \"\$gzsize\" >$RAM/kandidat.json"
 }
 
 # bestaetigt <release> [einzeilig] - die bestaetigte Fassung im Flash
@@ -191,6 +193,8 @@ warte "Urteil bestanden -> behalten (Marke ok)" "grep -qx 'ok 42 z-1' $FEST/vers
 pruef "die neue Fassung lief zur Probe" 'grep -q "PROGRAMM edge-light-2026.11.2 GESTARTET" /probe/lauf.out'
 pruef "Pruefsummen im Flash: Programm und Kopie der neuen Fassung" \
   "[ \"\$(sed -n 1p $LD/$N.sha256 | cut -d' ' -f1)\" = \"\$(sha256sum /probe/kandidat-roh | cut -d' ' -f1)\" ] && [ \"\$(sed -n 2p $LD/$N.sha256 | cut -d' ' -f1)\" = \"\$(sha256sum $LD/$N.gz | cut -d' ' -f1)\" ]"
+pruef "groesse-Zeile im Flash (Schwelle des naechsten Starts)" \
+  "grep -qx \"groesse \$(wc -c </probe/kandidat-roh | tr -d ' ') \$(wc -c <$LD/$N.gz | tr -d ' ')\" $LD/$N.sha256"
 pruef "Kandidat und Probe im RAM aufgeraeumt" "[ ! -f $RAM/kandidat.gz ] && [ ! -f $RAM/kandidat.json ] && [ ! -f $RAM/probe.json ]"
 pruef "das Programm laeuft nach dem Behalten weiter" '[ ! -f /probe/lauf.rc ]'
 stopp
@@ -317,7 +321,8 @@ if [ -f "$ECHT" ]; then
      rel=\$(/probe/echt version) && echo \$rel >/probe/echt.version
      mkdir -p $RAM && gzip -1 -n -c /probe/echt >$RAM/kandidat.gz
      sha=\$(sha256sum /probe/echt | cut -d' ' -f1); gz=\$(sha256sum $RAM/kandidat.gz | cut -d' ' -f1)
-     printf '{\"release\":\"%s\",\"release_seq\":60,\"arch\":\"linux/amd64\",\"sha256\":\"%s\",\"size\":1,\"gz_sha256\":\"%s\",\"gz_size\":1,\"zuweisung\":\"z-echt\",\"state_schema\":1}' \"\$rel\" \"\$sha\" \"\$gz\" >$RAM/kandidat.json"
+     size=\$(wc -c </probe/echt); gzsize=\$(wc -c <$RAM/kandidat.gz)
+     printf '{\"release\":\"%s\",\"release_seq\":60,\"arch\":\"linux/amd64\",\"sha256\":\"%s\",\"size\":%s,\"gz_sha256\":\"%s\",\"gz_size\":%s,\"zuweisung\":\"z-echt\",\"state_schema\":1}' \"\$rel\" \"\$sha\" \"\$size\" \"\$gz\" \"\$gzsize\" >$RAM/kandidat.json"
   lauf
   warte "Probestart mit dem echten Programm bestanden (Marke start)" "grep -qx 'start 60 z-echt' $FEST/versuche"
   warte "das Programm urteilt: offen, keine Cloud" "grep -q '\"offen\":true' $RAM/probe-urteil.json && grep -q 'keine Cloud-Verbindung in der Probezeit' $RAM/probe-urteil.json && grep -q 'z-echt' $RAM/probe-urteil.json" 120

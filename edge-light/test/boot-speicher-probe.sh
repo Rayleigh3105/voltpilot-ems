@@ -19,6 +19,11 @@
 #   3. drop_caches nicht schreibbar: ehrlich verweigert (Schwelle unveraendert)
 #   4. auch nach dem Raeumen zu knapp: verweigert
 #   5. genug Speicher: der Cache bleibt unberuehrt
+#   6. groesse-Zeile in der Pruefsummen-Datei: die Schwelle ist der Bedarf der
+#      Fassung (Programm + Prozessreserve) - die Box aus dem Bericht startet,
+#      ohne den Seitencache anzufassen (die Pauschale 40 000 haette verweigert)
+#   7. groesse-Zeile einer GEWACHSENEN Fassung: ehrlich verweigert, obwohl
+#      mehr frei ist als die alte Pauschale
 #
 #   edge-light/test/boot-speicher-probe.sh
 #   VPBS_LOADER=<pfad>/boot.sh ...   Gegenprobe mit einem anderen Stand
@@ -127,6 +132,30 @@ lauf genug
 enthaelt "Programm startet" /probe/genug.out "PROGRAMM GESTARTET"
 if x '[ ! -s /probe/proc/sys/vm/drop_caches ]'; then ok "drop_caches nicht beschrieben"; else falsch "drop_caches nicht beschrieben"; fi
 fehlt "keine Meldung zum Seitencache" /probe/genug.err "Seitencache"
+
+schritt "6. groesse-Zeile: Schwelle = Bedarf der Fassung, kein Raeumen noetig"
+# 17 000 000 B Programm -> Bedarf 16601 + 20000 = 36601 kB; 39 600 kB reichen.
+# drop_caches ist bewusst NICHT beschreibbar: die Probe scheitert, wenn der
+# Loader trotz passender Schwelle raeumen wollte (alter Stand: Pauschale 40000).
+x "rm -rf /probe/proc && mkdir -p /probe/proc/sys/vm/drop_caches && printf '%s\n' '$BERICHT' >/probe/proc/meminfo
+   sum=\$(sha256sum /probe/programm | awk '{print \$1}')
+   printf '%s  vp-edge-light-linux-mipsle\ngroesse 17000000 5400000\n' \"\$sum\" >/usr/share/vp-edge-light/vp-edge-light-linux-mipsle.sha256"
+lauf groesse
+enthaelt "Programm startet bei 39 600 kB (Bedarf 36 601 kB)" /probe/groesse.out "PROGRAMM GESTARTET"
+fehlt "der Seitencache bleibt unberuehrt" /probe/groesse.err "Seitencache"
+enthaelt "lokale Kopie entpackt" /probe/groesse.err "lokale Kopie entpackt"
+
+schritt "7. groesse-Zeile einer gewachsenen Fassung: ehrlich verweigert"
+# 24 000 000 B Programm -> Bedarf 23437 + 20000 = 43437 kB; 41 000 kB (ueber
+# der alten Pauschale 40 000!) reichen nicht - auch nach dem Raeumen nicht.
+GROSSBILD="$(meminfo 41000 4000 900 41000)"
+raeumbar "$GROSSBILD" "$GROSSBILD"
+x "sum=\$(sha256sum /probe/programm | awk '{print \$1}')
+   printf '%s  vp-edge-light-linux-mipsle\ngroesse 24000000 7400000\n' \"\$sum\" >/usr/share/vp-edge-light/vp-edge-light-linux-mipsle.sha256"
+lauf gewachsen
+fehlt "Programm startet nicht" /probe/gewachsen.out "PROGRAMM GESTARTET"
+enthaelt "Exit 1 (procd versucht es neu)" /probe/gewachsen.rc "1"
+enthaelt "zu wenig Speicher gegen den Bedarf der Fassung" /probe/gewachsen.err "zu wenig freier Speicher (41000 kB < 43437 kB) - lokale Kopie nicht entpackt"
 
 schritt "Ergebnis"
 echo "  $OK ok, $FEHLER Fehler ($(x 'grep DISTRIB_DESCRIPTION /etc/openwrt_release' | cut -d"'" -f2))"

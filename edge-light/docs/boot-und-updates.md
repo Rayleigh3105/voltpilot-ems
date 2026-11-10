@@ -15,9 +15,9 @@ sequenceDiagram
     boot->>bin: exec (Umgebung aus /etc/config/vp-edge-light, VP_OTA_RAM_DIR)
 ```
 
-- **Im Flash:** Loader, Dienst, Konfiguration, Wartungstunnel; **eine** bestätigte Fassung gepackt (`/usr/share/vp-edge-light/vp-edge-light-linux-<arch>.gz`) mit Prüfsummen-Datei (Zeile 1: Programm, Zeile 2: gepackte Kopie); unter `/etc/vp-edge-light/ota` Vertrauens-Set, `current.json` und die Marken der Versuche; die Box-Daten (Identität, Zertifikat, Auswahl, Freigaben).
+- **Im Flash:** Loader, Dienst, Konfiguration, Wartungstunnel; **eine** bestätigte Fassung gepackt (`/usr/share/vp-edge-light/vp-edge-light-linux-<arch>.gz`) mit Prüfsummen-Datei (Zeile 1: Programm, Zeile 2: gepackte Kopie, dazu `groesse <bytes> <gz_bytes>` für die Speicherschwelle); unter `/etc/vp-edge-light/ota` Vertrauens-Set, `current.json` und die Marken der Versuche; die Box-Daten (Identität, Zertifikat, Auswahl, Freigaben).
 - **Im RAM:** das laufende Programm (~16 MB), die häufig geschriebenen Verzeichnisse, unter `/tmp/vp-edge-light/ota` die Zuweisung und die Dateien eines laufenden Updates.
-- Liegt nach einem Neustart des Dienstes genau die bestätigte Fassung noch im RAM, wird sie weiterverwendet. Vor dem Entpacken prüft der Loader den Speicher (40 MB `MemAvailable`, Seitencache wird einmal geräumt, [mango.md](mango.md)).
+- Liegt nach einem Neustart des Dienstes genau die bestätigte Fassung noch im RAM, wird sie weiterverwendet. Vor dem Entpacken prüft der Loader den Speicher gegen den Bedarf der Fassung (Größe des entpackten Programms + `prozess_reserve_kb`, Seitencache wird einmal geräumt; ohne bekannte Größe pauschal `min_free_kb`, [mango.md](mango.md)).
 - Laden bei jedem Start (`base_url`) ist abgeschafft: Es lud ungeprüft. Ein gesetzter Wert wird ignoriert und gemeldet, `install.sh` entfernt ihn.
 
 ## Ein Update
@@ -77,7 +77,7 @@ sequenceDiagram
 | 4 | Absturzschleife | 3 Starts in der Probe; Marke „start“ im Flash zählt Neustarts des Geräts | Fall 3, 7, P3, P8 |
 | 5 | Zwei Orte | neue Fassung nur im RAM, bestätigte im Flash | Fall 1, 7, P7, P8 |
 | 6 | Prüfsumme zuerst | Prüfsummen-Datei atomar vor der Kopie, Nachladen nach `gz_sha256` | Fall 8, P9 |
-| 7 | Speicher | gepackt laden (~5 MB), entpacken erst nach dem Freigeben der alten Fassung, 40-MB-Schwelle, `GOMEMLIMIT`, `oom_score_adj` 800 | `boot-speicher-probe.sh`, P5 |
+| 7 | Speicher | gepackt laden (~5 MB), entpacken erst nach dem Freigeben der alten Fassung, Schwelle = Fassungsgröße + Prozessreserve (Pauschale 40 MB nur ohne bekannte Größe), `GOMEMLIMIT`, `oom_score_adj` 800; die Größen-Leitplanke im Release (`groessen-gate.sh`) hält jede Fassung unter dem Budget der schwächsten Mango | `boot-speicher-probe.sh`, `boot-tausch-speicher-probe.sh`, `groessen-gate-probe.sh`, P5 |
 | 8 | Erreichbarkeit | ein Update tauscht nur das Programm; Loader, Dienst, Wartungstunnel (WireGuard, SSH 2222, Firewall, cron) ändert es nie | jeder Fall |
 | 9 | Kein Drängeln | zurückgenommen = kein neuer Versuch ohne neue Zuweisung (anderes `assigned_at`) | `otalight_test.go`, P3 |
 | 10 | Datenformat | anderes `state_schema` als bestätigt → nicht automatisch | `otalight_test.go` |

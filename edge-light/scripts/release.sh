@@ -52,6 +52,10 @@ rm -rf "$BAU"
 for arch in mipsle arm64; do
   gzip -9 -n -c "$AUS/vp-edge-light-linux-$arch" >"$AUS/vp-edge-light-linux-$arch.gz"
 done
+# Groessen-Leitplanke (Mango): ein Release, dessen Programm samt Update-Bedarf
+# nicht mehr sicher auf eine Mango passt, wird hier verweigert - vor Signatur
+# und Freigabe. Zahlen und Begruendung im Gate-Skript.
+bash "$LIGHT_DIR/scripts/groessen-gate.sh" "$AUS/vp-edge-light-linux-mipsle" "$AUS/vp-edge-light-linux-mipsle.gz"
 python3 "$LIGHT_DIR/scripts/skripte-paket.py" "$AUS/edge-light-openwrt.tar.gz"
 
 summe() { sha256sum "$1" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$1" | awk '{print $1}'; }

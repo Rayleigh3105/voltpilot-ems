@@ -165,11 +165,15 @@ gzip -9 -n -c "$BIN" >"$tmp/$NAME.gz"
 need_kb=$(($(wc -c <"$tmp/$NAME.gz") / 1024 + 512))
 # Pruefsummen ZUERST (eine Datei, atomar): bleibt die Kopie unvollstaendig
 # (Strom weg), startet nie eine falsche Fassung, und mit Zeile 2 laedt der
-# Loader genau diese aus dem Portal nach.
+# Loader genau diese aus dem Portal nach. Die groesse-Zeile traegt die Groesse
+# des entpackten Programms - daraus leitet der Loader seine Speicherschwelle
+# ab (boot.sh, bedarf_kb).
+GROESSE=$(($(wc -c <"$BIN")))
+GZ_GROESSE=$(($(wc -c <"$tmp/$NAME.gz")))
 if [ -n "$GZSUM" ]; then
-  printf '%s  %s\n%s  %s\n' "$SUM" "$NAME" "$GZSUM" "$NAME.gz" >"$tmp/sum"
+  printf '%s  %s\n%s  %s\ngroesse %s %s\n' "$SUM" "$NAME" "$GZSUM" "$NAME.gz" "$GROESSE" "$GZ_GROESSE" >"$tmp/sum"
 else
-  printf '%s  %s\n' "$SUM" "$NAME" >"$tmp/sum"
+  printf '%s  %s\ngroesse %s %s\n' "$SUM" "$NAME" "$GROESSE" "$GZ_GROESSE" >"$tmp/sum"
 fi
 # shellcheck disable=SC2029
 box_ssh "$TARGET" "mkdir -p $LOCAL_DIR && cat > $LOCAL_DIR/$NAME.sha256.tmp && mv -f $LOCAL_DIR/$NAME.sha256.tmp $LOCAL_DIR/$NAME.sha256 && sync" <"$tmp/sum"
