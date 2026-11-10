@@ -227,16 +227,3 @@ func (a *Agent) ocppMarkPublished(r ocppEntityReading) bool {
 // round3 keeps the published channels at the topology/telemetry precision so a
 // float artefact never reads as a changed measurement.
 func round3(v float64) float64 { return math.Round(v*1000) / 1000 }
-
-func sameChannels(a, b map[string]float64) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		w, ok := b[k]
-		if !ok || w != v {
-			return false
-		}
-	}
-	return true
-}

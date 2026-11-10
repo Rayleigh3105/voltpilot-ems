@@ -1110,7 +1110,6 @@ describe('Gerätesuche · ein Name je Sache (Konzept „Geräte suchen“, Beric
 /** Die Kunden-Chart-Flächen (die Admin-Charts sprechen legitim Betreiber-Vokabular). */
 const CHART_FILES = [
   'ScheduleChart.tsx',
-  'HistoryChart.tsx',
   'TelemetryChart.tsx',
   // Preis- und Wetter-Bild der Fassung 3 (Preise und Wetter, 20.10.2026).
   'components/PreisZeitstrahl.tsx',
@@ -2753,8 +2752,7 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     'components/EnergieeinsatzDialoge.tsx',
     // IP-12: Rangliste, Einstufung, Kriterien und Historie.
     'components/BewertungEntscheidungen.tsx',
-    // IP-18: Abdeckungs-Tabelle, Messmittel-Blatt mit Dialog, Toleranz-Dialog an der Befund-Zeile.
-    'components/MessabdeckungTabelle.tsx',
+    // IP-18: Messmittel-Blatt mit Dialog, Toleranz-Dialog an der Befund-Zeile.
     'components/MessmittelBlatt.tsx',
     'components/VergleichBefund.tsx',
     // IP-20: Messplanung — Bedarf erfassen, einlösen, verwerfen; Liste je Einsatz und je Standort.

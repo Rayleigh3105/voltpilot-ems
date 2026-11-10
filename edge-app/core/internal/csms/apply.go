@@ -365,11 +365,6 @@ func (s *Server) onStopTransaction(id string, txID int, now time.Time) error {
 	return persistErr
 }
 
-// onMeterValues folds a parsed reading into a connector.
-func (s *Server) onMeterValues(id string, connectorID int, r MeterReading, now time.Time) {
-	s.onMeterSample(id, connectorID, r, now, now, nil)
-}
-
 // MaxLiveMeterAge bounds admission into the realtime loop. The protocol
 // journal still retains every original sample, including historical batches.
 // The sample time is on the box clock (stationClock), never the station's.

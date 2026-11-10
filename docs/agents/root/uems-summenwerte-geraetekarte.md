@@ -1,7 +1,8 @@
 # Summenwerte am Gerät (H-7/H-8/H-10)
 
 Die Karte `frontend/portal/src/components/GeraetSummenwerte.tsx` löst die frühere
-PV-Karte ab. Der alte Export `GeraetPvProduktion` ist nur ein kompatibler Verweis.
+PV-Karte ab. Der kompatible Verweis `GeraetPvProduktion` hatte keine Aufrufstelle mehr
+und ist als toter Code gelöscht (Code-Gesundheit, 10.11.2026).
 `summenwertEinstieg` in `geraetSeite.ts` hängt nicht an der PV-Rolle. Die physische
 Geräteseite übergibt alle zugehörigen Komponenten-IDs; gleiche Messstellen stehen
 einmal auf der Karte. Box, Port und Transport sind dafür keine Identität.

@@ -135,8 +135,6 @@ type Channel struct {
 	PowerW   *float64
 }
 
-func channelSet(c Channel) bool { return c.VoltageV != nil || c.CurrentA != nil || c.PowerW != nil }
-
 // Verbose is DecodeVerbose's full diagnostic (the connection test) - the Go
 // twin of kostal-piko-rtu-decode.js decodeVerbose(). Every field is nil/zero
 // when its register was not covered by any block - never a fabricated value.

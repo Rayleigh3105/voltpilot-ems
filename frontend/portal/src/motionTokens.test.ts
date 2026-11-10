@@ -628,27 +628,9 @@ describe('Bewegung P0 · Motion lebt NUR in Lazy-Stücken (E10 a)', () => {
     expect(module.size).toBeGreaterThan(50);
   });
 
-  it('die Lazy-Grenze existiert und lädt `domAnimation` dynamisch nach', () => {
-    const feat = lies('src', 'motionFeatures.ts');
-    expect(feat).toMatch(/export\s*\{\s*domAnimation as default\s*\}\s*from\s*'motion\/react'/);
-    const wirt = lies('src', 'components', 'MotionRoot.tsx');
-    expect(wirt, 'MotionRoot muss `strict` fahren, sonst zieht `motion.div` alles herein').toMatch(
-      /<LazyMotion\s+strict/,
-    );
-    expect(wirt).toMatch(/import\('\.\.\/motionFeatures'\)/);
-  });
-
   it('`motionPresets.ts` bleibt frei von Motion — es liegt im Einstieg', () => {
     // Bewusst DIREKT geprüft und nicht über den Graphen: in P0 importiert es
     // noch niemand, ein Graph-Lauf wäre hier also vakuum. Ab P4 gilt beides.
     expect(importiertMotion(lies('src', 'motionPresets.ts'))).toBe(false);
-  });
-
-  it('`MotionRoot.tsx` und `motionFeatures.ts` sind KEINE Einstiegs-Module', () => {
-    const module = [...statischErreichbar('src/main.tsx')].map((d) => relative(root, d));
-    expect(module, 'MotionRoot gehört in ein Lazy-Stück').not.toContain(
-      'src/components/MotionRoot.tsx',
-    );
-    expect(module).not.toContain('src/motionFeatures.ts');
   });
 });

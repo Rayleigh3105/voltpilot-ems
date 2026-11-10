@@ -148,6 +148,11 @@ Die Lastspitzen-Kachel samt Stern und alle Wörter und Zahlen sind unverändert.
 Das ist die beschlossene Änderung dieser Fläche, keine gefundene Abweichung.
 Neu geschrieben mit `vitest -u` am Produktstand; der Token-Vergleich alt/neu zeigt nur die zwei Hüllen und den Umzug der Spalte (19 400 → 19 493 Bytes).
 
+**Toter Code entfernt (10.11.2026, Code-Gesundheit, PR fm/vp-codehealth-befunde):** `HistoryChart.tsx`
+(`HistoryEnergieChart`) wurde als toter Code gelöscht — im Produktbundle nicht mehr importiert, zuletzt nur von
+`historyChartZoom.test.tsx` gerendert (mit gelöscht). Sein Eintrag in `diagramme.json` entfällt dadurch; die
+übrigen drei geschützten Dateien sind unverändert.
+
 Aus `frontend/portal` gezielt ausführen (auch nach einem Rebase):
 
 ```bash

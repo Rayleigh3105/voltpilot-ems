@@ -17,9 +17,6 @@ ZONE_TO_EIC: dict[str, str] = {
     "CH": "10YCH-SWISSGRIDZ",
 }
 
-# Reverse lookup so a parsed document's domain code can be traced back to a zone.
-EIC_TO_ZONE: dict[str, str] = {eic: zone for zone, eic in ZONE_TO_EIC.items()}
-
 
 def eic_for_zone(zone: str) -> str:
     """EIC area code for a Voltpilot bidding zone, or raise ``KeyError``-like."""

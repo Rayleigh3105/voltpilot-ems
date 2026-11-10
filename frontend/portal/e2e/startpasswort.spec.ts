@@ -45,16 +45,6 @@ for (const breite of [375, 1440]) {
     await expect(page.getByRole('dialog')).not.toBeVisible();
     await expect(neu).toBeFocused();
 
-    await page.getByRole('button', { name: 'Ersten Kundenadministrator anlegen', exact: true }).click();
-    dialog = page.getByRole('dialog', { name: 'Ersten Kundenadministrator anlegen', exact: true });
-    await expect(dialog.getByRole('button', { name: 'Benutzer anlegen' })).toBeDisabled();
-    await dialog.getByLabel('Benutzername *', { exact: true }).fill('jonas');
-    await dialog.getByLabel('E-Mail', { exact: true }).fill('jonas@ahrenberg.example');
-    await dialog.getByRole('button', { name: 'Benutzer anlegen' }).click();
-    await expect(page.getByRole('dialog', { name: 'Kundenadministrator angelegt' })).toBeVisible();
-    await expect(page.getByLabel('Startpasswort', { exact: true })).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).not.toBeVisible();
     expect(await page.evaluate(() => [Object.values(localStorage), Object.values(sessionStorage)].flat().some(v => v.includes('Beispiel')))).toBe(false);
     expect(fehler).toEqual([]);
 

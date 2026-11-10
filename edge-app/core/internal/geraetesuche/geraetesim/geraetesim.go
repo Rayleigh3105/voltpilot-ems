@@ -58,13 +58,6 @@ func (m *Modbus) Funktionen() []byte {
 	return append([]byte(nil), m.funktionen...)
 }
 
-// Anfragen counts the requests answered.
-func (m *Modbus) Anfragen() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.anfragen
-}
-
 // Setze puts register words at start of unit.
 func (m *Modbus) Setze(unit byte, start uint16, regs ...uint16) {
 	m.mu.Lock()

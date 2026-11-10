@@ -204,20 +204,6 @@ func Known(familyName string) bool {
 	return ok
 }
 
-// Label is the German label of a family ("" when unknown).
-func Label(familyName string) string {
-	if f, ok := families[familyName]; ok {
-		return f.label
-	}
-	return ""
-}
-
-// HasBattery reports whether the family carries a battery.
-func HasBattery(familyName string) bool {
-	f, ok := families[familyName]
-	return ok && f.hasBattery
-}
-
 // PlanReads is the family's per-poll read plan (empty for an unknown family).
 func PlanReads(familyName string) []ReadSpec {
 	f, ok := families[familyName]

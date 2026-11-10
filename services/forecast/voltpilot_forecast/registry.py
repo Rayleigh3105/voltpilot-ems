@@ -40,12 +40,6 @@ BASELINE_MODELS: Mapping[ForecastKind, str] = {
     ForecastKind.PV: PV_PHYSICAL,
 }
 
-#: The challengers per kind - always shadow until promoted via env.
-CHALLENGER_MODELS: Mapping[ForecastKind, tuple[str, ...]] = {
-    ForecastKind.LOAD: (LOAD_XGB,),
-    ForecastKind.PV: (PV_RESIDUAL_XGB,),
-}
-
 KNOWN_MODELS: frozenset[str] = frozenset(
     {LOAD_PERSISTENCE, PV_PHYSICAL, LOAD_XGB, PV_RESIDUAL_XGB}
 )
@@ -90,8 +84,3 @@ def kind_of(model_id: str) -> ForecastKind:
     if model_id in (PV_PHYSICAL, PV_RESIDUAL_XGB):
         return ForecastKind.PV
     raise ValueError(f"unknown forecast model id: {model_id!r}")
-
-
-def baseline_model(kind: ForecastKind) -> str:
-    """The skill-score reference model for ``kind``."""
-    return BASELINE_MODELS[kind]

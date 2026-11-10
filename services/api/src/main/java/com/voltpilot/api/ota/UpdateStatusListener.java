@@ -313,14 +313,6 @@ public class UpdateStatusListener extends Rueckmeldeweg {
     }
 
     /**
-     * A boolean that is absent or not a boolean stays {@code null} - „the device
-     * did not say", never a fabricated no.
-     */
-    private static Boolean bool(JsonNode node) {
-        return node != null && node.isBoolean() ? node.booleanValue() : null;
-    }
-
-    /**
      * A state outside the contract vocabulary is DROPPED. It is the same rule
      * the control listener applies to an unknown execution mode: the alternative
      * would be to store a word no surface can render, and every surface that

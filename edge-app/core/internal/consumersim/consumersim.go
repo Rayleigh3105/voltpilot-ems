@@ -109,9 +109,6 @@ func New(cfg Config) *Device {
 	return &Device{cfg: cfg, available: true}
 }
 
-// Config returns the device's configuration.
-func (d *Device) Config() Config { return d.cfg }
-
 // SetAvailable flips the availability signal (vehicle plugged/unplugged).
 // The physical state follows immediately: an unavailable device stops
 // consuming; a re-available one stays off until the next command re-asserts.

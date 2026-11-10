@@ -86,11 +86,7 @@ export type EreignisBereich = 'markt' | 'pv' | 'netz' | 'daten';
 export interface EreignisArtInfo {
   /** Das kurze Wort in Chronik, Chips und Kacheln. */
   label: string;
-  /**
-   * Der Bereich — und damit die Farbe. Das Feld heißt aus Bestandsgründen
-   * `farbe`: der stillgelegte `HistoryChart.tsx` liest es und steht unter dem
-   * Bytegleich-Schutz von `test/bestandsschutz/diagramme.json`.
-   */
+  /** Der Bereich — und damit die Farbe. Das Feld heißt aus Bestandsgründen `farbe`. */
   farbe: EreignisBereich;
   /** Der Satz, der die Art erklärt (Erklärung im Kartenkopf). */
   erklaerung: string;
