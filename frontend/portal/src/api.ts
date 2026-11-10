@@ -5162,6 +5162,19 @@ export interface OverviewSite {
    * Standort zugeordnet (heute jede Bestandsanlage); absent = älteres Backend.
    */
   standort?: StandortBezug | null;
+  /**
+   * B3 (Konzept vp-plattform-admin-box-benutzer-konzept): der Hinweis, solange
+   * eine Anlage nach „Vom Kunden lösen" keine Box hat - höchstens 14 Tage,
+   * `null`/absent = kein Hinweis.
+   */
+  boxGeloestHinweis?: BoxGeloestHinweis | null;
+}
+
+/** B3: der Hinweis an der Anlage, bis eine Box verbunden ist, höchstens 14 Tage. */
+export interface BoxGeloestHinweis {
+  anlass: string;
+  anlassText: string | null;
+  bisSpaetestens: string;
 }
 
 /** Die Energie-Summen eines Tages (kWh), jedes Feld einzeln `null`-fähig. */

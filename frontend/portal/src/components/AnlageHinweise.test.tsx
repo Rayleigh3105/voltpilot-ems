@@ -84,3 +84,25 @@ describe('„Wo steht …?“ - die Adresse eines automatischen Standorts (D9)',
     });
   });
 });
+
+describe('„Vom Kunden lösen" (B3): der Hinweis, solange die Anlage keine Box hat', () => {
+  it('nennt den Anlass als Satz', () => {
+    render(<AnlageHinweise site={site} ersteWerte={false} standort={null}
+      boxGeloest={{ anlass: 'falsche_kennung', anlassText: null, bisSpaetestens: '2026-11-24T22:40:00Z' }}
+      onGespeichert={() => {}} />);
+    expect(screen.getByRole('heading', { name: 'Ihre Box wurde getrennt.' })).toBeInTheDocument();
+    expect(screen.getByText(/Die Kennung gehörte zu einer anderen Box\./)).toBeInTheDocument();
+  });
+
+  it('„anderer_anlass" zeigt den freien Text, nicht die Marke', () => {
+    render(<AnlageHinweise site={site} ersteWerte={false} standort={null}
+      boxGeloest={{ anlass: 'anderer_anlass', anlassText: 'Werkstatt-Probe ohne Kundenbezug.', bisSpaetestens: '2026-11-24T22:40:00Z' }}
+      onGespeichert={() => {}} />);
+    expect(screen.getByText(/Werkstatt-Probe ohne Kundenbezug\./)).toBeInTheDocument();
+  });
+
+  it('ohne Hinweis keine Karte', () => {
+    render(<AnlageHinweise site={site} ersteWerte={false} standort={null} boxGeloest={null} onGespeichert={() => {}} />);
+    expect(screen.queryByRole('heading', { name: 'Ihre Box wurde getrennt.' })).toBeNull();
+  });
+});

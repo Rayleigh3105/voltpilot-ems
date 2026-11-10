@@ -107,3 +107,9 @@
 }
 .vp-kundenakte-liste li:last-child { border-bottom: none; }
 .vp-kundenakte-liste-haupt { min-width: 0; overflow-wrap: anywhere; }
+
+/* B4 = A (vp-plattform-admin-box-benutzer-konzept): je Box ein Zustand statt nur einer Summe. */
+.vp-kundenakte-boxen { display: flex; flex-wrap: wrap; gap: var(--vp-space-1); justify-content: flex-end; }
+.vp-kundenakte-box-link { text-decoration: none; border-radius: var(--vp-radius-full, 999px); }
+.vp-kundenakte-box-link:hover,
+.vp-kundenakte-box-link:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 1px; }

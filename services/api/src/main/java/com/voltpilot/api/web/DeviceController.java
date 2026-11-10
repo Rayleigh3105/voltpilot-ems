@@ -244,7 +244,8 @@ public class DeviceController {
                     "Unknown Geräte-ID '" + externalRef + "' - Prüfzeichen ungültig (Tippfehler?)");
         }
         try {
-            DeviceDto claimed = devices.claim(tenantId, request.siteId(), externalRef, kind);
+            DeviceDto claimed = devices.claim(tenantId, request.siteId(), externalRef, kind,
+                    com.voltpilot.api.uems.ProtokollAkteur.aus(auth).orElse(null));
             // Self-maintaining control path: if this claim leaves the site with
             // exactly one device and its battery asset is still unlinked, link
             // them - the battery is controlled by the inverter (this device), so
@@ -360,6 +361,15 @@ public class DeviceController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
         }
         devices.ausDerTopologieLoesen(deviceId);
+        // N2 (Konzept vp-plattform-admin-box-benutzer-konzept Abschnitt 5): dieselbe Selbst-Heilung
+        // wie beim Verbinden (claim) - verliert eine Anlage mit zwei Boxen eine davon, bleibt sonst
+        // der Speicher ohne Box ("Ihr Speicher ist keinem Gerät zugeordnet"), obwohl die verbleibende
+        // Box ihn jetzt eindeutig steuern könnte. Best-effort und idempotent wie dort.
+        if (assets.autoLinkBatteryDevice(device.siteId())) {
+            log.info("Auto-linked remaining device of site {} to its battery asset after unclaiming {}",
+                    device.siteId(), deviceId);
+        }
+        autoCompose.ensureComposed(device.siteId());
         // Die offenen Perioden des Befehlsverlaufs enden mit der Box: kein Herzschlag schlösse sie
         // mehr, und „läuft" wäre für immer falsch. Beendet, nicht gelöscht (UEMS AP-07 IP-11).
         commandLog.beimAusbauBeenden(deviceId);

@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.DeviceDto;
 import java.util.List;
 import java.util.Optional;
@@ -103,17 +104,28 @@ public class DeviceRepository {
      * with a duplicate-key error (surfaced as HTTP 409).
      */
     public DeviceDto claim(UUID tenantId, UUID siteId, String externalRef, String kind) {
+        return claim(tenantId, siteId, externalRef, kind, null);
+    }
+
+    /**
+     * Wie {@link #claim(UUID, UUID, String, String)}, mit dem Urheber (L5, Nebenbefund N7): heute nennt
+     * das Verbinden keinen Akteur, nur {@code created_at}. {@code akteur} additiv - {@code null} bleibt
+     * {@code null} in beiden Spalten (ein Aufrufer ohne {@link ProtokollAkteur}, etwa ein Test).
+     */
+    public DeviceDto claim(UUID tenantId, UUID siteId, String externalRef, String kind, ProtokollAkteur akteur) {
         lockReference(externalRef);
         lockTopology(siteId);
         jdbc.query("SELECT id FROM site WHERE id = ? FOR UPDATE", (rs, n) -> rs.getObject(1), siteId);
         return jdbc.queryForObject(
-                "INSERT INTO device (tenant_id, site_id, external_ref, kind, status) "
-                        + "VALUES (?, ?, ?, ?, 'claimed') "
+                "INSERT INTO device (tenant_id, site_id, external_ref, kind, status, "
+                        + "verbunden_von_sub, verbunden_von_name) "
+                        + "VALUES (?, ?, ?, ?, 'claimed', ?, ?) "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
                         + "NULL::timestamptz AS last_seen, " + anmeldungColumns("?"),
                 DeviceRepository::mapDevice,
                 tenantId, siteId, externalRef, kind == null || kind.isBlank() ? "inverter" : kind,
+                akteur == null ? null : akteur.sub(), akteur == null ? null : akteur.name(),
                 externalRef, externalRef);
     }
 
@@ -174,6 +186,21 @@ public class DeviceRepository {
         jdbc.update("UPDATE asset SET device_id = NULL WHERE device_id = ?", deviceId);
         jdbc.update("UPDATE entity_registry_state SET device_id = NULL WHERE device_id = ?", deviceId);
         jdbc.update("UPDATE site SET lead_device_id = NULL WHERE lead_device_id = ?", deviceId);
+    }
+
+    /**
+     * „Vom Kunden lösen" (L1, B1=A): die Verknüpfung verschwindet, ALS WÄRE SIE NIE GEWESEN - anders
+     * als {@link #ausbauen} bleibt keine Zeile. Der Aufrufer ({@code BoxLoesenService}) hat die Regel
+     * (nie gemeldet, {@code docs/contracts/box-loesen-vectors.json}) vorher unter {@link #lockReference}
+     * geprüft und die Topologie über {@link #ausDerTopologieLoesen} gelöst.
+     *
+     * <p>Die Messwert-Tabellen verweisen mit {@code ON DELETE RESTRICT} auf {@code device}
+     * (V20260913150000): fände sich doch eine Zeile, lehnt DIESES Statement selbst ab (23503) - der
+     * Aufrufer übersetzt das in denselben 409, nichts ist geändert. False heißt: RLS verbirgt die Box
+     * oder sie ist schon weg (=> 404).
+     */
+    public boolean loesen(UUID deviceId) {
+        return jdbc.update("DELETE FROM device WHERE id = ? AND ausgebaut_am IS NULL", deviceId) > 0;
     }
 
     /**

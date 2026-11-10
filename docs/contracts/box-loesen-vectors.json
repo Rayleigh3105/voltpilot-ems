@@ -1,0 +1,84 @@
+{
+  "$comment": "Die Regel von \"Vom Kunden lösen\" (Konzept vp-plattform-admin-box-benutzer-konzept, Teil 1, Abschnitt 3.2): lösen geht nur, solange die Box sich nie gemeldet hat. EIN Leser: services/api .../geraete/BoxLoesenRegel.java (BoxLoesenRegelVectorsTest). Der Admin-Weg (B2 = A) und der künftige Kunden-Weg (Box verbinden S4) teilen diese Datei - nur die Spalte `adminWeg` unterscheidet sie.",
+
+  "$regel": "loesbar = gruende() ist leer. Fünf Stufen immer geprüft: aktiv (die Verknüpfung ist nicht schon ausgebaut), herzschlagAm (device_status_seen_at), messwertAm (v1 telemetry, v2 telemetry_v2, Zusatz-Messwerte device_measurement_*, OCPP ocpp_*), meldungAm (Software-Meldungen device_edge_version, device_update_status), hatZustaendigkeiten (aktive data_source_assignment, wie DeviceRepository.ausbauen). Die sechste Stufe schluesselAbgeholtAm (device_enrollment.issued_at) zählt NUR, wenn adminWeg = false (Kunde, S4) - der Admin darf eine Box lösen, die ihren Schlüssel schon abgeholt, sich aber nie gemeldet hat (B2 = A), mit einem Hinweis im UI.",
+
+  "gruende_reihenfolge": ["verbund", "herzschlag", "messwerte", "meldungen", "zustaendigkeit", "angemeldet"],
+
+  "vektoren": [
+    {
+      "name": "Nie gemeldet, kein Schlüssel abgeholt (Admin) - lösbar",
+      "aktiv": true, "herzschlagAm": null, "messwertAm": null, "meldungAm": null,
+      "hatZustaendigkeiten": false, "schluesselAbgeholtAm": null,
+      "adminWeg": true,
+      "erwartet": { "loesbar": true, "gruende": [] }
+    },
+    {
+      "name": "Nie gemeldet, kein Schlüssel abgeholt (Kunde, S4) - lösbar",
+      "aktiv": true, "herzschlagAm": null, "messwertAm": null, "meldungAm": null,
+      "hatZustaendigkeiten": false, "schluesselAbgeholtAm": null,
+      "adminWeg": false,
+      "erwartet": { "loesbar": true, "gruende": [] }
+    },
+    {
+      "name": "Schlüssel abgeholt, nie gemeldet (Admin, B2 = A) - lösbar mit Hinweis",
+      "aktiv": true, "herzschlagAm": null, "messwertAm": null, "meldungAm": null,
+      "hatZustaendigkeiten": false, "schluesselAbgeholtAm": "2026-11-08T18:42:00Z",
+      "adminWeg": true,
+      "erwartet": { "loesbar": true, "gruende": [] }
+    },
+    {
+      "name": "Schlüssel abgeholt, nie gemeldet (Kunde, S4) - gesperrt",
+      "aktiv": true, "herzschlagAm": null, "messwertAm": null, "meldungAm": null,
+      "hatZustaendigkeiten": false, "schluesselAbgeholtAm": "2026-11-08T18:42:00Z",
+      "adminWeg": false,
+      "erwartet": { "loesbar": false, "gruende": ["angemeldet"] }
+    },
+    {
+      "name": "Herzschlag da, keine Messwerte (meldet sich) - gesperrt für beide",
+      "aktiv": true, "herzschlagAm": "2026-11-10T22:40:00Z", "messwertAm": null, "meldungAm": null,
+      "hatZustaendigkeiten": false, "schluesselAbgeholtAm": "2026-11-08T18:42:00Z",
+      "adminWeg": true,
+      "erwartet": { "loesbar": false, "gruende": ["herzschlag"] }
+    },
+    {
+      "name": "Messwerte da - gesperrt (Admin)",
+      "aktiv": true, "herzschlagAm": "2026-11-09T07:14:00Z", "messwertAm": "2026-11-09T07:14:00Z",
+      "meldungAm": null, "hatZustaendigkeiten": false, "schluesselAbgeholtAm": "2026-11-08T18:42:00Z",
+      "adminWeg": true,
+      "erwartet": { "loesbar": false, "gruende": ["herzschlag", "messwerte"] }
+    },
+    {
+      "name": "Nur Software-Meldung (OTA), sonst still - gesperrt",
+      "aktiv": true, "herzschlagAm": null, "messwertAm": null, "meldungAm": "2026-11-09T07:14:00Z",
+      "hatZustaendigkeiten": false, "schluesselAbgeholtAm": null,
+      "adminWeg": true,
+      "erwartet": { "loesbar": false, "gruende": ["meldungen"] }
+    },
+    {
+      "name": "Nie gemeldet, aber noch Zuständigkeit für eine Datenquelle - gesperrt",
+      "aktiv": true, "herzschlagAm": null, "messwertAm": null, "meldungAm": null,
+      "hatZustaendigkeiten": true, "schluesselAbgeholtAm": null,
+      "adminWeg": true,
+      "erwartet": { "loesbar": false, "gruende": ["zustaendigkeit"] }
+    },
+    {
+      "name": "Schon ausgebaut (nicht mehr aktiv) - gesperrt, egal was sonst gilt",
+      "aktiv": false, "herzschlagAm": null, "messwertAm": null, "meldungAm": null,
+      "hatZustaendigkeiten": false, "schluesselAbgeholtAm": null,
+      "adminWeg": true,
+      "erwartet": { "loesbar": false, "gruende": ["verbund"] }
+    },
+    {
+      "name": "Alles zugleich - jeder Grund einmal, in Reihenfolge",
+      "aktiv": false, "herzschlagAm": "2026-11-09T07:14:00Z", "messwertAm": "2026-11-09T07:14:00Z",
+      "meldungAm": "2026-11-09T07:14:00Z", "hatZustaendigkeiten": true,
+      "schluesselAbgeholtAm": "2026-11-08T18:42:00Z",
+      "adminWeg": false,
+      "erwartet": {
+        "loesbar": false,
+        "gruende": ["verbund", "herzschlag", "messwerte", "meldungen", "zustaendigkeit", "angemeldet"]
+      }
+    }
+  ]
+}

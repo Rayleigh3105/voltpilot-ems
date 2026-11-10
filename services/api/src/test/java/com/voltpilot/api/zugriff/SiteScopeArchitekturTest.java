@@ -257,6 +257,17 @@ class SiteScopeArchitekturTest {
                     "web/AdminController.java", "hasRole('platform-admin')"),
             new Erlaubt("repo/TenantRepository.java", "telemetry_rollup_1d", 1, Grund.PLATTFORM,
                     "web/AdminController.java", "hasRole('platform-admin')"),
+            // Vom-Kunden-lösen-Befund (L1, vp-plattform-admin-box-benutzer-konzept): die geteilte
+            // Abfrage von AdminBoxLoesenRepository (vor dem Sperren) und BoxLoesenRepository (unter
+            // der Sperre, mit gesetztem TenantContext) - beide nur aus AdminGeraeteAkteController
+            // erreichbar (platform-admin) bzw. der Mandanten-Schreibweg selbst (keine Kundenroute
+            // liest diese drei Tabellen hier).
+            new Erlaubt("geraete/BoxBefundSql.java", "telemetry", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxBefundSql.java", "telemetry_v2", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
+            new Erlaubt("geraete/BoxBefundSql.java", "device_measurement_sample", 1, Grund.PLATTFORM,
+                    "web/AdminGeraeteAkteController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
 
             // --- kein SQL
             new Erlaubt("uems/EreignisVokabular.java", "telemetry", 1, Grund.KEIN_SQL, "uems/EreignisVokabular.java",

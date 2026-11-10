@@ -38,7 +38,7 @@ import { EditUserDrawer } from './UserDrawers';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { RowMenu } from '../../components/RowMenu';
 import './Mandanten.css';
-import { mandantAusHash, mandantHash, type PageId } from '../../nav';
+import { geraeteAkteHash, mandantAusHash, mandantHash, type PageId } from '../../nav';
 
 /**
  * Plattform → Benutzer (Admin-Umbau Scheibe S5, Konzept `vp-adminview-konzept-k1`
@@ -796,7 +796,28 @@ function KundenaktePage({
                       <span className="vp-kundenakte-liste-haupt">
                         <b>{z.siteName}</b>
                       </span>
-                      <Badge variant={z.ton} dot>{z.unterzeile}</Badge>
+                      {/* B4 = A: je Box „online"/„nie gemeldet" statt nur einer Summe; eine nie
+                          gemeldete Box führt in die Geräteakte ("Vom Kunden lösen" sitzt dort). */}
+                      {z.boxen.length > 1 ? (
+                        <span className="vp-kundenakte-boxen">
+                          {z.boxen.map((b) => (
+                            b.nieGemeldet ? (
+                              <a key={b.deviceId} href={geraeteAkteHash(b.externalRef)}
+                                className="vp-kundenakte-box-link" title={b.label}>
+                                <Badge variant={b.ton} dot>{b.text}</Badge>
+                              </a>
+                            ) : (
+                              <Badge key={b.deviceId} variant={b.ton} dot>{b.text}</Badge>
+                            )
+                          ))}
+                        </span>
+                      ) : z.boxen.length === 1 && z.boxen[0].nieGemeldet ? (
+                        <a href={geraeteAkteHash(z.boxen[0].externalRef)} className="vp-kundenakte-box-link">
+                          <Badge variant={z.boxen[0].ton} dot>{z.boxen[0].text}</Badge>
+                        </a>
+                      ) : (
+                        <Badge variant={z.ton} dot>{z.unterzeile}</Badge>
+                      )}
                     </li>
                   ))}
                 </ul>

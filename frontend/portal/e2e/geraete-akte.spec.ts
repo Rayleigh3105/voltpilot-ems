@@ -135,3 +135,49 @@ test.describe('Geräteakte: einklappbare Sektionen mit Urteilszeile (Anlage, Sof
     await keinUeberlauf(page);
   });
 });
+
+test.describe('„Vom Kunden lösen" (L1/L2/N8, vp-plattform-admin-box-benutzer-konzept)', () => {
+  for (const breite of [DESKTOP, PHONE]) {
+    test(`bei ${breite} px: Karte, Menü, Dialog - keine Fernwartung/Aktualisieren für eine nie gemeldete Box`, async ({ page }) => {
+      const fehler = wache(page);
+      await page.setViewportSize({ width: breite, height: breite === PHONE ? 844 : 900 });
+      await page.goto('/e2e/geraete-akte.html?szenario=nie-gemeldet');
+      await page.waitForSelector('[data-testid="geraete-akte"]');
+
+      // N8: eine nie gemeldete Box hat weder einen Tunnel noch einen Software-Stand zu öffnen.
+      await expect(page.getByRole('button', { name: 'Fernwartung öffnen' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Aktualisieren', exact: true })).toHaveCount(0);
+
+      // Die Kopf-Karte nennt den Zustand und bietet „Vom Kunden lösen …" an.
+      const karte = page.getByTestId('akte-nie-gemeldet');
+      await expect(karte).toBeVisible();
+      await expect(karte).toContainText('Verbunden, aber nie gemeldet');
+      await expect(karte).toContainText('Herzschlag nie');
+
+      // Zweiter Einstieg: das Menü „⋯" trägt denselben Eintrag (B4 = A).
+      await page.getByRole('button', { name: 'Weitere Handlungen' }).click();
+      await expect(page.getByRole('menuitem', { name: 'Vom Kunden lösen …' })).toBeVisible();
+      await page.keyboard.press('Escape');
+
+      await karte.getByRole('button', { name: 'Vom Kunden lösen …' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Vom Kunden lösen' });
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText('Hat sich nie gemeldet');
+      await expect(dialog).toContainText('edge-cyhchfr');
+
+      // Ohne Anlass bleibt der Knopf wirkungslos (kein Absturz, keine Anfrage ohne Anlass).
+      const bestaetigen = dialog.getByRole('button', { name: 'Vom Kunden lösen', exact: true });
+      await bestaetigen.click();
+      await expect(dialog).toBeVisible();
+
+      await dialog.getByLabel('Anlass').click();
+      await page.getByRole('option', { name: 'Falsche Kennung verbunden' }).click();
+      await bestaetigen.click();
+      // Erfolg: der Dialog schließt sich (die Box ist weg, die Akte navigiert zur Geräte-Liste).
+      await expect(dialog).toBeHidden();
+
+      await keinUeberlauf(page);
+      expect(fehler).toEqual([]);
+    });
+  }
+});
