@@ -141,6 +141,7 @@
   color: var(--vp-text-muted, #667);
 }
 .vp-zustand-lever {
+  position: relative;
   margin-left: auto;
   border: 0;
   background: none;

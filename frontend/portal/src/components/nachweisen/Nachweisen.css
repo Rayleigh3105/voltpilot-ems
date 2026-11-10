@@ -781,7 +781,17 @@ div.vp-nw-tz {
 }
 .vp-nw-filter .vp-wv-chip {
   max-width: 100%;
+}
+/* Die Ellipse gehört auf eine innere Zeile, nicht auf den Knopf selbst:
+   `overflow: hidden` auf `.vp-wv-chip` würde seine eigene, unsichtbare
+   44-px-Trefferfläche (`.vp-wv-chip::before`) auf die 24 px sichtbare Höhe
+   zurückschneiden (G11-Nachtrag B4). */
+.vp-nw-filter .vp-wv-chip > span {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
 }
 .vp-nw-monat {

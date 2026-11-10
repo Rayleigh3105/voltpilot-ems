@@ -155,18 +155,18 @@ export function VerzeichnisMonate({
       </label>
       <div className="vp-nw-filter" role="group" aria-label="Filter" data-testid="verzeichnis-filter">
         <button type="button" className="vp-wv-chip" aria-pressed={!filterAktiv} onClick={() => setFilter(LEER)}>
-          {ALLE}
+          <span>{ALLE}</span>
         </button>
         {ich && (
           <button type="button" className="vp-wv-chip" aria-pressed={filter.person === ich.id} onClick={() => setze({ person: filter.person === ich.id ? null : ich.id })}>
-            {MEINE}
+            <span>{MEINE}</span>
           </button>
         )}
         <button type="button" className="vp-wv-chip" aria-pressed={filter.gruppe !== null} aria-haspopup="dialog" onClick={() => setBlatt('thema')}>
-          {filter.gruppe ? WOERTER.verzeichnis_gruppe[filter.gruppe] : THEMA}
+          <span>{filter.gruppe ? WOERTER.verzeichnis_gruppe[filter.gruppe] : THEMA}</span>
         </button>
         <button type="button" className="vp-wv-chip" aria-pressed={filter.von !== null || filter.bis !== null} aria-haspopup="dialog" onClick={() => setBlatt('zeitraum')}>
-          {filter.von || filter.bis ? zeitraumText(filter) : ZEITRAUM}
+          <span>{filter.von || filter.bis ? zeitraumText(filter) : ZEITRAUM}</span>
         </button>
       </div>
       {csvFehler && (

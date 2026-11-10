@@ -35,9 +35,18 @@ for (const scene of ['long', 'admin&long', 'admin&fleet', 'ok', 'unknown']) {
         if (!scene.includes('fleet')) {
           expect(bounds.title.width, `plant identity @ ${width}`).toBeGreaterThan(scene.includes('long') ? 80 : 70);
           if (bounds.status) {
-            // The two text rows form a single 44px block, centered with the avatar.
-            expect(bounds.title.top).toBeCloseTo(bounds.avatar.top, 0);
-            expect(bounds.status.bottom).toBeCloseTo(bounds.avatar.bottom, 0);
+            // B1 (UI/UX-Wartung u1): eine Ursache, die nicht neben „Warnung“ passt,
+            // bricht jetzt um statt mit „…“ abzuschneiden - dann wird der Block
+            // höher als 44px und kann nicht mehr exakt mit dem Avatar fluchten.
+            // Im üblichen Fall (keine Ursache oder eine kurze) bleiben Titel- und
+            // Zustandszeile weiter ein einziger, mit dem Avatar zentrierter 44px-Block.
+            if (bounds.status.height <= 24) {
+              expect(bounds.title.top).toBeCloseTo(bounds.avatar.top, 0);
+              expect(bounds.status.bottom).toBeCloseTo(bounds.avatar.bottom, 0);
+            } else {
+              expect(bounds.title.top).toBeGreaterThanOrEqual(bounds.header.top);
+              expect(bounds.status.bottom).toBeLessThanOrEqual(bounds.header.bottom);
+            }
             expect(bounds.status.right).toBeLessThanOrEqual(bounds.avatar.x - 8);
           }
         }

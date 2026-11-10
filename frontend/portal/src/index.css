@@ -401,6 +401,12 @@ svg [tabindex]:focus-visible {
   height: 68px;
   border-bottom: 1px solid var(--vp-border);
 }
+/* B3: das Bildzeichen existiert nur für die Tablet-Schiene (Shell.css,
+   721-1023px) - überall sonst zeigt die Wortmarke, das Zeichen bleibt
+   verborgen (keine doppelte Marke, kein Sprung beim Resize). */
+.vp-sidebar .brand .vp-brand-zeichen {
+  display: none;
+}
 .vp-sidebar .brand img {
   /* Die BESCHNITTENE Wortmarke (640x152) fuellt die Markenflaeche. Sie loeste
      die 292-kB-Bestandsdatei ab (Perf-Review `vp-cockpit-perf-p7` §2 U3) und
@@ -5606,6 +5612,14 @@ button.vp-cl-item.is-off .vp-cl-label {
   .vp-period-tabs button {
     min-height: 44px;
   }
+  /* Filter-Segmente der Geräteliste (B4): derselbe `.vp-seg`-Mechanismus, aber
+     ohne `display:flex` am Knopf selbst - die Zeile muss das Zentrieren mit
+     übernehmen, sonst hängt der Text oben in der gewachsenen Box. */
+  .vp-gu-seg button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
   /* Diagramm-Legenden sind Serien-Schalter, sobald sie Knöpfe sind
      (`button.vp-cl-item.is-toggle` setzt 32px - gleiche Spezifität nötig). */
   button.vp-cl-item.is-toggle {
@@ -5634,6 +5648,67 @@ button.vp-cl-item.is-off .vp-cl-label {
      nur 30–34 px hoch. */
   .vp-chip-action {
     min-height: 44px;
+  }
+  /* G11-Nachtrag B4 (UI/UX-Wartung u1): weitere gemessene Tippflächen unter
+     44 px, je unsichtbar gewachsen (Muster `.vp-vb-schritt`) - die sichtbare
+     Zeile bleibt gleich hoch. `position: relative` steht an jedem Ziel selbst. */
+  .vp-wv-marke::before {
+    content: '';
+    position: absolute;
+    inset: -12px -2px;
+  }
+  .vp-abw-link::before {
+    content: '';
+    position: absolute;
+    inset: -14px -4px;
+  }
+  .vp-mss-aendern::before {
+    content: '';
+    position: absolute;
+    inset: -9px -4px;
+  }
+  .vp-ae-open::before {
+    content: '';
+    position: absolute;
+    inset: -9px -4px;
+  }
+  .vp-ob-bearbeiten::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+  }
+  .vp-zustand-lever::before {
+    content: '';
+    position: absolute;
+    inset: -12px -4px;
+  }
+  .vp-auf-t-plus::before,
+  .vp-auf-t-mehr::before {
+    content: '';
+    position: absolute;
+    inset: -7px -2px;
+  }
+  .vp-auf-t-auf::before {
+    content: '';
+    position: absolute;
+    inset: -11px;
+  }
+  /* „PDF“/„CSV“/„Kriterien ändern“ der Bewertung waren schon auf 32 px gewachsen
+     (`.vp-be-link`), aber nicht bis zur Haus-Regel. Verdoppelte Klasse statt
+     höherer Media-Spezifität: `BewertungErgebnis.css` setzt dieselbe eine
+     Klasse unbedingt auf 32px, die Ladereihenfolge der Bündel entscheidet bei
+     gleicher Spezifität sonst nicht zuverlässig zugunsten dieser Regel. */
+  .vp-be-link.vp-be-link {
+    min-height: 44px;
+  }
+  /* Monatszeilen der Kennzahl-Tabelle (nur ab 721 px, siehe Seitenkommentar):
+     die Zeile selbst muss wachsen - ihre Tabelle scrollt mit `overflow-x: auto`,
+     eine unsichtbare Weitung über die Zelle hinaus würde dort abgeschnitten.
+     Verdoppelte Klasse aus demselben Grund wie bei `.vp-be-link` oben. */
+  .vp-kzs-tabelle.vp-kzs-tabelle th,
+  .vp-kzs-tabelle.vp-kzs-tabelle td {
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
   /* Leaflet lädt seine `.leaflet-touch .leaflet-bar a`-Regel unabhängig von
      unserer Datei. Die höhere Spezifität hält die 44 px deshalb stabil. */

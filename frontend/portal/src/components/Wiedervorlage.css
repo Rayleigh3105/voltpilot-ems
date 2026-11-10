@@ -139,6 +139,7 @@
 }
 /* Eine Marke ist auch Sprungmarke zu ihrem Abschnitt. */
 button.vp-wv-marke {
+  position: relative;
   border: 0;
   cursor: pointer;
 }

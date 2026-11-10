@@ -164,6 +164,7 @@
   font-weight: 600;
 }
 .vp-abw-link {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;

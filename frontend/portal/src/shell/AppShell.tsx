@@ -556,7 +556,11 @@ export function AppShell({
     // hamburger) would only compete with the thumb pattern.
     <aside className="vp-sidebar">
       <div className="brand">
-        <img src={logoUrl} alt="VoltPilot EMS" />
+        <img className="vp-brand-wortmarke" src={logoUrl} alt="VoltPilot EMS" />
+        {/* Tablet-Schiene (721-1023 px, B3): die Wortmarke bleibt bei 56 px
+            Breite unlesbar (~4 px hohe Schrift) - dort zeigt sich nur das
+            Bildzeichen (`public/favicon.svg`), CSS tauscht die beiden. */}
+        <img className="vp-brand-zeichen" src="/favicon.svg" alt="" aria-hidden="true" />
       </div>
       <nav aria-label="Hauptnavigation">
         {hochEintrag !== undefined ? hochNav : showPortfolio && (
