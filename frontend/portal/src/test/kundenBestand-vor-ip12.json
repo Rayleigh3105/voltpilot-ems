@@ -2019,6 +2019,20 @@
       "nachher": "41c4c4175445905afda0904132f06ca4195e2c0e78607e96e04706340a3d5309",
       "commit": "9f018ef42ad1b84d52e5e2b3bfe1e0963f19d66b",
       "grund": "#1714 „jede Zeile öffnet nur ihr Feld“: der Speichern-Knopf des Stammdaten-Blatts heißt „Speichern“, wenn `nur` ein einzelnes Feld öffnet, sonst weiter „Änderungen speichern“; Recht, Handler und Sperre bleiben unverändert."
+    },
+    {
+      "datei": "help/HelpFigure.tsx",
+      "vorher": "5a1742f74b6580d0f1cadeb34d36301ba0755e9fd2008e3daf791d51219317c4",
+      "nachher": "6f9cc6524c08ce413770e25c1c289aa2593911f423debc6c94b3e0b00f8c6bb8",
+      "commit": "fm/vp-a11y-befunde",
+      "grund": "Wartung Barrierefreiheit vp-wartung-a11y-w1 Welle 2 (2.5.3): der Knopf heißt „Vergrößern: Screenshot …“ statt „Screenshot vergrößern: …“ - der Name beginnt mit dem sichtbaren „Vergrößern“; Handler und Ziel bleiben."
+    },
+    {
+      "datei": "shell/HealthBadgeButton.tsx",
+      "vorher": "1d3d9644b287f7592d2da3a9c80560b4c6b4548e8fca70419597c5061cd7c4a7",
+      "nachher": "7cb1df86a0cec37d654482d103cd6124253c83fd4c0cf525b7c8b3ddfed43bce",
+      "commit": "fm/vp-a11y-befunde",
+      "grund": "Wartung Barrierefreiheit vp-wartung-a11y-w1 Welle 2 (2.5.3): der Name beginnt mit dem sichtbaren Text (Zustandswort, Ursache) und hängt „Zustand der Anlage – Details anzeigen“ an, statt umgekehrt; Handler und Popover bleiben."
     }
   ],
   "assistentZusammenfuehrung": {

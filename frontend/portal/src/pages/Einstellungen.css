@@ -90,6 +90,7 @@
   scroll-margin-top: 96px;
 }
 
+.vp-einst-grp > h2,
 .vp-einst-grp > h3 {
   margin: 0 0 0 4px;
   font-family: var(--vp-font-body);

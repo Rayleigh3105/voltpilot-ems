@@ -60,11 +60,13 @@ export function FahrplanAntworten({
               type="button"
               className="vp-antw-knopf"
               aria-expanded={gewaehlt === a.key}
-              aria-label={`${a.frage} ${a.antwort}`}
+              aria-label={`${a.kurz.label}: ${a.kurz.wert}${form === 'spalten' && a.kurz.meta ? `, ${a.kurz.meta}` : ''}. ${a.frage} ${a.antwort}`}
               onClick={() => onWahl(a)}
             >
               <span className="vp-antw-label">{a.kurz.label}</span>
+              {' '}
               <span className={`vp-antw-wert${a.key === 'bringt' ? ` is-geld${a.kurz.ton ? ` is-${a.kurz.ton}` : ''}` : ''}`}>{a.kurz.wert}</span>
+              {form === 'spalten' && a.kurz.meta && ' '}
               {form === 'spalten' && a.kurz.meta && <span className="vp-antw-meta">{a.kurz.meta}</span>}
             </button>
           </li>

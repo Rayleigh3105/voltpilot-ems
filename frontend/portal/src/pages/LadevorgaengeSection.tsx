@@ -148,6 +148,10 @@ export function LadevorgaengeSection({
 
   return (
     <div className="vp-lade-page">
+      {/* Diese Unterseite hat (anders als „Einstellungen"/„Aufbau") kein
+          `vp-page-head` und keine eigene sichtbare h1; „Ladevorgänge" weiter
+          unten ist nur eine Karte unter mehreren (1.3.1). */}
+      <h1 className="vp-sr-only">Ladevorgänge</h1>
       {band && (
         <Card>
           <h2 className="vp-lade-h2">Ladeleistung</h2>

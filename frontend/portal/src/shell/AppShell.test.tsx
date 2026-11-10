@@ -292,8 +292,10 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
 
   it('is a real, keyboard-reachable control with a cause-carrying accessible name', () => {
     renderShell({ health: WARN_HEALTH });
+    // The name starts with the visible text (label, cause) in the same order
+    // (WCAG 2.5.3) and appends the context "Zustand der Anlage" at the end.
     const badge = screen.getByRole('button', {
-      name: /Zustand der Anlage: Warnung – Gerät: meldet sich nicht/,
+      name: /Warnung – Gerät: meldet sich nicht\. Zustand der Anlage/,
     });
     expect(badge.tagName).toBe('BUTTON');
     expect(badge.getAttribute('aria-expanded')).toBe('false');

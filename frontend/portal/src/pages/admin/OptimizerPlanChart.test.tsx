@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { OptimizerPlanChart } from './OptimizerPlanChart';
 import { chartTheme } from '../../chartTheme';
 import type { OptimizerDiagnostics, OptimizerSlot } from '../../optimizerApi';
@@ -203,5 +203,86 @@ describe('Admin-PlanChart · die Marken', () => {
     expect(mitWort.map((m: any) => m.label.formatter)).toEqual(['Slot']);
     expect(stumm).toHaveLength(1);
     expect(mitWort[0].label.rotate).toBe(0);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * WCAG 2.1.1 - die Slot-Wahl lief bisher nur über den zrender-Klick, also nur
+ * per Maus auf dem Canvas (Befund D, `vp-wartung-a11y-w1`). Dieselbe Mechanik
+ * wie `ScheduleChart`: Pfeiltasten/Pos1/Ende und Eingabe/Leertaste.
+ * ------------------------------------------------------------------------- */
+describe('Admin-PlanChart · Slot-Auswahl per Tastatur (WCAG 2.1.1)', () => {
+  it('die Fläche ist fokussierbar und trägt die Slider-Rolle', () => {
+    const { container } = render(
+      <OptimizerPlanChart diag={diag(tag)} selectedIdx={1} onSelectSlot={() => {}} />,
+    );
+    const bild = container.querySelector('.vp-chart')!;
+    expect(bild.getAttribute('tabindex')).toBe('0');
+    expect(bild.getAttribute('role')).toBe('slider');
+    expect(bild.getAttribute('aria-valuemin')).toBe('0');
+    expect(bild.getAttribute('aria-valuemax')).toBe('2');
+    expect(bild.getAttribute('aria-valuenow')).toBe('1');
+    expect(bild.getAttribute('aria-valuetext')).toMatch(/^\d{2}:\d{2} Uhr, Batterie /);
+    expect(bild.className).toContain('vp-chart-clickable');
+  });
+
+  it('ohne Auswahl (-1) startet der Tastaturwert beim ersten Slot', () => {
+    const { container } = render(
+      <OptimizerPlanChart diag={diag(tag)} selectedIdx={-1} onSelectSlot={() => {}} />,
+    );
+    const bild = container.querySelector('.vp-chart')!;
+    expect(bild.getAttribute('aria-valuenow')).toBe('0');
+  });
+
+  it('Pfeil rechts/links wählt den Nachbar-Slot relativ zur Auswahl', () => {
+    const onSelectSlot = vi.fn();
+    const { container, rerender } = render(
+      <OptimizerPlanChart diag={diag(tag)} selectedIdx={1} onSelectSlot={onSelectSlot} />,
+    );
+    const bild = container.querySelector('.vp-chart')!;
+    fireEvent.keyDown(bild, { key: 'ArrowRight' });
+    expect(onSelectSlot).toHaveBeenCalledWith(2);
+    fireEvent.keyDown(bild, { key: 'ArrowLeft' });
+    expect(onSelectSlot).toHaveBeenCalledWith(0);
+    rerender(<OptimizerPlanChart diag={diag(tag)} selectedIdx={0} onSelectSlot={onSelectSlot} />);
+    onSelectSlot.mockClear();
+    fireEvent.keyDown(bild, { key: 'ArrowLeft' });
+    // Am linken Rand bleibt der Wert stehen - kein Aufruf, kein Umschalten.
+    expect(onSelectSlot).not.toHaveBeenCalled();
+  });
+
+  it('Pos1/Ende springen an den Anfang/das Ende des Plans', () => {
+    const onSelectSlot = vi.fn();
+    const { container } = render(
+      <OptimizerPlanChart diag={diag(tag)} selectedIdx={1} onSelectSlot={onSelectSlot} />,
+    );
+    const bild = container.querySelector('.vp-chart')!;
+    fireEvent.keyDown(bild, { key: 'Home' });
+    expect(onSelectSlot).toHaveBeenCalledWith(0);
+    fireEvent.keyDown(bild, { key: 'End' });
+    expect(onSelectSlot).toHaveBeenCalledWith(2);
+  });
+
+  it('ein leerer Plan meldet keinen Slot (kein Index -1)', () => {
+    const onSelectSlot = vi.fn();
+    const { container } = render(
+      <OptimizerPlanChart diag={diag([])} selectedIdx={-1} onSelectSlot={onSelectSlot} />,
+    );
+    const bild = container.querySelector('.vp-chart')!;
+    for (const key of ['ArrowRight', 'ArrowLeft', 'Home', 'End', 'Enter']) fireEvent.keyDown(bild, { key });
+    expect(onSelectSlot).not.toHaveBeenCalled();
+  });
+
+  it('Eingabe/Leertaste wählt den aktuellen Slot', () => {
+    const onSelectSlot = vi.fn();
+    const { container } = render(
+      <OptimizerPlanChart diag={diag(tag)} selectedIdx={1} onSelectSlot={onSelectSlot} />,
+    );
+    const bild = container.querySelector('.vp-chart')!;
+    fireEvent.keyDown(bild, { key: 'Enter' });
+    expect(onSelectSlot).toHaveBeenCalledWith(1);
+    onSelectSlot.mockClear();
+    fireEvent.keyDown(bild, { key: ' ' });
+    expect(onSelectSlot).toHaveBeenCalledWith(1);
   });
 });

@@ -375,7 +375,8 @@ describe('Flotte als Gerätewand (Konzept vp-flottenbild-konzept, E1=B, E2=A)', 
     const onNavigate = vi.fn();
     fleet.mockResolvedValue({ sites: [site('s1', 'Wohnhaus Hörmann', { tenantName: 'Hörmann', boxes: [box('edge-k7q2m9x')] })] });
     render(<PlattformUebersichtPage onNavigate={onNavigate} />);
-    const kachel = await screen.findByRole('button', { name: /^Hörmann, Wohnhaus Hörmann: verbunden/ });
+    // „verbunden" ist der Grundzustand: kein Abzeichen, kein Zustandswort im Namen (nur Abweichungen tragen eines).
+    const kachel = await screen.findByRole('button', { name: /^Hörmann Wohnhaus Hörmann: Geräteakte öffnen$/ });
     expect(within(kachel).getByText('Hörmann')).toBeInTheDocument();
     expect(within(kachel).getByText('Wohnhaus Hörmann')).toBeInTheDocument();
     fireEvent.click(kachel);
@@ -394,7 +395,8 @@ describe('Flotte als Gerätewand (Konzept vp-flottenbild-konzept, E1=B, E2=A)', 
     expect(flotte.getByText('offline')).toBeInTheDocument();
     expect(flotte.queryByText('verbunden')).toBeNull();
     expect(flotte.queryByText('nie gemeldet')).toBeNull();
-    expect(flotte.getAllByTestId('ueb-flotte-box')[0]).toHaveAccessibleName(/Haus B: offline/);
+    // Der Name beginnt mit dem Zustandswort wie die Kachel selbst (WCAG 2.5.3).
+    expect(flotte.getAllByTestId('ueb-flotte-box')[0]).toHaveAccessibleName(/^offline .*Haus B/);
     expect(flotte.getByText('2 Boxen · 1 Kunde')).toBeInTheDocument();
   });
 
@@ -438,7 +440,7 @@ describe('Flotte als Gerätewand (Konzept vp-flottenbild-konzept, E1=B, E2=A)', 
       const klappe = flotte.getByRole('button', { name: /12 weitere Boxen · alle verbunden/ });
       expect(klappe).toHaveAttribute('aria-expanded', 'false');
       expect(flotte.getAllByRole('button', { name: /Geräteakte öffnen/ }).map((b) => b.getAttribute('aria-label')))
-        .toEqual([expect.stringMatching(/^Kunde 00, Haus 0: offline/)]);
+        .toEqual([expect.stringMatching(/^offline Kunde 00 Haus 0/)]);
       fireEvent.click(klappe);
       expect(klappe).toHaveAttribute('aria-expanded', 'true');
       expect(flotte.getAllByRole('button', { name: /Geräteakte öffnen/ })).toHaveLength(13);

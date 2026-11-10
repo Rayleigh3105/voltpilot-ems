@@ -69,6 +69,8 @@
 .vp-help-image { position: relative; min-width: 0; }
 .vp-help-image img { display: block; width: 100%; height: auto; }
 .vp-help-marker { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 25px; height: 25px; background: var(--vp-action); color: white; border: 2px solid white; border-radius: 50%; font-size: 12px; font-weight: 700; box-shadow: 0 1px 4px #0005; }
+/* Die Zahl als generierter Inhalt, kein Textknoten (siehe HelpFigure.tsx). */
+.vp-help-marker::before { content: attr(data-n); }
 .vp-help-enlarge { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 6px; background: var(--vp-surface); color: var(--vp-action); box-shadow: 0 1px 6px #0002; font-size: 11px; }
 .vp-help-callouts { padding: 12px 20px 12px 40px; margin: 0; text-align: left; }
 .vp-help-callouts li { font-size: 13px; line-height: 1.65; padding-left: 4px; margin: 8px 0; }

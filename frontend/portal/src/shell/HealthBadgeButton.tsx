@@ -91,8 +91,10 @@ export function HealthBadgeButton({
 
   const cause = health.detail;
   // The accessible name carries state AND cause, so a screen reader hears what
-  // the sighted customer reads — never just the word "Warnung".
-  const ariaLabel = `Zustand der Anlage: ${health.label}${cause ? ` – ${cause}` : ''}. Details anzeigen`;
+  // the sighted customer reads — never just the word "Warnung". It starts
+  // with the visible text (label, cause) in the same order (WCAG 2.5.3) and
+  // appends the context a sighted customer gets from the top bar alone.
+  const ariaLabel = `${health.label}${cause ? ` – ${cause}` : ''}. Zustand der Anlage – Details anzeigen`;
 
   return (
     <>
@@ -109,6 +111,7 @@ export function HealthBadgeButton({
       >
         <span className="vp-health-dot" aria-hidden="true" />
         <span className="vp-healthbadge-lbl">{health.label}</span>
+        {cause && ' '}
         {cause && <span className="vp-healthbadge-cause">{cause}</span>}
         <Icon name="chevron-down" size={14} className="vp-healthbadge-caret" />
       </button>

@@ -170,9 +170,13 @@ export function VorschauBand({ v, abfahrt, maxKw, h = 62, preis, label }: {
           {v.slots.map((s, i) => (s.billig ? <i key={i} style={{ left: `${(i / n) * 100}%`, width: `${(1 / n) * 100}%` }} /> : null))}
         </span>
       )}
+      {/* Die Beschriftung kommt aus CSS (`content: attr(data-l)`), nicht als
+          Text-Kind: ein echter Textknoten zählte sonst zum SICHTBAREN Text
+          eines umgebenden Knopfs (axe `label-content-name-mismatch`), obwohl
+          die Achse schon im `aria-label` der Zeichenfläche steht. */}
       <span className="vb-ticks" aria-hidden="true">
         {ticks.map(([t, l, a]) => (
-          <span key={`t${t}`} className={a} style={{ left: `${((t - t0) / n) * 100}%` }}>{l}</span>
+          <span key={`t${t}`} className={a} data-l={l} style={{ left: `${((t - t0) / n) * 100}%` }} />
         ))}
       </span>
     </span>

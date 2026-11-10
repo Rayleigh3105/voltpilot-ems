@@ -441,7 +441,7 @@ describe('Steuerung · Reiter Laden', () => {
     const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
     expect(within(karte).getByRole('button', { name: /Smart/ })).toHaveAttribute('aria-pressed', 'true');
     // Konzept k1 (E1=B): die Zeile öffnet das Vorschau-Blatt; Antippen zeigt nur, „So laden“ sendet.
-    fireEvent.click(within(karte).getByRole('button', { name: /^Womit laden: / }));
+    fireEvent.click(within(karte).getByRole('button', { name: /Womit laden – ändern$/ }));
     const blatt = await screen.findByRole('dialog', { name: /Womit laden/ });
     fireEvent.click(within(blatt).getByRole('radio', { name: /Günstig/ }));
     expect(setze).not.toHaveBeenCalled();
@@ -618,7 +618,7 @@ describe('Steuerung · Rechte (AP-03 IP-12)', () => {
     zeigeAls('MD', 'laden');
     const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
     expect(within(karte).getByRole('group', { name: 'Lademodus' })).toBeInTheDocument();
-    expect(within(karte).getByRole('button', { name: /^Womit laden: / })).toBeInTheDocument();
+    expect(within(karte).getByRole('button', { name: /Womit laden – ändern$/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Automatik an/ })).toBeEnabled();
   });
 });
@@ -639,7 +639,7 @@ describe('Steuerung · Reiter Laden · Sonne + Speicher', () => {
     const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
     // „Smart“ bleibt das Wort der Moduswahl; die neue Quelle steht im Blatt neben den drei bisherigen.
     expect(within(karte).getByRole('button', { name: /Smart/ })).toBeInTheDocument();
-    fireEvent.click(within(karte).getByRole('button', { name: /^Womit laden: / }));
+    fireEvent.click(within(karte).getByRole('button', { name: /Womit laden – ändern$/ }));
     const blatt = await screen.findByRole('dialog', { name: /Womit laden/ });
     expect(within(blatt).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['sonne', 'min', 'speicher', 'guenstig']);
     fireEvent.click(within(blatt).getByRole('radio', { name: /Sonne \+ Speicher/ }));
@@ -653,7 +653,7 @@ describe('Steuerung · Reiter Laden · Sonne + Speicher', () => {
     const setze = vi.spyOn(api, 'setzeSteuerart');
     zeige('laden');
     const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
-    fireEvent.click(within(karte).getByRole('button', { name: /^Womit laden: / }));
+    fireEvent.click(within(karte).getByRole('button', { name: /Womit laden – ändern$/ }));
     const blatt = await screen.findByRole('dialog', { name: /Womit laden/ });
     const wahl = within(blatt).getByRole('radio', { name: /Sonne \+ Speicher/ });
     expect(wahl).toBeDisabled();
@@ -678,7 +678,7 @@ describe('Steuerung · Reiter Laden · Sonne + Speicher', () => {
       storagePriority: 'speicher_vor_auto', storageReleaseReserveKwh: 2, storageReleaseReserveStandardKwh: 1 });
     zeige('laden');
     const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
-    expect(within(karte).getByRole('button', { name: /^Womit laden: Sonne \+ Speicher/ })).toBeInTheDocument();
+    expect(within(karte).getByRole('button', { name: /^Sonne \+ Speicher: .*Womit laden – ändern$/ })).toBeInTheDocument();
     expect(within(karte).getByText(/Der Speicher gibt gerade bis 3,8 kW frei und darf bis 22 % entladen \(jetzt 80 %\)/)).toBeInTheDocument();
     const reserve = await screen.findByRole('region', { name: 'Reserve für Sonne + Speicher' });
     expect(within(reserve).getByText(/behält 1 kWh mehr.*\(Vorgabe\)/)).toBeInTheDocument();

@@ -286,31 +286,45 @@ function LadeKarte({
       {wahl === 'smart' && (
         <>
           <div className="blk">
-            <h3>Womit laden{platz > 0 && <span className="meta">Platz {platz}</span>}</h3>
+            {/* h2, nicht h3: die Seite trägt bereits ein h1, kein h2 dazwischen (1.3.1). */}
+            <h2>Womit laden{platz > 0 && <span className="meta">Platz {platz}</span>}</h2>
             {q && vor && saetze ? (
-              <WahlZeile darf={darf} label={`Womit laden: ${LADEQUELLE[q]}. Ändern`} onClick={oeffneWahl}>
+              <WahlZeile darf={darf} label={`${LADEQUELLE[q]}: ${LADEQUELLE_VERSPRECHEN[q]}. Womit laden – ändern`} onClick={oeffneWahl}>
                 <QuelleZeichen q={q} klein />
-                <span className="lq-t"><b>{LADEQUELLE[q]}</b><small>{LADEQUELLE_VERSPRECHEN[q]}</small></span>
+                <span className="lq-t"><b>{LADEQUELLE[q]}</b> <small>{LADEQUELLE_VERSPRECHEN[q]}</small></span>
                 {darf && <span className="lq-chev" aria-hidden="true"><Ic n="chevR" s={18} /></span>}
                 {/* Die Vorschau ist eine Zusage - sie entfällt, solange VoltPilot
-                    nichts bewirkt oder das Auto selbst nichts nimmt. */}
+                    nichts bewirkt oder das Auto selbst nichts nimmt. Beide
+                    Flächen sind eine Vorschau der Karte für sehende Nutzer,
+                    kein zweiter Name des Knopfs (der Name oben nennt schon
+                    Quelle und Aktion): `aria-hidden` auf der Fläche und der
+                    Satz als CSS-Inhalt (`content: attr(data-satz)`), kein
+                    Textknoten - sonst zählte er trotz `aria-hidden` zum
+                    SICHTBAREN Text des Knopfs (axe `label-content-name-
+                    mismatch`; dieselbe Falle wie die Achsenbeschriftung in
+                    `VorschauBand`, siehe dort). */}
                 {!sperre && !autoPausiert && (
-                  <span className="lq-mini">
+                  <span className="lq-mini" aria-hidden="true">
                     <VorschauBand v={vor.vorschau} abfahrt={vor.abfahrt} maxKw={g.nennKw ?? 11} h={36} preis={q === 'guenstig'}
                       label={`${LADEQUELLE[q]}: geschätzte Ladeleistung bis ${uhrKurz(vor.abfahrt)} Uhr nach Herkunft`} />
                   </span>
                 )}
                 {!sperre && (
-                  <span className="lq-satz">
-                    {autoPausiert
-                      ? [autoPausiert.word, autoPausiert.detail].filter(Boolean).join(' · ')
-                      : mitAuto(saetze.jetzt, !!l?.angesteckt)}
-                    {saetze.dann && !autoPausiert && <small>{saetze.dann} · Schätzung</small>}
+                  <span
+                    className="lq-satz"
+                    aria-hidden="true"
+                    data-satz={
+                      autoPausiert
+                        ? [autoPausiert.word, autoPausiert.detail].filter(Boolean).join(' · ')
+                        : mitAuto(saetze.jetzt, !!l?.angesteckt)
+                    }
+                  >
+                    {saetze.dann && !autoPausiert && <small data-satz={`${saetze.dann} · Schätzung`} />}
                   </span>
                 )}
               </WahlZeile>
             ) : (
-              <WahlZeile darf={darf} label="Womit laden: noch nicht gewählt. Wählen" onClick={oeffneWahl}>
+              <WahlZeile darf={darf} label="Noch nicht gewählt: Tippen, um zu wählen. Womit laden – wählen" onClick={oeffneWahl}>
                 <span className="lq-t"><b>Noch nicht gewählt</b><small>Tippen, um zu wählen</small></span>
                 {darf && <span className="lq-chev" aria-hidden="true"><Ic n="chevR" s={18} /></span>}
               </WahlZeile>
