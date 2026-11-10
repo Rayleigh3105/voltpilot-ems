@@ -74,8 +74,14 @@ class WerteControllerIT {
         TopologyRepository topologyRepo = new TopologyRepository(app);
         EntityTypeCatalog catalog = new EntityTypeCatalog(new ObjectMapper());
         DeviceChargerStatusRepository ladepunkte = new DeviceChargerStatusRepository(app);
+        com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum = new com.voltpilot.api.components.ZaehlerbaumService(
+                new com.voltpilot.api.zugriff.Geltungsbereich(app),
+                new com.voltpilot.api.components.KomponenteHaengtAnRepository(app),
+                mock(com.voltpilot.api.uems.MessstelleQuelleRepository.class),
+                mock(com.voltpilot.api.uems.MessstelleZuordnungService.class));
         TopologyService topologyService = new TopologyService(registry, topologyRepo, catalog,
-                new ObjectMapper(), ladepunkte, mock(EntityRegistryService.class), mock(RollenZuordnungService.class));
+                new ObjectMapper(), ladepunkte, mock(EntityRegistryService.class), mock(RollenZuordnungService.class),
+                zaehlerbaum);
         AnlagenflussWerteLeser leser = new AnlagenflussWerteLeser(topologyService, ladepunkte,
                 new PriceRepository(app), app);
         controller = new WerteController(new WerteKatalog(), leser, topologyService,

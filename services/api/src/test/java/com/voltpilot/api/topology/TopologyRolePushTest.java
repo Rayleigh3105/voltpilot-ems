@@ -58,7 +58,11 @@ class TopologyRolePushTest {
         when(repo.overrides(eq(SITE))).thenReturn(List.of());
         when(repo.latestValues(any(), any())).thenReturn(List.of());
         when(chargers.connectionsByEntity(eq(SITE))).thenReturn(Map.of());
-        service = new TopologyService(registry, repo, catalog, new ObjectMapper(), chargers, push, mock(RollenZuordnungService.class));
+        com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum =
+                mock(com.voltpilot.api.components.ZaehlerbaumService.class);
+        when(zaehlerbaum.baum(eq(SITE))).thenReturn(Map.of());
+        service = new TopologyService(registry, repo, catalog, new ObjectMapper(), chargers, push,
+                mock(RollenZuordnungService.class), zaehlerbaum);
         TenantContext.set(TENANT);
     }
 

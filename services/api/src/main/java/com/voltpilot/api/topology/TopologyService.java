@@ -2,6 +2,7 @@ package com.voltpilot.api.topology;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.components.ZaehlerbaumService;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
@@ -80,10 +81,12 @@ public class TopologyService {
     private final DeviceChargerStatusRepository chargers;
     private final EntityRegistryService push;
     private final RollenZuordnungService rollen;
+    private final ZaehlerbaumService zaehlerbaum;
 
     public TopologyService(EntityRegistryRepository registry, TopologyRepository repo,
             EntityTypeCatalog catalog, ObjectMapper mapper,
-            DeviceChargerStatusRepository chargers, EntityRegistryService push, RollenZuordnungService rollen) {
+            DeviceChargerStatusRepository chargers, EntityRegistryService push, RollenZuordnungService rollen,
+            ZaehlerbaumService zaehlerbaum) {
         this.registry = registry;
         this.repo = repo;
         this.catalog = catalog;
@@ -91,6 +94,7 @@ public class TopologyService {
         this.chargers = chargers;
         this.push = push;
         this.rollen = rollen;
+        this.zaehlerbaum = zaehlerbaum;
     }
 
     private AnlagensteuerungLesung steuerungen;
@@ -229,6 +233,9 @@ public class TopologyService {
         // need (C2). One small indexed read; a site without a charge point gets
         // an empty map and resolves byte-identically to before.
         Map<UUID, String> connections = chargers.connectionsByEntity(siteId);
+        // Zählerbaum-Konzept: woran jede Komponente heute hängt (null = Wurzel) -
+        // nur für den Verbraucher-Knoten gebraucht, aber harmlos an jedem Mitglied.
+        Map<UUID, UUID> haengtAn = zaehlerbaum.baum(siteId);
         Instant now = Instant.now();
         Set<String> firstSeen = new HashSet<>();
         // EZ-22: eine Anlagensteuerung hat keinen Messkanal in telemetry_v2 (Katalog default_measure: []) - ihre
@@ -282,8 +289,9 @@ public class TopologyService {
             entities.add(new EntityTopologyDto(row.id(), row.entityType(),
                     catalog.labelFor(row.entityType()), row.label(), category, health, connection,
                     caps));
+            UUID eltern = haengtAn.get(row.id());
             derivIn.add(new TopologyDeriver.EntityInput(row.id().toString(), row.entityType(),
-                    label(row), category, health, derivCaps));
+                    label(row), category, health, derivCaps, eltern == null ? null : eltern.toString()));
         }
 
         TopologyDeriver.Topology topo = TopologyDeriver.derive(new TopologyDeriver.Input(derivIn));

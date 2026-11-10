@@ -75,14 +75,22 @@ public class ZaehlerbaumService {
 
     // ------------------------------------------------------------------ Lesen
 
-    /** Woran eine Komponente HEUTE hängt; {@code null} = an der Wurzel. */
+    /**
+     * Woran eine Komponente HEUTE hängt; {@code null} = an der Wurzel.
+     *
+     * <p><b>Kein {@code requireSite}:</b> {@link #baum} speist das
+     * Topologie-Lesemodell ({@code TopologyService#topology}), das für eine
+     * fremde Anlage absichtlich leer statt 404 bleibt (ein Leser baut daraus
+     * sein eigenes „unbekannt"). Ein direkter Lese-Weg für den Zählerbaum
+     * selbst prüft die Sichtbarkeit am Controller, wie {@code WerteController}
+     * es mit seinem eigenen {@link Geltungsbereich} tut.
+     */
     public UUID haengtAnHeute(UUID siteId, UUID komponenteId) {
         return baum(siteId).get(komponenteId);
     }
 
     /** Der ganze aktive Baum einer Anlage heute: komponente_id → haengt_an. */
     public Map<UUID, UUID> baum(UUID siteId) {
-        geltungsbereich.requireSite(siteId);
         return zuordnungen.aktiverBaum(siteId, heute());
     }
 
