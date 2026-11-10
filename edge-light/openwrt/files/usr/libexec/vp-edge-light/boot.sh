@@ -52,6 +52,7 @@ config_get WEB_ADDR main web_addr ":8484"
 config_get BUS_ADDR main bus_addr "127.0.0.1:1883"
 config_get MEMLIMIT main gomemlimit "48MiB"
 config_get MIN_FREE_KB main min_free_kb "40000"
+config_get PROZESS_RESERVE_KB main prozess_reserve_kb "20000"
 config_get LOCAL_DIR main local_dir "/usr/share/vp-edge-light"
 # Wache der Probe (dieselben Zahlen wie die Docker-Box): Frist in s, Starts,
 # Probestart-Frist in s, Takt der Wache in s.
@@ -66,7 +67,9 @@ BIN="$RAM_DIR/vp-edge-light"
 NAME="vp-edge-light-linux-$ARCH"
 LOCAL_GZ="$LOCAL_DIR/$NAME.gz"
 # Zeile 1: sha256 des ENTPACKTEN Programms, Zeile 2 (seit Updates): sha256 der
-# gepackten Kopie - mit ihr laesst sich genau diese Fassung nachladen.
+# gepackten Kopie - mit ihr laesst sich genau diese Fassung nachladen. Dazu
+# (seit der Bedarfs-Schwelle) die Zeile "groesse <bytes> <gz_bytes>": aus der
+# Groesse des entpackten Programms leitet der Loader seine Speicherschwelle ab.
 LOCAL_SUM="$LOCAL_DIR/$NAME.sha256"
 OTA_FEST="$DATA_DIR/ota"
 OTA_RAM="$RAM_DIR/ota"
@@ -123,16 +126,37 @@ mkdir -p "$OTA_FEST" "$OTA_RAM" || exit 1
 # Kernels zaehlt also nie als frei. Bewusst NICHT MemFree + Inactive(file): das
 # zaehlt Seiten, die gerade nicht frei werden (gemappt, schmutzig), und
 # uebergeht die Reserve - und das Programm im tmpfs ist ohne Swap nicht
-# verdraengbar, eine zu hohe Schaetzung endet beim OOM-Killer. Die Schwelle
-# selbst bleibt (Programm ~16 MB plus Prozess ~20 MB, die Fassung waechst).
+# verdraengbar, eine zu hohe Schaetzung endet beim OOM-Killer.
+#
+# Die Schwelle ist seit dem Tausch-Vorfall an der Box "Zuhause" (11.2026, knapp
+# unter 40 000 kB auch nach dem Raeumen) der TATSAECHLICHE Bedarf der Fassung:
+# Groesse des entpackten Programms (tmpfs) plus PROZESS_RESERVE_KB fuer
+# Prozess und Entpacken (gemessene VmRSS 16-18 MB plus ~2 MB, mango.md
+# "Speicherbudget"). So gelingt der Tausch auf jeder Box, die das laufende
+# Programm halten kann - und eine gewachsene Fassung wird ehrlich verweigert,
+# auch wenn mehr als die alte Pauschale frei ist. Nur wenn die Groesse
+# unbekannt ist (Pruefsummen-Datei ohne groesse-Zeile), gilt die Pauschale
+# MIN_FREE_KB wie bisher.
 
 free_kb() { awk '/^MemAvailable:/ {print $2; exit}' "$PROC/meminfo"; }
 
-# genug_speicher <Folge> - 0, wenn das Programm Platz hat (oder der Wert
-# unbekannt ist); sonst Meldung "zu wenig freier Speicher ... - <Folge>".
+# bedarf_kb <groesse_bytes> - was Entpacken und Start dieser Fassung brauchen:
+# das entpackte Programm liegt im tmpfs, dazu Prozess und Entpacken
+# (PROZESS_RESERVE_KB). Ohne bekannte Groesse gilt die Pauschale MIN_FREE_KB.
+bedarf_kb() {
+  case "${1:-}" in
+    '' | *[!0-9]* | 0) echo "$MIN_FREE_KB" ;;
+    *) echo $(($1 / 1024 + PROZESS_RESERVE_KB)) ;;
+  esac
+}
+
+# genug_speicher <Folge> [schwelle_kb] - 0, wenn das Programm Platz hat (oder
+# der Wert unbekannt ist); sonst Meldung "zu wenig freier Speicher ... -
+# <Folge>". Ohne zweite Angabe gilt die Pauschale MIN_FREE_KB.
 genug_speicher() {
+  schwelle="${2:-$MIN_FREE_KB}"
   avail="$(free_kb)"
-  if [ -z "$avail" ] || [ "$avail" -ge "$MIN_FREE_KB" ]; then return 0; fi
+  if [ -z "$avail" ] || [ "$avail" -ge "$schwelle" ]; then return 0; fi
   sync
   if { echo 1 >"$PROC/sys/vm/drop_caches"; } 2>/dev/null; then
     vorher="$avail"
@@ -140,15 +164,15 @@ genug_speicher() {
     # nicht immer schon im selben Augenblick frei.
     for _ in 1 2 3; do
       avail="$(free_kb)"
-      if [ -z "$avail" ] || [ "$avail" -ge "$MIN_FREE_KB" ]; then break; fi
+      if [ -z "$avail" ] || [ "$avail" -ge "$schwelle" ]; then break; fi
       sleep 1
     done
     log "Seitencache geraeumt: ${vorher} kB -> ${avail} kB verfuegbar"
-    if [ -z "$avail" ] || [ "$avail" -ge "$MIN_FREE_KB" ]; then return 0; fi
+    if [ -z "$avail" ] || [ "$avail" -ge "$schwelle" ]; then return 0; fi
   else
     log "Seitencache nicht raeumbar ($PROC/sys/vm/drop_caches)"
   fi
-  log "zu wenig freier Speicher (${avail} kB < ${MIN_FREE_KB} kB) - $1"
+  log "zu wenig freier Speicher (${avail} kB < ${schwelle} kB) - $1"
   return 1
 }
 
@@ -172,13 +196,14 @@ versuch() {
 
 # --- Bestaetigte Fassung aus dem Flash (oder nachgeladen) ---------------------
 
-# nachladen <gz_sha256> <sha256> - genau diese Fassung aus dem Portal holen,
-# gegen beide Pruefsummen pruefen, entpacken und die Kopie im Flash erneuern.
+# nachladen <gz_sha256> <sha256> [groesse_bytes] - genau diese Fassung aus dem
+# Portal holen, gegen beide Pruefsummen pruefen, entpacken und die Kopie im
+# Flash erneuern.
 nachladen() {
   gzsoll="$1"
   soll="$2"
   rm -f "$BIN" "$BIN.part" "$BIN.gz"
-  genug_speicher "nicht nachgeladen" || return 1
+  genug_speicher "nicht nachgeladen" "$(bedarf_kb "${3:-}")" || return 1
   url="$PORTAL/api/v1/edge/light-programm/$gzsoll"
   uclient-fetch -q -T 120 -O "$BIN.gz" "$url" || { log "bestaetigte Fassung nicht ladbar: $url"; rm -f "$BIN.gz"; return 1; }
   if [ "$(summe "$BIN.gz")" != "$gzsoll" ]; then
@@ -212,7 +237,8 @@ nachladen() {
 unpack_local() {
   [ -f "$LOCAL_SUM" ] || { log "keine bestaetigte Fassung ($LOCAL_SUM) - edge-light/openwrt/install.sh ausfuehren"; return 1; }
   want="$(awk 'NR == 1 {print $1; exit}' "$LOCAL_SUM")"
-  gzwant="$(awk 'NR == 2 {print $1; exit}' "$LOCAL_SUM")"
+  gzwant="$(awk 'NR == 2 && $1 != "groesse" {print $1; exit}' "$LOCAL_SUM")"
+  groesse="$(awk '$1 == "groesse" {print $2; exit}' "$LOCAL_SUM")"
   # Neustart durch procd (Absturz, Update-Neustart): liegt GENAU diese Fassung
   # schon im RAM, wird sie genommen. Sonst die alte Fassung zuerst freigeben -
   # mit ihr im tmpfs reicht der freie Speicher nicht fuers Entpacken.
@@ -225,7 +251,7 @@ unpack_local() {
   fi
   rm -f "$BIN.part"
   if [ -f "$LOCAL_GZ" ]; then
-    genug_speicher "lokale Kopie nicht entpackt" || return 1
+    genug_speicher "lokale Kopie nicht entpackt" "$(bedarf_kb "$groesse")" || return 1
     if gunzip -c "$LOCAL_GZ" >"$BIN.part" 2>/dev/null && [ -n "$want" ] && [ "$(summe "$BIN.part")" = "$want" ]; then
       chmod 0755 "$BIN.part" && mv -f "$BIN.part" "$BIN"
       log "lokale Kopie entpackt ($want)"
@@ -235,7 +261,7 @@ unpack_local() {
     log "lokale Kopie unvollstaendig oder passt nicht zur Pruefsumme ($want)"
   fi
   if [ -n "$gzwant" ]; then
-    nachladen "$gzwant" "$want" && return 0
+    nachladen "$gzwant" "$want" "$groesse" && return 0
   fi
   return 1
 }
@@ -265,12 +291,15 @@ behalten() {
   bzuw="$(jwert "$KAND" zuweisung)"
   bsha="$(jwert "$KAND" sha256)"
   bgz="$(jwert "$KAND" gz_sha256)"
+  bsize="$(jwert "$KAND" size)"
+  bgzsize="$(jwert "$KAND" gz_size)"
   if [ -z "$bsha" ] || [ -z "$bgz" ] || [ ! -f "$KGZ" ]; then
     log "Behalten unmoeglich: Kandidat fehlt im RAM"
     return 1
   fi
   mkdir -p "$LOCAL_DIR"
-  printf '%s  %s\n%s  %s\n' "$bsha" "$NAME" "$bgz" "$NAME.gz" >"$LOCAL_SUM.tmp" && mv -f "$LOCAL_SUM.tmp" "$LOCAL_SUM"
+  printf '%s  %s\n%s  %s\ngroesse %s %s\n' "$bsha" "$NAME" "$bgz" "$NAME.gz" \
+    "${bsize:-0}" "${bgzsize:-0}" >"$LOCAL_SUM.tmp" && mv -f "$LOCAL_SUM.tmp" "$LOCAL_SUM"
   sync
   versuch ok "$bseq" "${bzuw:--}"
   # Nur eine Fassung passt in den Flash: die alte Kopie zuerst weg.
@@ -323,6 +352,7 @@ tauschen() {
   kzuw="$(jwert "$KAND" zuweisung)"
   ksha="$(jwert "$KAND" sha256)"
   kgz="$(jwert "$KAND" gz_sha256)"
+  ksize="$(jwert "$KAND" size)"
   if [ -z "$krel" ] || [ -z "$kseq" ] || [ -z "$ksha" ] || [ -z "$kgz" ]; then
     zurueck "Kandidat unvollstaendig beschrieben"
     return 1
@@ -334,11 +364,16 @@ tauschen() {
   fi
   # Die alte Fassung zuerst freigeben - beide passen nicht nebeneinander.
   rm -f "$BIN" "$BIN.part"
-  if ! genug_speicher "Kandidat nicht entpackt"; then
+  if ! genug_speicher "Kandidat nicht entpackt" "$(bedarf_kb "$ksize")"; then
     zurueck "zu wenig freier Speicher zum Entpacken"
     return 1
   fi
-  if ! gunzip -c "$KGZ" >"$BIN.part" 2>/dev/null || [ "$(summe "$BIN.part")" != "$ksha" ]; then
+  if ! gunzip -c "$KGZ" >"$BIN.part" 2>/dev/null; then
+    rm -f "$BIN.part"
+    zurueck "Kandidat nicht entpackbar (kein Platz im RAM oder beschaedigt)"
+    return 1
+  fi
+  if [ "$(summe "$BIN.part")" != "$ksha" ]; then
     zurueck "Programm passt nicht zur Pruefsumme"
     return 1
   fi
@@ -388,6 +423,10 @@ probe_pruefen() {
   # Die Fassung im RAM muss weiter der Kandidat sein.
   if [ "$(summe "$BIN")" != "$(jwert "$KAND" sha256)" ]; then
     rm -f "$BIN"
+    if ! genug_speicher "Kandidat nicht erneut entpackt" "$(bedarf_kb "$(jwert "$KAND" size)")"; then
+      zurueck "zu wenig freier Speicher, um den Kandidaten erneut zu entpacken"
+      return 1
+    fi
     if ! gunzip -c "$KGZ" >"$BIN.part" 2>/dev/null || [ "$(summe "$BIN.part")" != "$(jwert "$KAND" sha256)" ]; then
       rm -f "$BIN.part"
       zurueck "Kandidat im RAM nicht mehr lesbar"

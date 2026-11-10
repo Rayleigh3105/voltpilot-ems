@@ -33,7 +33,13 @@ config vp-edge-light 'main'
 	# Weiches Speicherlimit fuer Go (128 MB RAM teilen sich Router, WireGuard,
 	# das Programm im tmpfs und der Prozess).
 	option gomemlimit '48MiB'
+	# Speicherschwelle des Loaders vor Entpacken/Download: Groesse des
+	# entpackten Programms (groesse-Zeile der Pruefsummen-Datei bzw.
+	# kandidat.json) plus prozess_reserve_kb (gemessene VmRSS 16-18 MB plus
+	# ~2 MB fuers Entpacken). Nur wenn die Groesse unbekannt ist, gilt
+	# min_free_kb pauschal.
 	option min_free_kb '40000'
+	option prozess_reserve_kb '20000'
 	# Bei Speichernot trifft der Kernel zuerst das Programm, nie WireGuard/SSH.
 	option oom_score_adj '800'
 

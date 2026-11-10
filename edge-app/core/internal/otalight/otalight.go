@@ -81,7 +81,10 @@ const (
 
 // Kandidat ist [FileKandidat]: was das Programm geladen und geprueft hat und
 // was der Loader daraus starten darf. Alle Pruefsummen stammen aus dem
-// GEPRUEFTEN Manifest, nie aus dem unsignierten Umschlag.
+// GEPRUEFTEN Manifest, nie aus dem unsignierten Umschlag. Size und GzSize
+// sind tragend: aus Size leitet der Loader seine Speicherschwelle ab
+// (Programm im tmpfs + Prozessreserve, boot.sh bedarf_kb), beide schreibt er
+// beim Behalten als groesse-Zeile in die Pruefsummen-Datei im Flash.
 type Kandidat struct {
 	Release     string `json:"release"`
 	ReleaseSeq  int64  `json:"release_seq"`

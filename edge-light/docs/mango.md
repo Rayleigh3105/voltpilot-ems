@@ -472,7 +472,7 @@ Zwei Lücken für den Pilot, beide am Gerät gefunden:
 
 | Messung | Ergebnis |
 |---|---|
-| Programmgröße `linux/mipsle`, softfloat, ohne Symbole | 13,8 MB (arm64: 12,4 MB); 07.10.2026 nach dem Merge von `main`: 13,9 MiB (14 614 743 B), gzip -9 4 679 121 B; 26.10.2026 (`edge-light-gfdaa013fc`): 14,6 MiB (15 270 103 B), gzip -9 4 851 221 B, also rund 168 KiB weniger freier Flash als am 07.10. |
+| Programmgröße `linux/mipsle`, softfloat, ohne Symbole | 13,8 MB (arm64: 12,4 MB); 07.10.2026 nach dem Merge von `main`: 13,9 MiB (14 614 743 B), gzip -9 4 679 121 B; 26.10.2026 (`edge-light-gfdaa013fc`): 14,6 MiB (15 270 103 B), gzip -9 4 851 221 B, also rund 168 KiB weniger freier Flash als am 07.10.; 10.11.2026: 16,1 MiB (16 842 945 B), gzip -9 5 424 041 B - rund 64 % davon Go-Laufzeit und Standardbibliothek (crypto/TLS/HTTP), der Rest eigene Pakete und Bibliotheken echter Box-Funktionen (OCPP samt Validator, lokaler Bus mochi-mqtt, Treiber); keine Fremd-Box-Pfade im Build, nichts gefahrlos per Build-Tag zu streichen |
 | … komprimiert | gzip -9: 4,4 MB · xz -9e: 3,0 MB |
 | Start unter MIPS-Emulation | Web-App, lokaler Bus, OCPP-Server, Schlüsselerzeugung laufen; kein Absturz |
 | Arbeitsspeicher des Cores (amd64, Simulator) | ca. 10 MB; Node-RED (entfällt) belegte 80–105 MB |
@@ -483,14 +483,22 @@ Zwei Lücken für den Pilot, beide am Gerät gefunden:
 | Posten | ca. |
 |---|---|
 | verfügbar laut Gerät | 65 MB |
-| Programm im tmpfs | − 14 MB |
+| Programm im tmpfs | − 16 MB (10.11.2026; wächst, siehe Programmgröße oben und die Größen-Leitplanke im Release) |
 | Prozess (Go-Laufzeit, Core, Schicht 1) | − 15–30 MB (ohne Gerät gemessen: 16–18 MB; mit Deye und go-e beim Pilot nachmessen), weich begrenzt über `GOMEMLIMIT=48MiB` |
 | RAM-Verzeichnisse (Puffer bis 48 h, Ausgang, OCPP-Ereignisse) | wenige MB, wachsen bei langem Cloud-Ausfall |
 | **Reserve** | **ca. 20–35 MB** |
 
-Der Loader lädt oder entpackt das Programm nur, wenn mindestens 40 MB frei sind (`min_free_kb`, Vorgabe 40000 kB). Gemessen wird `MemAvailable`. Der Kernel rechnet darin vom Seitencache nur etwa die Hälfte als verfügbar und räumt ihn ohne Speicherdruck nicht. Liegt der Wert unter der Schwelle, schreibt der Loader deshalb einmal `sync; echo 1 > /proc/sys/vm/drop_caches` und misst neu; das meldet er mit `Seitencache geraeumt: <vorher> kB -> <nachher> kB verfuegbar`. Erst wenn es auch danach nicht reicht, verschiebt er Download oder Entpacken, und procd versucht es neu.
+Der Loader lädt oder entpackt das Programm nur, wenn der **Bedarf der Fassung** frei ist: Größe des entpackten Programms (es liegt im tmpfs) plus `prozess_reserve_kb` (Vorgabe 20 000 kB: gemessene VmRSS 16–18 MB plus ~2 MB fürs Entpacken).
+Die Größe kennt er aus `kandidat.json` (beim Tausch) beziehungsweise aus der `groesse`-Zeile der Prüfsummen-Datei (beim Start); nur ohne bekannte Größe gilt die Pauschale `min_free_kb` (Vorgabe 40 000 kB).
+Gemessen wird `MemAvailable`. Der Kernel rechnet darin vom Seitencache nur etwa die Hälfte als verfügbar und räumt ihn ohne Speicherdruck nicht.
+Liegt der Wert unter der Schwelle, schreibt der Loader deshalb einmal `sync; echo 1 > /proc/sys/vm/drop_caches` und misst neu; das meldet er mit `Seitencache geraeumt: <vorher> kB -> <nachher> kB verfuegbar`.
+Erst wenn es auch danach nicht reicht, verschiebt er Download oder Entpacken (procd versucht es neu) beziehungsweise nimmt den Kandidaten zurück.
 
-Anlass war die Abnahme am VoltPilotGATE (Mangel M1): Nach einem Update zeigte der Router bei 45 964 kB `MemFree` und 29 092 kB `Inactive(file)` nur ~39 600 kB `MemAvailable`. Die Box blieb über alle Versuche procds aus, bis jemand von Hand `drop_caches` schrieb (danach 73 980 kB). Die Schwelle zu senken wäre keine Lösung: Programm ~16 MB plus Prozess ~20 MB, und die Fassung wächst. `MemFree + Inactive(file)` zu zählen auch nicht: Das schätzt zu hoch (gemappte und schmutzige Seiten, die Reserve des Kernels), und das Programm im tmpfs lässt sich ohne Swap nicht verdrängen. Belegt im Container mit `edge-light/test/boot-speicher-probe.sh` (OpenWrt 25.12.5, nachgestelltes `/proc/meminfo` aus dem Bericht); der Lauf auf dem Gerät steht noch aus.
+Anlass der Prüfung war die Abnahme am VoltPilotGATE (Mangel M1): Nach einem Update zeigte der Router bei 45 964 kB `MemFree` und 29 092 kB `Inactive(file)` nur ~39 600 kB `MemAvailable`. Die Box blieb über alle Versuche procds aus, bis jemand von Hand `drop_caches` schrieb (danach 73 980 kB).
+`MemFree + Inactive(file)` zu zählen wäre keine Lösung: Das schätzt zu hoch (gemappte und schmutzige Seiten, die Reserve des Kernels), und das Programm im tmpfs lässt sich ohne Swap nicht verdrängen.
+Anlass der Bedarfs-Schwelle war der Tausch an der Box „Zuhause" (11.2026): knapp unter 40 000 kB auch nach dem Räumen - die Pauschale nahm das Update zurück, obwohl Programm (16,1 MiB) plus Prozess längst passten.
+Mit der Bedarfs-Schwelle gelingt der Tausch auf jeder Mango, die das laufende Programm halten kann, und eine zu groß gewachsene Fassung wird ehrlich verweigert, selbst wenn mehr als 40 MB frei sind; damit so eine Fassung gar nicht erst entsteht, verweigert `edge-light/scripts/groessen-gate.sh` sie schon im Release (Budget 39 000 kB: die schwächste beobachtete Mango, mit Begründung im Skript).
+Belegt im Container mit `edge-light/test/boot-speicher-probe.sh` (nachgestelltes `/proc/meminfo`) und `edge-light/test/boot-tausch-speicher-probe.sh` (echtes größenbegrenztes tmpfs, OpenWrt 25.12.5); der Lauf auf dem Gerät steht noch aus.
 
 ## Lokale Kopie im Flash (gebaut, am Gerät geprüft 03.10.2026)
 

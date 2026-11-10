@@ -167,6 +167,9 @@ pruefe "base_url auf der Box entfernt" '! uci -q get vp-edge-light.main.base_url
 if [ -n "$MANIFEST" ]; then
   GZ="$(sed -n 's/.*"gz_sha256": "\([0-9a-f]*\)".*/\1/p' "$MANIFEST")"
   pruefe "Pruefsummen-Datei: Zeile 2 ist gz_sha256 aus dem Manifest" "[ \"\$(sed -n 2p /usr/share/vp-edge-light/vp-edge-light-linux-amd64.sha256 | cut -d' ' -f1)\" = $GZ ]"
+  GROESSE="$(wc -c <"$BIN" | tr -d ' ')"
+  pruefe "Pruefsummen-Datei: groesse-Zeile mit der Programmgroesse (Speicherschwelle des Loaders)" \
+    "grep -q '^groesse $GROESSE ' /usr/share/vp-edge-light/vp-edge-light-linux-amd64.sha256"
   pruefe "current.json: $FASSUNG, Stand $SEQ" "grep -q '\"release\":\"$FASSUNG\",\"release_seq\":$SEQ,\"state_schema\":1' /etc/vp-edge-light/ota/current.json"
 fi
 x 'wget -q -O - http://127.0.0.1:8484/health' >"$ARBEIT/health" 2>/dev/null || true
