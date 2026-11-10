@@ -80,6 +80,24 @@ function typFuerZeile(row: SiteComponentRow): TypId {
 }
 
 /**
+ * Zählerbaum-Konzept: wie tief ein Zähler im Baum hängt (0 = der Netzanschluss
+ * oder ein Unterzähler direkt an der Wurzel) - für die Einrückung im Picker
+ * „Wo hängt er?". Bricht einen Kreis ab, statt endlos zu laufen (R6 verhindert
+ * ihn serverseitig; hier nur eine Schutzgrenze gegen einen fehlerhaften Stand).
+ */
+function tiefeZaehler(id: string, alle: readonly SiteComponentRow[]): number {
+  let tiefe = 0;
+  let cur = alle.find((k) => k.id === id);
+  const gesehen = new Set<string>();
+  while (cur?.haengtAn && !gesehen.has(cur.id)) {
+    gesehen.add(cur.id);
+    tiefe += 1;
+    cur = alle.find((k) => k.id === cur!.haengtAn);
+  }
+  return tiefe;
+}
+
+/**
  * Der ANLEGE-FLUSS nach dem Gerätekatalog (Konzept „Aufbau und
  * Gerätekatalog", Runde 2, K1–K6 = A).
  *
@@ -252,6 +270,15 @@ export function AnlegenFlow({
   const [vorhandene, setVorhandene] = useState<string[]>([]);
   const [vorhandeneNamen, setVorhandeneNamen] = useState<VorhandeneGeraete['namen']>({});
   const [vorherigeIds, setVorherigeIds] = useState<{ id: string }[]>([]);
+  /**
+   * Zählerbaum-Konzept (E1 A, Bericht §4.3): die Komponenten der Anlage, aus
+   * denen „Wo hängt er?" seine Auswahl baut - dieselbe Antwort wie `vorhandene`
+   * oben, nur ungekürzt (Rolle, Typ, `haengtAn`), weil der Baum sie braucht.
+   */
+  const [komponenten, setKomponenten] = useState<SiteComponentRow[]>([]);
+  /** „Wo hängt er?": die gewählte Eltern-Komponente, `null` = die Wurzel (der Netzanschluss). */
+  const [haengtAn, setHaengtAn] = useState<string | null>(null);
+  const [haengtAnBeruehrt, setHaengtAnBeruehrt] = useState(false);
   /** Die Komponente, die gerade entstanden ist - BELEGT, nie geraten. */
   /**
    * Die vorhandene Komponente, die dieses Gerät übernimmt - VOM SERVER, nie
@@ -287,6 +314,7 @@ export function AnlegenFlow({
         const { rollen, namen } = vorhandeneGeraete(c.components, edit?.id);
         setVorhandene(rollen);
         setVorhandeneNamen(namen);
+        setKomponenten(c.components);
         if (startTyp && !edit) {
           setRolle((aktuell) => {
             const wahlen = rollenWahl(startTyp, rollen, {}, startTemplate?.deviceType);
@@ -326,6 +354,25 @@ export function AnlegenFlow({
     [alle, typ],
   );
   const rollen = typ ? rollenWahl(typ, vorhandene, vorhandeneNamen, template?.deviceType) : [];
+
+  /**
+   * Zählerbaum-Konzept (E1 A, Bericht §4.3): „Wo hängt er?" nur für einen
+   * NEUEN Unterzähler - ein Netz-Zähler hängt nie irgendwo (R6
+   * `wurzel_haengt_nirgends`), ein Umhängen ist der eigene Weg im Gerätemenü.
+   */
+  const zeigeWoHaengtEr = !edit && typ === 'zaehler' && rolle === 'consumer';
+  const zaehlerAuswahl = useMemo(
+    () =>
+      komponenten.filter((k) => k.role === 'grid-meter' || k.entityType === 'sub-meter'),
+    [komponenten],
+  );
+  const netzanschluss = zaehlerAuswahl.find((k) => k.role === 'grid-meter') ?? null;
+  // Vorbelegung: der Netzanschluss, solange der Kunde noch nicht selbst gewählt hat
+  // (Bericht: „nie aus Messwerten geraten" - hier ist noch nicht einmal eine
+  // Komponente angelegt, also bleibt nur die Wurzel als ehrliche Vorgabe).
+  useEffect(() => {
+    if (zeigeWoHaengtEr && !haengtAnBeruehrt && netzanschluss) setHaengtAn(netzanschluss.id);
+  }, [zeigeWoHaengtEr, haengtAnBeruehrt, netzanschluss]);
 
   /**
    * Die Picker-Zeilen: EINE Zeile je Modell, gruppiert nach Marke. Die
@@ -620,6 +667,10 @@ export function AnlegenFlow({
         expectedRevision: edit?.definitionVersion,
         effectiveAt: edit ? new Date().toISOString() : undefined,
         geraetesuche: !edit && startFund ? startFund : undefined,
+        // „an der Wurzel" (Netzanschluss-Rolle, oder kein Ziel gewählt) schreibt
+        // ausdrücklich KEINE Zuordnung - das ist die Vorgabe des Berichts, nicht
+        // ein unvollständiges Formular.
+        haengtAn: zeigeWoHaengtEr && haengtAn !== netzanschluss?.id ? haengtAn : undefined,
       };
       const result = edit
         ? await api.updateComponent(siteId, edit.id, body)
@@ -1045,7 +1096,8 @@ export function AnlegenFlow({
     const rolleOk = rollen.some((r) => r.rolle === rolle && r.verfuegbar);
     const rollenFrage = rollen.length > 1 || typ === 'zaehler' || !rolleOk;
     const belegt = testZustand === 'bestanden' || Boolean(ohneKanal);
-    const nr = { anschluss: rollenFrage ? 2 : 1, test: rollenFrage ? 3 : 2, name: rollenFrage ? 4 : 3 };
+    const vorWoHaengtEr = (rollenFrage ? 2 : 1) + (zeigeWoHaengtEr ? 1 : 0);
+    const nr = { anschluss: vorWoHaengtEr, test: vorWoHaengtEr + 1, name: vorWoHaengtEr + 2 };
     // Kurz: welche Angaben es sind, steht im Kopf („Sie brauchen") und an den Feldern.
     const fehlendText = fehlend.length === 1 ? `es fehlt: ${fehlend[0].label}` : `${fehlend.length} Angaben fehlen`;
     const testStand: { zustand: AbschnittZustand; stand: string | null } =
@@ -1144,6 +1196,61 @@ export function AnlegenFlow({
                 </p>
               ) : (
                 <p className="vp-assist-error">{rollen[0]?.grund}</p>
+              )}
+            </Abschnitt>
+          )}
+
+          {zeigeWoHaengtEr && (
+            <Abschnitt
+              nummer={vorWoHaengtEr}
+              zustand={haengtAn ? 'fertig' : 'aktiv'}
+              titel="Wo hängt er?"
+            >
+              <p className="vp-ein-notiz">
+                <Icon name="info" size={15} />
+                <span>Hinter welchem Zähler ist er eingebaut?</span>
+              </p>
+              <div className="vp-assist-roles" role="radiogroup" aria-label="Wo hängt er?" data-testid="wo-haengt-er">
+                {netzanschluss && (
+                  <button
+                    key={netzanschluss.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={haengtAn === netzanschluss.id}
+                    className={`vp-assist-role${haengtAn === netzanschluss.id ? ' is-on' : ''}`}
+                    disabled={speichern}
+                    onClick={() => { setHaengtAn(netzanschluss.id); setHaengtAnBeruehrt(true); }}
+                  >
+                    <strong>{netzanschluss.label ?? 'Netzanschluss'}</strong>
+                    <span>Der Hausanschluss - die Wurzel des Zählerbaums.</span>
+                  </button>
+                )}
+                {[...zaehlerAuswahl]
+                  .filter((k) => k.id !== netzanschluss?.id)
+                  .sort((a, b) => tiefeZaehler(a.id, zaehlerAuswahl) - tiefeZaehler(b.id, zaehlerAuswahl)
+                    || (a.label ?? '').localeCompare(b.label ?? '', 'de'))
+                  .map((k) => (
+                    <button
+                      key={k.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={haengtAn === k.id}
+                      className={`vp-assist-role${haengtAn === k.id ? ' is-on' : ''}`}
+                      style={{ marginLeft: `${tiefeZaehler(k.id, zaehlerAuswahl) * 20}px` }}
+                      disabled={speichern}
+                      onClick={() => { setHaengtAn(k.id); setHaengtAnBeruehrt(true); }}
+                    >
+                      <strong>{k.label ?? 'Unterzähler'}</strong>
+                      <span>Unterzähler - eine Unterverteilung oder eine Halle.</span>
+                    </button>
+                  ))}
+              </div>
+              {haengtAn && haengtAn !== netzanschluss?.id && (
+                <p className="vp-assist-help">
+                  {name.trim() || 'Dieses Gerät'} misst dann einen Teil von{' '}
+                  {zaehlerAuswahl.find((k) => k.id === haengtAn)?.label ?? 'diesem Zähler'}. Dieser zeigt dafür, was
+                  ohne eigenen Zähler übrig bleibt.
+                </p>
               )}
             </Abschnitt>
           )}

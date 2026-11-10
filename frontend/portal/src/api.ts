@@ -1915,6 +1915,13 @@ export interface SaveComponentBody {
    * `output_kw`, `stages`, `rotation`, `anschluss`; docs/contracts/v2/heizstab-shelly.md). Fehlt = wie bisher.
    */
   consumerType?: 'heating-rod';
+  /**
+   * Zählerbaum-Konzept (E1 A): hinter welcher Komponente dieser Zähler oder
+   * gemessene Verbraucher eingebaut ist - `undefined`/`null` = an der Wurzel
+   * (dem Netzanschluss). Nur beim Anlegen gelesen; ein späteres Umhängen läuft
+   * über `api.haengtAnSetzen`.
+   */
+  haengtAn?: string | null;
 }
 
 /** Welcher Fund welcher Gerätesuche eine Komponente vorbelegt hat (`schluessel` des Fundes). */
@@ -11228,6 +11235,20 @@ export const api = {
   /** Verbindung ändern - eine NEUE Fassung; die alte bleibt abrufbar. */
   updateComponent: (siteId: string, entityId: string, body: SaveComponentBody) =>
     request<SiteComponents>(`/api/v1/sites/${siteId}/components/${entityId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  /**
+   * Zählerbaum-Konzept (R5 „Seit wann?"): umhängen. `seitWann` ist das
+   * geschlossene Vokabular `schon_immer` (ersetzt den laufenden Abschnitt ab
+   * seinem Beginn) oder `ab_tag` (mit `ab`, einem ISO-Datum JJJJ-MM-TT).
+   */
+  haengtAnSetzen: (
+    siteId: string,
+    entityId: string,
+    body: { haengtAn: string | null; seitWann: 'schon_immer' | 'ab_tag'; ab?: string },
+  ) =>
+    request<SiteComponents>(`/api/v1/sites/${siteId}/components/${entityId}/haengt-an`, {
       method: 'PUT',
       body: JSON.stringify(body),
     }),

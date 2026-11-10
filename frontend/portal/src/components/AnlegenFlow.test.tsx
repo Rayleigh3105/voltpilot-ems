@@ -483,6 +483,54 @@ describe('die Aufgabe folgt dem Modell', () => {
     expect(createComponent.mock.calls[0][1]).toMatchObject({ role: 'grid-meter' });
   });
 
+  it('Zählerbaum: „Wo hängt er?" fragt nur den Unterzähler, mit dem Netzanschluss vorbelegt', async () => {
+    const zaehler = {
+      ...template, templateRef: 'builtin:shelly:shelly-pro-3em', deviceType: 'meter',
+      brand: 'shelly', brandLabel: 'Shelly', model: 'shelly-pro-3em', modelLabel: 'Shelly Pro 3EM',
+    };
+    siteComponents.mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [
+        { id: 'c-netz', role: 'grid-meter', entityType: 'grid-meter', label: 'Netzanschluss', definitionVersion: 1 },
+        { id: 'c-halle', role: 'consumer', entityType: 'sub-meter', label: 'UV Halle', definitionVersion: 1 },
+      ],
+    });
+    await bisZurVerbindung({ startTemplate: zaehler as never, startRolle: 'consumer' });
+    const wohaengt = await screen.findByTestId('wo-haengt-er');
+    // Vorbelegt: der Netzanschluss - nie aus Messwerten geraten.
+    await waitFor(() => expect(wohaengt.querySelector('.is-on')?.textContent).toContain('Netzanschluss'));
+    expect(within(wohaengt).getByText('UV Halle')).toBeInTheDocument();
+
+    fireEvent.click(within(wohaengt).getByText('UV Halle'));
+    expect(screen.getByText(/misst dann einen Teil von/)).toHaveTextContent('UV Halle');
+
+    fuelleFormular();
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1]).toMatchObject({ role: 'consumer', haengtAn: 'c-halle' });
+
+    cleanup();
+    createComponent.mockClear();
+    await bisZurVerbindung({ startTemplate: zaehler as never, startRolle: 'consumer' });
+    await screen.findByTestId('wo-haengt-er');
+    // Am Netzanschluss belassen (die Vorbelegung): keine Zuordnung geschrieben.
+    fuelleFormular();
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1].haengtAn).toBeUndefined();
+  });
+
+  it('ein Netz-Zähler bekommt gar keine Frage „Wo hängt er?" (R6: die Wurzel hängt nirgends)', async () => {
+    const zaehler = {
+      ...template, templateRef: 'builtin:shelly:shelly-pro-3em', deviceType: 'meter',
+      brand: 'shelly', brandLabel: 'Shelly', model: 'shelly-pro-3em', modelLabel: 'Shelly Pro 3EM',
+    };
+    await bisZurVerbindung({ startTemplate: zaehler as never, startRolle: 'grid-meter' });
+    expect(screen.queryByTestId('wo-haengt-er')).toBeNull();
+  });
+
   it('aus der Gerätesuche: der Bezug auf Suche und Fund reist beim Anlegen mit - ohne Fund keiner', async () => {
     const wallbox = {
       ...template,
