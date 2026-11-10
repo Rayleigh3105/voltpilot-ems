@@ -82,6 +82,15 @@ export const MODBUS_GENERIC_TYPE = 'modbus-generic';
 export const MODBUS_LOAD_TYPE = 'modbus-load';
 
 /**
+ * Die komponierte Haus-Last (v1→v2-Rückfüllung): Bezug + Erzeugung − Einspeisung
+ * ± Speicher, „alles hinter dem Netzanschluss". Jeder andere Verbraucher-Posten
+ * (ein Unterzähler, ein Heizstab) steckt physikalisch schon in diesem Wert - der
+ * Knotenwert des Verbraucher-Knotens ist deshalb DIESER eine Posten, nie die
+ * Summe aller (Zählerbaum-Konzept N3/R1, docs/contracts/v2/zaehlerbaum.md §3).
+ */
+export const HOUSE_LOAD_TYPE = 'house-load';
+
+/**
  * Ist dieser Entitäts-TYP selbst gebaut? An der Kategorie ist es - wie beim
  * Ladepunkt - nicht zu erkennen: ein `modbus-generic` ist `meter` (er
  * deklariert keine Schreib-Fähigkeit) und ein `modbus-load` ist `consumer`,
@@ -108,6 +117,12 @@ export interface EntityInput {
   category: string;
   health: string;
   capabilities: CapabilityInput[];
+  /**
+   * Die Zählerbaum-Eltern-Entität (`haengt_an`, Konzept
+   * vp-zaehlerbaum-konzept) - fehlend/`undefined` = an der Wurzel (dem
+   * Netzanschluss), die Vorgabe für jede Bestandsanlage am ersten Tag.
+   */
+  parent_entity_id?: string;
 }
 
 export interface Input {
@@ -119,6 +134,7 @@ export interface FlowMember {
   label: string;
   primary: boolean;
   value_kw?: number;
+  haengt_an?: string;
 }
 
 /**
@@ -243,9 +259,11 @@ interface RoleCap {
 
 function member(rc: RoleCap): FlowMember {
   // Key order matches the Go FlowMember struct (entity_id, label, primary,
-  // value_kw) so JSON.stringify is byte-identical across the two twins.
+  // value_kw, haengt_an) so JSON.stringify is byte-identical across the two
+  // twins.
   const m: FlowMember = { entity_id: rc.entity.id, label: rc.entity.label, primary: rc.cap.primary };
   if (rc.cap.value != null) m.value_kw = round3(rc.cap.value);
+  if (rc.entity.parent_entity_id != null) m.haengt_an = rc.entity.parent_entity_id;
   return m;
 }
 
@@ -292,6 +310,29 @@ function sumNode(role: Role, caps: RoleCap[]): FlowNode {
   const mag = round3(Math.abs(sum));
   const active = mag > DEADBAND_KW;
   const dir = active ? (isConsuming(role) ? 'out' : 'in') : undefined;
+  return makeNode(role, mag, undefined, undefined, active, dir, members);
+}
+
+/**
+ * Der Verbraucher-Knoten (Zählerbaum-Konzept N3/R1): ist eine komponierte
+ * Haus-Last ({@link HOUSE_LOAD_TYPE}) unter den Mitgliedern, ist IHR Wert der
+ * Knotenwert - jedes andere Mitglied (ein Unterzähler, ein Heizstab) steckt
+ * schon in diesem einen Wert, eine Summe über alle zählte doppelt. Ohne eine
+ * solche Haus-Last (ältere/synthetische Eingaben) bleibt die Summe aller
+ * Mitglieder wie bisher ({@link sumNode}) - byte-identisch zu jedem Fall ohne
+ * Haus-Mitglied.
+ */
+function consumerNode(role: Role, caps: RoleCap[]): FlowNode {
+  const haus = caps.find((rc) => rc.entity.type === HOUSE_LOAD_TYPE);
+  if (!haus) return sumNode(role, caps);
+  const members = caps.map((rc) => member(rc));
+  const v = haus.cap.value;
+  if (v == null) {
+    return makeNode(role, undefined, undefined, undefined, false, undefined, members);
+  }
+  const mag = round3(Math.abs(v));
+  const active = mag > DEADBAND_KW;
+  const dir = active ? 'out' : undefined;
   return makeNode(role, mag, undefined, undefined, active, dir, members);
 }
 
@@ -373,6 +414,7 @@ export function derive(input: Input): Topology {
     if (!caps) continue;
     if (role === 'grid') nodes.push(gridNode(role, caps));
     else if (role === 'storage') nodes.push(storageNode(role, caps));
+    else if (role === 'consumer') nodes.push(consumerNode(role, caps));
     else nodes.push(sumNode(role, caps));
   }
   return { schema_version: SCHEMA_VERSION, nodes };

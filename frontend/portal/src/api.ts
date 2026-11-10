@@ -1744,6 +1744,11 @@ export interface SiteEntity {
    */
   capacityKwp?: number | null;
   /**
+   * Zählerbaum-Konzept (E1 A): die Eltern-Komponente im elektrischen Baum
+   * HEUTE, oder `null`/abwesend = hängt an der Wurzel (dem Netzanschluss).
+   */
+  haengtAn?: string | null;
+  /**
    * Der Freigabe-Stand des Gerätetyps aus dem Katalog (`certified` | `in_certification` | `simulator_only` |
    * `not_certified` | `per_device`); null/absent = der Typ hat keinen (Wechselrichter, Zähler) oder ein älteres
    * Backend lässt das Feld weg. Das Abzeichen „Von VoltPilot freigegeben" steht nur ohne Einschränkung.
@@ -2107,6 +2112,11 @@ export interface SiteComponentRow {
    * die übrigen trotzdem angewandt). Abwesend = nicht übersprungen oder von der Box nicht gemeldet.
    */
   rejectedReason?: string | null;
+  /**
+   * Zählerbaum-Konzept (E1 A): die Eltern-Komponente im elektrischen Baum
+   * HEUTE, oder `null`/abwesend = hängt an der Wurzel (dem Netzanschluss).
+   */
+  haengtAn?: string | null;
 }
 
 export interface SiteEntities {

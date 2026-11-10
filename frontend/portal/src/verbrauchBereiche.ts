@@ -38,6 +38,13 @@ export interface BereichEingabe {
   unterzaehler: boolean;
   /** `null` = die Reihe konnte nicht geladen werden. */
   energie: EntityEnergy | null;
+  /**
+   * Zählerbaum-Konzept (R1): die Eltern-Komponente im elektrischen Baum, oder
+   * `null` = hängt direkt am Haus. Nur Teile ohne Eltern gehen in den
+   * Haus-minus-Teile-Rest ein - ein verschachtelter Teil steckt schon im Wert
+   * seiner Eltern-Komponente und würde sonst doppelt abgezogen.
+   */
+  haengtAn: string | null;
 }
 
 export interface BereichZeile {
@@ -101,12 +108,21 @@ export function verbrauchBereiche(input: {
     return m;
   });
 
-  // --- Je Eimer: der Rest, sofern jeder Teil einen Wert hat ------------------
+  // ⚠ Zählerbaum-Konzept R1: nur DIREKTE Kinder des Hauses gehen in den
+  // Haus-minus-Teile-Rest ein. Eine Maschine hinter einer Unterverteilung
+  // (`haengtAn` gesetzt) steckt schon im Wert IHRER Unterverteilung - ein
+  // zweiter Abzug am Haus wäre Doppelzählung. Sie bleibt trotzdem eine eigene
+  // Zeile/Spalte unten (`reihen`, ungefiltert), nur eben außerhalb des Rests.
+  const wurzelIdx = teile.map((t, i) => (t.haengtAn == null ? i : -1)).filter((i) => i >= 0);
+  const wurzelTeile = wurzelIdx.map((i) => teile[i]);
+  const wurzelReihen = wurzelIdx.map((i) => reihen[i]);
+
+  // --- Je Eimer: der Rest, sofern jeder Wurzel-Teil einen Wert hat ----------
   const restJeEimer = new Map<number, number | null>();
   for (const [t, h] of haus) {
     let summe = 0;
     let bestimmbar = true;
-    for (const r of reihen) {
+    for (const r of wurzelReihen) {
       const v = r.get(t);
       if (v == null) {
         bestimmbar = false;
@@ -170,7 +186,7 @@ export function verbrauchBereiche(input: {
 
   zeilen.length = 0;
   zeilen.push(...sortiert);
-  zeilen.push(restZeile(restJeEimer, teile, input.profil, history.bucketMinutes, anteil));
+  zeilen.push(restZeile(restJeEimer, wurzelTeile, input.profil, history.bucketMinutes, anteil));
 
   const saeulen: BereichSaeule[] = Array.from(spalten.entries())
     .filter(([, s]) => s.haus != null)

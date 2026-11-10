@@ -74,7 +74,9 @@ public class EntityController {
             String label, boolean control, UUID deviceId, JsonNode capabilities, JsonNode guards,
             String syncStatus, ObservedDto observed, String edgeSourceId, Boolean orphanedPin,
             java.math.BigDecimal capacityKwp, String sourceKind, String certificationStatus,
-            SocMinDto socMin) {}
+            SocMinDto socMin,
+            /** Zählerbaum-Konzept (E1 A): die Eltern-Komponente HEUTE, {@code null} = Wurzel. */
+            UUID haengtAn) {}
 
     /**
      * Woher der Min. Ladestand eines Speichers kommt - nur an der Speicher-Komponente einer Anlage, deren
@@ -147,6 +149,7 @@ public class EntityController {
     private final EntityHistoryRepository history;
     private final EntityTypeCatalog catalog;
     private final ObjectMapper mapper;
+    private final com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum;
 
     /** Die am Wechselrichter gelesene Entladegrenze; ohne Spring (Tests mit {@code new …}) keine. */
     private WechselrichterUntergrenzeRepository untergrenzen;
@@ -158,13 +161,15 @@ public class EntityController {
 
     public EntityController(Geltungsbereich geltungsbereich, EntityRegistryRepository registry,
             EntityObservedRepository observed, EntityHistoryRepository history,
-            EntityTypeCatalog catalog, ObjectMapper mapper) {
+            EntityTypeCatalog catalog, ObjectMapper mapper,
+            com.voltpilot.api.components.ZaehlerbaumService zaehlerbaum) {
         this.geltungsbereich = geltungsbereich;
         this.registry = registry;
         this.observed = observed;
         this.history = history;
         this.catalog = catalog;
         this.mapper = mapper;
+        this.zaehlerbaum = zaehlerbaum;
     }
 
     @GetMapping
@@ -219,6 +224,7 @@ public class EntityController {
 
         WechselrichterUntergrenzeRepository.Eintrag gelesen = untergrenzen == null ? null
                 : untergrenzen.eintrag(siteId);
+        Map<UUID, UUID> haengtAn = zaehlerbaum.baum(siteId);
         List<EntityDto> entities = new ArrayList<>();
         for (EntityRow row : rows) {
             ObservedRow obs = byEntity.remove(row.id().toString());
@@ -237,7 +243,8 @@ public class EntityController {
                                     obs.reportedAt()),
                     row.edgeSourceId(), orphanedPin, row.capacityKwp(), row.sourceKind(),
                     certificationStatus(row.entityType()),
-                    gelesen != null && row.id().equals(gelesen.entityId()) ? socMin(siteId, gelesen) : null));
+                    gelesen != null && row.id().equals(gelesen.entityId()) ? socMin(siteId, gelesen) : null,
+                    haengtAn.get(row.id())));
         }
         // Whatever the edge still reports that the registry no longer knows.
         List<String> staleOnDevice = new ArrayList<>(byEntity.keySet());

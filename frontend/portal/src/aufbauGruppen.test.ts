@@ -215,6 +215,20 @@ describe('gruppenKopf - Anzahl und ehrliche Summe (GR-3 A)', () => {
     expect(kopf.label).toBe('Verbrauch, 3 Geräte');
   });
 
+  it('Zählerbaum R1: eine Maschine hinter einer Unterverteilung bleibt eigene Zeile, geht aber nicht in die Summe ein', () => {
+    // Genau der gemeldete Fall: UV Halle 7,7 kW, UV Keller 0,1 kW, darin ein
+    // Kompressor mit 3,2 kW (hängt an UV Halle). Vorher zählte die Summe
+    // „zusammen 11,0 kW“ bei 8,1 kW Bezug.
+    const kompressor = verbraucher('kompressor', 'Kompressor', 3.2, 'generic-load');
+    kompressor.komponenten[0].haengtAn = 'k-u1';
+    const kopf = gruppenKopf(
+      'verbrauch',
+      [unterzaehler('u1', 'UV Halle', 7.7), unterzaehler('u2', 'UV Keller', 0.1), kompressor].map((k) => g(k)),
+    );
+    expect(kopf).toMatchObject({ anzahl: 3, summe: '7,8 kW', hinweis: null });
+    expect(kopf.label).toBe('Verbrauch, 3 Geräte, zusammen 7,8 kW');
+  });
+
   it('summiert das Netz nie (zwei Zähler messen oft denselben Anschluss) und nie einen Ladestand', () => {
     const zwei = gruppenKopf('netz', [netz('n1', 'Netz A', 3, 'Bezug'), netz('n2', 'Netz B', 3, 'Bezug')].map((k) => g(k)));
     expect(zwei).toMatchObject({ anzahl: 2, summe: null, hinweis: null });

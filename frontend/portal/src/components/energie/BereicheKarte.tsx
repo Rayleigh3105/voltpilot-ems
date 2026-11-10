@@ -14,6 +14,8 @@ interface Teil {
   entityId: string;
   label: string;
   unterzaehler: boolean;
+  /** Zählerbaum-Konzept (R1): die Eltern-Komponente, oder `null` = Wurzel. */
+  haengtAn: string | null;
 }
 
 /**
@@ -35,6 +37,7 @@ export function bereicheTeile(topology: SiteTopology | null): Teil[] {
         entityId: e.id,
         label: deviceName({ storedLabel: m.label, typeLabel: e.typeLabel }) ?? 'Gerät',
         unterzaehler: e.entityType === 'sub-meter',
+        haengtAn: m.haengt_an ?? null,
       });
     }
   }

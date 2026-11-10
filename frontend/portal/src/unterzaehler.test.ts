@@ -93,6 +93,72 @@ describe('Cockpit „Verbrauch im Detail“ mit Unterverteilungen (UV-1, UV-4)',
   });
 });
 
+// --- Zählerbaum: eine Maschine hinter einer Unterverteilung (R1) -----------
+
+/**
+ * Genau der gemeldete Fall (Screenshot, 10.11.2026): Netzanschluss 8,1 kW,
+ * UV Halle 7,7 kW, UV Keller 0,1 kW, darin ein Kompressor mit 3,2 kW (hängt an
+ * UV Halle, nicht an der Wurzel). Vor dem Zählerbaum-Fix zeigte die Liste
+ * „Verbrauch, 3 Geräte, zusammen 11,0 kW“ bei 8,1 kW Bezug und das Cockpit
+ * „Messwerte passen nicht zusammen (−2,9 kW)“.
+ */
+function haus(): SiteTopology {
+  const cap = (value: number) => ({ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: false, value });
+  return {
+    schemaVersion: '1.0',
+    entities: [
+      entity({ id: 'haus', entityType: 'house-load', typeLabel: 'Hausverbrauch' }),
+      entity({ id: 'halle', label: 'UV Halle' }),
+      entity({ id: 'keller', label: 'UV Keller' }),
+      entity({ id: 'kompressor', label: 'Kompressor', entityType: 'generic-load', typeLabel: 'Kompressor' }),
+    ],
+    topology: {
+      schema_version: '1.0',
+      nodes: [{
+        role: 'consumer', flow_active: true, direction: 'out',
+        members: [
+          { entity_id: 'haus', label: 'Hausverbrauch', primary: true, value_kw: 8.1 },
+          { entity_id: 'halle', label: 'UV Halle', primary: false, value_kw: 7.7 },
+          { entity_id: 'keller', label: 'UV Keller', primary: false, value_kw: 0.1 },
+          {
+            entity_id: 'kompressor', label: 'Kompressor', primary: false, value_kw: 3.2,
+            haengt_an: 'halle',
+          },
+        ],
+      }],
+    },
+  };
+}
+
+describe('Zählerbaum: eine Maschine hinter einer Unterverteilung (R1)', () => {
+  it('zieht den Kompressor NICHT noch einmal vom Haus ab - kein Widerspruch am Haus', () => {
+    const k = verbrauchKomposition({ topology: haus(), profil: 'privat' });
+    expect(k?.hausKw).toBe(8.1);
+    expect(k?.rest.konflikt).toBe(false);
+    expect(k?.rest.kw).toBeCloseTo(0.3, 5); // 8,1 − (7,7 + 0,1)
+  });
+
+  it('UV Halle bekommt ihren eigenen Rest „ohne eigenen Zähler“ (7,7 − 3,2)', () => {
+    const k = verbrauchKomposition({ topology: haus(), profil: 'privat' });
+    const halle = k?.gruppen.flatMap((g) => g.teile).find((t) => t.entityId === 'halle');
+    expect(halle?.kw).toBe(7.7);
+    expect(halle?.eigenerRest?.label).toBe('ohne eigenen Zähler');
+    expect(halle?.eigenerRest?.kw).toBeCloseTo(4.5, 5);
+    expect(halle?.eigenerRest?.konflikt).toBe(false);
+  });
+
+  it('der Kompressor trägt seine Eltern-Komponente und bleibt an keiner Gruppen-Summe doppelt beteiligt', () => {
+    const k = verbrauchKomposition({ topology: haus(), profil: 'privat' });
+    const alle = k?.gruppen.flatMap((g) => g.teile) ?? [];
+    const kompressor = alle.find((t) => t.entityId === 'kompressor');
+    expect(kompressor?.haengtAn).toBe('halle');
+    // Keine Gruppen-Summe zählt Kompressor UND UV Halle zusammen (7,7 + 3,2 wäre doppelt).
+    for (const g of k?.gruppen ?? []) {
+      if (g.kw != null) expect(g.kw).toBeLessThan(7.7 + 3.2);
+    }
+  });
+});
+
 describe('Kanalnamen und Zählerwerte (UV-3)', () => {
   it('ein Zählerstand heißt am Zähler „Zählerstand Bezug“, sonst bleibt „Energie“', () => {
     expect(channelLabelFor('energy_kwh', 'sub-meter')).toBe('Zählerstand Bezug');
@@ -174,6 +240,27 @@ describe('Verlauf: Verbrauch nach Bereichen', () => {
     const csv = bereicheCsv(b!, 'month');
     expect(csv.split('\r\n')[0]).toBe('Beginn;Zeitraum;Haus kWh;UV Halle kWh;UV Keller kWh;übriger Haushalt kWh');
     expect(csv).toContain(';"Summe";123,000;117,000;4,000;2,000');
+  });
+
+  it('Zählerbaum R1: eine Maschine hinter einer Unterverteilung wird vom Haus nicht noch einmal abgezogen', () => {
+    const b = verbrauchBereiche({
+      history: woche([62, 61]),
+      range: 'month',
+      profil: 'privat',
+      teile: [
+        { entityId: 'keller', label: 'UV Keller', unterzaehler: true, energie: energie([2, 2]), haengtAn: null },
+        { entityId: 'halle', label: 'UV Halle', unterzaehler: true, energie: energie([59, 58]), haengtAn: null },
+        {
+          entityId: 'kompressor', label: 'Kompressor', unterzaehler: false,
+          energie: energie([25, 24]), haengtAn: 'halle',
+        },
+      ],
+    });
+    // Derselbe Rest wie ohne den Kompressor (117 + 4 = 121, Haus 123 → Rest 2) -
+    // der Kompressor steckt schon in UV Halles 117 kWh, kein zweiter Abzug.
+    expect(b?.zeilen.find((z) => z.art === 'rest')).toMatchObject({ kwh: 2 });
+    // Der Kompressor bleibt trotzdem eine eigene, sichtbare Zeile.
+    expect(b?.zeilen.find((z) => z.key === 'kompressor')?.kwh).toBe(49);
   });
 
   it('fehlt einem Teil ein Tag, ist der Rest nicht bestimmbar - nie eine Zahl mit der Lücke', () => {
