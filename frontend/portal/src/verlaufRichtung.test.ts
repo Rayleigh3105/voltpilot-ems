@@ -92,7 +92,7 @@ describe('statKacheln — die vier Kacheln', () => {
   });
   it('ohne Regel bleibt alles wie bisher - auch ein negativer Wert', () => {
     const k = statKacheln(stats(-1, 5, 2, 3), 'kW', null);
-    expect(k.min).toEqual({ label: 'Minimum', wert: kw('-1,0 kW'), wort: null });
+    expect(k.min).toEqual({ label: 'Minimum', wert: kw('−1,0 kW'), wort: null });
     expect(k.max.label).toBe('Maximum');
     expect(k.avg.label).toBe('Durchschnitt');
     expect(k.last.label).toBe('Letzter Wert');
