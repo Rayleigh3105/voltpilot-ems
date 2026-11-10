@@ -33,6 +33,8 @@ Der Client `grafana` hat deshalb keinen Platzhalter und keine Variable: Sein Geh
 
 Zugriffstokens leben 900 Sekunden und werden erneuert. Das Remember-Me-Häkchen ist im Theme vorbelegt; die Sitzungsdauer gehört zum Realm. Die installierte Portal-App behält ihren Token-Satz über App-Starts hinweg, angemeldet bleibt sie so lange wie ihre Sitzung nach dieser Tabelle (nach dem Passwort-Grant der Registrierung: „Normal“); Konten mit `platform-admin` behalten ihn nur bis zum Schließen der App.
 
+Ein bestehender Realm bekommt diese fünf Werte (`rememberMe` und die vier Sitzungsdauern) nicht vom Import; `live-realm-anmeldung.sh pruefen`/`angleichen` gleicht sie zusammen mit der Anmelde-Härtung an (vp-login-dauer-d1).
+
 ## Anmeldung härten (UEMS AP-20 IP-20, E12)
 
 Der Import speichert Anmelde- und Admin-Ereignisse 90 Tage lang. Er setzt die Passwort-Vorgabe `length(12) and notUsername and passwordHistory(3)`, die erst beim nächsten Setzen eines Passworts greift. Für `platform-admin` verlangt er den zweiten Faktor (TOTP) im Browser und sperrt den Passwort-Grant; für alle anderen Konten ist der zweite Faktor wählbar. Der Live-Realm bekommt das **nicht** von selbst. Handgriff, Prüfskript, Rückweg und Bestätigung mit Datum stehen im Blatt [Live-Realm = Import](live-realm-import.md). Keycloak prüft die Vorgabe schon beim Import: Ein importiertes Konto mit kürzerem Klartext-Passwort bricht den Start eines neuen Realms ab. `ProduktionsRealmAnmeldungTest` prüft die Datei, `ProduktionsRealmImportTest` lädt sie in Keycloak im Produktionsmodus und fährt Skript und Rückweg des Blatts.

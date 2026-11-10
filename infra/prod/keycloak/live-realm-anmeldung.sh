@@ -2,12 +2,13 @@
 # UEMS AP-20 IP-20 (E12 = A, BT6): Anmelde-Haertung eines BESTEHENDEN Realms - dieselben Werte und Ablaeufe
 # wie der Import voltpilot-realm.json (der Import allein aendert keinen bestehenden Realm).
 #
-#   angleichen  setzt Ereignisse (90 Tage), Passwort-Vorgabe und den bedingten zweiten Faktor, bindet die
-#               Ablaeufe. Gebunden wird erst, wenn beide Ablaeufe vollstaendig sind (Schritt fuer Schritt wie
-#               der Import, samt Rollen-Bedingung). Ein zweiter Lauf legt nichts doppelt an. Nach einem
-#               abgebrochenen Lauf entfernt der naechste die unvollstaendigen, ungebundenen Ablaeufe
-#               (voltpilot-browser, voltpilot-direct-grant samt Unterablaeufen) und baut sie neu. Weicht ein
-#               GEBUNDENER Ablauf ab, aendert er nichts und sagt, was zu tun ist (Exit 3).
+#   angleichen  setzt Ereignisse (90 Tage), Passwort-Vorgabe, Sitzungsdauern (normal 12 h/24 h, "Angemeldet
+#               bleiben" 90/180 Tage) und den bedingten zweiten Faktor, bindet die Ablaeufe. Gebunden wird
+#               erst, wenn beide Ablaeufe vollstaendig sind (Schritt fuer Schritt wie der Import, samt
+#               Rollen-Bedingung). Ein zweiter Lauf legt nichts doppelt an. Nach einem abgebrochenen Lauf
+#               entfernt der naechste die unvollstaendigen, ungebundenen Ablaeufe (voltpilot-browser,
+#               voltpilot-direct-grant samt Unterablaeufen) und baut sie neu. Weicht ein GEBUNDENER Ablauf
+#               ab, aendert er nichts und sagt, was zu tun ist (Exit 3).
 #   pruefen     liest nur; Exit 0 = der Realm traegt die Haertung, sonst eine Zeile je Abweichung
 #
 # Laeuft dort, wo kcadm.sh liegt (im Keycloak-Pod) und NACH `kcadm.sh config credentials ...`.
@@ -21,6 +22,9 @@ R="${REALM:-voltpilot}"
 KC="${KCADM:-/opt/keycloak/bin/kcadm.sh}"
 VORGABE='length(12) and notUsername and passwordHistory(3)'
 NEUNZIG_TAGE=7776000
+HUNDERTACHTZIG_TAGE=15552000
+ZWOELF_STUNDEN=43200
+VIERUNDZWANZIG_STUNDEN=86400
 
 OBEN=(voltpilot-browser voltpilot-direct-grant)   # die zwei obersten Ablaeufe, in dieser Reihenfolge
 
@@ -278,7 +282,9 @@ angleichen() {
 
   # 2. Werte des Realms
   kc update "realms/$R" -s eventsEnabled=true -s "eventsExpiration=$NEUNZIG_TAGE" \
-    -s adminEventsEnabled=true -s adminEventsDetailsEnabled=false -s "passwordPolicy=$VORGABE"
+    -s adminEventsEnabled=true -s adminEventsDetailsEnabled=false -s "passwordPolicy=$VORGABE" \
+    -s rememberMe=true -s "ssoSessionIdleTimeout=$ZWOELF_STUNDEN" -s "ssoSessionMaxLifespan=$VIERUNDZWANZIG_STUNDEN" \
+    -s "ssoSessionIdleTimeoutRememberMe=$NEUNZIG_TAGE" -s "ssoSessionMaxLifespanRememberMe=$HUNDERTACHTZIG_TAGE"
   # Ein Realm-Attribut nur ueber -b: `-s attributes.x=...` setzt es in kcadm 26.0.5 nicht (im Test gesehen)
   kc update "realms/$R" -b "{\"attributes\":{\"adminEventsExpiration\":\"$NEUNZIG_TAGE\"}}"
 
@@ -312,7 +318,11 @@ pruefen() {
   local fehler=0 feld soll ist paar
   for paar in "passwordPolicy=$VORGABE" "eventsEnabled=true" "eventsExpiration=$NEUNZIG_TAGE" \
               "adminEventsEnabled=true" "adminEventsDetailsEnabled=false" \
-              "browserFlow=voltpilot-browser" "directGrantFlow=voltpilot-direct-grant"; do
+              "browserFlow=voltpilot-browser" "directGrantFlow=voltpilot-direct-grant" \
+              "rememberMe=true" "ssoSessionIdleTimeout=$ZWOELF_STUNDEN" \
+              "ssoSessionMaxLifespan=$VIERUNDZWANZIG_STUNDEN" \
+              "ssoSessionIdleTimeoutRememberMe=$NEUNZIG_TAGE" \
+              "ssoSessionMaxLifespanRememberMe=$HUNDERTACHTZIG_TAGE"; do
     feld="${paar%%=*}"; soll="${paar#*=}"
     ist="$(kc get "realms/$R" --fields "$feld" --format csv --noquotes)"
     if [[ "$ist" != "$soll" ]]; then echo "ABWEICHUNG $feld: ist '$ist', soll '$soll'"; fehler=1; fi

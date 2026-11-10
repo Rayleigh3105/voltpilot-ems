@@ -113,6 +113,14 @@ class ProduktionsRealmImportTest {
         assertThat(realm.path("attributes").path("adminEventsExpiration").asText()).isEqualTo("7776000");
         assertThat(realm.path("browserFlow").asText()).isEqualTo("voltpilot-browser");
         assertThat(realm.path("directGrantFlow").asText()).isEqualTo("voltpilot-direct-grant");
+        // „Angemeldet bleiben“ (vp-login-dauer-d1, E12-Folge): normal 12 h/24 h, mit Haken 90/180 Tage.
+        // Ein Realm-Import ueberschreibt nie einen bestehenden Realm — genau deshalb bekam der Live-Realm diese
+        // vier Werte nie von selbst; live-realm-anmeldung.sh gleicht sie seitdem mit an (siehe Tests unten).
+        assertThat(realm.path("rememberMe").asBoolean()).isTrue();
+        assertThat(realm.path("ssoSessionIdleTimeout").asLong()).isEqualTo(43200L);
+        assertThat(realm.path("ssoSessionMaxLifespan").asLong()).isEqualTo(86400L);
+        assertThat(realm.path("ssoSessionIdleTimeoutRememberMe").asLong()).isEqualTo(7776000L);
+        assertThat(realm.path("ssoSessionMaxLifespanRememberMe").asLong()).isEqualTo(15552000L);
         // Die übrigen Bindungen zeigen auf vorhandene Abläufe — ein Import mit eigenen Abläufen darf die
         // eingebauten (Client-Anmeldung, Passwort vergessen, Registrierung, ...) nicht verlieren.
         for (String bindung : new String[] {"clientAuthenticationFlow", "resetCredentialsFlow",
@@ -144,6 +152,39 @@ class ProduktionsRealmImportTest {
         assertThat(nachFormular.statusCode()).as(nachFormular.body()).isEqualTo(302);
         assertThat(nachFormular.headers().firstValue("Location").orElse(""))
                 .startsWith(ORIGIN + "/").contains("code=");
+    }
+
+    @Test
+    void nachEinerAnmeldungMitHakenTraegtDasIdentityCookieDieRememberMeHoechstdauer() throws Exception {
+        // vp-login-dauer-d1: die frueheste messbare Abweichung ist die Lebensdauer von KEYCLOAK_IDENTITY direkt
+        // nach dem Login — mit den Vorlagewerten die Remember-Me-Hoechstdauer (180 Tage), nicht die normale.
+        String name = "merken-" + kurz();
+        String passwort = "Merken-Passwort-" + kurz();
+        assertThat(kontoAnlegen(name, passwort, false)).isEqualTo(201);
+
+        Map<String, String> cookies = new LinkedHashMap<>();
+        HttpResponse<String> seite = mitCookies(HttpRequest.newBuilder(URI.create(anmeldeUrl())).GET(), cookies);
+        assertThat(seite.statusCode()).as(seite.body()).isEqualTo(200);
+        Matcher m = Pattern.compile("id=\"kc-form-login\"[^>]*action=\"([^\"]+)\"").matcher(seite.body());
+        assertThat(m.find()).as("Anmeldeformular").isTrue();
+
+        HttpRequest.Builder formular = HttpRequest.newBuilder(URI.create(m.group(1).replace("&amp;", "&")))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(formular(new LinkedHashMap<>(Map.of(
+                        "username", name, "password", passwort, "credentialId", "", "rememberMe", "on")))));
+        if (!cookies.isEmpty()) {
+            formular.header("Cookie", cookies.entrySet().stream()
+                    .map(e -> e.getKey() + "=" + e.getValue()).collect(Collectors.joining("; ")));
+        }
+        HttpResponse<String> antwort = http.send(formular.build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(antwort.statusCode()).as(antwort.body()).isEqualTo(302);
+
+        List<String> identityCookie = antwort.headers().allValues("Set-Cookie").stream()
+                .filter(c -> c.startsWith("KEYCLOAK_IDENTITY=")).toList();
+        assertThat(identityCookie).as("Set-Cookie KEYCLOAK_IDENTITY").hasSize(1);
+        Matcher maxAge = Pattern.compile("(?i)Max-Age=(\\d+)").matcher(identityCookie.get(0));
+        assertThat(maxAge.find()).as(identityCookie.get(0)).isTrue();
+        assertThat(Long.parseLong(maxAge.group(1))).as(identityCookie.get(0)).isEqualTo(15_552_000L);
     }
 
     @Test
@@ -280,7 +321,9 @@ class ProduktionsRealmImportTest {
         JsonNode angeglichen = adminGetIn(alt, "");
         JsonNode importiert = adminGet("");
         for (String feld : new String[] {"passwordPolicy", "eventsEnabled", "eventsExpiration",
-                "adminEventsEnabled", "adminEventsDetailsEnabled", "browserFlow", "directGrantFlow"}) {
+                "adminEventsEnabled", "adminEventsDetailsEnabled", "browserFlow", "directGrantFlow",
+                "rememberMe", "ssoSessionIdleTimeout", "ssoSessionMaxLifespan",
+                "ssoSessionIdleTimeoutRememberMe", "ssoSessionMaxLifespanRememberMe"}) {
             assertThat(angeglichen.path(feld)).as(feld).isEqualTo(importiert.path(feld));
         }
         assertThat(angeglichen.path("attributes").path("adminEventsExpiration"))
