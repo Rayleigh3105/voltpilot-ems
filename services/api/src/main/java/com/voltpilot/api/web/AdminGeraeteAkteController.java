@@ -3,16 +3,32 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.enrollment.EnrollmentRepository;
 import com.voltpilot.api.fernwartung.FernwartungRepository.Zugang;
 import com.voltpilot.api.fernwartung.FernwartungService;
+import com.voltpilot.api.geraete.BoxBefundSql;
+import com.voltpilot.api.geraete.BoxLoesenAbgelehnt;
+import com.voltpilot.api.geraete.BoxLoesenRegel;
+import com.voltpilot.api.geraete.BoxLoesenService;
 import com.voltpilot.api.repo.AdminGeraeteAkteRepository;
 import com.voltpilot.api.repo.AdminGeraeteAkteRepository.AkteBoxRow;
 import com.voltpilot.api.repo.AdminGeraeteListeRepository;
 import com.voltpilot.api.repo.AdminGeraeteListeRepository.GeraeteListeZeile;
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.AdminGeraeteAkteDto;
+import com.voltpilot.api.web.dto.BoxLoesenDto.AnfrageDto;
+import com.voltpilot.api.web.dto.BoxLoesenDto.AnmeldungDto;
+import com.voltpilot.api.web.dto.BoxLoesenDto.BefundDto;
+import com.voltpilot.api.web.dto.BoxLoesenDto.ErgebnisDto;
+import com.voltpilot.api.web.dto.BoxLoesenDto.FaktenDto;
 import com.voltpilot.api.werkstatt.WerkstattRepository;
+import java.util.Map;
 import java.util.Optional;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -40,15 +56,17 @@ public class AdminGeraeteAkteController {
     private final EnrollmentRepository enrollments;
     private final FernwartungService fernwartung;
     private final WerkstattRepository werkstatt;
+    private final BoxLoesenService loesen;
 
     public AdminGeraeteAkteController(AdminGeraeteAkteRepository akte,
             AdminGeraeteListeRepository liste, EnrollmentRepository enrollments,
-            FernwartungService fernwartung, WerkstattRepository werkstatt) {
+            FernwartungService fernwartung, WerkstattRepository werkstatt, BoxLoesenService loesen) {
         this.akte = akte;
         this.liste = liste;
         this.enrollments = enrollments;
         this.fernwartung = fernwartung;
         this.werkstatt = werkstatt;
+        this.loesen = loesen;
     }
 
     @GetMapping("/{ref}")
@@ -90,5 +108,38 @@ public class AdminGeraeteAkteController {
 
         return new AdminGeraeteAkteDto(ref, lebenslauf.lebensabschnitt(), lebenslauf.seit(),
                 kopf, software, verbindung, einrichtung);
+    }
+
+    /**
+     * Der Befund „Vom Kunden lösen" (L1, Vertrag Abschnitt 3.5): informativ, prüft NICHTS unter
+     * Sperre - die verbindliche Prüfung läuft erst im POST, in {@link BoxLoesenService}.
+     */
+    @GetMapping("/{ref}/loesen")
+    public BefundDto loesenBefund(@PathVariable String ref) {
+        return befundDto(loesen.befund(ref));
+    }
+
+    /**
+     * Lösen (B1 = A): löscht die Verknüpfung, als wäre sie nie gewesen - nur solange die Box sich nie
+     * gemeldet hat (B2 = A: ein abgeholter Schlüssel blockiert den Admin nicht). 409 mit Gründen und
+     * nichts geändert, wenn die Regel es nicht erlaubt ({@link #abgelehnt}).
+     */
+    @PostMapping("/{ref}/loesen")
+    public ErgebnisDto loesen(@PathVariable String ref, @RequestBody AnfrageDto anfrage, Authentication auth) {
+        BoxLoesenService.Ergebnis ergebnis = loesen.loesen(ref, anfrage.anlass(), anfrage.anlassText(),
+                ProtokollAkteur.aus(auth).orElse(null));
+        return new ErgebnisDto(ergebnis.externalRef(), ergebnis.anlass());
+    }
+
+    @ExceptionHandler(BoxLoesenAbgelehnt.class)
+    public org.springframework.http.ResponseEntity<Map<String, Object>> abgelehnt(BoxLoesenAbgelehnt e) {
+        return org.springframework.http.ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
+    private static BefundDto befundDto(BoxBefundSql.Zeile z) {
+        var gruende = BoxLoesenRegel.gruende(z.befund(), true);
+        var fakten = new FaktenDto(z.verbundenAm(), z.befund().herzschlagAm(), z.befund().messwertAm(),
+                z.befund().meldungAm(), new AnmeldungDto(z.zuletztAngefragtAm(), z.befund().schluesselAbgeholtAm()));
+        return new BefundDto(gruende.isEmpty(), gruende, fakten);
     }
 }

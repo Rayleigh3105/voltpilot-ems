@@ -411,6 +411,22 @@ export interface AdminGeraeteAkte {
   } | null;
 }
 
+/** „Vom Kunden lösen" (L1, Konzept vp-plattform-admin-box-benutzer-konzept): Feldnamen wie Box verbinden E2. */
+export interface BoxLoesenBefund {
+  loesbar: boolean;
+  /** Reihenfolge: verbund, herzschlag, messwerte, meldungen, zustaendigkeit, angemeldet. */
+  gruende: string[];
+  fakten: {
+    verbundenAm: string;
+    herzschlagAm: string | null;
+    messwertAm: string | null;
+    meldungAm: string | null;
+    anmeldung: { zuletztAngefragtAm: string | null; schluesselAbgeholtAm: string | null };
+  };
+}
+
+export type BoxLoesenAnlass = 'falsche_kennung' | 'fremder_kunde' | 'doppelt_verbunden' | 'anderer_anlass';
+
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
@@ -846,6 +862,17 @@ export const adminApi = {
   /** L3: die Geräteakte in einer Antwort. */
   geraeteAkte: (ref: string) =>
     request<AdminGeraeteAkte>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}`),
+
+  /** L1 (B1-B4): der Befund „Vom Kunden lösen" - informativ, prüft nichts unter Sperre. */
+  geraeteLoesenBefund: (ref: string) =>
+    request<BoxLoesenBefund>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/loesen`),
+
+  /** L1: löst die Verknüpfung, als wäre sie nie gewesen (409 mit Gründen, wenn die Regel es nicht erlaubt). */
+  geraeteLoesen: (ref: string, anlass: BoxLoesenAnlass, anlassText: string | null) =>
+    request<{ externalRef: string; anlass: string }>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/loesen`, {
+      method: 'POST',
+      body: JSON.stringify({ anlass, anlassText }),
+    }),
 
   /** L5: Meldungen plattformweit (`status=verlauf` für erledigte). */
   adminMeldungen: (status?: 'verlauf') =>

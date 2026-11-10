@@ -168,9 +168,15 @@ public class WerkstattRepository {
      * Leer = noch kein Kunde. Die Vorab-Registrierung ({@code provisioned_device}) zählt nicht.
      */
     public Optional<Kunde> kunde(String edgeRef) {
+        // N3 (Konzept vp-plattform-admin-box-benutzer-konzept Abschnitt 5): die Aufkleber-Kennung ist
+        // nach dem Ausbau wieder anmeldbar (V20260913150000) - eine spätere Zeile desselben edgeRef
+        // ist der AKTUELLE Kunde. Die älteste Zeile zu nennen hieß weiter den ERSTEN, auch wenn
+        // inzwischen jemand anders verbunden hat: zuerst die aktive Zeile (ausgebaut_am IS NULL),
+        // sonst die JÜNGSTE ausgebaute - nie die älteste.
         return jdbc.query("SELECT t.name AS mandant, s.name AS anlage, d.created_at "
                         + "FROM device d JOIN tenant t ON t.id = d.tenant_id LEFT JOIN site s ON s.id = d.site_id "
-                        + "WHERE d.external_ref = ? ORDER BY d.created_at LIMIT 1",
+                        + "WHERE d.external_ref = ? "
+                        + "ORDER BY (d.ausgebaut_am IS NULL) DESC, d.created_at DESC LIMIT 1",
                 (rs, n) -> new Kunde(rs.getString("mandant"), rs.getString("anlage"),
                         rs.getTimestamp("created_at").toInstant()),
                 edgeRef).stream().findFirst();

@@ -97,6 +97,20 @@ export function personenListe(konten: AdminUser[], eintraege: BenutzerEintrag[])
   return zeilen.sort((a, b) => a.name.localeCompare(b.name, 'de'));
 }
 
+/**
+ * Eine Box in „Anlagen und Boxen" (B4 = A, Konzept vp-plattform-admin-box-
+ * benutzer-konzept): „online" oder „nie gemeldet" statt nur einer Summe - eine
+ * nie gemeldete Box führt in die Geräteakte, wo „Vom Kunden lösen" sitzt.
+ */
+export interface AnlageBoxEintrag {
+  deviceId: string;
+  externalRef: string;
+  label: string;
+  ton: Ton;
+  text: string;
+  nieGemeldet: boolean;
+}
+
 /** Eine Zeile „Anlagen und Boxen" der Kundenakte: eine Anlage mit ihrem Box-Bestand. */
 export interface AnlageBoxZeile {
   siteId: string;
@@ -104,6 +118,7 @@ export interface AnlageBoxZeile {
   unterzeile: string;
   ton: Ton;
   deviceCount: number;
+  boxen: AnlageBoxEintrag[];
 }
 
 /**
@@ -116,16 +131,29 @@ export function anlagenBoxenZeilen(sites: Site[], fleetSites: AdminFleetSite[]):
   const byId = new Map(fleetSites.map((f) => [f.siteId, f]));
   return sites.map((s) => {
     const f = byId.get(s.id);
-    if (!f) return { siteId: s.id, siteName: s.name, unterzeile: 'Stand unbekannt', ton: 'off' as Ton, deviceCount: 0 };
-    const boxes = f.boxes ?? [];
+    if (!f) {
+      return { siteId: s.id, siteName: s.name, unterzeile: 'Stand unbekannt', ton: 'off' as Ton, deviceCount: 0, boxen: [] };
+    }
+    const boxesRaw = f.boxes ?? [];
+    const boxen: AnlageBoxEintrag[] = boxesRaw.map((b) => {
+      const nieGemeldet = !b.herzschlagAm && !b.messwertAm;
+      return {
+        deviceId: b.deviceId,
+        externalRef: b.externalRef,
+        label: b.name || b.externalRef,
+        ton: nieGemeldet ? ('off' as Ton) : ('ok' as Ton),
+        text: nieGemeldet ? 'nie gemeldet' : 'online',
+        nieGemeldet,
+      };
+    });
     const unterzeile =
       f.deviceCount === 0
         ? 'Noch keine Box'
-        : f.deviceCount === 1 && boxes[0]
-          ? boxes[0].name || boxes[0].externalRef
+        : f.deviceCount === 1 && boxesRaw[0]
+          ? boxesRaw[0].name || boxesRaw[0].externalRef
           : `${f.deviceCount} Boxen`;
     const ton: Ton = f.deviceCount === 0 ? 'off' : f.worstStatus === 'online' ? 'ok' : f.worstStatus === 'stale' ? 'warn' : f.worstStatus === 'waiting' ? 'warn' : 'off';
-    return { siteId: s.id, siteName: s.name, unterzeile, ton, deviceCount: f.deviceCount };
+    return { siteId: s.id, siteName: s.name, unterzeile, ton, deviceCount: f.deviceCount, boxen };
   });
 }
 

@@ -23,24 +23,39 @@ import '../src/index.css';
 
 const now = Date.now();
 const iso = (deltaMs: number) => new Date(now + deltaMs).toISOString();
-const BOX = 'edge-a1';
+const SZENARIO = new URLSearchParams(window.location.search).get('szenario');
+/**
+ * `?szenario=nie-gemeldet` (L1/L2/N8, Konzept vp-plattform-admin-box-benutzer-konzept): die Box
+ * "edge-cyhchfr" ist verbunden, hat sich aber nie gemeldet - Kopf-Karte und Menü zeigen „Vom
+ * Kunden lösen …", Fernwartung/Aktualisieren bleiben weg (N8).
+ */
+const BOX = SZENARIO === 'nie-gemeldet' ? 'edge-cyhchfr' : 'edge-a1';
 
 Object.assign(keycloak, {
   tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } },
 });
 
+const NIE_GEMELDET = SZENARIO === 'nie-gemeldet';
+
 const connectedRow = {
   deviceId: 'd1', label: BOX, externalRef: BOX, siteId: 's1', siteName: 'Pilsting',
   tenantId: 't1', tenantName: 'Kunststoffwerk Ahrenberg GmbH', ist: 'edge-2026.09.0', soll: 'edge-2026.09.0', sollSeq: 14,
-  state: 'bestaetigt', reason: null, since: null, reportedAt: null, rolloutId: null,
-  lastSeenAt: iso(-8_000), boxArt: 'docker', linie: 'docker', stand: 'cloud', stufe1: false, trust: 'ok', loader: 'ok',
+  state: 'bestaetigt', reason: null, since: null, reportedAt: NIE_GEMELDET ? null : iso(-8_000), rolloutId: null,
+  lastSeenAt: NIE_GEMELDET ? null : iso(-8_000), boxArt: 'docker', linie: 'docker', stand: 'cloud', stufe1: false,
+  trust: 'ok', loader: 'ok',
 };
 
 const fleetSite = {
   siteId: 's1', siteName: 'Pilsting', tenantId: 't1', tenantName: 'Kunststoffwerk Ahrenberg GmbH', plantKind: 'pv_storage',
   netzladenErlaubt: true, tarifArt: 'börse',
-  boxes: [{ deviceId: 'd1', externalRef: BOX, name: 'Box Leitstand', fuehrtAnlage: true, lastSeenAt: iso(-8_000), edge: null, update: null }],
-  deviceCount: 1, onlineCount: 1, waitingCount: 0, worstStatus: 'online', lastSeenAt: iso(-8_000),
+  boxes: [{
+    deviceId: 'd1', externalRef: BOX, name: NIE_GEMELDET ? null : 'Box Leitstand', fuehrtAnlage: true,
+    lastSeenAt: NIE_GEMELDET ? null : iso(-8_000),
+    herzschlagAm: NIE_GEMELDET ? null : iso(-8_000), messwertAm: NIE_GEMELDET ? null : iso(-8_000),
+    edge: null, update: null,
+  }],
+  deviceCount: 1, onlineCount: NIE_GEMELDET ? 0 : 1, waitingCount: NIE_GEMELDET ? 1 : 0,
+  worstStatus: NIE_GEMELDET ? 'waiting' : 'online', lastSeenAt: NIE_GEMELDET ? null : iso(-8_000),
   lastPlanGeneratedAt: iso(-600_000), hasStorage: true, batteryWithoutDevice: false,
   sources: { total: 6, ok: 6, stale: 0, never: 0 }, edge: null, update: null,
   control: { state: 'scharf', since: iso(-9_000_000) }, curtailment: { state: 'aktiv', since: iso(-9_000_000) },
@@ -113,7 +128,17 @@ Object.assign(adminApi, {
     sources: ['modbus', 'hersteller-api'],
     ablehnungsgrund: 'Kunde hat die Übernahme einer neuen Batterie-Kapazität abgelehnt.',
   }],
-  geraeteAkte: async () => ({
+  geraeteAkte: async () => (NIE_GEMELDET ? {
+    externalRef: BOX, lebensabschnitt: 'kunde', lebensabschnittSeit: iso(-6 * 86_400_000),
+    kopf: {
+      deviceId: 'd1', name: null, siteId: 's1', siteName: 'Pilsting', tenantId: 't1',
+      tenantName: 'Kunststoffwerk Ahrenberg GmbH', herzschlagAm: null, messwertAm: null,
+      lastSeenAt: null, ausgebautAm: null,
+    },
+    software: { edge: null, update: null, supports: null, boxArt: null },
+    verbindung: { lanHost: null, lanSeenAt: null, tunnelAktiv: null, tunnelAdresse: null },
+    einrichtung: { zertifikatAusgestelltAm: iso(-6 * 86_400_000), zertifikatGueltigBis: iso(359 * 86_400_000), werkstattAngelegtAm: iso(-20 * 86_400_000) },
+  } : {
     externalRef: BOX, lebensabschnitt: 'kunde', lebensabschnittSeit: iso(-200 * 86_400_000),
     kopf: {
       deviceId: 'd1', name: 'Box Leitstand', siteId: 's1', siteName: 'Pilsting', tenantId: 't1',
@@ -132,6 +157,16 @@ Object.assign(adminApi, {
   revertUpdateTarget: async () => ({}),
   activateControl: async () => ({}),
   deactivateControl: async () => ({}),
+  // L1 (B1-B4): der Befund „Vom Kunden lösen" - lösbar, kein Schlüssel abgeholt.
+  geraeteLoesenBefund: async () => ({
+    loesbar: true,
+    gruende: [],
+    fakten: {
+      verbundenAm: iso(-6 * 86_400_000), herzschlagAm: null, messwertAm: null, meldungAm: null,
+      anmeldung: { zuletztAngefragtAm: null, schluesselAbgeholtAm: null },
+    },
+  }),
+  geraeteLoesen: async () => ({ externalRef: BOX, anlass: 'falsche_kennung' }),
 });
 
 function Fixture() {

@@ -2586,7 +2586,7 @@ export function AnlageSeite({
         </div>
       )}
 
-      {decided && (ersteWerteSteht || ortOhneAdresse) && (
+      {decided && (ersteWerteSteht || ortOhneAdresse || ovSite?.boxGeloestHinweis) && (
         <Fehlergrenze>
           <Suspense fallback={null}>
           <AnlageHinweise
@@ -2594,6 +2594,7 @@ export function AnlageSeite({
             site={site}
             ersteWerte={ersteWerteSteht}
             standort={ortOhneAdresse}
+            boxGeloest={ovSite?.boxGeloestHinweis ?? null}
             onGespeichert={() => {
               setReloadKey((k) => k + 1);
               onReload(site.id);

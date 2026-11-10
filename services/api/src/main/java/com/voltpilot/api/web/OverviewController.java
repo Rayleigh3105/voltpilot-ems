@@ -15,6 +15,7 @@ import com.voltpilot.api.topology.TopologyService;
 import com.voltpilot.api.uems.StandortLesemodell.StandortBezug;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.web.dto.OverviewDto;
+import com.voltpilot.api.web.dto.OverviewDto.BoxGeloestHinweisDto;
 import com.voltpilot.api.web.dto.OverviewDto.EnergyTodayDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewDailySavingsDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewLiveDto;
@@ -83,6 +84,7 @@ public class OverviewController {
     private final RollenZuordnungService rollen;
     private final TeilansichtDienst teilansicht;
     private final TopologyService topologie;
+    private final com.voltpilot.api.geraete.BoxLoesenRepository boxLoesen;
 
     public OverviewController(SiteRepository sites, OverviewRepository overview,
             EntityTypeCatalog catalog, AnwendungKatalog anwendungen,
@@ -90,7 +92,9 @@ public class OverviewController {
             StandortLesemodellService standortLesemodell,
             RollenZuordnungService rollen,
             TeilansichtDienst teilansicht,
-            TopologyService topologie) {
+            TopologyService topologie,
+            com.voltpilot.api.geraete.BoxLoesenRepository boxLoesen) {
+        this.boxLoesen = boxLoesen;
         this.sites = sites;
         this.overview = overview;
         this.catalog = catalog;
@@ -132,6 +136,10 @@ public class OverviewController {
         // UEMS AP-02 IP-3: der Standort je Anlage heute - additiv, null solange
         // eine Anlage keinem Standort zugeordnet ist (heute: jede).
         Map<UUID, StandortBezug> standortJeAnlage = standortLesemodell.bezugJeAnlage();
+        // B3 (Konzept vp-plattform-admin-box-benutzer-konzept): der Hinweis, solange eine Anlage nach
+        // "Vom Kunden lösen" keine Box hat - additiv, höchstens 14 Tage.
+        Map<UUID, com.voltpilot.api.geraete.BoxLoesenRepository.Hinweis> boxGeloestJeAnlage =
+                boxLoesen.hinweiseJeAnlage();
         // Nur die Live-Anzeige liest die kanonischen Rollen, je Rolle eine Flotten-Abfrage.
         // Ohne Zuordnung bleibt die Roh-Telemetrie unverändert.
         Map<UUID, RollenDto.KanonischerWert> pvKanonisch = rollen.rollenJeAnlage("pv");
@@ -193,7 +201,8 @@ public class OverviewController {
                             strategyNodes.getOrDefault(site.id(), Set.of()),
                             liveRow != null, gridLimitSites.contains(site.id()),
                             storedStates.getOrDefault(site.id(), Map.of())),
-                    standortJeAnlage.get(site.id())));
+                    standortJeAnlage.get(site.id()),
+                    boxGeloestHinweisDto(boxGeloestJeAnlage.get(site.id()))));
         }
 
         OverviewRepository.StorageTotals storage = overview.storageTotals();
@@ -393,5 +402,10 @@ public class OverviewController {
             return "stale";
         }
         return waitingCount > 0 ? "waiting" : "online";
+    }
+
+    private static BoxGeloestHinweisDto boxGeloestHinweisDto(
+            com.voltpilot.api.geraete.BoxLoesenRepository.Hinweis h) {
+        return h == null ? null : new BoxGeloestHinweisDto(h.anlass(), h.anlassText(), h.bisSpaetestens());
     }
 }

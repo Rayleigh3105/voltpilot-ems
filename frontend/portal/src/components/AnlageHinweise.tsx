@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Site, type StandortBezug } from '../api';
+import { api, ApiError, type BoxGeloestHinweis, type Site, type StandortBezug } from '../api';
 import { adresseAusTreffer, adresseText, SATZ_NICHT_GEFUNDEN, ZEITZONE_DES_LANDES } from '../anlageOrt';
 import { ersteWerteErledigt } from '../ersteWerte';
 import { einstellungenHash } from '../settingsNav';
@@ -20,11 +20,15 @@ import './AnlageHinweise.css';
  * - „Wo steht …?“ (D9): der Standort der Anlage hat noch keine Adresse (automatisch angelegt, Entwurf). Eine
  *   Eingabe vervollständigt ihn und setzt den Kartenpunkt der Anlage, beides in einem Zug; ein Standort, den
  *   VoltPilot benannt hat, heißt danach nach seiner Straße (der Server, `StandortService#bearbeiten`).
+ * - „Vom Kunden lösen" (B3, Konzept vp-plattform-admin-box-benutzer-konzept): der Plattform-Admin hat eine
+ *   nie gemeldete Box gelöst - solange die Anlage keine Box hat, höchstens 14 Tage. Ohne diese Karte
+ *   verschwände eine Box ohne jede Erklärung.
  */
 export default function AnlageHinweise({
   site,
   ersteWerte,
   standort,
+  boxGeloest,
   onGespeichert,
 }: {
   site: Site;
@@ -32,6 +36,8 @@ export default function AnlageHinweise({
   ersteWerte: boolean;
   /** Der Standort ohne Adresse - `null`: keine Karte „Wo steht …?“. */
   standort: StandortBezug | null;
+  /** B3: der Hinweis „Vom Kunden lösen" - `null`: keine Karte. */
+  boxGeloest?: BoxGeloestHinweis | null;
   /** Nach der Adresse: der Wirt lädt Anlage und Übersicht neu. */
   onGespeichert: () => void;
 }) {
@@ -48,7 +54,31 @@ export default function AnlageHinweise({
         />
       )}
       {standort && <WoStehtKarte standort={standort} onGespeichert={onGespeichert} />}
+      {boxGeloest && <BoxGeloestKarte hinweis={boxGeloest} />}
     </div>
+  );
+}
+
+const ANLASS_SATZ: Record<string, string> = {
+  falsche_kennung: 'Die Kennung gehörte zu einer anderen Box.',
+  fremder_kunde: 'Die Box gehörte einem anderen Kunden.',
+  doppelt_verbunden: 'Die Box war doppelt verbunden.',
+};
+
+function BoxGeloestKarte({ hinweis }: { hinweis: BoxGeloestHinweis }) {
+  const satz = hinweis.anlass === 'anderer_anlass'
+    ? (hinweis.anlassText ?? 'Die Box wurde gelöst.')
+    : (ANLASS_SATZ[hinweis.anlass] ?? 'Die Box wurde gelöst.');
+  return (
+    <section className="vp-hinweis vp-hinweis-ort" aria-labelledby="vp-box-geloest-titel">
+      <span className="vp-hinweis-symbol" aria-hidden="true">
+        <Icon name="plug" size={18} />
+      </span>
+      <div className="vp-hinweis-text">
+        <h3 id="vp-box-geloest-titel">Ihre Box wurde getrennt.</h3>
+        <p>{satz} Verbinden Sie die richtige Box über den Einrichtungspfad.</p>
+      </div>
+    </section>
   );
 }
 

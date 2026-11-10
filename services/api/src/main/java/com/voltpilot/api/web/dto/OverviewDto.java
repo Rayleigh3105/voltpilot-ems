@@ -117,7 +117,15 @@ public record OverviewDto(
             // ({id, name, kurzzeichen, gueltigAb}) oder null, solange sie keinem
             // zugeordnet ist — heute jede Bestandsanlage (die Zuordnung legt erst
             // die Bestandsübernahme IP-9 an).
-            StandortBezug standort) {
+            StandortBezug standort,
+            // Konzept vp-plattform-admin-box-benutzer-konzept (B3), additiv am Ende: der Hinweis
+            // "Die Kennung gehörte zu einer anderen Box." - null solange keine Box vom Kunden gelöst
+            // wurde oder seitdem wieder eine verbunden ist; sonst höchstens 14 Tage.
+            BoxGeloestHinweisDto boxGeloestHinweis) {
+    }
+
+    /** B3: der Hinweis an der Anlage, bis eine Box verbunden ist, höchstens 14 Tage. */
+    public record BoxGeloestHinweisDto(String anlass, String anlassText, Instant bisSpaetestens) {
     }
 
     /**

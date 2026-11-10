@@ -5,12 +5,14 @@ import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import { AufklapperKarte } from '../../components/AufklapperKarte';
 import { useReiterRand } from '../../reiterRand';
-import { VpPicker } from '../../components/VpPicker';
+import { VpPicker, type VpOption } from '../../components/VpPicker';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ApiError } from '../../api';
 import {
-  adminApi, type AdminDeviceRow, type AdminGeraeteAkte, type ControlCandidate, type PendingEnrollment, type Tenant,
+  adminApi, type AdminDeviceRow, type AdminGeraeteAkte, type BoxLoesenAnlass, type BoxLoesenBefund,
+  type ControlCandidate, type PendingEnrollment, type Tenant,
 } from '../../admin/adminApi';
+import { Input } from '../../../designsystem/components/forms/Input';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import {
   BOX_ART_LABELS, BOX_ART_UNBEKANNT, crossoverState, freshnessLabel, releaseBoxArt,
@@ -102,6 +104,9 @@ export function GeraeteAktePage({
   const [pulsiert, setPulsiert] = useState(false);
   const letzterHerzschlag = useRef<string | null>(null);
   const hatteDaten = useRef(false);
+  // L1/L2 (Konzept vp-plattform-admin-box-benutzer-konzept): „Vom Kunden lösen" - der Dialog
+  // teilt sich die Kopf-Karte UND den Menüeintrag (B4 = A, dieselbe Handlung, zwei Einstiege).
+  const [loesenOffen, setLoesenOffen] = useState(false);
 
   async function laden() {
     const [eu, dv, pe, wb, wd, wf, fw, ak] = await Promise.allSettled([
@@ -169,6 +174,9 @@ export function GeraeteAktePage({
   const deviceRow = useMemo(() => devices?.find((d) => d.externalRef === boxRef) ?? null, [devices, boxRef]);
   const pendingRow = useMemo(() => pending?.find((p) => p.externalRef === boxRef) ?? null, [pending, boxRef]);
   const ersterLeerLauf = row == null;
+  // B1-B4: „Verbunden, aber nie gemeldet" - verbunden (ein Kopf existiert), aber weder Herzschlag
+  // noch Messwert je gesehen. Dieselbe Bedingung entscheidet die Karte (N8-sicher) UND das Menü.
+  const nieGemeldet = akte?.kopf != null && akte.kopf.herzschlagAm == null && akte.kopf.messwertAm == null;
 
   useEffect(() => {
     if (!row) return;
@@ -212,9 +220,12 @@ export function GeraeteAktePage({
   return (
     <div className="vp-admin-page vp-geraete-akte" data-testid="geraete-akte">
       <AktenKopf boxRef={boxRef} row={row} deviceRow={deviceRow} pendingRow={pendingRow} jetzt={jetzt}
-        reiter={reiter} onReiter={nav} onNavigate={onNavigate} pulsiert={pulsiert}
+        reiter={reiter} onReiter={nav} onNavigate={onNavigate} pulsiert={pulsiert} nieGemeldet={nieGemeldet}
+        onLoesenOeffnen={() => setLoesenOffen(true)}
         stand={pollFehler ? freshnessLabel(fetchedAt, tick, true) : `${freshnessLabel(fetchedAt, tick)} · alle 10 s`} />
       {actionError && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
+      <BoxLoesenDialog open={loesenOffen} boxRef={boxRef} jetzt={jetzt} onClose={() => setLoesenOffen(false)}
+        onGeloescht={() => { setLoesenOffen(false); onNavigate?.(pageRoute('geraete-registry')); }} />
 
       {reiter === 'software' ? (
         <SoftwareReiter row={row} ersterLeerLauf={ersterLeerLauf} verlauf={verlauf} jetzt={jetzt} busy={busy}
@@ -234,7 +245,7 @@ export function GeraeteAktePage({
         <VerlaufReiter verlauf={verlauf} jetzt={jetzt} fwProtokoll={fwProtokoll ?? []} />
       ) : (
         <UeberblickReiter row={row} ersterLeerLauf={ersterLeerLauf} jetzt={jetzt} onReiter={nav} akte={akte}
-          onJumpToTenant={onJumpToTenant} />
+          onJumpToTenant={onJumpToTenant} nieGemeldet={nieGemeldet} onLoesenOeffnen={() => setLoesenOffen(true)} />
       )}
     </div>
   );
@@ -268,7 +279,8 @@ function zustandBadgeAusVerbindung(v: BoxVerbindungSicht): { variant: 'ok' | 'wa
 }
 
 function AktenKopf({
-  boxRef, row, deviceRow, pendingRow, jetzt, reiter, onReiter, onNavigate, pulsiert, stand,
+  boxRef, row, deviceRow, pendingRow, jetzt, reiter, onReiter, onNavigate, pulsiert, stand, nieGemeldet,
+  onLoesenOeffnen,
 }: {
   boxRef: string;
   row: FleetRow | null;
@@ -282,6 +294,9 @@ function AktenKopf({
   pulsiert: boolean;
   /** §5.2: „Stand vor 3 s · alle 10 s", bei gescheiterter Abfrage „Aktualisierung schlägt fehl · Stand 14:02". */
   stand: string;
+  /** B1-B4: verbunden, aber weder Herzschlag noch Messwert je gesehen (N8: dann keine Fernwartung/Update). */
+  nieGemeldet: boolean;
+  onLoesenOeffnen: () => void;
 }) {
   const [menuOffen, setMenuOffen] = useState(false);
   const reiterRand = useReiterRand<HTMLDivElement>();
@@ -320,10 +335,13 @@ function AktenKopf({
                 {zustandBadge.text}
               </Badge>
             </span>
-            {row && (
+            {/* N8: eine Box, die sich nie gemeldet hat, hat weder einen Tunnel noch einen Software-
+                Stand zu öffnen - die Knöpfe boten vorher zwei Reiter an, deren Inhalt nie entstehen
+                kann, und am Telefon klebte „Fernwartung öffnen" zusätzlich am Rand. */}
+            {row && !nieGemeldet && (
               <Button variant="outline" size="sm" onClick={() => onReiter('verbindung')}>Fernwartung öffnen</Button>
             )}
-            {row && !(row.stand === 'hand' || row.stufe1) && (
+            {row && !nieGemeldet && !(row.stand === 'hand' || row.stufe1) && (
               <Button variant="outline" size="sm" onClick={() => onReiter('software')}>Aktualisieren</Button>
             )}
             <div className="vp-akte-menu" style={{ position: 'relative' }}>
@@ -336,6 +354,11 @@ function AktenKopf({
                   {row && onNavigate && (
                     <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onNavigate(pageRoute('geraete-registry')); }}>
                       Zur Geräte-Liste
+                    </button>
+                  )}
+                  {row && nieGemeldet && (
+                    <button type="button" role="menuitem" onClick={() => { setMenuOffen(false); onLoesenOeffnen(); }}>
+                      Vom Kunden lösen …
                     </button>
                   )}
                 </div>
@@ -358,7 +381,8 @@ function AktenKopf({
 
 // ── Überblick ───────────────────────────────────────────────────────────────
 
-function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpToTenant }: {
+function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpToTenant, nieGemeldet,
+  onLoesenOeffnen }: {
   row: FleetRow | null;
   ersterLeerLauf: boolean;
   jetzt: Date;
@@ -367,6 +391,8 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpTo
   akte: AdminGeraeteAkte | null;
   /** „Wie der Kunde es sieht": öffnet die Anlage dieser Box in der Kundensicht (Live-Werte). */
   onJumpToTenant?: (tenantId: string, target: Route) => void;
+  nieGemeldet: boolean;
+  onLoesenOeffnen: () => void;
 }) {
   if (ersterLeerLauf) {
     return (
@@ -388,6 +414,16 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpTo
 
   return (
     <div className="vp-geraet-grid">
+      {nieGemeldet && (
+        <Card padding="lg" radius="lg" className="vp-geraet-sek" data-testid="akte-nie-gemeldet">
+          <h2><Icon name="plug" size={18} /> Verbunden, aber nie gemeldet</h2>
+          <p className="vp-muted" style={{ marginTop: 0 }}>
+            {row!.tenantName} › {row!.siteName} · Verbunden seit {fmtRelative(akte?.lebensabschnittSeit ?? null, jetzt)}
+            {' '}· Herzschlag nie · Messwerte keine.
+          </p>
+          <Button variant="outline" size="sm" onClick={onLoesenOeffnen}>Vom Kunden lösen …</Button>
+        </Card>
+      )}
       {brauchtDich && (
         <Card padding="lg" radius="lg" className="vp-geraet-sek">
           <h2><Icon name="alert-triangle" size={18} /> Braucht dich</h2>
@@ -439,6 +475,122 @@ function UeberblickReiter({ row, ersterLeerLauf, jetzt, onReiter, akte, onJumpTo
         </dl>
       </Card>
     </div>
+  );
+}
+
+// ── Vom Kunden lösen (L1/L2) ─────────────────────────────────────────────
+
+const ANLASS_OPTIONEN: VpOption[] = [
+  { value: 'falsche_kennung', label: 'Falsche Kennung verbunden' },
+  { value: 'fremder_kunde', label: 'Box gehört einem anderen Kunden' },
+  { value: 'doppelt_verbunden', label: 'Doppelt verbunden' },
+  { value: 'anderer_anlass', label: 'Anderer Anlass …' },
+];
+
+const GRUND_SATZ: Record<string, (f: BoxLoesenBefund['fakten'], jetzt: Date) => string> = {
+  verbund: () => 'ist nicht mehr verbunden',
+  herzschlag: (f, jetzt) => `Herzschlag ${fmtRelative(f.herzschlagAm, jetzt)}`,
+  messwerte: (f, jetzt) => `Messwerte seit ${fmtRelative(f.messwertAm, jetzt)}`,
+  meldungen: (f, jetzt) => `Software-Meldung ${fmtRelative(f.meldungAm, jetzt)}`,
+  zustaendigkeit: () => 'liest noch eine Datenquelle',
+  angemeldet: () => 'hat ihren Schlüssel schon abgeholt',
+};
+
+function befundSatz(befund: BoxLoesenBefund, jetzt: Date): string {
+  if (befund.loesbar) {
+    const schluessel = befund.fakten.anmeldung.schluesselAbgeholtAm;
+    return `Hat sich nie gemeldet · Herzschlag nie · Messwerte keine · Anmeldung ${schluessel ? 'abgeholt, wird entzogen' : 'nie'}.`;
+  }
+  const teile = befund.gruende.map((g) => GRUND_SATZ[g]?.(befund.fakten, jetzt) ?? g);
+  return `Hat Daten gespeichert · ${teile.join(' · ')}.`;
+}
+
+/**
+ * „Vom Kunden lösen" (L1, Vertrag Abschnitt 3.5, B1-B4 = A): EIN Dialog für beide Einstiege (Kopf-
+ * Karte und Menü). Der Befund kommt vom Server (nie vom Portal behauptet); ist er nicht lösbar, zeigt
+ * der Dialog nur den Grund und den Weg stattdessen - kein Formular, kein destruktiver Knopf.
+ */
+function BoxLoesenDialog({ open, boxRef, jetzt, onClose, onGeloescht }: {
+  open: boolean;
+  boxRef: string;
+  jetzt: Date;
+  onClose: () => void;
+  onGeloescht: () => void;
+}) {
+  const [befund, setBefund] = useState<BoxLoesenBefund | null>(null);
+  const [ladeFehler, setLadeFehler] = useState<string | null>(null);
+  const [anlass, setAnlass] = useState<BoxLoesenAnlass | null>(null);
+  const [anlassText, setAnlassText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setBefund(null);
+    setLadeFehler(null);
+    setAnlass(null);
+    setAnlassText('');
+    setFehler(null);
+    let aktiv = true;
+    adminApi.geraeteLoesenBefund(boxRef)
+      .then((b) => { if (aktiv) setBefund(b); })
+      .catch((e) => { if (aktiv) setLadeFehler(e instanceof ApiError ? e.message : 'Der Befund ließ sich nicht laden.'); });
+    return () => { aktiv = false; };
+  }, [open, boxRef]);
+
+  async function bestaetigen() {
+    if (!anlass || busy) return;
+    const text = anlass === 'anderer_anlass' ? anlassText.trim() : null;
+    if (anlass === 'anderer_anlass' && text === '') {
+      setFehler('Bitte beschreiben Sie den Anlass.');
+      return;
+    }
+    setBusy(true);
+    setFehler(null);
+    try {
+      await adminApi.geraeteLoesen(boxRef, anlass, text);
+      onGeloescht();
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Lösen ist gerade nicht möglich.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const geladen = befund != null;
+  const loesbar = befund?.loesbar === true;
+  const intro = ladeFehler ?? (!geladen ? 'Befund wird geladen …' : befundSatz(befund, jetzt));
+  const folgen = loesbar
+    ? [`„${boxRef}" wird wieder frei - der richtige Besitzer kann sie verbinden.`,
+        befund!.fakten.anmeldung.schluesselAbgeholtAm
+          ? 'Die Box verliert sofort ihren Zugang zum Server.'
+          : 'War es die einzige Box der Anlage, kommt der Kunde wieder in die Einrichtung.']
+    : ['Der Kunde entfernt die Box selbst (Anlage › Box › ⋯ › Gerät entfernen) - die Daten bleiben.',
+        'Gehören die Daten zu einer fremden Anlage, ist das ein Fall für die Unterstützung.'];
+
+  return (
+    <ConfirmDialog
+      open={open}
+      title="Vom Kunden lösen"
+      intro={intro}
+      consequences={folgen}
+      confirmLabel={!geladen ? 'Bitte warten …' : loesbar ? (busy ? 'Wird gelöst …' : 'Vom Kunden lösen') : 'Verstanden'}
+      tone={loesbar ? 'danger' : 'neutral'}
+      busy={busy || !geladen}
+      onConfirm={!geladen ? () => {} : loesbar ? bestaetigen : onClose}
+      onCancel={onClose}
+      extra={loesbar && (
+        <div className="vp-loesen-anlass">
+          <VpPicker label="Anlass" ariaLabel="Anlass" value={anlass} onChange={(v) => setAnlass(v as BoxLoesenAnlass)}
+            options={ANLASS_OPTIONEN} placeholder="Bitte wählen …" />
+          {anlass === 'anderer_anlass' && (
+            <Input value={anlassText} onChange={(e) => setAnlassText(e.target.value)}
+              placeholder="Anlass beschreiben" aria-label="Anlass beschreiben" />
+          )}
+          {fehler && <p className="vp-feld-fehler" role="alert" style={{ marginBottom: 0 }}>{fehler}</p>}
+        </div>
+      )}
+    />
   );
 }
 
