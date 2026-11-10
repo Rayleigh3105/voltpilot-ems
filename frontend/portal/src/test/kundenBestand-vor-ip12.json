@@ -3385,6 +3385,17 @@
           "wohin": "pages/admin/GeraeteAktePage.tsx (Reiter Software, Verbindung, Einrichtung, Verlauf)"
         }
       }
+    },
+    {
+      "entscheid": "Code-Gesundheit (Bericht vp-wartung-codehealth-c1, Abschnitt „Totes Code — Portal“), Captain-Freigabe 'bitte alle Empfehlungen' (10.11.2026): components/ConsumerStrip.tsx hatte keine Importe mehr im Produktbundle (knip, mit grep auf aktuellem origin/main erneut belegt) und ist als toter Code gelöscht.",
+      "commit": "fm/vp-codehealth-befunde",
+      "ersetzt": "den Verbraucher-Streifen auf der Cockpit-Karte; eine Fortschreibung gab es für ihn nie",
+      "dateien": {
+        "components/ConsumerStrip.tsx": {
+          "entfaellt": true,
+          "wohin": "kein Nachfolger: toter Code ohne Aufrufstelle, ersatzlos gelöscht"
+        }
+      }
     }
   ]
 }

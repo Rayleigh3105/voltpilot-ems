@@ -273,10 +273,6 @@ public final class BezugsdatenRegeln {
         return BezugsPeriode.iso(t, zone);
     }
 
-    private static BigDecimal dezimal(String s) {
-        return s == null ? null : new BigDecimal(s);
-    }
-
     private static boolean gleich(BigDecimal a, BigDecimal b) {
         if (a == null || b == null) {
             return a == null && b == null;

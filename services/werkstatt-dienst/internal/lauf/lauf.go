@@ -190,22 +190,6 @@ func (k *Kontext) Box(ref string) {
 	k.Lauf.aendere(func(s *Stand) { s.Box = ref })
 }
 
-// Merke hält einen Wert für spätere Schritte fest (MAC, Host-Schlüssel,
-// Referenz). Nur Werte, die keine Geheimnisse sind.
-func (k *Kontext) Merke(name, wert string) {
-	k.Lauf.mu.Lock()
-	defer k.Lauf.mu.Unlock()
-	k.Lauf.werte[name] = wert
-}
-
-// Wert gibt einen gemerkten Wert zurück.
-func (k *Kontext) Wert(name string) (string, bool) {
-	k.Lauf.mu.Lock()
-	defer k.Lauf.mu.Unlock()
-	v, ok := k.Lauf.werte[name]
-	return v, ok
-}
-
 // Warte stellt den Lauf auf „wartet“, bis jemand mit Lauf.Gib den Wert name
 // liefert, und schreibt beides ins Protokoll.
 func (k *Kontext) Warte(ctx context.Context, name, hinweis string) (string, error) {

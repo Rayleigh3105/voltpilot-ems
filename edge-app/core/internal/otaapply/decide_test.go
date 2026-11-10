@@ -38,15 +38,6 @@ func okVerdict() otaverify.Verdict {
 
 var testNow = time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
 
-func freshSignal(mut func(*CoreSignal)) *CoreSignal {
-	s := &CoreSignal{UpdatedAt: testNow.Format(TimeFormat), Version: "edge-2026.07.2-665d59b8",
-		Healthy: true, CloudConnected: true, InverterFamily: "hybrid_3p"}
-	if mut != nil {
-		mut(s)
-	}
-	return s
-}
-
 func baseInput() DecisionInput {
 	return DecisionInput{
 		HasTarget: true, Assignment: "2026-08-03T11:00:00Z", Verdict: okVerdict(),
