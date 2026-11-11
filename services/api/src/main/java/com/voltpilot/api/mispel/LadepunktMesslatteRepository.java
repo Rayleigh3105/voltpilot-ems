@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 
 /**
  * MiSpeL MP-33e: die Messlatte „nur laden“ je Ladepunkt und Viertelstunde ({@code ladepunkt_messlatte},
- * V20261004173000, Vertrag {@code docs/contracts/v2/mispel-messlatte-nur-laden.md} § 3), unter RLS. Hier wird nur
+ * V20261111201800, Vertrag {@code docs/contracts/v2/mispel-messlatte-nur-laden.md} § 3), unter RLS. Hier wird nur
  * gelesen; abgelegt wird vom Optimierer mit jedem Plan ({@code persistence.messlatte_rows}).
  */
 @Repository

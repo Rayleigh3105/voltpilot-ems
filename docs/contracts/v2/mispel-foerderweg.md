@@ -18,11 +18,11 @@ Die Einspeisestelle ist die Anlage (`site`): an ihr hängen Schalter, Plan und B
 | Datei | Rolle |
 |---|---|
 | [`mispel-foerderweg-vectors.json`](./mispel-foerderweg-vectors.json) | die Wahrheit: Werte, Bestands-Übernahme, Netzladen danach, 25 Fälle mit Fundstelle |
-| `services/api/src/main/resources/db/migration/V20261002141500__mispel_site_foerderweg.sql` | Tabelle `site_foerderweg` (Fassungen, RLS + FORCE), beginnt leer |
-| `services/api/src/main/resources/db/migration/V20261002173500__mispel_foerderweg_aw_regel.sql` | Spalte `aw_regel` (1.1, § 7), leer für jede vorhandene Fassung |
-| `services/api/src/main/resources/db/migration/V20261002231500__mispel_foerderweg_partner.sql` | Spalten `direktvermarkter`, `bilanzkreis_gesondert` (1.2, § 4), leer für jede vorhandene Fassung |
-| `services/api/src/main/resources/db/migration/V20261004131500__mispel_pauschal_vormerkung.sql` | Tabelle `site_pauschal_vormerkung` (1.3, § 5a, RLS + FORCE), beginnt leer, keine Fassung |
-| `services/api/src/main/resources/db/migration/V20261004171500__mispel_pauschal_vormerkung_umgesetzt.sql` | Spalte `umgesetzt_in` (MP-27b, § 5a): die Fassung, die aus der Vormerkung wurde; leer für jede vorhandene Zeile |
+| `services/api/src/main/resources/db/migration/V20261111200300__mispel_site_foerderweg.sql` | Tabelle `site_foerderweg` (Fassungen, RLS + FORCE), beginnt leer |
+| `services/api/src/main/resources/db/migration/V20261111200500__mispel_foerderweg_aw_regel.sql` | Spalte `aw_regel` (1.1, § 7), leer für jede vorhandene Fassung |
+| `services/api/src/main/resources/db/migration/V20261111200900__mispel_foerderweg_partner.sql` | Spalten `direktvermarkter`, `bilanzkreis_gesondert` (1.2, § 4), leer für jede vorhandene Fassung |
+| `services/api/src/main/resources/db/migration/V20261111201600__mispel_pauschal_vormerkung.sql` | Tabelle `site_pauschal_vormerkung` (1.3, § 5a, RLS + FORCE), beginnt leer, keine Fassung |
+| `services/api/src/main/resources/db/migration/V20261111201700__mispel_pauschal_vormerkung_umgesetzt.sql` | Spalte `umgesetzt_in` (MP-27b, § 5a): die Fassung, die aus der Vormerkung wurde; leer für jede vorhandene Zeile |
 | `services/api/.../mispel/PauschalVormerkungService.java` | Pauschaloption vormerken mit offenem Termin: Voraussetzungen 2–4 der Anlage 2 (§ 5a); `umsetzen` (MP-27b) |
 | `services/api/.../mispel/PauschalVormerkungLaeufer.java` | macht aus der Vormerkung eine Fassung, sobald `pauschaloption-ab` gesetzt ist (§ 5a, MP-27b) |
 | `services/api/.../mispel/FoerderwegRegeln.java` | die reinen Regeln (ohne Spring, Datenbank, Uhr) |
@@ -241,7 +241,7 @@ mit stehender Vormerkung über `PauschalVormerkungService#umsetzen` eine Fassung
 - **AW-Regel** (§ 7) aus der MiSpeL-Fassung davor (sie gehört zur Anlage, nicht zur Wahl), sonst keine; **Partner**
   (`direktvermarkter`, `bilanzkreis_gesondert`) aus der Vormerkung; `einverstaendnis` = nein.
 - **Die Vormerkung bleibt** als Zeile mit ihren Bestätigungen samt Datum (Voraussetzungen 2 und 4) stehen, wird
-  aufgehoben und nennt die Fassung (`umgesetzt_in`, `V20261004171500`); aufgehoben ohne `umgesetzt_in` = zurückgenommen.
+  aufgehoben und nennt die Fassung (`umgesetzt_in`, `V20261111201700`); aufgehoben ohne `umgesetzt_in` = zurückgenommen.
   Galt am Tag schon die Pauschaloption (vom Kunden eingetragen), wird nur verknüpft.
 - **Fehler je Anlage** halten die anderen nicht auf und lassen die Vormerkung stehen: Solarleistung unbekannt oder über
   30 kWp, eine andere zum selben Tag vorgemerkte Fassung (`vormerkung_besteht`, der Läufer wählt nicht zwischen zwei

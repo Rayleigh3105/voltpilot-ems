@@ -11,7 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Die Fassungen der Zählerrolle ({@code messstelle_zaehlerrolle}, V20261002121500), unter RLS. Eine Zeile
+ * Die Fassungen der Zählerrolle ({@code messstelle_zaehlerrolle}, V20261111200200), unter RLS. Eine Zeile
  * wird nie gelöscht und nie umgeschrieben: die App-Rolle darf nur {@code aufgehoben_am} setzen.
  */
 @Repository

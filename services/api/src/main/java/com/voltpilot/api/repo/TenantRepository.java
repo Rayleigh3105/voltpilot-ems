@@ -491,18 +491,18 @@ public class TenantRepository {
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
                         "device_data_source_status", "data_source_assignment", "data_source",
                         "data_source_kennzeichen_seq",
-                        // The MSB values (MiSpeL MP-15, V20261003015500) hold their import, the import
+                        // The MSB values (MiSpeL MP-15, V20261111201100) hold their import, the import
                         // holds the Messstelle (RESTRICT).
                         "mispel_msb_wert", "mispel_msb_import",
-                        // The Zählerrolle (MiSpeL MP-6, V20261002121500) holds the Messstelle (RESTRICT).
+                        // The Zählerrolle (MiSpeL MP-6, V20261111200200) holds the Messstelle (RESTRICT).
                         "messstelle_zaehlerrolle",
-                        // The Abgrenzung runs (MiSpeL MP-8, V20261002153700) hold the tenant (RESTRICT).
+                        // The Abgrenzung runs (MiSpeL MP-8, V20261111200400) hold the tenant (RESTRICT).
                         "mispel_abgrenzung_monat",
-                        // The Pauschal runs (MiSpeL MP-25, V20261002191500) hold the tenant (RESTRICT).
+                        // The Pauschal runs (MiSpeL MP-25, V20261111200600) hold the tenant (RESTRICT).
                         "mispel_pauschal_jahr",
-                        // The Förderweg (MiSpeL MP-5, V20261002141500) holds the tenant (RESTRICT).
+                        // The Förderweg (MiSpeL MP-5, V20261111200300) holds the tenant (RESTRICT).
                         "site_foerderweg",
-                        // The MiSpeL-Check result (MP-48, V20261002234100) holds the tenant (RESTRICT).
+                        // The MiSpeL-Check result (MP-48, V20261111201000) holds the tenant (RESTRICT).
                         "site_mispel_check",
                         "messstelle_ort", "messstelle_stellung",
                         "messstelle_groesse", "messstelle_kennzeichen", "messstelle",

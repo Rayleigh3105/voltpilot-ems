@@ -11,7 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Der letzte Stand des MiSpeL-Checks je Anlage ({@code site_mispel_check}, V20261002234100, Vertrag
+ * Der letzte Stand des MiSpeL-Checks je Anlage ({@code site_mispel_check}, V20261111201000, Vertrag
  * {@code docs/contracts/v2/mispel-check.md}), unter RLS: eine fremde Anlage hat keine Zeile. Hier wird nur gelesen;
  * abgelegt wird vom Folgepaket MP-13b.
  */

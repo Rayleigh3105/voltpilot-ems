@@ -24,7 +24,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Die Migration {@code V20261004114700} (MiSpeL MP-41a, Einstellungen des Fahrers am Ladepunkt) auf einer BEFÜLLTEN
+ * Die Migration {@code V20261111201500} (MiSpeL MP-41a, Einstellungen des Fahrers am Ladepunkt) auf einer BEFÜLLTEN
  * Datenbank: ein bidirektionaler Ladepunkt mit Fähigkeit und Fahrzeugfenster vorher, dann bis zum neuesten Stand.
  * Geprüft wird: kein Bestand ändert sich (Fingerabdruck), beide Tabellen beginnen leer — jeder Ladepunkt hat damit
  * Zurückspeisen „aus“ —, RLS + FORCE, Rechte, die CHECKs (Vokabular des Fahrplans 2.0, Akku schonen, Wochentag), der
@@ -34,7 +34,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class LadepunktFahrerEinstellungMigrationTest {
 
-    private static final String DIESE = "20261004114700";
+    private static final String DIESE = "20261111201500";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String ADMIN_USER = "voltpilot_admin";

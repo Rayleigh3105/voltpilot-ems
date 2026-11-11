@@ -94,8 +94,8 @@ CREATE TABLE IF NOT EXISTS monthly_market_value (
 );
 
 -- --- MiSpeL-Marktdaten: eeg_aw_zeit + annual_market_value ---------------------
--- Mirrors services/market-data/db/migration/V20261002110000 (canonical); the
--- api's V20261002110000 applies the same DDL idempotently and grants SELECT to
+-- Mirrors services/market-data/db/migration/V20261111200100 (canonical); the
+-- api's V20261111200100 applies the same DDL idempotently and grants SELECT to
 -- the app role. Market-wide data: no tenant_id, no RLS. eeg_aw_zeit = AW>0-
 -- Zeiten der UeNB je Regel (MiSpeL A1 S. 17 Fn. 8), annual_market_value = der
 -- Jahresmarktwert (A1 S. 21 Vor. 5), Upsert "veroeffentlicht schlaegt vorlaeufig".

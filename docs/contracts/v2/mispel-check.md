@@ -15,8 +15,8 @@ Ablageort und die nur lesende Route. **Wer ihn je Anlage rechnet und hier ablegt
 
 | Datei | Rolle |
 |---|---|
-| `services/api/src/main/resources/db/migration/V20261002234100__mispel_check_ergebnis.sql` | Tabelle `site_mispel_check` (eine Zeile je Anlage, RLS + FORCE), beginnt leer |
-| `services/api/src/main/resources/db/migration/V20261003054500__mispel_check_pauschal.sql` | MP-29: `formelsatz` kennt auch P1–P5 der Anlage 2 (Vereinigung, keine Zeile ändert sich) |
+| `services/api/src/main/resources/db/migration/V20261111201000__mispel_check_ergebnis.sql` | Tabelle `site_mispel_check` (eine Zeile je Anlage, RLS + FORCE), beginnt leer |
+| `services/api/src/main/resources/db/migration/V20261111201300__mispel_check_pauschal.sql` | MP-29: `formelsatz` kennt auch P1–P5 der Anlage 2 (Vereinigung, keine Zeile ändert sich) |
 | `services/api/.../mispel/MispelCheckRepository.java` | liest die Zeile unter RLS |
 | `services/api/.../web/SiteMispelCheckController.java` | `GET /api/v1/sites/{siteId}/mispel-check` |
 | `frontend/portal/src/mispelCheck.ts` · `components/MispelCheckKarte.tsx` | Typen, Satz und Karte in Schritt 1 des Dialogs „Förderweg ändern“ |

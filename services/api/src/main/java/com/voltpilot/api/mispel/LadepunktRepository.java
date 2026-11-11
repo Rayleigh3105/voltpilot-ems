@@ -22,7 +22,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Der bidirektionale Ladepunkt (MiSpeL MP-31, V20261002214500) unter RLS: die Ladepunkt-Komponenten einer Anlage,
+ * Der bidirektionale Ladepunkt (MiSpeL MP-31, V20261111200700) unter RLS: die Ladepunkt-Komponenten einer Anlage,
  * die Fassungen ihrer Fähigkeit (nie gelöscht, nie umgeschrieben — die App-Rolle setzt nur {@code aufgehoben_am})
  * und der laufende Stand des Fahrzeugfensters.
  */
@@ -159,7 +159,7 @@ public class LadepunktRepository {
     }
 
     /**
-     * Die Einstellungen des Fahrers (MP-41a, V20261004114700), wie gespeichert; die Reserve steht im Fahrzeugfenster.
+     * Die Einstellungen des Fahrers (MP-41a, V20261111201500), wie gespeichert; die Reserve steht im Fahrzeugfenster.
      * Abfahrten mit derselben Uhrzeit und demselben Ladestand bilden wieder eine Abfahrt für mehrere Wochentage.
      */
     public record FahrerStand(String rueckspeisen, BigDecimal vollzyklenJeTag, List<Abfahrt> abfahrten,

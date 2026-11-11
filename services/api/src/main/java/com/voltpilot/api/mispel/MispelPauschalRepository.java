@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Die Läufe des Rechenwerks der Pauschaloption ({@code mispel_pauschal_jahr}, V20261002191500), unter RLS. Eine Zeile
+ * Die Läufe des Rechenwerks der Pauschaloption ({@code mispel_pauschal_jahr}, V20261111200600), unter RLS. Eine Zeile
  * wird nie umgeschrieben: die App-Rolle liest und hängt an. MiSpeL MP-25, Muster {@link MispelAbgrenzungRepository}.
  */
 @Repository

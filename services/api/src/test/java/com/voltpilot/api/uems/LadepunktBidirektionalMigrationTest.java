@@ -24,7 +24,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Die Migration {@code V20261002214500} (MiSpeL MP-31, bidirektionaler Ladepunkt) auf einer BEFÜLLTEN Datenbank:
+ * Die Migration {@code V20261111200700} (MiSpeL MP-31, bidirektionaler Ladepunkt) auf einer BEFÜLLTEN Datenbank:
  * Ladepunkte (OCPP-Säule mit Freigabe und Herzschlag-Spiegel, Wallbox) vorher, dann bis zum neuesten Stand. Geprüft
  * wird: kein Bestand ändert sich (Fingerabdruck), die drei Tabellen beginnen leer — jeder heutige Ladepunkt gilt damit
  * als unidirektional —, RLS + FORCE, beschnittene Rechte, die CHECKs der Fn. 21/22, der Mandantenzaun und dass die
@@ -33,7 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class LadepunktBidirektionalMigrationTest {
 
-    private static final String DIESE = "20261002214500";
+    private static final String DIESE = "20261111200700";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String ADMIN_USER = "voltpilot_admin";

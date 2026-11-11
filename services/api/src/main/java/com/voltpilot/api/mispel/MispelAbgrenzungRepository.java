@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Die Läufe des Rechenwerks der Abgrenzungsoption ({@code mispel_abgrenzung_monat}, V20261002153700), unter RLS.
+ * Die Läufe des Rechenwerks der Abgrenzungsoption ({@code mispel_abgrenzung_monat}, V20261111200400), unter RLS.
  * Eine Zeile wird nie umgeschrieben: die App-Rolle liest und hängt an. MiSpeL MP-8.
  */
 @Repository

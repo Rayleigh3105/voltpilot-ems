@@ -2,8 +2,8 @@
 -- Voltpilot-EMS - MiSpeL-Marktdaten (LOCAL DEV bootstrap)
 -- -----------------------------------------------------------------------------
 -- Additive dev-only init file mirroring the canonical Flyway migration
---   services/market-data/db/migration/V20261002110000__mispel_marktdaten.sql
--- (the api's V20261002110000 applies the same DDL idempotently at runtime and
+--   services/market-data/db/migration/V20261111200100__mispel_marktdaten.sql
+-- (the api's V20261111200100 applies the same DDL idempotently at runtime and
 -- grants the app role SELECT). Keep the shapes in sync; the migrations are
 -- authoritative.
 --
