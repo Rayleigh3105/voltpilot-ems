@@ -352,7 +352,10 @@ tags:
       Mandanten-Umschalter (`voltpilot.uems.unterstuetzung.umschalter-enabled`, Vorgabe AN seit 26.10.2026) auch
       ohne sie hinein; ist er aus, gilt für sie dasselbe wie für einen Partner. In diesem Mandantensprung (Zugang
       `umschalter`) handelt sie seit 29.10.2026 als Kundenadministrator, unternehmensweit - in `/me` und in jeder
-      Prüfung; P-Zeilen bleiben beim VoltPilot-Betrieb, das Protokoll nennt weiter ihre Kennung.
+      Prüfung; P-Zeilen bleiben beim VoltPilot-Betrieb, das Protokoll nennt weiter ihre Kennung. Nennen
+      `X-Tenant-Id` und `X-Kundenbereich` in EINER Anfrage zwei verschiedene Kundenbereiche, nimmt die API keinen
+      von beiden: 400 `kundenbereich_widerspruch` auf jeder Kundenroute, auch `/api/v1/me` (Befund
+      vp-kundenakte-fremde-personen); gleiche Werte bleiben erlaubt.
   - name: energiemanagement
     description: >
       UEMS AP-19 Dokumentation und Managementabläufe. VoltPilot hält fest, der Kunde entscheidet, und jede Zeile

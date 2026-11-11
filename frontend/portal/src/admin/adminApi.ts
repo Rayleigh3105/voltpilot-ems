@@ -1,5 +1,6 @@
 import type { BenutzerAngelegt, BenutzerAnlage } from '../benutzer';
 import {
+  ANFRAGE_KENNUNG_KOPF,
   request,
   type CertSource,
   type CreateSiteInput,
@@ -434,10 +435,16 @@ export type BoxLoesenAnlass = 'falsche_kennung' | 'fremder_kunde' | 'doppelt_ver
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
-  createTenant: (input: CreateTenantInput) =>
+  /**
+   * `kennung` ist die Anfrage-Kennung des Formulars (B3-Mechanik wie beim Anlegen einer Anlage):
+   * ein Doppelklick oder das Wiederholen nach einem Netzfehler legt denselben Kunden nie zweimal an
+   * (Befund vp-kundenakte-fremde-personen, Punkt 5 - die Kundenliste zeigte einen Kunden doppelt).
+   */
+  createTenant: (input: CreateTenantInput, kennung?: string) =>
     request<Tenant>('/api/v1/admin/tenants', {
       method: 'POST',
       body: JSON.stringify(input),
+      ...(kennung ? { headers: { [ANFRAGE_KENNUNG_KOPF]: kennung } } : {}),
     }),
 
   updateTenant: (tenantId: string, input: UpdateTenantInput) =>

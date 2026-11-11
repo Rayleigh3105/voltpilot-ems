@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.admin.AdminAnfrageKennungen;
 import com.voltpilot.api.admin.AdminBenutzerService;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
@@ -50,6 +51,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -84,12 +86,15 @@ public class AdminController {
     private final BenutzerService benutzer;
     private final AdminBenutzerService adminBenutzer;
     private final KundenbereichLoeschung loeschung;
+    private final AdminAnfrageKennungen anfrageKennungen;
+    private final AnfrageKennungen fingerabdrucke;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
             AdminProvisionedDeviceRepository provisionedDevices,
             AdminEnrollmentRepository enrollments, KeycloakAdminClient keycloak,
             ObjectProvider<ProvisioningPublisher> provisioning, BenutzerService benutzer,
-            AdminBenutzerService adminBenutzer, KundenbereichLoeschung loeschung) {
+            AdminBenutzerService adminBenutzer, KundenbereichLoeschung loeschung,
+            AdminAnfrageKennungen anfrageKennungen, AnfrageKennungen fingerabdrucke) {
         this.tenants = tenants;
         this.sites = sites;
         this.provisionedDevices = provisionedDevices;
@@ -99,19 +104,38 @@ public class AdminController {
         this.benutzer = benutzer;
         this.adminBenutzer = adminBenutzer;
         this.loeschung = loeschung;
+        this.anfrageKennungen = anfrageKennungen;
+        this.fingerabdrucke = fingerabdrucke;
     }
 
     // ---- tenants -------------------------------------------------------------
+
+    /** Die Route der Anfrage-Kennung beim Anlegen (Tabelle {@code admin_anfrage_kennung}). */
+    static final String ROUTE_KUNDE_ANLEGEN = "POST /api/v1/admin/tenants";
 
     @GetMapping("/tenants")
     public List<TenantDto> listTenants() {
         return tenants.findAll();
     }
 
+    /**
+     * Befund vp-kundenakte-fremde-personen (Punkt 5, doppelter Kunde): dieselbe Anfrage-Kennung legt
+     * nie ein zweites Mal an - ein Doppelklick oder das Wiederholen nach einem Netzfehler bekommt den
+     * Kunden der ersten Antwort zurück. {@code tenant.name} bleibt bewusst nicht eindeutig (zwei
+     * Privatkunden dürfen gleich heißen); das Portal warnt zusätzlich vor einem gleichen Namen.
+     */
     @PostMapping("/tenants")
-    public ResponseEntity<TenantDto> createTenant(@Valid @RequestBody CreateTenantRequest request) {
-        TenantDto created = tenants.create(request.name(), request.segmentOrDefault());
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    public ResponseEntity<?> createTenant(@Valid @RequestBody CreateTenantRequest request,
+            @RequestHeader(value = AnfrageKennungen.KOPF, required = false) String anfrageKopf,
+            @AuthenticationPrincipal Jwt caller) {
+        String kennung = AnfrageKennungen.kennung(anfrageKopf);
+        if (kennung == null) {
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(tenants.create(request.name(), request.segmentOrDefault()));
+        }
+        return anfrageKennungen.einmal(caller.getSubject(), ROUTE_KUNDE_ANLEGEN, kennung,
+                fingerabdrucke.fingerabdruck(request), HttpStatus.CREATED,
+                () -> tenants.create(request.name(), request.segmentOrDefault()));
     }
 
     /** Update a tenant's master data (name/segment/betriebsart - U0 shell frame). */

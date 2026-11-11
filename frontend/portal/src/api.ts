@@ -8337,11 +8337,30 @@ const inFlight = new Map<string, Promise<unknown>>();
 export const STARTFENSTER_MS = 2_000;
 const STARTFENSTER_PFADE = new Set(['/api/v1/funktionen']);
 
+/**
+ * Der je Aufruf gestempelte `X-Tenant-Id`-Kopf (Kundenakte, Plattform-Geräteseite) - sonst `null`.
+ * Er gewinnt über den globalen Umschalter: ein Aufruf, der seinen Kunden AUSDRÜCKLICH nennt, trägt
+ * NIE zusätzlich den `X-Kundenbereich` des offenen Umschalters. Vorher gingen beide Köpfe hinaus,
+ * die API nahm still den Umschalter - und die Kundenakte von Kunde B zeigte die Personen von Kunde A
+ * (Befund vp-kundenakte-fremde-personen; die API lehnt zwei verschiedene Kundenbereiche jetzt mit
+ * 400 `kundenbereich_widerspruch` ab).
+ */
+function expliziterMandant(headers: HeadersInit | undefined): string | null {
+  // Jede Aufrufstelle stempelt den Kopf als einfaches Objekt (wie `mitKennung`).
+  if (!headers || Array.isArray(headers) || headers instanceof Headers) return null;
+  return (headers as Record<string, string>)['X-Tenant-Id'] || null;
+}
+
 function coalesceKey(path: string, init: RequestInit): string | null {
   const method = (init.method ?? 'GET').toUpperCase();
   if (method !== 'GET') return null;
   if (init.body != null || init.signal != null) return null;
-  return `${tenantOverride ?? ''}|${kundenbereich ?? ''}|${path}`;
+  // Ein ausdrücklicher Mandant gehört in den Schlüssel: die Kundenliste fragt `/api/v1/me` je Kunde
+  // GLEICHZEITIG ab - ohne ihn teilten alle Zeilen die Antwort des ersten Kunden.
+  const explizit = expliziterMandant(init.headers);
+  return explizit != null
+    ? `${explizit}||${path}`
+    : `${tenantOverride ?? ''}|${kundenbereich ?? ''}|${path}`;
 }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -8399,6 +8418,8 @@ export function vergissGemerkte(): void {
  * Welcher Kundenbereich gemeint ist: `X-Kundenbereich` (Partner und Plattform in einer Unterstützung, Kunden ohnehin),
  * sonst der Plattform-Umschalter `X-Tenant-Id`. Jeder Abruf trägt ihn gleich - auch die Datei-Abrufe (CSV, PDF, ICS);
  * ohne ihn lief der CSV-Abruf des Verzeichnisses in einem fremden Kundenbereich ohne Wahl (Konzept Nachweisen n1, A16).
+ * Ein Aufruf mit EIGENEM `X-Tenant-Id`-Kopf (Kundenakte, Plattform-Geräteseite) nennt seinen Kunden ausdrücklich;
+ * `requestUncoalesced` lässt den Umschalter-Kopf dann weg (siehe {@link expliziterMandant}).
  */
 export function bereichKopf(path: string, bereich = kundenbereich, mandant = tenantOverride): Record<string, string> {
   return bereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': bereich }
@@ -8435,8 +8456,11 @@ function mitKennung(kennung: string | undefined): RequestInit {
 const REQUEST_TIMEOUT_MS = 20_000;
 
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const angefragterMandant = tenantOverride;
-  const angefragterKundenbereich = kundenbereich;
+  // Ein Aufruf mit AUSDRÜCKLICHEM Kunden (eigener `X-Tenant-Id`-Kopf) spricht genau diesen Kunden an:
+  // der `X-Kundenbereich` des offenen Umschalters bleibt dann weg (siehe `expliziterMandant`).
+  const explizit = expliziterMandant(init.headers);
+  const angefragterMandant = explizit ?? tenantOverride;
+  const angefragterKundenbereich = explizit != null ? null : kundenbereich;
   let token: string | undefined;
   try {
     token = await freshToken();

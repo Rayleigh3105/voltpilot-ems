@@ -23,6 +23,12 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
 - **Abgewiesen** werden ein Partner ohne Kopf und Partner oder Plattform mit einem Kopf ohne wirksame Unterstützung.
   Die Antwort ist 404 per `sendError` auf JEDER Kundenroute, auch für Methoden, die es dort nicht gibt. Nur
   `/api/v1/me` antwortet 200 ohne Kundenbereich.
+- **Widerspruch (400):** nennen `X-Tenant-Id` (nur Plattform, `TenantFilter`) und `X-Kundenbereich` ZWEI verschiedene
+  Kundenbereiche, nimmt die API keinen von beiden - 400 `kundenbereich_widerspruch` auf jeder Kundenroute, auch
+  `/api/v1/me` (Befund vp-kundenakte-fremde-personen: vorher gewann der Kopf still, und die Kundenakte von Kunde B las
+  bei offenem Umschalter auf A die Personen von A). Das Portal lässt den Umschalter-Kopf bei Aufrufen mit eigenem
+  `X-Tenant-Id`-Kopf weg (`expliziterMandant` in `api.ts`); gleiche Werte in beiden Köpfen bleiben erlaubt. Für einen
+  Partner ignoriert der `TenantFilter` `X-Tenant-Id` weiterhin - er kann den Widerspruch nicht auslösen.
 - **Sitzungs-Einstellungen** in derselben `set_config`-Anweisung wie `app.tenant_id`, beim Zurückgeben zusammen
   zurückgesetzt:
   - `app.zugriff` ist `unternehmen` bei einem Kundenkonto mit wirksamer mandantenweiter Zuweisung oder ganz ohne je

@@ -15,6 +15,7 @@ const beendenMandant = vi.fn();
 const wiederaufnehmenMandant = vi.fn();
 const benutzerListe = vi.fn();
 const fleet = vi.fn();
+const createTenant = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -28,7 +29,7 @@ vi.mock('../../admin/adminApi', () => ({
     createUser: (...a: unknown[]) => createUser(...a),
     createPerson: (...a: unknown[]) => createPerson(...a),
     createSite: vi.fn(),
-    createTenant: vi.fn(),
+    createTenant: (...a: unknown[]) => createTenant(...a),
     updateTenant: vi.fn(),
     deleteTenant: vi.fn(),
     beendenMandant: (...a: unknown[]) => beendenMandant(...a),
@@ -407,6 +408,57 @@ describe('MandantenPage - die Kundenliste', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Neuer Kunde' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByLabelText('Name des neuen Kunden')).toBeInTheDocument();
+  });
+
+  /**
+   * Doppelter Kunde (Befund vp-kundenakte-fremde-personen, Punkt 5): die Live-Liste zeigte
+   * „Wüstholz Karl-Friedrich" ZWEIMAL. Drei Schutzwände: eine Anfrage-Kennung je Formular
+   * (dieselbe bei jedem Versuch), ein Doppelklick-Riegel und die Warnung bei gleichem Namen.
+   */
+  it('sendet je Formular EINE Anfrage-Kennung - auch beim Wiederholen nach einem Fehler', async () => {
+    createTenant.mockReset()
+      .mockRejectedValueOnce(new Error('Netz weg'))
+      .mockResolvedValue({ ...TENANT, id: 't-neu', name: 'Wüstholz Karl-Friedrich' });
+    render(<MandantenPage tenants={[TENANT]} onReloadTenants={vi.fn()} onJumpToTenant={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Neuer Kunde' }));
+    fireEvent.change(screen.getByLabelText('Name des neuen Kunden'), { target: { value: 'Wüstholz Karl-Friedrich' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
+    await screen.findByText('Der Kunde konnte nicht angelegt werden. Bitte versuchen Sie es erneut.');
+    fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
+    await waitFor(() => expect(createTenant).toHaveBeenCalledTimes(2));
+    const [, kennung1] = createTenant.mock.calls[0];
+    const [, kennung2] = createTenant.mock.calls[1];
+    expect(kennung1).toMatch(/^portal-/);
+    expect(kennung2).toBe(kennung1);
+  });
+
+  it('legt bei einem Doppelklick nur einmal an', async () => {
+    let fertig!: (t: typeof TENANT) => void;
+    createTenant.mockReset().mockImplementation(() => new Promise((r) => { fertig = r; }));
+    render(<MandantenPage tenants={[TENANT]} onReloadTenants={vi.fn()} onJumpToTenant={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Neuer Kunde' }));
+    fireEvent.change(screen.getByLabelText('Name des neuen Kunden'), { target: { value: 'Wüstholz Karl-Friedrich' } });
+    const anlegen = screen.getByRole('button', { name: 'Anlegen' });
+    fireEvent.click(anlegen);
+    fireEvent.click(anlegen);
+    fertig({ ...TENANT, id: 't-neu' });
+    await waitFor(() => expect(createTenant).toHaveBeenCalledTimes(1));
+  });
+
+  it('warnt bei gleichem Namen: Hinweis, „Trotzdem anlegen", Enter legt nicht an', async () => {
+    createTenant.mockReset().mockResolvedValue({ ...TENANT, id: 't-neu' });
+    render(<MandantenPage tenants={[TENANT]} onReloadTenants={vi.fn()} onJumpToTenant={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Neuer Kunde' }));
+    const feld = screen.getByLabelText('Name des neuen Kunden');
+    // Groß-/Kleinschreibung und Randleerzeichen zählen nicht als Unterschied.
+    fireEvent.change(feld, { target: { value: '  nordwind gmbh ' } });
+    expect(screen.getByText(/Einen Kunden mit diesem Namen gibt es schon/)).toBeInTheDocument();
+    const trotzdem = screen.getByRole('button', { name: 'Trotzdem anlegen' });
+    fireEvent.keyDown(feld, { key: 'Enter' });
+    expect(createTenant).not.toHaveBeenCalled();
+    fireEvent.click(trotzdem);
+    await waitFor(() => expect(createTenant).toHaveBeenCalledTimes(1));
+    expect(createTenant.mock.calls[0][0]).toEqual({ name: 'nordwind gmbh', segment: 'CI' });
   });
 
   it('findet eine Person über die bereits geladenen Konten (zunächst-Suche vor S6)', async () => {

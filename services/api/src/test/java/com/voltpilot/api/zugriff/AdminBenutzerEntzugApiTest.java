@@ -237,6 +237,31 @@ class AdminBenutzerEntzugApiTest {
         }
     }
 
+    /**
+     * Person OHNE Konto (Befund vp-kundenakte-fremde-personen, Punkt 4): der Spiegel steht noch, das
+     * Keycloak-Konto ist weg (eine Entfernung, deren Keycloak-Hälfte gelang und deren
+     * Datenbank-Hälfte zurückrollte). Vorher war so ein Eintrag für immer handlungslos in der
+     * Kundenakte; jetzt räumt ihn das Entfernen mit Protokoll ab. Sperren braucht das Konto
+     * weiterhin (404), und ein fremder Kundenbereich sieht den Spiegel nie (RLS).
+     */
+    @Test void personOhneKontoWirdMitProtokollEntferntSperrenUndFremderKundenbereichBleiben404() throws Exception {
+        String verwaist = "verwaist-" + tenant;
+        spiegel(verwaist);
+        zuweisung(verwaist, "leser", standort);
+        when(keycloak.getUser(verwaist)).thenThrow(new KeycloakAdminException(404, "User not found: " + verwaist));
+        assertThat(ruf(aendern(Weg.SPERREN, tenant, verwaist), plattform()).getResponse().getStatus()).isEqualTo(404);
+        UUID fremd = root.queryForObject("INSERT INTO tenant (name) VALUES ('Fremder Kunde') RETURNING id", UUID.class);
+        assertThat(ruf(aendern(Weg.ENTFERNEN, fremd, verwaist), plattform()).getResponse().getStatus()).isEqualTo(404);
+        assertThat(ruf(aendern(Weg.ENTFERNEN, tenant, verwaist), plattform()).getResponse().getStatus()).isEqualTo(204);
+        assertThat(root.queryForObject("SELECT zustand FROM benutzer WHERE tenant_id = ? AND sub = ?",
+                String.class, tenant, verwaist)).isEqualTo("entfernt");
+        assertThat(root.queryForObject("SELECT count(*) FROM zugriff WHERE tenant_id = ? AND benutzer_sub = ? "
+                + "AND beendet_am IS NULL", Integer.class, tenant, verwaist)).isZero();
+        assertThat(root.queryForObject("SELECT count(*) FROM zugriff_protokoll WHERE tenant_id = ? "
+                + "AND betroffener_sub = ? AND actor_sub = ?", Integer.class, tenant, verwaist, ADMIN)).isPositive();
+        verify(keycloak, never()).deleteUser(verwaist);
+    }
+
     @Test void entsperrenErhaeltZuweisungenUndBelebtKeinenFrueherenEntzug() throws Exception {
         zuweisung(sub, "bearbeiter", standort);
         root.update("UPDATE zugriff SET beendet_am = now(), beendet_von = ? WHERE tenant_id = ? AND benutzer_sub = ? "

@@ -110,6 +110,10 @@
 
 /* B4 = A (vp-plattform-admin-box-benutzer-konzept): je Box ein Zustand statt nur einer Summe. */
 .vp-kundenakte-boxen { display: flex; flex-wrap: wrap; gap: var(--vp-space-1); justify-content: flex-end; }
+/* Punkt 7 (vp-kundenakte-fremde-personen): Abzeichen und „Vom Kunden lösen …" einer Box als Paar -
+   die Handlung bricht nie aus der Zeile, am Telefon umbricht das Paar gemeinsam. */
+.vp-kundenakte-box { display: inline-flex; align-items: center; gap: var(--vp-space-2); flex-wrap: wrap; justify-content: flex-end; }
+.vp-kundenakte-box .vp-linklike { white-space: nowrap; }
 .vp-kundenakte-box-link { text-decoration: none; border-radius: var(--vp-radius-full, 999px); }
 .vp-kundenakte-box-link:hover,
 .vp-kundenakte-box-link:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 1px; }
