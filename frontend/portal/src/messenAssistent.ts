@@ -386,11 +386,12 @@ export function hauptzaehlerJeAnlage(
 }
 
 /**
- * Die Hauptzähler-Regel der Übernahme (AP-04 Regel 8): ein Unterzähler, der auf einen Hauptzähler
- * DIESER Liste zeigt, geht nur zusammen mit ihm — sonst lehnt der Server die GANZE Übernahme ab
- * (422 `stellung_ungueltig`, `bezug_fehlt`). Je betroffener Zeile der Satz des Servers, Wort für
- * Wort (`MessstelleVorschlagService.bezug`, mit dem Namen des Vorschlags); leer = die Auswahl geht so.
- * Ein Unterzähler einer BESTEHENDEN Messstelle hängt an nichts, was hier fehlen könnte.
+ * Die Hauptzähler-Regel der Übernahme (AP-04 Regel 8): ein Unterzähler, der auf einen anderen Zähler
+ * DIESER Liste zeigt — seit dem Zählerbaum (S4) der nächste Vorfahre im Baum, der eine Messstelle
+ * hat, nicht mehr nur der Hauptzähler —, geht nur zusammen mit ihm — sonst lehnt der Server die GANZE
+ * Übernahme ab (422 `stellung_ungueltig`, `bezug_fehlt`). Je betroffener Zeile der Satz des Servers,
+ * Wort für Wort (`MessstelleVorschlagService.bezug`, mit dem Namen des Vorschlags); leer = die Auswahl
+ * geht so. Ein Unterzähler einer BESTEHENDEN Messstelle hängt an nichts, was hier fehlen könnte.
  */
 export function hauptzaehlerFehlt(liste: MessstelleVorschlagsliste, gewaehlt: ReadonlySet<string>): Map<string, string> {
   const out = new Map<string, string>();
@@ -400,7 +401,7 @@ export function hauptzaehlerFehlt(liste: MessstelleVorschlagsliste, gewaehlt: Re
     if (gewaehlt.has(`${b.komponente}|${b.kanal}`)) continue;
     out.set(
       vorschlagSchluessel(v),
-      `„${v.name}“ ist als ${UEMS_UNTERZAEHLER_VON} ${b.messstelle} vorgeschlagen — übernehmen Sie diesen ${UEMS_HAUPTZAEHLER} mit.`,
+      `„${v.name}“ ist als ${UEMS_UNTERZAEHLER_VON} ${b.messstelle} vorgeschlagen — übernehmen Sie diesen Zähler mit.`,
     );
   }
   return out;
