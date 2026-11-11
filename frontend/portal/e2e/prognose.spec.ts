@@ -230,3 +230,36 @@ for (const [stunde, minute] of [
     }
   });
 }
+
+// captain-Befund Runde 3: die Y-Achse des Tagesbilds zeigte einen dichten
+// Zahlenstapel alle 2 kW und schnitt am Telefon die oberste Beschriftung links
+// ab; die X-Achse zeigte jede Stunde 0…23. Beides jetzt wenige, runde Marken
+// (Bericht R3.2: "wie im Konzept").
+for (const width of [390, 1440]) {
+  test(`Prognose bei ${width} px · Tagesbild-Achsen: wenige runde Marken, nichts abgeschnitten`, async ({ page }) => {
+    await oeffnen(page, width, 'captain-november', CAPTAIN_JETZT);
+
+    const yMarken = page.getByTestId('vp-pt-y-marke');
+    const yAnzahl = await yMarken.count();
+    expect(yAnzahl).toBeGreaterThan(1);
+    expect(yAnzahl).toBeLessThanOrEqual(6);
+
+    const xMarken = page.getByTestId('vp-pt-x-marke');
+    const xAnzahl = await xMarken.count();
+    expect(xAnzahl).toBeGreaterThan(1);
+    expect(xAnzahl).toBeLessThanOrEqual(9);
+    await expect(xMarken.first()).toHaveText('0 Uhr');
+    await expect(xMarken.last()).toHaveText('24');
+
+    // Die oberste Y-Marke (mit " kW") darf nicht links aus dem Bild laufen.
+    await expect(yMarken.last()).toHaveText(/ kW$/);
+    const bild = page.locator('.vp-pt-bild');
+    const bildBox = await bild.boundingBox();
+    const obersteBox = await yMarken.last().boundingBox();
+    expect(bildBox).not.toBeNull();
+    expect(obersteBox).not.toBeNull();
+    if (bildBox && obersteBox) {
+      expect(obersteBox.x).toBeGreaterThanOrEqual(bildBox.x - 1);
+    }
+  });
+}

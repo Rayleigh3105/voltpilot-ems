@@ -40,6 +40,20 @@ const TEPPICH_ZEILE_PX = 28;
 /** Unter dieser Höhe wird eine Säule zum flachen Strich (Bericht R3.2: "Grundlast, Dämmerung"). */
 const TEPPICH_MIN_SAEULE_PX = 4.5;
 
+/**
+ * Ein runder Schritt für die Y-Achse des Tagesbilds (z. B. 0/20/40/60 statt
+ * einem dichten Zahlenstapel alle 2 kW - captain-Befund Runde 3). Rundet auf
+ * 1/2/2,5/5/10 × Zehnerpotenz, sodass bei `zielMarken` Marken herauskommt.
+ */
+function niceSchritt(max: number, zielMarken = 3): number {
+  if (max <= 0) return 1;
+  const roh = max / zielMarken;
+  const zehner = Math.pow(10, Math.floor(Math.log10(roh)));
+  const norm = roh / zehner;
+  const stufe = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+  return stufe * zehner;
+}
+
 function InfoKnopf({ onClick }: { onClick: () => void }) {
   return (
     <button type="button" className="vp-pz-info" aria-label="Woher die Werte kommen" onClick={onClick}>
@@ -532,7 +546,7 @@ export function PrognoseTagesBild({
   const n = bisStunde - vonStunde + 1;
 
   const W = Math.max(240, Math.round(breite || 0));
-  const padL = breit ? 46 : 36;
+  const padL = breit ? 46 : 42;
   const padR = 6;
   const plotH = breit ? 220 : 140;
   // Himmel + Temperatur über dem Bild brauchen eigenen Platz (Bericht R3.2:
@@ -555,7 +569,7 @@ export function PrognoseTagesBild({
 
   const alleWerte = [...sonnePunkte, ...verbrauchPunkte].map((p) => p.v);
   const max = Math.max(0, ...alleWerte);
-  const tick = max > 6 ? 2 : 1;
+  const tick = niceSchritt(max);
   const ymax = Math.max(tick * 2, Math.ceil((max * 1.12) / tick) * tick);
   const Y = (v: number) => basis - (v / ymax) * plotH;
   const mitte = (stunde: number) => X(stunde) + schritt / 2;
@@ -632,7 +646,7 @@ export function PrognoseTagesBild({
           {Array.from({ length: Math.round(ymax / tick) + 1 }, (_, k) => k * tick).map((v) => (
             <g key={v}>
               <line x1={padL} x2={W - padR} y1={Y(v)} y2={Y(v)} stroke={t.grid} />
-              <text x={padL - 6} y={Y(v) + 3.5} className="vp-pz-achse" textAnchor="end">
+              <text data-testid="vp-pt-y-marke" x={padL - 6} y={Y(v) + 3.5} className="vp-pz-achse" textAnchor="end">
                 {v === ymax ? `${v} kW` : v}
               </text>
             </g>
@@ -712,13 +726,30 @@ export function PrognoseTagesBild({
 
           {jetztX != null && <line x1={jetztX} x2={jetztX} y1={oben} y2={basis} stroke={t.jetzt} strokeWidth={2} />}
 
-          {stundenDesTages
-            .filter((h, i) => stundenDesTages.indexOf(h) === i && h % (breit ? 1 : 2) === 0)
-            .map((h) => (
-              <text key={h} x={mitte(h)} y={H - 4} className="vp-pz-achse" textAnchor="middle">
-                {h}
+          {/* Wenige Marken in 3-Stunden-Schritten (Telefon: 6), an den
+              Stunden-GRENZEN (nicht der Zellenmitte) - so passt am Ende auch
+              "24" genau auf den rechten Rand (captain-Befund Runde 3: "jede
+              Stunde 0…23 wirkt gedrängt"). Die erste/letzte Marke hängt am
+              Rand statt darüber zu zentrieren, wie im Konzept. */}
+          {(() => {
+            const schrittStunden = breit ? 3 : 6;
+            const marken = Array.from({ length: Math.floor(24 / schrittStunden) + 1 }, (_, i) => i * schrittStunden).filter(
+              (h) => h >= vonStunde && h <= bisStunde + 1,
+            );
+            const letzte = marken[marken.length - 1];
+            return marken.map((h) => (
+              <text
+                data-testid="vp-pt-x-marke"
+                key={h}
+                x={X(h)}
+                y={H - 4}
+                className="vp-pz-achse"
+                textAnchor={h === 0 ? 'start' : h === letzte && h === bisStunde + 1 ? 'end' : 'middle'}
+              >
+                {h === 0 ? '0 Uhr' : h}
               </text>
-            ))}
+            ));
+          })()}
         </svg>
       )}
     </div>
