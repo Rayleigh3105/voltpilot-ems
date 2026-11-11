@@ -108,6 +108,16 @@ class ScheduleSavings1dTest {
                     + " AND generated_at = (SELECT max(generated_at) FROM schedule WHERE site_id = ? AND time = ?)",
                     SITE_A1, Timestamp.from(raster.minus(Duration.ofDays(10))),
                     SITE_A1, Timestamp.from(raster.minus(Duration.ofDays(10))));
+            // Die Job-Abmeldung oben (next_start) wirkt erst NACH diesem Statement - der
+            // TimescaleDB-Hintergrundprozess kann den gerade erst registrierten Job schon VOR
+            // der Abmeldung einmal auslösen (unter Last auf diesem Rechner messbar), und ein
+            // Lauf ohne diese Saat hinterliesse einen "Stand" ohne eine einzige Sparzeile -
+            // #2 ("ohne Stand rechnet der Leser live wie bisher") setzt aber wirklich KEINEN
+            // Stand voraus. Deshalb hier, NACH der Saat, einmal sicher leer räumen statt uns
+            // auf die Rennbedingung zu verlassen.
+            try (Statement s = c.createStatement()) {
+                s.execute("TRUNCATE schedule_savings_1d, schedule_savings_1d_state");
+            }
         }
     }
 
