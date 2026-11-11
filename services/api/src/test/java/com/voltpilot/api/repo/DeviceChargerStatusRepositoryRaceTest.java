@@ -249,7 +249,8 @@ class DeviceChargerStatusRepositoryRaceTest {
                         "tenant_id", "site_id", "status", "charging", "allocated_kw", "reason",
                         "reason_text", "next_turn", "power_kw", "energy_kwh", "soc_pct", "command_status",
                         "readback", "readback_note", "session_since", "session_kwh", "metered_at", "boost",
-                        "tag_ref", "reported_at"));
+                        // MiSpeL MP-37b: Uhr des Ladestands und Rückspeise-Fähigkeit des Autos.
+                        "tag_ref", "soc_measured_at", "bidirectional", "reported_at"));
         bekannt.forEach((table, spalten) -> assertThat(root.queryForList(
                 "SELECT column_name FROM information_schema.columns WHERE table_name = ?", String.class,
                 table)).as(table).containsExactlyInAnyOrderElementsOf(spalten));
