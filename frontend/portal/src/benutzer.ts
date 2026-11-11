@@ -67,6 +67,11 @@ export function benutzerFehler(fehler: unknown, fallback = 'Das Startpasswort ko
     if (body?.code === 'eigene_zuweisung') return 'Ihre eigenen Rechte kann nur ein weiterer Kundenadministrator ändern.';
     if (body?.code === 'email_fremder_kundenbereich') return 'Diese E-Mail-Adresse ist bereits einem anderen Kundenbereich zugeordnet. Als Unterstützung gewähren?';
     if (body?.code === 'gueltig_bis_vergangen') return EINSICHT_BIS_VERGANGEN;
+    // N5: Keycloak unterscheidet Anmeldename und E-Mail - die Nachricht nennt jetzt das richtige Feld.
+    if (body?.code === 'anmeldename_vergeben') return 'Dieser Anmeldename ist bereits vergeben.';
+    if (body?.code === 'email_vergeben') return 'Diese E-Mail-Adresse ist bereits vergeben.';
+    if (body?.code === 'anmeldename_ungueltig') return body.message ?? 'Anmeldename: a-z, 0-9, Punkt, Bindestrich, Unterstrich; 3 bis 64 Zeichen.';
+    if (body?.code === 'realm_anmeldename_gesperrt') return body.message ?? 'Der Anmeldename lässt sich hier noch nicht ändern.';
     if (fehler.status === 422) return 'Bitte wählen Sie mindestens einen Standort.';
     if (fehler.status === 409) return 'Benutzername oder E-Mail-Adresse ist bereits vergeben.';
     if (fehler.status === 403) return grundUndWeg();

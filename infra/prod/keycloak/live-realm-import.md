@@ -14,6 +14,7 @@ UEMS AP-20 IP-20, Entscheid E12 = A vom 25.09.2026 (Regel BT6). Dieses Blatt ist
 | Browser-Anmeldung | Ablauf `voltpilot-browser`: für `platform-admin` ist der zweite Faktor (TOTP) Pflicht, für alle anderen Konten wählbar |
 | Passwort-Grant | Ablauf `voltpilot-direct-grant`: kein Token für `platform-admin`; wer den zweiten Faktor eingerichtet hat, braucht ihn auch hier |
 | Sitzungsdauern | `rememberMe=true`; normal 12 Stunden Leerlauf / 24 Stunden Höchstdauer, mit „Angemeldet bleiben“ 90/180 Tage, für alle Konten gleich (vp-login-dauer-d1) |
+| Anmeldename ändern | `editUsernameAllowed=true` UND im User-Profil `username` auf `edit: ["admin"]` - erst beides zusammen lässt NUR den Admin umbenennen (Keycloak-Labor, Konzept vp-plattform-admin-box-benutzer-konzept §4.2); ohne `editUsernameAllowed` lehnt Keycloak jedes Umbenennen ab (auch durch den Admin), ohne die Einschränkung im User-Profil kann sich ein Kunde selbst umbenennen |
 
 `platform-admin` ist das Konto des VoltPilot-Betriebs. Das API macht aus genau dieser Rolle das Plattform-Konto (`KeycloakRealmRoleConverter`).
 
@@ -63,8 +64,7 @@ Alle Befehle laufen dort, wo `kubectl` den Cluster erreicht, im Wurzelordner die
 5. **Anmelden und ansehen:** Ein Betriebskonto meldet sich an und richtet die App ein. Ein Kundenkonto meldet sich unverändert an. Beide Anmeldungen stehen unter Realm `voltpilot` › Events › User events, das Beenden der Sitzungen unter Admin events. Ereignisse gibt es erst ab Schritt 3.
 6. **Keycloak-Administrator (Realm `master`):** Dieses Konto gehört ebenfalls zum VoltPilot-Betrieb, steht aber nicht im Import. Unter Realm `master` › Users › Konto › Required user actions: „Configure OTP“ › Save. Bei der nächsten Anmeldung an der Administration richtet das Konto die App ein.
    **Dieser Schritt kommt zuletzt, wenn 3 bis 5 stimmen.** Sobald der Administrator die App hat, nimmt `kcadm config credentials` sein Passwort nicht mehr an (`Invalid user credentials`; schon mit der gesetzten Pflicht: `Account is not fully set up`), und die Anmeldung aus Schritt 2 endet. `kcadm` kann beim Anmelden keinen Code abfragen. Danach laufen `pruefen`, `angleichen` und die Befehle unter „Zurück“ nur noch mit einem anderen Zugang; siehe „Wenn `kcadm` oder der Administrator ausgesperrt ist“.
-7. **Vor- und Nachname nur durch die Administration** (Review Nachweisen r1, P0-1): Der Import setzt im User-Profil `firstName` und `lastName` auf `edit: ["admin"]`; das Skript gleicht das User-Profil nicht ab.
-   In der Administration unter Realm `voltpilot` › Realm settings › User profile › `firstName` bzw. `lastName` › Permission bei „Who can edit?“ nur „Admin“ lassen, dann Save.
+7. **Vor- und Nachname, E-Mail und Anmeldename nur durch die Administration** (Review Nachweisen r1, P0-1; Anmeldename seit P3, Konzept vp-plattform-admin-box-benutzer-konzept §4.2): Schritt 3 (`angleichen`) gleicht seit P3 auch das User-Profil ab (`username` auf `edit: ["admin"]`, zusammen mit `editUsernameAllowed`) - ein eigener Administrations-Handgriff ist dafür nicht mehr nötig.
    Der Urheber im Protokoll hängt nicht daran (er kommt aus `benutzer.anzeigename` bzw. dem Anmeldenamen), aber Token und Kontoseite zeigen dann keinen selbst gewählten Namen mehr.
 8. **Aufräumen:** die Anmeldung von `kcadm` aus dem Pod entfernen.
    ```sh

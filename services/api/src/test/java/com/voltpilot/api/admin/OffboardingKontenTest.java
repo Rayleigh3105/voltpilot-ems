@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
+import com.voltpilot.api.benutzer.BenutzerService;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.zugriff.ZugriffAenderung;
 import com.voltpilot.api.zugriff.ZugriffContext;
@@ -27,9 +28,11 @@ class OffboardingKontenTest {
     private final KeycloakAdminClient keycloak = mock(KeycloakAdminClient.class);
     private final ZugriffRepository zugriffe = mock(ZugriffRepository.class);
     private final ZugriffAenderung aenderung = mock(ZugriffAenderung.class);
+    private final BenutzerService benutzer = mock(BenutzerService.class);
     private final PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
     private final TransactionStatus transaction = mock(TransactionStatus.class);
-    private final AdminBenutzerService service = new AdminBenutzerService(keycloak, zugriffe, aenderung, transactions);
+    private final AdminBenutzerService service =
+            new AdminBenutzerService(keycloak, zugriffe, aenderung, benutzer, transactions);
 
     @BeforeEach void anmelden() {
         when(transactions.getTransaction(any())).thenReturn(transaction);

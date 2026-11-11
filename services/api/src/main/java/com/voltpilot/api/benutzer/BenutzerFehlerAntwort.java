@@ -16,6 +16,11 @@ public class BenutzerFehlerAntwort {
     @ExceptionHandler(KeycloakAdminException.class)
     public ResponseEntity<Map<String, String>> keycloak(KeycloakAdminException e) {
         int status = e.status() == 400 || e.status() == 409 ? e.status() : 502;
+        // N5: trägt die Ausnahme schon einen genaueren Code (anmeldename_vergeben/email_vergeben aus dem
+        // Anlegeweg), geht dessen feste Nachricht durch statt der zusammengefassten von früher.
+        if (e.code() != null) {
+            return ResponseEntity.status(status).body(Map.of("code", e.code(), "message", e.getMessage()));
+        }
         return ResponseEntity.status(status).body(Map.of("code", status == 409 ? "konto_vorhanden"
                 : status == 400 ? "passwort_regeln" : "konto_nicht_erreichbar", "message", status == 409
                 ? "Benutzername oder E-Mail-Adresse ist bereits vergeben." : status == 400

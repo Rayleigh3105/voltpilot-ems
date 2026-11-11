@@ -403,26 +403,170 @@ class AdminApiTest {
     // ---- (b4) support password reset -----------------------------------------
 
     /**
-     * The platform has no SMTP, so a forgotten password has exactly one recovery
-     * path: support resets it from the admin console. This proves the whole
-     * support story: the customer locks themselves out guessing, support sets a
-     * new password through the tenant-scoped admin endpoint, and the new
-     * password works immediately because the reset also lifts the brute-force
-     * lockout. A user addressed under the wrong tenant's path is never touched.
+     * N6 (Konzept vp-plattform-admin-box-benutzer-konzept, 10.11.2026): die Anmeldeseite nennt
+     * „Support" bei vergessenem Passwort, aber vor N6 hatte der Plattform-Admin dafür keinen eigenen
+     * Weg (403, nur im Mandantensprung über die Kundenseite). Jetzt vergibt er selbst ein neues
+     * Startpasswort über die admin-geschützte Route - derselbe Weg wie der Kundenadministrator
+     * ({@code BenutzerService#neuVergeben}), inklusive Pflichtwechsel und aufgehobener
+     * Brute-Force-Sperre. Ein Benutzer über den FALSCHEN Mandanten-Pfad bleibt unberührt (404).
      */
     @Test
-    void startpasswortGehoertDemKundenadministratorUndNichtMehrDemSupport() {
+    void supportVergibtEinNeuesStartpasswortUeberDieAdminRoute() {
         String admin = token("admin", "admin");
         String tenantId = (String) createTenant(admin, "Alpenstrom GmbH", "B2C").get("id");
         String userId = (String) createUser(admin, tenantId, "alpen-kunde", "kunde@alpen.example", "eigenes-passwort-1").get("id");
         String otherTenant = (String) createTenant(admin, "Fremdstrom AG", "B2C").get("id");
         assertThat(rest.exchange(url("/api/v1/admin/tenants/" + otherTenant + "/users/" + userId + "/reset-password"),
-                HttpMethod.POST, new HttpEntity<>(Map.of("password", "unbenutzt"), bearer(admin)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/reset-password"),
-                HttpMethod.POST, new HttpEntity<>(Map.of("password", "unbenutzt"), bearer(admin)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-        assertThat(tryToken("alpen-kunde", "eigenes-passwort-1")).containsKey("access_token");
+                HttpMethod.POST, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(tryToken("alpen-kunde", "eigenes-passwort-1")).as("die falsche Mandanten-Route ändert nichts")
+                .containsKey("access_token");
+
+        ResponseEntity<Map<String, Object>> reset = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/reset-password"),
+                HttpMethod.POST, new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(reset.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String neuesStartpasswort = (String) reset.getBody().get("startpasswort");
+        assertThat(neuesStartpasswort).isNotBlank();
+
+        // Das alte Passwort gilt nicht mehr; das neue verlangt sofort den Pflichtwechsel (kein Token).
+        assertThat(tryToken("alpen-kunde", "eigenes-passwort-1")).doesNotContainKey("access_token");
+        assertThat(tryToken("alpen-kunde", neuesStartpasswort)).doesNotContainKey("access_token");
+    }
+
+    // ---- (b5) person management (P1/P2/P3, Konzept vp-plattform-admin-box-benutzer-konzept) ----
+
+    /**
+     * P1 (N1) + P3: „Bearbeiten" ganz machen (vorher nur Keycloak, der Spiegel blieb auf dem alten
+     * Stand) UND den Anmeldenamen ändern (Realm-Härtung {@code editUsernameAllowed} + nur admin
+     * editierbar, Keycloak-Labor §4.2). Protokoll-Wort {@code konto_geaendert}, Urheber
+     * VoltPilot-Betrieb; ein unveränderter Anmeldename im Body schreibt kein zweites Mal.
+     */
+    @Test
+    void adminRenamesAUserAndMirrorsNameAndEmailIntoTheUemsSpiegel() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Umbenennwerk GmbH", "CI").get("id");
+        String userId = (String) createUser(admin, tenantId, "vor-der-aenderung", "alt@umbenennen.example",
+                "egal-pw-1").get("id");
+
+        ResponseEntity<Map<String, Object>> updated = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("username", "nach-der-aenderung", "email", "neu@umbenennen.example",
+                        "firstName", "Nora", "lastName", "Nachher"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody()).containsEntry("username", "nach-der-aenderung");
+        assertThat(updated.getBody()).containsEntry("email", "neu@umbenennen.example");
+
+        // P1/N1: der Spiegel zieht mit - vorher blieb er auf dem Stand beim Anlegen.
+        assertThat(queryString("SELECT anzeigename FROM benutzer WHERE sub = '" + userId + "'"))
+                .isEqualTo("Nora Nachher");
+        assertThat(queryString("SELECT email FROM benutzer WHERE sub = '" + userId + "'"))
+                .isEqualTo("neu@umbenennen.example");
+
+        // P3: Protokoll `konto_geaendert` mit „vorher → nachher", Urheber VoltPilot-Betrieb (Admin außerhalb
+        // des Mandantensprungs).
+        assertThat(queryLong("SELECT count(*) FROM zugriff_protokoll WHERE betroffener_sub = '" + userId
+                + "' AND aktion = 'konto_geaendert' AND grund = 'Anmeldename: vor-der-aenderung → nach-der-aenderung' "
+                + "AND actor_rolle = 'voltpilot_betrieb'")).isEqualTo(1);
+
+        // Labor W3-W5: Sitzungen/`sub` bleiben, nur der alte Anmeldename gilt ab dem Speichern nicht mehr.
+        keycloakAdmin.resetPassword(userId, "Nachher-Passwort-24!", false);
+        assertThat(tryToken("vor-der-aenderung", "Nachher-Passwort-24!")).doesNotContainKey("access_token");
+        assertThat(tryToken("nach-der-aenderung", "Nachher-Passwort-24!")).containsKey("access_token");
+
+        // Ein unveränderter Anmeldename im Body schreibt kein zweites Protokoll.
+        ResponseEntity<Map<String, Object>> ohneUmbenennung = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("username", "nach-der-aenderung", "email", "neu@umbenennen.example"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(ohneUmbenennung.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(queryLong("SELECT count(*) FROM zugriff_protokoll WHERE betroffener_sub = '" + userId
+                + "' AND aktion = 'konto_geaendert'")).as("kein zweiter Eintrag ohne echte Änderung").isEqualTo(1);
+
+        // N4: ein ungültiger Anmeldename (Großbuchstaben) wird mit einer erklärenden 400 abgelehnt, nichts geändert.
+        ResponseEntity<Map<String, Object>> ungueltig = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("username", "Grossbuchstabe"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(ungueltig.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(ungueltig.getBody()).containsEntry("code", "anmeldename_ungueltig");
+        assertThat(keycloakAdmin.getUser(userId).username()).as("nichts geändert").isEqualTo("nach-der-aenderung");
+
+        // N5: ein vergebener Anmeldename nennt das richtige Feld, auch beim Umbenennen (nicht nur beim Anlegen).
+        // Der Anmeldename ist realmweit eindeutig (KeycloakAdminClient.findByUsername) - ein ANDERER
+        // Kundenbereich reicht; "erster" legt nur den ersten Benutzer EINES Mandanten an (W4 bleibt dafür).
+        String anderTenant = (String) createTenant(admin, "Umbenennwerk Zwei GmbH", "CI").get("id");
+        createUser(admin, anderTenant, "schon-vergeben", "vergeben@umbenennen.example", "egal-pw-2");
+        ResponseEntity<Map<String, Object>> doppelt = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("username", "schon-vergeben"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(doppelt.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(doppelt.getBody()).containsEntry("code", "anmeldename_vergeben");
+    }
+
+    /**
+     * P2: „Person hinzufügen" - der Admin legt eine WEITERE Person an (nicht nur die erste, W4 fällt), mit
+     * Rolle und Standort wie der Kundenadministrator; das Zugriffsprotokoll des Kunden zeigt den Urheber
+     * VoltPilot-Betrieb. N5: ein doppelter Anmeldename bzw. eine doppelte E-Mail nennen das richtige Feld.
+     */
+    @Test
+    void adminAddsAFurtherPersonWithRoleAndSiteAndDistinguishesDuplicateFields() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Zweitperson GmbH", "CI").get("id");
+        createUser(admin, tenantId, "erste-kundenadministratorin", "erste@zweitperson.example", "egal-pw-1");
+        // UEMS-Standort (Rechte-Tabelle), nicht der Legacy-`site` der Admin-Route - `BenutzerService.anlegen`
+        // prüft Standorte gegen `standort` (wie BenutzerStartpasswortApiTest es auch direkt anlegt).
+        UUID unternehmen = UUID.fromString(queryString("SELECT id FROM unternehmen WHERE tenant_id = '" + tenantId + "'"));
+        UUID standort = UUID.fromString(queryString("INSERT INTO standort (tenant_id, unternehmen_id, name, "
+                + "kurzzeichen, zeitzone, zustand) VALUES ('" + tenantId + "', '" + unternehmen
+                + "', 'Werk Zweitperson', 'ST-ZP', 'Europe/Berlin', 'aktiv') RETURNING id"));
+
+        ResponseEntity<Map<String, Object>> angelegt = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/personen"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", "zweite-person", "email", "zweite@zweitperson.example",
+                        "vorname", "Zweite", "nachname", "Person", "rolle", "leser",
+                        "standorte", List.of(standort.toString())), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(angelegt.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> konto = (Map<String, Object>) angelegt.getBody().get("benutzer");
+        String sub = (String) konto.get("sub");
+        assertThat(angelegt.getBody().get("startpasswort")).isNotNull();
+        assertThat(keycloakAdmin.getUser(sub).tenantId()).isEqualTo(tenantId);
+        assertThat(queryLong("SELECT count(*) FROM zugriff WHERE benutzer_sub = '" + sub
+                + "' AND rolle = 'leser' AND standort_id = '" + standort + "'")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM zugriff_protokoll WHERE betroffener_sub = '" + sub
+                + "' AND aktion = 'zuweisen' AND actor_rolle = 'voltpilot_betrieb'")).isEqualTo(1);
+
+        // N5: derselbe Anmeldename nochmal -> anmeldename_vergeben, nicht der generische „konto_vorhanden".
+        ResponseEntity<Map<String, Object>> doppelterName = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/personen"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", "zweite-person", "email", "andere@zweitperson.example",
+                        "rolle", "leser", "standorte", List.of(standort.toString())), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(doppelterName.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(doppelterName.getBody()).containsEntry("code", "anmeldename_vergeben");
+
+        // N5: dieselbe E-Mail nochmal (anderer Anmeldename) -> email_vergeben.
+        ResponseEntity<Map<String, Object>> doppelteEmail = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/personen"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", "dritte-person", "email", "zweite@zweitperson.example",
+                        "rolle", "leser", "standorte", List.of(standort.toString())), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(doppelteEmail.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(doppelteEmail.getBody()).containsEntry("code", "email_vergeben");
+
+        // N4: ein ungültiger Anmeldename (zu kurz) wird abgelehnt, bevor ein Konto entsteht.
+        ResponseEntity<Map<String, Object>> ungueltig = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/personen"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("username", "xy", "email", "vierte@zweitperson.example",
+                        "rolle", "leser", "standorte", List.of(standort.toString())), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(ungueltig.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(ungueltig.getBody()).containsEntry("code", "anmeldename_ungueltig");
     }
 
     // ---- (c) a Portal-User is forbidden from the admin API ------------------
@@ -939,7 +1083,8 @@ class AdminApiTest {
         seed.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, gueltig_ab, zeitzone) "
                 + "VALUES (?::uuid, ?, 'kundenadministrator', now(), 'Europe/Berlin')", tenantId, zweiter.id());
 
-        // Edit email + name; the username is immutable and stays.
+        // Edit email + name; without a `username` field in the body, the login identity stays (P3: it is
+        // changeable now, but only on request - see adminRenamesAUserAndMirrorsNameAndEmailIntoTheUemsSpiegel).
         ResponseEntity<Map<String, Object>> updated = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
                 new HttpEntity<>(Map.of("email", "neu@pflege.example", "firstName", "Petra",
@@ -4012,6 +4157,18 @@ class AdminApiTest {
                 java.sql.ResultSet rs = st.executeQuery(sql)) {
             rs.next();
             return rs.getDouble(1);
+        } catch (Exception e) {
+            throw new IllegalStateException("query failed: " + sql, e);
+        }
+    }
+
+    /** Scalar text query as the Postgres superuser (bypasses RLS); {@code null} if no row matched. */
+    private static String queryString(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(sql)) {
+            return rs.next() ? rs.getString(1) : null;
         } catch (Exception e) {
             throw new IllegalStateException("query failed: " + sql, e);
         }

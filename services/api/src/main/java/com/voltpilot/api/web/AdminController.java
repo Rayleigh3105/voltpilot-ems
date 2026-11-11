@@ -27,7 +27,6 @@ import com.voltpilot.api.web.dto.TenantOffboardingCleanupDto;
 import com.voltpilot.api.web.dto.UpdateTenantRequest;
 import com.voltpilot.api.web.dto.UpdateUserRequest;
 import com.voltpilot.api.benutzer.BenutzerService;
-import com.voltpilot.api.benutzer.BenutzerFehler;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import org.springframework.security.core.Authentication;
 import jakarta.validation.Valid;
@@ -376,16 +375,24 @@ public class AdminController {
                         ProtokollAkteur.aus(auth).orElseThrow()));
     }
 
-    /** Update a customer user's profile (email/name; the username is immutable). */
+    /**
+     * Update a customer user's profile - name, email, and (P3) the username. Keycloak UND der UEMS-Spiegel
+     * ({@code benutzer.anzeigename}/{@code email}, P1/N1) ändern sich in EINER Transaktion, mit Protokoll
+     * {@code konto_geaendert} ({@link AdminBenutzerService#profilAendern}).
+     */
     @PutMapping("/tenants/{tenantId}/users/{userId}")
     public AdminUserDto updateUser(@PathVariable UUID tenantId, @PathVariable String userId,
             @Valid @RequestBody UpdateUserRequest request) {
         requireTenant(tenantId);
         try {
-            requireUserInTenant(tenantId, userId);
-            return toDto(keycloak.updateProfile(userId, request.email(),
+            return toDto(adminBenutzer.profilAendern(tenantId, userId, request.username(), request.email(),
                     request.firstName(), request.lastName()));
         } catch (KeycloakAdminException ex) {
+            // N5: ein Anmeldename-Konflikt (P3) trägt einen genaueren Code (anmeldename_vergeben) - den
+            // lässt die globale Antwort (BenutzerFehlerAntwort) durch statt ihn hier zu verlieren.
+            if (ex.code() != null) {
+                throw ex;
+            }
             throw toResponse(ex);
         }
     }
@@ -427,13 +434,28 @@ public class AdminController {
         }
     }
 
-    /** IP-14: der Kundenadministrator vergibt das Startpasswort über die Kundenroute neu. */
+    /**
+     * N6: der Plattform-Admin vergibt ein neues Startpasswort - der Live-Login nennt „Support" als Weg bei
+     * vergessenem Passwort, aber vor N6 gab es für den Admin selbst keinen (403, nur im Mandantensprung über
+     * die Kundenseite). Derselbe Weg wie der Kundenadministrator ({@link BenutzerService#neuVergeben}).
+     */
     @PostMapping("/tenants/{tenantId}/users/{userId}/reset-password")
-    public AdminUserDto resetPassword(@PathVariable UUID tenantId, @PathVariable String userId) {
+    public BenutzerService.Angelegt resetPassword(@PathVariable UUID tenantId, @PathVariable String userId) {
         requireTenant(tenantId);
-        requireUserInTenant(tenantId, userId);
-        throw new BenutzerFehler(403, "recht_fehlt",
-                "Ein Startpasswort vergibt der Kundenadministrator in der Benutzerverwaltung neu.");
+        return adminBenutzer.neuesStartpasswort(tenantId, userId);
+    }
+
+    /**
+     * P2: „Person hinzufügen" - weitere Personen eines Kundenbereichs, nicht nur die erste (W4 fällt,
+     * `rechte-matrix.json` „benutzer.verwalten"). Rolle und Standorte wie der Kundenadministrator; das
+     * Zugriffsprotokoll des Kunden zeigt den Urheber VoltPilot-Betrieb ({@link ProtokollAkteur}).
+     */
+    @PostMapping("/tenants/{tenantId}/personen")
+    public ResponseEntity<BenutzerService.Angelegt> person(@PathVariable UUID tenantId,
+            @RequestBody BenutzerService.Anlage request) {
+        requireTenant(tenantId);
+        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(adminBenutzer.person(tenantId, request));
     }
 
     /**
@@ -475,19 +497,6 @@ public class AdminController {
         if (!tenants.existsById(tenantId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant not found");
         }
-    }
-
-    /**
-     * A user addressed under a tenant path must actually carry that tenant -
-     * a user reached through the wrong tenant's path is "not found", never
-     * acted on.
-     */
-    private KeycloakUser requireUserInTenant(UUID tenantId, String userId) {
-        KeycloakUser user = keycloak.getUser(userId);
-        if (!tenantId.toString().equals(user.tenantId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found in this tenant");
-        }
-        return user;
     }
 
     private static AdminUserDto toDto(KeycloakUser u) {
