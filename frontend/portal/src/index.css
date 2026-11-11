@@ -583,6 +583,12 @@ svg [tabindex]:focus-visible {
   font-size: 1.25rem;
 }
 .vp-section-head .actions {
+  /* Flex mit Lücke: zwei Knöpfe (Kundenakte „Unterstützung") standen als Inline-Span ohne Abstand
+     aneinander und versetzt zur Grundlinie; mit einem Kind ändert sich nichts. */
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
   margin-left: auto;
 }
 

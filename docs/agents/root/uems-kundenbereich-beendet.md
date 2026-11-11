@@ -18,8 +18,12 @@ verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, L
   Kundenkonto mit Zuweisung „Kundenadministrator" oder Bestandskonto; `/me` für alle — die
   Selbstauskunft trägt `kundenbereich.beendet {beendet_am, loeschung_fruehestens, liest, text}`
   (aktiv: `null`). Plattform-Routen mit `{tenantId}`/`{siteId}`/
-  `{deviceId}` im Pfad: jedes Nicht-GET 409, außer `ADMIN_AUSNAHMEN` (beenden,
-  wiederaufnehmen, `delete`, `offboarding/cleanup`, Konto sperren). **Falle:** der Filter steht
+  `{deviceId}` im Pfad: jedes Nicht-GET 409 — der Satz spricht den BETREIBER an
+  (`KundenbereichEnde.textBetreiber`, „Der Vertrag dieses Kunden …") —, außer den
+  `BETREIBER_AUSNAHMEN` (EINE Liste voller Pfade, vp-kunde-sofort-loeschen: beenden,
+  wiederaufnehmen, `delete`, `offboarding/cleanup`, Konto sperren, „Vom Kunden lösen"
+  `geraete/{ref}/loesen`; eine neue Betreiber-Handlung am beendeten Kunden, etwa der
+  Box-Ausbau durch den Admin, trägt ihre Route dort ein). **Falle:** der Filter steht
   vor der Autorisierung — auf Plattform-Pfaden antwortet er nur einer Plattform-Rolle, sonst
   verriete er Zustand und Daten eines fremden Bereichs.
 - **Neue Route unter `/api/v1/admin/` mit Kundenbereich unter anderem Variablennamen** (z. B.
@@ -89,15 +93,25 @@ verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, L
 - **Nachweis:** `GesamtabzugApiTest` (NW-5: Manifest-Prüfsummen, 403, „beendet“, 1 Mio. Messzeilen mit offenem
   Cursor beim Empfang und +1 MB lebendem Speicher), `GesamtabzugTest`, `ZugriffZaunApiTest` (`NACH_IP4`).
 
-## Löschen nach der Frist (IP-18)
+## Löschen nach der Frist (IP-18) — oder sofort ohne Daten
 
 `POST /api/v1/admin/tenants/{id}/delete` (`AdminController` → `kundenbereich/KundenbereichLoeschung`), BT4, BT5, RF-08 Schritt 4–5.
 Betreiber-Ablauf und Regel BT5: [Deployment](../../deploy.md#kundenbereich-löschen-vertragsende).
 
-- **Wache:** nur „beendet“ und ab `KundenbereichEnde.loeschungFruehestens` (Kalendertag Berlin) — sonst `409
-  kundenbereich_nicht_beendet` bzw. `409 frist_laeuft` (Körper `code`, `message`, `beendet_am`,
-  `loeschung_fruehestens`). Zweimal: `pruefen` VOR dem Sperren der Konten, dann `Wache.vorDemAbbau` im Löschzug unter
-  `FOR UPDATE` auf der Mandantenzeile (eine gleichzeitige Wiederaufnahme gewinnt ganz oder findet nichts).
+- **Wache:** „beendet“ und ab `KundenbereichEnde.loeschungFruehestens` (Kalendertag Berlin) — ODER SOFORT, wenn der
+  Kunde KEINE DATEN hat (vp-kunde-sofort-loeschen, Captain 11.11.2026: doppelt angelegte Kunden; aktiv oder beendet,
+  ohne Frist). Was „keine Daten“ heißt, steht EINMAL in `kundenbereich/KundeDatenBestand` (Muster `BoxDatenBestand`:
+  jede Tabelle mit `tenant_id` genau einer Klasse zugeordnet, `KundeDatenBestandMigrationTest` hält das vollständig,
+  im Zweifel „hat Daten“). Sonst `409 kundenbereich_nicht_beendet` bzw. `409 frist_laeuft` (Körper `code`, `message`,
+  `beendet_am`, `loeschung_fruehestens`, `daten` = gefundene Datenarten). Zweimal: `pruefen` VOR dem Sperren der
+  Konten, dann `Wache.vorDemAbbau` im Löschzug unter `FOR UPDATE` auf der Mandantenzeile (eine gleichzeitige
+  Wiederaufnahme gewinnt ganz oder findet nichts; der Datenbestand wird dort auf der Verbindung des Löschzugs
+  erneut gelesen). Der Sofort-Weg gibt nie gemeldete Boxen VOR dem Abbau über `BoxLoesenService.beimKundenLoeschen`
+  frei (ohne Protokollzeile — sie stürbe im selben Zug) und schreibt `mandant_loeschnachweis.anlass =
+  'sofort_keine_daten'` (Fristen-Spalten leer, `V20261111200000`) sowie das bleibende Plattform-Protokoll
+  `kundenbereich_geloescht_protokoll` MIT Namen (wer, wann, Anlass; append-only, nur Admin-Rolle). Die Löschbarkeit
+  liest das Portal über `GET /api/v1/admin/tenants/loeschbarkeit` (Liste) und `…/{id}/loeschbarkeit` (mit Folgen),
+  `AdminKundeLoeschbarkeitController`.
 - **`TenantRepository.offboard(id, runnable, wache)`:** die Wache läuft in DERSELBEN Transaktion vor dem ersten und
   nach dem letzten DELETE. `offboard(id)`/`offboard(id, runnable)` bleiben ohne Wache — **nur für die
   Migrations-Fixtures**, die den Löschweg von heute gegen ältere Schemata fahren (dort gibt es `beendet_am` nicht).

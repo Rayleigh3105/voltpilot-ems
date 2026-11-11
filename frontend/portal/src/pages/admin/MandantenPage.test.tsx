@@ -16,6 +16,10 @@ const wiederaufnehmenMandant = vi.fn();
 const benutzerListe = vi.fn();
 const fleet = vi.fn();
 const createTenant = vi.fn();
+const deleteTenant = vi.fn();
+// vp-kunde-sofort-loeschen: Vorgabe „hat Daten" - die Bestandsfälle sehen keinen Sofort-Weg.
+const kundeLoeschbarkeit = vi.fn();
+const kundenLoeschbarkeit = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -31,9 +35,11 @@ vi.mock('../../admin/adminApi', () => ({
     createSite: vi.fn(),
     createTenant: (...a: unknown[]) => createTenant(...a),
     updateTenant: vi.fn(),
-    deleteTenant: vi.fn(),
+    deleteTenant: (...a: unknown[]) => deleteTenant(...a),
     beendenMandant: (...a: unknown[]) => beendenMandant(...a),
     wiederaufnehmenMandant: (...a: unknown[]) => wiederaufnehmenMandant(...a),
+    kundeLoeschbarkeit: (...a: unknown[]) => kundeLoeschbarkeit(...a),
+    kundenLoeschbarkeit: (...a: unknown[]) => kundenLoeschbarkeit(...a),
   },
 }));
 
@@ -58,6 +64,13 @@ beforeEach(() => {
   window.location.hash = '';
   fleet.mockReset().mockResolvedValue({ sites: [], unterstuetzungBis: {}, unterstuetzungStandorte: [], releases: [] });
   benutzerListe.mockReset().mockResolvedValue([]);
+  kundeLoeschbarkeit.mockReset().mockResolvedValue({
+    tenantId: 't-1', sofortLoeschbar: false, daten: ['messwerte'], beendetAm: null,
+    loeschungFruehestens: null, fristAbgelaufen: false,
+    folgen: { anlagen: 0, boxen: [], personen: 0 },
+  });
+  kundenLoeschbarkeit.mockReset().mockResolvedValue([]);
+  deleteTenant.mockReset();
 });
 
 const TENANT = {
@@ -247,6 +260,107 @@ describe('MandantenPage - die Kundenakte', () => {
 
     fireEvent.click(within(dlg).getByRole('button', { name: 'Benutzer löschen' }));
     await waitFor(() => expect(deleteUser).toHaveBeenCalledWith('t-1', 'u-1'));
+  });
+
+  it('zeigt bei einer 409 mit Code den echten Grund des Servers statt „eigenes Konto"', async () => {
+    const { ApiError } = await import('../../api');
+    deleteUser.mockRejectedValueOnce(new ApiError(409,
+      'Der Vertrag dieses Kunden ist am 11.11.2026 beendet. Seine Daten lassen sich nur noch lesen; gelöscht werden sie frühestens am 12.11.2026.',
+      { code: 'kundenbereich_beendet', message: 'Der Vertrag dieses Kunden ist am 11.11.2026 beendet. Seine Daten lassen sich nur noch lesen; gelöscht werden sie frühestens am 12.11.2026.' }));
+    openDetail();
+    fireEvent.click(await screen.findByRole('button', { name: 'Aktionen für anna' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Löschen' }));
+    const dlg = await screen.findByRole('dialog', { name: /Benutzer löschen/ });
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Benutzer löschen' }));
+    expect(await screen.findByText(/Der Vertrag dieses Kunden ist am 11.11.2026 beendet/)).toBeInTheDocument();
+    expect(screen.queryByText('Sie können Ihr eigenes Konto nicht löschen.')).not.toBeInTheDocument();
+  });
+
+  it('behält den Selbst-Sperre-Satz für die code-lose 409 (eigenes Konto)', async () => {
+    const { ApiError } = await import('../../api');
+    deleteUser.mockRejectedValueOnce(new ApiError(409, 'Der Server ist zurzeit nicht erreichbar. Bitte versuchen Sie es erneut.'));
+    openDetail();
+    fireEvent.click(await screen.findByRole('button', { name: 'Aktionen für anna' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Löschen' }));
+    const dlg = await screen.findByRole('dialog', { name: /Benutzer löschen/ });
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Benutzer löschen' }));
+    expect(await screen.findByText('Sie können Ihr eigenes Konto nicht löschen.')).toBeInTheDocument();
+  });
+
+  it('bei einem beendeten Kunden sagt die Personen-Karte es vorher: kein Lösch-Knopf, nur Deaktivieren', async () => {
+    selbstauskunft.mockResolvedValue({
+      kundenbereich: {
+        id: 't-1',
+        name: TENANT.name,
+        beendet: { beendet_am: '2026-11-11', loeschung_fruehestens: '2027-02-09', liest: true, text: '' },
+      },
+    });
+    openDetail();
+    const akte = await screen.findByRole('region', { name: TENANT.name });
+    expect(await within(akte).findByText(/Personen werden hier nicht mehr einzeln gelöscht/)).toBeInTheDocument();
+    fireEvent.click(within(akte).getByRole('button', { name: 'Aktionen für anna' }));
+    expect(screen.getByRole('menuitem', { name: 'Deaktivieren' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Löschen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Bearbeiten' })).not.toBeInTheDocument();
+    expect(within(akte).queryByRole('button', { name: 'Person hinzufügen' })).not.toBeInTheDocument();
+  });
+
+  it('sofort löschbar (Server-Urteil): Badge, Vertrag-Karte und Dialog mit Namens-Abschrift löschen sofort', async () => {
+    selbstauskunft.mockResolvedValue({
+      kundenbereich: {
+        id: 't-1',
+        name: TENANT.name,
+        beendet: { beendet_am: '2026-11-11', loeschung_fruehestens: '2027-02-09', liest: true, text: '' },
+      },
+    });
+    kundeLoeschbarkeit.mockResolvedValue({
+      tenantId: 't-1', sofortLoeschbar: true, daten: [], beendetAm: '2026-11-11',
+      loeschungFruehestens: '2027-02-09', fristAbgelaufen: false,
+      folgen: { anlagen: 1, boxen: ['edge-cyhchfr'], personen: 1 },
+    });
+    const report = {
+      tenantId: 't-1', tenantName: TENANT.name, deletedSites: 1, deletedDevices: 1,
+      deletedTelemetryRows: 0, deletedUsers: ['anna'], failedUsers: [],
+      anlass: 'sofort_keine_daten', freigegebeneBoxen: ['edge-cyhchfr'], loeschnachweis: null,
+    };
+    deleteTenant.mockResolvedValue(report);
+    openDetail();
+    const akte = await screen.findByRole('region', { name: TENANT.name });
+    expect(await within(akte).findByText('beendet · sofort löschbar')).toBeInTheDocument();
+
+    fireEvent.click(within(akte).getAllByRole('button', { name: 'Kunde endgültig löschen …' })[0]);
+    const dlg = await screen.findByRole('dialog', { name: 'Kunde endgültig löschen' });
+    expect(dlg.textContent).toContain('keinen Datenbestand');
+    expect(dlg.textContent).toContain('edge-cyhchfr');
+    // Ohne Abschrift löscht nichts.
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Kunde endgültig löschen' }));
+    expect(deleteTenant).not.toHaveBeenCalled();
+    fireEvent.change(within(dlg).getByLabelText('Zum Bestätigen den Kundennamen abtippen'), {
+      target: { value: TENANT.name },
+    });
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Kunde endgültig löschen' }));
+    await waitFor(() => expect(deleteTenant).toHaveBeenCalledWith('t-1', TENANT.name));
+    expect(await screen.findByText(/wurde vollständig entfernt/)).toBeInTheDocument();
+    expect(screen.getByText('edge-cyhchfr - wieder anmeldbar')).toBeInTheDocument();
+  });
+
+  it('mit Daten erklärt der Dialog ruhig, warum der Kunde bleibt - kein destruktiver Knopf', async () => {
+    kundeLoeschbarkeit.mockResolvedValue({
+      tenantId: 't-1', sofortLoeschbar: false, daten: ['herzschlag', 'messwerte'], beendetAm: '2026-11-11',
+      loeschungFruehestens: '2027-02-09', fristAbgelaufen: false,
+      folgen: { anlagen: 1, boxen: [], personen: 1 },
+    });
+    openDetail();
+    const akte = await screen.findByRole('region', { name: TENANT.name });
+    fireEvent.click(await within(akte).findByRole('button', { name: `Weitere Aktionen für ${TENANT.name}` }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Kunde endgültig löschen …' }));
+    const dlg = await screen.findByRole('dialog', { name: 'Kunde endgültig löschen' });
+    expect(dlg.textContent).toContain('Box-Herzschläge · Messwerte');
+    expect(dlg.textContent).toContain('frühestens am 09.02.2027');
+    expect(dlg.textContent).toContain('Gesamtabzug');
+    expect(within(dlg).queryByRole('button', { name: 'Kunde endgültig löschen' })).not.toBeInTheDocument();
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Verstanden' }));
+    expect(deleteTenant).not.toHaveBeenCalled();
   });
 
   it('bricht die Rückfrage folgenlos ab', async () => {

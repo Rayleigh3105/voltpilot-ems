@@ -72,6 +72,9 @@ export function benutzerFehler(fehler: unknown, fallback = 'Das Startpasswort ko
     if (body?.code === 'email_vergeben') return 'Diese E-Mail-Adresse ist bereits vergeben.';
     if (body?.code === 'anmeldename_ungueltig') return body.message ?? 'Anmeldename: a-z, 0-9, Punkt, Bindestrich, Unterstrich; 3 bis 64 Zeichen.';
     if (body?.code === 'realm_anmeldename_gesperrt') return body.message ?? 'Der Anmeldename lässt sich hier noch nicht ändern.';
+    // vp-kunde-sofort-loeschen Punkt 4: eine 409 des beendeten Kundenbereichs trägt ihren echten
+    // Satz im Körper - sie ist kein Namenskonflikt.
+    if (body?.code === 'kundenbereich_beendet' && body.message) return body.message;
     if (fehler.status === 422) return 'Bitte wählen Sie mindestens einen Standort.';
     if (fehler.status === 409) return 'Benutzername oder E-Mail-Adresse ist bereits vergeben.';
     if (fehler.status === 403) return grundUndWeg();

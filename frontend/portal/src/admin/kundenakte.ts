@@ -177,12 +177,19 @@ export function fristAbgelaufen(loeschungFruehestens: string): boolean {
   return heuteBerlin() >= loeschungFruehestens;
 }
 
-/** Der Zustand einer Zeile der Kundenliste bzw. des Kopfs der Kundenakte. */
+/**
+ * Der Zustand einer Zeile der Kundenliste bzw. des Kopfs der Kundenakte. `sofortLoeschbar` kommt vom
+ * Server (`KundeDatenBestand`, vp-kunde-sofort-loeschen): ein beendeter Kunde OHNE Daten wartet auf
+ * keine Frist - das Badge sagt „sofort löschbar" statt „löschbar ab …". Ein AKTIVER datenfreier Kunde
+ * behält sein „aktiv" (jeder frisch angelegte Kunde ist datenfrei - das wäre nur Lärm).
+ */
 export function kundenZustand(
   vertragsende: SelbstauskunftKundenbereichBeendet | null | undefined,
   unterstuetzungBisText: string | null,
+  sofortLoeschbar = false,
 ): { ton: Ton; text: string } {
   if (vertragsende) {
+    if (sofortLoeschbar) return { ton: 'off', text: 'beendet · sofort löschbar' };
     return fristAbgelaufen(vertragsende.loeschung_fruehestens)
       ? { ton: 'off', text: `beendet · löschbar ab ${datumDe(vertragsende.loeschung_fruehestens)}` }
       : { ton: 'warn', text: `beendet · löschbar ab ${datumDe(vertragsende.loeschung_fruehestens)}` };

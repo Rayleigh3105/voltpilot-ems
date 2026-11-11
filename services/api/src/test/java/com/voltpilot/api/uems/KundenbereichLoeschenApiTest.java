@@ -81,7 +81,7 @@ class KundenbereichLoeschenApiTest {
     private static final String BEGRUENDUNG = "Vertragsende RF-08";
     private static final List<String> SPALTEN = List.of("id", "kennzeichen", "kundenbereich", "beendet_am",
             "frist_tage", "loeschung_fruehestens", "geloescht_am", "geloescht_von", "zaehlungen", "verblieben",
-            "abzug_sha256", "abzug_am");
+            "abzug_sha256", "abzug_am", "anlass");
     /** Die append-only-Protokolle mit {@code tenant_id}, aber ohne Fremdschlüssel auf {@code tenant} (Katalog). */
     private static final List<String> PROTOKOLLE = List.of("ort_aenderung", "messstelle_aenderung",
             "data_source_aenderung", "component_change_event", "device_site_assignment");
@@ -349,6 +349,169 @@ class KundenbereichLoeschenApiTest {
         assertThat(json(r).get("code").asText()).isEqualTo("kundenbereich_nicht_beendet");
         assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, tenant)).isOne();
         verifyNoInteractions(keycloak);
+    }
+
+    // ============================================================ Sofort löschen (vp-kunde-sofort-loeschen)
+
+    private record Datenfrei(UUID id, String name, UUID site, UUID box, String ref) {}
+
+    /** Ein Kunde, wie der Betrieb ihn doppelt anlegt: Anlage, nie gemeldete Box, eine Person - keine Daten. */
+    private Datenfrei datenfreierKunde() throws Exception {
+        String nr = UUID.randomUUID().toString().substring(0, 8);
+        String kname = "Wüstholz Karl-Friedrich " + nr;
+        MvcResult angelegt = ruf(post("/api/v1/admin/tenants").contentType(MediaType.APPLICATION_JSON)
+                .content(JSON.writeValueAsString(Map.of("name", kname))), plattform());
+        assertThat(angelegt.getResponse().getStatus()).isEqualTo(201);
+        UUID id = UUID.fromString(json(angelegt).get("id").asText());
+        UUID site = root.queryForObject("INSERT INTO site (tenant_id, name, bidding_zone) VALUES (?, 'Zuhause',"
+                + " 'DE-LU') RETURNING id", UUID.class, id);
+        String ref = "edge-sofort-" + nr;
+        UUID box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, ?)"
+                + " RETURNING id", UUID.class, id, site, ref);
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer',"
+                + " 'K. F. Wüstholz', 'aktiv')", id, "kfw-" + nr);
+        return new Datenfrei(id, kname, site, box, ref);
+    }
+
+    /**
+     * vp-kunde-sofort-loeschen: ein datenfreier Kunde ist SOFORT löschbar - aktiv, ohne Vertragsende und
+     * Frist. Die Löschbarkeits-Route sagt es vorher (mit den Folgen), derselbe Löschweg löscht, die Box
+     * wird über den Lösen-Dienst freigegeben (Kennung wieder anmeldbar), der Nachweis trägt den Anlass
+     * ohne Fristen-Fakten, und das Plattform-Protokoll nennt den Namen - unveränderlich.
+     */
+    @Test
+    void einDatenfreierKundeIstSofortLoeschbarAuchAktiv() throws Exception {
+        Datenfrei kunde = datenfreierKunde();
+
+        MvcResult befund = ruf(get("/api/v1/admin/tenants/" + kunde.id() + "/loeschbarkeit"), plattform());
+        assertThat(befund.getResponse().getStatus()).isEqualTo(200);
+        JsonNode b = json(befund);
+        assertThat(b.get("sofortLoeschbar").asBoolean()).isTrue();
+        assertThat(b.get("daten")).isEmpty();
+        assertThat(b.get("beendetAm").isNull()).isTrue();
+        assertThat(b.get("folgen").get("anlagen").asInt()).isEqualTo(1);
+        assertThat(b.get("folgen").get("boxen").get(0).asText()).isEqualTo(kunde.ref());
+        assertThat(b.get("folgen").get("personen").asInt()).isEqualTo(1);
+
+        MvcResult geloescht = ruf(post("/api/v1/admin/tenants/" + kunde.id() + "/delete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(JSON.writeValueAsString(Map.of("confirmName", kunde.name()))), plattform());
+        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
+        JsonNode bericht = json(geloescht);
+        assertThat(bericht.get("anlass").asText()).isEqualTo("sofort_keine_daten");
+        assertThat(bericht.get("freigegebeneBoxen").get(0).asText()).isEqualTo(kunde.ref());
+
+        // Weg aus der Liste, Kennung wieder anmeldbar (keine Zeile mit der Referenz mehr).
+        assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, kunde.id())).isZero();
+        assertThat(root.queryForObject("SELECT count(*) FROM device WHERE external_ref = ?", Long.class, kunde.ref()))
+                .isZero();
+
+        // Der Nachweis: Anlass „sofort", keine Fristen-Fakten (aktiver Kunde hatte kein Vertragsende).
+        Map<String, Object> nachweis = root.queryForMap("SELECT anlass, beendet_am, frist_tage, loeschung_fruehestens,"
+                + " geloescht_von FROM mandant_loeschnachweis WHERE kundenbereich = ?", kunde.id());
+        assertThat(nachweis.get("anlass")).isEqualTo("sofort_keine_daten");
+        assertThat(nachweis.get("beendet_am")).isNull();
+        assertThat(nachweis.get("frist_tage")).isNull();
+        assertThat(nachweis.get("loeschung_fruehestens")).isNull();
+        assertThat(nachweis.get("geloescht_von")).isEqualTo(BETREIBER);
+
+        // Das Plattform-Protokoll MIT Namen: wer, wann, Anlass - und es bleibt, wie es geschrieben wurde.
+        Map<String, Object> protokoll = root.queryForMap("SELECT name, geloescht_von_name, anlass,"
+                + " loeschnachweis_kennzeichen FROM kundenbereich_geloescht_protokoll WHERE kundenbereich = ?",
+                kunde.id());
+        assertThat(protokoll.get("name")).isEqualTo(kunde.name());
+        assertThat(protokoll.get("anlass")).isEqualTo("sofort_keine_daten");
+        assertThat((String) protokoll.get("loeschnachweis_kennzeichen")).startsWith("LN-");
+        assertThatThrownBy(() -> root.update("DELETE FROM kundenbereich_geloescht_protokoll WHERE kundenbereich = ?",
+                kunde.id())).hasStackTraceContaining("bleibt");
+        JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
+        assertThatThrownBy(() -> app.queryForList("SELECT * FROM kundenbereich_geloescht_protokoll"))
+                .hasStackTraceContaining("permission denied");
+    }
+
+    /** Ein Kunde MIT Daten bleibt bei der Frist; die 409 und die Löschbarkeits-Route nennen die Datenarten. */
+    @Test
+    void einKundeMitDatenBleibtBeiDerFristMitDatenarten() throws Exception {
+        MvcResult befund = ruf(get("/api/v1/admin/tenants/" + tenant + "/loeschbarkeit"), plattform());
+        assertThat(befund.getResponse().getStatus()).isEqualTo(200);
+        JsonNode b = json(befund);
+        assertThat(b.get("sofortLoeschbar").asBoolean()).isFalse();
+        List<String> daten = new java.util.ArrayList<>();
+        b.get("daten").forEach(d -> daten.add(d.asText()));
+        assertThat(daten).contains("messwerte", "messstellen");
+
+        MvcResult aktiv = loeschen();
+        assertThat(aktiv.getResponse().getStatus()).isEqualTo(409);
+        assertThat(json(aktiv).get("code").asText()).isEqualTo("kundenbereich_nicht_beendet");
+        assertThat(json(aktiv).get("daten").get(0).asText()).isEqualTo("messwerte");
+
+        vertragsendeVor(1);
+        MvcResult frist = loeschen();
+        assertThat(frist.getResponse().getStatus()).isEqualTo(409);
+        assertThat(json(frist).get("code").asText()).isEqualTo("frist_laeuft");
+        assertThat(json(frist).get("daten")).isNotEmpty();
+        assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, tenant)).isOne();
+        // Die Liste für die Kundenliste kennt denselben Befund.
+        MvcResult alle = ruf(get("/api/v1/admin/tenants/loeschbarkeit"), plattform());
+        assertThat(alle.getResponse().getStatus()).isEqualTo(200);
+        JsonNode zeile = null;
+        for (JsonNode k : json(alle)) {
+            if (k.get("tenantId").asText().equals(tenant.toString())) {
+                zeile = k;
+            }
+        }
+        assertThat(zeile).isNotNull();
+        assertThat(zeile.get("sofortLoeschbar").asBoolean()).isFalse();
+        assertThat(zeile.get("beendetAm").asText()).isEqualTo(LocalDate.now(BERLIN).minusDays(1).toString());
+    }
+
+    /**
+     * Die Betreiber-Ausnahmen am BEENDETEN Kunden (Nachtrag 11.11.2026, Box edge-cyhchfr): „Vom Kunden
+     * lösen" einer nie gemeldeten Box gelingt sofort, die 409 anderer Admin-Schreibwege spricht den
+     * Betreiber an - und der Kunde selbst bleibt gesperrt. Danach löscht der Sofort-Weg den beendeten
+     * datenfreien Kunden ohne Frist; der Nachweis behält sein Vertragsende.
+     */
+    @Test
+    void beimBeendetenKundenBleibenBetreiberAktionenOffenUndSofortLoeschenGilt() throws Exception {
+        Datenfrei kunde = datenfreierKunde();
+        MvcResult beendet = ruf(post("/api/v1/admin/tenants/" + kunde.id() + "/beenden")
+                .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(Map.of("auftrag", AUFTRAG,
+                        "begruendung", BEGRUENDUNG, "confirmName", kunde.name()))), plattform());
+        assertThat(beendet.getResponse().getStatus()).isEqualTo(200);
+
+        // Ein gewöhnlicher Admin-Schreibweg bleibt 409 - aber mit dem Betreiber-Satz, nicht dem Kundensatz.
+        MvcResult gesperrt = ruf(post("/api/v1/admin/tenants/" + kunde.id() + "/sites")
+                .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(Map.of("name", "Neu"))),
+                plattform());
+        assertThat(gesperrt.getResponse().getStatus()).isEqualTo(409);
+        assertThat(json(gesperrt).get("message").asText()).startsWith("Der Vertrag dieses Kunden ist am ")
+                .doesNotContain("Ihr Vertrag");
+
+        // Der Kunde selbst bleibt gesperrt (hier: die Plattform im Mandantensprung als Kundenadministrator).
+        MvcResult kundenWeg = ruf(post("/api/v1/sites").header("X-Tenant-Id", kunde.id().toString())
+                .contentType(MediaType.APPLICATION_JSON).content("{}"), plattform());
+        assertThat(kundenWeg.getResponse().getStatus()).isEqualTo(409);
+        assertThat(json(kundenWeg).get("code").asText()).isEqualTo("kundenbereich_beendet");
+
+        // „Vom Kunden lösen" der nie gemeldeten Box gelingt trotz beendetem Vertrag (Betreiber-Ausnahme).
+        MvcResult geloest = ruf(post("/api/v1/admin/geraete/" + kunde.ref() + "/loesen")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(JSON.writeValueAsString(Map.of("anlass", "fremder_kunde"))), plattform());
+        assertThat(geloest.getResponse().getStatus()).as(text(geloest)).isEqualTo(200);
+        assertThat(root.queryForObject("SELECT count(*) FROM device WHERE external_ref = ?", Long.class, kunde.ref()))
+                .isZero();
+
+        // Sofort löschen trotz laufender Frist: der Nachweis behält das Vertragsende, ohne Fristen-Fakten.
+        MvcResult geloescht = ruf(post("/api/v1/admin/tenants/" + kunde.id() + "/delete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(JSON.writeValueAsString(Map.of("confirmName", kunde.name()))), plattform());
+        assertThat(geloescht.getResponse().getStatus()).as(text(geloescht)).isEqualTo(200);
+        assertThat(json(geloescht).get("anlass").asText()).isEqualTo("sofort_keine_daten");
+        Map<String, Object> nachweis = root.queryForMap("SELECT anlass, beendet_am, frist_tage FROM"
+                + " mandant_loeschnachweis WHERE kundenbereich = ?", kunde.id());
+        assertThat(nachweis.get("anlass")).isEqualTo("sofort_keine_daten");
+        assertThat(nachweis.get("beendet_am")).isNotNull();
+        assertThat(nachweis.get("frist_tage")).isNull();
     }
 
     /** Zeitraffer: der Bereich endete vor {@code tage} Kalendertagen (Berlin, mittags), Frist 90 Tage. */
