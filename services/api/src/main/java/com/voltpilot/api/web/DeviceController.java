@@ -9,6 +9,7 @@ import com.voltpilot.api.chargers.ChargingConfigPublisher;
 import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.entities.LeadDeviceService;
+import com.voltpilot.api.geraete.BoxAusbauenService;
 import com.voltpilot.api.geraete.BoxBefundSql;
 import com.voltpilot.api.geraete.BoxLoesenAbgelehnt;
 import com.voltpilot.api.geraete.BoxLoesenRegel;
@@ -89,6 +90,7 @@ public class DeviceController {
     private final CommandLogRepository commandLog;
     private final RechtPruefung rechte;
     private final BoxLoesenRepository boxLoesen;
+    private final BoxAusbauenService boxAusbauen;
     private LeadDeviceService leadDevices;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -126,7 +128,8 @@ public class DeviceController {
             ControlCertificationService controlCertification,
             ObjectProvider<ChargingConfigPublisher> chargingConfig,
             com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides,
-            CommandLogRepository commandLog, TeilansichtDienst teilansicht, BoxLoesenRepository boxLoesen) {
+            CommandLogRepository commandLog, TeilansichtDienst teilansicht, BoxLoesenRepository boxLoesen,
+            BoxAusbauenService boxAusbauen) {
         this.devices = devices;
         this.teilansicht = teilansicht;
         this.geltungsbereich = geltungsbereich;
@@ -144,6 +147,7 @@ public class DeviceController {
         this.deviceOverrides = deviceOverrides;
         this.commandLog = commandLog;
         this.boxLoesen = boxLoesen;
+        this.boxAusbauen = boxAusbauen;
     }
 
     @GetMapping
@@ -455,61 +459,10 @@ public class DeviceController {
         UUID tenantId = TenantContext.get();
         DeviceDto device = devices.findById(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
-        // Gemeinsame Steuerung (AP-15 §5.5): ist die Box Mitglied, scheidet sie aus und wartet auf die Bestätigung des
-        // Betreibers, dass ihre Geräte vom Netz sind — bis dahin bekommt keine andere Box mehr. Ohne Verbund: nichts.
-        if (verbundAusscheiden != null) {
-            verbundAusscheiden.beimAusbau(deviceId, com.voltpilot.api.uems.ProtokollAkteur.aus(auth).orElse(null));
-        }
-        if (!devices.ausbauen(deviceId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
-        }
-        devices.ausDerTopologieLoesen(deviceId);
-        // N2 (Konzept vp-plattform-admin-box-benutzer-konzept Abschnitt 5): dieselbe Selbst-Heilung
-        // wie beim Verbinden (claim) - verliert eine Anlage mit zwei Boxen eine davon, bleibt sonst
-        // der Speicher ohne Box ("Ihr Speicher ist keinem Gerät zugeordnet"), obwohl die verbleibende
-        // Box ihn jetzt eindeutig steuern könnte. Best-effort und idempotent wie dort.
-        if (assets.autoLinkBatteryDevice(device.siteId())) {
-            log.info("Auto-linked remaining device of site {} to its battery asset after unclaiming {}",
-                    device.siteId(), deviceId);
-        }
-        autoCompose.ensureComposed(device.siteId());
-        // Die offenen Perioden des Befehlsverlaufs enden mit der Box: kein Herzschlag schlösse sie
-        // mehr, und „läuft" wäre für immer falsch. Beendet, nicht gelöscht (UEMS AP-07 IP-11).
-        commandLog.beimAusbauBeenden(deviceId);
-        provisioning.ifAvailable(p ->
-                p.clearRetained(device.externalRef(), tenantId, device.siteId(), device.id()));
-        // v2 hygiene: the retained entity-registry slot ends with the box
-        // (a re-claim mints a NEW device id, so the old subtree would otherwise
-        // keep an orphaned retained push forever). Best-effort like the rest.
-        entityRegistry.ifAvailable(p ->
-                p.clearRegistry(tenantId, device.siteId(), device.id()));
-        // First-boot enrollment counterpart: drop the device's broker ACL grant
-        // so an issued mTLS certificate loses topic access (best-effort; CRL
-        // revocation stays the operator-run cryptographic backstop).
-        enrollment.ifAvailable(e -> e.onDeviceUnclaimed(device.id()));
-        // OTA Stufe 2: die Update-Zuweisung stirbt mit dem Gerät. Ohne das
-        // wartete auf dem Broker eine retained Anweisung an eine Identität,
-        // die es nicht mehr gibt - dieselbe Hygiene wie beim retained
-        // Provisionierungs-Config und beim Entity-Push, best-effort.
-        rollouts.ifAvailable(r -> r.onDeviceUnclaimed(tenantId, device.siteId(), device.id()));
-        // Und die Steuerungs-Freigabe: eine scharfgeschaltete Anlage, deren
-        // Gerät niemandem mehr gehört, darf weder in der Liste stehen noch ein
-        // retained Zertifizierungs-Dokument auf dem Broker liegen lassen -
-        // dieselbe Hygiene wie eine Zeile darüber, best-effort.
-        controlCertification.onDeviceUnclaimed(tenantId, device.siteId(), device.id());
-        // Lastmanagement Stufe 3: dieselbe Hygiene für die Ladepunkt-Konfiguration.
-        // Nur der retained Slot wird geleert, KEINE Zeile gelöscht - dieser
-        // Aufruf läuft in der Transaktion des Unclaim auf dem @Primary-Pfad, und
-        // ein Löschen von der BYPASSRLS-Verbindung aus liefe in genau die
-        // Selbst-Blockade, die bei der Steuerungs-Freigabe dokumentiert ist.
-        chargingConfig.ifAvailable(p ->
-                p.clear(tenantId, device.siteId(), device.id()));
-        // Steuerung Stufe 4: ein Handeingriff an einem Gerät, das niemandem mehr
-        // gehört, ist keine Aussage mehr - und eine „Automatik pausieren"-Sperre
-        // auf einer Anlage ohne Gerät hätte gar keine Wirkung mehr. Anders als
-        // beim retained Slot oben ist DAS hier eine DB-Zeile auf dem @Primary-Pfad,
-        // also derselben Verbindung wie das Unclaim - kein Selbst-Blockade-Risiko.
-        deviceOverrides.clearSite(device.siteId());
+        // Die eigentliche Umsetzung (Hygiene, Wächter) steht EINMAL in BoxAusbauenService - geteilt
+        // mit dem Admin-Weg ohne Mandantensprung (vp-admin-box-ausbauen, POST
+        // /api/v1/admin/geraete/{ref}/ausbauen), damit kein zweiter Weg nebenher entsteht.
+        boxAusbauen.ausbauen(device, tenantId, com.voltpilot.api.uems.ProtokollAkteur.aus(auth).orElse(null));
         return ResponseEntity.noContent().build();
     }
 

@@ -46,8 +46,7 @@ public class BoxLoesenService {
     private static final Logger log = LoggerFactory.getLogger(BoxLoesenService.class);
 
     /** Geschlossenes Vokabular, DB-CHECK box_loesen_protokoll_anlass_chk (V20261110090000). */
-    private static final Set<String> ANLAESSE =
-            Set.of("falsche_kennung", "fremder_kunde", "doppelt_verbunden", "anderer_anlass");
+    private static final Set<String> ANLAESSE = BoxLoesenAnlass.VOKABULAR;
 
     private final AdminBoxLoesenRepository admin;
     private final BoxLoesenRepository repo;
@@ -104,7 +103,7 @@ public class BoxLoesenService {
      * {@link DeviceRepository#loesen} selbst, mit {@code adminWeg = false}.
      */
     public Ergebnis loesen(String externalRef, String anlass, String anlassText, ProtokollAkteur akteur) {
-        if (!ANLAESSE.contains(anlass)) {
+        if (anlass == null || !ANLAESSE.contains(anlass)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Bitte wählen Sie einen Anlass.");
         }
         boolean brauchtText = "anderer_anlass".equals(anlass);

@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.enrollment.EnrollmentRepository;
 import com.voltpilot.api.fernwartung.FernwartungRepository.Zugang;
 import com.voltpilot.api.fernwartung.FernwartungService;
+import com.voltpilot.api.geraete.BoxAusbauenAdminService;
 import com.voltpilot.api.geraete.BoxBefundSql;
 import com.voltpilot.api.geraete.BoxEndgueltigAbgelehnt;
 import com.voltpilot.api.geraete.BoxEndgueltigLoeschenService;
@@ -13,8 +14,10 @@ import com.voltpilot.api.repo.AdminGeraeteAkteRepository;
 import com.voltpilot.api.repo.AdminGeraeteAkteRepository.AkteBoxRow;
 import com.voltpilot.api.repo.AdminGeraeteListeRepository;
 import com.voltpilot.api.repo.AdminGeraeteListeRepository.GeraeteListeZeile;
+import com.voltpilot.api.uems.BoxKonflikt;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.AdminGeraeteAkteDto;
+import com.voltpilot.api.web.dto.BoxAusbauenDto;
 import com.voltpilot.api.web.dto.BoxEndgueltigDto;
 import com.voltpilot.api.web.dto.BoxLoesenDto.AnfrageDto;
 import com.voltpilot.api.web.dto.BoxLoesenDto.AnmeldungDto;
@@ -61,11 +64,12 @@ public class AdminGeraeteAkteController {
     private final WerkstattRepository werkstatt;
     private final BoxLoesenService loesen;
     private final BoxEndgueltigLoeschenService endgueltig;
+    private final BoxAusbauenAdminService ausbauen;
 
     public AdminGeraeteAkteController(AdminGeraeteAkteRepository akte,
             AdminGeraeteListeRepository liste, EnrollmentRepository enrollments,
             FernwartungService fernwartung, WerkstattRepository werkstatt, BoxLoesenService loesen,
-            BoxEndgueltigLoeschenService endgueltig) {
+            BoxEndgueltigLoeschenService endgueltig, BoxAusbauenAdminService ausbauen) {
         this.akte = akte;
         this.liste = liste;
         this.enrollments = enrollments;
@@ -73,6 +77,7 @@ public class AdminGeraeteAkteController {
         this.werkstatt = werkstatt;
         this.loesen = loesen;
         this.endgueltig = endgueltig;
+        this.ausbauen = ausbauen;
     }
 
     @GetMapping("/{ref}")
@@ -139,6 +144,26 @@ public class AdminGeraeteAkteController {
 
     @ExceptionHandler(BoxLoesenAbgelehnt.class)
     public org.springframework.http.ResponseEntity<Map<String, Object>> abgelehnt(BoxLoesenAbgelehnt e) {
+        return org.springframework.http.ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
+    /**
+     * Box ausbauen (vp-admin-box-ausbauen): derselbe Einstieg "Vom Kunden lösen" bietet dies an,
+     * wenn die Box nicht mehr lösbar ist (hat schon Daten) - dieselbe Umsetzung wie "Gerät entfernen"
+     * ({@link BoxAusbauenAdminService}), kein Mandantensprung nötig. 409 {@code box_hat_zustaendigkeiten}
+     * mit Grund, solange die Box noch Datenquellen liest oder geplante Zuständigkeiten hat.
+     */
+    @PostMapping("/{ref}/ausbauen")
+    public BoxAusbauenDto.ErgebnisDto ausbauen(@PathVariable String ref,
+            @RequestBody BoxAusbauenDto.AnfrageDto anfrage, Authentication auth) {
+        BoxAusbauenAdminService.Ergebnis e = ausbauen.ausbauen(ref, anfrage.anlass(), anfrage.anlassText(),
+                ProtokollAkteur.aus(auth).orElse(null));
+        return new BoxAusbauenDto.ErgebnisDto(e.externalRef(), e.deviceId().toString(), e.ausgebautAm(), e.anlass(),
+                e.bereitsAusgebaut());
+    }
+
+    @ExceptionHandler(BoxKonflikt.class)
+    public org.springframework.http.ResponseEntity<Map<String, String>> boxKonflikt(BoxKonflikt e) {
         return org.springframework.http.ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
     }
 

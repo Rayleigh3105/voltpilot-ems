@@ -386,7 +386,9 @@ public class TenantRepository {
                     // Vom-Kunden-gelöst-Protokoll (V20261110090000): nur den Mandanten, RESTRICT.
                     "box_loesen_protokoll",
                     // Endgültig-gelöscht-Protokoll (V20261111190000): nur den Mandanten, RESTRICT.
-                    "box_endgueltig_geloescht_protokoll"}) {
+                    "box_endgueltig_geloescht_protokoll",
+                    // Admin-Ausbau-Protokoll (V20261111200000): nur den Mandanten, RESTRICT.
+                    "box_ausbauen_protokoll"}) {
                     deleteByTenant(con, table, tenantId);
                 }
                 // The Berichte (V20260915050000) go before the Standort or Unternehmen their Geltung
