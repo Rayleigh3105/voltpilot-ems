@@ -112,13 +112,28 @@ public class ZugriffRepository {
     }
 
     public void kontoProtokoll(String aktion, String sub, String name, ProtokollAkteur akteur) {
-        protokoll(kundenbereich(), aktion, sub, name, null, null, null, null, null, null, null, null, null, akteur);
+        kontoProtokoll(aktion, sub, name, akteur, null);
+    }
+
+    /** Wie {@link #kontoProtokoll(String, String, String, ProtokollAkteur)}, mit einem Grund (P1: „vorher → nachher“). */
+    public void kontoProtokoll(String aktion, String sub, String name, ProtokollAkteur akteur, String grund) {
+        protokoll(kundenbereich(), aktion, sub, name, null, null, null, null, null, null, null, null, grund, akteur);
     }
 
     /** Kontozustand im selben Vorgang wie Entzugsprüfung und Protokoll ändern. */
     public void kontoZustandSetzen(String sub, KontoZustand zustand) {
         jdbc.update("UPDATE benutzer SET zustand = ? WHERE tenant_id = ? AND sub = ?",
                 zustand.code(), kundenbereich(), sub);
+    }
+
+    /**
+     * P1 (N1): Name und E-Mail im Spiegel nachführen — die einzige gezielte Änderung an einer Zeile, die
+     * {@link #benutzerSpiegeln} absichtlich nicht leistet („Ändert nie“). Ohne Spiegelzeile ein No-op: ein
+     * Konto, das noch nie gespiegelt wurde, bekommt keine erfunden.
+     */
+    public void benutzerAktualisieren(String sub, String anzeigename, String email) {
+        jdbc.update("UPDATE benutzer SET anzeigename = ?, email = ? WHERE tenant_id = ? AND sub = ?",
+                anzeigename, email, kundenbereich(), sub);
     }
 
     /** Eine unveränderte Zuweisung pausiert oder wirkt wieder; ihre Identität und Zeit bleiben erhalten. */

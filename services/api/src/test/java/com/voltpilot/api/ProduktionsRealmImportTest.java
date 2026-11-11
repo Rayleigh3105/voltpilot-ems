@@ -139,6 +139,91 @@ class ProduktionsRealmImportTest {
         assertThat(JSON.readTree(r.body()).path("access_token").asText()).isNotBlank();
     }
 
+    /**
+     * P3 (Konzept vp-plattform-admin-box-benutzer-konzept, Keycloak-Labor §4.2, W1-W5): der Import trägt
+     * {@code editUsernameAllowed} UND im Benutzerprofil {@code username} nur admin-editierbar - zusammen
+     * lässt das NUR den Admin umbenennen, lässt Sitzungen und {@code sub} unberührt, und das alte
+     * Refresh-Token bleibt gültig (W3/W4: ein erneuertes Token trägt den neuen Anmeldenamen).
+     */
+    @Test
+    void derAdminBenenntEinenKundenUmSitzungUndSubBleibenAberNichtDerAlteName() throws Exception {
+        String alt = "umbenennen-" + kurz();
+        String passwort = "Umbenennen-Passwort-" + kurz();
+        assertThat(kontoAnlegen(alt, passwort, false)).isEqualTo(201);
+        String id = kontoId(alt);
+
+        // Eine offene Sitzung (Passwort-Grant mit Refresh-Token) VOR dem Umbenennen.
+        HttpResponse<String> grantVorher = passwortGrant(alt, passwort);
+        assertThat(grantVorher.statusCode()).as(grantVorher.body()).isEqualTo(200);
+        JsonNode tokenVorher = JSON.readTree(grantVorher.body());
+        String refreshToken = tokenVorher.path("refresh_token").asText();
+        assertThat(claim(tokenVorher.path("access_token").asText(), "sub")).isEqualTo(id);
+
+        String neu = "umbenannt-" + kurz();
+        assertThat(adminPut("/users/" + id, "{\"username\":\"" + neu + "\"}")).isEqualTo(204);
+        assertThat(adminGet("/users/" + id).path("id").asText()).as("sub bleibt gleich").isEqualTo(id);
+
+        // W3/W4: das Refresh-Token von VOR dem Umbenennen gilt weiter und erneuert sich auf den neuen Namen.
+        HttpResponse<String> erneuert = post(tokenUrl(), Map.of("grant_type", "refresh_token",
+                "client_id", "voltpilot-frontend", "refresh_token", refreshToken));
+        assertThat(erneuert.statusCode()).as("die Sitzung bleibt bestehen").isEqualTo(200);
+        JsonNode tokenNachher = JSON.readTree(erneuert.body());
+        assertThat(claim(tokenNachher.path("access_token").asText(), "sub")).as("sub bleibt gleich").isEqualTo(id);
+        assertThat(claim(tokenNachher.path("access_token").asText(), "preferred_username")).isEqualTo(neu);
+
+        // Der alte Anmeldename meldet nicht mehr an (Keycloak kennt ihn nicht mehr: ungültige
+        // Zugangsdaten, 401), der neue sofort, die E-Mail geht unverändert weiter.
+        assertThat(passwortGrant(alt, passwort).statusCode()).isEqualTo(401);
+        assertThat(passwortGrant(neu, passwort).statusCode()).isEqualTo(200);
+        assertThat(passwortGrant(alt + "@beispiel.invalid", passwort).statusCode())
+                .as("loginWithEmailAllowed bleibt unberührt").isEqualTo(200);
+    }
+
+    /**
+     * P3: die zweite Hälfte der Härtung - OHNE die Einschränkung im Benutzerprofil (nur
+     * {@code editUsernameAllowed}) dürfte sich ein Kunde selbst umbenennen (Labor W10). Die Kontoseite
+     * ({@code …/realms/voltpilot/account}) ist derselbe Weg, über den ein Kunde seinen eigenen Namen
+     * ändert - mit dem Import lehnt sie das Umbenennen ab, obwohl {@code editUsernameAllowed} an ist.
+     */
+    @Test
+    void einKundeKannSichSelbstNichtUmbenennen() throws Exception {
+        String name = "selbst-" + kurz();
+        String passwort = "Selbst-Passwort-" + kurz();
+        assertThat(kontoAnlegen(name, passwort, false)).isEqualTo(201);
+        HttpResponse<String> grant = passwortGrant(name, passwort);
+        assertThat(grant.statusCode()).as(grant.body()).isEqualTo(200);
+        String kundenToken = JSON.readTree(grant.body()).path("access_token").asText();
+
+        HttpResponse<String> selbstUmbenennen = http.send(HttpRequest.newBuilder(
+                        URI.create(basis() + "/realms/voltpilot/account"))
+                .header("Authorization", "Bearer " + kundenToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"" + name + "-neu\"}"))
+                .build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(selbstUmbenennen.statusCode()).as(selbstUmbenennen.body()).isEqualTo(400);
+        assertThat(selbstUmbenennen.body()).contains("error-user-attribute-read-only");
+        assertThat(adminGet("/users/" + kontoId(name)).path("username").asText()).isEqualTo(name);
+    }
+
+    /**
+     * P3: {@code editUsernameAllowed} ALLEIN reicht nicht - ohne die Einschränkung im Benutzerprofil lehnt
+     * Keycloak ein Umbenennen auch durch den Admin ab, solange {@code editUsernameAllowed} fehlt (Labor
+     * V4/V5, Stand vor der Härtung). Der Realm wird danach wieder auf den Import zurückgesetzt.
+     */
+    @Test
+    void ohneEditUsernameAllowedLehntKeycloakDasUmbenennenAuchDurchDenAdminAb() throws Exception {
+        String name = "ohne-haertung-" + kurz();
+        assertThat(kontoAnlegen(name, "Ohne-Haertung-Passwort-" + kurz(), false)).isEqualTo(201);
+        String id = kontoId(name);
+        assertThat(adminPut("", "{\"editUsernameAllowed\":false}")).isEqualTo(204);
+        try {
+            assertThat(adminPut("/users/" + id, "{\"username\":\"" + name + "-neu\"}")).isEqualTo(400);
+            assertThat(adminGet("/users/" + id).path("username").asText()).isEqualTo(name);
+        } finally {
+            assertThat(adminPut("", "{\"editUsernameAllowed\":true}")).isEqualTo(204);
+        }
+    }
+
     @Test
     void einKundenkontoMeldetSichOhneZweitenFaktorAn() throws Exception {
         String name = "kunde-" + kurz();
@@ -529,6 +614,12 @@ class ProduktionsRealmImportTest {
 
     private static String kurz() {
         return UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    /** Ein Textclaim aus einem JWT, ohne die Signatur zu prüfen - reicht für diesen Test (eigener Realm). */
+    private static String claim(String jwt, String name) throws Exception {
+        String payload = new String(Base64.getUrlDecoder().decode(jwt.split("\\.")[1]), StandardCharsets.UTF_8);
+        return JSON.readTree(payload).path(name).asText();
     }
 
     private HttpResponse<String> passwortGrant(String name, String passwort) throws Exception {

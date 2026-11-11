@@ -10,7 +10,8 @@ import { Modal } from '../../../designsystem/components/shell/Modal';
 import { VpPicker } from '../../components/VpPicker';
 import { StartpasswortAnzeige } from '../../components/StartpasswortAnzeige';
 import { AufklapperKarte } from '../../components/AufklapperKarte';
-import { benutzerApi, benutzerFehler, type BenutzerEintrag } from '../../benutzer';
+import { benutzerApi, benutzerFehler, KUNDENROLLEN, unternehmensrolle, type BenutzerAnlage, type BenutzerEintrag } from '../../benutzer';
+import { ROLLE_BESCHREIBUNG } from '../../components/BenutzerEinladen';
 import { ApiError, api, type SelbstauskunftKundenbereichBeendet, type Site } from '../../api';
 import {
   anlagenBoxenZeilen,
@@ -34,7 +35,7 @@ import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
 import { DangerZone } from '../../components/DangerZone';
 import { EmptyState, ErrorState, TableSkeleton, TextSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
-import { EditUserDrawer } from './UserDrawers';
+import { EditUserDrawer, ResetPasswordDialog } from './UserDrawers';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { RowMenu } from '../../components/RowMenu';
 import './Mandanten.css';
@@ -456,8 +457,11 @@ function KundenaktePage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [neuerAdminOffen, setNeuerAdminOffen] = useState(false);
   const [passwort, setPasswort] = useState<string | null>(null);
-  // Profilpflege bleibt hier; Startpasswörter vergibt der Kundenadministrator.
+  // P2: „Person hinzufügen" - weitere Personen, nicht nur die erste (W4 fällt).
+  const [personHinzufuegenOffen, setPersonHinzufuegenOffen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  // N6: der Admin vergibt jetzt selbst ein neues Startpasswort (vorher nur der Kundenadministrator).
+  const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null);
   const [confirmUser, setConfirmUser] = useState<{ user: AdminUser; kind: 'disable' | 'delete' } | null>(null);
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -549,6 +553,13 @@ function KundenaktePage({
     } catch (e) {
       throw new Error(benutzerFehler(e));
     }
+  }
+
+  /** P2: „Person hinzufügen" - die WEITERE Person (nicht die erste), mit Rolle und Standorten. */
+  async function personHinzufuegen(anlage: BenutzerAnlage) {
+    const angelegt = await adminApi.createPerson(tenant.id, anlage);
+    await reload();
+    return angelegt;
   }
 
   async function offboard() {
@@ -708,6 +719,14 @@ function KundenaktePage({
           <Card padding="lg" radius="lg" className="vp-mandant-karte vp-kundenakte-personen">
             <div className="vp-section-head">
               <h2>Personen {personen ? `(${personen.length})` : ''}</h2>
+              {personen != null && personen.length > 0 && !personHinzufuegenOffen && (
+                <span className="actions">
+                  <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />}
+                    onClick={() => setPersonHinzufuegenOffen(true)}>
+                    Person hinzufügen
+                  </Button>
+                </span>
+              )}
             </div>
             {loadError ? (
               <ErrorState message={loadError} onRetry={() => void reload()} />
@@ -748,6 +767,7 @@ function KundenaktePage({
                             label={`Aktionen für ${p.konto.username}`}
                             items={[
                               { label: 'Bearbeiten', icon: 'pencil', onClick: () => setEditUser(p.konto!) },
+                              { label: 'Neues Startpasswort', icon: 'refresh-cw', onClick: () => setResetPasswordUser(p.konto!) },
                               p.konto.enabled
                                 ? { label: 'Deaktivieren', icon: 'x', onClick: () => setConfirmUser({ user: p.konto!, kind: 'disable' }) }
                                 : { label: 'Aktivieren', icon: 'check', onClick: () => enable(p.konto!) },
@@ -761,11 +781,6 @@ function KundenaktePage({
                 </tbody>
               </table>
             )}
-            {personen != null && personen.length > 0 && (
-              <p className="vp-mandant-hinweis vp-muted">
-                Weitere Personen lädt der Kundenadministrator ein.
-              </p>
-            )}
             {neuerAdminOffen && (
               <ErsterAdminFormular
                 tenantName={tenant.name}
@@ -773,6 +788,14 @@ function KundenaktePage({
                 onAbbrechen={() => { setNeuerAdminOffen(false); setPasswort(null); }}
                 onAnlegen={ersterAdminAnlegen}
                 onFertig={() => { setNeuerAdminOffen(false); setPasswort(null); }}
+              />
+            )}
+            {personHinzufuegenOffen && (
+              <PersonHinzufuegenFormular
+                sites={sites ?? []}
+                onAbbrechen={() => setPersonHinzufuegenOffen(false)}
+                onAnlegen={personHinzufuegen}
+                onFertig={() => setPersonHinzufuegenOffen(false)}
               />
             )}
           </Card>
@@ -905,6 +928,14 @@ function KundenaktePage({
           }}
         />
       )}
+      {resetPasswordUser && (
+        <ResetPasswordDialog
+          key={resetPasswordUser.id}
+          tenant={tenant}
+          user={resetPasswordUser}
+          onClose={() => setResetPasswordUser(null)}
+        />
+      )}
       {/* Die zwei Rückfragen im HAUS-MUSTER statt eines nativen `confirm`:
           sie stehen in einem Drawer, der schon eine Folgenliste kennt
           (`DangerZone` darunter), und ein System-Popup daneben wäre die
@@ -1013,6 +1044,118 @@ function ErsterAdminFormular({
         <Button variant="ghost" size="sm" onClick={onAbbrechen} disabled={busy}>Abbrechen</Button>
         <Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !form.username.trim() || !form.email.trim()}>
           {busy ? 'Wird angelegt…' : 'Kundenadministrator anlegen'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Einen Anmeldenamen aus der E-Mail vorschlagen (N4: nur a-z, 0-9, Punkt, Bindestrich, Unterstrich). */
+function anmeldenameAusEmail(email: string): string {
+  return email.split('@')[0]?.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '') ?? '';
+}
+
+/**
+ * P2: „Person hinzufügen" - die WEITERE Person (nicht die erste, W4 fällt) IN der Personen-Karte
+ * (E1 = A): Rolle und Standorte wie der Kundenadministrator, der Anmeldename wird aus der E-Mail
+ * vorgeschlagen und lässt sich mit „Ändern" anpassen (§4.3 des Konzept-Berichts).
+ */
+function PersonHinzufuegenFormular({
+  sites,
+  onAbbrechen,
+  onAnlegen,
+  onFertig,
+}: {
+  sites: Site[];
+  onAbbrechen: () => void;
+  onAnlegen: (anlage: BenutzerAnlage) => Promise<{ startpasswort: string }>;
+  onFertig: () => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [vorname, setVorname] = useState('');
+  const [nachname, setNachname] = useState('');
+  const [anmeldenameOffen, setAnmeldenameOffen] = useState(false);
+  const [anmeldename, setAnmeldename] = useState('');
+  const [rolle, setRolle] = useState('leser');
+  const [standorte, setStandorte] = useState<string[]>([]);
+  const [passwort, setPasswort] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const jeStandort = !unternehmensrolle(rolle);
+  const vorschlag = anmeldenameAusEmail(email);
+  const effektiverAnmeldename = anmeldenameOffen ? anmeldename.trim() : vorschlag;
+
+  async function submit() {
+    if (!email.trim() || !effektiverAnmeldename) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await onAnlegen({
+        username: effektiverAnmeldename,
+        email: email.trim(),
+        vorname: vorname.trim() || undefined,
+        nachname: nachname.trim() || undefined,
+        rolle,
+        standorte: jeStandort ? (sites.length === 1 ? [sites[0].id] : standorte) : [],
+      });
+      setPasswort(result.startpasswort);
+    } catch (e) {
+      setError(benutzerFehler(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (passwort) {
+    return (
+      <div className="vp-form-stack" style={{ marginTop: 'var(--vp-space-4)' }}>
+        <StartpasswortAnzeige passwort={passwort} />
+        <Button variant="primary" onClick={onFertig}>Fertig</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="vp-form-stack" style={{ marginTop: 'var(--vp-space-4)' }}>
+      <h3 style={{ margin: 0 }}>Neue Person</h3>
+      <div style={{ display: 'flex', gap: 'var(--vp-space-3)' }}>
+        <Input label="Vorname" value={vorname} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVorname(e.target.value)} />
+        <Input label="Nachname" value={nachname} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNachname(e.target.value)} />
+      </div>
+      <Input label="E-Mail" type="email" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)} />
+      {anmeldenameOffen ? (
+        <Input label="Anmeldename" value={anmeldename} autoComplete="off" spellCheck={false}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAnmeldename(e.target.value)}
+          hint="a-z, 0-9, Punkt, Bindestrich, Unterstrich; 3 bis 64 Zeichen." />
+      ) : (
+        vorschlag && (
+          <p className="vp-note" style={{ margin: 0 }}>
+            Anmelden mit <b className="vp-mono">{vorschlag}</b> oder der E-Mail
+            <button type="button" className="vp-linklike" onClick={() => { setAnmeldename(vorschlag); setAnmeldenameOffen(true); }} style={{ marginLeft: 'var(--vp-space-2)' }}>
+              Ändern
+            </button>
+          </p>
+        )
+      )}
+      <VpPicker id="person-hinzufuegen-rolle" label="Rolle" value={rolle}
+        options={KUNDENROLLEN.map((r) => ({ ...r, sub: ROLLE_BESCHREIBUNG[r.value] }))}
+        onChange={(v) => { setRolle(v); setStandorte([]); }} />
+      <p className="vp-note" style={{ margin: 0 }}>
+        {ROLLE_BESCHREIBUNG[rolle]}
+        {jeStandort && sites.length === 1 ? ` Gilt für „${sites[0].name}".` : ''}
+      </p>
+      {jeStandort && sites.length > 1 && (
+        <VpPicker id="person-hinzufuegen-standorte" label="Standorte" values={standorte}
+          options={sites.map((s) => ({ value: s.id, label: s.name }))}
+          onChangeMany={setStandorte} />
+      )}
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+      <div style={{ display: 'flex', gap: 'var(--vp-space-2)' }}>
+        <Button variant="ghost" size="sm" onClick={onAbbrechen} disabled={busy}>Abbrechen</Button>
+        <Button variant="primary" size="sm" onClick={() => void submit()}
+          disabled={busy || !email.trim() || !effektiverAnmeldename || (jeStandort && sites.length > 1 && standorte.length === 0)}>
+          {busy ? 'Wird angelegt…' : 'Person anlegen'}
         </Button>
       </div>
     </div>

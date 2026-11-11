@@ -14,14 +14,20 @@ import org.junit.jupiter.params.provider.ValueSource;
  * Review Nachweisen r1, P0-1 (zusätzlich zum Code): Vor- und Nachname eines Kontos ändert nur die Administration, nicht
  * das Konto selbst über die Kontoseite ({@code …/realms/voltpilot/account}). Der Urheber im Protokoll kommt ohnehin aus
  * dem Spiegel {@code benutzer.anzeigename} bzw. {@code preferred_username} ({@code ProtokollAkteur}); die Sperre hält
- * den Namen im Token und auf der Kontoseite an dieselbe Hand. Rein - liest nur die Realm-Dateien.
+ * den Namen im Token und auf der Kontoseite an dieselbe Hand.
+ *
+ * <p>P3 (Konzept vp-plattform-admin-box-benutzer-konzept, Keycloak-Labor §4.2): der Anmeldename ist seit der
+ * Realm-Härtung NICHT mehr fest, sondern NUR DURCH DEN ADMIN änderbar — beide Einstellungen zusammen
+ * ({@code editUsernameAllowed} UND {@code username.permissions.edit = [admin]}), sonst könnte sich ein Kunde selbst
+ * umbenennen (Labor W10, Keycloak lehnt mit nur einer der beiden Einstellungen ab bzw. erlaubt zu viel). Rein -
+ * liest nur die Realm-Dateien.
  */
 class RealmNamenNurAdminTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @ParameterizedTest
     @ValueSource(strings = {"../../infra/prod/keycloak/voltpilot-realm.json", "../../infra/local/keycloak/voltpilot-realm.json"})
-    void vorUndNachnameAendertNurDieAdministration(String datei) throws Exception {
+    void vorUndNachnameUndAnmeldenameAendertNurDieAdministration(String datei) throws Exception {
         JsonNode realm = JSON.readTree(Path.of(datei).toFile());
         List<JsonNode> profile = new ArrayList<>();
         realm.path("components").forEach(art -> art.forEach(c -> c.path("config").path("kc.user.profile.config")
@@ -33,7 +39,7 @@ class RealmNamenNurAdminTest {
                     }
                 })));
         assertThat(profile).as(datei + ": ein User-Profil").hasSize(1);
-        for (String name : List.of("firstName", "lastName")) {
+        for (String name : List.of("firstName", "lastName", "username")) {
             JsonNode attribut = null;
             for (JsonNode a : profile.get(0).path("attributes")) {
                 if (a.path("name").asText().equals(name)) attribut = a;
@@ -43,6 +49,7 @@ class RealmNamenNurAdminTest {
             attribut.at("/permissions/edit").forEach(r -> edit.add(r.asText()));
             assertThat(edit).as(datei + " " + name + " edit").containsExactly("admin");
         }
-        assertThat(realm.path("editUsernameAllowed").asBoolean(false)).as(datei + " Anmeldename fest").isFalse();
+        assertThat(realm.path("editUsernameAllowed").asBoolean(false))
+                .as(datei + " Anmeldename änderbar (nur durch den Admin, siehe username.permissions.edit)").isTrue();
     }
 }

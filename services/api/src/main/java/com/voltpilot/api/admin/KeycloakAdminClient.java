@@ -67,14 +67,25 @@ public class KeycloakAdminClient {
      */
     public static class KeycloakAdminException extends RuntimeException {
         private final int status;
+        private final String code;
 
         public KeycloakAdminException(int status, String message) {
+            this(status, null, message);
+        }
+
+        /** N5: ein {@code code}, der das 409 genauer fasst als „konto_vorhanden“ (etwa {@code anmeldename_vergeben}). */
+        public KeycloakAdminException(int status, String code, String message) {
             super(message);
             this.status = status;
+            this.code = code;
         }
 
         public int status() {
             return status;
+        }
+
+        public String code() {
+            return code;
         }
     }
 
@@ -92,7 +103,12 @@ public class KeycloakAdminClient {
         Map<String, Object> body = userBody(username, email, firstName, lastName, password,
                 temporaryPassword);
         body.put("attributes", Map.of("tenant_id", List.of(tenantId.toString())));
-        String userId = create(body);
+        String userId;
+        try {
+            userId = create(body);
+        } catch (KeycloakAdminException ex) {
+            throw ex.status() == 409 ? duplicateException(username, email) : ex;
+        }
         try {
             KeycloakUser user = getUser(userId);
             log.info("Provisioned customer user {} in tenant {}", userId, tenantId);
@@ -104,6 +120,23 @@ public class KeycloakAdminClient {
             bestEffortDeleteUser(userId);
             throw ex;
         }
+    }
+
+    /**
+     * N5: Keycloak unterscheidet Anmeldename und E-Mail (409 „User exists with same username/email“), die
+     * bisherige Antwort fasste beides in einer Nachricht zusammen - das Formular konnte das falsche Feld
+     * nicht markieren. Zwei weitere Abfragen, NUR auf dem Fehlerpfad.
+     */
+    private KeycloakAdminException duplicateException(String username, String email) {
+        boolean anmeldenameVergeben = findByUsername(username).isPresent();
+        boolean emailVergeben = findByEmail(email).isPresent();
+        if (anmeldenameVergeben && !emailVergeben) {
+            return new KeycloakAdminException(409, "anmeldename_vergeben", "Dieser Anmeldename ist bereits vergeben.");
+        }
+        if (emailVergeben && !anmeldenameVergeben) {
+            return new KeycloakAdminException(409, "email_vergeben", "Diese E-Mail-Adresse ist bereits vergeben.");
+        }
+        return new KeycloakAdminException(409, "A user with that username or email already exists");
     }
 
     /**
@@ -285,6 +318,34 @@ public class KeycloakAdminClient {
     }
 
 /**
+     * Das Konto mit genau diesem Anmeldenamen, wenn der Realm eines hat (N5): das 409 beim Anlegen trägt sonst
+     * keine Information, OB der Anmeldename oder die E-Mail-Adresse der Grund war.
+     */
+    public java.util.Optional<KeycloakUser> findByUsername(String username) {
+        if (username == null || username.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        List<Map<String, Object>> users;
+        try {
+            users = admin().get()
+                    .uri(uriBuilder -> uriBuilder.path("/admin/realms/{realm}/users")
+                            .queryParam("username", username.trim())
+                            .queryParam("exact", true)
+                            .queryParam("briefRepresentation", false)
+                            .queryParam("max", 2)
+                            .build(props.getRealm()))
+                    .retrieve()
+                    .body(new org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        } catch (RestClientResponseException ex) {
+            throw upstreamError("user lookup", ex);
+        }
+        if (users == null) {
+            return java.util.Optional.empty();
+        }
+        return users.stream().map(this::project).findFirst();
+    }
+
+/**
      * Personensuche über ALLE Kunden (Lücke L6, Adminview-Konzept Abschnitt
      * 3.4/4.5): Keycloaks eigene freitext-{@code search} - sucht realmweit über
      * Benutzername, E-Mail, Vor- und Nachname, also über jeden Mandanten
@@ -374,7 +435,22 @@ public class KeycloakAdminClient {
      */
     public KeycloakUser updateProfile(String userId, String email, String firstName,
             String lastName) {
+        return updateProfile(userId, null, email, firstName, lastName);
+    }
+
+    /**
+     * P3: wie {@link #updateProfile(String, String, String, String)}, mit dem Anmeldenamen ({@code null} =
+     * unverändert). Das Labor (Konzept-Bericht §4.2) verlangt dafür im Realm {@code editUsernameAllowed} UND
+     * den Anmeldenamen nur admin-bearbeitbar - fehlt eine der beiden Einstellungen, lehnt Keycloak mit 400
+     * {@code error-user-attribute-read-only} ab; dieser Fall bekommt eine eigene, erklärende Antwort statt
+     * eines rohen 502.
+     */
+    public KeycloakUser updateProfile(String userId, String username, String email, String firstName,
+            String lastName) {
         Map<String, Object> body = new java.util.HashMap<>();
+        if (username != null && !username.isBlank()) {
+            body.put("username", username.trim());
+        }
         body.put("email", email == null || email.isBlank() ? null : email.trim());
         body.put("firstName", firstName == null || firstName.isBlank() ? null : firstName.trim());
         body.put("lastName", lastName == null || lastName.isBlank() ? null : lastName.trim());
@@ -386,7 +462,15 @@ public class KeycloakAdminClient {
                     .toBodilessEntity();
         } catch (RestClientResponseException ex) {
             if (ex.getStatusCode().value() == 409) {
-                throw new KeycloakAdminException(409, "A user with that email already exists");
+                throw username != null
+                        ? new KeycloakAdminException(409, "anmeldename_vergeben", "Dieser Anmeldename ist bereits vergeben.")
+                        : new KeycloakAdminException(409, "A user with that email already exists");
+            }
+            if (ex.getStatusCode().value() == 400 && username != null
+                    && ex.getResponseBodyAsString().contains("error-user-attribute-read-only")) {
+                throw new KeycloakAdminException(400, "realm_anmeldename_gesperrt",
+                        "Der Realm lässt den Anmeldenamen noch nicht ändern. Bitte den Realm-Handgriff nachholen "
+                                + "(infra/prod/keycloak/live-realm-anmeldung.sh).");
             }
             throw upstreamError("user update", ex);
         }

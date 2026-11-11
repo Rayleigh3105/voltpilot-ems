@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
+import { Card } from '../../../designsystem/components/core/Card';
+import { Icon } from '../../../designsystem/components/core/Icon';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { request, type Unterstuetzung, type UnterstuetzungAnfrage } from '../../api';
@@ -34,10 +36,17 @@ export function UnterstuetzungAdmin({ tenantId, name }: { tenantId: string; name
       window.dispatchEvent(new Event('vp-unterstuetzung-geaendert'));
     } catch (e) { setFehler(unterstuetzungFehler(e)); } finally { setBusy(false); }
   }
-  return <section className="vp-unterstuetzung"><h3>Unterstützung</h3><div className="vp-unterstuetzung-aktionen">
-    {(['anfrage', 'notfall'] as const).map(m => <Button key={m} variant="outline" onClick={e => { e.currentTarget.focus(); trigger.current = e.currentTarget; setFehler(''); setGrund(''); setAuswahl([]); setUmfang(m === 'notfall' ? 'einrichten_und_bedienen' : 'ansehen'); setModus(m); }}>{m === 'anfrage' ? 'Unterstützung anfragen' : 'Notfall-Zugriff'}</Button>)}
-    </div>{orte?.length === 0 && <p className="vp-unterstuetzung-ohne-standort" role="note">Dieser Mandant hat noch keinen Standort. Unterstützung und Notfall-Zugriff gelten immer für Standorte, nie für das ganze Unternehmen, und sind hier deshalb noch nicht möglich. Die Kundenansicht braucht sie nicht: „Wie der Kunde es sieht“ öffnet sie trotzdem. Ein Standort entsteht, wenn der Kunde im Portal seine Standorte einrichtet; hat der Mandant genau eine Anlage, legt ihn die Plattform beim nächsten Start der API an.</p>}
-    {erfolg && <p role="status">{erfolg}</p>}
+  return <>
+    <Card padding="lg" radius="lg" className="vp-mandant-karte vp-unterstuetzung">
+      <div className="vp-section-head">
+        <h2><Icon name="help-circle" size={18} /> Unterstützung</h2>
+        <span className="actions">
+          {(['anfrage', 'notfall'] as const).map(m => <Button key={m} variant="outline" size="sm" onClick={e => { e.currentTarget.focus(); trigger.current = e.currentTarget; setFehler(''); setGrund(''); setAuswahl([]); setUmfang(m === 'notfall' ? 'einrichten_und_bedienen' : 'ansehen'); setModus(m); }}>{m === 'anfrage' ? 'Unterstützung anfragen' : 'Notfall-Zugriff'}</Button>)}
+        </span>
+      </div>
+      {orte?.length === 0 && <p className="vp-unterstuetzung-ohne-standort" role="note">Dieser Mandant hat noch keinen Standort. Unterstützung und Notfall-Zugriff gelten immer für Standorte, nie für das ganze Unternehmen, und sind hier deshalb noch nicht möglich. Die Kundenansicht braucht sie nicht: „Wie der Kunde es sieht“ öffnet sie trotzdem. Ein Standort entsteht, wenn der Kunde im Portal seine Standorte einrichtet; hat der Mandant genau eine Anlage, legt ihn die Plattform beim nächsten Start der API an.</p>}
+      {erfolg && <p role="status">{erfolg}</p>}
+    </Card>
     <Modal open={!!modus} onClose={schliessen} title={modus === 'notfall' ? 'Notfall-Zugriff' : 'Unterstützung anfragen'} footer={<><Button variant="ghost" disabled={busy} onClick={schliessen}>Abbrechen</Button><Button disabled={busy} onClick={() => void speichern()}>{modus === 'notfall' ? 'Notfall-Zugriff gewähren' : 'Anfrage senden'}</Button></>}>
       <div className="vp-unterstuetzung-form" ref={form}><p>{name}</p>
         <VpPicker label="Standorte" values={auswahl} onChangeMany={setAuswahl} options={(orte ?? []).map(s => ({ value: s.id, label: s.name }))} />
@@ -48,5 +57,5 @@ export function UnterstuetzungAdmin({ tenantId, name }: { tenantId: string; name
         <UnterstuetzungFolgen />{fehler && <p role="alert">{fehler}</p>}
       </div>
     </Modal>
-  </section>;
+  </>;
 }

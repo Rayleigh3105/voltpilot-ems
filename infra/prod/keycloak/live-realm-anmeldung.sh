@@ -3,8 +3,9 @@
 # wie der Import voltpilot-realm.json (der Import allein aendert keinen bestehenden Realm).
 #
 #   angleichen  setzt Ereignisse (90 Tage), Passwort-Vorgabe, Sitzungsdauern (normal 12 h/24 h, "Angemeldet
-#               bleiben" 90/180 Tage) und den bedingten zweiten Faktor, bindet die Ablaeufe. Gebunden wird
-#               erst, wenn beide Ablaeufe vollstaendig sind (Schritt fuer Schritt wie der Import, samt
+#               bleiben" 90/180 Tage), den Anmeldenamen-Umbenennen (editUsernameAllowed + im Benutzerprofil
+#               nur admin-bearbeitbar, P3) und den bedingten zweiten Faktor, bindet die Ablaeufe. Gebunden
+#               wird erst, wenn beide Ablaeufe vollstaendig sind (Schritt fuer Schritt wie der Import, samt
 #               Rollen-Bedingung). Ein zweiter Lauf legt nichts doppelt an. Nach einem abgebrochenen Lauf
 #               entfernt der naechste die unvollstaendigen, ungebundenen Ablaeufe (voltpilot-browser,
 #               voltpilot-direct-grant samt Unterablaeufen) und baut sie neu. Weicht ein GEBUNDENER Ablauf
@@ -27,6 +28,12 @@ ZWOELF_STUNDEN=43200
 VIERUNDZWANZIG_STUNDEN=86400
 
 OBEN=(voltpilot-browser voltpilot-direct-grant)   # die zwei obersten Ablaeufe, in dieser Reihenfolge
+
+# P3 (Konzept vp-plattform-admin-box-benutzer-konzept, Keycloak-Labor §4.2): derselbe Wortlaut wie
+# infra/prod/keycloak/voltpilot-realm.json - NUR der Anmeldename ist auf "admin" eingeschraenkt (der
+# Realm ist sonst unveraendert, ADMIN_EDIT bleibt). An die Vorlage angleichen, wenn sie sich aendert;
+# profil_pruefen fragt nur den Anmeldenamen ab, nicht den ganzen Wortlaut.
+PROFIL_SOLL='{"unmanagedAttributePolicy": "ADMIN_EDIT", "attributes": [{"name": "username", "displayName": "${username}", "permissions": {"view": ["admin", "user"], "edit": ["admin"]}}, {"name": "email", "displayName": "${email}", "permissions": {"view": ["admin", "user"], "edit": ["admin", "user"]}}, {"name": "firstName", "displayName": "${firstName}", "permissions": {"view": ["admin", "user"], "edit": ["admin"]}}, {"name": "lastName", "displayName": "${lastName}", "permissions": {"view": ["admin", "user"], "edit": ["admin"]}}, {"name": "tenant_id", "displayName": "Tenant ID", "permissions": {"view": ["admin", "user"], "edit": ["admin"]}}]}'
 
 # Im Cluster setzt der Pod JAVA_TOOL_OPTIONS fuer den Server; Java schriebe sonst bei jedem Aufruf von kcadm
 # "Picked up JAVA_TOOL_OPTIONS: ..." zwischen die Zeilen dieses Skripts. kcadm braucht die Angabe nicht.
@@ -65,6 +72,34 @@ SCHRITTE=(
   "voltpilot-direct-grant-otp-gewaehlt|conditional-user-configured|REQUIRED|"
   "voltpilot-direct-grant-otp-gewaehlt|direct-grant-validate-otp|REQUIRED|"
 )
+
+# Das dedizierte Endgeraet fuer das Benutzerprofil (seit Keycloak 24) - existiert fuer JEDEN Realm mit
+# einem sinnvollen Vorgabestand, auch ohne Import; keine Komponente zum Anlegen oder Suchen noetig.
+# PUT ersetzt das ganze Profil (bestaetigt: eine weggelassene `validations` verschwindet einfach, kein
+# Zusammenfuehren) - deshalb traegt PROFIL_SOLL alle fuenf Felder, nicht nur den Anmeldenamen.
+profil_angleichen() {
+  kc update "realms/$R/users/profile" -b "$PROFIL_SOLL"
+}
+
+# P3: traegt das Benutzerprofil die Einschraenkung „Anmeldename nur admin-bearbeitbar"? Das GET liefert
+# die Attribute als JSON-Feld ohne Zeilenumbrueche; der Text zwischen "name":"username" und dem naechsten
+# Attribut (dem naechsten "name":") ist das Attribut selbst, unabhaengig von eingebetteten Klammern
+# (`validations` verschachtelt sonst die Klammerzaehlung). `[[:space:]]*` haelt beide Schreibweisen aus,
+# kompakt oder mit Leerzeichen.
+profil_pruefen() {
+  local json="$(kc get "realms/$R/users/profile")"
+  if [[ "$json" != *'"name":"username"'* && "$json" != *'"name" : "username"'* ]]; then
+    echo "ABWEICHUNG Benutzerprofil: Attribut username fehlt"
+    return 1
+  fi
+  local rest="${json#*\"username\"}"
+  local block="${rest%%\"name\"*}"
+  if [[ ! "$block" =~ \"edit\"[[:space:]]*:[[:space:]]*\[[[:space:]]*\"admin\"[[:space:]]*\] ]]; then
+    echo "ABWEICHUNG Benutzerprofil: Anmeldename nicht auf admin-bearbeitbar eingeschraenkt"
+    return 1
+  fi
+  return 0
+}
 
 zeilen() { # Ausgabe von kcadm als Zeilen in das Feld ZEILEN (leere Ausgabe = leeres Feld)
   ZEILEN=()
@@ -284,9 +319,13 @@ angleichen() {
   kc update "realms/$R" -s eventsEnabled=true -s "eventsExpiration=$NEUNZIG_TAGE" \
     -s adminEventsEnabled=true -s adminEventsDetailsEnabled=false -s "passwordPolicy=$VORGABE" \
     -s rememberMe=true -s "ssoSessionIdleTimeout=$ZWOELF_STUNDEN" -s "ssoSessionMaxLifespan=$VIERUNDZWANZIG_STUNDEN" \
-    -s "ssoSessionIdleTimeoutRememberMe=$NEUNZIG_TAGE" -s "ssoSessionMaxLifespanRememberMe=$HUNDERTACHTZIG_TAGE"
+    -s "ssoSessionIdleTimeoutRememberMe=$NEUNZIG_TAGE" -s "ssoSessionMaxLifespanRememberMe=$HUNDERTACHTZIG_TAGE" \
+    -s editUsernameAllowed=true
   # Ein Realm-Attribut nur ueber -b: `-s attributes.x=...` setzt es in kcadm 26.0.5 nicht (im Test gesehen)
   kc update "realms/$R" -b "{\"attributes\":{\"adminEventsExpiration\":\"$NEUNZIG_TAGE\"}}"
+  # P3: editUsernameAllowed allein liesse auch den Kunden sich selbst umbenennen (Labor W10) - erst mit
+  # dem Benutzerprofil zusammen ist der Anmeldename nur durch den Admin aenderbar.
+  profil_angleichen
 
   # 3. Abweichendes entfernen (ungebunden, also ohne Wirkung auf eine Anmeldung), Fehlendes bauen
   for eintrag in "${entfernen[@]}"; do
@@ -322,11 +361,13 @@ pruefen() {
               "rememberMe=true" "ssoSessionIdleTimeout=$ZWOELF_STUNDEN" \
               "ssoSessionMaxLifespan=$VIERUNDZWANZIG_STUNDEN" \
               "ssoSessionIdleTimeoutRememberMe=$NEUNZIG_TAGE" \
-              "ssoSessionMaxLifespanRememberMe=$HUNDERTACHTZIG_TAGE"; do
+              "ssoSessionMaxLifespanRememberMe=$HUNDERTACHTZIG_TAGE" \
+              "editUsernameAllowed=true"; do
     feld="${paar%%=*}"; soll="${paar#*=}"
     ist="$(kc get "realms/$R" --fields "$feld" --format csv --noquotes)"
     if [[ "$ist" != "$soll" ]]; then echo "ABWEICHUNG $feld: ist '$ist', soll '$soll'"; fehler=1; fi
   done
+  if ! profil_pruefen; then fehler=1; fi
   local json
   json="$(kc get "realms/$R" --fields 'attributes(adminEventsExpiration)')"
   if [[ ! "$json" =~ \"adminEventsExpiration\"[[:space:]]*:[[:space:]]*\"$NEUNZIG_TAGE\" ]]; then

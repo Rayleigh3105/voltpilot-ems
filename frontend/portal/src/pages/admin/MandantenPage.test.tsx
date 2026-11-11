@@ -9,6 +9,7 @@ const deleteUser = vi.fn();
 const disableUser = vi.fn();
 const enableUser = vi.fn();
 const createUser = vi.fn();
+const createPerson = vi.fn();
 const selbstauskunft = vi.fn();
 const beendenMandant = vi.fn();
 const wiederaufnehmenMandant = vi.fn();
@@ -25,6 +26,7 @@ vi.mock('../../admin/adminApi', () => ({
     disableUser: (...a: unknown[]) => disableUser(...a),
     enableUser: (...a: unknown[]) => enableUser(...a),
     createUser: (...a: unknown[]) => createUser(...a),
+    createPerson: (...a: unknown[]) => createPerson(...a),
     createSite: vi.fn(),
     createTenant: vi.fn(),
     updateTenant: vi.fn(),
@@ -92,8 +94,9 @@ describe('MandantenPage - die Kundenakte', () => {
   beforeEach(() => {
     listUsers.mockResolvedValue([USER]);
     listSites.mockResolvedValue([]);
-    resetPassword.mockReset().mockResolvedValue(undefined);
+    resetPassword.mockReset().mockResolvedValue({ benutzer: { sub: 'u-1', anzeigename: 'Anna Berg', email: 'anna@example.com', zustand: 'aktiv' }, startpasswort: 'neues-geheim-456' });
     updateUser.mockReset().mockResolvedValue(undefined);
+    createPerson.mockReset();
     deleteUser.mockReset().mockResolvedValue(undefined);
     disableUser.mockReset().mockResolvedValue(undefined);
     enableUser.mockReset().mockResolvedValue(undefined);
@@ -123,11 +126,42 @@ describe('MandantenPage - die Kundenakte', () => {
     expect(zeile!.textContent).toContain('Kundenadministrator');
   });
 
-  it('überlässt weitere Personen dem Kundenadministrator und bietet keinen Benutzer-Modal mehr an', async () => {
+  it('bietet „Person hinzufügen" statt der alten Abgabe an den Kundenadministrator an (P2, W4 fällt)', async () => {
     openDetail();
     await screen.findByRole('button', { name: 'Aktionen für anna' });
-    expect(screen.getByText(/Weitere Personen lädt der Kundenadministrator ein/)).toBeInTheDocument();
+    expect(screen.queryByText(/Weitere Personen lädt der Kundenadministrator ein/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Benutzer anlegen' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Person hinzufügen' })).toBeInTheDocument();
+  });
+
+  it('legt eine weitere Person mit Rolle und Standort an - inline, kein Fenster (P2)', async () => {
+    listSites.mockResolvedValue([{ id: 's-1', name: 'Zuhause' }]);
+    openDetail();
+    fireEvent.click(await screen.findByRole('button', { name: 'Person hinzufügen' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.change(screen.getByLabelText('E-Mail'), { target: { value: 'sabine@example.com' } });
+    createPerson.mockResolvedValue({
+      benutzer: { sub: 'u-2', anzeigename: 'sabine', email: 'sabine@example.com', zustand: 'angelegt' },
+      startpasswort: 'frisches-geheimnis',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Person anlegen' }));
+    await waitFor(() => expect(createPerson).toHaveBeenCalledWith('t-1', expect.objectContaining({
+      username: 'sabine',
+      email: 'sabine@example.com',
+      rolle: 'leser',
+      standorte: ['s-1'],
+    })));
+    expect(await screen.findByLabelText('Startpasswort')).toHaveTextContent('frisches-geheimnis');
+  });
+
+  it('vergibt über das Zeilenmenü ein neues Startpasswort (N6: jetzt auch der Admin)', async () => {
+    openDetail();
+    fireEvent.click(await screen.findByRole('button', { name: 'Aktionen für anna' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Neues Startpasswort' }));
+    const dlg = await screen.findByRole('dialog', { name: /Neues Startpasswort: anna/ });
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Startpasswort vergeben' }));
+    await waitFor(() => expect(resetPassword).toHaveBeenCalledWith('t-1', 'u-1'));
+    expect(await screen.findByLabelText('Startpasswort')).toHaveTextContent('neues-geheim-456');
   });
 
   it('öffnet den ersten Kundenadministrator INLINE in der Personen-Karte, ohne Benutzer', async () => {
@@ -162,15 +196,36 @@ describe('MandantenPage - die Kundenakte', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Bearbeiten' }));
 
     const edit = await screen.findByRole('dialog', { name: /Benutzer bearbeiten: anna/ });
-    // Der Anmeldename ist Identität und bleibt gesperrt.
-    expect(within(edit).getByLabelText('Benutzername')).toBeDisabled();
+    // P3: der Anmeldename ist jetzt änderbar - ohne Änderung bleibt er unverändert (kein Folgen-Satz).
+    expect(within(edit).getByLabelText('Anmeldename')).not.toBeDisabled();
+    expect(within(edit).queryByText(/gilt ab dem Speichern nicht mehr/)).toBeNull();
     fireEvent.change(within(edit).getByLabelText('E-Mail'), {
       target: { value: 'neu@example.com' },
     });
     fireEvent.click(within(edit).getByRole('button', { name: 'Änderungen speichern' }));
     await waitFor(() =>
       expect(updateUser).toHaveBeenCalledWith('t-1', 'u-1', {
+        username: null,
         email: 'neu@example.com',
+        firstName: 'Anna',
+        lastName: 'Berg',
+      }),
+    );
+  });
+
+  it('ändert den Anmeldenamen und zeigt den Folgen-Satz (P3)', async () => {
+    openDetail();
+    fireEvent.click(await screen.findByRole('button', { name: 'Aktionen für anna' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Bearbeiten' }));
+
+    const edit = await screen.findByRole('dialog', { name: /Benutzer bearbeiten: anna/ });
+    fireEvent.change(within(edit).getByLabelText('Anmeldename'), { target: { value: 'anna.berg' } });
+    expect(within(edit).getByText(/gilt ab dem Speichern nicht mehr/)).toBeInTheDocument();
+    fireEvent.click(within(edit).getByRole('button', { name: 'Änderungen speichern' }));
+    await waitFor(() =>
+      expect(updateUser).toHaveBeenCalledWith('t-1', 'u-1', {
+        username: 'anna.berg',
+        email: 'anna@example.com',
         firstName: 'Anna',
         lastName: 'Berg',
       }),

@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { Modal } from '../../../designsystem/components/shell/Modal';
-import { ApiError } from '../../api';
 import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
+import { benutzerFehler, type BenutzerAngelegt } from '../../benutzer';
+import { StartpasswortAnzeige } from '../../components/StartpasswortAnzeige';
 
 /**
  * Die zwei Benutzer-Einschübe, WÖRTLICH aus der stillgelegten Benutzer-Seite
@@ -16,7 +17,11 @@ import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
  * Wahrheiten sind schlechter als eine ganze.
  */
 
-/** Edit a user's profile: email + name. The username (login) is immutable. */
+/**
+ * Edit a user's profile: name, email and - P3 - the username. Changing the username shows the
+ * Folgen-Satz (Labor W3-W5 des Konzept-Berichts §4.2/§4.4): Sitzungen bleiben, nur der alte
+ * Anmeldename gilt ab dem Speichern nicht mehr.
+ */
 export function EditUserDrawer({
   tenant,
   user,
@@ -28,30 +33,27 @@ export function EditUserDrawer({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const [username, setUsername] = useState(user.username);
   const [email, setEmail] = useState(user.email ?? '');
   const [firstName, setFirstName] = useState(user.firstName ?? '');
   const [lastName, setLastName] = useState(user.lastName ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const anmeldenameGeaendert = username.trim() !== user.username;
 
   async function save() {
     setBusy(true);
     setError(null);
     try {
       await adminApi.updateUser(tenant.id, user.id, {
+        username: anmeldenameGeaendert ? username.trim() : null,
         email: email.trim() || null,
         firstName: firstName.trim() || null,
         lastName: lastName.trim() || null,
       });
       onSaved();
     } catch (e) {
-      setError(
-        e instanceof ApiError && e.status === 400
-          ? 'Ungültige E-Mail-Adresse.'
-          : e instanceof ApiError && e.status === 409
-            ? 'Ein Benutzer mit dieser E-Mail-Adresse existiert bereits.'
-            : 'Die Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.',
-      );
+      setError(benutzerFehler(e, 'Die Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.'));
     } finally {
       setBusy(false);
     }
@@ -67,7 +69,7 @@ export function EditUserDrawer({
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Abbrechen
           </Button>
-          <Button variant="primary" onClick={save} disabled={busy}>
+          <Button variant="primary" onClick={save} disabled={busy || !username.trim()}>
             {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
           </Button>
         </>
@@ -75,12 +77,23 @@ export function EditUserDrawer({
     >
       <div className="vp-form-stack">
         <Input
-          label="Benutzername"
-          value={user.username}
-          disabled
-          readOnly
-          hint="Der Benutzername ist der Anmeldename und kann nicht geändert werden."
+          label="Anmeldename"
+          value={username}
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUsername(e.target.value)}
+          hint="a-z, 0-9, Punkt, Bindestrich, Unterstrich; 3 bis 64 Zeichen."
         />
+        {anmeldenameGeaendert && (
+          <div className="vp-alert vp-alert-info" role="status">
+            <p style={{ margin: 0 }}>
+              Anmelden künftig mit <b className="vp-mono">{username.trim()}</b> oder der E-Mail.
+            </p>
+            <p style={{ margin: 0 }}>
+              „{user.username}" gilt ab dem Speichern nicht mehr. Wer angemeldet ist, bleibt es.
+            </p>
+          </div>
+        )}
         <Input
           label="E-Mail"
           type="email"
@@ -99,6 +112,66 @@ export function EditUserDrawer({
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLastName(e.target.value)}
         />
       </div>
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+    </Modal>
+  );
+}
+
+/**
+ * N6: der Admin vergibt ein neues Startpasswort - derselbe Weg wie der Kundenadministrator
+ * ({@code StartpasswortNeuVergeben}), nur über die Admin-Route.
+ */
+export function ResetPasswordDialog({
+  tenant,
+  user,
+  onClose,
+}: {
+  tenant: Tenant;
+  user: AdminUser;
+  onClose: () => void;
+}) {
+  const [antwort, setAntwort] = useState<BenutzerAngelegt | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function vergeben() {
+    setBusy(true);
+    setError(null);
+    try {
+      setAntwort(await adminApi.resetPassword(tenant.id, user.id));
+    } catch (e) {
+      setError(benutzerFehler(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Neues Startpasswort: ${user.username}`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            {antwort ? 'Schließen' : 'Abbrechen'}
+          </Button>
+          {!antwort && (
+            <Button variant="primary" onClick={() => void vergeben()} disabled={busy}>
+              {busy ? 'Wird vergeben…' : 'Startpasswort vergeben'}
+            </Button>
+          )}
+        </>
+      }
+    >
+      {antwort ? (
+        <StartpasswortAnzeige passwort={antwort.startpasswort} />
+      ) : (
+        <p>
+          Das bisherige Passwort wird ersetzt. Bei der nächsten Anmeldung muss die Person ein eigenes
+          Passwort festlegen. Rolle und Standorte bleiben erhalten.
+        </p>
+      )}
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
     </Modal>
   );

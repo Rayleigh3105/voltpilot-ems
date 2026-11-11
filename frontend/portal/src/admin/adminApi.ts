@@ -1,4 +1,4 @@
-import type { BenutzerAngelegt } from '../benutzer';
+import type { BenutzerAngelegt, BenutzerAnlage } from '../benutzer';
 import {
   request,
   type CertSource,
@@ -168,6 +168,8 @@ export interface UpdateTenantInput {
 }
 
 export interface UpdateUserInput {
+  /** P3: fehlt oder unverändert lässt den Anmeldenamen stehen. */
+  username?: string | null;
   email?: string | null;
   firstName?: string | null;
   lastName?: string | null;
@@ -495,9 +497,21 @@ export const adminApi = {
       method: 'DELETE',
     }),
 
-  // Support lever: no SMTP means no self-service reset, so support sets a new
-  // (default temporary) password here; any brute-force lockout is lifted too.
+  /**
+   * N6: Support lever - no SMTP means no self-service reset, so the admin sets a new
+   * (temporary) password here; any brute-force lockout is lifted too.
+   */
+  resetPassword: (tenantId: string, userId: string) =>
+    request<BenutzerAngelegt>(`/api/v1/admin/tenants/${tenantId}/users/${userId}/reset-password`, {
+      method: 'POST',
+    }),
 
+  /** P2: „Person hinzufügen" - eine WEITERE Person, mit Rolle und Standorten wie der Kundenadministrator. */
+  createPerson: (tenantId: string, input: BenutzerAnlage) =>
+    request<BenutzerAngelegt>(`/api/v1/admin/tenants/${tenantId}/personen`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   listSites: (tenantId: string) =>
     request<Site[]>(`/api/v1/admin/tenants/${tenantId}/sites`),
