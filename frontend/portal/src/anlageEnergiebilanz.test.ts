@@ -5,6 +5,7 @@ import {
   ANTWORT,
   HERKUNFT_UNVOLLSTAENDIG,
   HILFE_NEGATIV,
+  HILFE_NEGATIV_UNTERVERTEILUNG,
   HILFE_NEGATIV_VERBRAUCH,
   KARTE_WORT,
   KEIN_UNTERZAEHLER,
@@ -589,5 +590,67 @@ describe('Konzept Auswerten a1, Befund 3 - Abzweige außerhalb der Bilanz werden
     expect(energiebilanzBild(roh, { ...ctx(), namen }).hauptzaehler[0].abschnitte[0].ausserhalb?.satz).toBe(
       '1 Zähler hängt als Abzweig neben dem Hauptzähler und zählt hier nicht mit: Spritzguss (MS-20).',
     );
+  });
+});
+
+describe('Zählerbaum S4 - Unterverteilungen: je Unterzähler mit eigenen Unterzählern ein Block derselben Form', () => {
+  const mitUnterverteilung = (restMenge = 45): Bilanz => {
+    const roh = structuredClone(ahrenbergBilanz(an2, 'monat', '2026-10-01'));
+    const uv = structuredClone(roh.hauptzaehler[0]);
+    const hz = uv.messstelle.kennzeichen;
+    uv.messstelle = { ...uv.messstelle, kennzeichen: 'MS-99', name: 'UV Halle' };
+    uv.rest_messstelle = null;
+    uv.vorschlag = { aktion: 'rest_anlegen', hauptzaehler_id: uv.messstelle.id, name: 'UV Halle nicht zugeordnet' };
+    // Wie die Route einen Unterverteilungs-Block liefert: der Zufluss ist der Unterzähler selbst.
+    uv.abschnitte.forEach((ab) => {
+      ab.terme = ab.terme
+        .filter((x) => x.rolle !== 'abfluss' && (x.rolle !== 'zufluss' || x.messstelle === hz))
+        .map((x) => (x.messstelle === hz ? { ...x, messstelle: 'MS-99', name: 'UV Halle' } : x));
+      ab.werte.forEach((we) => {
+        we.eingaenge = we.eingaenge
+          .filter((e) => e.rolle !== 'abfluss' && (e.rolle !== 'zufluss' || e.messstelle === hz))
+          .map((e) => (e.messstelle === hz ? { ...e, messstelle: 'MS-99' } : e));
+        we.abfluss = { ...we.abfluss, menge: null, zustand: null, mit_werten: 0, gesamt: 0, fehlend: [], kennzeichen: [], anzeige: null };
+      });
+    });
+    const w = uv.abschnitte[0].werte[0];
+    Object.assign(w.rest, { menge: restMenge, kundensatz: `${zahl(restMenge, 'kWh', 'monat')} sind keiner Messstelle zugeordnet` });
+    return { ...roh, unterverteilungen: [uv] };
+  };
+
+  it('der Block trägt das Stellungs-Wort im Titel und das Ganze heißt „Bezug laut Unterzähler“', () => {
+    const b = energiebilanzBild(mitUnterverteilung(), ctx());
+    expect(b.unterverteilungen).toHaveLength(1);
+    const uv = b.unterverteilungen[0];
+    expect(uv.titel).toBe('Unterzähler UV Halle (MS-99)');
+    expect(uv.vorschlag?.name).toBe('UV Halle nicht zugeordnet');
+    const ganz = uv.abschnitte[0].tage[0].karte[0];
+    expect(ganz.wort).toBe(KARTE_WORT.bezugUnterzaehler);
+  });
+
+  it('ein negativer Rest nennt die Unterzähler dieses Zählers, nie den Hauptzähler', () => {
+    const roh = mitUnterverteilung(-5);
+    const w = roh.unterverteilungen![0].abschnitte[0].werte[0];
+    Object.assign(w.rest, { kundensatz: `Messwerte passen nicht zusammen (${zahl(-5, 'kWh', 'monat')})` });
+    const b = energiebilanzBild(roh, ctx());
+    expect(b.unterverteilungen[0].abschnitte[0].tage[0].antwort.satz).toBe(HILFE_NEGATIV_UNTERVERTEILUNG);
+  });
+
+  it('eine Bilanz nur mit Unterverteilungen ist nicht leer; ohne beide gilt der Leerzustand weiter', () => {
+    const roh = mitUnterverteilung();
+    const nurUv: Bilanz = { ...roh, hauptzaehler: [] };
+    expect(energiebilanzBild(nurUv, ctx()).leer).toBeNull();
+    expect(energiebilanzBild({ ...roh, hauptzaehler: [], unterverteilungen: [] }, ctx()).leer).toBe(OHNE_HAUPTZAEHLER);
+    // Eine Antwort ohne das Feld (älterer Stand) bleibt lesbar.
+    expect(energiebilanzBild({ ...roh, unterverteilungen: undefined }, ctx()).unterverteilungen).toEqual([]);
+  });
+
+  it('nie zweimal „Unterzähler“ im Titel', () => {
+    const roh = mitUnterverteilung();
+    roh.unterverteilungen![0].messstelle = { ...roh.unterverteilungen![0].messstelle, name: 'Unterzähler Halle' };
+    roh.unterverteilungen![0].abschnitte.forEach((ab) => {
+      ab.terme = ab.terme.map((t) => (t.messstelle === 'MS-99' ? { ...t, name: 'Unterzähler Halle' } : t));
+    });
+    expect(energiebilanzBild(roh, ctx()).unterverteilungen[0].titel).toBe('Unterzähler Halle (MS-99)');
   });
 });

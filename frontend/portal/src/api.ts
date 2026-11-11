@@ -4966,7 +4966,9 @@ export interface Bilanz {
   bis: string;
   zeitzone: string;
   hauptzaehler: BilanzHauptzaehler[];
-  /** NUR wenn ein Hauptzähler fehlt, weil sein Block eine Messstelle außerhalb des Zugriffs braucht (AP-03 R-A3). */
+  /** Zählerbaum S4: je Unterverteilung (Unterzähler mit eigenen Unterzählern) ein Block derselben Form. */
+  unterverteilungen?: BilanzHauptzaehler[];
+  /** NUR wenn ein Block fehlt, weil er eine Messstelle außerhalb des Zugriffs braucht (AP-03 R-A3). */
   ausserhalb_zugriff?: string;
 }
 

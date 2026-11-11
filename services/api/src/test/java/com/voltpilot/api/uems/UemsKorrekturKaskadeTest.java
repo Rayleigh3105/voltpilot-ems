@@ -274,7 +274,7 @@ class UemsKorrekturKaskadeTest {
                 + "AND art = 'bilanz_neu_berechnet' ORDER BY 1", KB);
         KostenstelleEnergieService kostenstellen = new KostenstelleEnergieService(new KostenstelleProzessRepository(app),
                 new KostenstelleEnergieRepository(app), new MessstelleRepository(app), werte, berechnete,
-                new AblesungRepository(app));
+                new AblesungRepository(app), new MessstelleZuordnungRepository(app));
         logistikNeu = als(KB, () -> kostenstellen.energie(IDS.get("4300"), "tag", TAG, null));
         logistikVersionEins = als(KB, () -> kostenstellen.energie(IDS.get("4300"), "tag", TAG, "1"));
         montageNeu = als(KB, () -> kostenstellen.energie(IDS.get("4200"), "tag", TAG, null));

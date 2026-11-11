@@ -306,7 +306,10 @@ public final class BilanzAbleitung {
 
     // ------------------------------------------------------------------- Rest aus der Stellung
 
-    /** Fehler: an diesem Tag ist die Messstelle kein Hauptzähler Bezug — es gibt keinen Rest (§4.3). */
+    /**
+     * Fehler: an diesem Tag trägt die Messstelle keinen Rest — sie ist weder Hauptzähler Bezug noch
+     * eine Unterverteilung mit Unterzählern (§4.3; Zählerbaum S4).
+     */
     public static final String REST_OHNE_HAUPTZAEHLER = "rest_ohne_hauptzaehler";
 
     /**
@@ -347,14 +350,18 @@ public final class BilanzAbleitung {
      * Tag, ohne dass jemand eine Formel anfasst (F7).
      *
      * <ul>
-     *   <li>X muss an dem Tag Hauptzähler mit der Rolle Zufluss sein (Richtung Bezug), sonst
-     *       {@link #REST_OHNE_HAUPTZAEHLER}.
-     *   <li>Zufluss und Abfluss sind X selbst und die Erzeuger, Speicher (mit beiden Anteilen, E4) und
-     *       der Hauptzähler Abgabe DESSELBEN Systems (Anlage). Einen zweiten Hauptzähler Bezug lässt
-     *       der Messstellen-Vertrag §6 nicht zu (höchstens einer je Anlage und Richtung); stünde doch
-     *       einer da, ginge er nicht als zweiter Zufluss ein.
+     *   <li>X ist an dem Tag Hauptzähler mit der Rolle Zufluss (Richtung Bezug) — oder, seit dem
+     *       Zählerbaum (S4, §4.3 Satz 2), ein Unterzähler mit eigenen Unterzählern: eine
+     *       Unterverteilung. Sonst {@link #REST_OHNE_HAUPTZAEHLER}.
+     *   <li>Beim Hauptzähler sind Zufluss und Abfluss X selbst und die Erzeuger, Speicher (mit beiden
+     *       Anteilen, E4) und der Hauptzähler Abgabe DESSELBEN Systems (Anlage). Einen zweiten
+     *       Hauptzähler Bezug lässt der Messstellen-Vertrag §6 nicht zu (höchstens einer je Anlage und
+     *       Richtung); stünde doch einer da, ginge er nicht als zweiter Zufluss ein.
+     *   <li>Bei einer Unterverteilung ist der Zufluss X selbst — Erzeuger, Speicher und Abzweige
+     *       hängen an der Wurzel (Zählerbaum R4) und gehen nie in den Rest einer Unterverteilung ein.
      *   <li>Zugeordnet sind genau die Unterzähler VON X — ein Unterzähler eines Unterzählers zählt im
-     *       Rest von X nicht doppelt.
+     *       Rest von X nicht doppelt, er steht im Rest SEINER Unterverteilung. Jede Kilowattstunde
+     *       zählt genau einmal (R1).
      *   <li>Berechnete Messstellen, andere Medien und „keine“ Stellung gehen nie ein ({@link #rolle}).
      * </ul>
      *
@@ -369,6 +376,10 @@ public final class BilanzAbleitung {
                 .filter(z -> z.messstelle().equals(hauptzaehler))
                 .findFirst()
                 .orElse(null);
+        if (x != null && "Unterzähler".equals(x.stellung())
+                && List.of(new RolleAnteil(ZUGEORDNET, "gesamt")).equals(rolle(eingangVon(x)).rollen())) {
+            return restDerUnterverteilung(x, amTag);
+        }
         if (x == null || !"Hauptzähler".equals(x.stellung())
                 || !List.of(new RolleAnteil(ZUFLUSS, "gesamt")).equals(rolle(eingangVon(x)).rollen())) {
             return new RestFassung(hauptzaehler, null, List.of(), List.of(), REST_OHNE_HAUPTZAEHLER);
@@ -404,6 +415,28 @@ public final class BilanzAbleitung {
         terme.addAll(abfluss);
         terme.addAll(zugeordnet);
         return new RestFassung(hauptzaehler, x.anlage(), List.copyOf(terme), List.copyOf(ausserhalb), null);
+    }
+
+    /**
+     * §4.3 Satz 2 (Zählerbaum S4) — der eigene Rest einer UNTERVERTEILUNG: Zufluss ist sie selbst,
+     * zugeordnet sind genau ihre direkten Unterzähler. Ohne Unterzähler trägt sie keinen Rest
+     * ({@link #REST_OHNE_HAUPTZAEHLER}) — ein Rest, der nur den eigenen Wert wiederholte, wäre keine
+     * Aussage.
+     */
+    private static RestFassung restDerUnterverteilung(StellungZeile x, List<StellungZeile> amTag) {
+        List<RestTerm> zugeordnet = new ArrayList<>();
+        for (StellungZeile z : amTag) {
+            if (!z.messstelle().equals(x.messstelle())
+                    && x.messstelle().equals(rolle(eingangVon(z)).ziel())) {
+                zugeordnet.add(new RestTerm(z.messstelle(), ZUGEORDNET, "gesamt"));
+            }
+        }
+        if (zugeordnet.isEmpty()) {
+            return new RestFassung(x.messstelle(), null, List.of(), List.of(), REST_OHNE_HAUPTZAEHLER);
+        }
+        List<RestTerm> terme = new ArrayList<>(List.of(new RestTerm(x.messstelle(), ZUFLUSS, "gesamt")));
+        terme.addAll(zugeordnet);
+        return new RestFassung(x.messstelle(), x.anlage(), List.copyOf(terme), List.of(), null);
     }
 
     private static RolleEingang eingangVon(StellungZeile z) {

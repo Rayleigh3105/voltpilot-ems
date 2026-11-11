@@ -222,6 +222,56 @@ class MessstelleVorschlagApiTest {
                 .isEqualTo("Alle Komponenten von Werk Ahrenberg sind Messstellen zugeordnet.");
     }
 
+    /**
+     * Zählerbaum S4: hängt K-6 „Unterzähler Druckluft“ im Aufbau an K-5 „Unterzähler Spritzguss“
+     * ({@code komponente_haengt_an}), liest der Vorschlag den BAUM — K-6 wird „Unterzähler von“ der
+     * Messstelle von K-5, nicht des Hauptzählers, und steht NACH seinem Eltern-Zähler in der Liste.
+     * Die Übernahme schreibt genau diese Stellung.
+     */
+    @Test
+    void zaehlerbaumS4DerVorschlagLiestDenBaum() throws Exception {
+        Welt w = halle1();
+        root.update("INSERT INTO komponente_haengt_an (tenant_id, komponente_id, haengt_an, gueltig_ab, created_by) "
+                + "VALUES (?, ?, ?, CURRENT_DATE, 'test')", w.mandant(), w.k("K-6"), w.k("K-5"));
+
+        JsonNode v = ok(ruf(w.jonas, HttpMethod.GET, vorschlag(w), null)).get("vorschlaege");
+        assertThat(v).hasSize(8);
+        // Kinder stehen nach ihren Eltern: K-6 (Tiefe 1) rückt hinter K-4, K-5 und K-7 (Wurzel).
+        assertThat(komponentenDer(v)).containsExactly(w.k("K-3").toString(), w.k("K-3").toString(),
+                w.k("K-1").toString(), w.k("K-1").toString(), w.k("K-4").toString(), w.k("K-5").toString(),
+                w.k("K-7").toString(), w.k("K-6").toString());
+        JsonNode spritzguss = v.get(5);
+        assertThat(spritzguss.get("kennzeichen").asText()).isEqualTo("MS-0006");
+        assertThat(spritzguss.at("/unterzaehler_von/messstelle").asText()).isEqualTo("MS-0001");
+        JsonNode druckluft = v.get(7);
+        assertThat(druckluft.get("stellung").asText()).isEqualTo("Unterzähler");
+        assertThat(druckluft.at("/unterzaehler_von/messstelle").asText())
+                .as("Unterzähler von der Messstelle seines Eltern-Zählers, nicht des Hauptzählers")
+                .isEqualTo("MS-0006");
+        assertThat(druckluft.at("/unterzaehler_von/bestehend").asBoolean()).isFalse();
+        assertThat(druckluft.at("/unterzaehler_von/komponente").asText()).isEqualTo(w.k("K-5").toString());
+
+        JsonNode u = ok(ruf(w.jonas, HttpMethod.POST, vorschlag(w) + "/uebernehmen", alle(v)));
+        assertThat(u.get("neu").asInt()).isEqualTo(8);
+        JsonNode messstellen = alle(w.jonas, "/api/v1/messstellen").get("messstellen");
+        JsonNode ms8 = null;
+        for (JsonNode m : messstellen) {
+            if ("MS-0008".equals(m.get("kennzeichen").asText())) {
+                ms8 = m;
+            }
+        }
+        assertThat(ms8).isNotNull();
+        assertThat(ms8.at("/elektrische_stellung/0/stellung").asText()).isEqualTo("Unterzähler");
+        assertThat(ms8.at("/elektrische_stellung/0/unterzaehler_von").asText())
+                .as("die Übernahme schreibt die Stellung aus dem Baum").isEqualTo("MS-0006");
+    }
+
+    private static List<String> komponentenDer(JsonNode v) {
+        List<String> out = new ArrayList<>();
+        v.forEach(z -> out.add(z.get("komponente").asText()));
+        return out;
+    }
+
     @Test
     void einZweiterAufrufDerUebernahmeLegtNichtsAn() throws Exception {
         Welt w = halle1();

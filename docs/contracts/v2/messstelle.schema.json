@@ -902,7 +902,8 @@
                   "rolle": { "$ref": "#/$defs/vorschlagRolle" },
                   "verlaufsbeginn": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "Der Beginn ihres Verlaufs (erste Speisung)." },
                   "speisung_ab": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "Der Beginn der LAUFENDEN Speisung; `null` = kein Gerät, also keine Quelle." },
-                  "messkanaele": { "type": "array", "items": { "$ref": "#/$defs/vorschlagKanal" } }
+                  "messkanaele": { "type": "array", "items": { "$ref": "#/$defs/vorschlagKanal" } },
+                  "haengt_an": { "anyOf": [{ "$ref": "#/$defs/verweis" }, { "type": "null" }], "description": "Die Eltern-Komponente im Zählerbaum (komponente_haengt_an, heute; zaehlerbaum.md). Fehlt oder null = hängt an der Wurzel." }
                 }
               }
             }

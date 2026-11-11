@@ -156,7 +156,8 @@
     "    Messwert desselben Flusses und einer, der Regel 7 nicht besteht.",
     "  · Kennzeichen: die automatischen (E7) in der Reihenfolge der Liste — sie ist auch",
     "    die Reihenfolge der Übernahme, damit ein Unterzähler ein Kennzeichen trägt, das es",
-    "    beim Schreiben schon gibt."
+    "    beim Schreiben schon gibt.",
+    "Zählerbaum S4 (10.11.2026, zaehlerbaum.md): die Stellung der Vorschlagsliste liest den BAUM (komponenten[].haengt_an, heute) — ein Unterzähler wird „Unterzähler von“ der Messstelle des nächsten Vorfahren mit einer (vorgeschlagen oder bestehend), an der Wurzel des Bezug-Hauptzählers; Kinder stehen nach ihren Eltern (Baum-Tiefe). Ohne haengt_an bleibt jede Liste zeichengleich zu vorher. Fall unterzaehler-hinter-unterverteilung-aus-dem-zaehlerbaum."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./messstelle.schema.json#/$defs/vektorDatei",
@@ -5757,6 +5758,327 @@
           "komponenten": []
         },
         "expected": {"vorschlaege": [], "ausgelassen": [], "leer": "keine_komponente", "text": "In Werk Lindach gibt es keine Komponente, aus der eine Messstelle werden kann.", "zaehler": 0}
+      },
+      {
+        "name": "unterzaehler-hinter-unterverteilung-aus-dem-zaehlerbaum",
+        "herkunft": "Zählerbaum S4 (Captain-Entscheide E1–E5 vom 10.11.2026, zaehlerbaum.md §4) · §5.15 (Stellung des Vorschlags)",
+        "why": "Die Stellung des Vorschlags liest den ZÄHLERBAUM (komponenten[].haengt_an), nicht mehr die flache Topologie: ein Unterzähler wird „Unterzähler von“ der Messstelle seines Eltern-Zählers. K-72 „Kompressor“ hängt an K-71 „UV Halle“ und wird deren Unterzähler (MS-0002), nicht der des Hauptzählers. K-76 hängt an K-75, dessen Bezug schon MS-50 speist: „Unterzähler von MS-50“, bestehend. K-73 hängt an K-74, das keinen Messwert liest — der nächste Vorfahr MIT Messstelle ist K-71: „Unterzähler von MS-0002“. Kinder stehen nach ihren Eltern (Baum-Tiefe), damit die Übernahme jede Stellung auf eine schon geschriebene Messstelle zeigt. Komponenten ohne haengt_an hängen an der Wurzel — jede Bestandsliste bleibt zeichengleich zu vorher.",
+        "annahme": "AN-7, ST-7, K-70…K-76 und MS-50 sind neutrale Platzhalter (wie §9.11): das Referenzunternehmen hat nur eine Baum-Ebene.",
+        "input": {
+          "standort": {
+            "kennzeichen": "ST-7",
+            "name": "Werk Nord",
+            "beginn": "2026-11-01",
+            "zeitzone": "Europe/Berlin"
+          },
+          "zaehler": 0,
+          "belegt": [],
+          "anlagen": [
+            {
+              "id": "AN-7",
+              "name": "Werk Nord",
+              "netzanschluss": true,
+              "hauptzaehler": []
+            }
+          ],
+          "komponenten": [
+            {
+              "id": "K-70",
+              "anlage": "AN-7",
+              "name": "Netzzähler",
+              "rolle": "netzmessung",
+              "verlaufsbeginn": "2026-11-01T00:00:00+01:00",
+              "speisung_ab": "2026-11-01T00:00:00+01:00",
+              "messkanaele": [
+                {
+                  "kanal": "Wirkenergie Bezug",
+                  "anzeigename": "Wirkenergie Bezug",
+                  "groesse": "Wirkenergie",
+                  "richtung": "Bezug",
+                  "einheit": "kWh",
+                  "wertart": "counter",
+                  "direction": "import",
+                  "speist": null
+                }
+              ]
+            },
+            {
+              "id": "K-71",
+              "anlage": "AN-7",
+              "name": "UV Halle",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2026-11-01T00:00:00+01:00",
+              "speisung_ab": "2026-11-01T00:00:00+01:00",
+              "messkanaele": [
+                {
+                  "kanal": "Wirkenergie Bezug",
+                  "anzeigename": "Wirkenergie Bezug",
+                  "groesse": "Wirkenergie",
+                  "richtung": "Bezug",
+                  "einheit": "kWh",
+                  "wertart": "counter",
+                  "direction": "import",
+                  "speist": null
+                }
+              ]
+            },
+            {
+              "id": "K-72",
+              "anlage": "AN-7",
+              "name": "Kompressor",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2026-11-01T00:00:00+01:00",
+              "speisung_ab": "2026-11-01T00:00:00+01:00",
+              "messkanaele": [
+                {
+                  "kanal": "Wirkenergie Bezug",
+                  "anzeigename": "Wirkenergie Bezug",
+                  "groesse": "Wirkenergie",
+                  "richtung": "Bezug",
+                  "einheit": "kWh",
+                  "wertart": "counter",
+                  "direction": "import",
+                  "speist": null
+                }
+              ],
+              "haengt_an": "K-71"
+            },
+            {
+              "id": "K-73",
+              "anlage": "AN-7",
+              "name": "Presse",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2026-11-01T00:00:00+01:00",
+              "speisung_ab": "2026-11-01T00:00:00+01:00",
+              "messkanaele": [
+                {
+                  "kanal": "Wirkenergie Bezug",
+                  "anzeigename": "Wirkenergie Bezug",
+                  "groesse": "Wirkenergie",
+                  "richtung": "Bezug",
+                  "einheit": "kWh",
+                  "wertart": "counter",
+                  "direction": "import",
+                  "speist": null
+                }
+              ],
+              "haengt_an": "K-74"
+            },
+            {
+              "id": "K-74",
+              "anlage": "AN-7",
+              "name": "Presse-UV",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2026-11-01T00:00:00+01:00",
+              "speisung_ab": "2026-11-01T00:00:00+01:00",
+              "messkanaele": [],
+              "haengt_an": "K-71"
+            },
+            {
+              "id": "K-75",
+              "anlage": "AN-7",
+              "name": "UV Keller",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2026-11-01T00:00:00+01:00",
+              "speisung_ab": "2026-11-01T00:00:00+01:00",
+              "messkanaele": [
+                {
+                  "kanal": "Wirkenergie Bezug",
+                  "anzeigename": "Wirkenergie Bezug",
+                  "groesse": "Wirkenergie",
+                  "richtung": "Bezug",
+                  "einheit": "kWh",
+                  "wertart": "counter",
+                  "direction": "import",
+                  "speist": "MS-50"
+                }
+              ]
+            },
+            {
+              "id": "K-76",
+              "anlage": "AN-7",
+              "name": "Kühlraum",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2026-11-01T00:00:00+01:00",
+              "speisung_ab": "2026-11-01T00:00:00+01:00",
+              "messkanaele": [
+                {
+                  "kanal": "Wirkenergie Bezug",
+                  "anzeigename": "Wirkenergie Bezug",
+                  "groesse": "Wirkenergie",
+                  "richtung": "Bezug",
+                  "einheit": "kWh",
+                  "wertart": "counter",
+                  "direction": "import",
+                  "speist": null
+                }
+              ],
+              "haengt_an": "K-75"
+            }
+          ]
+        },
+        "expected": {
+          "vorschlaege": [
+            {
+              "kennzeichen": "MS-0001",
+              "name": "Netzzähler",
+              "anlage": "AN-7",
+              "komponente": "K-70",
+              "hauptgroesse": {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Zählerstand"
+              },
+              "quelle": {
+                "kanal": "Wirkenergie Bezug",
+                "anzeigename": "Wirkenergie Bezug",
+                "kanal_wertart": "counter",
+                "herleitung": "zaehlerstand"
+              },
+              "nebengroessen": [],
+              "stellung": "Hauptzähler",
+              "unterzaehler_von": null,
+              "ort": "ST-7",
+              "ab": "2026-11-01T00:00:00+01:00",
+              "stellung_ab": "2026-11-01",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0002",
+              "name": "UV Halle",
+              "anlage": "AN-7",
+              "komponente": "K-71",
+              "hauptgroesse": {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Zählerstand"
+              },
+              "quelle": {
+                "kanal": "Wirkenergie Bezug",
+                "anzeigename": "Wirkenergie Bezug",
+                "kanal_wertart": "counter",
+                "herleitung": "zaehlerstand"
+              },
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {
+                "messstelle": "MS-0001",
+                "bestehend": false,
+                "komponente": "K-70",
+                "kanal": "Wirkenergie Bezug"
+              },
+              "ort": "ST-7",
+              "ab": "2026-11-01T00:00:00+01:00",
+              "stellung_ab": "2026-11-01",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0003",
+              "name": "Kompressor",
+              "anlage": "AN-7",
+              "komponente": "K-72",
+              "hauptgroesse": {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Zählerstand"
+              },
+              "quelle": {
+                "kanal": "Wirkenergie Bezug",
+                "anzeigename": "Wirkenergie Bezug",
+                "kanal_wertart": "counter",
+                "herleitung": "zaehlerstand"
+              },
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {
+                "messstelle": "MS-0002",
+                "bestehend": false,
+                "komponente": "K-71",
+                "kanal": "Wirkenergie Bezug"
+              },
+              "ort": "ST-7",
+              "ab": "2026-11-01T00:00:00+01:00",
+              "stellung_ab": "2026-11-01",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0004",
+              "name": "Kühlraum",
+              "anlage": "AN-7",
+              "komponente": "K-76",
+              "hauptgroesse": {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Zählerstand"
+              },
+              "quelle": {
+                "kanal": "Wirkenergie Bezug",
+                "anzeigename": "Wirkenergie Bezug",
+                "kanal_wertart": "counter",
+                "herleitung": "zaehlerstand"
+              },
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {
+                "messstelle": "MS-50",
+                "bestehend": true,
+                "komponente": null,
+                "kanal": null
+              },
+              "ort": "ST-7",
+              "ab": "2026-11-01T00:00:00+01:00",
+              "stellung_ab": "2026-11-01",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0005",
+              "name": "Presse",
+              "anlage": "AN-7",
+              "komponente": "K-73",
+              "hauptgroesse": {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Zählerstand"
+              },
+              "quelle": {
+                "kanal": "Wirkenergie Bezug",
+                "anzeigename": "Wirkenergie Bezug",
+                "kanal_wertart": "counter",
+                "herleitung": "zaehlerstand"
+              },
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {
+                "messstelle": "MS-0002",
+                "bestehend": false,
+                "komponente": "K-71",
+                "kanal": "Wirkenergie Bezug"
+              },
+              "ort": "ST-7",
+              "ab": "2026-11-01T00:00:00+01:00",
+              "stellung_ab": "2026-11-01",
+              "hinweise": []
+            }
+          ],
+          "ausgelassen": [
+            {
+              "anlage": "AN-7",
+              "komponente": "K-74",
+              "kanal": null,
+              "grund": "ohne_messkanal",
+              "zu": null,
+              "text": "„Presse-UV“ liest keinen Messwert — ohne Messwert gibt es keine Messstelle."
+            }
+          ],
+          "leer": null,
+          "text": null,
+          "zaehler": 5
+        }
       }
     ]
   }

@@ -106,9 +106,13 @@ Jede Prüfung der Vektor-Datei nennt ihre `regel`; beide Zwillinge haben zu jede
     die Herkunft nennt den Grund als Vermerk (F7). Vermerke werden hereingereicht, nie erraten.
     `rest_aus_stellung` (IP-4) liest die Stellungen aus `uems-referenzunternehmen.json`, nicht aus
     einer Kopie; jede Fassung mit Termen ist genau die Eingangsmenge einer `rest`-Prüfung desselben
-    Falls (beide Tests prüfen das). ⚠ Nur der Rest eines **Hauptzählers Bezug** ist gebaut — den
-    eigenen Rest eines Unterzählers mit Unterzählern (§4.3, Satz 2) hat das Referenzunternehmen nicht
-    als Fall; die Regel antwortet dort `rest_ohne_hauptzaehler`.
+    Falls (beide Tests prüfen das). Seit dem Zählerbaum (S4, Entscheide E1–E5 vom 10.11.2026) trägt
+    auch eine **Unterverteilung** — ein Unterzähler mit eigenen Unterzählern — ihren eigenen Rest
+    (§4.3, Satz 2): Zufluss sie selbst, zugeordnet genau ihre direkten Unterzähler, nie Erzeuger,
+    Speicher oder Abzweige (die hängen an der Wurzel, `zaehlerbaum.md` R4). So zählt jede
+    Kilowattstunde genau einmal, rekursiv je Ebene. Ein Unterzähler OHNE Unterzähler trägt weiter
+    keinen Rest (`rest_ohne_hauptzaehler`). Das Referenzunternehmen hat nur eine Baum-Ebene; der
+    Fall F20 bringt seine Stellungen darum als neutrale Platzhalter selbst mit.
 11. **Der Kundensatz kommt aus `saetze`.** Die Vorlagen `rest_zugeordnet`, `rest_negativ` und
     `rest_keine_werte` stehen wörtlich als Konstanten in beiden Zwillingen und werden gegen die Datei
     geprüft — F1 sagt „10 kWh sind keiner Messstelle zugeordnet“. Zahl und Einheit (`{zahl}`)

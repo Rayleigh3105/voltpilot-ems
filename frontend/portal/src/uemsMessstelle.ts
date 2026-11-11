@@ -1073,6 +1073,8 @@ export interface VorschlagKomponente {
   /** Der Beginn der LAUFENDEN Speisung — ein Vorschlag beginnt nie davor. */
   speisungAb: string | null;
   messkanaele: VorschlagKanal[];
+  /** Die Eltern-Komponente im Zählerbaum (`komponente_haengt_an`, heute); `null` = Wurzel. */
+  haengtAn: string | null;
 }
 
 export interface VorschlagHauptzaehler {
@@ -1174,6 +1176,8 @@ interface Roh {
   stellung: string | null;
   bezugBestehend: VorschlagHauptzaehler | null;
   bezugVorschlag: Roh | null;
+  /** Ein Bezug, dessen Stellung erst nach ALLEN Komponenten aufgelöst wird (Zählerbaum). */
+  bezugOffen: boolean;
   ab: string;
   hinweise: VorschlagHinweisCode[];
   kennzeichen: string;
@@ -1202,10 +1206,12 @@ interface RohAusgelassen {
  * - **Die Größe kommt aus dem Messwert:** ein Zählerstand trägt die Wirkenergie als
  *   Zählerstand, eine Leistung als Intervallmenge (Herleitung `integration`, gekennzeichnet).
  *   Ein Ladestand steht als Nebengröße neben dem Speicher-Fluss derselben Komponente.
- * - **Die Stellung kommt aus der Topologie:** die maßgebliche Netzmessung wird Hauptzähler
- *   (nur mit Netzanschluss), Erzeugung → Erzeuger, Speicher → Speicher, jeder andere Bezug →
- *   „Unterzähler von" dem Bezug-Hauptzähler seiner Anlage. Findet sich keiner, bleibt die
- *   Stellung offen — nie geraten.
+ * - **Die Stellung kommt aus dem Zählerbaum** (seit S4; vorher aus der flachen Topologie): die
+ *   maßgebliche Netzmessung wird Hauptzähler (nur mit Netzanschluss), Erzeugung → Erzeuger,
+ *   Speicher → Speicher, jeder andere Bezug → „Unterzähler von" der Messstelle des nächsten
+ *   Vorfahren im Baum (`haengtAn`), der eine hat — vorgeschlagen oder bestehend; an der Wurzel
+ *   der Bezug-Hauptzähler seiner Anlage. Findet sich keiner, bleibt die Stellung offen — nie
+ *   geraten.
  * - **Der Beginn ist der Verlauf:** die Bindung beginnt am Beginn der laufenden Speisung (ein
  *   vorhandener Gerätewechsel wird NIE verkettet) und nie vor dem ersten Tag des Standorts.
  */
@@ -1235,10 +1241,18 @@ export function vorschlagsliste(e: VorschlagEingang): Vorschlagsliste {
     }
   });
 
+  // Zählerbaum: die Stellung eines Bezugs erst jetzt auflösen — sein Eltern-Zähler kann in der
+  // Komponentenliste NACH ihm stehen. Kinder stehen (und schreiben bei der Übernahme) nach ihren
+  // Eltern: innerhalb der Unterzähler ordnet die Baum-Tiefe.
+  const komponentenJeId = new Map(e.komponenten.map((k) => [k.id, k]));
+  for (const r of rohe) {
+    if (r.bezugOffen) bezugAufloesen(r, rohe, komponentenJeId);
+  }
   rohe.sort(
     (x, y) =>
       x.anlageIndex - y.anlageIndex ||
       stellungRang(x.stellung) - stellungRang(y.stellung) ||
+      baumTiefe(x.komponente, komponentenJeId) - baumTiefe(y.komponente, komponentenJeId) ||
       x.komponenteIndex - y.komponenteIndex ||
       x.flussIndex - y.flussIndex,
   );
@@ -1529,7 +1543,7 @@ function hinweiseSetzen(r: Roh, herleitung: Herleitung | null, standortSpaeter: 
   if (standortSpaeter) r.hinweise.push('standort_spaeter');
 }
 
-/** Legt den Vorschlag an — mit Stellung und „Unterzähler von" aus Topologie und Fluss. */
+/** Legt den Vorschlag an — mit Stellung und „Unterzähler von" aus Zählerbaum und Fluss. */
 function neuerRoh(
   a: VorschlagAnlage,
   k: VorschlagKomponente,
@@ -1542,8 +1556,7 @@ function neuerRoh(
   rohe: Roh[],
 ): Roh {
   let stellung: string | null = null;
-  let bestehend: VorschlagHauptzaehler | null = null;
-  let bezug: Roh | null = null;
+  let bezugOffen = false;
   if (fluss === LADESTAND || speicherFluss(fluss)) {
     stellung = SPEICHER;
   } else if (fluss === 'Erzeugung') {
@@ -1552,15 +1565,8 @@ function neuerRoh(
     const fremderZaehler = a.hauptzaehler.some((h) => h.komponente === null || h.komponente !== k.id);
     stellung = fremderZaehler ? null : HAUPTZAEHLER;
   } else if (fluss === BEZUG) {
-    const v = bezugVorschlagDer(rohe, a, BEZUG);
-    const b = hauptzaehlerDer(a, BEZUG);
-    if (v !== null) {
-      stellung = UNTERZAEHLER;
-      bezug = v;
-    } else if (b !== null) {
-      stellung = UNTERZAEHLER;
-      bestehend = b;
-    }
+    // Erst nach ALLEN Komponenten auflösbar: der Eltern-Zähler des Baums kann noch kommen.
+    bezugOffen = true;
   }
   const r: Roh = {
     anlage: a,
@@ -1572,14 +1578,69 @@ function neuerRoh(
     quelle,
     nebengroessen: [],
     stellung,
-    bezugBestehend: bestehend,
-    bezugVorschlag: bezug,
+    bezugBestehend: null,
+    bezugVorschlag: null,
+    bezugOffen,
     ab,
     hinweise: [],
     kennzeichen: '',
   };
   rohe.push(r);
   return r;
+}
+
+/**
+ * Die Stellung eines Bezugs aus dem ZÄHLERBAUM (zaehlerbaum.md, E1 A): „Unterzähler von" der
+ * Messstelle des nächsten Vorfahren im Baum, der eine hat — vorgeschlagen (sein Bezug-Vorschlag)
+ * oder bestehend (sein Bezug-Messwert speist schon eine). Hängt die Komponente an der Wurzel oder
+ * hat kein Vorfahr bis zur Wurzel eine Messstelle, gilt die flache Regel: „Unterzähler von" dem
+ * Bezug-Hauptzähler der Anlage. Findet sich auch der nicht, bleibt die Stellung LEER.
+ */
+function bezugAufloesen(r: Roh, rohe: Roh[], jeId: Map<string, VorschlagKomponente>): void {
+  const besucht = new Set<string>();
+  let eltern = r.komponente.haengtAn;
+  while (eltern !== null && !besucht.has(eltern)) {
+    besucht.add(eltern);
+    const kp = jeId.get(eltern);
+    if (kp === undefined || kp.anlage !== r.anlage.id) break;
+    const vorschlag = rohe.find((x) => x !== r && x.komponente === kp && x.hauptgroesse.richtung === BEZUG) ?? null;
+    if (vorschlag !== null) {
+      r.stellung = UNTERZAEHLER;
+      r.bezugVorschlag = vorschlag;
+      return;
+    }
+    const gespeist = kp.messkanaele.find((c) => fluss(c) === BEZUG && c.speist !== null)?.speist ?? null;
+    if (gespeist !== null) {
+      r.stellung = UNTERZAEHLER;
+      r.bezugBestehend = { messstelle: gespeist, richtung: BEZUG, komponente: kp.id, seit: null };
+      return;
+    }
+    eltern = kp.haengtAn;
+  }
+  const v = bezugVorschlagDer(rohe, r.anlage, BEZUG);
+  const b = hauptzaehlerDer(r.anlage, BEZUG);
+  if (v !== null && v !== r) {
+    r.stellung = UNTERZAEHLER;
+    r.bezugVorschlag = v;
+  } else if (b !== null) {
+    r.stellung = UNTERZAEHLER;
+    r.bezugBestehend = b;
+  }
+}
+
+/** Die Tiefe einer Komponente im Zählerbaum — Kinder stehen (und schreiben) nach ihren Eltern. */
+function baumTiefe(k: VorschlagKomponente, jeId: Map<string, VorschlagKomponente>): number {
+  let tiefe = 0;
+  const besucht = new Set<string>();
+  let eltern = k.haengtAn;
+  while (eltern !== null && !besucht.has(eltern)) {
+    besucht.add(eltern);
+    const kp = jeId.get(eltern);
+    if (kp === undefined) break;
+    tiefe += 1;
+    eltern = kp.haengtAn;
+  }
+  return tiefe;
 }
 
 const speicherFluss = (fluss: string): boolean =>
