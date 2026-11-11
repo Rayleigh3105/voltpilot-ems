@@ -5,7 +5,7 @@ Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2).
 
 | Concern | Choice | Version |
 |---|---|---|
-| JVM services | Java + Spring Boot (Maven, wrapper committed) | Java 21, Spring Boot 3.3.5 |
+| JVM services | Java + Spring Boot (Maven, wrapper committed) | Java 21, Spring Boot 4.1.2 |
 | Python services | setuptools + pyproject, pytest | Python >= 3.10 |
 | Optimization solver | Pyomo + HiGHS (`highspy`) | pyomo >= 6.7 |
 | Frontend | React + Vite + TypeScript | React 18, Vite 5 |
