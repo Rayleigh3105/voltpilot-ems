@@ -33,7 +33,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -749,7 +749,7 @@ class DemoMispelAufbau {
         var stecker = new DeviceChargerStatusRepository.ConnectorRow(1, "SuspendedEV", false, 0.0, null, null, null, 0.0,
                 null, golf ? 48.0 : 62.0, null, null, null, seit, 0.0, jetzt, false, null, jetzt, !golf);
         var saeule = new DeviceChargerStatusRepository.ChargePointRow("WALLBOX-GARAGE", "Wallbox Garage", false, true,
-                "Demo", golf ? "V2H 11 (Golf angesteckt)" : "V2H 11", "1.0", true, null, jetzt, "haus", List.of(stecker));
+                "Demo", golf ? "V2H 11 (Golf angesteckt)" : "V2H 11", "1.0", true, null, jetzt, "haus", null, List.of(stecker));
         var budget = new DeviceChargerStatusRepository.BudgetRow(true, true, null, 32.0, 10.0, 1.4, 11.0, 0.0, 0.0, 0.0,
                 1.2, 1.2, "grid", null, false, 32.0, 4.2, null, true, null, null, 1, "sonne_zuerst", "car", false, 0.0, null, null,
                 false, null, null, null, null, null,

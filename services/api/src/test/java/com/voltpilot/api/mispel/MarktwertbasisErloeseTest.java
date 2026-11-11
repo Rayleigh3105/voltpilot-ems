@@ -193,7 +193,7 @@ class MarktwertbasisErloeseTest {
         assertThat(basis.awGroesserNull()).isEqualTo(Map.of(mittag, true, letzte, true));
 
         var dv = new SlotEconomics.SiteEconomics("direktvermarktung", false, "ohne", null, 10.0,
-                null, null, null, null, null);
+                null, null, null, null, null, null, null);
         SlotEconomics twin = new SlotEconomics(dv, com.voltpilot.api.optimizer.EegRates.defaults(),
                 Map.of(LocalDate.of(2026, 9, 1), new SlotEconomics.MarketValue(5.0, false),
                         LocalDate.of(2026, 10, 1), new SlotEconomics.MarketValue(5.0, false)))
@@ -216,7 +216,7 @@ class MarktwertbasisErloeseTest {
 
         // Twin und SQL stimmen je Viertelstunde überein: 01.10. 12:00 -> 8 + 3 ct.
         var dv = new SlotEconomics.SiteEconomics("direktvermarktung", false, "ohne", null, 10.0,
-                null, null, null, null, null);
+                null, null, null, null, null, null, null);
         SlotEconomics twin = new SlotEconomics(dv, com.voltpilot.api.optimizer.EegRates.defaults(),
                 Map.of(LocalDate.of(2026, 9, 1), new SlotEconomics.MarketValue(5.0, false),
                         LocalDate.of(2026, 10, 1), new SlotEconomics.MarketValue(5.0, false)))

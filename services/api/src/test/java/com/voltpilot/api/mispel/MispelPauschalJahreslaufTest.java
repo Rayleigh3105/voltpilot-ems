@@ -31,7 +31,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
@@ -90,10 +90,10 @@ class MispelPauschalJahreslaufTest {
         registry.add("voltpilot.mispel.pauschaloption-ab", () -> "2027-01-01");
     }
 
-    @MockBean
+    @MockitoBean
     EntityRegistryPublisher registryPublisher;
 
-    @MockBean
+    @MockitoBean
     FlowDeploymentPublisher flowPublisher;
 
     @Autowired

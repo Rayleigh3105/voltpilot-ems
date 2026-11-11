@@ -33,9 +33,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -96,9 +96,9 @@ class MsbAbgleichApiTest {
                 () -> "http://127.0.0.1:9/realms/voltpilot/protocol/openid-connect/certs");
     }
 
-    @MockBean
+    @MockitoBean
     EntityRegistryPublisher registryPublisher;
-    @MockBean
+    @MockitoBean
     FlowDeploymentPublisher flowPublisher;
 
     @Autowired
@@ -384,7 +384,7 @@ class MsbAbgleichApiTest {
     }
 
     private MockHttpServletResponse antwort(Welt w,
-            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder b) throws Exception {
+            org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder<?> b) throws Exception {
         RequestPostProcessor wer = jwt().jwt(j -> {
             j.subject("sub-mispel-" + w.mandant());
             j.claim("name", "Mara Test");

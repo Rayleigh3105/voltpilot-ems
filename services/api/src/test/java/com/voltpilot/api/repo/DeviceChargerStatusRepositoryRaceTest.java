@@ -109,7 +109,7 @@ class DeviceChargerStatusRepositoryRaceTest {
 
     private static ConnectorRow connector(int id, String status) {
         return new ConnectorRow(id, status, false, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, false, null);
+                null, null, null, null, false, null, null, null);
     }
 
     private static ChargePointRow point(String id, String label, ConnectorRow... connectors) {

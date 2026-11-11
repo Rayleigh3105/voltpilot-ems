@@ -28,9 +28,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -85,9 +85,9 @@ class LadepunktErtraegeApiTest {
                 () -> "http://127.0.0.1:9/realms/voltpilot/protocol/openid-connect/certs");
     }
 
-    @MockBean
+    @MockitoBean
     EntityRegistryPublisher registryPublisher;
-    @MockBean
+    @MockitoBean
     FlowDeploymentPublisher flowPublisher;
 
     @Autowired
