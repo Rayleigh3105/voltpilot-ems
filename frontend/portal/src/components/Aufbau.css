@@ -1165,9 +1165,12 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   .vp-auf-t-zeile.is-teil > .vp-auf-t-name {
     padding-left: 30px;
   }
-  /* GE-1: die Geräte hinter einem Gateway rücken auch am Telefon ein — sonst stünden sie wie seine Geschwister da. */
-  .vp-auf-t-zeile.is-geraet.is-e3 > .vp-auf-t-name {
-    padding-left: 22px;
+  /* GE-1: die Geräte hinter einem Gateway rücken auch am Telefon ein — sonst stünden sie wie seine Geschwister da.
+     Zählerbaum: dieselbe Formel wie `.is-einheit` unten statt der festen 22px einer einzigen Stufe - sonst läge ein
+     Kompressor hinter UV Halle (eine Ebene tiefer, beliebig tief möglich) optisch auf derselben Stufe wie UV Halle
+     selbst, weil `ebeneKlasse` die Klasse ab Ebene 3 deckelt. */
+  .vp-auf-t-zeile.is-geraet > .vp-auf-t-name {
+    padding-left: calc(max(var(--ebene, 2) - 2, 0) * 22px);
   }
   /* GE-3: die Wechselrichter unter ihrer Steuerung — hinter einem Gateway eine Stufe tiefer als die Steuerung. */
   .vp-auf-t-zeile.is-einheit > .vp-auf-t-name {

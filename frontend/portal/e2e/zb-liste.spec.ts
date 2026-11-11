@@ -130,6 +130,16 @@ for (const breite of BREITEN) {
       expect(halle?.ebene).toBe((netz?.ebene ?? -1) + 1);
       expect(kompressor?.ebene).toBe((halle?.ebene ?? -1) + 1);
       expect(keller?.ebene).toBe((netz?.ebene ?? -1) + 1);
+      if (breite < 720) {
+        // Telefon: `ebeneKlasse` deckelt die Rail-Klasse auf is-e3, aber der Name muss trotzdem sichtbar tiefer
+        // stehen als sein Elternknoten - eine feste statt einer ebenenabhängigen Einrückung (Aufbau.css) ließ den
+        // Kompressor sonst auf derselben Stufe wie UV Halle stehen.
+        const linksVon = async (name: string) => {
+          const box = await tabelle.locator('[data-aufbau-geraet]', { hasText: name }).first().locator('.vp-auf-t-titel').boundingBox();
+          return box!.x;
+        };
+        expect(await linksVon('Kompressor')).toBeGreaterThan(await linksVon('UV Halle'));
+      }
       await ohneQuerlauf(page, breite);
       await foto(page, tabelle, `mit-kompressor-${breite}`);
       expect(fehler).toEqual([]);
