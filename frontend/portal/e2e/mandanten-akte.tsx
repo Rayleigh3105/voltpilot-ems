@@ -27,6 +27,8 @@ const now = Date.now();
 const iso = (deltaMs: number) => new Date(now + deltaMs).toISOString();
 const TENANT_ID = 't1';
 const beendet = new URLSearchParams(window.location.search).get('vertrag') === 'beendet';
+// vp-kunde-sofort-loeschen: `?loeschbar=sofort` spielt den datenfreien Kunden (Server-Urteil).
+const sofort = new URLSearchParams(window.location.search).get('loeschbar') === 'sofort';
 
 Object.assign(keycloak, {
   tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } },
@@ -100,6 +102,22 @@ Object.assign(adminApi, {
     werkNordBoxen = werkNordBoxen.filter((b) => b.externalRef !== ref);
     return { externalRef: ref, anlass: 'falsche_kennung' };
   },
+  // vp-kunde-sofort-loeschen: das Server-Urteil der Akte; ohne `?loeschbar=sofort` hat der Kunde Daten.
+  kundeLoeschbarkeit: async () => ({
+    tenantId: TENANT_ID,
+    sofortLoeschbar: sofort,
+    daten: sofort ? [] : ['herzschlag', 'messwerte'],
+    beendetAm: beendet ? '2026-10-01' : null,
+    loeschungFruehestens: beendet ? '2027-01-01' : null,
+    fristAbgelaufen: false,
+    folgen: { anlagen: sites.length, boxen: ['VP-BB22'], personen: konten.length },
+  }),
+  kundenLoeschbarkeit: async () => [],
+  deleteTenant: async (_tenantId: string, confirmName: string) => ({
+    tenantId: TENANT_ID, tenantName: confirmName, deletedSites: sites.length, deletedDevices: 1,
+    deletedTelemetryRows: 0, deletedUsers: konten.map((k) => k.username), failedUsers: [],
+    anlass: 'sofort_keine_daten', freigegebeneBoxen: ['VP-BB22'],
+  }),
 });
 Object.assign(benutzerApi, { liste: async () => [] });
 Object.assign(fleetApi, {

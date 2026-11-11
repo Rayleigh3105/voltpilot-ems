@@ -40,6 +40,11 @@ unterstuetzungApi.verlaengern = async (id, bis) => { const neu = { ...liste.find
 declare global { interface Window { letzteGewaehrung?: UnterstuetzungGewaehren } }
 unterstuetzungApi.gewaehren = async body => { window.letzteGewaehrung = body; const neu = { ...unterstuetzungFixture(), id: 'neu', startpasswort: body.anfrage_id ? null : 'Beispiel-Startpasswort-24!' }; liste = [...liste, { ...neu, startpasswort: null }]; anfragen = []; aktuell(); return neu; };
 adminApi.listUsers = async () => []; adminApi.listSites = async () => [];
+// vp-kunde-sofort-loeschen: Kunde mit Daten - kein Sofort-Weg in dieser Bühne.
+adminApi.kundeLoeschbarkeit = async () => ({ tenantId: me.kundenbereich!.id, sofortLoeschbar: false,
+  daten: ['messwerte'], beendetAm: null, loeschungFruehestens: null, fristAbgelaufen: false,
+  folgen: { anlagen: 0, boxen: [], personen: 0 } });
+adminApi.kundenLoeschbarkeit = async () => [];
 fleetApi.fleet = async () => ({ sites: [], releases: [], unterstuetzungBis: {}, unterstuetzungStandorte: me.standorte.map(s => ({ id: s.id, name: s.name, tenantId: me.kundenbereich!.id })) });
 function Ansicht() {
   const [tenant, setTenant] = useState(me.kundenbereich!.id);

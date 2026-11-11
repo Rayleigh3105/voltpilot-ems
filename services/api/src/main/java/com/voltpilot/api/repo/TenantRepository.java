@@ -482,6 +482,15 @@ public class TenantRepository {
                         "prozess", "kostenstelle",
                         // The Geräte-Rückfall (V20260921150000) holds only the tenant (RESTRICT).
                         "komponente_geraete_rueckfall",
+                        // Alerting m1 (V20261015130000 ff., Befund vp-kunde-sofort-loeschen): Überwachungen
+                        // werden „ab Werk" je Anlage GESÄT - jeder Kundenbereich mit Anlage trägt welche,
+                        // und alle halten den Mandanten (RESTRICT), Alarm und Überwachung auch den Standort
+                        // (NO ACTION). Verläufe vor dem Alarm, der Alarm vor seiner Überwachung; Instanz und
+                        // externer Empfänger kaskadieren an der Überwachung. Zustellwege und persönliche
+                        // Einstellungen halten nur den Mandanten.
+                        "alarm_verlauf", "benachrichtigung", "alarm", "alarm_kennzeichen_lauf",
+                        "ueberwachung", "telegram_ziel", "webhook_ziel", "zustellweg", "push_abo",
+                        "stummschaltung", "ruhezeit_person", "taeglicher_rueckblick",
                         "quelle_kadenz", "messstelle_quelle", "quelle_einstellung",
                         // The Erzeuger-Steuerung (V20261021193000): the Registerbild-Fassung hangs at
                         // its Gerät, the Netz-und-Vermarktung master data at the site; both hold the

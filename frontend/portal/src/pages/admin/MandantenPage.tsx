@@ -12,7 +12,7 @@ import { StartpasswortAnzeige } from '../../components/StartpasswortAnzeige';
 import { AufklapperKarte } from '../../components/AufklapperKarte';
 import { benutzerApi, benutzerFehler, KUNDENROLLEN, unternehmensrolle, type BenutzerAnlage, type BenutzerEintrag } from '../../benutzer';
 import { ROLLE_BESCHREIBUNG } from '../../components/BenutzerEinladen';
-import { ApiError, api, neueAnfrageKennung, type SelbstauskunftKundenbereichBeendet, type Site } from '../../api';
+import { ApiError, ablehnungCode, api, neueAnfrageKennung, type SelbstauskunftKundenbereichBeendet, type Site } from '../../api';
 import {
   anlagenBoxenZeilen,
   datumDe,
@@ -28,9 +28,11 @@ import type { AdminFleetSite } from '../../admin/fleetApi';
 import {
   adminApi,
   type AdminUser,
+  type KundeLoeschbarkeit,
   type Tenant,
   type TenantOffboardingReport,
 } from '../../admin/adminApi';
+import { KundeLoeschenDialog } from './KundeLoeschenDialog';
 import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
 import { DangerZone } from '../../components/DangerZone';
 import { EmptyState, ErrorState, TableSkeleton, TextSkeleton } from '../../components/States';
@@ -170,6 +172,10 @@ function KundenlisteSeite({
   // Je Mandant: `undefined` = noch nicht geladen, sonst das Ergebnis (oder `'fehler'`).
   const [konten, setKonten] = useState<Record<string, AdminUser[] | 'fehler'>>({});
   const [vertragsende, setVertragsende] = useState<Record<string, SelbstauskunftKundenbereichBeendet | null | 'fehler'>>({});
+  // vp-kunde-sofort-loeschen: EIN Abruf für alle Zeilen - „sofort löschbar" (Badge) und das Zeilen-Menü.
+  const [loeschbarkeit, setLoeschbarkeit] = useState<Record<string, KundeLoeschbarkeit>>({});
+  const [loeschenTenant, setLoeschenTenant] = useState<Tenant | null>(null);
+  const [geloeschtMeldung, setGeloeschtMeldung] = useState<string | null>(null);
   // L6 (S6): serverseitige Personensuche über ALLE Kunden ergänzt die lokale
   // Suche über die schon geladenen `konten` - findet so auch Personen eines
   // Mandanten, dessen Kontoliste noch nicht geladen ist.
@@ -181,6 +187,13 @@ function KundenlisteSeite({
       setUnterstuetzungBis(f.unterstuetzungBis ?? null);
     }).catch(() => { setFleet([]); setUnterstuetzungBis(null); });
   }, []);
+
+  useEffect(() => {
+    void adminApi.kundenLoeschbarkeit()
+      .then((liste) => setLoeschbarkeit(Object.fromEntries(liste.map((l) => [l.tenantId, l]))))
+      .catch(() => setLoeschbarkeit({}));
+    // Nach jedem Nachladen der Liste (etwa nach einem Löschen) frisch.
+  }, [tenants]);
 
   // Personenzahl und Vertragsende kommen bis zur Lesemodell-Scheibe S6 (L6) aus
   // den VORHANDENEN Einzel-Antworten je Mandant - bewusst N Aufrufe statt eines
@@ -223,11 +236,13 @@ function KundenlisteSeite({
       anzahlAnlagen: anlagen?.length ?? null,
       anzahlBoxen: boxen,
       anzahlPersonen: konten[t.id] === 'fehler' ? null : konten[t.id]?.length ?? undefined,
+      sofortLoeschbar: loeschbarkeit[t.id]?.sofortLoeschbar === true,
       zustand: vende === 'fehler'
         ? null
-        : kundenZustand(vende, bis ? new Date(bis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) : null),
+        : kundenZustand(vende, bis ? new Date(bis).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) : null,
+            loeschbarkeit[t.id]?.sofortLoeschbar === true),
     };
-  }), [tenants, fleet, unterstuetzungBis, konten, vertragsende]);
+  }), [tenants, fleet, unterstuetzungBis, konten, vertragsende, loeschbarkeit]);
 
   const gefiltert = useMemo(() => {
     const q = suche.trim().toLowerCase();
@@ -264,6 +279,12 @@ function KundenlisteSeite({
         }
         actions={addButton}
       />
+
+      {geloeschtMeldung && (
+        <div className="vp-alert vp-alert-ok" role="status" style={{ marginBottom: 'var(--vp-space-4)' }}>
+          {geloeschtMeldung}
+        </div>
+      )}
 
       {!neuOffen && (
         <Input
@@ -337,16 +358,24 @@ function KundenlisteSeite({
                   <td data-label="Zustand" data-zeile="marke">
                     {z.zustand ? <Badge variant={z.zustand.ton} dot>{z.zustand.text}</Badge> : <span className="vp-muted">…</span>}
                   </td>
-                  <td data-label="" data-zeile="aktion" style={{ textAlign: 'right' }}>
+                  <td data-label="" data-zeile="aktion" style={{ textAlign: 'right' }}
+                    onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                    {/* Zeilen-Menü nur, wenn der Server „sofort löschbar" meldet (vp-kunde-sofort-loeschen). */}
+                    {z.sofortLoeschbar && (
+                      <RowMenu
+                        label={`Weitere Aktionen für ${z.tenant.name}`}
+                        items={[{
+                          label: 'Kunde endgültig löschen …', icon: 'trash', danger: true,
+                          onClick: () => setLoeschenTenant(z.tenant),
+                        }]}
+                      />
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
                       aria-label={`Details zu ${z.tenant.name}`}
                       data-mandant={z.tenant.id}
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        onOeffnen(z.tenant);
-                      }}
+                      onClick={() => onOeffnen(z.tenant)}
                     >
                       <span className="vp-zeilen-nur-breit">Details</span> <Icon name="chevron-right" size={16} />
                     </Button>
@@ -363,6 +392,24 @@ function KundenlisteSeite({
             </tbody>
           </table>
         </Card>
+      )}
+
+      {loeschenTenant && (
+        <KundeLoeschenDialog
+          open
+          tenantId={loeschenTenant.id}
+          tenantName={loeschenTenant.name}
+          onClose={() => setLoeschenTenant(null)}
+          onGeloescht={(report) => {
+            setLoeschenTenant(null);
+            setGeloeschtMeldung(`Der Kunde „${report.tenantName}" wurde vollständig entfernt`
+              + (report.freigegebeneBoxen.length > 0
+                ? `; die Box${report.freigegebeneBoxen.length === 1 ? '' : 'en'} ${report.freigegebeneBoxen.join(', ')} `
+                  + (report.freigegebeneBoxen.length === 1 ? 'ist' : 'sind') + ' wieder anmeldbar.'
+                : '.'));
+            onReloadTenants();
+          }}
+        />
       )}
     </>
   );
@@ -506,6 +553,10 @@ function KundenaktePage({
   const [vertragDialog, setVertragDialog] = useState<'beenden' | 'wiederaufnehmen' | null>(null);
   const [vertragBusy, setVertragBusy] = useState(false);
   const [vertragError, setVertragError] = useState<string | null>(null);
+  // vp-kunde-sofort-loeschen: das Server-Urteil „sofort löschbar" (KundeDatenBestand) - speist das
+  // Badge, das Kopf-Menü, die Vertrag-Karte und die Gefahrenzone. `undefined` = noch nicht gelesen.
+  const [loeschbarkeit, setLoeschbarkeit] = useState<KundeLoeschbarkeit | undefined>(undefined);
+  const [loeschenDialog, setLoeschenDialog] = useState(false);
 
   async function reload() {
     setError(null);
@@ -528,6 +579,13 @@ function KundenaktePage({
         e instanceof ApiError ? e.message : 'Die Kundendaten konnten nicht geladen werden.',
       );
     }
+    // Getrennt vom Pflicht-Laden: ohne das Urteil bleibt die Akte voll benutzbar,
+    // nur Badge-Zusatz und Sofort-Weg fehlen dann.
+    try {
+      setLoeschbarkeit(await adminApi.kundeLoeschbarkeit(tenant.id));
+    } catch {
+      setLoeschbarkeit(undefined);
+    }
   }
 
   useEffect(() => {
@@ -549,6 +607,9 @@ function KundenaktePage({
    * der Selbst-Sperre des Servers (409: das eigene Konto ist nicht löschbar).
    * `sub` statt `AdminUser`: auch eine Person OHNE Konto (nur UEMS-Eintrag,
    * etwa nach einem halb gescheiterten Entfernen) ist darüber löschbar.
+   * Eine 409 MIT `code` trägt den echten Grund im Körper (etwa
+   * `kundenbereich_beendet`) - der Satz des Servers, nicht „eigenes Konto";
+   * nur die code-lose Selbst-Sperre behält ihren Satz (ihr Körper trägt keinen).
    */
   async function remove(sub: string) {
     try {
@@ -557,7 +618,7 @@ function KundenaktePage({
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 409
-          ? 'Sie können Ihr eigenes Konto nicht löschen.'
+          ? (ablehnungCode(e) ? e.message : 'Sie können Ihr eigenes Konto nicht löschen.')
           : e instanceof ApiError
             ? `Löschen fehlgeschlagen: ${e.message}`
             : 'Fehler',
@@ -673,6 +734,12 @@ function KundenaktePage({
                 <th scope="row">Gelöschte Benutzer</th>
                 <td>{report.deletedUsers.length > 0 ? report.deletedUsers.join(', ') : '-'}</td>
               </tr>
+              {report.freigegebeneBoxen?.length > 0 && (
+                <tr>
+                  <th scope="row">Freigegebene Boxen</th>
+                  <td>{report.freigegebeneBoxen.join(', ')} - wieder anmeldbar</td>
+                </tr>
+              )}
             </tbody>
           </table>
           {report.failedUsers.length > 0 && (
@@ -693,7 +760,7 @@ function KundenaktePage({
   const anlagenZeilen: AnlageBoxZeile[] | null = sites && fleetSites ? anlagenBoxenZeilen(sites, fleetSites) : null;
   // Die Zustand-Zeile im Kopf zeigt vorerst nur das Vertragsende; die laufende
   // Unterstützung steht gleich darunter in der Karte „Zugriff" selbst.
-  const zustand = kundenZustand(vertragsende, null);
+  const zustand = kundenZustand(vertragsende, null, loeschbarkeit?.sofortLoeschbar === true);
 
   const wieDerKundeEsSieht = (
     <Button variant="outline" onClick={() => onJumpToTenant(tenant.id, 'uebersicht')} iconLeft={<Icon name="eye" size={16} />}>
@@ -745,6 +812,17 @@ function KundenaktePage({
                 <span className="vp-zeilen-nur-breit">Bearbeiten</span>
               </Button>
             )}
+            {/* Kopf-Menü (vp-kunde-sofort-loeschen): der Löschweg ist immer erreichbar - der Dialog
+                erklärt bei einem Kunden mit Daten ruhig, warum er bleibt (nie ein toter Knopf). */}
+            {!editing && (
+              <RowMenu
+                label={`Weitere Aktionen für ${tenant.name}`}
+                items={[{
+                  label: 'Kunde endgültig löschen …', icon: 'trash', danger: true,
+                  onClick: () => setLoeschenDialog(true),
+                }]}
+              />
+            )}
           </div>
         </div>
 
@@ -754,7 +832,7 @@ function KundenaktePage({
           <Card padding="lg" radius="lg" className="vp-mandant-karte vp-kundenakte-personen">
             <div className="vp-section-head">
               <h2>Personen {personen ? `(${personen.length})` : ''}</h2>
-              {personen != null && personen.length > 0 && !personHinzufuegenOffen && (
+              {personen != null && personen.length > 0 && !personHinzufuegenOffen && !vertragsende && (
                 <span className="actions">
                   <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />}
                     onClick={() => setPersonHinzufuegenOffen(true)}>
@@ -770,9 +848,11 @@ function KundenaktePage({
             ) : personen.length === 0 && !neuerAdminOffen ? (
               <>
                 <p className="vp-muted">Noch keine Person für diesen Kunden.</p>
-                <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setNeuerAdminOffen(true)}>
-                  Ersten Kundenadministrator anlegen
-                </Button>
+                {!vertragsende && (
+                  <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setNeuerAdminOffen(true)}>
+                    Ersten Kundenadministrator anlegen
+                  </Button>
+                )}
               </>
             ) : (
               <table className="vp-table responsive vp-zeilen">
@@ -797,7 +877,19 @@ function KundenaktePage({
                         <Badge variant={p.ton} dot>{p.zustandText}</Badge>
                       </td>
                       <td data-label="" data-zeile="aktion" style={{ textAlign: 'right' }}>
-                        {p.konto ? (
+                        {/* Beendeter Kunde: jeder Schreibweg außer „Deaktivieren" würde sicher mit 409
+                            scheitern (KundenbereichEndeFilter) - also gibt es die Knöpfe gar nicht erst;
+                            der Hinweis unter der Tabelle sagt, dass Personen mit dem Kunden gehen. */}
+                        {p.konto && vertragsende ? (
+                          p.konto.enabled ? (
+                            <RowMenu
+                              label={`Aktionen für ${p.konto.username}`}
+                              items={[
+                                { label: 'Deaktivieren', icon: 'x', onClick: () => setConfirmUser({ user: p.konto!, sub: p.konto!.id, name: p.konto!.username, kind: 'disable' }) },
+                              ]}
+                            />
+                          ) : null
+                        ) : p.konto ? (
                           <RowMenu
                             label={`Aktionen für ${p.konto.username}`}
                             items={[
@@ -809,7 +901,7 @@ function KundenaktePage({
                               { label: 'Löschen', icon: 'trash', danger: true, onClick: () => setConfirmUser({ user: p.konto!, sub: p.konto!.id, name: p.konto!.username, kind: 'delete' }) },
                             ]}
                           />
-                        ) : p.eintrag ? (
+                        ) : p.eintrag && !vertragsende ? (
                           // Person OHNE Konto (nur UEMS-Eintrag, eine halb gescheiterte Entfernung):
                           // vorher gab es hier GAR keine Handlung, der Eintrag stand für immer in der
                           // Akte. Löschen räumt ihn mit Protokoll ab wie jede andere Personen-Aktion.
@@ -825,6 +917,12 @@ function KundenaktePage({
                   ))}
                 </tbody>
               </table>
+            )}
+            {personen != null && personen.length > 0 && vertragsende && (
+              <p className="vp-muted vp-text-sm" role="note">
+                Der Vertrag ist beendet: Personen werden hier nicht mehr einzeln gelöscht oder geändert -
+                sie gehen erst mit dem Kunden. Deaktivieren bleibt möglich.
+              </p>
             )}
             {neuerAdminOffen && (
               <ErsterAdminFormular
@@ -920,25 +1018,46 @@ function KundenaktePage({
               ) : vertragsende ? (
                 <>
                   <div className="vp-alert vp-alert-info" style={{ marginTop: 0 }}>
-                    Der Vertrag ist am {datumDe(vertragsende.beendet_am)} beendet. Die Daten lassen sich
-                    nur noch lesen; gelöscht werden sie frühestens am{' '}
-                    {datumDe(vertragsende.loeschung_fruehestens)}.
+                    {loeschbarkeit?.sofortLoeschbar
+                      ? <>Der Vertrag ist am {datumDe(vertragsende.beendet_am)} beendet. Der Kunde hat
+                          keinen Datenbestand und kann sofort endgültig gelöscht werden - ohne Frist.</>
+                      : <>Der Vertrag ist am {datumDe(vertragsende.beendet_am)} beendet. Die Daten lassen sich
+                          nur noch lesen; gelöscht werden sie frühestens am{' '}
+                          {datumDe(vertragsende.loeschung_fruehestens)}.</>}
                   </div>
                   {vertragError && <div className="vp-alert vp-alert-err">{vertragError}</div>}
-                  <Button variant="outline" size="sm" onClick={() => setVertragDialog('wiederaufnehmen')}>
-                    Wiederaufnehmen
-                  </Button>
+                  <span className="vp-vertrag-aktionen">
+                    <Button variant="outline" size="sm" onClick={() => setVertragDialog('wiederaufnehmen')}>
+                      Wiederaufnehmen
+                    </Button>
+                    {loeschbarkeit?.sofortLoeschbar && (
+                      <Button variant="outline" size="sm" onClick={() => setLoeschenDialog(true)}>
+                        Kunde endgültig löschen …
+                      </Button>
+                    )}
+                  </span>
                 </>
               ) : (
                 <>
                   <p className="vp-muted" style={{ marginTop: 0 }}>
-                    Ein aktiver Vertrag kann beendet werden - mit Frist, danach wiederaufnehmbar.
-                    Gelöscht wird ein Kunde erst nach Ablauf der Frist, in der Gefahrenzone unten.
+                    {loeschbarkeit?.sofortLoeschbar
+                      ? <>Ein aktiver Vertrag kann beendet werden - mit Frist, danach wiederaufnehmbar.
+                          Dieser Kunde hat keinen Datenbestand und kann auch sofort endgültig gelöscht
+                          werden.</>
+                      : <>Ein aktiver Vertrag kann beendet werden - mit Frist, danach wiederaufnehmbar.
+                          Gelöscht wird ein Kunde erst nach Ablauf der Frist, in der Gefahrenzone unten.</>}
                   </p>
                   {vertragError && <div className="vp-alert vp-alert-err">{vertragError}</div>}
-                  <Button variant="outline" size="sm" onClick={() => setVertragDialog('beenden')}>
-                    Kundenbereich beenden …
-                  </Button>
+                  <span className="vp-vertrag-aktionen">
+                    <Button variant="outline" size="sm" onClick={() => setVertragDialog('beenden')}>
+                      Kundenbereich beenden …
+                    </Button>
+                    {loeschbarkeit?.sofortLoeschbar && (
+                      <Button variant="outline" size="sm" onClick={() => setLoeschenDialog(true)}>
+                        Kunde endgültig löschen …
+                      </Button>
+                    )}
+                  </span>
                 </>
               )}
             </AufklapperKarte>
@@ -959,13 +1078,16 @@ function KundenaktePage({
           busy={deleteBusy}
           error={deleteError}
           disabledReason={
-            vertragsende === undefined
+            // Sofort löschbar (Server-Urteil, vp-kunde-sofort-loeschen): kein Grund sperrt mehr.
+            loeschbarkeit?.sofortLoeschbar
               ? null
-              : vertragsende === null
-                ? 'Gelöscht werden kann ein Kunde erst, nachdem der Vertrag beendet wurde und die Frist abgelaufen ist.'
-                : !fristAbgelaufen(vertragsende.loeschung_fruehestens)
-                  ? `Die Frist läuft noch bis ${datumDe(vertragsende.loeschung_fruehestens)} - vorher kann nicht gelöscht werden.`
-                  : null
+              : vertragsende === undefined
+                ? null
+                : vertragsende === null
+                  ? 'Gelöscht werden kann ein Kunde mit Daten erst, nachdem der Vertrag beendet wurde und die Frist abgelaufen ist.'
+                  : !fristAbgelaufen(vertragsende.loeschung_fruehestens)
+                    ? `Die Frist läuft noch bis ${datumDe(vertragsende.loeschung_fruehestens)} - vorher kann nicht gelöscht werden.`
+                    : null
           }
           onConfirm={() => void offboard()}
         />
@@ -979,6 +1101,19 @@ function KundenaktePage({
         onBeenden={(a, b, f) => void beenden(a, b, f)}
         onWiederaufnehmen={(a, b) => void wiederaufnehmen(a, b)}
       />
+
+      {loeschenDialog && (
+        <KundeLoeschenDialog
+          open
+          tenantId={tenant.id}
+          tenantName={tenant.name}
+          onClose={() => setLoeschenDialog(false)}
+          onGeloescht={(r) => {
+            setLoeschenDialog(false);
+            setReport(r);
+          }}
+        />
+      )}
 
       {editUser && (
         <EditUserDrawer

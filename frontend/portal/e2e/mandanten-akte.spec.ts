@@ -107,3 +107,99 @@ for (const breite of [DESKTOP, PHONE]) {
     expect(fehler).toEqual([]);
   });
 }
+
+/**
+ * vp-kunde-sofort-loeschen: ein datenfreier Kunde (Server-Urteil) ist sofort endgültig löschbar.
+ * Badge „beendet · sofort löschbar", Kopf-Menü und Vertrag-Karte tragen den Weg; der Dialog
+ * verlangt den abgetippten Namen, nennt die Folgen vom Server und endet auf dem Löschbericht.
+ */
+for (const breite of [DESKTOP, PHONE]) {
+  test(`Sofort löschbar: Badge, Kopf-Menü, Abschrift-Dialog, Bericht · ${breite}px`, async ({ page }) => {
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    await page.setViewportSize({ width: breite, height: breite === PHONE ? 844 : 900 });
+    await page.goto('/e2e/mandanten-akte.html?vertrag=beendet&loeschbar=sofort');
+    await page.waitForSelector('.vp-kundenakte');
+
+    await expect(page.getByText('beendet · sofort löschbar')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Weitere Aktionen für Kunststoffwerk Ahrenberg GmbH' }).click();
+    await page.getByRole('menuitem', { name: 'Kunde endgültig löschen …' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Kunde endgültig löschen' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('keinen Datenbestand');
+    await expect(dialog).toContainText('VP-BB22');
+    await expect(dialog).toContainText('Werkstatt-, Fernwartungs- und Plattform-Protokolle bleiben');
+
+    // Ohne Abschrift löscht nichts - der Fehler steht am Feld.
+    await dialog.getByRole('button', { name: 'Kunde endgültig löschen' }).click();
+    await expect(dialog.getByRole('alert')).toContainText('bitte genau abtippen');
+    await dialog.getByLabel('Zum Bestätigen den Kundennamen abtippen').fill('Kunststoffwerk Ahrenberg GmbH');
+    await dialog.getByRole('button', { name: 'Kunde endgültig löschen' }).click();
+
+    // Danach: der Bericht statt der Akte, mit den freigegebenen Boxen und dem Weg zurück zur Liste.
+    await expect(page.getByRole('heading', { name: /Kunde gelöscht/ })).toBeVisible();
+    await expect(page.getByText('VP-BB22 - wieder anmeldbar')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Zu den Kunden' })).toBeVisible();
+
+    await keinUeberlauf(page);
+    expect(fehler).toEqual([]);
+  });
+}
+
+/** Mit Daten: derselbe Einstieg erklärt ruhig (Datenarten, ab wann, Gesamtabzug) - kein Gefahren-Knopf. */
+test('Kunde mit Daten: der Dialog erklärt, warum er bleibt', async ({ page }) => {
+  await page.setViewportSize({ width: DESKTOP, height: 900 });
+  await page.goto('/e2e/mandanten-akte.html?vertrag=beendet');
+  await page.waitForSelector('.vp-kundenakte');
+  await expect(page.getByText('beendet · löschbar ab 01.01.2027')).toBeVisible();
+  await page.getByRole('button', { name: 'Weitere Aktionen für Kunststoffwerk Ahrenberg GmbH' }).click();
+  await page.getByRole('menuitem', { name: 'Kunde endgültig löschen …' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Kunde endgültig löschen' });
+  await expect(dialog).toContainText('Box-Herzschläge · Messwerte');
+  await expect(dialog).toContainText('frühestens am 01.01.2027');
+  await expect(dialog).toContainText('Gesamtabzug');
+  await expect(dialog.getByRole('button', { name: 'Kunde endgültig löschen' })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Verstanden' }).click();
+  await expect(dialog).toBeHidden();
+});
+
+/**
+ * Nebenbei behoben (vp-kunde-sofort-loeschen Punkt 5): die zwei Unterstützung-Knöpfe stehen mit
+ * Lücke und auf einer Linie (oder sauber untereinander), die Karte ohne versetzten Extra-Rand;
+ * ein Anlagenname bricht nie mitten im Wort.
+ */
+for (const breite of [DESKTOP, PHONE]) {
+  test(`Pixelprobe Unterstützung-Knöpfe und Anlagennamen · ${breite}px`, async ({ page }) => {
+    await page.setViewportSize({ width: breite, height: breite === PHONE ? 844 : 900 });
+    await page.goto('/e2e/mandanten-akte.html');
+    await page.waitForSelector('.vp-kundenakte');
+    if (breite === PHONE) {
+      await page.locator('details', { hasText: 'Anlagen und Boxen' }).locator('summary').click();
+    }
+
+    const anfragen = page.getByRole('button', { name: 'Unterstützung anfragen' });
+    const notfall = page.getByRole('button', { name: 'Notfall-Zugriff' });
+    const a = (await anfragen.boundingBox())!;
+    const n = (await notfall.boundingBox())!;
+    const gleicheZeile = Math.abs(a.y - n.y) < 2;
+    if (gleicheZeile) {
+      const luecke = n.x >= a.x ? n.x - (a.x + a.width) : a.x - (n.x + n.width);
+      expect(luecke, 'Lücke zwischen den Knöpfen').toBeGreaterThanOrEqual(4);
+    } else {
+      const luecke = Math.max(a.y, n.y) - Math.min(a.y + a.height, n.y + n.height);
+      expect(luecke, 'vertikale Lücke zwischen den Knöpfen').toBeGreaterThanOrEqual(4);
+    }
+
+    // Kein versetzter Extra-Rand: die Karte beginnt bündig mit den Nachbarkarten der Spalte.
+    const unterstuetzung = (await page.locator('.vp-kundenakte-nebenspalte > .vp-unterstuetzung').boundingBox())!;
+    const vertragKarte = (await page.locator('.vp-kundenakte-nebenspalte > .vp-mandant-karte').last().boundingBox())!;
+    expect(Math.abs(unterstuetzung.x - vertragKarte.x), 'bündige linke Kante').toBeLessThanOrEqual(1);
+
+    // Anlagennamen („Werk Nord", „Halle Süd") bleiben einzeilig - kein Umbruch mitten im Wort.
+    for (const name of await page.locator('.vp-kundenakte-liste-haupt b').all()) {
+      const box = (await name.boundingBox())!;
+      expect(box.height, 'Anlagenname einzeilig').toBeLessThan(30);
+    }
+  });
+}
