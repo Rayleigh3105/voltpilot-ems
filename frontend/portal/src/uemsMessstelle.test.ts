@@ -206,6 +206,7 @@ const vorschlagEingang = (i: Json): VorschlagEingang => ({
     verlaufsbeginn: k.verlaufsbeginn,
     speisungAb: k.speisung_ab,
     messkanaele: k.messkanaele,
+    haengtAn: k.haengt_an ?? null,
   })),
   zaehler: i.zaehler,
   belegt: i.belegt,

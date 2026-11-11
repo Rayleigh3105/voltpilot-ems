@@ -67,6 +67,19 @@ eine Prüfung meldet die Abweichung, statt sie still zu korrigieren oder die Ger
 abzulehnen. `docs/contracts/v2/messstelle.md` §6 (AP-04 E12) bleibt unverändert maßgeblich für
 die Stellung selbst.
 
+Mit S4 liest Messen den Baum an drei weiteren Stellen - dieselbe Regel, kein zweiter Baum:
+
+- **Vorschlagsliste der Bestandsübernahme** ([messstelle.md](messstelle.md) §11): ein Unterzähler
+  wird „Unterzähler von“ der Messstelle des nächsten Vorfahren im Baum, der eine hat -
+  vorgeschlagen oder bestehend; an der Wurzel des Bezug-Hauptzählers. Kinder stehen nach ihren
+  Eltern (Baum-Tiefe).
+- **Bilanz** ([bilanz.md](bilanz.md), Falle 10): eine Unterverteilung - ein Unterzähler mit
+  eigenen Unterzählern - trägt ihren eigenen Rest (§4.3 Satz 2): Zufluss sie selbst, zugeordnet
+  genau ihre direkten Unterzähler, rekursiv je Ebene, jede Kilowattstunde genau einmal (R1).
+- **Kostenstellen** ([verteilung.md](verteilung.md), Regel 13): eine Messstelle ist in jeder
+  enthalten, unter der sie im elektrischen Baum hängt - die Warnung „schon enthalten“ zählt auch
+  die Stellung, über jede Ebene, und ändert keine Zahl.
+
 ## 5. Außerhalb dieses Umfangs
 
 Schutz je Unterverteilung (eine Sicherung je Unterverteilung) - erst dann braucht die Box den

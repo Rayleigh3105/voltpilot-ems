@@ -77,18 +77,20 @@ public class KostenstelleEnergieService {
     private final MessstelleWerteService werte;
     private final BerechnetePeriodenLauf berechnete;
     private final AblesungRepository ablesungen;
+    private final MessstelleZuordnungRepository zuordnungen;
 
     private volatile Clock uhr = Clock.systemUTC();
 
     public KostenstelleEnergieService(KostenstelleProzessRepository objekte, KostenstelleEnergieRepository lesen,
             MessstelleRepository messstellen, MessstelleWerteService werte, BerechnetePeriodenLauf berechnete,
-            AblesungRepository ablesungen) {
+            AblesungRepository ablesungen, MessstelleZuordnungRepository zuordnungen) {
         this.objekte = objekte;
         this.lesen = lesen;
         this.messstellen = messstellen;
         this.werte = werte;
         this.berechnete = berechnete;
         this.ablesungen = ablesungen;
+        this.zuordnungen = zuordnungen;
     }
 
     /** Nur für Tests: die Uhr für „heute“ und {@code berechnet_am}. */
@@ -126,7 +128,7 @@ public class KostenstelleEnergieService {
         Sicht s = sicht(null, k, periode, tag, version, zone, jetzt);
         // Die Warnung liest dieselben Quellen und rechnet NICHTS an u: sie steht neben den Blöcken.
         KostenstelleDoppelzaehlung.Urteil doppelt = KostenstelleDoppelzaehlung.pruefe(k.kennzeichen(), s.von(), s.bis(),
-                s.ziele(), s.quellen(), formeln(s.von(), s.bis(), jetzt));
+                s.ziele(), s.quellen(), formeln(s.von(), s.bis(), jetzt), stellungen());
         return s.antwort(doppelzaehlung(doppelt));
     }
 
@@ -359,6 +361,27 @@ public class KostenstelleEnergieService {
     // ------------------------------------------------------------------------------ Doppelzählung
 
     /**
+     * Die „Unterzähler von“-Stellungen des Mandanten (Zählerbaum S4): eine Messstelle ist in jeder enthalten, unter der
+     * sie im elektrischen Baum hängt — dieselben wirksamen Zeilen, die auch die Bilanz liest.
+     */
+    private List<KostenstelleDoppelzaehlung.Stellung> stellungen() {
+        Map<UUID, String> kennzeichen = new HashMap<>();
+        messstellen.alle().forEach(m -> kennzeichen.put(m.id(), m.kennzeichen()));
+        List<KostenstelleDoppelzaehlung.Stellung> raus = new ArrayList<>();
+        for (MessstelleZuordnungRepository.StellungZeile s : MessstelleService.wirksam(zuordnungen.stellungenAlle())) {
+            if (!"Unterzähler".equals(s.stellung()) || s.unterzaehlerVon() == null) {
+                continue;
+            }
+            String teil = kennzeichen.get(s.messstelleId());
+            String von = kennzeichen.getOrDefault(s.unterzaehlerVon(), s.unterzaehlerVonKennzeichen());
+            if (teil != null && von != null) {
+                raus.add(new KostenstelleDoppelzaehlung.Stellung(teil, von, s.gueltigAb(), s.gueltigBis()));
+            }
+        }
+        return List.copyOf(raus);
+    }
+
+    /**
      * Die Formeln der berechneten Messstellen je Tag aus {@link BerechnetePeriodenLauf#formelnJeTag} (dieselbe Stelle,
      * die rechnet), zu Tagen mit gleichen Termen zusammengelegt. Beim {@code rest} geht ein Zufluss mit +, Abfluss und
      * zugeordnet mit − ein ({@link BilanzAbleitung}); ein Messkanal-Term ist keine Messstelle.
@@ -430,7 +453,8 @@ public class KostenstelleEnergieService {
         List<VerteilungDto.Doppelzaehlung> raus = new ArrayList<>();
         for (String k : new TreeSet<>(eigene.stream().map(KostenstelleEnergieRepository.Anteil::kostenstelle).toList())) {
             String kz = selbst;
-            KostenstelleDoppelzaehlung.Urteil u = KostenstelleDoppelzaehlung.pruefe(k, tag, tag, ziele, quellen, formeln);
+            KostenstelleDoppelzaehlung.Urteil u = KostenstelleDoppelzaehlung.pruefe(k, tag, tag, ziele, quellen, formeln,
+                    stellungen());
             KostenstelleEnergieDto.Doppelzaehlung d = doppelzaehlung(new KostenstelleDoppelzaehlung.Urteil(
                     u.enthalten().stream().filter(e -> kz.equals(e.teil()) || kz.equals(e.summe())).toList(),
                     u.nichtPruefbar().stream().filter(n -> kz.equals(n.messstelle())).toList()));

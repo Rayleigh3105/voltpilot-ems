@@ -455,6 +455,63 @@ class BilanzApiTest {
         assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, List.of()))).isEmpty();
     }
 
+    /**
+     * Zählerbaum S4 (§4.3 Satz 2): hängt MS-12 ab dem 02.03. als Unterzähler VON MS-11, bekommt MS-11 einen
+     * eigenen Block unter {@code unterverteilungen}: sein Rest zieht nur MS-12 ab (60 − 20 = 40), der
+     * Hauptzähler-Rest überspringt den Enkel (100 − 60 − 5 − 10 = 25) — jede Kilowattstunde genau einmal:
+     * Rest(Hauptzähler) + Rest(Unterverteilung) + Blätter = Bezug. „Rest anlegen“ gilt auch für die
+     * Unterverteilung, vorbelegt mit IHREM Namen; ein Unterzähler ohne Unterzähler (MS-13) bleibt 422.
+     */
+    @Test
+    void zaehlerbaumS4EineUnterverteilungBekommtIhrenEigenenRest() throws Exception {
+        Welt w = halle2();
+        LocalDate tag = LocalDate.parse("2026-03-02");
+        tageswert(w, "MS-10", tag, "100");
+        tageswert(w, "MS-11", tag, "60");
+        tageswert(w, "MS-12", tag, "20");
+        tageswert(w, "MS-13", tag, "5");
+        tageswert(w, "MS-14", tag, "10");
+        // MS-12 hängt um: Unterzähler von MS-11 (wie PUT …/stellung bzw. die Zählerbaum-Übernahme schreibt).
+        root.update("UPDATE messstelle_stellung SET gueltig_bis = ? WHERE messstelle_id = ?", tag.minusDays(1),
+                w.messstellen().get("MS-12"));
+        root.update("INSERT INTO messstelle_stellung (tenant_id, messstelle_id, site_id, stellung, unterzaehler_von, "
+                + "gueltig_ab) VALUES (?,?,?,'Unterzähler',?,?)", w.mandant(), w.messstellen().get("MS-12"), w.anlage(),
+                w.messstellen().get("MS-11"), tag);
+
+        JsonNode bilanz = ok(ruf(w, HttpMethod.GET, bilanzPfad(w) + "?periode=tag&am=" + tag, null), 200);
+        JsonNode hzWerte = hauptzaehler(bilanz, "MS-10").get("abschnitte").get(0).get("werte").get(0);
+        assertThat(rest(hzWerte)).as("100 − 60 − 5 − 10: der Enkel zählt nicht doppelt").isEqualByComparingTo("25");
+        assertThat(hzWerte.get("eingaenge")).extracting(e -> e.get("messstelle").asText())
+                .containsExactly("MS-10", "MS-11", "MS-13", "MS-14");
+
+        assertThat(bilanz.get("unterverteilungen")).as("genau die Unterverteilung MS-11, keine Blätter").hasSize(1);
+        JsonNode uv = bilanz.get("unterverteilungen").get(0);
+        assertThat(uv.get("messstelle").get("kennzeichen").asText()).isEqualTo("MS-11");
+        JsonNode uvAbschnitt = uv.get("abschnitte").get(0);
+        assertThat(uvAbschnitt.get("terme")).extracting(t -> t.get("messstelle").asText() + ":" + t.get("rolle").asText())
+                .containsExactly("MS-11:zufluss", "MS-12:zugeordnet");
+        JsonNode uvWerte = uvAbschnitt.get("werte").get(0);
+        assertThat(rest(uvWerte)).as("60 − 20").isEqualByComparingTo("40");
+        assertThat(uvWerte.get("rest").get("kundensatz").asText())
+                .isEqualTo("40 kWh sind keiner Messstelle zugeordnet");
+        assertThat(uvWerte.get("zufluss").get("menge").decimalValue()).isEqualByComparingTo("60");
+        assertThat(uvWerte.get("zugeordnet").get("menge").decimalValue()).isEqualByComparingTo("20");
+        // R1-Probe: Rest(HZ) 25 + Rest(UV) 40 + Blätter 20 + 5 + 10 = 100 = Bezug.
+
+        // „Rest anlegen“ für die Unterverteilung, vorbelegt mit ihrem Namen — nie dem der Anlage.
+        assertThat(uv.get("vorschlag").get("aktion").asText()).isEqualTo("rest_anlegen");
+        assertThat(uv.get("vorschlag").get("name").asText()).isEqualTo("Zähler MS-11 nicht zugeordnet");
+        JsonNode angelegt = ok(ruf(w, HttpMethod.POST, bilanzPfad(w) + "/rest",
+                Map.of("hauptzaehler_id", w.messstellen().get("MS-11").toString())), 201);
+        assertThat(angelegt.get("messstelle").get("name").asText()).isEqualTo("Zähler MS-11 nicht zugeordnet");
+
+        // Ein Unterzähler OHNE Unterzähler trägt weiter keinen Rest.
+        Antwort blatt = ruf(w, HttpMethod.POST, bilanzPfad(w) + "/rest",
+                Map.of("hauptzaehler_id", w.messstellen().get("MS-13").toString()));
+        assertThat(blatt.status()).isEqualTo(422);
+        assertThat(blatt.body().get("code").asText()).isEqualTo("rest_ohne_hauptzaehler");
+    }
+
     // ============================================================= E3: der Rest folgt der Stellung
 
     /**

@@ -278,7 +278,7 @@ Regeln.
 | `zeitstrahl` | 3 — MS-06 ohne Fuge, MS-21 ein offener Abschnitt ohne Quelle, MS-07 „keine Quelle seit 07:00“ | Regel 2, E8 |
 | `beenden` | 8 — Z-5a endet mit Endstand 1 083 415,2 kWh (A1), angekündigt am Vortag, beendete Quelle nie erneut, Ende vor und genau am Beginn, Endstand ohne Einheit, MS-07 zur Prüfung abgeklemmt, Vergleichsquelle vor Beginn begrenzt | Regel 2, E2, E3 |
 | `rueckwirkung` | 8 — 25 min (§5.14), 933 Tage (Bestandsübernahme), Sekunden zählen nicht, angekündigt, 2 h 5 min, volle Stunden, ein Tag, Sommerzeit | E2, Regel 5 |
-| `vorschlag` | 11 — **AN-1: die acht Zeilen von §5.15** (A9), alles übernommen (der Satz), bestehender Hauptzähler MS-01, Zählerwechsel an K-5, Standort jünger als der Verlauf, ohne Netzanschluss, Attribut-Kanäle und fremde Größen, Ladestand ohne Speicherleistung, Zählerstand vor Leistung (und „0,1 kWh“ passt nicht), ohne Gerät / ohne Messkanal, Standort ohne Anlage | E6, §5.10, §5.15, A9 |
+| `vorschlag` | 12 — **AN-1: die acht Zeilen von §5.15** (A9), alles übernommen (der Satz), bestehender Hauptzähler MS-01, Zählerwechsel an K-5, Standort jünger als der Verlauf, ohne Netzanschluss, Attribut-Kanäle und fremde Größen, Ladestand ohne Speicherleistung, Zählerstand vor Leistung (und „0,1 kWh“ passt nicht), ohne Gerät / ohne Messkanal, Standort ohne Anlage, **Unterzähler hinter Unterverteilung aus dem Zählerbaum** (S4) | E6, §5.10, §5.15, A9 |
 | `stellung` | 13 — Bezug + Abgabe desselben Zählers, **zweiter Hauptzähler** (A11) und gleiche Richtung, **Fremdanlage** (MS-08-Umzug, MS-11), Umzug erlaubt, sich selbst, **Zyklus**, berechnet und Gas nur „keine“, Bezug fehlt, Bezug ohne Unterzähler | Regel 8, E12 |
 
 Jeder Fall mit `referenz` übernimmt die Quellen der genannten Messstelle unverändert (oder
@@ -393,11 +393,16 @@ Wirkenergie als `Zählerstand`, aus einer Leistung als `Intervallmenge` mit der 
 `integration` (gekennzeichnet, AP-08 rechnet damit). Ein Ladestand steht als NEBENGRÖSSE neben
 dem Speicher-Fluss derselben Komponente — sonst für sich, mit der Stellung Speicher.
 
-**Die Stellung kommt aus der Topologie**: die maßgebliche Netzmessung wird Hauptzähler (nur,
-wenn die Anlage einen Netzanschluss hat, und nur, solange kein anderer Zähler schon einer ist),
-Erzeugung wird Erzeuger, Speicher wird Speicher, jeder andere Bezug wird „Unterzähler von“ dem
-Bezug-Hauptzähler seiner Anlage — vorgeschlagen oder schon bestehend. Findet sich keiner, bleibt
-die Stellung LEER; sie wird nie geraten.
+**Die Stellung kommt aus dem Zählerbaum** (seit S4, Entscheide E1–E5 vom 10.11.2026,
+[zaehlerbaum.md](zaehlerbaum.md); vorher aus der flachen Topologie): die maßgebliche Netzmessung
+wird Hauptzähler (nur, wenn die Anlage einen Netzanschluss hat, und nur, solange kein anderer
+Zähler schon einer ist), Erzeugung wird Erzeuger, Speicher wird Speicher, jeder andere Bezug wird
+„Unterzähler von“ der Messstelle des nächsten Vorfahren im Baum (`komponente_haengt_an`, heute),
+der eine hat — vorgeschlagen oder schon bestehend. Hängt die Komponente an der Wurzel (oder hat
+kein Vorfahr bis zur Wurzel eine Messstelle), ist das der Bezug-Hauptzähler seiner Anlage. Findet
+sich keiner, bleibt die Stellung LEER; sie wird nie geraten. In der Reihenfolge der Liste stehen
+Kinder nach ihren Eltern (Baum-Tiefe), damit die Übernahme jede Stellung auf eine schon
+geschriebene Messstelle zeigt.
 
 **Name, Ort, Beginn.** Der Name ist der Alias der Komponente („getippt gewinnt“); liest sie mehr
 als einen Fluss, nennt der Name ihn („Netzzähler Halle 1 · Bezug“). Der Ort ist der Standort

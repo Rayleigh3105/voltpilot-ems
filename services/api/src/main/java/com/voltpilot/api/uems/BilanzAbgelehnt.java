@@ -33,10 +33,11 @@ public final class BilanzAbgelehnt extends RuntimeException {
         return new BilanzAbgelehnt(ANFRAGE_UNGUELTIG, 400, satz, Map.of("feld", feld));
     }
 
-    /** Der genannte Hauptzähler ist heute kein Hauptzähler Bezug dieser Anlage (422). */
+    /** Die genannte Messstelle trägt heute keinen Rest: weder Hauptzähler Bezug noch Unterverteilung (422). */
     public static BilanzAbgelehnt ohneHauptzaehler(String kennzeichen) {
         return new BilanzAbgelehnt(BilanzAbleitung.REST_OHNE_HAUPTZAEHLER, 422, kennzeichen
-                + " ist heute kein Hauptzähler Bezug dieser Anlage — ein Rest gehört zu einem Hauptzähler.",
+                + " trägt heute keinen Rest in dieser Anlage — ein Rest gehört zu einem Hauptzähler"
+                + " Bezug oder einer Unterverteilung mit Unterzählern.",
                 Map.of("hauptzaehler", kennzeichen));
     }
 

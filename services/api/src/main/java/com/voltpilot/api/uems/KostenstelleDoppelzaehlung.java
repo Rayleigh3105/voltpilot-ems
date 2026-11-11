@@ -26,6 +26,13 @@ import java.util.Set;
  * eine Zeile an die Kostenstelle haben und die Formel des Tages ihn trägt. Ein Kreis wird nicht aufgelöst, sondern
  * benannt ({@link BerechnetePeriode#FORMEL_KREIS}, {@link BerechnetePeriode#HAENGT_AN_KREIS}).
  *
+ * <p><b>Und aus der STELLUNG, je Tag, über jede Ebene (Zählerbaum S4):</b> eine gemessene Messstelle ist in jeder
+ * Messstelle enthalten, unter der sie im elektrischen Baum hängt („Unterzähler von“, AP-04 §6) — die UV Halle misst den
+ * Kompressor dahinter mit. Ordnet ein Kunde beide derselben Kostenstelle zu, warnt die Sicht genauso wie bei einer
+ * Formel: ganz oder zum Teil (am Anteil der enthaltenden Messstelle an der Kostenstelle gemessen, {@code c = 1}), die
+ * Kette ist der Weg durch den Baum. Berechnete Messstellen tragen keine elektrische Stellung — die beiden Wege
+ * überdecken sich nicht.
+ *
  * <p><b>Anteile (bewusst entschieden):</b> die Warnung nennt nie eine Menge — eine „doppelt gezählte“ Zahl wäre eine
  * zweite Rechnung und damit eine Korrektur in Verkleidung. Sie sagt, ob der Posten GANZ oder ZUM TEIL enthalten ist.
  * Enthalten ist der Anteil des Postens an der Kostenstelle, gemessen am Anteil der Summe daran: geht die Summe zu
@@ -74,6 +81,7 @@ public final class KostenstelleDoppelzaehlung {
     public static final String ANTEIL_GESAMT = "gesamt";
 
     private static final BigDecimal EINS = BigDecimal.ONE;
+    private static final BigDecimal HUNDERT = BigDecimal.valueOf(100);
 
     // ------------------------------------------------------------------------------- Eingang
 
@@ -86,6 +94,17 @@ public final class KostenstelleDoppelzaehlung {
 
     /** Die Formel einer berechneten Messstelle über Tage (der letzte einschließlich; {@code null} = offen). */
     public record Formel(String messstelle, LocalDate gueltigAb, LocalDate gueltigBis, List<Term> terme) {
+
+        boolean gilt(LocalDate tag) {
+            return (gueltigAb == null || !tag.isBefore(gueltigAb)) && (gueltigBis == null || !tag.isAfter(gueltigBis));
+        }
+    }
+
+    /**
+     * Eine zeitgültige elektrische Stellung „Unterzähler von“ (AP-04 {@code messstelle_stellung}, Tage, der letzte
+     * einschließlich; {@code null} = offen): {@code messstelle} hängt unter {@code unterzaehlerVon}.
+     */
+    public record Stellung(String messstelle, String unterzaehlerVon, LocalDate gueltigAb, LocalDate gueltigBis) {
 
         boolean gilt(LocalDate tag) {
             return (gueltigAb == null || !tag.isBefore(gueltigAb)) && (gueltigBis == null || !tag.isAfter(gueltigBis));
@@ -111,15 +130,23 @@ public final class KostenstelleDoppelzaehlung {
 
     // ------------------------------------------------------------------------------- Regel
 
+    /** Wie {@link #pruefe(String, LocalDate, LocalDate, List, List, List, List)}, ohne Stellungen. */
+    public static Urteil pruefe(String kostenstelle, LocalDate von, LocalDate bis, List<VerteilungRegeln.Ziel> ziele,
+            List<KostenstelleEnergieRegeln.Quelle> quellen, List<Formel> formeln) {
+        return pruefe(kostenstelle, von, bis, ziele, quellen, formeln, List.of());
+    }
+
     /**
      * Die Überdeckungen unter den Posten der Kostenstelle {@code kostenstelle} von {@code von} bis {@code bis}.
      *
      * @param ziele und {@code quellen} wie bei {@link KostenstelleEnergieRegeln#energie} — dieselben Posten
      * @param formeln die Formeln der berechneten Messstellen im Zeitraum (auch die ohne eigene Zuordnung: sie können
      *     Glied einer Kette sein)
+     * @param stellungen die „Unterzähler von“-Stellungen des Mandanten im Zeitraum (Zählerbaum S4) — auch über
+     *     Messstellen ohne eigene Zuordnung hinweg: sie können Glied einer Kette sein
      */
     public static Urteil pruefe(String kostenstelle, LocalDate von, LocalDate bis, List<VerteilungRegeln.Ziel> ziele,
-            List<KostenstelleEnergieRegeln.Quelle> quellen, List<Formel> formeln) {
+            List<KostenstelleEnergieRegeln.Quelle> quellen, List<Formel> formeln, List<Stellung> stellungen) {
         Map<String, KostenstelleEnergieRegeln.Quelle> nachKennzeichen = new LinkedHashMap<>();
         quellen.stream().sorted(Comparator.comparing(KostenstelleEnergieRegeln.Quelle::messstelle))
                 .forEach(q -> nachKennzeichen.put(q.messstelle(), q));
@@ -183,6 +210,28 @@ public final class KostenstelleDoppelzaehlung {
                         befunde.computeIfAbsent(t + " " + s + " " + umfang + " " + b.kette(),
                                 k -> new ArrayList<>()).add(new Tagesbefund(t, s, umfang, b.kette(), tag));
                     }
+                }
+            }
+            // Zählerbaum S4: eine Messstelle ist in jeder enthalten, unter der sie an DIESEM Tag im
+            // elektrischen Baum hängt („Unterzähler von", über jede Ebene) — ganz mit dem vollen Anteil
+            // der enthaltenden an der Kostenstelle (c = 1), sonst zum Teil.
+            Map<String, String> elternAmTag = new LinkedHashMap<>();
+            for (Stellung st : stellungen) {
+                if (st.gilt(tag) && st.unterzaehlerVon() != null) {
+                    elternAmTag.putIfAbsent(st.messstelle(), st.unterzaehlerVon());
+                }
+            }
+            for (Map.Entry<String, BigDecimal> summe : anteilHier.entrySet()) {
+                String s = summe.getKey();
+                KostenstelleEnergieRegeln.Quelle sq = nachKennzeichen.get(s);
+                for (String tKz : anteilHier.keySet()) {
+                    List<String> kette = baumKette(tKz, s, elternAmTag);
+                    if (tKz.equals(s) || kette == null || !gleicheSumme(sq, nachKennzeichen.get(tKz))) {
+                        continue;
+                    }
+                    String umfang = summe.getValue().compareTo(HUNDERT) >= 0 ? GANZ : TEILWEISE;
+                    befunde.computeIfAbsent(tKz + " " + s + " " + umfang + " " + kette,
+                            k -> new ArrayList<>()).add(new Tagesbefund(tKz, s, umfang, kette, tag));
                 }
             }
         }
@@ -273,6 +322,27 @@ public final class KostenstelleDoppelzaehlung {
 
     private static void dazu(Map<String, Beitrag> in, String kz, Beitrag b) {
         in.merge(kz, b, Beitrag::plus);
+    }
+
+    /**
+     * Der Weg durch den elektrischen Baum von {@code s} hinab zu {@code t} (beide einschließlich), wenn {@code t} an
+     * diesem Tag transitiv unter {@code s} hängt — sonst {@code null}. Ein Kreis in den Stellungen (den AP-04 §6
+     * ablehnt) bricht die Suche ab, statt zu hängen.
+     */
+    private static List<String> baumKette(String t, String s, Map<String, String> elternAmTag) {
+        List<String> hoch = new ArrayList<>(List.of(t));
+        Set<String> besucht = new LinkedHashSet<>(List.of(t));
+        String eltern = elternAmTag.get(t);
+        while (eltern != null && besucht.add(eltern)) {
+            hoch.add(eltern);
+            if (eltern.equals(s)) {
+                List<String> runter = new ArrayList<>(hoch);
+                java.util.Collections.reverse(runter);
+                return List.copyOf(runter);
+            }
+            eltern = elternAmTag.get(eltern);
+        }
+        return null;
     }
 
     private static Formel formelAm(List<Formel> formeln, LocalDate tag) {

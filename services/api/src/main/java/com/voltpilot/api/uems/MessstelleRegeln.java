@@ -1129,9 +1129,18 @@ public final class MessstelleRegeln {
      * @param verlaufsbeginn der Beginn ihres Verlaufs (erste Speisung), {@code null} = unbekannt
      * @param speisungAb     der Beginn der LAUFENDEN Speisung — ein Vorschlag beginnt nie davor
      *                       (ein Gerätewechsel wird nie verkettet); {@code null} = kein Gerät
+     * @param haengtAn       die Eltern-Komponente im Zählerbaum ({@code komponente_haengt_an},
+     *                       heute; {@code zaehlerbaum.md}); {@code null} = hängt an der Wurzel
      */
     public record VorschlagKomponente(String id, String anlage, String name, String rolle,
-            OffsetDateTime verlaufsbeginn, OffsetDateTime speisungAb, List<VorschlagKanal> messkanaele) {}
+            OffsetDateTime verlaufsbeginn, OffsetDateTime speisungAb, List<VorschlagKanal> messkanaele,
+            String haengtAn) {
+
+        public VorschlagKomponente(String id, String anlage, String name, String rolle,
+                OffsetDateTime verlaufsbeginn, OffsetDateTime speisungAb, List<VorschlagKanal> messkanaele) {
+            this(id, anlage, name, rolle, verlaufsbeginn, speisungAb, messkanaele, null);
+        }
+    }
 
     /** Ein BESTEHENDER Hauptzähler der Anlage mit der Komponente seiner führenden Quelle. */
     public record VorschlagHauptzaehler(String messstelle, String richtung, String komponente,
@@ -1197,9 +1206,12 @@ public final class MessstelleRegeln {
         private final Groesse hauptgroesse;
         private final VorschlagQuelle quelle;
         private final List<VorschlagNebengroesse> nebengroessen = new ArrayList<>();
-        private final String stellung;
-        private final VorschlagHauptzaehler bezugBestehend;
-        private final Roh bezugVorschlag;
+        // Die Stellung eines Bezugs wird NACH allen Komponenten aufgelöst (Zählerbaum):
+        // sein Eltern-Zähler kann später in der Liste stehen als er selbst.
+        private String stellung;
+        private VorschlagHauptzaehler bezugBestehend;
+        private Roh bezugVorschlag;
+        private boolean bezugOffen;
         private final OffsetDateTime ab;
         private final List<String> hinweise = new ArrayList<>();
         private String kennzeichen;
@@ -1237,20 +1249,22 @@ public final class MessstelleRegeln {
      * gekennzeichnet). Ein Ladestand steht als Nebengröße neben dem Speicher-Fluss derselben
      * Komponente, sonst für sich.
      *
-     * <p><b>Die Stellung kommt aus der Topologie:</b> die maßgebliche Netzmessung wird Hauptzähler
-     * (nur mit Netzanschluss und nur, solange kein anderer Zähler schon einer ist), Erzeugung wird
-     * Erzeuger, Speicher wird Speicher, jeder andere Bezug wird „Unterzähler von“ dem
-     * Bezug-Hauptzähler seiner Anlage — vorgeschlagen oder schon bestehend. Findet sich keiner,
-     * bleibt die Stellung offen, nie geraten.
+     * <p><b>Die Stellung kommt aus dem Zählerbaum</b> (seit S4; vorher aus der flachen Topologie):
+     * die maßgebliche Netzmessung wird Hauptzähler (nur mit Netzanschluss und nur, solange kein
+     * anderer Zähler schon einer ist), Erzeugung wird Erzeuger, Speicher wird Speicher, jeder
+     * andere Bezug wird „Unterzähler von“ der Messstelle des nächsten Vorfahren im Baum
+     * ({@code haengt_an}), der eine hat — vorgeschlagen oder schon bestehend ({@link
+     * #bezugAufloesen}). An der Wurzel (oder ohne Vorfahr mit Messstelle) ist das der
+     * Bezug-Hauptzähler seiner Anlage. Findet sich keiner, bleibt die Stellung offen, nie geraten.
      *
      * <p><b>Der Beginn ist der Verlauf:</b> die Bindung beginnt am Beginn der laufenden Speisung
      * (ein vorhandener Gerätewechsel wird NIE verkettet, Hinweis {@code geraet_gewechselt}) und nie
      * vor dem ersten Tag des Standorts ({@code standort_spaeter}).
      *
      * <p>Die Reihenfolge ist die der Liste UND die der Übernahme: je Anlage erst die Hauptzähler,
-     * dann Erzeuger, Speicher, Unterzähler, zuletzt das Stellungslose — so trägt ein Unterzähler
-     * ein Kennzeichen, das es beim Schreiben schon gibt. Die Kennzeichen sind die automatischen
-     * (E7) in genau dieser Reihenfolge.
+     * dann Erzeuger, Speicher, Unterzähler (Eltern vor ihren Kindern, nach Baum-Tiefe), zuletzt das
+     * Stellungslose — so trägt ein Unterzähler ein Kennzeichen, das es beim Schreiben schon gibt.
+     * Die Kennzeichen sind die automatischen (E7) in genau dieser Reihenfolge.
      */
     public static Vorschlagsliste vorschlagsliste(VorschlagEingang e) {
         ZoneId zone = e.standort().zeitzone() == null ? ZoneId.of("Europe/Berlin") : e.standort().zeitzone();
@@ -1297,8 +1311,21 @@ public final class MessstelleRegeln {
             }
         }
 
+        // Zählerbaum: die Stellung eines Bezugs erst jetzt auflösen — sein Eltern-Zähler kann in der
+        // Komponentenliste NACH ihm stehen. Kinder stehen (und schreiben bei der Übernahme) nach
+        // ihren Eltern: innerhalb der Unterzähler ordnet die Baum-Tiefe.
+        Map<String, VorschlagKomponente> komponentenJeId = new LinkedHashMap<>();
+        for (VorschlagKomponente k : e.komponenten() == null ? List.<VorschlagKomponente>of() : e.komponenten()) {
+            komponentenJeId.put(k.id(), k);
+        }
+        for (Roh r : rohe) {
+            if (r.bezugOffen) {
+                bezugAufloesen(r, rohe, komponentenJeId);
+            }
+        }
         rohe.sort(Comparator.<Roh>comparingInt(r -> r.anlageIndex)
                 .thenComparingInt(r -> stellungRang(r.stellung))
+                .thenComparingInt(r -> baumTiefe(r.komponente, komponentenJeId))
                 .thenComparingInt(r -> r.komponenteIndex)
                 .thenComparingInt(r -> r.flussIndex));
         int zaehler = e.zaehler();
@@ -1559,13 +1586,12 @@ public final class MessstelleRegeln {
         }
     }
 
-    /** Legt den Vorschlag an — mit Stellung und „Unterzähler von“ aus Topologie und Fluss. */
+    /** Legt den Vorschlag an — mit Stellung und „Unterzähler von“ aus Zählerbaum und Fluss. */
     private static Roh neuerRoh(VorschlagAnlage a, VorschlagKomponente k, int anlageIndex,
             int komponenteIndex, String fluss, Groesse ziel, VorschlagQuelle quelle,
             OffsetDateTime ab, List<Roh> rohe) {
         String stellung = null;
-        VorschlagHauptzaehler bestehend = null;
-        Roh bezug = null;
+        boolean bezugOffen = false;
         if (LADESTAND.equals(fluss) || speicherFluss(fluss)) {
             stellung = SPEICHER;
         } else if ("Erzeugung".equals(fluss)) {
@@ -1576,21 +1602,77 @@ public final class MessstelleRegeln {
                     .anyMatch(h -> h.komponente() == null || !h.komponente().equals(k.id()));
             stellung = fremderZaehler ? null : HAUPTZAEHLER;
         } else if (BEZUG.equals(fluss)) {
-            Roh v = bezugVorschlag(rohe, a, BEZUG);
-            VorschlagHauptzaehler b = hauptzaehler(a, BEZUG);
-            if (v != null) {
-                stellung = UNTERZAEHLER;
-                bezug = v;
-            } else if (b != null) {
-                stellung = UNTERZAEHLER;
-                bestehend = b;
-            }
+            // Erst nach ALLEN Komponenten auflösbar: der Eltern-Zähler des Baums kann noch kommen.
+            bezugOffen = true;
         }
         Roh r = new Roh(a, k, anlageIndex, komponenteIndex,
                 LADESTAND.equals(fluss) ? VORSCHLAG_FLUESSE.size() : VORSCHLAG_FLUESSE.indexOf(fluss),
-                ziel, quelle, stellung, bestehend, bezug, ab);
+                ziel, quelle, stellung, null, null, ab);
+        r.bezugOffen = bezugOffen;
         rohe.add(r);
         return r;
+    }
+
+    /**
+     * Die Stellung eines Bezugs aus dem ZÄHLERBAUM (zaehlerbaum.md, E1 A): „Unterzähler von“ der
+     * Messstelle des nächsten Vorfahren im Baum, der eine hat — vorgeschlagen (sein Bezug-Vorschlag)
+     * oder bestehend (sein Bezug-Messwert speist schon eine). Hängt die Komponente an der Wurzel oder
+     * hat kein Vorfahr bis zur Wurzel eine Messstelle, gilt die flache Regel: „Unterzähler von“ dem
+     * Bezug-Hauptzähler der Anlage — vorgeschlagen oder bestehend. Findet sich auch der nicht, bleibt
+     * die Stellung LEER; sie wird nie geraten.
+     */
+    private static void bezugAufloesen(Roh r, List<Roh> rohe, Map<String, VorschlagKomponente> jeId) {
+        Set<String> besucht = new HashSet<>();
+        String eltern = r.komponente.haengtAn();
+        while (eltern != null && besucht.add(eltern)) {
+            VorschlagKomponente kp = jeId.get(eltern);
+            if (kp == null || !kp.anlage().equals(r.anlage.id())) {
+                break;
+            }
+            Roh vorschlag = rohe.stream()
+                    .filter(x -> x != r && x.komponente == kp && BEZUG.equals(x.hauptgroesse.richtung()))
+                    .findFirst().orElse(null);
+            if (vorschlag != null) {
+                r.stellung = UNTERZAEHLER;
+                r.bezugVorschlag = vorschlag;
+                return;
+            }
+            String gespeist = (kp.messkanaele() == null ? List.<VorschlagKanal>of() : kp.messkanaele()).stream()
+                    .filter(c -> BEZUG.equals(fluss(c)) && c.speist() != null)
+                    .map(VorschlagKanal::speist)
+                    .findFirst().orElse(null);
+            if (gespeist != null) {
+                r.stellung = UNTERZAEHLER;
+                r.bezugBestehend = new VorschlagHauptzaehler(gespeist, BEZUG, kp.id(), null);
+                return;
+            }
+            eltern = kp.haengtAn();
+        }
+        Roh v = bezugVorschlag(rohe, r.anlage, BEZUG);
+        VorschlagHauptzaehler b = hauptzaehler(r.anlage, BEZUG);
+        if (v != null && v != r) {
+            r.stellung = UNTERZAEHLER;
+            r.bezugVorschlag = v;
+        } else if (b != null) {
+            r.stellung = UNTERZAEHLER;
+            r.bezugBestehend = b;
+        }
+    }
+
+    /** Die Tiefe einer Komponente im Zählerbaum — Kinder stehen (und schreiben) nach ihren Eltern. */
+    private static int baumTiefe(VorschlagKomponente k, Map<String, VorschlagKomponente> jeId) {
+        int tiefe = 0;
+        Set<String> besucht = new HashSet<>();
+        String eltern = k.haengtAn();
+        while (eltern != null && besucht.add(eltern)) {
+            VorschlagKomponente kp = jeId.get(eltern);
+            if (kp == null) {
+                break;
+            }
+            tiefe++;
+            eltern = kp.haengtAn();
+        }
+        return tiefe;
     }
 
     private static boolean speicherFluss(String fluss) {

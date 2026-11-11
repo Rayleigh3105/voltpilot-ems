@@ -74,6 +74,8 @@ export type ZeileArt = keyof typeof ZEILE_WORT;
  */
 export const KARTE_WORT = {
   bezug: 'Bezug laut Hauptzähler',
+  /** Zählerbaum S4: das Ganze eines Unterverteilungs-Blocks ist der eigene Messwert des Unterzählers. */
+  bezugUnterzaehler: 'Bezug laut Unterzähler',
   verbrauch: 'Verbrauch in der Anlage',
   erfasst: { keiner: 'durch Zähler erfasst', singular: 'durch 1 Zähler erfasst', plural: 'durch {n} Zähler erfasst' },
   ohne: 'ohne eigenen Zähler',
@@ -134,7 +136,12 @@ export const AUSSERHALB_SATZ = {
  */
 export const HILFE_NEGATIV = 'Die Unterzähler zählen mehr als der Hauptzähler. VoltPilot nennt keine Ursache.';
 export const HILFE_NEGATIV_VERBRAUCH = 'Die Unterzähler zählen mehr als der Verbrauch in der Anlage. VoltPilot nennt keine Ursache.';
-const hilfeNegativ = (einfach: boolean): string => (einfach ? HILFE_NEGATIV : HILFE_NEGATIV_VERBRAUCH);
+/** Zählerbaum S4: derselbe Satz am Rest einer Unterverteilung — ihr Ganzes ist ihr eigener Messwert. */
+export const HILFE_NEGATIV_UNTERVERTEILUNG = 'Die Unterzähler zählen mehr als dieser Unterzähler misst. VoltPilot nennt keine Ursache.';
+/** Welcher Block gerade gebaut wird: ein Hauptzähler Bezug oder eine Unterverteilung (Zählerbaum S4). */
+export type BlockArt = 'hauptzaehler' | 'unterverteilung';
+const hilfeNegativ = (einfach: boolean, art: BlockArt = 'hauptzaehler'): string =>
+  art === 'unterverteilung' ? HILFE_NEGATIV_UNTERVERTEILUNG : einfach ? HILFE_NEGATIV : HILFE_NEGATIV_VERBRAUCH;
 
 /** Die Live-Zeile steht nur mit einer Zahl - ein Strich mit Gerätegründen ist kein Teil der Antwort (Konzept a1 §6.9). */
 export const LIVE_JETZT = 'jetzt {zahl} ohne eigenen Zähler';
@@ -351,6 +358,8 @@ export interface EnergiebilanzBild {
   laeuft: string | null;
   leer: Leerzustand | null;
   hauptzaehler: HauptzaehlerBild[];
+  /** Zählerbaum S4: je Unterverteilung (Unterzähler mit eigenen Unterzählern) ein Block derselben Form. */
+  unterverteilungen: HauptzaehlerBild[];
 }
 
 export interface BilanzKontext {
@@ -641,7 +650,7 @@ function summenZeile(
   };
 }
 
-function restZeile(w: BilanzWerte, terme: Terme, rest: BilanzMessstelleRef | null, ebene: string, zone: string, ctx: BilanzKontext, einfach: boolean): ZeileBild {
+function restZeile(w: BilanzWerte, terme: Terme, rest: BilanzMessstelleRef | null, ebene: string, zone: string, ctx: BilanzKontext, einfach: boolean, blockArt: BlockArt): ZeileBild {
   const r = w.rest;
   const negativ = r.menge !== null && r.menge < 0;
   return {
@@ -652,7 +661,7 @@ function restZeile(w: BilanzWerte, terme: Terme, rest: BilanzMessstelleRef | nul
     // „nicht zugeordnet“ steht als Kennzeichen am Rest; die Zeile heißt „ohne eigenen Zähler“ - einmal genügt.
     woerter: einmal(ohneLeere([...r.kennzeichen.filter((k) => k !== NICHT_ZUGEORDNET), r.zustand !== VOLLSTAENDIG ? r.zustand : null])),
     ton: r.menge === null ? 'off' : negativ || r.zustand !== VOLLSTAENDIG ? 'warn' : 'ok',
-    saetze: negativ ? ohneLeere([r.kundensatz, hilfeNegativ(einfach)]) : [],
+    saetze: negativ ? ohneLeere([r.kundensatz, hilfeNegativ(einfach, blockArt)]) : [],
     teile: [],
     herkunft: restHerkunft(r.herkunft, w.eingaenge, terme, ebene, zone, ctx),
   };
@@ -686,7 +695,7 @@ function absteigend(teile: TeilBild[], w: BilanzWerte): TeilBild[] {
 }
 
 /** Die vier Zeilen eines Zeitraums - „ohne eigenen Zähler“ steht immer (auch 0, negativ oder ohne Zahl). */
-export function zeilenBild(w: BilanzWerte, ab: BilanzAbschnitt, h: BilanzHauptzaehler, zone: string, ctx: BilanzKontext): ZeileBild[] {
+export function zeilenBild(w: BilanzWerte, ab: BilanzAbschnitt, h: BilanzHauptzaehler, zone: string, ctx: BilanzKontext, blockArt: BlockArt = 'hauptzaehler'): ZeileBild[] {
   const hz = h.messstelle.kennzeichen;
   const ebene = ab.raster;
   const ganz = ganzesDer(w);
@@ -697,12 +706,12 @@ export function zeilenBild(w: BilanzWerte, ab: BilanzAbschnitt, h: BilanzHauptza
     summenZeile('zufluss', w.zufluss, w, ab.terme, hz, ebene, ctx, g, am),
     summenZeile('abfluss', w.abfluss, w, ab.terme, hz, ebene, ctx, g, am),
     summenZeile('zugeordnet', w.zugeordnet, w, ab.terme, hz, ebene, ctx, g, am),
-    restZeile(w, ab.terme, h.rest_messstelle, ebene, zone, ctx, einfach),
+    restZeile(w, ab.terme, h.rest_messstelle, ebene, zone, ctx, einfach, blockArt),
   ]);
 }
 
 /** Der Antwortsatz eines Zeitraums (Konzept a1 §6.9) - Richtung, Größe, Zeitraum; fehlend und negativ mit Grund. */
-function antwortBild(w: BilanzWerte, zeilen: ZeileBild[], ganz: Dez | null, einfach: boolean, zeitraum: string, namen: (k: string) => string): AntwortBild {
+function antwortBild(w: BilanzWerte, zeilen: ZeileBild[], ganz: Dez | null, einfach: boolean, zeitraum: string, namen: (k: string) => string, blockArt: BlockArt): AntwortBild {
   const r = w.rest;
   const rest = zeilen.find((z) => z.art === 'rest');
   const am = einfach ? ANTEIL_AM.bezug : ANTEIL_AM.verbrauch;
@@ -714,7 +723,7 @@ function antwortBild(w: BilanzWerte, zeilen: ZeileBild[], ganz: Dez | null, einf
       ? { satz: fuelle(ANTWORT.fehlt, { zeitraum, namen: r.fehlend.map(namen).join(', ') }), ton: 'off' }
       : { satz: fuelle(ANTWORT.keineWerte, { zeitraum }), ton: 'off' };
   }
-  if (r.menge < 0) return { satz: hilfeNegativ(einfach), ton: 'warn' };
+  if (r.menge < 0) return { satz: hilfeNegativ(einfach, blockArt), ton: 'warn' };
   const restZahl = rest?.zahl ?? zahl(r.menge, r.einheit, null);
   if (w.zugeordnet.gesamt === 0) return { satz: fuelle(ANTWORT.keinUnterzaehler, { am, rest: restZahl }), ton: 'ok' };
   if (r.menge === 0) return { satz: fuelle(ANTWORT.alles, { ganz: einfach ? GANZ_IM_SATZ.bezug : GANZ_IM_SATZ.verbrauch }), ton: 'ok' };
@@ -725,7 +734,7 @@ function antwortBild(w: BilanzWerte, zeilen: ZeileBild[], ganz: Dez | null, einf
 }
 
 /** Die drei Zeilen der Karte aus den vier Zeilen der Route. */
-function kartenZeilen(w: BilanzWerte, zeilen: ZeileBild[], ganzText: string | null, einfach: boolean, ebene: string): KartenZeile[] {
+function kartenZeilen(w: BilanzWerte, zeilen: ZeileBild[], ganzText: string | null, einfach: boolean, ebene: string, blockArt: BlockArt): KartenZeile[] {
   const zeile = (art: ZeileArt) => zeilen.find((z) => z.art === art);
   const zufluss = zeile('zufluss');
   const abfluss = zeile('abfluss');
@@ -733,7 +742,13 @@ function kartenZeilen(w: BilanzWerte, zeilen: ZeileBild[], ganzText: string | nu
   const rest = zeile('rest');
   const n = w.zugeordnet.gesamt;
   const ganz: KartenZeile = einfach
-    ? { art: 'ganz', wort: KARTE_WORT.bezug, zahl: zufluss?.zahl ?? zahl(null, 'kWh', ebene), ton: zufluss?.ton ?? 'off', unter: ohneLeere([zufluss?.zusatz]) }
+    ? {
+        art: 'ganz',
+        wort: blockArt === 'unterverteilung' ? KARTE_WORT.bezugUnterzaehler : KARTE_WORT.bezug,
+        zahl: zufluss?.zahl ?? zahl(null, 'kWh', ebene),
+        ton: zufluss?.ton ?? 'off',
+        unter: ohneLeere([zufluss?.zusatz]),
+      }
     : {
         art: 'ganz',
         wort: KARTE_WORT.verbrauch,
@@ -759,14 +774,14 @@ function kartenZeilen(w: BilanzWerte, zeilen: ZeileBild[], ganzText: string | nu
       unter: ohneLeere([
         w.rest.menge === null && w.rest.fehlend.length > 0 ? fehltText(w.rest.fehlend) : null,
         ...(rest?.woerter ?? []).filter((x) => x !== BERECHNET_DIFFERENZ),
-        ...(rest?.saetze ?? []).filter((x) => x !== hilfeNegativ(einfach)),
+        ...(rest?.saetze ?? []).filter((x) => x !== hilfeNegativ(einfach, blockArt)),
       ]),
     },
   ];
 }
 
-function tagBild(w: BilanzWerte, ab: BilanzAbschnitt, h: BilanzHauptzaehler, zone: string, ctx: BilanzKontext, titel: string | null, kompakt: boolean, zeitraum: string): TagBild {
-  const zeilen = zeilenBild(w, ab, h, zone, ctx);
+function tagBild(w: BilanzWerte, ab: BilanzAbschnitt, h: BilanzHauptzaehler, zone: string, ctx: BilanzKontext, titel: string | null, kompakt: boolean, zeitraum: string, blockArt: BlockArt): TagBild {
+  const zeilen = zeilenBild(w, ab, h, zone, ctx, blockArt);
   const hz = h.messstelle.kennzeichen;
   const einfach = istEinfach(w, hz);
   const ganzText = ganzesDer(w);
@@ -782,8 +797,8 @@ function tagBild(w: BilanzWerte, ab: BilanzAbschnitt, h: BilanzHauptzaehler, zon
     titel,
     kompakt,
     einfach,
-    antwort: antwortBild(w, zeilen, ganz, einfach, zeitraum, namen),
-    karte: kartenZeilen(w, zeilen, ganzText, einfach, ab.raster),
+    antwort: antwortBild(w, zeilen, ganz, einfach, zeitraum, namen, blockArt),
+    karte: kartenZeilen(w, zeilen, ganzText, einfach, ab.raster, blockArt),
     balken: erfasst !== null && ohne !== null ? { erfasst, ohne } : null,
     unterzaehler: absteigend(zeilen.find((z) => z.art === 'zugeordnet')?.teile ?? [], w),
     zeilen,
@@ -808,16 +823,27 @@ export function hauptzaehlerTitel(name: string | null, kennzeichen: string): str
   return name && name.toLocaleLowerCase('de-DE').startsWith(UEMS_HAUPTZAEHLER.toLocaleLowerCase('de-DE')) ? b : `${UEMS_HAUPTZAEHLER} ${b}`;
 }
 
-function hauptzaehlerBild(h: BilanzHauptzaehler, b: Bilanz, ctx: BilanzKontext): HauptzaehlerBild {
+/** Zählerbaum S4: „Unterzähler UV Halle (MS-91)“ - das Stellungs-Wort vor dem Block einer Unterverteilung. */
+export const UNTERVERTEILUNG_WORT = 'Unterzähler';
+
+export function unterverteilungTitel(name: string | null, kennzeichen: string): string {
+  const b = benannt(name, kennzeichen);
+  return name && name.toLocaleLowerCase('de-DE').startsWith(UNTERVERTEILUNG_WORT.toLocaleLowerCase('de-DE')) ? b : `${UNTERVERTEILUNG_WORT} ${b}`;
+}
+
+function hauptzaehlerBild(h: BilanzHauptzaehler, b: Bilanz, ctx: BilanzKontext, blockArt: BlockArt = 'hauptzaehler'): HauptzaehlerBild {
   const zone = b.zeitzone;
   const heutigeTerme = h.abschnitte[h.abschnitte.length - 1]?.terme ?? [];
   const mehrere = h.stellung_geaendert || h.abschnitte.length > 1;
   const zeitraum = zeitraumText(b.periode, b.von);
   const rest = h.rest_messstelle;
+  const name = nameVon(heutigeTerme, h.messstelle.kennzeichen) ?? h.messstelle.name;
   return {
     key: h.messstelle.id,
     kennzeichen: h.messstelle.kennzeichen,
-    titel: hauptzaehlerTitel(nameVon(heutigeTerme, h.messstelle.kennzeichen) ?? h.messstelle.name, h.messstelle.kennzeichen),
+    titel: blockArt === 'unterverteilung'
+      ? unterverteilungTitel(name, h.messstelle.kennzeichen)
+      : hauptzaehlerTitel(name, h.messstelle.kennzeichen),
     live: liveBild(h.live, zone, ctx),
     vorschlag: h.vorschlag
       ? { hauptzaehlerId: h.vorschlag.hauptzaehler_id, name: h.vorschlag.name, satz: fuelle(REST_VORSCHLAG, { name: h.vorschlag.name }) }
@@ -829,7 +855,7 @@ function hauptzaehlerBild(h: BilanzHauptzaehler, b: Bilanz, ctx: BilanzKontext):
       titel: mehrere ? spanneText(ab.von, ab.bis) : null,
       tage: ab.werte.map((w) => {
         const eigenerTitel = mehrere || ab.werte.length > 1;
-        return tagBild(w, ab, h, zone, ctx, eigenerTitel ? spanneText(w.von, w.bis) : null, ab.werte.length > 1, eigenerTitel ? spanneText(w.von, w.bis) : zeitraum);
+        return tagBild(w, ab, h, zone, ctx, eigenerTitel ? spanneText(w.von, w.bis) : null, ab.werte.length > 1, eigenerTitel ? spanneText(w.von, w.bis) : zeitraum, blockArt);
       }),
       geteilt: (ab.geteilte_register ?? []).map((g) => uemsGeteiltSatz(g.messstellen)),
       ausserhalb: ausserhalbSatz(ab.ausserhalb ?? [], ctx),
@@ -883,8 +909,9 @@ export function energiebilanzBild(b: Bilanz, ctx: BilanzKontext): EnergiebilanzB
     zeitraum: zeitraumText(b.periode, b.von),
     zone: b.zeitzone,
     laeuft: offenSatz(b, ctx.heute),
-    leer: b.hauptzaehler.length === 0 ? OHNE_HAUPTZAEHLER : null,
+    leer: b.hauptzaehler.length === 0 && (b.unterverteilungen ?? []).length === 0 ? OHNE_HAUPTZAEHLER : null,
     hauptzaehler: b.hauptzaehler.map((h) => hauptzaehlerBild(h, b, mitPeriode)),
+    unterverteilungen: (b.unterverteilungen ?? []).map((h) => hauptzaehlerBild(h, b, mitPeriode, 'unterverteilung')),
   };
 }
 

@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.components.KomponenteHaengtAnRepository;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.measurement.MesskanalService;
 import com.voltpilot.api.topology.TopologyDeriver;
@@ -100,6 +101,7 @@ public class MessstelleVorschlagService {
     private final MesskanalService messkanaele;
     private final GeraetRepository geraete;
     private final TopologyService topologie;
+    private final KomponenteHaengtAnRepository zaehlerbaum;
     private final EntityTypeCatalog typen;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaktion;
@@ -110,9 +112,10 @@ public class MessstelleVorschlagService {
             MessstelleZuordnungRepository zuordnungenRepo, MessstelleService messstellenDienst,
             MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen,
             MesskanalService messkanaele, GeraetRepository geraete, TopologyService topologie,
-            EntityTypeCatalog typen, JdbcTemplate jdbc, PlatformTransactionManager transaktionen,
-            RechtPruefung rechte) {
+            KomponenteHaengtAnRepository zaehlerbaum, EntityTypeCatalog typen, JdbcTemplate jdbc,
+            PlatformTransactionManager transaktionen, RechtPruefung rechte) {
         this.rechte = rechte;
+        this.zaehlerbaum = zaehlerbaum;
         this.standorte = standorte;
         this.standortDienst = standortDienst;
         this.messstellen = messstellen;
@@ -233,7 +236,7 @@ public class MessstelleVorschlagService {
                 wer, MessstelleService.HERKUNFT_BESTAND);
     }
 
-    /** Das Kennzeichen des Hauptzählers, auf den „Unterzähler von“ zeigt — bestehend oder eben angelegt. */
+    /** Das Kennzeichen der Messstelle, auf die „Unterzähler von“ zeigt — bestehend oder eben angelegt. */
     private String bezug(VorschlagZeile z, Map<String, UUID> angelegt) {
         MessstelleRegeln.VorschlagBezug b = z.unterzaehlerVon();
         if (b == null) {
@@ -248,7 +251,7 @@ public class MessstelleVorschlagService {
         }
         throw MessstelleAbgelehnt.regel(MessstelleRegeln.Fehler.STELLUNG_UNGUELTIG,
                 "„" + z.name() + "“ ist als Unterzähler von " + b.messstelle()
-                        + " vorgeschlagen — übernehmen Sie diesen Hauptzähler mit.",
+                        + " vorgeschlagen — übernehmen Sie diesen Zähler mit.",
                 Map.of("grund", "bezug_fehlt", "komponente", z.komponente(), "kanal", z.quelle().kanal(),
                         "hauptzaehler", b.messstelle()));
     }
@@ -386,13 +389,17 @@ public class MessstelleVorschlagService {
                     laufend.putIfAbsent(sp.entityId(), sp.gueltigAb());
                 }
             }
+            // Zählerbaum S4: „hängt an“ am Gerät (heute) trägt die Stellung des Vorschlags —
+            // ein Unterzähler wird „Unterzähler von“ der Messstelle seines Eltern-Zählers.
+            Map<UUID, UUID> baum = zaehlerbaum.aktiverBaum(a.id(), heute);
             for (Komponente k : komponentenDerAnlage(a.id())) {
                 komponentenNamen.put(k.id().toString(), anzeigename(k));
                 Instant verlaufsbeginn = verlauf.getOrDefault(k.id(),
                         k.createdAt().truncatedTo(ChronoUnit.MINUTES));
+                UUID haengtAn = baum.get(k.id());
                 komponenten.add(new VorschlagKomponente(k.id().toString(), a.id().toString(), anzeigename(k),
                         rolle(k, netzmessung), zeit(verlaufsbeginn, zone), zeit(laufend.get(k.id()), zone),
-                        kanaele(a.id(), k.id(), gespeist)));
+                        kanaele(a.id(), k.id(), gespeist), haengtAn == null ? null : haengtAn.toString()));
             }
         }
 

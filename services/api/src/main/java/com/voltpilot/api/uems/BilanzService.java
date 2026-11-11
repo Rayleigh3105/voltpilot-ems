@@ -136,8 +136,28 @@ public class BilanzService {
             hauptzaehler.add(hauptzaehler(x, siteId, name, periode, von, bis, heute, stand, alleReste.get(x.id()),
                     zone));
         }
+        // Zählerbaum S4 (§4.3 Satz 2): je Unterverteilung — Unterzähler mit eigenen Unterzählern — ein
+        // Block derselben Form; sein Rest zieht nur die direkten Kinder ab. Ein Unterzähler ohne
+        // Unterzähler hat keine Abschnitte und keinen Vorschlag und fällt darum ganz weg.
+        List<BilanzDto.Hauptzaehler> unterverteilungen = new ArrayList<>();
+        for (String kz : unterzaehlerDerAnlage(stand, siteId, von, bis)) {
+            Messstelle x = stand.nachKennzeichen().get(kz);
+            if (x == null) {
+                continue;
+            }
+            if (!imZugriff.test(eingaenge(x, von, bis, heute, stand, alleReste.get(x.id())))) {
+                ausserhalb = true;
+                continue;
+            }
+            BilanzDto.Hauptzaehler block = hauptzaehler(x, siteId, x.name() == null ? x.kennzeichen() : x.name(),
+                    periode, von, bis, heute, stand, alleReste.get(x.id()), zone);
+            if (!block.abschnitte().isEmpty() || block.vorschlag() != null || block.restMessstelle() != null) {
+                unterverteilungen.add(block);
+            }
+        }
         return new BilanzDto.Bilanz(new BilanzDto.Anlage(siteId, name), periode, am, von, bis, zone.getId(),
-                List.copyOf(hauptzaehler), ausserhalb ? RechtPruefung.AUSSERHALB_ZUGRIFF : null);
+                List.copyOf(hauptzaehler), List.copyOf(unterverteilungen),
+                ausserhalb ? RechtPruefung.AUSSERHALB_ZUGRIFF : null);
     }
 
     /** Jede Messstelle, die der Block des Hauptzählers nennt oder rechnet: er, sein Rest, die Terme der Tage und heute. */
@@ -174,6 +194,19 @@ public class BilanzService {
         for (BilanzAbleitung.StellungZeile z : stand.zeilen()) {
             if (HAUPTZAEHLER.equals(z.stellung()) && BEZUG.equals(z.richtung())
                     && siteId.toString().equals(z.anlage())
+                    && (z.ab() == null || !z.ab().isAfter(bis)) && (z.bis() == null || !z.bis().isBefore(von))) {
+                out.add(z.messstelle());
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /** Die Unterzähler (gemessen, Strom), die in der Periode an mindestens einem Tag in DIESER Anlage stehen. */
+    private static List<String> unterzaehlerDerAnlage(BilanzStellungen.Stand stand, UUID siteId, LocalDate von,
+            LocalDate bis) {
+        TreeSet<String> out = new TreeSet<>();
+        for (BilanzAbleitung.StellungZeile z : stand.zeilen()) {
+            if ("Unterzähler".equals(z.stellung()) && siteId.toString().equals(z.anlage())
                     && (z.ab() == null || !z.ab().isAfter(bis)) && (z.bis() == null || !z.bis().isBefore(von))) {
                 out.add(z.messstelle());
             }
@@ -383,11 +416,6 @@ public class BilanzService {
         if (a == null || a.hauptzaehlerId() == null) {
             throw BilanzAbgelehnt.anfrage("hauptzaehler_id", "„hauptzaehler_id“ fehlt: die Messstelle des Hauptzählers.");
         }
-        String name = a.name() == null ? anlageName + NAME_ENDUNG : a.name().strip();
-        if (name.isEmpty()) {
-            throw BilanzAbgelehnt.anfrage("name", "Der Name ist leer — ohne Angabe heißt der Rest „"
-                    + anlageName + NAME_ENDUNG + "“.");
-        }
         BilanzStellungen.Stand stand = stellungen.lesen();
         Messstelle x = stand.nachKennzeichen().values().stream()
                 .filter(m -> m.id().equals(a.hauptzaehlerId())).findFirst()
@@ -396,6 +424,16 @@ public class BilanzService {
         BilanzAbleitung.RestFassung f = stand.rest(x.kennzeichen(), heute);
         if (f.fehler() != null || !siteId.toString().equals(f.anlage())) {
             throw BilanzAbgelehnt.ohneHauptzaehler(x.kennzeichen());
+        }
+        // Zählerbaum S4: der Rest einer Unterverteilung heißt nach IHR, der des Hauptzählers nach der Anlage.
+        boolean hauptzaehlerHeute = stand.zeilen().stream().anyMatch(z -> z.messstelle().equals(x.kennzeichen())
+                && HAUPTZAEHLER.equals(z.stellung()) && z.gilt(heute));
+        String vorgabe = (hauptzaehlerHeute ? anlageName : x.name() == null ? x.kennzeichen() : x.name())
+                + NAME_ENDUNG;
+        String name = a.name() == null ? vorgabe : a.name().strip();
+        if (name.isEmpty()) {
+            throw BilanzAbgelehnt.anfrage("name", "Der Name ist leer — ohne Angabe heißt der Rest „"
+                    + vorgabe + "“.");
         }
         MessstelleFormelService.RestAngelegt r = formeln.restAnlegen(x, name, wer);
         return new BilanzDto.RestAngelegt(r.neu(), new BilanzDto.MessstelleRef(x.id(), x.kennzeichen(), x.name()),

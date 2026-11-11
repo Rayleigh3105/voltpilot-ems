@@ -423,7 +423,9 @@ describe('Bilanz-Vertrag: die Vektoren', () => {
         break;
       }
       case 'rest_aus_stellung': {
-        const ist = restAusStellung(ein.hauptzaehler, ein.tag, stellungenDesReferenzunternehmens());
+        // Zählerbaum S4: ein Fall mit mehr Baum-Ebenen, als das Referenzunternehmen hat, bringt
+        // seine Stellungen als neutrale Platzhalter selbst mit (F20).
+        const ist = restAusStellung(ein.hauptzaehler, ein.tag, ein.stellungen ?? stellungenDesReferenzunternehmens());
         expect(ist.hauptzaehler, `${why} · Hauptzähler`).toBe(ein.hauptzaehler);
         expect(ist.anlage, `${why} · System`).toBe(soll.anlage);
         expect(ist.terme, `${why} · Terme aus der Stellung`).toEqual(soll.terme);
