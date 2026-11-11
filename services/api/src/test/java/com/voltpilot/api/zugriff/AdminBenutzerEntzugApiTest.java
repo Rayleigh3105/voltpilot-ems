@@ -24,9 +24,9 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.core.Authentication;
@@ -83,7 +83,7 @@ class AdminBenutzerEntzugApiTest {
     }
 
     @Autowired MockMvc mvc;
-    @MockBean KeycloakAdminClient keycloak;
+    @MockitoBean KeycloakAdminClient keycloak;
     private JdbcTemplate root;
     private UUID tenant;
     private UUID unternehmen;

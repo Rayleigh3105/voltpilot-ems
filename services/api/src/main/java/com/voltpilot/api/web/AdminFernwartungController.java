@@ -300,7 +300,7 @@ public class AdminFernwartungController {
             @Valid @RequestBody SchluesselRequest req, @AuthenticationPrincipal Jwt caller) {
         String edgeRef = referenz(ref);
         if (!EdgeRef.isGeneratedFormat(edgeRef) && !service.referenzBekannt(edgeRef)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Referenz " + edgeRef + " ist weder eine Box-Referenz mit Prüfzeichen (edge-xxxxxxx) "
                             + "noch der Plattform als Gerät bekannt.");
         }
@@ -469,7 +469,7 @@ public class AdminFernwartungController {
         }
         String ref = DeviceController.canonicalExternalRef(roh);
         if (EdgeRef.isGeneratedFormat(ref) && !EdgeRef.isValid(ref)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Das Prüfzeichen von " + ref + " stimmt nicht - bitte die Referenz an der Box prüfen.");
         }
         return ref;

@@ -90,7 +90,7 @@ public class HeizstabGeraet {
      */
     public void pruefe(UUID siteId, UUID selbst, String communication, Map<String, Object> connection) {
         if (!"shelly_http".equals(communication)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Ein Heizstab über mehrere Ausgänge geht heute nur mit einem Shelly.");
         }
         if (!HeizstabAusgaenge.istMenge(connection)) {
@@ -101,7 +101,7 @@ public class HeizstabGeraet {
             fehler = HeizstabAusgaenge.anschlussFehler(connection);
         }
         if (fehler != null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, fehler);
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, fehler);
         }
         Integer belegt = belegterAusgang(siteId, selbst, connection);
         if (belegt != null) {

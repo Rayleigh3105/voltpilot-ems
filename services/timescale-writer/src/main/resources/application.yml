@@ -2,6 +2,15 @@ spring:
   application:
     name: voltpilot-timescale-writer
 
+  # Boot 4 defaults HTTP JSON (de)serialization to Jackson 3, which does not know how to
+  # serialize a classic com.fasterxml.jackson.databind.JsonNode (its own, unrelated type).
+  # This service's own code still builds payloads with classic Jackson 2 types; keeps
+  # MappingJackson2HttpMessageConverter (via spring-boot-jackson2) as the HTTP converter.
+  # Drop once the full Jackson 3 migration (tools.jackson.*) lands.
+  http:
+    converters:
+      preferred-json-mapper: jackson2
+
   # Ceiling for the graceful shutdown below: after this the remaining
   # in-flight work is cut and the JVM leaves. Must stay COMFORTABLY BELOW the
   # pod's terminationGracePeriodSeconds (recommendation: 20s here, 45s there,

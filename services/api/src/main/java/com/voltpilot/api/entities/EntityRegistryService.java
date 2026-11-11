@@ -704,7 +704,7 @@ public class EntityRegistryService {
                             + "\". Verfügbare Typen liefert der Typkatalog.");
         }
         if (type.composed()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Dieser Entitätstyp wird aus den Stammdaten der Anlage abgeleitet "
                             + "(Speicher, Messpunkte + Bootstrap) und kann nicht direkt "
                             + "angelegt werden.");
@@ -787,7 +787,7 @@ public class EntityRegistryService {
         String role = switch (entityType) {
             case TYPE_PRODUCER -> "pv-generation";
             case TYPE_GRID_METER -> "grid-meter";
-            default -> throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            default -> throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Dieser Entitätstyp wird über den Wechselrichter/Speicher der Anlage "
                             + "eingerichtet und kann nicht als Quelle übernommen werden.");
         };
@@ -851,7 +851,7 @@ public class EntityRegistryService {
         if (configEdit) {
             EntityTypeCatalog.EntityType type = catalog.find(row.entityType());
             if (type != null && type.composed()) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "Die Konfiguration dieses Entitätstyps wird aus den Stammdaten der "
                                 + "Anlage abgeleitet - bitte dort pflegen (Speicher-Editor, "
                                 + "Messpunkte, Netzladen-Schalter).");

@@ -221,7 +221,7 @@ public class ChargingConfigService {
         if (bindung == null) {
             if (vereinbartKwDialog == null || vereinbartKwDialog.isNaN()
                     || !(vereinbartKwDialog > 0) || vereinbartKwDialog > MAX_GRID_LIMIT_KW) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "An diese Anlage ist heute kein Netzanschluss gebunden. Tragen Sie die vereinbarte Leistung im Dialog ein.");
             }
             vereinbart = BigDecimal.valueOf(vereinbartKwDialog);
@@ -231,7 +231,7 @@ public class ChargingConfigService {
             vereinbart = anschluss == null ? null : anschluss.vereinbartKw();
             herkunft = "Netzanschluss " + bindung.netzanschlussKennzeichen();
             if (vereinbart == null) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "Beim Netzanschluss " + bindung.netzanschlussKennzeichen()
                                 + " ist keine vereinbarte Leistung hinterlegt.");
             }
@@ -239,7 +239,7 @@ public class ChargingConfigService {
 
         BigDecimal grenze = BigDecimal.valueOf(gridLimitKw);
         if (grenze.compareTo(vereinbart) > 0) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     kw(grenze) + " kW liegen über " + kw(vereinbart)
                             + " kW vereinbarter Leistung (" + herkunft + ") — bitte prüfen.");
         }
@@ -249,13 +249,13 @@ public class ChargingConfigService {
         Double grundlast = rahmen == null ? null : rahmen.maxHouseLoadKw();
         Double reserve = rahmen == null ? null : rahmen.houseReserveKw();
         if (grundlast == null || reserve == null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Für die Plausibilitätsprüfung fehlen die Grundlast der letzten 7 Tage oder die Hausreserve. VoltPilot richtet diese Werte ein.");
         }
         BigDecimal budget = grenze.subtract(BigDecimal.valueOf(grundlast))
                 .subtract(BigDecimal.valueOf(reserve));
         if (budget.signum() <= 0) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Grundlast der letzten 7 Tage (" + kw(BigDecimal.valueOf(grundlast))
                             + " kW) und die Hausreserve (" + kw(BigDecimal.valueOf(reserve))
                             + " kW) lassen innerhalb von " + kw(grenze)
@@ -597,7 +597,7 @@ public class ChargingConfigService {
             return zielBoxJeBox(gewaehlt, aktive, belegt, jeBox.get());
         }
         if (belegt.size() > 1) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Ladepunkte dieser Anlage sind bereits auf mehrere Boxen verteilt. "
                             + "VoltPilot sendet keine weitere Ladepark-Konfiguration, bis die "
                             + "Zuständigkeit geklärt ist.");
@@ -607,15 +607,15 @@ public class ChargingConfigService {
                 : vorhanden != null ? vorhanden
                 : aktive.size() == 1 ? aktive.get(0) : null;
         if (ziel == null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Wählen Sie die Box, mit der sich die Ladesäule verbinden soll.");
         }
         if (!aktive.contains(ziel)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die gewählte Box gehört nicht zu dieser Anlage oder ist nicht mehr eingebaut.");
         }
         if (vorhanden != null && !vorhanden.equals(ziel)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Ladepunkte dieser Anlage sind bereits an eine andere Box angebunden. "
                             + "Eine zweite Box für Ladepunkte ist erst mit der gemeinsamen "
                             + "Steuerung verfügbar.");
@@ -633,20 +633,20 @@ public class ChargingConfigService {
     private static UUID zielBoxJeBox(UUID gewaehlt, List<UUID> aktive, List<UUID> belegt, Verteilung v) {
         UUID ziel = gewaehlt != null ? gewaehlt : belegt.size() == 1 ? belegt.get(0) : null;
         if (ziel == null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Wählen Sie die Box, mit der sich die Ladesäule verbinden soll.");
         }
         if (!aktive.contains(ziel)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die gewählte Box gehört nicht zu dieser Anlage oder ist nicht mehr eingebaut.");
         }
         if (!v.boxen().contains(ziel)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Diese Box liest in der Gemeinsamen Steuerung nur. Verbinden Sie die Ladesäule mit einer Box, "
                             + "die die Anlage führt oder mitsteuert.");
         }
         if (!v.scharf() && !belegt.isEmpty() && !belegt.contains(ziel)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Die Gemeinsame Steuerung dieser Anlage ist angehalten. Eine weitere Box für Ladepunkte "
                             + "ist erst wieder möglich, wenn sie aktiv ist.");
         }

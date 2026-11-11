@@ -191,6 +191,6 @@ public class DienstAnsichtService {
     }
 
     private static ResponseStatusException fehler(String grund) {
-        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Ansicht ungültig: " + grund + ".");
+        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Ansicht ungültig: " + grund + ".");
     }
 }

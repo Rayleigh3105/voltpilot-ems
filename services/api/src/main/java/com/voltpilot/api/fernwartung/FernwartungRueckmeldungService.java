@@ -76,7 +76,7 @@ public class FernwartungRueckmeldungService {
     private static void unbekannt(Set<UUID> gemeldet, Set<UUID> bekannt, String was) {
         for (UUID id : gemeldet) {
             if (!bekannt.contains(id)) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "Die Rückmeldung nennt " + was + " die API nicht kennt (" + id
                                 + "). Nichts aus dieser Meldung wurde gespeichert.");
             }

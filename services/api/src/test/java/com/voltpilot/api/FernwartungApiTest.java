@@ -20,8 +20,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -54,6 +55,7 @@ import org.testcontainers.utility.DockerImageName;
  * und prüft nur relativ zu dem, was es selbst anlegt.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
             "voltpilot.fernwartung.server-public-key=LnLMuBG+dDEeaEKlQrdTlPifX2fk0hOaB/NFc/BudjE=",
@@ -180,12 +182,12 @@ class FernwartungApiTest {
 
         // Tippfehler und Unsinn fallen vor jeder Zeile auf.
         assertThat(send(HttpMethod.PUT, BASE + "/boxen/edge-zay5sdp/schluessel", admin,
-                Map.of("publicKey", KEY_C)).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                Map.of("publicKey", KEY_C)).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(send(HttpMethod.PUT, BASE + "/boxen/irgendwas/schluessel", admin,
-                Map.of("publicKey", KEY_C)).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                Map.of("publicKey", KEY_C)).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(send(HttpMethod.PUT, BASE + "/boxen/edge-q2w3e4u/schluessel", admin,
                 Map.of("publicKey", "kein-schluessel")).getStatusCode()).isIn(HttpStatus.BAD_REQUEST,
-                HttpStatus.UNPROCESSABLE_ENTITY);
+                HttpStatus.UNPROCESSABLE_CONTENT);
 
         // ── Techniker-Zugang ──────────────────────────────────────────────
         ResponseEntity<String> technikerNeu = send(HttpMethod.POST, BASE + "/techniker", admin,
@@ -764,7 +766,7 @@ class FernwartungApiTest {
                 "ein Fenster, das die API nicht kennt");
         for (Map.Entry<Object, String> e : unbekannt.entrySet()) {
             ResponseEntity<String> res = send(HttpMethod.PUT, route, dienst, e.getKey());
-            assertThat(res.getStatusCode()).as(e.getValue()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(res.getStatusCode()).as(e.getValue()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(message(res)).contains(e.getValue()).contains("Nichts aus dieser Meldung wurde gespeichert");
         }
 
@@ -896,7 +898,7 @@ class FernwartungApiTest {
             Map<String, Object> m = meldung(start, List.of(box(boxId, null, null)), List.of());
             m.put("techniker", List.of(technikerMeldung(mitGeraet, null), technikerMeldung(falsch, handshake)));
             ResponseEntity<String> res = send(HttpMethod.PUT, route, dienst, m);
-            assertThat(res.getStatusCode()).as(falsch).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(res.getStatusCode()).as(falsch).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(message(res)).contains("einen Techniker-Zugang, den die API nicht kennt");
         }
         Map<String, Object> mitEndpunkt = meldung(start, List.of(), List.of());

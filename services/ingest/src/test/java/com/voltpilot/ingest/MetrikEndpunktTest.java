@@ -11,10 +11,10 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * Der Scrape-Endpunkt der Datenannahme existiert wirklich, antwortet einem ANONYMEN Aufrufer - und
@@ -34,7 +34,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 // management.defaults.metrics.export.enabled=false, der Prometheus-Endpunkt entsteht dann gar nicht
 // und /metrics antwortet 404 - das sieht wie ein Fehler in der application.yml aus, ist aber eine
 // reine TEST-Vorgabe. Dieselbe Falle steht in MetricsEndpointSecurityTest der api.
-@AutoConfigureObservability
+@AutoConfigureMetrics
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -47,7 +47,7 @@ class MetrikEndpunktTest {
     @LocalServerPort int port;
 
     /** Gibt es das Redpanda-Topic events.raw? Hier laeuft kein Redpanda. */
-    @MockBean EventsTopicPruefung eventsTopic;
+    @MockitoBean EventsTopicPruefung eventsTopic;
 
     private HttpResponse<String> get(String path) throws Exception {
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();

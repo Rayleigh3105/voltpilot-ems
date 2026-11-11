@@ -20,7 +20,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.HashMap;
 import java.util.Optional;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
@@ -41,8 +41,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -84,6 +85,7 @@ import org.yaml.snakeyaml.Yaml;
  * wird — eine Schreib-Route gibt es in diesem Paket nicht.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class GeraetApiTest {
@@ -134,7 +136,7 @@ class GeraetApiTest {
     TestRestTemplate rest;
 
     /** Die Box der WAGO-Soll-Lesung: ein Stellvertreter wie in {@code DatenquelleApiTest}. */
-    @MockBean
+    @MockitoBean
     ProbeService probes;
 
     @Autowired

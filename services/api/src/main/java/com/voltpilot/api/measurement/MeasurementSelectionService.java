@@ -769,7 +769,7 @@ public class MeasurementSelectionService {
 
     private static void rejectHardBudget(MeasurementBudget.Estimate budget) {
         if (budget.hardRejected()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Technisches Messwertbudget überschritten: "
                             + String.join(" ", budget.reasons())
                             + " Bitte eine langsamere Kadenz wählen; es gibt kein Punktzahl-Limit.");

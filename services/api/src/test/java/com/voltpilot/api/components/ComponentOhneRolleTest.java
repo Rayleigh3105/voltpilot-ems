@@ -27,7 +27,7 @@ class ComponentOhneRolleTest {
     void eineWallboxUeberIhreHttpSchnittstelleWirdAlsVerbraucherMitHinweisAufOcppAbgelehnt() {
         assertThatThrownBy(() -> ComponentService.requireNoRolelessSwitch("consumer", vorlage("wallbox"), false))
                 .isInstanceOfSatisfying(ResponseStatusException.class, e -> {
-                    assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
                     assertThat(e.getReason()).contains("OCPP").contains("Ladesäule mit OCPP 1.6");
                 });
     }

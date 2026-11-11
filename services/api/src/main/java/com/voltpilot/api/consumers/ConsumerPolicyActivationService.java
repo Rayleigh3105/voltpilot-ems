@@ -168,7 +168,7 @@ public class ConsumerPolicyActivationService {
         // verbunden: sein Treiber ist der Modul-Kanal.
         if (row.deviceId() == null && row.edgeSourceId() == null && !row.ioBound()
                 && !registry.istGebundenerLadepunkt(siteId, entityId)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Dieser Verbraucher ist noch nicht verbunden - die Regel bleibt gespeichert "
                             + "und kann nach dem Verbinden aktiviert werden.");
         }

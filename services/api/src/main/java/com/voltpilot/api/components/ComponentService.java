@@ -243,10 +243,10 @@ public class ComponentService {
             return;
         }
         if ("switch".equals(template.deviceType())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, SCHALTER_OHNE_ROLLE);
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, SCHALTER_OHNE_ROLLE);
         }
         if ("wallbox".equals(template.deviceType())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, WALLBOX_NUR_UEBER_OCPP);
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, WALLBOX_NUR_UEBER_OCPP);
         }
     }
 
@@ -726,7 +726,7 @@ public class ComponentService {
         // Geräte-Konfiguration ablehnen ("cannot unmarshal string ... unit_id").
         ComponentConnectionSchema.require(template, connection);
         if (!receipts.has(siteId, template.templateRef(), template.version(), connection)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Bitte prüfen Sie zuerst die Verbindung zu diesem Gerät - erst danach lässt "
                             + "sie sich speichern.");
         }
@@ -737,7 +737,7 @@ public class ComponentService {
         }
         String accepted = req.acceptMissingChannel() == null ? "" : req.acceptMissingChannel().trim();
         if (!missing.equals(accepted)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Der Verbindungstest war unvollständig: " + channelLabel(missing)
                             + " fehlt. Bitte bestätigen Sie ausdrücklich, dass diese Komponente "
                             + "ohne diesen Wert betrieben werden soll.");

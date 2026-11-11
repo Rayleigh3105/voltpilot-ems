@@ -74,7 +74,7 @@ public class GeraetesucheHerkunft {
                         rs.getTimestamp(4).toInstant()),
                 bezug.suchId(), siteId, bezug.fund(), (int) GeraetesucheDienst.VERLAUF.toDays());
         if (treffer.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, UNBEKANNT);
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, UNBEKANNT);
         }
         return treffer.get(0);
     }

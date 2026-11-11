@@ -30,9 +30,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.SpyBean;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -86,6 +87,7 @@ import org.testcontainers.utility.DockerImageName;
  * ({@code @Order}), weil die Übernahme den Kundenbereich als Ganzes sieht.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -180,7 +182,7 @@ class BestandsuebernahmeApiTest {
     @Autowired
     FunktionBestandLaeufer funktionBestandLaeufer;
 
-    @SpyBean
+    @MockitoSpyBean
     FunktionBestandService funktionBestand;
 
     /** Der Kundenbereich des Referenzunternehmens (A5 mit dem echten Datum). */

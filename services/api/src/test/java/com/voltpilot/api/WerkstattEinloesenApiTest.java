@@ -29,8 +29,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -59,6 +60,7 @@ import org.testcontainers.utility.DockerImageName;
  * bis zum ausgestellten Zertifikat nach der Kopplung.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -209,7 +211,7 @@ class WerkstattEinloesenApiTest {
 
         // Ungültige Kennungen bekommen keinen Code.
         assertThat(send(HttpMethod.POST, DIENST + "/codes", dienst, Map.of("edgeRef", "edge-k7m2xqz"))
-                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         JsonNode c1 = code(dienst, BOX, false);
         JsonNode c2 = code(dienst, BOX, false);
@@ -342,7 +344,7 @@ class WerkstattEinloesenApiTest {
     @Order(3)
     void pruefzeichenAufDemCsrWeg() throws Exception {
         ResponseEntity<String> r = postCsr("edge-k7m2xqz", Box.neu("x").csr());
-        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
     }
 
     @Test
@@ -426,16 +428,16 @@ class WerkstattEinloesenApiTest {
         Map<String, String> mitFremder = new HashMap<>(belege());
         mitFremder.put("kaffee", "gekocht");
         for (Fall f : List.of(
-                new Fall("Beleg fehlt", Map.of("belege", ohneNeustart), HttpStatus.UNPROCESSABLE_ENTITY, "neustart"),
+                new Fall("Beleg fehlt", Map.of("belege", ohneNeustart), HttpStatus.UNPROCESSABLE_CONTENT, "neustart"),
                 new Fall("unbekannte Prüfung", Map.of("belege", mitFremder), HttpStatus.BAD_REQUEST, "kaffee"),
-                new Fall("Passwort im Klartext", Map.of("passwortAge", "geheim123"), HttpStatus.UNPROCESSABLE_ENTITY, "age"),
+                new Fall("Passwort im Klartext", Map.of("passwortAge", "geheim123"), HttpStatus.UNPROCESSABLE_CONTENT, "age"),
                 new Fall("Hülle ohne age-Kopf", Map.of("passwortAge", "-----BEGIN AGE ENCRYPTED FILE-----\n"
                         + Base64.getEncoder().encodeToString("geheim123".getBytes(StandardCharsets.UTF_8))
-                        + "\n-----END AGE ENCRYPTED FILE-----"), HttpStatus.UNPROCESSABLE_ENTITY, "age-Kopf"),
+                        + "\n-----END AGE ENCRYPTED FILE-----"), HttpStatus.UNPROCESSABLE_CONTENT, "age-Kopf"),
                 new Fall("anderer Host-Schlüssel", Map.of("hostSchluessel", Box.neu(BOX2).host()), HttpStatus.CONFLICT,
                         "Einlösen"),
                 new Fall("andere Fassung", Map.of("fassung", "edge-light-2026.11.9"), HttpStatus.CONFLICT, "Einlösen"),
-                new Fall("Heimnetz", Map.of("lanNetz", "192.168.1.1/24"), HttpStatus.UNPROCESSABLE_ENTITY, "übliches"))) {
+                new Fall("Heimnetz", Map.of("lanNetz", "192.168.1.1/24"), HttpStatus.UNPROCESSABLE_CONTENT, "übliches"))) {
             ResponseEntity<String> r = send(HttpMethod.POST, abnahme, dienst, abnahmeAntrag(box, f.aenderung()));
             assertThat(r.getStatusCode()).as(f.name()).isEqualTo(f.status());
             assertThat(message(r)).as(f.name()).contains(f.grund());

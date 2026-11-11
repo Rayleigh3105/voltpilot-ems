@@ -29,7 +29,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
@@ -74,7 +74,7 @@ class ErzeugerJetztDbTest {
     @Autowired AnlagensteuerungRepository repo;
     @Autowired ErzeugerJetztService service;
     @Autowired ObjectMapper json;
-    @MockBean EntityRegistryPublisher registryPublisher;
+    @MockitoBean EntityRegistryPublisher registryPublisher;
     static JdbcTemplate root;
 
     @BeforeAll static void start() throws IOException {

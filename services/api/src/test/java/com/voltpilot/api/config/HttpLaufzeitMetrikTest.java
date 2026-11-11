@@ -4,9 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 
 /**
  * Die Serverzeit je Route steht in {@code /metrics} als Histogramm (Scout vp-anlagen-cockpit-perf, Rang 7).
@@ -17,7 +18,8 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
  * dann in Prod nicht zu beantworten. Der Test fährt einen ECHTEN Servlet-Container (die Messung sitzt im
  * Servlet-Filter, den {@code MockMvc} nicht durchläuft), ruft eine Route auf und liest {@code /metrics}.
  */
-@AutoConfigureObservability
+@AutoConfigureMetrics
+@AutoConfigureTestRestTemplate
 @SpringBootTest(classes = MetricsEndpointSecurityTest.MetricsOnlyApp.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {

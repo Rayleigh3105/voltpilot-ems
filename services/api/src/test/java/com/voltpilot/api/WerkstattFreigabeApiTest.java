@@ -16,8 +16,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -45,6 +46,7 @@ import org.testcontainers.utility.DockerImageName;
  * dort nichts anderes. Echte Keycloak-Token, echte Migrationen.
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -209,7 +211,7 @@ class WerkstattFreigabeApiTest {
             Map<String, Object> a = antrag();
             a.put(f.feld(), f.wert());
             ResponseEntity<String> r = send(HttpMethod.POST, BASE, admin, a);
-            assertThat(r.getStatusCode()).as(f.name()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(r.getStatusCode()).as(f.name()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(message(r)).as(f.name()).contains(f.grund());
         }
     }
@@ -300,10 +302,10 @@ class WerkstattFreigabeApiTest {
 
         // Form falsch: 422; Schlüsselmaterial: 422; nur der Dienst meldet, nur Admins lesen.
         assertThat(roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", dienst, "{\"schema\":\"x\"}").getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", dienst,
                 vektor.replace("eine Mango mit frischem OpenWrt", "-----BEGIN OPENSSH PRIVATE KEY-----")).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         for (String t : List.of(admin, token("demo", "demo"))) {
             assertThat(roh(HttpMethod.PUT, "/api/v1/werkstatt-dienst/ansicht", t, vektor).getStatusCode())
                     .isEqualTo(HttpStatus.FORBIDDEN);
@@ -368,7 +370,7 @@ class WerkstattFreigabeApiTest {
         assertThat(json.readTree(r.getBody()).get("id").asText()).isEqualTo(id);
         // Form, anderer Lauf, falsche Rolle.
         assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/dienst/nochmal", admin, Map.of("lauf", "a b")).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(send(HttpMethod.POST, "/api/v1/admin/werkstatt/dienst/nochmal", admin, Map.of("lauf", "2026-11-01-000000-abcd"))
                 .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         for (String t : List.of(dienst, token("demo", "demo"))) {

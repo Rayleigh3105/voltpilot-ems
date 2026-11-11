@@ -99,7 +99,7 @@ public class AnfrageKennungen {
         }
         Map<String, Object> z = zeilen.get(0);
         if (!fingerabdruck.equals(z.get("fingerabdruck"))) {
-            throw new Abgelehnt(HttpStatus.UNPROCESSABLE_ENTITY, "anfrage_kennung_anders",
+            throw new Abgelehnt(HttpStatus.UNPROCESSABLE_CONTENT, "anfrage_kennung_anders",
                     "Diese Anfrage wurde schon mit anderen Angaben gesendet. Bitte laden Sie die Seite neu.");
         }
         return Optional.of(new Gemerkt(((Number) z.get("status")).intValue(), (String) z.get("antwort")));

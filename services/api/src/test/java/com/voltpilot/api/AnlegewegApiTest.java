@@ -10,8 +10,9 @@ import java.sql.ResultSet;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -37,6 +38,7 @@ import org.testcontainers.utility.DockerImageName;
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class AnlegewegApiTest {
@@ -106,7 +108,7 @@ class AnlegewegApiTest {
         for (String tippfehler : new String[] {"k7m2xq3", "edgek7m2xq3", "edge-k7m2xq1", "edge-k7m2xqz",
                 "demo-wechselrichter-07"}) {
             ResponseEntity<String> r = claim(bearer(demo), tippfehler);
-            assertThat(r.getStatusCode()).as("Kennung %s", tippfehler).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(r.getStatusCode()).as("Kennung %s", tippfehler).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
             assertThat(anzahl("SELECT count(*) FROM device WHERE external_ref = ?", tippfehler))
                     .as("kein Geister-Gerät %s", tippfehler).isZero();
         }
@@ -211,7 +213,7 @@ class AnlegewegApiTest {
         // Andere Angaben unter derselben Kennung: ein Fehler, nie eine fremde Antwort.
         ResponseEntity<String> anders = rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("name", "Garage 2"), kopf(t, "anlage-7f3c-0001")), String.class);
-        assertThat(anders.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(anders.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(anders.getBody()).contains("\"code\":\"anfrage_kennung_anders\"");
         // Ohne Kennung wie bisher: ein zweites Anlegen ist ein zweites Anlegen.
         post(t, "/api/v1/sites", Map.of("name", "Garage"), null);
@@ -276,7 +278,7 @@ class AnlegewegApiTest {
                 "adresse", Map.of("strasse", "Hauptstraße 12", "plz", "91710", "ort", "Gunzenhausen", "land", "DE"),
                 "zeitzone", "Europe/Berlin"), null).getBody();
         ResponseEntity<Map<String, Object>> ohne = post(t, "/api/v1/sites", Map.of("name", "Lokal Testing"), null);
-        assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(ohne.getBody()).containsEntry("code", "standort_waehlen").containsEntry("feld", "standortId");
         assertThat(anlagen(t)).isZero();
         ResponseEntity<Map<String, Object>> mit = post(t, "/api/v1/sites",
@@ -305,14 +307,14 @@ class AnlegewegApiTest {
         ResponseEntity<String> anders = rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("siteId", site, "externalRef", TestKennung.box("becker-zwei")),
                         kopf(t, "formular-9:box")), String.class);
-        assertThat(anders.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(anders.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(anders.getBody()).contains("\"code\":\"anfrage_kennung_anders\"");
         assertThat(anzahl("SELECT count(*) FROM device WHERE site_id = ?::uuid", site)).isEqualTo(1);
         // Eine Ablehnung wird nicht gemerkt: die korrigierte Kennung geht mit einer neuen Anfrage-Kennung.
         ResponseEntity<String> tippfehler = rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("siteId", site, "externalRef", "edge-k7m2xq1"), kopf(t, "formular-9:box2")),
                 String.class);
-        assertThat(tippfehler.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(tippfehler.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(anzahl("SELECT count(*) FROM anfrage_kennung WHERE kennung = 'formular-9:box2'")).isZero();
     }
 

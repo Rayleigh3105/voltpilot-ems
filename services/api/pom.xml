@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.13</version>
+        <version>4.1.2</version>
         <relativePath/>
     </parent>
 
@@ -25,13 +25,6 @@
         <docker.api.version>1.44</docker.api.version>
         <measurement.catalog.version>2026.10.26.1</measurement.catalog.version>
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
-        <!-- Sicherheits-Patches über der Boot-BOM: Spring Boot 3.3 bekommt keine freien
-             Patches mehr (3.3.13 ist der letzte). Jede Zeile bleibt in der Linie der BOM und
-             schließt bekannte Advisories. Beim nächsten Wechsel der Boot-Linie entfernen,
-             sonst halten sie Versionen der alten Linie fest. -->
-        <tomcat.version>10.1.61</tomcat.version>
-        <logback.version>1.5.38</logback.version>
-        <postgresql.version>42.7.14</postgresql.version>
     </properties>
 
     <dependencies>
@@ -47,6 +40,23 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Boot 4 split Health/HealthIndicator (DB/diskspace/custom contributors, the
+             liveness/readiness groups docs/k8s-readiness.md relies on) out of
+             spring-boot-actuator into its own module; spring-boot-starter-actuator no
+             longer pulls it transitively. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-health</artifactId>
+        </dependency>
+        <!-- Boot 4 defaults to Jackson 3 (tools.jackson.*); this service's own code still
+             imports com.fasterxml.jackson.* directly (434 files). spring-boot-jackson2 keeps
+             classic Jackson 2 on the classpath alongside the Jackson 3 default so those files
+             keep compiling and behaving unchanged. Deprecated, slated for removal upstream -
+             the full move to tools.jackson.*/JsonMapper is its own follow-up task, not this one. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-jackson2</artifactId>
+        </dependency>
         <!-- Prometheus scrape format for the actuator (com.voltpilot.api.metrics):
              the fleet-operations gauges an alert rule watches. Registering this
              registry is what turns the `prometheus` actuator endpoint on; the
@@ -60,9 +70,10 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
+        <!-- Renamed under Boot 4 (spring-boot-starter-oauth2-resource-server -> ...-security-...). -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
         </dependency>
 
         <!-- Persistence: plain JDBC (repository-encapsulated per architecture §10),
@@ -89,9 +100,12 @@
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- Flyway runs through a Boot starter from 4.x on, not the bare flyway-core
+             dependency (spring-boot-flyway pulls flyway-core itself, 12.4.0). The
+             PostgreSQL-specific Flyway module is NOT pulled transitively and stays explicit. -->
         <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -157,6 +171,37 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Boot 4 moved TestRestTemplate out of spring-boot-test into its own module;
+             66 test files here use it. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-resttestclient</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- TestRestTemplateTestAutoConfiguration's @ConditionalOnMissingBean needs to
+             introspect RestTemplateBuilder's class (its ObjectProvider<RestTemplateBuilder>
+             parameter type) even though the dependency itself is optional; without this
+             module on the classpath that introspection throws NoClassDefFoundError. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-restclient</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Boot 4 removed @AutoConfigureObservability; @AutoConfigureMetrics (export=true by
+             default) is the replacement that re-enables the Prometheus-backed metrics the
+             scrape-endpoint tests need, since @SpringBootTest disables metrics export by default. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-micrometer-metrics-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Boot 4 moved @AutoConfigureMockMvc out of spring-boot-test into its own module,
+             used across 116 test files here. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- Testcontainers: real TimescaleDB + Keycloak for the RLS-isolation and
              OIDC token-validation integration tests. Auto-skip without Docker. -->
         <dependency>
@@ -189,20 +234,6 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <dependencyManagement>
-        <dependencies>
-            <!-- Sicherheits-Patch (transitiv über spring-security-oauth2-jose 6.3.10):
-                 GHSA-xwmg-2g98-w7v9, DoS durch tief verschachteltes JSON beim Parsen eines
-                 JWT - das passiert vor der Signaturprüfung, also für jeden Bearer-Token.
-                 Behoben in 9.37.4. Beim nächsten Wechsel der Boot-Linie entfernen. -->
-            <dependency>
-                <groupId>com.nimbusds</groupId>
-                <artifactId>nimbus-jose-jwt</artifactId>
-                <version>9.37.4</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
 
     <build>
         <!-- The versioned measurement-point catalog remains ONE generated truth

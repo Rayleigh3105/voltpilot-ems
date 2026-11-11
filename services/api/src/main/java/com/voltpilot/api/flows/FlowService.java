@@ -451,13 +451,13 @@ public class FlowService {
         JsonNode document = parse(row.documentJson());
         List<FlowValidationFinding> findings = validateDocument(siteId, flowId, document);
         if (!FlowGraphValidator.valid(findings)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Bitte zuerst die Validierungsfehler beheben - simuliert wird nur ein "
                             + "gültiger Flow.");
         }
         FlowSimulationMapper.Mapping mapping = FlowSimulationMapper.map(document);
         if (!mapping.supported()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, mapping.reason());
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, mapping.reason());
         }
         // E-8: the dry-run is SCOPED to what the flow actually touches. A flow
         // without a battery strategy cannot change the dispatch economics, so

@@ -21,8 +21,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -52,6 +53,7 @@ import org.testcontainers.utility.DockerImageName;
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
  */
 @Testcontainers(disabledWithoutDocker = true)
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 class PortalApiTest {
@@ -488,7 +490,7 @@ class PortalApiTest {
                 new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "VP-TYPO-9999"),
                         bearer(demo)),
                 String.class);
-        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // No ghost device row was created.
         ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
@@ -526,7 +528,7 @@ class PortalApiTest {
                 new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-abcdefk"),
                         bearer(demo)),
                 String.class);
-        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         ResponseEntity<List<Map<String, Object>>> afterTypo = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
@@ -3294,14 +3296,14 @@ class PortalApiTest {
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("sourceId", "x-1", "entityType", "battery-hybrid"),
                         bearer(demo)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // A free installer type (modbus-generic) is likewise not a guided type -> 422.
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/adopt"),
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("sourceId", "x-2", "entityType", "modbus-generic"),
                         bearer(demo)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // An unknown type -> 400.
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/adopt"),
@@ -3380,7 +3382,7 @@ class PortalApiTest {
                 url("/api/v1/sites/" + siteId + "/v2-entities/" + entityId + "/edge-source"),
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("sourceId", "src-ghost"), bearer(demo)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // Reconnect to the re-appeared source: same entity, no duplicate row.
         ResponseEntity<Map<String, Object>> repin = rest.exchange(
@@ -3434,7 +3436,7 @@ class PortalApiTest {
                 url("/api/v1/sites/" + siteId + "/v2-entities/" + entityId + "/edge-source"),
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("sourceId", "src-wb"), bearer(demo)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // Foreign tenant: 404 via RLS, and the pin provably unchanged.
         assertThat(rest.exchange(
@@ -3572,11 +3574,11 @@ class PortalApiTest {
                 + "'{\"measure\":[{\"channel\":\"soc_pct\"}]}'::jsonb, '{}'::jsonb)");
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/" + hybrid),
                 HttpMethod.DELETE, new HttpEntity<>(bearer(demo)), String.class)
-                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         assertThat(rest.exchange(
                 url("/api/v1/sites/" + siteId + "/v2-entities/" + hybrid + "/edge-source"),
                 HttpMethod.POST, new HttpEntity<>(Map.of("sourceId", "src-a"), bearer(demo)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // A foreign tenant can neither see nor delete it (RLS 404).
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/" + wr1),

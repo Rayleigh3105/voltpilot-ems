@@ -281,7 +281,7 @@ public class ZugriffAenderung {
         // Erst entziehen, dann zuweisen; jede Ablehnung rollt den gesamten Wechsel zurück.
         for (UUID id : bisher) entziehen(id, null, akteur);
         if (rolle.jeStandort()) {
-            if (standorte.isEmpty()) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            if (standorte.isEmpty()) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Wählen Sie mindestens einen Standort.");
             for (UUID id : standorte.stream().distinct().toList()) zuweisen(sub, rolle, id, bis, null, akteur);
         } else {

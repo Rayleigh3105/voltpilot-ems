@@ -97,7 +97,7 @@ public class FreigabeService {
         String boxArt = a.boxArt() == null || a.boxArt().isBlank() ? MANGO : a.boxArt().trim();
         List<String> fehler = pruefe(boxArt, a);
         if (!fehler.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Freigabe ungültig: " + String.join("; ", fehler));
         }
         String notiz = a.notiz() == null || a.notiz().isBlank() ? null : a.notiz().trim();
