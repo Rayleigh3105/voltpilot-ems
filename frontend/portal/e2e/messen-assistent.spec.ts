@@ -507,13 +507,16 @@ for (const breite of BREITEN) {
       expect(await woerter(), 'Box').toEqual([]);
       await fluss.getByLabel('Kennung').fill('vp-demo-0001');
       await fluss.getByRole('button', { name: 'Box verbinden', exact: true }).click();
-      // Das ehrliche Ergebnis nach dem Verbinden (QE-4 A) spricht auch kein Steuerwort - dann weiter.
-      await expect(fluss.getByRole('heading', { name: 'Box verbunden – sie hat sich noch nicht gemeldet' })).toBeVisible();
-      expect(await woerter(), 'Box verbunden').toEqual([]);
+      // Der Weg statt Warte-Bildschirm (vp-box-verbinden-konzept E1=B, #1811): sofort der Start-Fortschritt,
+      // kein Steuerwort - dann weiter, ohne auf den Herzschlag zu warten.
+      await expect(fluss.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();
+      expect(await woerter(), 'Box startet').toEqual([]);
       await fluss.getByRole('button', { name: 'Später anschließen – weiter zur Anlage' }).click();
-      // Schritt 3 · Anlage - danach ohne Fertig-Bildschirm zurück in den Assistenten (D7).
-      const stimmtSo = fluss.getByRole('button', { name: 'Stimmt so', exact: true });
-      await expect(stimmtSo).toBeVisible();
+      // Schritt 3 · Anlage (ohne Box-Meldung reichen zwei freiwillige Zahlen, Anlage-Flow a1 Paket 2) -
+      // danach ohne Fertig-Bildschirm zurück in den Assistenten (D7).
+      await expect(fluss.getByText('So geht es weiter')).toBeVisible();
+      const weiterZurAnlage = fluss.getByRole('button', { name: 'Weiter', exact: true });
+      await expect(weiterZurAnlage).toBeVisible();
       expect(await woerter(), 'Anlage').toEqual([]);
       await messeUndFotografiere(page, breite, 'messanlage-anlage');
       expect(cloud.angelegt).toEqual([expect.objectContaining({ name: 'Halle 3', standortId: LINDACH, netzladenErlaubt: false, maxFeedInKw: null })]);
@@ -521,7 +524,7 @@ for (const breite of BREITEN) {
 
       // Zurück im Assistenten: Schritt 2 mit der neuen Anlage, die Adresse bleibt.
       const vorher = page.url();
-      await stimmtSo.click();
+      await weiterZurAnlage.click();
       await schritt2(page);
       await zaehlerIst(page, breite, 2, 'Anbindung');
       await expect(page.getByRole('button', { name: 'Gateway oder Logger anbinden für Halle 3', exact: true })).toBeVisible();
