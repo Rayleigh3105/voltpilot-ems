@@ -318,6 +318,115 @@ export interface Einspeiseverguetung {
   anzulegenderWertCtKwh: number | null;
 }
 
+/**
+ * Messkonzepte S1 (nur Anzeige): GET /api/v1/sites/{siteId}/erzeugungsanlagen -
+ * die Erzeugungsanlagen (EA) einer Anlage am Stichtag, je EA mit Satz und
+ * Herkunft. Der Satz kommt aus demselben Satzplan wie die Karte
+ * „Einspeisevergütung“; Fahrplan und Erlöse rechnen weiter mit dem Satz der
+ * Anlage. Das Portal rechnet nichts.
+ */
+export type ErzeugungsanlageArt = 'pv' | 'wind' | 'wasser' | 'biomasse' | 'kwk' | 'sonstige';
+export type Einspeiseart = 'voll' | 'ueberschuss';
+export type VerguetungNaeherung = 'vor_erstem_band' | 'jahresstufen' | 'volleinspeisung' | 'leistung_unbekannt';
+
+export interface ErzeugungsanlageFassung {
+  id: string;
+  /** Erster Tag (ISO); null = von der Inbetriebnahme an. */
+  gueltigAb: string | null;
+  leistungKwp: number | null;
+  /** null = nicht erhoben. */
+  einspeiseart: Einspeiseart | null;
+  satzAngegebenCtKwh: number | null;
+  herkunft: 'bestand' | 'mastr' | 'angegeben';
+}
+
+export interface ErzeugungsanlageKomponente {
+  id: string;
+  komponenteId: string;
+  name: string | null;
+  /** null = die ganze Komponente, sonst ihr Eingang k. */
+  eingang: number | null;
+  gueltigAb: string;
+  gueltigBis: string | null;
+}
+
+export interface ErzeugungsanlageVerguetung {
+  zustand: EinspeiseverguetungZustand;
+  wirksamCtKwh: number | null;
+  angegebenCtKwh: number | null;
+  hergeleitetCtKwh: number | null;
+  naeherung: VerguetungNaeherung[];
+  /** Letzter Tag der EEG-Vergütung (ISO) oder null. */
+  foerderendeAm: string | null;
+  ohneVerguetungBeiNegativpreis: boolean;
+}
+
+export interface Erzeugungsanlage {
+  id: string;
+  nummer: number;
+  name: string | null;
+  /** „EA 1“ oder „EA 2 · PV Scheune“ - nie „Anlage“ allein. */
+  bezeichnung: string;
+  art: ErzeugungsanlageArt;
+  /** ISO-Tag; null = nicht erhoben. */
+  inbetriebnahme: string | null;
+  inbetriebnahmeAbSolarspitzengesetz: boolean | null;
+  registryUnitId: string | null;
+  registryFetchedAt: string | null;
+  /** EA 1 einer Anlage mit einer EA: Leistung, Inbetriebnahme, Register und eigener Satz kommen aus der Anlage. */
+  folgtAnlage: boolean;
+  fassung: ErzeugungsanlageFassung | null;
+  fassungen: ErzeugungsanlageFassung[];
+  komponenten: ErzeugungsanlageKomponente[];
+  verguetung: ErzeugungsanlageVerguetung;
+}
+
+export interface ErzeugungsanlageVorschlag {
+  komponenteId: string;
+  name: string | null;
+  leistungKwp: number;
+  /** Die am Erzeuger eingetragene MaStR-Nummer (ungeprüft) oder null. */
+  registryUnitId: string | null;
+}
+
+export interface Erzeugungsanlagen {
+  stichtag: string;
+  netzanschluss: { id: string; kennzeichen: string; name: string } | null;
+  erzeugungsanlagen: Erzeugungsanlage[];
+  vorschlaege: ErzeugungsanlageVorschlag[];
+}
+
+export interface ErzeugungsanlageAnlegen {
+  name?: string | null;
+  art?: ErzeugungsanlageArt | null;
+  inbetriebnahme?: string | null;
+  inbetriebnahmeAbSolarspitzengesetz?: boolean | null;
+  registryUnitId?: string | null;
+  mastrBestaetigt?: boolean;
+  leistungKwp?: number | null;
+  einspeiseart?: Einspeiseart | null;
+  satzAngegebenCtKwh?: number | null;
+  komponenteId?: string | null;
+  eingang?: number | null;
+}
+
+export interface ErzeugungsanlageBearbeiten {
+  name: string | null;
+  art: ErzeugungsanlageArt;
+  inbetriebnahme: string | null;
+  inbetriebnahmeAbSolarspitzengesetz: boolean | null;
+  registryUnitId: string | null;
+  mastrBestaetigt?: boolean;
+}
+
+export interface ErzeugungsanlageFassungSetzen {
+  gueltigAb: string | null;
+  leistungKwp: number | null;
+  einspeiseart: Einspeiseart | null;
+  satzAngegebenCtKwh: number | null;
+  mastrBestaetigt?: boolean;
+}
+
 export interface CreateSiteInput {
   name: string;
   biddingZone?: string;
@@ -11235,6 +11344,39 @@ export const api = {
       body: JSON.stringify(
         inbetriebnahmeAbSolarspitzengesetz == null ? { satzCtKwh } : { satzCtKwh, inbetriebnahmeAbSolarspitzengesetz },
       ),
+    }),
+  /** Messkonzepte S1: die Erzeugungsanlagen der Anlage mit Satz und Herkunft je EA (nur Anzeige). */
+  erzeugungsanlagen: (siteId: string, stichtag?: string) =>
+    request<Erzeugungsanlagen>(
+      `/api/v1/sites/${siteId}/erzeugungsanlagen${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
+    ),
+  erzeugungsanlageAnlegen: (siteId: string, body: ErzeugungsanlageAnlegen) =>
+    request<Erzeugungsanlagen>(`/api/v1/sites/${siteId}/erzeugungsanlagen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  erzeugungsanlageBearbeiten: (siteId: string, eaId: string, body: ErzeugungsanlageBearbeiten) =>
+    request<Erzeugungsanlagen>(`/api/v1/sites/${siteId}/erzeugungsanlagen/${eaId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  erzeugungsanlageFassung: (siteId: string, eaId: string, body: ErzeugungsanlageFassungSetzen) =>
+    request<Erzeugungsanlagen>(`/api/v1/sites/${siteId}/erzeugungsanlagen/${eaId}/fassungen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  erzeugungsanlageVerweisen: (siteId: string, eaId: string, komponenteId: string, eingang: number | null) =>
+    request<Erzeugungsanlagen>(`/api/v1/sites/${siteId}/erzeugungsanlagen/${eaId}/komponenten`, {
+      method: 'POST',
+      body: JSON.stringify({ komponenteId, eingang }),
+    }),
+  erzeugungsanlageVerweisLoesen: (siteId: string, eaId: string, verweisId: string) =>
+    request<Erzeugungsanlagen>(`/api/v1/sites/${siteId}/erzeugungsanlagen/${eaId}/komponenten/${verweisId}/loesen`, {
+      method: 'POST',
+    }),
+  erzeugungsanlageAufheben: (siteId: string, eaId: string) =>
+    request<Erzeugungsanlagen>(`/api/v1/sites/${siteId}/erzeugungsanlagen/${eaId}/aufheben`, {
+      method: 'POST',
     }),
   /** 409 while the site still has devices (remove them first). */
   deleteSite: (siteId: string) =>

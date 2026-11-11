@@ -37,6 +37,16 @@ Die Spalte **Herkunft** nennt „AP-00“, wo der Stand vom 10.09.2026 unveränd
 | Benutzer | n : 1 | Kundenbereich | nein | Ausnahme: das Partner-Konto eines Unterstützers hat keinen Heimat-Kundenbereich und sieht nur gewährte Unterstützungen | AP-00 · AP-03 E7 |
 | Benutzer | n : 0..n | Rolle × Standort (Zuweisung, befristbar) | ja | Rollen: Kundenadministrator und Energiemanager unternehmensweit; Bearbeiter, Bedienberechtigt und Leser je Standort; Unterstützer (Installateur \| VoltPilot) befristet. Standort-Zuweisung ist eine ausdrückliche Liste — neue Standorte müssen zugewiesen werden | AP-00 · AP-03 E1/E3/E5/E11 |
 | Bezugsgröße | n : 1 | Geltungsbereich (Unternehmen \| Standort \| Gebäude \| Prozess) | ja | AP-09; Bezugsfläche als Intervall je Standort, Gebäude, Bereich | AP-00 · AP-02 E3 |
+| Netzanschluss | 1 : 0..n | Erzeugungsanlage | ja | Erweiterung = neue EA ab ihrer Inbetriebnahme; eine versehentlich angelegte wird aufgehoben, ihre Nummer nie neu vergeben. Im Code trägt die EA die Anlage, die je Tag an genau einem Netzanschluss hängt — so hat auch eine Anlage ohne angelegten Netzanschluss ihre EA; die Seite des Netzanschlusses liest sie über die Bindung des Tages | Messkonzepte F1–F5 (11.11.2026) (neu) |
+| Erzeugungsanlage | 1 : 1..n | EA-Fassung (Leistung, Einspeiseart, angegebener Satz) | ja | nie überschrieben; eine zweite Fassung am selben Tag ersetzt die erste, die erste gilt von der Inbetriebnahme an. Inbetriebnahme, Art und MaStR-Einheit gehören zur EA selbst; Satz mit Herkunft und Förderende werden je EA gerechnet. Der Förderweg kommt nach dem Zweig `mispel` dazu (F5) | Messkonzepte F1–F5 (11.11.2026) (neu) |
+| Erzeugungsanlage | n : m | Komponente der Anlage (ganz oder Eingang k) | ja | ohne Komponente erlaubt: eine EA, die die Box nicht liest. Die ganze Komponente speist höchstens eine EA, ein Eingang ebenso | Messkonzepte F1–F5 (11.11.2026) (neu) |
+| Erzeugungsanlage | 1 : 0..1 | Einheit im Marktstammdatenregister (SEE) | nein | Nachschlagen je EA, Vorschau, Bestätigung — der vorhandene Weg; bei EA 1 einer einfachen Anlage über die Registrierung der Anlage | Messkonzepte F1–F5 (11.11.2026) (neu) |
+| Anlage | 1 : 0..1 | Erzeugungsanlage, die der Anlage folgt | nein | EA 1 aus dem Bestand übernimmt PV-Leistung, Inbetriebnahme, MaStR-Einheit und eigenen Satz der Anlage als Fassungen, solange sie die einzige EA ist; die zweite EA löst sie davon | Messkonzepte F1–F5 (11.11.2026) (neu) |
+| Netzanschluss | 1 : 0..1 je Tag | Messkonzept-Fassung | ja | ohne Fassung: „Messkonzept nicht eingetragen“, nie geraten; die Kennung kommt aus dem Messkonzept-Katalog (Schritt S2) | Messkonzepte F1–F5 (11.11.2026) (neu) |
+| Messkonzept-Fassung | 1 : 1..n | Zählpunkt mit Rolle | ja | Rolle aus dem Katalogeintrag (Netz, Erzeugung, Kaskade); die Nummer Z1 … ist nur Beschriftung | Messkonzepte F1–F5 (11.11.2026) (neu) |
+| Zählpunkt | 1 : 1..2 | Messstelle (eine je Richtung) | ja | wie die Zählerrolle auf dem Zweig `mispel` | Messkonzepte F1–F5 (11.11.2026) (neu) |
+| Zählpunkt mit Rolle „Erzeugung“ | 1 : 1..n | Erzeugungsanlage | ja | bei B2 misst Z2 EA 1 und EA 2 gemeinsam, bei B3 hat jede EA ihren eigenen Zähler | Messkonzepte F1–F5 (11.11.2026) (neu) |
+| Erzeugungsanlage | 1 : 0..n | berechnete Messstelle je Größe (Einspeisung, Selbstverbrauch) | ja | aus der Regel des Katalogs angelegt (Schritt S3); nach Erzeugung (B3) braucht einen neuen Formeltyp | Messkonzepte F1–F5 (11.11.2026) (neu) |
 
 ## Das Diagramm
 
@@ -67,6 +77,12 @@ Die Spalte **Herkunft** nennt „AP-00“, wo der Stand vom 10.09.2026 unveränd
 - **Bisher:** Portal-Feld „Standort“ = Koordinaten + Gebotszone (PORTAL/pages/AnlageTechnik.tsx:508, :1207).
 - **Neu:** Standort wird ein Objekt mit Adresse, Zeitzone, Gebäuden.
 - **Auflösung:** E9, entschieden am 10.09.2026: Option B — beide Bedeutungen bleiben; die Unterscheidung leistet der Kontext der Fläche (heute schon „Standort auf der Karte“, PORTAL/pages/AnlageTechnik.tsx:1207). AP-01/AP-02 formulieren jede Fläche so, dass klar ist, ob die Lage einer Anlage oder das Objekt Standort gemeint ist.
+
+### W5 — „Der Netzanschluss trägt die Vergütung“ vs. zwei Erzeugungsanlagen an einem Netzanschluss
+
+- **Bisher:** AP-00 E6: Der Netzanschluss „trägt, was heute auf der Anlage liegt: vereinbarte Leistung, Einspeisegrenze, Leistungspreis, Arbeitspreis, Vergütung“; die Vergütung sollte mit dem Paket „Netzanschluss-Preisblatt“ zum Netzanschluss ziehen.
+- **Neu:** Bericht „Mehrere Erzeugungsanlagen an einem Netzanschluss“ (11.11.2026): hinter einem Netzanschluss können zwei Erzeugungsanlagen mit verschiedener Inbetriebnahme hängen — und damit zwei Vergütungen.
+- **Auflösung:** F3, entschieden am 11.11.2026: Option a — die Vergütung gehört zur Erzeugungsanlage, die am Netzanschluss hängt. Der Netzanschluss trägt Preise und Grenzen, die Erzeugungsanlage die Vergütung; die Richtung des Fachmodells (alles am Netzanschluss) bleibt, nur eine Ebene tiefer. Das Paket „Netzanschluss-Preisblatt“ zieht Tarif, Leistungspreis und Grenzen um, nicht die Vergütung.
 
 ## Was AP-00 den Nachbarpaketen vorgibt
 

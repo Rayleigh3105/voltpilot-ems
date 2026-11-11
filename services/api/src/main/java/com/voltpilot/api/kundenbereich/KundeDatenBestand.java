@@ -139,6 +139,15 @@ public final class KundeDatenBestand {
                 "ort_zuordnung", "data_source", "component_definition", "site_component_template")) {
             m.put(t, stammdaten);
         }
+        // Messkonzepte S1 (nur Anzeige): EA 1 entsteht beim Einrichten von selbst aus der PV-Leistung der Anlage
+        // (ErzeugungsanlageBestand) - wie `asset`, aus dem sie folgt. Als Aufzeichnung hielte sie jeden doppelt
+        // angelegten Kunden mit eingetragener PV fest.
+        String erzeugungsanlage = "Stammdaten der Erzeugungsanlagen samt Protokoll - EA 1 entsteht beim Einrichten aus "
+                + "der PV-Leistung";
+        for (String t : List.of("erzeugungsanlage", "erzeugungsanlage_fassung", "erzeugungsanlage_komponente",
+                "erzeugungsanlage_aenderung")) {
+            m.put(t, erzeugungsanlage);
+        }
         String einstellung = "Einstellung/Absicht der Cloud - keine Aufzeichnung, wird mit dem Kunden hinfällig";
         for (String t : List.of("device_override", "consumer_override", "consumer_policy", "consumer_profile",
                 "flow_definition", "flow_claim", "flow_layout", "flow_gated_node_enablement", "cockpit_layout",

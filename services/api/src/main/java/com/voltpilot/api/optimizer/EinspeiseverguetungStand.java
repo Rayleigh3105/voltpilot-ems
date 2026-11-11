@@ -27,7 +27,7 @@ public final class EinspeiseverguetungStand {
      * Jahresstufen und vor 2012 das erste Band - ein Näherungswert, den die
      * Karte so nennt und für den sie die genaue Angabe anbietet.
      */
-    static final LocalDate GENAUER_SATZPLAN_AB = LocalDate.of(2022, 7, 30);
+    public static final LocalDate GENAUER_SATZPLAN_AB = LocalDate.of(2022, 7, 30);
 
     /** ct/kWh mit einer Stelle mehr, als das Portal zeigt (SchedulePricingService). */
     private static final int CT_SCALE = 3;

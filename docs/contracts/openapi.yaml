@@ -73,6 +73,16 @@ tags:
       Marktstammdatenregister (preview only), then persist the
       customer-confirmed values onto the site's assets. Tenant-scoped like all
       site endpoints (foreign site = 404 via RLS).
+  - name: erzeugungsanlagen
+    description: >
+      Messkonzepte S1 (nur Anzeige): die Erzeugungsanlagen (EA) einer Anlage -
+      eine Anlage im Sinn ihrer Förderung mit eigener Inbetriebnahme, Leistung,
+      Einspeiseart und eigenem Satz, fachlich am Netzanschluss. Fassungen ab
+      einem Tag, Satz mit Herkunft je EA aus demselben EEG-Satzplan wie die
+      Karte "Einspeisevergütung". Fahrplan, Erlöse und Box rechnen weiter mit
+      dem Satz der Anlage. EA 1 einer Anlage mit einer EA folgt der Anlage
+      (PV-Summe, MaStR-Übernahme, eigener Satz). Tenant-scoped like all site
+      endpoints (foreign site = 404 via RLS).
   - name: kpis
   - name: rules
     description: >
@@ -4344,6 +4354,188 @@ paths:
         "403": { description: Recht `anlage.verwalten` fehlt. }
         "404": { description: Site not found for this tenant. }
         "409": { description: Direktvermarktung - es gibt keinen festen Satz (German message). }
+  /api/v1/sites/{siteId}/erzeugungsanlagen:
+    get:
+      tags: [erzeugungsanlagen]
+      summary: Die Erzeugungsanlagen der Anlage mit Satz und Herkunft je EA (nur Anzeige).
+      description: >
+        Je EA Identität, Fassung am Stichtag, alle Fassungen, die Komponenten,
+        die sie speisen, und ihr Satz mit Herkunft - dieselbe Regel und dasselbe
+        Vokabular wie `GET …/einspeiseverguetung`, nur aus Inbetriebnahme,
+        Leistung und angegebenem Satz der EA. Dazu Vorschläge weiterer EA
+        (Erzeuger mit kWp, die keine EA speisen - nie still angelegt) und der
+        Netzanschluss der Anlage am Stichtag. Für EA 1, die der Anlage folgt,
+        ist der Satz derselbe wie auf der Karte. RLS-scoped (foreign site 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: stichtag
+          in: query
+          required: false
+          description: Tag der Fassung und des Satzes (JJJJ-MM-TT); ohne Angabe heute (Europe/Berlin).
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Die Erzeugungsanlagen am Stichtag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erzeugungsanlagen" }
+        "400": { description: Der Stichtag ist kein Tag (German message). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+    post:
+      tags: [erzeugungsanlagen]
+      summary: Eine Erzeugungsanlage anlegen (von Hand, aus dem MaStR-Nachschlagen oder aus einem Vorschlag).
+      description: >
+        Die EA bekommt die nächste freie Nummer ("EA 2"), eine einmal vergebene
+        wird nie neu vergeben. Die Werte aus `POST …/mastr-lookup` reisen mit
+        `mastrBestaetigt: true` zurück (Vorschau, Bestätigung - der vorhandene
+        Weg). `komponenteId`/`eingang` verweisen die Komponente, die sie
+        speist. Folgt EA 1 der Anlage, löst die zweite EA sie davon (Protokoll
+        "bearbeitet"). Needs `geraet.einrichten`.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ErzeugungsanlageAnlegen" }
+      responses:
+        "201":
+          description: Die Erzeugungsanlagen danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erzeugungsanlagen" }
+        "400": { description: Eine Angabe ist ungültig (German message). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Recht `geraet.einrichten` fehlt. }
+        "404": { description: Site not found for this tenant. }
+        "409": { description: Die Komponente speist schon eine andere EA (German message). }
+        "422": { description: Die Komponente gehört nicht zu dieser Anlage (German message). }
+  /api/v1/sites/{siteId}/erzeugungsanlagen/{eaId}:
+    put:
+      tags: [erzeugungsanlagen]
+      summary: Name, Art, Inbetriebnahme und MaStR-Einheit einer EA ändern (volle Darstellung).
+      description: >
+        Ein fehlendes Feld ist leer. Folgt die EA der Anlage, kommen
+        Inbetriebnahme und MaStR-Einheit aus der Registrierung der Anlage - eine
+        Abweichung ist 409. Gleiche Werte schreiben nichts. Needs `geraet.einrichten`.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: eaId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ErzeugungsanlageBearbeiten" }
+      responses:
+        "200":
+          description: Die Erzeugungsanlagen danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erzeugungsanlagen" }
+        "400": { description: Eine Angabe ist ungültig (German message). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Recht `geraet.einrichten` fehlt. }
+        "404": { description: Site or EA not found. }
+        "409": { description: Die EA folgt der Anlage (German message). }
+  /api/v1/sites/{siteId}/erzeugungsanlagen/{eaId}/fassungen:
+    post:
+      tags: [erzeugungsanlagen]
+      summary: Eine Fassung der EA ab einem Tag setzen (Leistung, Einspeiseart, angegebener Satz).
+      description: >
+        `gueltigAb` null = die erste Fassung, von der Inbetriebnahme an. Eine
+        Fassung am selben Tag hebt die alte auf (nie überschrieben); gleiche
+        Werte schreiben nichts. Nicht vor der Inbetriebnahme (422). Folgt die EA
+        der Anlage, müssen Leistung und Satz die der Anlage sein (409); nur die
+        Einspeiseart ist frei. Needs `geraet.einrichten`.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: eaId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ErzeugungsanlageFassungSetzen" }
+      responses:
+        "200":
+          description: Die Erzeugungsanlagen danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erzeugungsanlagen" }
+        "400": { description: Eine Angabe ist ungültig (German message). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Recht `geraet.einrichten` fehlt. }
+        "404": { description: Site or EA not found. }
+        "409": { description: Die EA folgt der Anlage (German message). }
+        "422": { description: Die Fassung beginnt vor der Inbetriebnahme (German message). }
+  /api/v1/sites/{siteId}/erzeugungsanlagen/{eaId}/komponenten:
+    post:
+      tags: [erzeugungsanlagen]
+      summary: Eine Komponente (ganz oder Eingang k) als speisend verweisen.
+      description: >
+        Ab `gueltigAb` (ohne Angabe heute). Die ganze Komponente schließt jeden
+        Eingang aus; derselbe Eingang speist nie zwei EA (409). Needs `geraet.einrichten`.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: eaId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [komponenteId]
+              properties:
+                komponenteId: { type: string, format: uuid }
+                eingang: { type: integer, nullable: true, minimum: 1, maximum: 20 }
+                gueltigAb: { type: string, format: date, nullable: true }
+      responses:
+        "200":
+          description: Die Erzeugungsanlagen danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erzeugungsanlagen" }
+        "400": { description: Eine Angabe ist ungültig (German message). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Recht `geraet.einrichten` fehlt. }
+        "404": { description: Site or EA not found. }
+        "409": { description: Die Komponente speist schon eine EA (German message). }
+        "422": { description: Die Komponente gehört nicht zu dieser Anlage (German message). }
+  /api/v1/sites/{siteId}/erzeugungsanlagen/{eaId}/komponenten/{verweisId}/loesen:
+    post:
+      tags: [erzeugungsanlagen]
+      summary: Einen Verweis lösen - er endet gestern, oder er wird aufgehoben, wenn er heute begann.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: eaId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: verweisId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die Erzeugungsanlagen danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erzeugungsanlagen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Recht `geraet.einrichten` fehlt. }
+        "404": { description: Site, EA or Verweis not found. }
+  /api/v1/sites/{siteId}/erzeugungsanlagen/{eaId}/aufheben:
+    post:
+      tags: [erzeugungsanlagen]
+      summary: Eine versehentlich angelegte EA aufheben (nie gelöscht; ihre Nummer wird nicht neu vergeben).
+      description: EA 1, die der Anlage folgt, lässt sich nicht aufheben (409). Needs `geraet.einrichten`.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: eaId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die Erzeugungsanlagen danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erzeugungsanlagen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Recht `geraet.einrichten` fehlt. }
+        "404": { description: Site or EA not found. }
+        "409": { description: Die EA folgt der Anlage (German message). }
   /api/v1/sites/{siteId}/topology:
     get:
       tags: [topology]
@@ -29332,6 +29524,127 @@ components:
         ustPct: { type: number, nullable: true, description: "USt on everything incl. spot; 0 for Vorsteuer-Abzug (C&I)." }
         komponentenStand: { type: string, format: date, nullable: true, description: "Preisblatt gültig ab." }
         updatedAt: { type: string, format: date-time, nullable: true }
+    Erzeugungsanlagen:
+      type: object
+      description: Die Erzeugungsanlagen einer Anlage am Stichtag (Messkonzepte S1, nur Anzeige).
+      required: [stichtag, netzanschluss, erzeugungsanlagen, vorschlaege]
+      properties:
+        stichtag: { type: string, format: date }
+        netzanschluss:
+          type: object
+          nullable: true
+          description: Der Netzanschluss, an dem die Anlage am Stichtag hängt; null = keiner angelegt oder gebunden.
+          required: [id, kennzeichen, name]
+          properties:
+            id: { type: string, format: uuid }
+            kennzeichen: { type: string }
+            name: { type: string }
+        erzeugungsanlagen:
+          type: array
+          items: { $ref: "#/components/schemas/Erzeugungsanlage" }
+        vorschlaege:
+          type: array
+          description: Erzeuger mit kWp, die keine EA speisen - ein Mensch entscheidet.
+          items:
+            type: object
+            required: [komponenteId, name, leistungKwp, registryUnitId]
+            properties:
+              komponenteId: { type: string, format: uuid }
+              name: { type: string, nullable: true }
+              leistungKwp: { type: number }
+              registryUnitId: { type: string, nullable: true, description: Die am Erzeuger eingetragene MaStR-Nummer (ungeprüft). }
+    Erzeugungsanlage:
+      type: object
+      required: [id, nummer, name, bezeichnung, art, inbetriebnahme, inbetriebnahmeAbSolarspitzengesetz,
+                 registryUnitId, registryFetchedAt, folgtAnlage, fassung, fassungen, komponenten, verguetung]
+      properties:
+        id: { type: string, format: uuid }
+        nummer: { type: integer, minimum: 1 }
+        name: { type: string, nullable: true }
+        bezeichnung: { type: string, description: '"EA 1" oder "EA 2 · PV Scheune" - nie "Anlage" allein.' }
+        art: { type: string, enum: [pv, wind, wasser, biomasse, kwk, sonstige] }
+        inbetriebnahme: { type: string, format: date, nullable: true, description: null = nicht erhoben. }
+        inbetriebnahmeAbSolarspitzengesetz: { type: boolean, nullable: true }
+        registryUnitId: { type: string, nullable: true, pattern: "^SEE[0-9]{12}$" }
+        registryFetchedAt: { type: string, format: date-time, nullable: true }
+        folgtAnlage:
+          type: boolean
+          description: >
+            EA 1 einer Anlage mit einer EA - Leistung, Inbetriebnahme,
+            MaStR-Einheit und eigener Satz kommen aus der Anlage.
+        fassung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/ErzeugungsanlageFassung" }]
+        fassungen:
+          type: array
+          items: { $ref: "#/components/schemas/ErzeugungsanlageFassung" }
+        komponenten:
+          type: array
+          items:
+            type: object
+            required: [id, komponenteId, name, eingang, gueltigAb, gueltigBis]
+            properties:
+              id: { type: string, format: uuid }
+              komponenteId: { type: string, format: uuid }
+              name: { type: string, nullable: true }
+              eingang: { type: integer, nullable: true, description: null = die ganze Komponente. }
+              gueltigAb: { type: string, format: date }
+              gueltigBis: { type: string, format: date, nullable: true }
+        verguetung:
+          type: object
+          required: [zustand, wirksamCtKwh, angegebenCtKwh, hergeleitetCtKwh, naeherung, foerderendeAm,
+                     ohneVerguetungBeiNegativpreis]
+          properties:
+            zustand: { type: string, enum: [angegeben, eeg, eeg_abgelaufen, ohne_angabe, netzladen, direktvermarktung] }
+            wirksamCtKwh: { type: number, nullable: true }
+            angegebenCtKwh: { type: number, nullable: true }
+            hergeleitetCtKwh: { type: number, nullable: true }
+            naeherung:
+              type: array
+              items: { type: string, enum: [vor_erstem_band, jahresstufen, volleinspeisung, leistung_unbekannt] }
+            foerderendeAm: { type: string, format: date, nullable: true }
+            ohneVerguetungBeiNegativpreis: { type: boolean }
+    ErzeugungsanlageFassung:
+      type: object
+      required: [id, gueltigAb, leistungKwp, einspeiseart, satzAngegebenCtKwh, herkunft]
+      properties:
+        id: { type: string, format: uuid }
+        gueltigAb: { type: string, format: date, nullable: true, description: null = von der Inbetriebnahme an. }
+        leistungKwp: { type: number, nullable: true }
+        einspeiseart: { type: string, nullable: true, enum: [voll, ueberschuss] }
+        satzAngegebenCtKwh: { type: number, nullable: true }
+        herkunft: { type: string, enum: [bestand, mastr, angegeben] }
+    ErzeugungsanlageAnlegen:
+      type: object
+      properties:
+        name: { type: string, nullable: true, maxLength: 80 }
+        art: { type: string, nullable: true, enum: [pv, wind, wasser, biomasse, kwk, sonstige] }
+        inbetriebnahme: { type: string, format: date, nullable: true }
+        inbetriebnahmeAbSolarspitzengesetz: { type: boolean, nullable: true }
+        registryUnitId: { type: string, nullable: true, pattern: "^SEE[0-9]{12}$" }
+        mastrBestaetigt: { type: boolean, default: false }
+        leistungKwp: { type: number, nullable: true, exclusiveMinimum: 0 }
+        einspeiseart: { type: string, nullable: true, enum: [voll, ueberschuss] }
+        satzAngegebenCtKwh: { type: number, nullable: true, minimum: 0, maximum: 100 }
+        komponenteId: { type: string, format: uuid, nullable: true }
+        eingang: { type: integer, nullable: true, minimum: 1, maximum: 20 }
+    ErzeugungsanlageBearbeiten:
+      type: object
+      properties:
+        name: { type: string, nullable: true, maxLength: 80 }
+        art: { type: string, nullable: true, enum: [pv, wind, wasser, biomasse, kwk, sonstige] }
+        inbetriebnahme: { type: string, format: date, nullable: true }
+        inbetriebnahmeAbSolarspitzengesetz: { type: boolean, nullable: true }
+        registryUnitId: { type: string, nullable: true, pattern: "^SEE[0-9]{12}$" }
+        mastrBestaetigt: { type: boolean, default: false }
+    ErzeugungsanlageFassungSetzen:
+      type: object
+      properties:
+        gueltigAb: { type: string, format: date, nullable: true }
+        leistungKwp: { type: number, nullable: true, exclusiveMinimum: 0 }
+        einspeiseart: { type: string, nullable: true, enum: [voll, ueberschuss] }
+        satzAngegebenCtKwh: { type: number, nullable: true, minimum: 0, maximum: 100 }
+        mastrBestaetigt: { type: boolean, default: false }
     Einspeiseverguetung:
       type: object
       description: >

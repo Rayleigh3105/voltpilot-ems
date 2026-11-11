@@ -3,6 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { api, type Netzanschluss, type Netzanschluesse, type StandortAmStichtag } from '../api';
 import { NetzanschlussVorschlaege } from '../components/NetzanschlussVorschlaege';
 import { NetzanschlussDialog } from '../components/NetzanschlussDialog';
+import { NetzanschlussErzeugungsanlagen } from '../components/NetzanschlussErzeugungsanlagen';
 import { Recht } from '../components/Recht';
 import { heuteIn } from '../kennzahlKarte';
 import * as N from '../netzanschlussListe';
@@ -143,6 +144,18 @@ export function StandortNetzanschluessePage({
                   <p>Noch keine Anlage gebunden</p>
                 )}
               </div>
+              {(() => {
+                // Messkonzepte S1: die Erzeugungsanlagen der Anlage, die heute an diesem Anschluss hängt.
+                const heuteGebunden = n.anlagen.find((b) => N.giltAm(b, heute));
+                return heuteGebunden ? (
+                  <NetzanschlussErzeugungsanlagen
+                    siteId={heuteGebunden.anlage.id}
+                    anlageName={heuteGebunden.anlage.name}
+                    standortId={standort.id}
+                    heute={heute}
+                  />
+                ) : null;
+              })()}
               {standort.zustand !== 'archiviert' && (!n.gueltig_bis || n.gueltig_bis >= heute) && (
                 <Recht aktion={N.RECHT} standort={standort.id}>
                   <Button variant="outline" onClick={(e) => oeffne(e, n)}>

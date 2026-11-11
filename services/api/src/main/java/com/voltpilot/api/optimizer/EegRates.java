@@ -149,6 +149,15 @@ public final class EegRates {
     }
 
     /**
+     * The first day the schedule knows; an earlier commissioning date gets the
+     * first band ({@link #festeVerguetungCtPerKwh}) - an approximation the
+     * Erzeugungsanlagen read model names ("vor_erstem_band").
+     */
+    public LocalDate firstBandFrom() {
+        return bands.get(0).validFrom();
+    }
+
+    /**
      * EEG remuneration runs for 20 years plus the commissioning year: it ends on
      * Dec 31 (Berlin) of the 20th year after the commissioning year. Mirrors
      * pricing.py {@code _remuneration_expired}.

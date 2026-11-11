@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.erzeugungsanlage.ErzeugungsanlageBestand;
 import com.voltpilot.api.optimizer.SlotEconomics;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -37,9 +38,12 @@ public class EinspeiseverguetungRepository {
     }
 
     private final JdbcTemplate jdbc;
+    private final ErzeugungsanlageBestand erzeugungsanlage;
 
-    public EinspeiseverguetungRepository(JdbcTemplate jdbc) {
+    /** {@code erzeugungsanlage}: EA 1 einer Anlage mit einer EA übernimmt den eigenen Satz (Messkonzepte S1). */
+    public EinspeiseverguetungRepository(JdbcTemplate jdbc, ErzeugungsanlageBestand erzeugungsanlage) {
         this.jdbc = jdbc;
+        this.erzeugungsanlage = erzeugungsanlage;
     }
 
     /** Die Grundlage, oder {@code null}, wenn RLS die Anlage verbirgt. */
@@ -73,8 +77,12 @@ public class EinspeiseverguetungRepository {
      * Anlage verbirgt.
      */
     public boolean setAngegeben(UUID siteId, BigDecimal satzCtKwh, Boolean abSolarspitzengesetz) {
-        return jdbc.update("UPDATE site SET einspeiseverguetung_ct_kwh = ?,"
+        boolean gesetzt = jdbc.update("UPDATE site SET einspeiseverguetung_ct_kwh = ?,"
                 + " inbetriebnahme_ab_solarspitzengesetz = ? WHERE id = ?",
                 satzCtKwh, abSolarspitzengesetz, siteId) > 0;
+        if (gesetzt) {
+            erzeugungsanlage.nachziehen(siteId);
+        }
+        return gesetzt;
     }
 }

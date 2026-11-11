@@ -496,6 +496,11 @@ public class TenantRepository {
                         // its Gerät, the Netz-und-Vermarktung master data at the site; both hold the
                         // tenant (RESTRICT).
                         "registerbild_fassung", "anlage_netz_vermarktung",
+                        // The Erzeugungsanlagen (V20261112043000, Messkonzepte S1): Verweise and
+                        // Fassungen hang at their EA, the EA at its site; all of them and the
+                        // protocol hold the tenant (RESTRICT).
+                        "erzeugungsanlage_komponente", "erzeugungsanlage_fassung", "erzeugungsanlage",
+                        "erzeugungsanlage_aenderung",
                         // Its Vorgaben, their Lücken and the Läufer's Stand (V20261022013700, UEMS EZ-7)
                         // hang at the same Gerät and hold the tenant (RESTRICT).
                         "erzeuger_vorgabe", "erzeuger_vorgabe_luecke", "erzeuger_vorgabe_lauf",

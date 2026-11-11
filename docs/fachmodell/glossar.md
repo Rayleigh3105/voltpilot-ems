@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 65 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 68 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -98,6 +98,9 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Meldung](#meldung) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A (15.10.2026)
 - [Zustellweg](#zustellweg) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3/6 (15.10.2026)
 - [Ruhezeit](#ruhezeit) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3, Entscheid 8A (15.10.2026)
+- [Erzeugungsanlage (EA)](#erzeugungsanlage-ea) — Sicht Elektrisch · Nachtrag Messkonzepte am Netzanschluss S0, Captain 11.11.2026 (F1–F5)
+- [Messkonzept](#messkonzept) — Sicht Elektrisch · Nachtrag Messkonzepte am Netzanschluss S0, Captain 11.11.2026 (F1–F5)
+- [Zählpunkt (mit Rolle im Messkonzept)](#zählpunkt-mit-rolle-im-messkonzept) — Sicht Elektrisch · Nachtrag Messkonzepte am Netzanschluss S0, Captain 11.11.2026 (F1–F5)
 
 ## Kundenbereich
 
@@ -241,11 +244,15 @@ Der Netzanschluss ist ein eigenes Objekt am Standort (E6). Er trägt, was heute 
 
 **Beispiel (Referenzunternehmen Ahrenberg).** NA-1 Hauptanschluss Halle 1 (Marktlokation 47110000001, 630 kVA, vereinbart 550 kW, RLM, 22,4 ct/kWh, 96 €/kW·a), NA-2 Anschluss Halle 2 (250 kVA, 200 kW), NA-3 Anschluss Lindach (160 kVA, 120 kW).
 
-**Heute im Code.** Heute nicht als Objekt; seine Eigenschaften liegen auf `site`: `max_feed_in_kw` (MIG/V20260716000000__site_max_feed_in_kw.sql:21), `leistungspreis_eur_kw`/`abrechnung_leistung` (MIG/V20260716020000__peak_shaving_master_data.sql:44-50), `tarif_art`/`tarif_param_ct_kwh` (MIG/V20260708010000__site_tarif_model.sql:41-44), `anzulegender_wert_ct_kwh` (MIG/V20260707020000__anzulegender_wert_and_monthly_market_value.sql:44), die vom Kunden angegebene Einspeisevergütung `einspeiseverguetung_ct_kwh` (MIG/V20261027101500__site_einspeiseverguetung.sql:47), `netzladen_erlaubt` (MIG/V20260707000000__site_netzladen_erlaubt.sql:21). Portal-Erklärtext „Name, Standort, Veräußerungsform und Netzanschluss“ (PORTAL/pages/AnlageTechnik.tsx:486) und Feld „Maximale Einspeiseleistung am Netzanschlusspunkt“ (PORTAL/pages/AnlageTechnik.tsx:547). Der Netzzähler ist die Komponente mit Rolle `grid`.
+**Heute im Code.** Eigenes Objekt seit AP-10 IP-6: `netzanschluss` am Standort mit Kennzeichen, Name, Marktlokation, Netzbetreiber, Anschlussleistung, vereinbarter Leistung und Messung RLM|SLP (MIG/V20260913235000__uems_netzanschluss.sql:63), die Bindung an die Anlage 1 : 1 je Tag `anlage_netzanschluss` (MIG/V20260913235000__uems_netzanschluss.sql:142), das Grenzblatt `netzanschluss_grenze` (MIG/V20260921120000__uems_netzanschluss_grenze.sql:36) und die Erzeugungsanlagen der gebundenen Anlage (MIG/V20261112043000__erzeugungsanlage.sql:47). Preise und Vergütung liegen weiter auf `site`: `max_feed_in_kw` (MIG/V20260716000000__site_max_feed_in_kw.sql:21), `leistungspreis_eur_kw`/`abrechnung_leistung` (MIG/V20260716020000__peak_shaving_master_data.sql:44-50), `tarif_art`/`tarif_param_ct_kwh` (MIG/V20260708010000__site_tarif_model.sql:41-44), `anzulegender_wert_ct_kwh` (MIG/V20260707020000__anzulegender_wert_and_monthly_market_value.sql:44), die vom Kunden angegebene Einspeisevergütung `einspeiseverguetung_ct_kwh` (MIG/V20261027101500__site_einspeiseverguetung.sql:47), `netzladen_erlaubt` (MIG/V20260707000000__site_netzladen_erlaubt.sql:21). Portal-Erklärtext „Name, Standort, Veräußerungsform und Netzanschluss“ (PORTAL/pages/AnlageTechnik.tsx:486) und Feld „Maximale Einspeiseleistung am Netzanschlusspunkt“ (PORTAL/pages/AnlageTechnik.tsx:547). Der Netzzähler ist die Komponente mit Rolle `grid`.
 
 **Abgrenzung.** Nicht das elektrische System (das hängt dahinter), nicht der Hauptzähler (eine Messstelle AM Anschluss).
 
 > **Verfeinert durch AP-01 E10:** Die vereinbarte Leistung des Anschlusses ist der Prüfstein: Grenzen werden gegen ihn plausibilisiert.
+
+> **Verfeinert durch Messkonzepte F3 (11.11.2026):** ⚠ ERSETZT AP-00 E6 „trägt … Vergütung“ (Widerspruch W5): Der Netzanschluss trägt Preise und Grenzen; die Einspeisevergütung trägt je Erzeugungsanlage, die am Netzanschluss hängt. Mit zwei Erzeugungsanlagen gibt es zwei Vergütungen an einem Netzanschluss. Das Paket „Netzanschluss-Preisblatt“ zieht Tarif, Leistungspreis und Grenzen um, nicht die Vergütung.
+
+> **Verfeinert durch Messkonzepte F1/F5 (11.11.2026):** Am Netzanschluss hängen die Erzeugungsanlagen und — ab Schritt S2 — das Messkonzept als Fassung ab einem Tag mit Zählpunkten mit Rolle; ohne Eintrag „Messkonzept nicht eingetragen“, und alles rechnet wie bisher für die ganze Anlage.
 
 ## Box (Edge)
 
@@ -1660,3 +1667,45 @@ Werktags und Wochenende getrennt einstellbar, das Wochenende auch als „ganz“
 **Heute im Code.** `RuhezeitTeilfenster`/`RuhezeitRegeln` (PORTAL/ruhezeit.ts:1-24); Zeile „Ruhezeit“ und Option „keine Ruhezeit“ der Einstellungs-Seite (Scheibe 1, PORTAL/pages/EinstellungenPage.tsx:609,1175); Schalter „Dringendes trotzdem melden“ (:616).
 
 **Abgrenzung.** Nicht die Stummschaltung (unterdrückt eine einzelne Regel/Anlage befristet, unabhängig von der Uhrzeit — heute nur als API, noch ohne eigene Kundenformulierung im Markup).
+
+## Erzeugungsanlage (EA)
+
+*Sicht: Elektrisch · Nachtrag Messkonzepte am Netzanschluss S0, Captain 11.11.2026 (F1–F5)*
+
+**Eine Anlage im Sinn ihrer Förderung — mit eigener Inbetriebnahme, eigener Leistung, eigener Einspeiseart, eigenem Vergütungssatz und eigenem Förderende; sie hängt am Netzanschluss.**
+
+Das Wort steht auf dem Auswahlblatt des VBEW, das der Betreiber unterschreibt („EA1“, „EA2“). Im Portal steht es immer mit Nummer oder Namen („EA 1“, „EA 2 · PV Scheune“), damit es nicht mit „Anlage“ verwechselt wird (F2). Eine Erweiterung ist eine neue EA ab ihrer Inbetriebnahme; Leistung, Einspeiseart und ein vom Kunden angegebener Satz ändern sich in Fassungen ab einem Tag, nie überschrieben. Inbetriebnahme, Art und Einheit im Marktstammdatenregister gehören zur EA selbst. Die EA verweist auf die Komponenten, die sie speisen (ganz oder Eingang k eines Wechselrichters); eine EA ohne Komponente ist erlaubt — etwa eine Altanlage mit eigenem Zähler, die die Box nicht liest. Die Einspeisevergütung gehört zur EA am Netzanschluss (F3); ihr Satz wird je EA aus ihrer eigenen Inbetriebnahme und Leistung hergeleitet, ein eigener Satz des Kunden gilt je EA. Eine Anlage mit nur einer EA bleibt einfach: EA 1 folgt PV-Leistung, Registrierung und eigenem Satz der Anlage; erst eine zweite EA löst sie davon. Bis Schritt S4 ist das nur Anzeige — Fahrplan und Erlöse rechnen weiter mit dem einen Satz der Anlage.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Hof Brandl (erfunden) an seinem Netzanschluss: EA 1 „PV Scheune“, 30 kWp, Inbetriebnahme 14.04.2009, Volleinspeisung, Förderende 31.12.2029; EA 2 „PV Wohnhaus“, 20 kWp, Inbetriebnahme 12.05.2025, Überschusseinspeisung, ohne Vergütung bei negativem Börsenpreis (§ 51a EEG).
+
+**Heute im Code.** Tabellen `erzeugungsanlage` (MIG/V20261112043000__erzeugungsanlage.sql:47), `erzeugungsanlage_fassung` (:99), `erzeugungsanlage_komponente` (:139) und das Protokoll `erzeugungsanlage_aenderung` (:178); Bestand: jede Anlage mit primärem PV-Aggregat bekam EA 1 (:266). Im Code trägt die EA die Anlage (`site_id`), die je Tag an genau einem Netzanschluss hängt — so hat auch eine Anlage ohne angelegten Netzanschluss ihre EA. EA 1 folgt der Anlage (services/api/src/main/java/com/voltpilot/api/erzeugungsanlage/ErzeugungsanlageBestand.java:74, aufgerufen aus services/api/src/main/java/com/voltpilot/api/repo/AssetRepository.java:74); Satz je EA (services/api/src/main/java/com/voltpilot/api/erzeugungsanlage/EaVerguetung.java:61); Routen `/api/v1/sites/{id}/erzeugungsanlagen` (services/api/src/main/java/com/voltpilot/api/web/ErzeugungsanlageController.java:38). Der Förderweg (Zweig `mispel`, je Anlage) zieht erst nach `mispel` in die EA (F5).
+
+**Abgrenzung.** Nicht die Anlage (das elektrische System mit Box und Fahrplan), nicht der Wechselrichter (eine Komponente kann zwei EA über zwei Eingänge speisen, eine EA mehrere Wechselrichter haben), nicht die Erzeugungseinheit einer Anlagensteuerung (ein Hardware-Teil, das zu einer EA gehören kann), nicht die Messstelle mit Stellung „Erzeuger“ (eine Messung, keine Förderung).
+
+## Messkonzept
+
+*Sicht: Elektrisch · Nachtrag Messkonzepte am Netzanschluss S0, Captain 11.11.2026 (F1–F5)*
+
+**Wie am Netzanschluss gemessen und die Menge je Erzeugungsanlage gerechnet wird: eine Kennung aus dem Messkonzept-Katalog, die Zählpunkte mit ihren Rollen und die Rechenregel.**
+
+Gewählt hat es der Betreiber auf dem Auswahlblatt seines Netzbetreibers, geprüft hat es der Netzbetreiber; VoltPilot trägt es ein und wählt es nie selbst — es kann nach der Matrix zeigen, welche Konzepte in Frage kommen, und bei einem Widerspruch zum Aufbau warnen. Der Katalog führt die Konzepte als Daten mit Quelle, Ausgabe und Seite: Blatt A (eine EA) und B (zwei EA) des VBEW und zwei Konzepte parallel hinter einem Hausanschluss; Blatt C und D später (F1). Es gibt drei Arten, die Einspeisung zu verteilen: nach Leistung (B1, B2, B2a), nach Erzeugung (B3), nach Lage (B4 und parallel). Ein Speicher hat kein eigenes Konzept; er ist in jedem Konzept mit Verbrauchern erlaubt. Ohne Eintrag heißt es „Messkonzept nicht eingetragen“, und alles rechnet wie bisher für die ganze Anlage.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Hof Brandl (erfunden): „VBEW MK A1 + A2 parallel, Ausgabe 09.2024“ — die Altanlage mit eigenem Zweirichtungszähler in Volleinspeisung neben dem Haus mit der Neuanlage. Ein Paar aus einer Anlage im Marktintegrationsmodell (EEG 2012-II, über 10 kWp bis 1 MWp) und einer Neuanlage ließe nur die Kaskade B4 zu.
+
+**Heute im Code.** Katalog als Vertrag mit Schema und Vektoren (docs/contracts/v2/messkonzept-katalog.md:1, Daten docs/contracts/v2/messkonzept-katalog.json:1, Matrix docs/contracts/v2/messkonzept-katalog.md:87); am Netzanschluss noch nicht eingetragen — das ist Schritt S2, nach dem Zweig `mispel`.
+
+**Abgrenzung.** Nicht die Messung RLM/SLP (eine Eigenschaft eines Zählpunkts), nicht der Formelsatz der MiSpeL-Festlegung (der beschreibt die Abgrenzung des Speichers an denselben Zählpunkten), nicht die berechnete Messstelle (die entsteht in Schritt S3 aus der Regel des Konzepts).
+
+## Zählpunkt (mit Rolle im Messkonzept)
+
+*Sicht: Elektrisch · Nachtrag Messkonzepte am Netzanschluss S0, Captain 11.11.2026 (F1–F5)*
+
+**Ein Zähler des Messstellenbetreibers mit Zählpunktbezeichnung, je Richtung eine Messstelle; seine Rolle sagt, wo er im Messkonzept steht.**
+
+Rollen nach ihrer Bedeutung: Netz (Bezug und Lieferung am Hausanschluss), Erzeugung (die ganze Erzeugung einer oder mehrerer EA), Kaskade (Abgang eines Zweigs mit EA und Verbrauchern). Die Nummer Z1, Z2 … ist nur die Beschriftung auf dem Blatt — bei der MiSpeL-Festlegung meint „Z2“ den Zähler für Speicher oder Ladepunkte, beim VBEW einen Erzeugungszähler. Die Werte kommen vom Messstellenbetreiber (Ablesung, Import) oder vom Zähler der Box am selben Ort; was VoltPilot aus den Werten der Box rechnet, heißt „nachgerechnet“, Werte des Messstellenbetreibers haben Vorrang (F4).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Hof Brandl (erfunden): Z1 des Teils A1 (Bezug und Lieferung) misst EA 1; Z1 des Teils A2 (Bezug und Lieferung) ist der Hauptzähler der Anlage mit Haus und EA 2.
+
+**Heute im Code.** Heute nicht vorhanden. Die Zählerrolle mit Zählpunktbezeichnung und Wertequelle liegt auf dem Zweig `mispel` (MiSpeL-Rollen Z1–Z3); sie wird mit Schritt S2 zur Rolle im Messkonzept verallgemeinert (F5). Die Rollen des Katalogs: docs/contracts/v2/messkonzept-katalog.md:39.
+
+**Abgrenzung.** Nicht der Zähler der Box (der kann Quelle einer Messstelle desselben Messorts sein), nicht die Messstelle (je Richtung eine), nicht die Komponente.

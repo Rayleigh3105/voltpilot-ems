@@ -11,6 +11,7 @@ import {
   ApiError,
   type Device,
   type Einspeiseverguetung,
+  type Erzeugungsanlagen,
   type Erzeugungseinheit,
   type PlantKind,
   type Site,
@@ -46,6 +47,10 @@ import { koordinatenLabel } from '../anlageStandort';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { EinspeiseverguetungBlatt } from '../components/EinspeiseverguetungBlatt';
 import { angabeMoeglich, ruhtErklaerung, verguetungFolge, verguetungZeile } from '../einspeiseverguetung';
+import * as EA from '../erzeugungsanlagen';
+import { ErzeugungsanlagenListe } from '../components/ErzeugungsanlagenListe';
+import { ErzeugungsanlageDialog } from '../components/ErzeugungsanlageDialog';
+import { heuteIn } from '../kennzahlKarte';
 import { DangerZone } from '../components/DangerZone';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfoTip } from '../components/InfoTip';
@@ -242,6 +247,15 @@ export function TechnikSection({
   );
   const [verguetungFehler, setVerguetungFehler] = useState(false);
   const [verguetungKey, setVerguetungKey] = useState(0);
+  // Messkonzepte S1 (nur Anzeige): die Erzeugungsanlagen der Anlage. Mit EINER bleibt die Karte, wie sie war; ab der
+  // zweiten listet sie je EA den Satz. Scheitert das Laden, bleibt es still bei der Karte - sie hängt nicht daran.
+  const [eaGeladen, setEaGeladen] = useState<{ siteId: string; liste: Erzeugungsanlagen } | null>(null);
+  const eaListe = eaGeladen?.siteId === site.id ? eaGeladen.liste : null;
+  const [eaNeu, setEaNeu] = useState(false);
+  // Ein eigener Satz ändert den Satz von EA 1, solange sie der Anlage folgt: danach lädt nur die Liste neu, nie die
+  // Karte (sie trägt schon die Antwort des Speicherns).
+  const [eaKey, setEaKey] = useState(0);
+  const heuteBerlin = heuteIn('Europe/Berlin', Date.now());
   const verguetung = verguetungGeladen?.siteId === site.id ? verguetungGeladen.stand : null;
   const setVerguetung = (stand: Einspeiseverguetung) => setVerguetungGeladen({ siteId: site.id, stand });
   const [schaltBusy, setSchaltBusy] = useState<Folge['key'] | null>(null);
@@ -328,6 +342,20 @@ export function TechnikSection({
       cancelled = true;
     };
   }, [site.id, site.plantKind, site.netzladenErlaubt, assetsReloadKey, verguetungKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const id = site.id;
+    api
+      .erzeugungsanlagen(id)
+      .then((liste) => !cancelled && setEaGeladen({ siteId: id, liste }))
+      .catch(() => {
+        // Fail-soft: ohne Liste zeigt „Strom & Geld“ die Karte der Anlage wie bisher.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [site.id, site.plantKind, site.netzladenErlaubt, assetsReloadKey, verguetungKey, eaKey]);
 
   // Direktlinks: die Gruppe in den Blick holen. Die Box wohnt im Aufbau.
   useEffect(() => {
@@ -429,6 +457,7 @@ export function TechnikSection({
         vorher.angegebenCtKwh == null ? null : vorher.inbetriebnahmeAbSolarspitzengesetz,
       );
       setVerguetung(neu);
+      setEaKey((k) => k + 1);
       setFolge({ key: 'verguetung', text: verguetungFolge(neu), zurueck: null });
     } catch {
       setSchaltFehler({ key: 'verguetung', text: SCHALT_FEHLER });
@@ -573,6 +602,7 @@ export function TechnikSection({
             <VerguetungZeile
               label={verguetungSetting.label}
               stand={verguetung}
+              mehrere={EA.mehrere(eaListe) && eaListe ? EA.mehrereZeile(eaListe) : null}
               fehler={verguetungFehler}
               onBlatt={() => oeffne({ art: 'verguetung' })}
               onNeuLaden={() => setVerguetungKey((k) => k + 1)}
@@ -839,6 +869,21 @@ export function TechnikSection({
         )}
         {blattInhalt?.art === 'verguetung' && verguetung && (
           <div className="vp-einst-blatt">
+            {/* Ab der zweiten Erzeugungsanlage: je EA ihr Satz (nur Anzeige); darunter der eine Satz, mit dem
+                Fahrplan und Erlöse heute rechnen. Mit einer EA bleibt das Blatt, wie es war. */}
+            {EA.mehrere(eaListe) && eaListe && (
+              <>
+                <h3 className="vp-tarif-label">{EA.TITEL}</h3>
+                <ErzeugungsanlagenListe
+                  siteId={site.id}
+                  liste={eaListe}
+                  heute={heuteBerlin}
+                  anlage={verguetung}
+                  onGeaendert={(liste) => setEaGeladen({ siteId: site.id, liste })}
+                />
+                <h3 className="vp-tarif-label">Satz für Fahrplan und Erlöse</h3>
+              </>
+            )}
             {/* Erklärung und „Wirkt auf …" nur, wo die Angabe auch wirkt - bei
                 Direktvermarktung und Netzladen erklärt das Blatt den Börsenpreis. */}
             {angabeMoeglich(verguetung.zustand) && <p className="vp-note">{SETTING_HINT.einspeiseverguetung}</p>}
@@ -854,6 +899,7 @@ export function TechnikSection({
               onSaved={(neu, vorher) => {
                 schliesse();
                 setVerguetung(neu);
+                setEaKey((k) => k + 1);
                 setFolge({
                   key: 'verguetung',
                   text: verguetungFolge(neu),
@@ -861,6 +907,22 @@ export function TechnikSection({
                 });
               }}
             />
+            {/* Mit einer Erzeugungsanlage: nur ein leiser Einstieg für eine zweite (Erweiterung mit eigener
+                Inbetriebnahme) und ein Hinweis auf weitere Erzeuger - kein Messkonzept, keine Liste. */}
+            {eaListe?.erzeugungsanlagen.length === 1 && (
+              <Recht aktion={EA.RECHT}>
+                <div className="vp-ea vp-ea-einstieg">
+                  {eaListe.vorschlaege.length > 0 && (
+                    <p className="vp-note vp-ea-anzeige" data-testid="ea-vorschlag-hinweis">
+                      {EA.vorschlagText(eaListe.vorschlaege[0])}
+                    </p>
+                  )}
+                  <button type="button" className="vp-linklike vp-ea-weitere" onClick={() => setEaNeu(true)}>
+                    {EA.WEITERE_EINSTIEG}
+                  </button>
+                </div>
+              </Recht>
+            )}
           </div>
         )}
         {blattInhalt?.art === 'voltpilot' && (
@@ -959,6 +1021,19 @@ export function TechnikSection({
           siteId={site.id}
           onClose={() => setAnschlussgrenzeOffen(false)}
           onSaved={(c) => setGridLimitKw(c.gridLimitKw ?? null)}
+        />
+      )}
+      {eaNeu && eaListe && (
+        <ErzeugungsanlageDialog
+          siteId={site.id}
+          ea={null}
+          heute={heuteBerlin}
+          ersteFolgt={eaListe.erzeugungsanlagen.find((x) => x.folgtAnlage) ?? null}
+          onClose={() => setEaNeu(false)}
+          onGespeichert={(liste) => {
+            setEaNeu(false);
+            setEaGeladen({ siteId: site.id, liste });
+          }}
         />
       )}
       <MastrDrawer
@@ -1148,6 +1223,7 @@ function Zeile({
 function VerguetungZeile({
   label,
   stand,
+  mehrere,
   fehler,
   onBlatt,
   onNeuLaden,
@@ -1155,6 +1231,8 @@ function VerguetungZeile({
 }: {
   label: string;
   stand: Einspeiseverguetung | null;
+  /** Ab der zweiten Erzeugungsanlage: „2 Erzeugungsanlagen“ und je EA ihr Satz (nur Anzeige). */
+  mehrere?: { wert: string; sub: string } | null;
   fehler: boolean;
   onBlatt: () => void;
   onNeuLaden: () => void;
@@ -1177,6 +1255,20 @@ function VerguetungZeile({
   if (stand == null) {
     return (
       <Zeile id="technik-verguetung" icon="sun" kat="dynamic" label={label} wert="wird geladen …" onClick={() => undefined} />
+    );
+  }
+  if (mehrere) {
+    return (
+      <Zeile
+        id="technik-verguetung"
+        icon="sun"
+        kat="dynamic"
+        label={label}
+        wert={mehrere.wert}
+        sub={mehrere.sub}
+        onClick={onBlatt}
+        nach={folge}
+      />
     );
   }
   const z = verguetungZeile(stand);

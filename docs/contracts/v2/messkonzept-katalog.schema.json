@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/messkonzept-katalog.schema.json",
+  "title": "Messkonzept-Katalog für Erzeugungsanlagen",
+  "description": "Form von messkonzept-katalog.json (Prosa: messkonzept-katalog.md). Nur die Teilmenge von draft 2020-12, die UemsSchemaLaeufer prüft; was darüber hinausgeht (Formeln nur über Zähler des Konzepts, symmetrische Matrix, Vokabulare je Feld), prüft MesskonzeptKatalogVectorsTest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$comment", "schema_version", "$schema_datei", "stand", "umfang", "quellen", "vokabulare", "konzepte", "parallel", "matrix"],
+  "properties": {
+    "$comment": { "type": "string", "minLength": 1 },
+    "schema_version": { "const": "1.0" },
+    "$schema_datei": { "const": "messkonzept-katalog.schema.json" },
+    "stand": { "$ref": "#/$defs/tag" },
+    "umfang": { "type": "string", "minLength": 1 },
+    "quellen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/quelle" } },
+    "vokabulare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rollen", "richtungen", "groessen", "verteilungen", "verbraucher", "bedingungen", "energietraeger"],
+      "properties": {
+        "rollen": { "$ref": "#/$defs/woerter" },
+        "richtungen": { "$ref": "#/$defs/woerter" },
+        "groessen": { "$ref": "#/$defs/woerter" },
+        "verteilungen": { "$ref": "#/$defs/woerter" },
+        "verbraucher": { "$ref": "#/$defs/woerter" },
+        "bedingungen": { "$ref": "#/$defs/woerter" },
+        "energietraeger": { "$ref": "#/$defs/woerter" }
+      }
+    },
+    "konzepte": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/konzept" } },
+    "parallel": { "$ref": "#/$defs/parallel" },
+    "matrix": { "$ref": "#/$defs/matrix" }
+  },
+  "$defs": {
+    "tag": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "wort": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "woerter": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/wort" } },
+    "kennung": { "type": "string", "pattern": "^[AB][1-9][a-z]?$" },
+    "ea": { "type": "string", "pattern": "^EA[1-9]$" },
+    "quelle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kennung", "titel", "herausgeber", "ausgabe", "stand", "seiten"],
+      "properties": {
+        "kennung": { "type": "string", "pattern": "^VBEW-[A-Z]+-[0-9]{4}-[0-9]{2}$" },
+        "titel": { "type": "string", "minLength": 1 },
+        "herausgeber": { "type": "string", "minLength": 1 },
+        "ausgabe": { "type": "string", "pattern": "^[0-9]{2}\\.[0-9]{4}$" },
+        "stand": { "$ref": "#/$defs/tag" },
+        "seiten": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "fundstelle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quelle", "seite"],
+      "properties": {
+        "quelle": { "type": "string", "pattern": "^VBEW-[A-Z]+-[0-9]{4}-[0-9]{2}$" },
+        "seite": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "fundstellen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fundstelle" } },
+    "zaehler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kennung", "rolle", "richtungen", "misst", "wahlfrei"],
+      "properties": {
+        "kennung": { "type": "string", "pattern": "^Z[1-9]$" },
+        "rolle": { "enum": ["netz", "erzeugung", "kaskade"] },
+        "richtungen": { "type": "array", "minItems": 1, "items": { "enum": ["bezug", "lieferung"] } },
+        "misst": { "type": "array", "items": { "$ref": "#/$defs/ea" } },
+        "zweig": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ea" } },
+        "wahlfrei": { "type": "boolean" }
+      }
+    },
+    "regel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["groesse", "ea", "formel"],
+      "properties": {
+        "groesse": { "enum": ["bezug", "einspeisung", "selbstverbrauch"] },
+        "ea": { "anyOf": [{ "$ref": "#/$defs/ea" }, { "type": "null" }] },
+        "formel": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9_. ()+*/-]+$" }
+      }
+    },
+    "bedingung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "quelle"],
+      "properties": {
+        "art": {
+          "enum": [
+            "gleicher_energietraeger",
+            "ohne_zonung_nach_bemessungsleistung",
+            "keine_selbstverbrauchsverguetung",
+            "keine_verbraucher",
+            "leistungsgrenze",
+            "lastgangmessung",
+            "matrix"
+          ]
+        },
+        "bereich": { "enum": ["hinter_netzzaehler", "kaskadenzweig"] },
+        "ausnahme": { "enum": ["kaufmaennisch_bilanzielle_weitergabe"] },
+        "ea": { "$ref": "#/$defs/ea" },
+        "wenn": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["energietraeger_verschieden", "mim_und_nicht_mim", "beide_im_selbstverbrauch"] }
+        },
+        "grenzen": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["energietraeger", "max_kw"],
+            "properties": {
+              "energietraeger": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "enum": ["pv", "wind", "wasser", "biomasse", "kwk", "sonstige"] }
+              },
+              "max_kw": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "quelle": { "$ref": "#/$defs/fundstelle" }
+      }
+    },
+    "konzept": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kennung", "blatt", "name", "beschreibung", "quellen", "erzeugungsanlagen", "verteilung", "verbraucher", "speicher_erlaubt", "zaehler", "regeln", "bedingungen"],
+      "properties": {
+        "kennung": { "$ref": "#/$defs/kennung" },
+        "blatt": { "enum": ["A", "B"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "beschreibung": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "quellen": { "$ref": "#/$defs/fundstellen" },
+        "erzeugungsanlagen": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "verteilung": { "enum": ["eine_ea", "nach_leistung", "nach_erzeugung", "nach_lage"] },
+        "rechenzeitraum": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["vorgabe", "herkunft", "hinweis"],
+          "properties": {
+            "vorgabe": { "enum": ["monat"] },
+            "herkunft": { "enum": ["voltpilot"] },
+            "hinweis": { "type": "string", "minLength": 1 }
+          }
+        },
+        "verbraucher": { "enum": ["keine", "erlaubt", "nicht_im_kaskadenzweig"] },
+        "speicher_erlaubt": { "type": "boolean" },
+        "zaehler": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/zaehler" } },
+        "regeln": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/regel" } },
+        "bedingungen": { "type": "array", "items": { "$ref": "#/$defs/bedingung" } }
+      }
+    },
+    "parallel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kennung", "name", "beschreibung", "quellen", "teile_min", "teile_max", "teile_aus", "namensraum", "regeln"],
+      "properties": {
+        "kennung": { "const": "parallel" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "beschreibung": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "quellen": { "$ref": "#/$defs/fundstellen" },
+        "teile_min": { "type": "integer", "minimum": 2 },
+        "teile_max": { "type": "integer", "minimum": 2 },
+        "teile_aus": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/kennung" } },
+        "namensraum": { "type": "string", "minLength": 1 },
+        "regeln": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/regel" } }
+      }
+    },
+    "matrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["titel", "gilt_fuer", "quellen", "klassen", "zeilen", "vorbehalt_b2a", "regel"],
+      "properties": {
+        "titel": { "type": "string", "minLength": 1 },
+        "gilt_fuer": { "type": "string", "minLength": 1 },
+        "quellen": { "$ref": "#/$defs/fundstellen" },
+        "klassen": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kennung", "name", "zuordnung", "hinweis"],
+            "properties": {
+              "kennung": { "enum": ["eeg_bis_2012_i", "eeg_2012_ii_ohne_mim", "eeg_2012_ii_mim", "ab_eeg_2014"] },
+              "name": { "type": "string", "minLength": 1 },
+              "zuordnung": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "inbetriebnahme_vor": { "$ref": "#/$defs/tag" },
+                  "inbetriebnahme_ab": { "$ref": "#/$defs/tag" },
+                  "inbetriebnahme_bis": { "$ref": "#/$defs/tag" },
+                  "leistung_kwp_ueber": { "type": ["number", "null"], "minimum": 0 },
+                  "leistung_kwp_bis": { "type": ["number", "null"], "minimum": 0 },
+                  "leistung_kwp_ausserhalb": { "type": "array", "minItems": 2, "items": { "type": "number", "minimum": 0 } }
+                }
+              },
+              "hinweis": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "zeilen": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ea1", "ea2", "konzepte", "vorbehalt_b2a"],
+            "properties": {
+              "ea1": { "enum": ["eeg_bis_2012_i", "eeg_2012_ii_ohne_mim", "eeg_2012_ii_mim", "ab_eeg_2014"] },
+              "ea2": { "enum": ["eeg_bis_2012_i", "eeg_2012_ii_ohne_mim", "eeg_2012_ii_mim", "ab_eeg_2014"] },
+              "konzepte": { "type": "array", "minItems": 1, "items": { "enum": ["B1", "B2", "B2a", "B3", "B4"] } },
+              "vorbehalt_b2a": { "type": "boolean" }
+            }
+          }
+        },
+        "vorbehalt_b2a": { "type": "string", "minLength": 1 },
+        "regel": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

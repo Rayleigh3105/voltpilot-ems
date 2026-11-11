@@ -21,6 +21,8 @@ flowchart LR
 | Status-Herzschlag: Gerät der Box im Update-Block (Modell, Architektur, Edge-Light-Loader; Geräte & Updates G8) | [Vertrag](v2/box-geraet.md), [Vektoren](v2/box-geraet-vectors.json) |
 | Vorsprung mit Bestand je Anlage (api → Optimierer, Vorsprung-Budget NS-2 A) | [Vertrag](steuerung-vorsprung-v1.md), Tabelle `steuerung_vorsprung` |
 | Einspeisevergütung je eingespeister kWh: Angabe des Kunden über dem EEG-Satzplan (Optimierer, Erlöse, Karte im Portal) | [Vektoren](einspeiseverguetung-vectors.json), Spalte `site.einspeiseverguetung_ct_kwh`, Route `/api/v1/sites/{siteId}/einspeiseverguetung` |
+| Messkonzepte für Erzeugungsanlagen (VBEW Blatt A und B, parallel): Zähler mit Rolle, Formel je Erzeugungsanlage, Bedingungen, Matrix S. 7 - Daten, noch ohne Wirkung im Produkt | [Vertrag](v2/messkonzept-katalog.md), [Katalog](v2/messkonzept-katalog.json), [Schema](v2/messkonzept-katalog.schema.json), [Vektoren](v2/messkonzept-katalog-vectors.json) |
+| Erzeugungsanlagen am Netzanschluss: Fassungen, Satz mit Herkunft je Erzeugungsanlage (nur Anzeige) | Routen `/api/v1/sites/{siteId}/erzeugungsanlagen` im OpenAPI-Tag `erzeugungsanlagen`, [Fachmodell](../fachmodell/glossar.md) „Erzeugungsanlage“ |
 | Provisioning | [Hello-/Config-Vertrag](mqtt-provisioning.schema.json) |
 | Kennung einer Box (`edge-` + Prüfzeichen; Box, API und Portal) | [Vektoren](edge-ref-vectors.json) |
 | v2: Entitäten, Flows, Verbraucher und Messpunkte | [v2-Übersicht](v2/README.md) |

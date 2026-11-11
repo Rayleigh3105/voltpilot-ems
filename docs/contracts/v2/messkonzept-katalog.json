@@ -1,0 +1,341 @@
+{
+  "$comment": "Der Katalog der Messkonzepte für Erzeugungsanlagen (Schritt S0, Captain-Entscheide F1-F5 vom 11.11.2026). Daten mit Quelle und Stand, kein Code: VoltPilot wählt nie ein Konzept, ein Mensch trägt es ein (Schritt S2). Prosa und Regeln: messkonzept-katalog.md; Form: messkonzept-katalog.schema.json; Rechenbeispiele und Matrix-Fälle: messkonzept-katalog-vectors.json; Prüfung: services/api MesskonzeptKatalogVectorsTest. Kennungen wie „MK B2a“, die Zähler mit Rolle und Richtung und die Formeln stammen aus den genannten VBEW-Unterlagen; alle Beschreibungen sind eigene Worte. Schaltbilder und Textpassagen des VBEW gehören nicht in dieses Repository (Nutzungsbedingung der Unterlage, Handout S. 2).",
+  "schema_version": "1.0",
+  "$schema_datei": "messkonzept-katalog.schema.json",
+  "stand": "2026-11-11",
+  "umfang": "Auswahlblatt A und B des VBEW samt zwei Konzepten parallel hinter einem Hausanschluss (F1 = a). Ein Speicher hat kein eigenes Konzept; er ist in jedem Konzept mit Verbrauchern erlaubt. Blatt C (steuerbare Verbrauchseinrichtungen) und Blatt D (Gemeinschaften) kommen später.",
+  "quellen": [
+    {
+      "kennung": "VBEW-H-2024-09",
+      "titel": "VBEW-Messkonzepte. Handout zur Auswahl der Messkonzepte",
+      "herausgeber": "VBEW e. V.",
+      "ausgabe": "09.2024",
+      "stand": "2024-09-24",
+      "seiten": 15
+    },
+    {
+      "kennung": "VBEW-AH-2024-05",
+      "titel": "VBEW-Messkonzepte. Messkonzepte und Abrechnungshinweise für Erzeugungsanlagen",
+      "herausgeber": "VBEW e. V.",
+      "ausgabe": "05.2024",
+      "stand": "2024-05-14",
+      "seiten": 19
+    }
+  ],
+  "vokabulare": {
+    "rollen": ["netz", "erzeugung", "kaskade"],
+    "richtungen": ["bezug", "lieferung"],
+    "groessen": ["bezug", "einspeisung", "selbstverbrauch"],
+    "verteilungen": ["eine_ea", "nach_leistung", "nach_erzeugung", "nach_lage"],
+    "verbraucher": ["keine", "erlaubt", "nicht_im_kaskadenzweig"],
+    "bedingungen": [
+      "gleicher_energietraeger",
+      "ohne_zonung_nach_bemessungsleistung",
+      "keine_selbstverbrauchsverguetung",
+      "keine_verbraucher",
+      "leistungsgrenze",
+      "lastgangmessung",
+      "matrix"
+    ],
+    "energietraeger": ["pv", "wind", "wasser", "biomasse", "kwk", "sonstige"]
+  },
+  "konzepte": [
+    {
+      "kennung": "A1",
+      "blatt": "A",
+      "name": "Volleinspeisung",
+      "beschreibung": "Eine Erzeugungsanlage allein hinter dem Zweirichtungszähler am Hausanschluss; im Haus wird nichts verbraucht.",
+      "quellen": [
+        { "quelle": "VBEW-H-2024-09", "seite": 4 },
+        { "quelle": "VBEW-AH-2024-05", "seite": 5 }
+      ],
+      "erzeugungsanlagen": 1,
+      "verteilung": "eine_ea",
+      "verbraucher": "keine",
+      "speicher_erlaubt": false,
+      "zaehler": [
+        { "kennung": "Z1", "rolle": "netz", "richtungen": ["bezug", "lieferung"], "misst": ["EA1"], "wahlfrei": false }
+      ],
+      "regeln": [
+        { "groesse": "bezug", "ea": null, "formel": "Z1B" },
+        { "groesse": "einspeisung", "ea": "EA1", "formel": "Z1L" }
+      ],
+      "bedingungen": [
+        { "art": "keine_verbraucher", "bereich": "hinter_netzzaehler", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 4 } }
+      ]
+    },
+    {
+      "kennung": "A2",
+      "blatt": "A",
+      "name": "Überschusseinspeisung",
+      "beschreibung": "Eine Erzeugungsanlage und Verbraucher hinter dem Zweirichtungszähler; eingespeist wird, was im Haus nicht gebraucht wird.",
+      "quellen": [
+        { "quelle": "VBEW-H-2024-09", "seite": 4 },
+        { "quelle": "VBEW-AH-2024-05", "seite": 6 }
+      ],
+      "erzeugungsanlagen": 1,
+      "verteilung": "eine_ea",
+      "verbraucher": "erlaubt",
+      "speicher_erlaubt": true,
+      "zaehler": [
+        { "kennung": "Z1", "rolle": "netz", "richtungen": ["bezug", "lieferung"], "misst": [], "wahlfrei": false }
+      ],
+      "regeln": [
+        { "groesse": "bezug", "ea": null, "formel": "Z1B" },
+        { "groesse": "einspeisung", "ea": "EA1", "formel": "Z1L" }
+      ],
+      "bedingungen": []
+    },
+    {
+      "kennung": "A3",
+      "blatt": "A",
+      "name": "Überschusseinspeisung mit Erzeugungsmessung",
+      "beschreibung": "Wie A2, dazu ein Zähler am Abgang der Erzeugungsanlage, der ihre ganze Erzeugung misst; daraus ergibt sich der Selbstverbrauch.",
+      "quellen": [
+        { "quelle": "VBEW-H-2024-09", "seite": 4 },
+        { "quelle": "VBEW-AH-2024-05", "seite": 7 }
+      ],
+      "erzeugungsanlagen": 1,
+      "verteilung": "eine_ea",
+      "verbraucher": "erlaubt",
+      "speicher_erlaubt": true,
+      "zaehler": [
+        { "kennung": "Z1", "rolle": "netz", "richtungen": ["bezug", "lieferung"], "misst": [], "wahlfrei": false },
+        { "kennung": "Z2", "rolle": "erzeugung", "richtungen": ["lieferung"], "misst": ["EA1"], "wahlfrei": false }
+      ],
+      "regeln": [
+        { "groesse": "bezug", "ea": null, "formel": "Z1B" },
+        { "groesse": "einspeisung", "ea": "EA1", "formel": "Z1L" },
+        { "groesse": "selbstverbrauch", "ea": "EA1", "formel": "Z2L - Z1L" }
+      ],
+      "bedingungen": []
+    },
+    {
+      "kennung": "B1",
+      "blatt": "B",
+      "name": "Volleinspeisung mit gemeinsamer Erzeugungsmessung",
+      "beschreibung": "Zwei Erzeugungsanlagen gemeinsam hinter dem Zweirichtungszähler, ohne Verbraucher. Die Einspeisung wird nach der Leistung der Anlagen geteilt.",
+      "quellen": [
+        { "quelle": "VBEW-H-2024-09", "seite": 5 },
+        { "quelle": "VBEW-AH-2024-05", "seite": 9 }
+      ],
+      "erzeugungsanlagen": 2,
+      "verteilung": "nach_leistung",
+      "verbraucher": "keine",
+      "speicher_erlaubt": false,
+      "zaehler": [
+        { "kennung": "Z1", "rolle": "netz", "richtungen": ["bezug", "lieferung"], "misst": ["EA1", "EA2"], "wahlfrei": false }
+      ],
+      "regeln": [
+        { "groesse": "bezug", "ea": null, "formel": "Z1B" },
+        { "groesse": "einspeisung", "ea": "EA1", "formel": "Z1L * P_EA1 / (P_EA1 + P_EA2)" },
+        { "groesse": "einspeisung", "ea": "EA2", "formel": "Z1L * P_EA2 / (P_EA1 + P_EA2)" }
+      ],
+      "bedingungen": [
+        { "art": "keine_verbraucher", "bereich": "hinter_netzzaehler", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 5 } },
+        { "art": "gleicher_energietraeger", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 5 } },
+        { "art": "ohne_zonung_nach_bemessungsleistung", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 5 } },
+        { "art": "matrix", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 7 } }
+      ]
+    },
+    {
+      "kennung": "B2",
+      "blatt": "B",
+      "name": "Überschusseinspeisung mit gemeinsamer Erzeugungsmessung",
+      "beschreibung": "Zwei Erzeugungsanlagen an einem gemeinsamen Abgang mit einem Erzeugungszähler, Verbraucher hinter dem Zweirichtungszähler. Einspeisung und Selbstverbrauch werden nach der Leistung der Anlagen geteilt.",
+      "quellen": [
+        { "quelle": "VBEW-H-2024-09", "seite": 5 },
+        { "quelle": "VBEW-AH-2024-05", "seite": 10 }
+      ],
+      "erzeugungsanlagen": 2,
+      "verteilung": "nach_leistung",
+      "verbraucher": "erlaubt",
+      "speicher_erlaubt": true,
+      "zaehler": [
+        { "kennung": "Z1", "rolle": "netz", "richtungen": ["bezug", "lieferung"], "misst": [], "wahlfrei": false },
+        { "kennung": "Z2", "rolle": "erzeugung", "richtungen": ["lieferung"], "misst": ["EA1", "EA2"], "wahlfrei": false }
+      ],
+      "regeln": [
+        { "groesse": "bezug", "ea": null, "formel": "Z1B" },
+        { "groesse": "einspeisung", "ea": "EA1", "formel": "Z1L * P_EA1 / (P_EA1 + P_EA2)" },
+        { "groesse": "einspeisung", "ea": "EA2", "formel": "Z1L * P_EA2 / (P_EA1 + P_EA2)" },
+        { "groesse": "selbstverbrauch", "ea": "EA1", "formel": "(Z2L - Z1L) * P_EA1 / (P_EA1 + P_EA2)" },
+        { "groesse": "selbstverbrauch", "ea": "EA2", "formel": "(Z2L - Z1L) * P_EA2 / (P_EA1 + P_EA2)" }
+      ],
+      "bedingungen": [
+        { "art": "gleicher_energietraeger", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 5 } },
+        { "art": "ohne_zonung_nach_bemessungsleistung", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 5 } },
+        { "art": "matrix", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 7 } }
+      ]
+    },
+    {
+      "kennung": "B2a",
+      "blatt": "B",
+      "name": "Überschusseinspeisung ohne Erzeugungsmessung",
+      "beschreibung": "Zwei Erzeugungsanlagen und Verbraucher hinter dem Zweirichtungszähler, ohne eigenen Erzeugungszähler. Die Einspeisung wird nach der Leistung der Anlagen geteilt; ein Selbstverbrauch wird nicht ermittelt.",
+      "quellen": [
+        { "quelle": "VBEW-H-2024-09", "seite": 5 },
+        { "quelle": "VBEW-AH-2024-05", "seite": 11 }
+      ],
+      "erzeugungsanlagen": 2,
+      "verteilung": "nach_leistung",
+      "verbraucher": "erlaubt",
+      "speicher_erlaubt": true,
+      "zaehler": [
+        { "kennung": "Z1", "rolle": "netz", "richtungen": ["bezug", "lieferung"], "misst": [], "wahlfrei": false }
+      ],
+      "regeln": [
+        { "groesse": "bezug", "ea": null, "formel": "Z1B" },
+        { "groesse": "einspeisung", "ea": "EA1", "formel": "Z1L * P_EA1 / (P_EA1 + P_EA2)" },
+        { "groesse": "einspeisung", "ea": "EA2", "formel": "Z1L * P_EA2 / (P_EA1 + P_EA2)" }
+      ],
+      "bedingungen": [
+        { "art": "gleicher_energietraeger", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 5 } },
+        { "art": "keine_selbstverbrauchsverguetung", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 5 } },
+        { "art": "ohne_zonung_nach_bemessungsleistung", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 5 } },
+        { "art": "matrix", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 7 } }
+      ]
+    },
+    {
+      "kennung": "B3",
+      "blatt": "B",
+      "name": "Überschusseinspeisung mit getrennter Erzeugungsmessung",
+      "beschreibung": "Je Erzeugungsanlage ein eigener Erzeugungszähler, Verbraucher hinter dem Zweirichtungszähler. Die Einspeisung wird nach dem Anteil jeder Anlage an der gemessenen Erzeugung geteilt.",
+      "quellen": [
+        { "quelle": "VBEW-H-2024-09", "seite": 6 },
+        { "quelle": "VBEW-AH-2024-05", "seite": 12 }
+      ],
+      "erzeugungsanlagen": 2,
+      "verteilung": "nach_erzeugung",
+      "rechenzeitraum": {
+        "vorgabe": "monat",
+        "herkunft": "voltpilot",
+        "hinweis": "Die Unterlage rechnet in kWh über den Abrechnungszeitraum und nennt keinen kürzeren. Je Viertelstunde gerechnet und summiert ergibt die Regel andere Mengen (Fall „B3 je Viertelstunde“ in den Vektoren); VoltPilot rechnet für Erlöse und Berichte über den Monat. Liegen Werte des Messstellenbetreibers vor, gilt deren Zeitraum."
+      },
+      "verbraucher": "erlaubt",
+      "speicher_erlaubt": true,
+      "zaehler": [
+        { "kennung": "Z1", "rolle": "netz", "richtungen": ["bezug", "lieferung"], "misst": [], "wahlfrei": false },
+        { "kennung": "Z2", "rolle": "erzeugung", "richtungen": ["lieferung"], "misst": ["EA1"], "wahlfrei": false },
+        { "kennung": "Z3", "rolle": "erzeugung", "richtungen": ["lieferung"], "misst": ["EA2"], "wahlfrei": false }
+      ],
+      "regeln": [
+        { "groesse": "bezug", "ea": null, "formel": "Z1B" },
+        { "groesse": "einspeisung", "ea": "EA1", "formel": "Z1L * Z2L / (Z2L + Z3L)" },
+        { "groesse": "einspeisung", "ea": "EA2", "formel": "Z1L * Z3L / (Z2L + Z3L)" },
+        { "groesse": "selbstverbrauch", "ea": "EA1", "formel": "Z2L - Z1L * Z2L / (Z2L + Z3L)" },
+        { "groesse": "selbstverbrauch", "ea": "EA2", "formel": "Z3L - Z1L * Z3L / (Z2L + Z3L)" }
+      ],
+      "bedingungen": [
+        { "art": "gleicher_energietraeger", "ausnahme": "kaufmaennisch_bilanzielle_weitergabe", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 6 } },
+        { "art": "lastgangmessung", "wenn": ["energietraeger_verschieden", "mim_und_nicht_mim"], "quelle": { "quelle": "VBEW-H-2024-09", "seite": 6 } },
+        { "art": "matrix", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 7 } }
+      ]
+    },
+    {
+      "kennung": "B4",
+      "blatt": "B",
+      "name": "Kaskadenschaltung (Doppelter Selbstverbrauch)",
+      "beschreibung": "Ein Zweig mit EA1 und den Verbrauchern hängt hinter einem eigenen Lieferzähler; EA2 hängt zwischen diesem Zweig und dem Zweirichtungszähler, dort ohne Verbraucher. EA1 wird zuerst im Haus verbraucht, EA2 zuerst eingespeist; die Einspeisung jeder Anlage folgt aus ihrer Lage.",
+      "quellen": [
+        { "quelle": "VBEW-H-2024-09", "seite": 6 },
+        { "quelle": "VBEW-AH-2024-05", "seite": 13 }
+      ],
+      "erzeugungsanlagen": 2,
+      "verteilung": "nach_lage",
+      "verbraucher": "nicht_im_kaskadenzweig",
+      "speicher_erlaubt": true,
+      "zaehler": [
+        { "kennung": "Z1", "rolle": "netz", "richtungen": ["bezug", "lieferung"], "misst": [], "wahlfrei": false },
+        { "kennung": "Z2", "rolle": "erzeugung", "richtungen": ["lieferung"], "misst": ["EA2"], "wahlfrei": true },
+        { "kennung": "Z3", "rolle": "erzeugung", "richtungen": ["lieferung"], "misst": ["EA1"], "wahlfrei": true },
+        { "kennung": "Z4", "rolle": "kaskade", "richtungen": ["lieferung"], "misst": [], "zweig": ["EA1"], "wahlfrei": false }
+      ],
+      "regeln": [
+        { "groesse": "bezug", "ea": null, "formel": "Z1B" },
+        { "groesse": "einspeisung", "ea": "EA1", "formel": "Z4L" },
+        { "groesse": "einspeisung", "ea": "EA2", "formel": "Z1L - Z4L" },
+        { "groesse": "selbstverbrauch", "ea": "EA1", "formel": "Z3L - Z4L" },
+        { "groesse": "selbstverbrauch", "ea": "EA2", "formel": "Z2L - Z1L + Z4L" }
+      ],
+      "bedingungen": [
+        { "art": "keine_verbraucher", "bereich": "kaskadenzweig", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 6 } },
+        {
+          "art": "leistungsgrenze",
+          "ea": "EA2",
+          "wenn": ["beide_im_selbstverbrauch"],
+          "grenzen": [
+            { "energietraeger": ["pv", "wasser"], "max_kw": 30 },
+            { "energietraeger": ["kwk"], "max_kw": 50 }
+          ],
+          "quelle": { "quelle": "VBEW-H-2024-09", "seite": 6 }
+        },
+        { "art": "matrix", "quelle": { "quelle": "VBEW-H-2024-09", "seite": 7 } }
+      ]
+    }
+  ],
+  "parallel": {
+    "kennung": "parallel",
+    "name": "Zwei Messkonzepte parallel hinter einem Hausanschluss",
+    "beschreibung": "Hinter einem Hausanschlusskasten stehen zwei vollständige Messkonzepte nebeneinander, jedes mit eigenem Zweirichtungszähler. Jede Erzeugungsanlage gehört zu genau einem Teil; ihre Mengen rechnen nach der Regel ihres Teils über die Zähler dieses Teils, zwischen den Teilen wird nichts verteilt. Typischer Fall: eine Altanlage in Volleinspeisung mit eigenem Zähler neben einem Haus mit Neuanlage (A1 + A2).",
+    "quellen": [
+      { "quelle": "VBEW-H-2024-09", "seite": 3 }
+    ],
+    "teile_min": 2,
+    "teile_max": 2,
+    "teile_aus": ["A1", "A2", "A3", "B1", "B2", "B2a", "B3", "B4"],
+    "namensraum": "Die Zähler eines Teils tragen den Teil vorn: T1.Z1L ist die Lieferung des Zweirichtungszählers von Teil 1, T2.P_EA1 die Leistung von EA1 in Teil 2.",
+    "regeln": [
+      { "groesse": "bezug", "ea": null, "formel": "T1.Z1B + T2.Z1B" }
+    ]
+  },
+  "matrix": {
+    "titel": "Kombination von PV-Gebäudeanlagen mit Inbetriebnahmen zu unterschiedlichen EEG-Fassungen",
+    "gilt_fuer": "zwei PV-Gebäudeanlagen an einem Anschluss (Auswahlblatt B)",
+    "quellen": [
+      { "quelle": "VBEW-H-2024-09", "seite": 7 },
+      { "quelle": "VBEW-AH-2024-05", "seite": 8 }
+    ],
+    "klassen": [
+      {
+        "kennung": "eeg_bis_2012_i",
+        "name": "EEG 2000, 2004, 2009 oder 2012-I",
+        "zuordnung": { "inbetriebnahme_vor": "2012-04-01", "leistung_kwp_ueber": null, "leistung_kwp_bis": null },
+        "hinweis": "Ausgeförderte Anlagen zählen hier zum EEG 2000."
+      },
+      {
+        "kennung": "eeg_2012_ii_ohne_mim",
+        "name": "EEG 2012-II, PV bis 10 kWp oder über 1 MWp",
+        "zuordnung": { "inbetriebnahme_ab": "2012-04-01", "inbetriebnahme_bis": "2014-07-31", "leistung_kwp_ausserhalb": [10, 1000] },
+        "hinweis": "Die Grenzen der Inbetriebnahme gelten laut Unterlage „in der Regel“."
+      },
+      {
+        "kennung": "eeg_2012_ii_mim",
+        "name": "EEG 2012-II, PV über 10 kWp bis 1 MWp (Marktintegrationsmodell)",
+        "zuordnung": { "inbetriebnahme_ab": "2012-04-01", "inbetriebnahme_bis": "2014-07-31", "leistung_kwp_ueber": 10, "leistung_kwp_bis": 1000 },
+        "hinweis": "Eine gemeinsame Messung setzt dieselbe Begrenzung der vergütungsfähigen Strommenge voraus; die Grenzen der Inbetriebnahme gelten laut Unterlage „in der Regel“."
+      },
+      {
+        "kennung": "ab_eeg_2014",
+        "name": "ab EEG 2014",
+        "zuordnung": { "inbetriebnahme_ab": "2014-08-01", "leistung_kwp_ueber": null, "leistung_kwp_bis": null },
+        "hinweis": null
+      }
+    ],
+    "zeilen": [
+      { "ea1": "eeg_bis_2012_i", "ea2": "eeg_bis_2012_i", "konzepte": ["B1", "B2", "B2a", "B3"], "vorbehalt_b2a": true },
+      { "ea1": "eeg_bis_2012_i", "ea2": "eeg_2012_ii_ohne_mim", "konzepte": ["B1", "B2", "B2a", "B3"], "vorbehalt_b2a": true },
+      { "ea1": "eeg_bis_2012_i", "ea2": "eeg_2012_ii_mim", "konzepte": ["B4"], "vorbehalt_b2a": false },
+      { "ea1": "eeg_bis_2012_i", "ea2": "ab_eeg_2014", "konzepte": ["B1", "B2", "B2a", "B3"], "vorbehalt_b2a": true },
+      { "ea1": "eeg_2012_ii_ohne_mim", "ea2": "eeg_2012_ii_ohne_mim", "konzepte": ["B1", "B2", "B2a", "B3"], "vorbehalt_b2a": false },
+      { "ea1": "eeg_2012_ii_mim", "ea2": "eeg_2012_ii_mim", "konzepte": ["B1", "B2", "B2a", "B3"], "vorbehalt_b2a": false },
+      { "ea1": "eeg_2012_ii_ohne_mim", "ea2": "eeg_2012_ii_mim", "konzepte": ["B4"], "vorbehalt_b2a": false },
+      { "ea1": "eeg_2012_ii_mim", "ea2": "eeg_2012_ii_ohne_mim", "konzepte": ["B4"], "vorbehalt_b2a": false },
+      { "ea1": "eeg_2012_ii_ohne_mim", "ea2": "ab_eeg_2014", "konzepte": ["B1", "B2", "B2a", "B3"], "vorbehalt_b2a": false },
+      { "ea1": "eeg_2012_ii_mim", "ea2": "ab_eeg_2014", "konzepte": ["B4"], "vorbehalt_b2a": false },
+      { "ea1": "ab_eeg_2014", "ea2": "ab_eeg_2014", "konzepte": ["B1", "B2", "B2a", "B3"], "vorbehalt_b2a": false }
+    ],
+    "vorbehalt_b2a": "Wird für eine PV-Anlage nach EEG 2009 oder 2012-I eine Vergütung des Selbstverbrauchs beansprucht, scheidet B2a aus.",
+    "regel": "Ist genau eine der beiden Anlagen eine Anlage im Marktintegrationsmodell, kommt nur B4 in Frage. In jedem anderen Paar kommen B1, B2, B2a und B3 in Frage, B4 nicht."
+  }
+}

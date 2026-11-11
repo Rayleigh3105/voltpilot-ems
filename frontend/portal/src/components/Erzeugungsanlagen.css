@@ -1,0 +1,170 @@
+/* Erzeugungsanlagen (Messkonzepte S1): Liste am Netzanschluss und im Blatt
+   „Einspeisevergütung“, Dialog zum Anlegen und Bearbeiten. Nur Tokens. */
+.vp-ea {
+  display: grid;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-ea-liste {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-ea-karte {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+}
+
+.vp-ea-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-ea-kopf > b {
+  overflow-wrap: anywhere;
+}
+
+.vp-ea-kopf > :last-child {
+  margin-left: auto;
+}
+
+.vp-ea-satz {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-ea-satz > * {
+  overflow-wrap: anywhere;
+}
+
+.vp-ea-wert {
+  font-weight: var(--vp-weight-semibold, 600);
+}
+
+.vp-ea-satz.is-warn .vp-ea-wert {
+  color: var(--vp-industry, #b45309);
+}
+
+.vp-ea-eckdaten,
+.vp-ea-hinweis,
+.vp-ea-anzeige {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ea-komponenten {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-ea-komponenten > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.vp-ea-fassungen > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.vp-ea-fassungen ul {
+  margin: 4px 0 0;
+  padding-left: 1.1em;
+}
+
+.vp-ea-vorschlaege {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+}
+
+.vp-ea-vorschlag {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-paleblue-start, #eef4fb);
+}
+
+.vp-ea-vorschlag > .vp-note {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ea-vorschlag-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2, 8px);
+}
+
+.vp-ea-form {
+  display: grid;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-ea-form > .vp-note {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ea-see {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+@media (max-width: 480px) {
+  .vp-ea-see {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.vp-ea-gilt {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+}
+
+.vp-ea-entfernen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2, 8px);
+  align-items: center;
+}
+
+/* Der leise Einstieg im Blatt „Einspeisevergütung“ (eine EA): abgesetzt unter dem Formular, klein, kein Teil davon. */
+.vp-ea-einstieg {
+  margin-top: var(--vp-space-3, 12px);
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+/* Spezifischer als `.vp-linklike` (`font: inherit`), sonst entschiede die Ladereihenfolge der Stile. */
+.vp-ea .vp-ea-weitere {
+  justify-self: start;
+  margin: 0;
+  font-size: var(--vp-text-sm, 0.875rem);
+  font-weight: 500;
+}

@@ -25,7 +25,8 @@ export { validateSeeNummer };
 
 const NOT_IN_REGISTRY = <span className="vp-muted">nicht im Register hinterlegt</span>;
 
-function PreviewCard({ preview }: { preview: MastrPreview }) {
+/** Die Vorschau einer Einheit zum Bestätigen - auch für eine Erzeugungsanlage (ErzeugungsanlageDialog). */
+export function PreviewCard({ preview }: { preview: MastrPreview }) {
   const isPv = preview.kind === 'pv';
   return (
     <div style={{ border: '1px solid var(--vp-border)', borderRadius: 'var(--vp-radius-md)', padding: 'var(--vp-space-4)', marginBottom: 'var(--vp-space-3)' }}>

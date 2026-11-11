@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
-import { api, type Device, type Einspeiseverguetung, type Site, type SiteAsset, type SupplyPrice } from '../api';
+import {
+  api,
+  type Device,
+  type Einspeiseverguetung,
+  type Erzeugungsanlage,
+  type Erzeugungsanlagen,
+  type Site,
+  type SiteAsset,
+  type SupplyPrice,
+} from '../api';
+import * as EA from '../erzeugungsanlagen';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { buettner, buettnerNv } from '../test/anlagensteuerungFixtures';
@@ -909,7 +919,78 @@ describe('Einstellungen · Einspeisevergütung unter Strom & Geld', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     restore();
   });
+
+  it('mit einer Erzeugungsanlage bleibt die Karte, wie sie war - nur ein leiser Einstieg für eine zweite', async () => {
+    const liste = vi.spyOn(api, 'erzeugungsanlagen').mockResolvedValue(eaListe([erzeugungsanlage()]));
+    const { restore } = await renderEinstellungen();
+    await waitFor(() => expect(liste).toHaveBeenCalledWith('s-1'));
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('7,94 ct/kWh'));
+    expect(zeile('Einspeisevergütung')).toHaveTextContent('hergeleitet aus EEG');
+    expect(zeile('Einspeisevergütung')).not.toHaveTextContent('Erzeugungsanlage');
+    const b = await blatt('Einspeisevergütung');
+    expect(within(b).queryByTestId('erzeugungsanlagen')).toBeNull();
+    expect(within(b).getByRole('button', { name: EA.WEITERE_EINSTIEG })).toBeInTheDocument();
+    expect(within(b).queryByText(/Messkonzept/)).toBeNull();
+    liste.mockRestore();
+    restore();
+  });
+
+  it('ab der zweiten Erzeugungsanlage steht je EA ihr Satz da - und womit Fahrplan und Erlöse rechnen', async () => {
+    const zweite = erzeugungsanlage({
+      id: 'ea-2',
+      nummer: 2,
+      name: 'PV Scheune',
+      bezeichnung: 'EA 2 · PV Scheune',
+      inbetriebnahme: '2009-04-14',
+      verguetung: { ...erzeugungsanlage().verguetung, wirksamCtKwh: 23.633, hergeleitetCtKwh: 23.633, foerderendeAm: '2029-12-31' },
+    });
+    const liste = vi
+      .spyOn(api, 'erzeugungsanlagen')
+      .mockResolvedValue(eaListe([erzeugungsanlage({ folgtAnlage: false }), zweite]));
+    const { restore } = await renderEinstellungen();
+    await waitFor(() => expect(zeile('Einspeisevergütung')).toHaveTextContent('2 Erzeugungsanlagen'));
+    expect(zeile('Einspeisevergütung')).toHaveTextContent('EA 1: 7,94 ct/kWh · EA 2: 23,63 ct/kWh');
+    const b = await blatt('Einspeisevergütung');
+    expect(within(b).getByTestId('ea-2')).toHaveTextContent('EA 2 · PV Scheune');
+    expect(within(b).getByText(/Fahrplan und Erlöse rechnen bis auf Weiteres mit einem Satz/)).toBeInTheDocument();
+    expect(within(b).queryByRole('button', { name: EA.WEITERE_EINSTIEG })).toBeNull();
+    liste.mockRestore();
+    restore();
+  });
 });
+
+/** Eine erfundene Erzeugungsanlage im Stand von {@link verguetungStand} (Inbetriebnahme 01.06.2025, 7,94 ct/kWh). */
+function erzeugungsanlage(over: Partial<Erzeugungsanlage> = {}): Erzeugungsanlage {
+  return {
+    id: 'ea-1',
+    nummer: 1,
+    name: null,
+    bezeichnung: 'EA 1',
+    art: 'pv',
+    inbetriebnahme: '2025-06-01',
+    inbetriebnahmeAbSolarspitzengesetz: null,
+    registryUnitId: null,
+    registryFetchedAt: null,
+    folgtAnlage: true,
+    fassung: { id: 'f-1', gueltigAb: null, leistungKwp: 9.8, einspeiseart: null, satzAngegebenCtKwh: null, herkunft: 'bestand' },
+    fassungen: [],
+    komponenten: [],
+    verguetung: {
+      zustand: 'eeg',
+      wirksamCtKwh: 7.94,
+      angegebenCtKwh: null,
+      hergeleitetCtKwh: 7.94,
+      naeherung: [],
+      foerderendeAm: '2045-12-31',
+      ohneVerguetungBeiNegativpreis: true,
+    },
+    ...over,
+  };
+}
+
+function eaListe(eas: Erzeugungsanlage[]): Erzeugungsanlagen {
+  return { stichtag: '2026-11-12', netzanschluss: null, erzeugungsanlagen: eas, vorschlaege: [] };
+}
 
 describe('Einstellungen · Schalter wirken direkt - mit Folge und „Rückgängig"', () => {
   it('Netzladen: die Bedingung steht VOR dem Umlegen an der Zeile', async () => {

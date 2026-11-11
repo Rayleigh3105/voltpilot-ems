@@ -1,5 +1,7 @@
 import {
   ApiError,
+  type Erzeugungsanlage,
+  type Erzeugungsanlagen,
   type NetzanschlussAnfrage,
   type NetzanschlussBinden,
   type NetzanschlussUebernehmen,
@@ -146,6 +148,14 @@ export function netzanschlussBuehne(standorte: StandorteAmStichtag) {
       liste.push(n);
       return structuredClone(n);
     },
+    // Messkonzepte S1 (nur Anzeige): je Anlage EA 1, die der Anlage folgt; `?ea=zwei` gibt jeder Anlage dazu eine
+    // Altanlage von 2009 in Volleinspeisung. Hof Brandl und seine Zahlen sind erfunden.
+    erzeugungsanlagen: async (siteId: string): Promise<Erzeugungsanlagen> => {
+      const zwei = params.get('ea') === 'zwei';
+      const eas = [erzeugungsanlage(siteId, 1, !zwei)];
+      if (zwei) eas.push(erzeugungsanlage(siteId, 2, false));
+      return { stichtag: '2026-10-20', netzanschluss: null, erzeugungsanlagen: eas, vorschlaege: [] };
+    },
     netzanschlussBinden: async (_standort: string, id: string, body: NetzanschlussBinden) => {
       aufrufe.binden.push(body);
       if (params.get('netz') === 'konflikt')
@@ -170,6 +180,43 @@ export function netzanschlussBuehne(standorte: StandorteAmStichtag) {
         gueltig_bis: n.gueltig_bis,
       });
       return structuredClone(n);
+    },
+  };
+}
+
+/** Eine erfundene Erzeugungsanlage: EA 1 von 2025 im Überschuss, EA 2 „PV Scheune“ von 2009 in Volleinspeisung. */
+function erzeugungsanlage(siteId: string, nummer: 1 | 2, folgtAnlage: boolean): Erzeugungsanlage {
+  const alt = nummer === 2;
+  const satz = alt ? 23.633 : 7.94;
+  return {
+    id: `${siteId}-ea-${nummer}`,
+    nummer,
+    name: alt ? 'PV Scheune' : null,
+    bezeichnung: alt ? 'EA 2 · PV Scheune' : 'EA 1',
+    art: 'pv',
+    inbetriebnahme: alt ? '2009-04-14' : '2025-06-01',
+    inbetriebnahmeAbSolarspitzengesetz: null,
+    registryUnitId: null,
+    registryFetchedAt: null,
+    folgtAnlage,
+    fassung: {
+      id: `${siteId}-f-${nummer}`,
+      gueltigAb: null,
+      leistungKwp: alt ? 30 : 9.8,
+      einspeiseart: alt ? 'voll' : null,
+      satzAngegebenCtKwh: null,
+      herkunft: alt ? 'angegeben' : 'bestand',
+    },
+    fassungen: [],
+    komponenten: [],
+    verguetung: {
+      zustand: 'eeg',
+      wirksamCtKwh: satz,
+      angegebenCtKwh: null,
+      hergeleitetCtKwh: satz,
+      naeherung: alt ? ['vor_erstem_band', 'volleinspeisung'] : [],
+      foerderendeAm: alt ? '2029-12-31' : '2045-12-31',
+      ohneVerguetungBeiNegativpreis: !alt,
     },
   };
 }

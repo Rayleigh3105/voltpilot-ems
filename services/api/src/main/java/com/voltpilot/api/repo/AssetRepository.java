@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.erzeugungsanlage.ErzeugungsanlageBestand;
 import com.voltpilot.api.web.Speicherschonung;
 import com.voltpilot.api.web.dto.MastrApplyRequest;
 import com.voltpilot.api.web.dto.SiteAssetDto;
@@ -30,9 +31,15 @@ public class AssetRepository {
             + "registry_fetched_at";
 
     private final JdbcTemplate jdbc;
+    private final ErzeugungsanlageBestand erzeugungsanlage;
 
-    public AssetRepository(JdbcTemplate jdbc) {
+    /**
+     * {@code erzeugungsanlage}: nach jedem Schreiben der PV-Angaben folgt EA 1 der Anlage (Messkonzepte S1, nur
+     * Anzeige) - in einem eigenen Savepoint, der das Schreiben hier nie scheitern lässt.
+     */
+    public AssetRepository(JdbcTemplate jdbc, ErzeugungsanlageBestand erzeugungsanlage) {
         this.jdbc = jdbc;
+        this.erzeugungsanlage = erzeugungsanlage;
     }
 
     public List<SiteAssetDto> findForSite(UUID siteId) {
@@ -64,6 +71,7 @@ public class AssetRepository {
                 tenantId, siteId, pv.capacityKwp(), pv.moduleCount(), pv.azimuthDeg(),
                 pv.tiltDeg(), pv.commissionedOn(), registry, pv.mastrNummer(),
                 Timestamp.from(fetchedAt));
+        erzeugungsanlage.nachziehen(siteId);
     }
 
     /**
@@ -132,6 +140,7 @@ public class AssetRepository {
                         + "EXCLUDED.pv_capacity_kwp THEN NULL ELSE asset.registry_fetched_at END, "
                         + "pv_capacity_kwp = EXCLUDED.pv_capacity_kwp",
                 tenantId, siteId, capacityKwp);
+        erzeugungsanlage.nachziehen(siteId);
     }
 
     /**
@@ -213,7 +222,11 @@ public class AssetRepository {
                     "INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) "
                             + "VALUES (?, ?, 'pv', ?)",
                     tenantId, siteId, deltaKwp);
+            erzeugungsanlage.nachziehen(siteId);
             return true;
+        }
+        if (updated > 0) {
+            erzeugungsanlage.nachziehen(siteId);
         }
         return updated > 0;
     }

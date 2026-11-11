@@ -1,0 +1,135 @@
+{
+  "$comment": "Vektoren zum Messkonzept-Katalog (messkonzept-katalog.json, Prosa messkonzept-katalog.md). Alle Zahlen sind erfunden; die Formeln kommen aus dem Katalog, nicht aus dieser Datei. Gelesen von services/api MesskonzeptKatalogVectorsTest: je Rechenfall werden die Regeln des Konzepts über die Zählerwerte und Leistungen ausgewertet und mit dem Erwarteten verglichen; je Matrix-Fall werden beide Anlagen über die Klassen des Katalogs eingeordnet und die Zeile der Matrix nachgeschlagen. Einheiten: Zählermengen in kWh über den Rechenzeitraum, Leistungen P_EA in kWp. Hof Brandl ist ein erfundener Beispielkunde.",
+  "rechenfaelle": [
+    {
+      "fall": "A1 Volleinspeisung: die ganze Lieferung ist Einspeisung der einen Anlage",
+      "konzept": "A1",
+      "leistung": {},
+      "werte": { "Z1B": 40, "Z1L": 9000 },
+      "erwartet": { "bezug": 40, "einspeisung": { "EA1": 9000 }, "selbstverbrauch": {} }
+    },
+    {
+      "fall": "A2 Überschusseinspeisung",
+      "konzept": "A2",
+      "leistung": {},
+      "werte": { "Z1B": 2500, "Z1L": 3100 },
+      "erwartet": { "bezug": 2500, "einspeisung": { "EA1": 3100 }, "selbstverbrauch": {} }
+    },
+    {
+      "fall": "A3 Selbstverbrauch = Erzeugung minus Einspeisung",
+      "konzept": "A3",
+      "leistung": {},
+      "werte": { "Z1B": 1200, "Z1L": 600, "Z2L": 1000 },
+      "erwartet": { "bezug": 1200, "einspeisung": { "EA1": 600 }, "selbstverbrauch": { "EA1": 400 } }
+    },
+    {
+      "fall": "B1 nach Leistung (120 und 150 kWp)",
+      "konzept": "B1",
+      "leistung": { "P_EA1": 120, "P_EA2": 150 },
+      "werte": { "Z1B": 30, "Z1L": 2700 },
+      "erwartet": { "bezug": 30, "einspeisung": { "EA1": 1200, "EA2": 1500 }, "selbstverbrauch": {} }
+    },
+    {
+      "fall": "B2 nach Leistung, Selbstverbrauch ebenso (12 und 15 kWp)",
+      "konzept": "B2",
+      "leistung": { "P_EA1": 12, "P_EA2": 15 },
+      "werte": { "Z1B": 900, "Z1L": 2700, "Z2L": 4050 },
+      "erwartet": { "bezug": 900, "einspeisung": { "EA1": 1200, "EA2": 1500 }, "selbstverbrauch": { "EA1": 600, "EA2": 750 } }
+    },
+    {
+      "fall": "B2a nach Leistung (7 und 15 kWp) - gleichgültig, wer im Monat mehr erzeugt hat",
+      "konzept": "B2a",
+      "leistung": { "P_EA1": 7, "P_EA2": 15 },
+      "werte": { "Z1B": 800, "Z1L": 1100 },
+      "erwartet": { "bezug": 800, "einspeisung": { "EA1": 350, "EA2": 750 }, "selbstverbrauch": {} }
+    },
+    {
+      "fall": "B3 nach Erzeugung über den Monat",
+      "konzept": "B3",
+      "leistung": {},
+      "werte": { "Z1B": 600, "Z1L": 1500, "Z2L": 900, "Z3L": 2100 },
+      "erwartet": { "bezug": 600, "einspeisung": { "EA1": 450, "EA2": 1050 }, "selbstverbrauch": { "EA1": 450, "EA2": 1050 } }
+    },
+    {
+      "fall": "B4 nach Lage: EA1 zuerst im Haus, EA2 zuerst ins Netz",
+      "konzept": "B4",
+      "leistung": {},
+      "werte": { "Z1B": 700, "Z1L": 2000, "Z2L": 1400, "Z3L": 1500, "Z4L": 800 },
+      "erwartet": { "bezug": 700, "einspeisung": { "EA1": 800, "EA2": 1200 }, "selbstverbrauch": { "EA1": 700, "EA2": 200 } }
+    }
+  ],
+  "zeitraumfaelle": [
+    {
+      "fall": "B3 je Viertelstunde summiert ist nicht B3 über den Zeitraum",
+      "konzept": "B3",
+      "groesse": "einspeisung",
+      "viertelstunden": [
+        { "Z1B": 0, "Z1L": 1, "Z2L": 1, "Z3L": 0 },
+        { "Z1B": 0, "Z1L": 0, "Z2L": 0, "Z3L": 1 }
+      ],
+      "erwartet_je_viertelstunde_summiert": { "EA1": 1, "EA2": 0 },
+      "erwartet_ueber_zeitraum": { "EA1": 0.5, "EA2": 0.5 }
+    }
+  ],
+  "parallelfaelle": [
+    {
+      "fall": "Hof Brandl: Altanlage in Volleinspeisung mit eigenem Zähler neben dem Haus mit Neuanlage (A1 + A2)",
+      "teile": [
+        { "teil": "T1", "konzept": "A1", "ea": { "EA1": "EA1" } },
+        { "teil": "T2", "konzept": "A2", "ea": { "EA1": "EA2" } }
+      ],
+      "leistung": {},
+      "werte": { "T1.Z1B": 15, "T1.Z1L": 24000, "T2.Z1B": 3200, "T2.Z1L": 6000 },
+      "erwartet": { "bezug": 3215, "einspeisung": { "EA1": 24000, "EA2": 6000 } }
+    }
+  ],
+  "klassenfaelle": [
+    { "fall": "vor dem 01.04.2012", "inbetriebnahme": "2009-04-14", "leistung_kwp": 30, "klasse": "eeg_bis_2012_i" },
+    { "fall": "letzter Tag vor EEG 2012-II", "inbetriebnahme": "2012-03-31", "leistung_kwp": 25, "klasse": "eeg_bis_2012_i" },
+    { "fall": "EEG 2012-II genau 10 kWp: kein Marktintegrationsmodell", "inbetriebnahme": "2012-04-01", "leistung_kwp": 10, "klasse": "eeg_2012_ii_ohne_mim" },
+    { "fall": "EEG 2012-II knapp über 10 kWp", "inbetriebnahme": "2013-03-01", "leistung_kwp": 10.5, "klasse": "eeg_2012_ii_mim" },
+    { "fall": "EEG 2012-II genau 1 MWp", "inbetriebnahme": "2014-07-31", "leistung_kwp": 1000, "klasse": "eeg_2012_ii_mim" },
+    { "fall": "EEG 2012-II über 1 MWp", "inbetriebnahme": "2013-09-01", "leistung_kwp": 1200, "klasse": "eeg_2012_ii_ohne_mim" },
+    { "fall": "erster Tag EEG 2014", "inbetriebnahme": "2014-08-01", "leistung_kwp": 25, "klasse": "ab_eeg_2014" },
+    { "fall": "Neuanlage", "inbetriebnahme": "2025-05-12", "leistung_kwp": 20, "klasse": "ab_eeg_2014" },
+    { "fall": "ohne Inbetriebnahme keine Klasse", "inbetriebnahme": null, "leistung_kwp": 20, "klasse": null },
+    { "fall": "EEG 2012-II ohne Leistung keine Klasse", "inbetriebnahme": "2013-03-01", "leistung_kwp": null, "klasse": null }
+  ],
+  "matrixfaelle": [
+    {
+      "fall": "Hof Brandl: Altanlage 2009 und Neuanlage 2025",
+      "ea1": { "inbetriebnahme": "2009-04-14", "leistung_kwp": 30 },
+      "ea2": { "inbetriebnahme": "2025-05-12", "leistung_kwp": 20 },
+      "konzepte": ["B1", "B2", "B2a", "B3"],
+      "vorbehalt_b2a": true
+    },
+    {
+      "fall": "Marktintegrationsmodell neben Neuanlage: nur Kaskade",
+      "ea1": { "inbetriebnahme": "2013-03-01", "leistung_kwp": 25 },
+      "ea2": { "inbetriebnahme": "2024-01-15", "leistung_kwp": 15 },
+      "konzepte": ["B4"],
+      "vorbehalt_b2a": false
+    },
+    {
+      "fall": "zwei Anlagen aus EEG 2012-II, nur eine im Marktintegrationsmodell",
+      "ea1": { "inbetriebnahme": "2012-06-01", "leistung_kwp": 8 },
+      "ea2": { "inbetriebnahme": "2014-07-31", "leistung_kwp": 12 },
+      "konzepte": ["B4"],
+      "vorbehalt_b2a": false
+    },
+    {
+      "fall": "zwei Anlagen im Marktintegrationsmodell",
+      "ea1": { "inbetriebnahme": "2012-06-01", "leistung_kwp": 40 },
+      "ea2": { "inbetriebnahme": "2014-01-10", "leistung_kwp": 60 },
+      "konzepte": ["B1", "B2", "B2a", "B3"],
+      "vorbehalt_b2a": false
+    },
+    {
+      "fall": "zwei Neuanlagen",
+      "ea1": { "inbetriebnahme": "2020-05-01", "leistung_kwp": 9.9 },
+      "ea2": { "inbetriebnahme": "2025-03-01", "leistung_kwp": 6 },
+      "konzepte": ["B1", "B2", "B2a", "B3"],
+      "vorbehalt_b2a": false
+    }
+  ]
+}
