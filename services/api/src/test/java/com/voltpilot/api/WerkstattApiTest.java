@@ -644,6 +644,39 @@ class WerkstattApiTest {
                 .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
     }
 
+    /**
+     * vp-werkstatt-zubehoer-download: Hutschienen-Clip und Bohrlehre, ohne Kennung und für jede
+     * Box gleich - genau die eingecheckten Dateien aus edge-light/gehaeuse/.../druck/, nur
+     * platform-admin lädt herunter.
+     */
+    @Test
+    @Order(8)
+    void zubehoerDownload() throws Exception {
+        String admin = token("admin", "admin");
+        String kunde = token("demo", "demo");
+        java.nio.file.Path druck = java.nio.file.Path.of("../../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck");
+
+        for (Map.Entry<String, String> teil : Map.of("hutschienen-clip", "hutschienen-clip.3mf",
+                "bohrlehre", "bohrlehre.3mf").entrySet()) {
+            byte[] erwartet = java.nio.file.Files.readAllBytes(druck.resolve(teil.getValue()));
+            ResponseEntity<byte[]> datei = rest.exchange(url(BASE + "/zubehoer/" + teil.getKey()), HttpMethod.GET,
+                    new HttpEntity<>(bearer(admin)), byte[].class);
+            assertThat(datei.getStatusCode()).as(teil.getKey()).isEqualTo(HttpStatus.OK);
+            assertThat(datei.getBody()).as(teil.getKey()).isEqualTo(erwartet);
+            assertThat(datei.getHeaders().getContentDisposition().getFilename()).as(teil.getKey())
+                    .isEqualTo(teil.getValue());
+            assertThat(datei.getHeaders().getContentType()).as(teil.getKey())
+                    .isEqualTo(MediaType.parseMediaType("model/3mf"));
+        }
+
+        assertThat(send(HttpMethod.GET, BASE + "/zubehoer/unterteil", admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(send(HttpMethod.GET, BASE + "/zubehoer/hutschienen-clip", kunde, null).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(send(HttpMethod.GET, BASE + "/zubehoer/hutschienen-clip", null, null).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
     private ResponseEntity<String> putGehaeuse(String token, String edgeRef, String name, String sha256,
             byte[] daten) {
         HttpHeaders h = bearer(token);

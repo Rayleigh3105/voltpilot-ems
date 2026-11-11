@@ -17,6 +17,7 @@ import com.voltpilot.api.werkstatt.WerkstattService;
 import com.voltpilot.api.werkstatt.WerkstattService.Angelegt;
 import com.voltpilot.api.werkstatt.WerkstattService.SchrittStand;
 import com.voltpilot.api.werkstatt.WerkstattService.Stand;
+import com.voltpilot.api.werkstatt.WerkstattZubehoerDatei;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -336,6 +337,27 @@ public class AdminWerkstattController {
         LaufSeiteService.Auftrag x = a.wert();
         return ResponseEntity.status(a.neu() ? HttpStatus.CREATED : HttpStatus.OK)
                 .body(new AuftragDto(x.id(), x.art(), x.lauf(), x.erteiltAm()));
+    }
+
+    // ── Zubehör-Druckdateien (vp-werkstatt-zubehoer-download) ──────────────
+
+    /**
+     * Ein Zubehörteil herunterladen (Hutschienen-Clip, Bohrlehre): ohne Kennung, für jede Box
+     * gleich - genau die eingecheckte Datei aus {@code edge-light/gehaeuse/.../druck/}
+     * ({@link WerkstattZubehoerDatei}). 404 für ein unbekanntes Teil.
+     */
+    @GetMapping("/zubehoer/{teil}")
+    public ResponseEntity<byte[]> zubehoerDatei(@PathVariable String teil) {
+        WerkstattZubehoerDatei.Teil t = WerkstattZubehoerDatei.Teil.vonSlug(teil)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Unbekanntes Zubehörteil: " + teil));
+        WerkstattZubehoerDatei.Datei d = WerkstattZubehoerDatei.lies(t);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("model/3mf"))
+                .contentLength(d.daten().length)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + d.name())
+                .cacheControl(CacheControl.noStore())
+                .body(d.daten());
     }
 
     // ── Abnahme ───────────────────────────────────────────────────────────
