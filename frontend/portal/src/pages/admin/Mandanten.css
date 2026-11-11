@@ -71,8 +71,12 @@
 
 /* Personen: die E-Mail steht unter dem Namen und bricht nur am „@“ um (`<wbr>`), nie mitten im Wort. */
 .vp-person-mail { display: block; font-size: 0.85rem; overflow-wrap: normal; word-break: normal; }
+/* Am Telefon enger statt `nowrap`: seit dem Kopf-Menü (vp-kunde-sofort-loeschen) stehen DREI Knöpfe
+   in der Reihe - mit kleiner Lücke und ohne Leerraum-Polster des Auges passen sie in 390 px, ohne
+   die Seite zu verbreitern; reicht es doch nicht (Schmaleres als 390 px), bricht die Reihe sauber um. */
 @media (max-width: 720px) {
-  .vp-kundenakte-kopf-rechts { flex-wrap: nowrap; }
+  .vp-kundenakte-kopf-rechts { gap: var(--vp-space-1); }
+  .vp-kundenakte-kopf-rechts .vp-btn { padding-inline: 10px; }
 }
 
 /* Kundenliste: Name und Segment in einer Zeile, am Telefon darunter die Zahlen. */

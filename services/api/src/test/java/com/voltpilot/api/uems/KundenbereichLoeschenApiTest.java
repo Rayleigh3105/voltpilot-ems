@@ -370,6 +370,12 @@ class KundenbereichLoeschenApiTest {
                 + " RETURNING id", UUID.class, id, site, ref);
         root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer',"
                 + " 'K. F. Wüstholz', 'aktiv')", id, "kfw-" + nr);
+        // Wie im Betrieb: der Alerting-Läufer sät „ab Werk" eine Überwachung je Anlage (Befund im
+        // Stack-E2E: diese RESTRICT-Familie fehlte dem Löschzug - ohne diese Zeile fiele das nie auf,
+        // denn im Test läuft kein Läufer). Einstellung, keine Aufzeichnung: sofort löschbar bleibt.
+        root.update("INSERT INTO ueberwachung (tenant_id, wertart, bezug, bedingung, schwere, empfaenger,"
+                + " herkunft, angelegt_von) VALUES (?, 'keine_daten', jsonb_build_object('anlage', ?::text),"
+                + " '{}'::jsonb, 'hinweis', '[]'::jsonb, 'ab_werk', 'laeufer')", id, site);
         return new Datenfrei(id, kname, site, box, ref);
     }
 
