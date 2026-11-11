@@ -78,11 +78,11 @@ class LadepunktBidirektionalMigrationTest {
         Map<String, String> danach = Bestandsschutz.fingerabdruck(root, List.of());
         flyway().load().migrate();
         assertThat(Bestandsschutz.abweichungen(vorher, danach)).as("die Migration ändert keinen Bestand").isEmpty();
-        // Sonne + Speicher (V20261006120000, aus main): die Wahl je Säule ist eine neue Spalte mit Vorgabe FALSE in
-        // jeder bestehenden Zeile - sonst bleibt die Säule byte-gleich, und keine bestehende Säule gibt Speicher frei.
+        // Sonne + Speicher (V20261006120000, aus main) steht seit der Neu-Nummerierung der MiSpeL-Migrationen hinter
+        // main (11.11.2026) schon im Bestand vor dieser Migration: auch der ganze Lauf ändert keinen Bestand, und
+        // keine bestehende Säule gibt Speicher frei.
         assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, List.of())))
-                .as("auch nach dem ganzen Lauf: die Säule nur um ihre Speicherfreigabe")
-                .containsExactly("site_charge_point_allowlist: bestehender Inhalt geändert");
+                .as("auch nach dem ganzen Lauf").isEmpty();
         assertThat(Bestandsschutz.inhaltOhne(root, "site_charge_point_allowlist", "storage_release"))
                 .as("die Säulen ohne die neue Spalte").isEqualTo(saeulenVorher);
         assertThat(root.queryForObject("SELECT count(*) FROM site_charge_point_allowlist "
