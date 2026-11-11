@@ -432,6 +432,15 @@ export interface BoxLoesenBefund {
 
 export type BoxLoesenAnlass = 'falsche_kennung' | 'fremder_kunde' | 'doppelt_verbunden' | 'anderer_anlass';
 
+/** "Box ausbauen" ohne Mandantensprung (vp-admin-box-ausbauen): derselbe Anlass wie `BoxLoesenAnlass`. */
+export interface BoxAusbauenErgebnis {
+  externalRef: string;
+  deviceId: string;
+  ausgebautAm: string;
+  anlass: string;
+  bereitsAusgebaut: boolean;
+}
+
 /**
  * „Endgültig löschen" einer AUSGEBAUTEN Box (vierter Löschweg, vp-box-endgueltig-loeschen): der
  * Befund nennt die Datenarten, an denen das Urteil hängt - nie nur ein Ja/Nein (Sätze: `boxEndgueltig.ts`).
@@ -912,6 +921,17 @@ export const adminApi = {
   /** L1: löst die Verknüpfung, als wäre sie nie gewesen (409 mit Gründen, wenn die Regel es nicht erlaubt). */
   geraeteLoesen: (ref: string, anlass: BoxLoesenAnlass, anlassText: string | null) =>
     request<{ externalRef: string; anlass: string }>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/loesen`, {
+      method: 'POST',
+      body: JSON.stringify({ anlass, anlassText }),
+    }),
+
+  /**
+   * Box ausbauen ohne Mandantensprung (vp-admin-box-ausbauen): dieselbe Umsetzung wie "Gerät
+   * entfernen" des Kunden - die Messdaten bleiben. Idempotent (409 `box_hat_zustaendigkeiten`,
+   * solange die Box noch eine Datenquelle liest).
+   */
+  geraeteAusbauen: (ref: string, anlass: BoxLoesenAnlass, anlassText: string | null) =>
+    request<BoxAusbauenErgebnis>(`/api/v1/admin/geraete/${encodeURIComponent(ref)}/ausbauen`, {
       method: 'POST',
       body: JSON.stringify({ anlass, anlassText }),
     }),

@@ -56,6 +56,20 @@ public record KundenbereichEnde(UUID kundenbereich, Instant beendetAm, int frist
         return text() + " Bis dahin können Sie den Gesamtabzug laden.";
     }
 
+    /**
+     * Der Kopf-Hinweis für den Plattform-Admin (RF-08, vp-kunde-sofort-loeschen/vp-admin-box-
+     * ausbauen): Admin-Sprache, nie der Kundensatz „Ihr Vertrag …" - die Betreiber-Aktionen
+     * (Vom Kunden lösen, Box ausbauen, Kunde endgültig löschen) bleiben ohnehin von der Sperre
+     * ausgenommen ({@link com.voltpilot.api.kundenbereich.KundenbereichEndeFilter
+     * #ADMIN_BOX_BETREIBER_AKTIONEN}); dieser Satz trifft nur jeden ANDEREN Plattform-Schreibweg
+     * an diesem Kundenbereich.
+     */
+    public String textAdmin() {
+        return "Der Kundenbereich ist seit " + beendetAmTag().format(DATUM) + " beendet. Nur die Betreiber-Aktionen "
+                + "am Box-Lebenszyklus (Vom Kunden lösen, Box ausbauen, Kunde endgültig löschen) sind dort noch "
+                + "möglich.";
+    }
+
     /** Die Antwort an jede Person außer dem Kundenadministrator: sie liest nicht mehr (E10 „alles gesperrt"). */
     public String textNurKundenadministrator() {
         return "Ihr Vertrag ist am " + beendetAmTag().format(DATUM) + " beendet. Nur Ihr Kundenadministrator kann die "

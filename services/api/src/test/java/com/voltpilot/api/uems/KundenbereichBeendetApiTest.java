@@ -258,11 +258,18 @@ class KundenbereichBeendetApiTest {
                     if (admin && ausnahme(muster)) {
                         continue;
                     }
-                    // Vom Kunden lösen (L1) trägt die Box über ihre externe Referenz, kein {deviceId} -
-                    // trotzdem ein Kundenbereich (KundenbereichEndeFilter#ADMIN_BOX_REF), keine Ausnahme.
-                    boolean boxUeberReferenz = muster.equals("/api/v1/admin/geraete/{ref}/loesen");
+                    // Die Box-Lebenszyklus-Aktionen über die externe Referenz, kein {deviceId}
+                    // (KundenbereichEndeFilter#ADMIN_BOX_REF) - trotzdem ein Kundenbereich, außer den
+                    // Betreiber-Aktionen (Vom Kunden lösen, Box ausbauen, Kunde endgültig löschen):
+                    // EINE gemeinsame Ausnahme (Captain-Auftrag 11.11.2026), eigener Test unten.
+                    Matcher boxRefMuster = Pattern.compile("^/api/v1/admin/geraete/\\{ref}/([^/]+)$").matcher(muster);
+                    boolean boxRefAktion = boxRefMuster.matches();
+                    if (admin && boxRefAktion
+                            && KundenbereichEndeFilter.ADMIN_BOX_BETREIBER_AKTIONEN.contains(boxRefMuster.group(1))) {
+                        continue;
+                    }
                     if (admin && !muster.contains("{tenantId}") && !muster.contains("{siteId}")
-                            && !muster.contains("{deviceId}") && !boxUeberReferenz) {
+                            && !muster.contains("{deviceId}") && !boxRefAktion) {
                         ohne.add(schluessel);
                         continue;
                     }
@@ -291,6 +298,47 @@ class KundenbereichBeendetApiTest {
         assertThat(plattform).as("Plattform-Schreibwege mit Kundenbereich").isGreaterThanOrEqualTo(44);
         assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, List.of())))
                 .as("kein Schreibweg hat etwas geschrieben").isEmpty();
+    }
+
+    /**
+     * vp-admin-box-ausbauen (Captain-Auftrag 11.11.2026): die Betreiber-Aktionen am Box-Lebenszyklus laufen GERADE
+     * WEGEN eines beendeten Kundenbereichs - der Admin baut eine Box MIT Daten aus, ohne Mandantensprung, auch
+     * nachdem der Vertrag endete. Ein anderer Plattform-Schreibweg an diesem Kundenbereich bleibt gesperrt, aber in
+     * Admin-Sprache, nie dem Kundensatz „Ihr Vertrag …" (vp-kunde-sofort-loeschen, dieselbe Stelle).
+     */
+    @Test
+    void betreiberAktionenGehenAmBeendetenKundenbereich() throws Exception {
+        root.update("UPDATE device SET device_status_seen_at = now() WHERE id = ?", box);
+        beenden(tenant);
+
+        MvcResult ausbauen = ruf(post("/api/v1/admin/geraete/" + boxRef + "/ausbauen")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(JSON.writeValueAsString(Map.of("anlass", "fremder_kunde"))), plattform());
+        assertThat(ausbauen.getResponse().getStatus())
+                .as(ausbauen.getResponse().getContentAsString(StandardCharsets.UTF_8)).isEqualTo(200);
+        assertThat(root.queryForObject("SELECT ausgebaut_am IS NOT NULL FROM device WHERE id = ?", Boolean.class, box))
+                .as("die Box ist ausgebaut, nicht gelöscht - kein Datenbestand geht verloren").isTrue();
+        assertThat(root.queryForObject(
+                "SELECT count(*) FROM box_ausbauen_protokoll WHERE device_id = ?", Integer.class, box))
+                .isEqualTo(1);
+
+        // Wiederholung (Doppelklick, Netzfehler): idempotent, kein zweiter Eintrag.
+        MvcResult wiederholung = ruf(post("/api/v1/admin/geraete/" + boxRef + "/ausbauen")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(JSON.writeValueAsString(Map.of("anlass", "fremder_kunde"))), plattform());
+        assertThat(wiederholung.getResponse().getStatus()).isEqualTo(200);
+        assertThat(JSON.readTree(wiederholung.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .path("bereitsAusgebaut").asBoolean()).isTrue();
+        assertThat(root.queryForObject(
+                "SELECT count(*) FROM box_ausbauen_protokoll WHERE device_id = ?", Integer.class, box))
+                .as("nie ein zweiter Eintrag").isEqualTo(1);
+
+        // Ein anderer Plattform-Schreibweg an diesem Kundenbereich bleibt gesperrt - in Admin-Sprache.
+        MvcResult andererWeg = ruf(post("/api/v1/admin/tenants/" + tenant + "/users")
+                .contentType(MediaType.APPLICATION_JSON).content("{}"), plattform());
+        assertThat(andererWeg.getResponse().getStatus()).isEqualTo(409);
+        JsonNode koerper = JSON.readTree(andererWeg.getResponse().getContentAsString(StandardCharsets.UTF_8));
+        assertThat(koerper.path("message").asText()).contains("Betreiber-Aktionen").doesNotContain("Ihr Vertrag");
     }
 
     /**
