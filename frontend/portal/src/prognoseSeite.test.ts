@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ForecastResponse, ForecastValue, HistoryBucket, RueckblickKind, WeatherPoint } from './api';
 import {
+  gesternSatz,
   mengenSatz,
   morgenSatz,
   prognoseModell,
@@ -279,6 +280,22 @@ describe('massstab · ein Maßstab, der ehrlich bleibt (Captain-Entscheid, Beric
     });
     expect(ohnePv.massstab).toBeCloseTo(2, 5);
   });
+
+  it('mit bekannter kWp bleibt die Sonne bei sich - ein Gewerbebetrieb mit viel Verbrauch und wenig PV darf die Sonnen-Säulen nicht unsichtbar machen (captain-Befund vp-prognose-teppich-treue)', () => {
+    // Gewerbe: Sonne höchstens 6 kW, Verbrauch bis 49 kW, Anlage 10,5 kWp -
+    // der Teppich zeigt NUR die Sonne (`Teppich.wert` in `PrognoseTeppich.tsx`);
+    // ein Maßstab, der vom (ungezeigten) Verbrauch dominiert wird, ließe jede
+    // Sonnen-Säule auf unter 15 % Höhe schrumpfen.
+    const gewerbe = prognoseModell({
+      forecast: forecast({ pvKw: viertel(0, 0, 6), loadKw: viertel(0, 0, 49, 9) }),
+      weather: keinWetter,
+      messung: null,
+      jetzt: um(13),
+      anlagenleistungKwp: 10.5,
+    });
+    // 40 % von 10,5 kWp = 4,2 - die Sonnen-Spitze (6) liegt darüber und gewinnt.
+    expect(gewerbe.massstab).toBeCloseTo(6, 5);
+  });
 });
 
 describe('rueckblickZeilen/rueckblickSatz · das Blatt "Rückblick" (S3)', () => {
@@ -314,5 +331,24 @@ describe('rueckblickZeilen/rueckblickSatz · das Blatt "Rückblick" (S3)', () =>
     expect(rueckblickSatz(kind({ bewerteteTage: 12, abweichungKwh: 1.8 }))).toBe(
       'An 8 von 10 Tagen höchstens 2 kWh daneben.',
     );
+  });
+
+  describe('gesternSatz · die Unterzeile der Rückblick-Zeile (wie im Konzeptbild)', () => {
+    const rueckblick = (kinds: RueckblickKind[]) => ({ kinds });
+
+    it('nennt den jüngsten Tag der passenden Art - Sonne mit PV, sonst Verbrauch', () => {
+      const r = rueckblick([
+        kind({ kind: 'pv', tage: [{ day: '2026-11-09', erwartetKwh: 259, gemessenKwh: 265 }, { day: '2026-11-10', erwartetKwh: 311, gemessenKwh: 321 }] }),
+        kind({ kind: 'load', tage: [{ day: '2026-11-10', erwartetKwh: 333, gemessenKwh: 300 }] }),
+      ]);
+      expect(gesternSatz(r, true)).toBe('Gestern: 311 erwartet, 321 gekommen');
+      expect(gesternSatz(r, false)).toBe('Gestern: 333 erwartet, 300 gekommen');
+    });
+
+    it('bleibt ohne Tage oder ohne Rückblick bei null - keine erfundene Zahl', () => {
+      expect(gesternSatz(null, true)).toBeNull();
+      expect(gesternSatz(rueckblick([kind({ kind: 'pv', tage: [] })]), true)).toBeNull();
+      expect(gesternSatz(rueckblick([kind({ kind: 'load', tage: [] })]), true)).toBeNull();
+    });
   });
 });

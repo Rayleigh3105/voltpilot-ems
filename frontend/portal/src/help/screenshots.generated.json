@@ -258,22 +258,22 @@
     "title": "Der Sonnen-Teppich: Sonne und Verbrauch",
     "file": "wetter.png",
     "width": 1192,
-    "height": 1200,
+    "height": 1026,
     "alt": "Der Sonnen-Teppich: Sonne und Verbrauch. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 4.36,
-        "y": 17.17,
+        "y": 20.06,
         "text": "Oben steht, wie lange die Sonne reicht, und zwei Balken für Sonne und Verbrauch."
       },
       {
         "x": 6.46,
-        "y": 38.68,
+        "y": 43.81,
         "text": "Der Teppich zeigt sieben Tage je Stunde auf einen Blick; ein Tipp wählt den Tag für das Bild."
       },
       {
-        "x": 6.46,
-        "y": 69.91,
+        "x": 54.45,
+        "y": 47.47,
         "text": "Gemessen ist gefüllt, erwartet schraffiert; die dunkle Linie markiert jetzt."
       }
     ]
