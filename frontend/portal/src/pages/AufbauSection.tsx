@@ -55,6 +55,7 @@ import { freigabeZustand } from '../schaltFreigabe';
 import { REGEL_BRUECKE_LABEL, bietetRegelBruecke, regelBrueckeHash } from '../selbstbauBruecke';
 import { UmbenennenDialog } from '../components/UmbenennenDialog';
 import { KomponenteLoeschenDialog, ZuordnungAendernDialog } from '../components/ZuordnungAendern';
+import { UmhaengenDialog } from '../components/UmhaengenDialog';
 import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
@@ -229,6 +230,7 @@ export function AufbauSection({
   // Aus „Geräte suchen“ geöffnet: die Quelle an der Adresse des Fundes ist vorgewählt (nie still gespeichert).
   const [repinVorschlag, setRepinVorschlag] = useState<string | null>(null);
   const [remove, setRemove] = useState<PlantComponent | null>(null);
+  const [umhaengen, setUmhaengen] = useState<PlantComponent | null>(null);
   const [sofort, setSofort] = useState<{ consumer: Consumer; action: SofortAktion } | null>(null);
   const [sofortBusy, setSofortBusy] = useState(false);
 
@@ -776,6 +778,9 @@ export function AufbauSection({
         });
       }
       if (c.orphaned) continue;
+      if (c.entityType === 'sub-meter') {
+        items.push({ label: `Woanders anhängen …${suffix}`, icon: 'link', recht: 'geraet.einrichten', onClick: () => setUmhaengen(c) });
+      }
       const actions = componentActions(c, data?.entities.find((e) => e.id === c.entityId));
       if (actions.canRepin) {
         items.push({ label: `Zuordnung ändern${suffix}`, icon: 'link', recht: 'geraet.einrichten', onClick: () => setRepin(c) });
@@ -1272,6 +1277,19 @@ export function AufbauSection({
           onClose={() => setRemove(null)}
           onDeleted={() => {
             setRemove(null);
+            reload();
+          }}
+        />
+      )}
+
+      {umhaengen && (
+        <UmhaengenDialog
+          siteId={site.id}
+          component={umhaengen}
+          komponenten={model?.components ?? []}
+          onClose={() => setUmhaengen(null)}
+          onSaved={() => {
+            setUmhaengen(null);
             reload();
           }}
         />

@@ -77,22 +77,33 @@ const QUELLEN: Quelle[] = [
 const istNetz = (q: Quelle) => q.rolle === 'grid-meter';
 const kanal = () => 'power_kw';
 
-const entities = [
-  {
-    id: 'e-haus', entityType: 'house-load', typeLabel: 'Hausverbrauch', role: 'house-load', label: null, control: false,
-    deviceId: BOX_ID, capabilities: { measure: [{ unit: 'kW', channel: 'power_kw' }] }, guards: { failsafe: { behavior: 'measure-only' } },
-    syncStatus: 'in_sync', observed: { health: 'never', lastTelemetryAt: null, channels: null, appliedType: 'house-load', reportedAt: vor(0) },
-    edgeSourceId: null, orphanedPin: null, capacityKwp: null, sourceKind: 'composed', certificationStatus: null,
-  },
-  ...QUELLEN.map((q) => ({
-    id: q.entity, entityType: q.typ, typeLabel: q.typLabel, role: q.rolle, label: q.label, control: false,
-    deviceId: istNetz(q) ? BOX_ID : null, capabilities: { measure: [{ unit: 'kW', channel: kanal() }] },
-    guards: { failsafe: { behavior: 'measure-only' } }, syncStatus: 'in_sync',
-    observed: { health: istNetz(q) ? 'ok' : 'never', lastTelemetryAt: istNetz(q) ? vor(16) : null, channels: istNetz(q) ? [kanal()] : null, appliedType: q.typ, reportedAt: vor(0) },
-    edgeSourceId: q.src, orphanedPin: false, capacityKwp: null, sourceKind: 'builtin', certificationStatus: null,
-    haengtAn: q.haengtAn ?? null,
-  })),
-] as unknown as SiteEntity[];
+/**
+ * Umhängen (Captain-Nachtrag, R5): die Bühne ist kein Standbild mehr - `PUT
+ * .../haengt-an` schreibt hier wirklich um, und jeder folgende Abruf von
+ * `entities`/`topology` liest den geänderten Stand. Ohne diese Karte würde
+ * „Übernehmen" im Dialog zwar den Server-Aufruf zeigen, die Liste aber nie
+ * ihre Zeilen umsortieren - das Durchklicken bliebe unbewiesen.
+ */
+const haengtAnJetzt = new Map<string, string | null>(QUELLEN.map((q) => [q.entity, q.haengtAn ?? null]));
+
+function entities(): SiteEntity[] {
+  return [
+    {
+      id: 'e-haus', entityType: 'house-load', typeLabel: 'Hausverbrauch', role: 'house-load', label: null, control: false,
+      deviceId: BOX_ID, capabilities: { measure: [{ unit: 'kW', channel: 'power_kw' }] }, guards: { failsafe: { behavior: 'measure-only' } },
+      syncStatus: 'in_sync', observed: { health: 'never', lastTelemetryAt: null, channels: null, appliedType: 'house-load', reportedAt: vor(0) },
+      edgeSourceId: null, orphanedPin: null, capacityKwp: null, sourceKind: 'composed', certificationStatus: null,
+    },
+    ...QUELLEN.map((q) => ({
+      id: q.entity, entityType: q.typ, typeLabel: q.typLabel, role: q.rolle, label: q.label, control: false,
+      deviceId: istNetz(q) ? BOX_ID : null, capabilities: { measure: [{ unit: 'kW', channel: kanal() }] },
+      guards: { failsafe: { behavior: 'measure-only' } }, syncStatus: 'in_sync',
+      observed: { health: istNetz(q) ? 'ok' : 'never', lastTelemetryAt: istNetz(q) ? vor(16) : null, channels: istNetz(q) ? [kanal()] : null, appliedType: q.typ, reportedAt: vor(0) },
+      edgeSourceId: q.src, orphanedPin: false, capacityKwp: null, sourceKind: 'builtin', certificationStatus: null,
+      haengtAn: haengtAnJetzt.get(q.entity) ?? null,
+    })),
+  ] as unknown as SiteEntity[];
+}
 
 const localSetup = QUELLEN.map((q, i) => ({
   id: q.src, kind: 'source', role: q.rolle, brand: 'shelly', model: 'shelly-pro-3em', label: q.label, reportedAt: vor(0),
@@ -106,22 +117,24 @@ const sources = QUELLEN.map((q) => ({
   health: 'ok', readAt: vor(16), reportedAt: vor(0), bms: null,
 }));
 
-const topology = {
-  schemaVersion: '1.0',
-  entities: [
-    { id: 'e-haus', entityType: 'house-load', typeLabel: 'Hausverbrauch', label: null, category: 'consumer', health: 'ok', connection: null,
-      capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: true, value: 8.1 }] },
-    ...QUELLEN.map((q) => ({
-      id: q.entity, entityType: q.typ, typeLabel: q.typLabel, label: q.label,
-      category: istNetz(q) ? 'meter' : 'consumer', health: istNetz(q) ? 'ok' : 'never', connection: null,
-      capabilities: [{
-        channel: kanal(), unit: 'kW', role: istNetz(q) ? 'grid' : 'consumer',
-        primary: istNetz(q), value: istNetz(q) ? q.kw : null, haengt_an: q.haengtAn ?? undefined,
-      }],
-    })),
-  ],
-  topology: { schema_version: '1.0', nodes: [] },
-} as unknown as SiteTopology;
+function topology(): SiteTopology {
+  return {
+    schemaVersion: '1.0',
+    entities: [
+      { id: 'e-haus', entityType: 'house-load', typeLabel: 'Hausverbrauch', label: null, category: 'consumer', health: 'ok', connection: null,
+        capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: true, value: 8.1 }] },
+      ...QUELLEN.map((q) => ({
+        id: q.entity, entityType: q.typ, typeLabel: q.typLabel, label: q.label,
+        category: istNetz(q) ? 'meter' : 'consumer', health: istNetz(q) ? 'ok' : 'never', connection: null,
+        capabilities: [{
+          channel: kanal(), unit: 'kW', role: istNetz(q) ? 'grid' : 'consumer',
+          primary: istNetz(q), value: istNetz(q) ? q.kw : null, haengt_an: haengtAnJetzt.get(q.entity) ?? undefined,
+        }],
+      })),
+    ],
+    topology: { schema_version: '1.0', nodes: [] },
+  } as unknown as SiteTopology;
+}
 
 const overview = {
   sites: [{
@@ -139,13 +152,21 @@ const overview = {
 
 const ok = <T,>(wert: T) => () => Promise.resolve(structuredClone(wert));
 const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
-  siteEntities: ok({
-    registry: { revision: 'r-1', composedAt: vor(3600), deviceId: BOX_ID, reportedRevision: 'r-1', reportedAt: vor(20) },
-    entities,
-    localSetup,
-    staleOnDevice: [],
-  }),
-  topology: ok(topology),
+  siteEntities: () =>
+    Promise.resolve(
+      structuredClone({
+        registry: { revision: 'r-1', composedAt: vor(3600), deviceId: BOX_ID, reportedRevision: 'r-1', reportedAt: vor(20) },
+        entities: entities(),
+        localSetup,
+        staleOnDevice: [],
+      }),
+    ),
+  topology: () => Promise.resolve(structuredClone(topology())),
+  // Umhängen (Captain-Nachtrag, R5): schreibt wirklich um, damit das Durchklicken beweisbar ist.
+  haengtAnSetzen: (_siteId: string, entityId: string, body: { haengtAn: string | null }) => {
+    haengtAnJetzt.set(entityId, body.haengtAn ?? null);
+    return Promise.resolve({ componentAuthority: 'portal', components: [] });
+  },
   siteSources: ok(sources),
   overview: ok(overview),
   datenquellen: ok({ datenquellen: [] }),

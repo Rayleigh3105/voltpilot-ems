@@ -116,5 +116,45 @@ for (const breite of BREITEN) {
       await foto(page, tabelle, `mit-kompressor-${breite}`);
       expect(fehler).toEqual([]);
     });
+
+    test('Umhängen durchklicken: UV Keller hinter UV Halle, Zahlen danach geprüft', async ({ page }) => {
+      const fehler = konsole(page);
+      const tabelle = await oeffne(page, breite);
+      // Vorher: UV Halle und UV Keller beide direkt an der Wurzel, 2 Geräte, 7,8 kW.
+      expect(await lesen(tabelle)).toEqual([
+        '[Netz, 1 Gerät]',
+        'Netzanschluss',
+        `[Verbrauch, 2 Geräte, zusammen 7,8${NBSP}kW]`,
+        'UV Halle',
+        'UV Keller',
+      ]);
+
+      await tabelle.locator('[data-aufbau-geraet="src-uv-keller"]').getByRole('button', { name: /Weitere Aktionen/ }).click();
+      await page.getByRole('menuitem', { name: /Woanders anhängen/ }).click();
+
+      const dialog = page.getByRole('dialog', { name: 'Woanders anhängen' });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('radio', { name: /UV Halle/ }).check();
+      await dialog.getByRole('button', { name: 'Übernehmen' }).click();
+      await expect(dialog).toBeHidden();
+
+      // Nachher: UV Keller hängt hinter UV Halle - genau wie der Kompressor-Fall, nur über den Dialog erreicht.
+      // Nur EIN Gerät zählt am Verbrauch (UV Halle) - keine Summe ab einem Gerät (dieselbe Regel wie überall).
+      expect(await lesen(tabelle)).toEqual([
+        '[Netz, 1 Gerät]',
+        'Netzanschluss',
+        '[Verbrauch, 1 Gerät]',
+        'UV Halle',
+        'UV Keller',
+      ]);
+      const geraete = await geraeteMitEbene(tabelle);
+      const halle = geraete.find((g) => g.name === 'UV Halle');
+      const keller = geraete.find((g) => g.name === 'UV Keller');
+      expect(keller?.ebene).toBe((halle?.ebene ?? -1) + 1);
+
+      await ohneQuerlauf(page, breite);
+      await foto(page, tabelle, `umhaengen-${breite}`);
+      expect(fehler).toEqual([]);
+    });
   });
 }
