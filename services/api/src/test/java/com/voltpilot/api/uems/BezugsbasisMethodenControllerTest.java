@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -57,7 +58,15 @@ class BezugsbasisMethodenControllerTest {
 
     @Test
     void dieRouteLiefertDieRessourceByteFuerByte() throws Exception {
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new BezugsbasisMethodenController()).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new BezugsbasisMethodenController())
+                // Standalone MockMvc skips Boot's autoconfiguration (and its
+                // spring.http.converters.preferred-json-mapper=jackson2), so Spring's own
+                // Jackson-3-by-default converter would otherwise apply here.
+                .setMessageConverters(
+                        new org.springframework.http.converter.ByteArrayHttpMessageConverter(),
+                        new org.springframework.http.converter.StringHttpMessageConverter(),
+                        new MappingJackson2HttpMessageConverter())
+                .build();
         MvcResult r = mvc.perform(get("/api/v1/bezugsbasis-methoden")).andExpect(status().isOk()).andReturn();
         assertThat(MediaType.parseMediaType(r.getResponse().getContentType()).isCompatibleWith(MediaType.APPLICATION_JSON))
                 .isTrue();

@@ -205,7 +205,7 @@ class BoxAndereKennungApiTest {
         String alteId = (String) claim(customer, BERLIN_SITE, alteRef, null).getBody().get("id");
 
         ResponseEntity<JsonNode> abgelehnt = claimJson(customer, BERLIN_SITE, tippfehlerRef, alteId);
-        assertThat(abgelehnt.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(abgelehnt.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
 
         // Das Lösen läuft NACH dem erfolgreichen Verbinden der neuen Kennung (nie vorher): die alte
         // Box ist unberührt, kein box_loesen_protokoll-Eintrag, die Tippfehler-Kennung existiert nicht.
