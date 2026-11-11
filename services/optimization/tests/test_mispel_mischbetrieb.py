@@ -354,12 +354,13 @@ def _payload(inp) -> bytes:
 
 
 @pytest.mark.parametrize(
-    "netzladen,strenge", [(True, False), (False, False), (False, True)],
-    ids=["haendler", "eeg-fk3", "eeg-streng-mp45"],
+    "netzladen", [True, False],
+    # EEG-Modus = FK3 und seit EN-2 A (main, 02.11.2026) die strenge Lesart, ohne Schalter.
+    ids=["haendler", "eeg"],
 )
-def test_ohne_mischbetrieb_kommt_nichts_ins_modell(netzladen, strenge):
+def test_ohne_mischbetrieb_kommt_nichts_ins_modell(netzladen):
     inp = make_input(GEMISCHT_SPOT, load=3.0, pv=GEMISCHT_PV, netzladen_erlaubt=netzladen)
-    inp = replace(inp, strenge_ausschliesslichkeit=strenge, leistungspreis_eur_kw=50.0)
+    inp = replace(inp, leistungspreis_eur_kw=50.0)
     neu = _komponenten(build_model(inp))
     assert not {n for n in neu if "mischbetrieb" in n or "mispel" in n}
     assert not {"netz_laden", "speicher_einspeisung", "rot_einspeisung", "saldierung_aktiv"} & neu
@@ -367,13 +368,13 @@ def test_ohne_mischbetrieb_kommt_nichts_ins_modell(netzladen, strenge):
 
 @needs_highs
 @pytest.mark.parametrize(
-    "netzladen,strenge", [(True, False), (False, False), (False, True)],
-    ids=["haendler", "eeg-fk3", "eeg-streng-mp45"],
+    "netzladen", [True, False],
+    # EEG-Modus = FK3 und seit EN-2 A (main, 02.11.2026) die strenge Lesart, ohne Schalter.
+    ids=["haendler", "eeg"],
 )
-def test_ohne_mischbetrieb_byte_gleicher_plan(netzladen, strenge):
+def test_ohne_mischbetrieb_byte_gleicher_plan(netzladen):
     # Die neuen Felder mit Werten, aber ohne Mischbetrieb: nichts wirkt.
     inp = make_input(GEMISCHT_SPOT, load=3.0, pv=GEMISCHT_PV, netzladen_erlaubt=netzladen)
-    inp = replace(inp, strenge_ausschliesslichkeit=strenge)
     mit_feldern = replace(
         inp, mispel_praemie_eur_mwh=[300.0] * N, saldierte_bestandteile_eur_mwh=140.0
     )
