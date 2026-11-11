@@ -20,11 +20,12 @@ import {
   SonneReichtStreifen,
   SpeicherStreifen,
   Teppich,
+  vorabendPunkte,
 } from '../components/PrognoseTeppich';
 import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
 import { isoDate } from '../periodNav';
 import { KIND_LABELS } from '../prognose';
-import { prognoseModell, rueckblickSatz, rueckblickZeilen } from '../prognoseSeite';
+import { gesternSatz, prognoseModell, rueckblickSatz, rueckblickZeilen } from '../prognoseSeite';
 import { pvLage } from '../pvLage';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useIsDesktop, useIsPhone } from '../useIsPhone';
@@ -191,6 +192,18 @@ export function PrognoseSeite({ site, hatFahrplan }: { site: Site; hatFahrplan: 
     const stundenDesTages = tag.stunden.map((s) => new Date(s.start).getHours());
     const tagVon = tag.beginn + Math.min(...stundenDesTages) * STUNDE_MS;
     const tagBis = tag.beginn + (Math.max(...stundenDesTages) + 1) * STUNDE_MS;
+    // Datenfehler 3: die Legende "am Vorabend erwartet" darf nur stehen, wenn
+    // wirklich eine Linie gezeichnet wird - nicht schon, weil wir am Rechner
+    // auf "Heute" stehen. Dieselbe Regel wie `PrognoseTagesBild` (mindestens
+    // zwei Punkte), sonst behauptet die Legende eine Linie, die am ersten Tag
+    // nach S1 (noch kein Abendlauf von gestern) gar nicht existiert.
+    const yesterdayExpected = forecast?.yesterdayExpected;
+    const zeigeVorabend =
+      isDesktop &&
+      istHeute &&
+      yesterdayExpected != null &&
+      ((m.mitPv && vorabendPunkte(yesterdayExpected.pvKw, tag.beginn, m.jetztMs).length > 1) ||
+        vorabendPunkte(yesterdayExpected.loadKw, tag.beginn, m.jetztMs).length > 1);
     const bild = (
       <div className="vp-c-card vp-pz-karte">
         <div className="vp-pt-karte-kopf">
@@ -198,8 +211,8 @@ export function PrognoseSeite({ site, hatFahrplan }: { site: Site; hatFahrplan: 
           {rechts && <span>{rechts}</span>}
         </div>
         {!isDesktop && istHeute && <PrognoseTippPhone m={m} heute={tag} />}
-        <PrognoseTagesBild m={m} tag={tag} breit={!isPhone} vorabend={forecast?.yesterdayExpected} />
-        <PrognoseLegende tag={tag} mitPv={m.mitPv} zeigeVorabend={isDesktop && istHeute} />
+        <PrognoseTagesBild m={m} tag={tag} breit={!isPhone} vorabend={forecast?.yesterdayExpected} weather={weather?.points} />
+        <PrognoseLegende tag={tag} mitPv={m.mitPv} zeigeVorabend={zeigeVorabend} />
         {m.mitPv && <SonneReichtStreifen tag={tag} von={tagVon} bis={tagBis} />}
         {m.mitPv && hatFahrplan && <SpeicherStreifen slots={schedule} von={tagVon} bis={tagBis} />}
       </div>
@@ -209,10 +222,12 @@ export function PrognoseSeite({ site, hatFahrplan }: { site: Site; hatFahrplan: 
         <section className="vp-pz-antwort" aria-live="polite" aria-label="Prognose am Standort">
           <PrognoseAntwort m={m} heute={m.tage[0]} morgen={m.tage[1]} zeigeTipp={isDesktop} onInfo={() => setBlatt('erklaerung')} />
         </section>
-        <div className="vp-c-card vp-pz-karte">
-          <Teppich m={m} gewaehlt={Math.min(tagIndex, m.tage.length - 1)} onWahl={setTagIndex} />
+        <div className="vp-pt-reihe">
+          <div className="vp-c-card vp-pz-karte">
+            <Teppich m={m} gewaehlt={Math.min(tagIndex, m.tage.length - 1)} onWahl={setTagIndex} schmal={isPhone} />
+          </div>
+          {bild}
         </div>
-        {bild}
         <div className="vp-pz-zeilen">
           {hatFahrplan && (
             <a className="vp-pz-zeile" href={`#/anlage/${site.id}/fahrplan`}>
@@ -234,7 +249,7 @@ export function PrognoseSeite({ site, hatFahrplan }: { site: Site; hatFahrplan: 
             </span>
             <span className="vp-pz-zeile-text">
               <b>Rückblick</b>
-              <small>wie gut die Prognose lag</small>
+              <small>{gesternSatz(rueckblick, m.mitPv) ?? 'wie gut die Prognose lag'}</small>
             </span>
             <span className="vp-pz-zeile-pfeil" aria-hidden="true">
               <Icon name="chevron-right" size={18} />

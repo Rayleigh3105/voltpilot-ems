@@ -21,6 +21,28 @@
   white-space: nowrap;
 }
 
+.vp-pt-kopfzeile-himmel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vp-pt-himmel-kachel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--vp-chart-pv, #ff9800) 14%, #fff);
+}
+
+.vp-pt-himmel-kachel svg {
+  width: 28px;
+  height: 28px;
+}
+
 .vp-pt-kopfsatz {
   display: flex;
   flex-wrap: wrap;
@@ -83,6 +105,12 @@
   opacity: 0.55;
 }
 
+.vp-pt-tagzeile.is-ausblick .vp-pt-tag-name,
+.vp-pt-tagzeile.is-ausblick .vp-pt-kwh {
+  color: var(--vp-c-text-muted, #64748b);
+  font-weight: 500;
+}
+
 .vp-pt-tag-name {
   display: flex;
   align-items: center;
@@ -93,42 +121,102 @@
   padding-right: 4px;
 }
 
+/* Die Spur einer Stunde: die Säule steht AM BODEN, ihre Höhe ist die Leistung (`saeuleStil`). */
 .vp-pt-zelle {
-  height: 22px;
-  border-radius: 3px;
-  background: var(--vp-c-surface-muted, #f1f5f9);
+  display: flex;
+  align-items: flex-end;
+  height: 28px;
+  overflow: hidden;
   position: relative;
 }
 
-.vp-pt-zelle.is-deckt::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 2px 0;
-  height: 2px;
-  margin: 0 3px;
-  border-radius: 1px;
-  background: var(--vp-flow-pv-line, #16a34a);
+.vp-pt-saeule {
+  display: block;
+  width: 100%;
+  min-width: 2px;
+  border-radius: 2px 2px 1px 1px;
 }
 
-.vp-pt-hinweis {
+/* Jetzt-Linie: nur in "Heute", über die Breite der Stunden-Spalten gelegt (Bericht R3.2). */
+.vp-pt-jetzt-spur {
+  position: relative;
+  grid-row: 1;
+  align-self: stretch;
+  pointer-events: none;
+}
+
+.vp-pt-jetzt-linie {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--vp-chart-jetzt, #0f172a);
+  transform: translateX(-1px);
+}
+
+/* Die Kopfzeile: Sonne/Haus-Symbol über den kWh-Spalten rechts. */
+.vp-pt-kopf-ico {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--vp-c-text-muted, #64748b);
-  margin: 8px 0 0;
+  justify-content: center;
+  color: var(--vp-c-text-muted, #94a3b8);
 }
 
-.vp-pt-punkt {
-  display: inline-block;
-  width: 10px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--vp-flow-pv-line, #16a34a);
+.vp-pt-kwh {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-pt-kwh-sonne {
+  color: var(--vp-chart-pv-line, #e65100);
+}
+
+.vp-pt-kwh-verbrauch {
+  color: var(--vp-flow-load, #8b5cf6);
+}
+
+.vp-pt-teppich-unter-kurz {
+  display: none;
+}
+
+.vp-pt-teppich-leer {
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--vp-c-text-muted, #94a3b8);
+  font-style: italic;
+}
+
+.vp-pt-teppich-legende {
+  margin-top: 8px;
+}
+
+.vp-pt-teppich-legende-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--vp-c-text-muted, #64748b);
 }
 
 .vp-pt-bild {
   width: 100%;
+}
+
+/* Teppich und Tagesbild nebeneinander ab der Rechner-Breite (Bericht R3.2); darunter gestapelt. */
+.vp-pt-reihe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .vp-pt-reihe {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
 }
 
 .vp-pt-morgen {
@@ -158,15 +246,21 @@
 
 .vp-pt-balken-zeile {
   display: grid;
-  grid-template-columns: 72px 1fr auto;
+  grid-template-columns: 90px 1fr auto;
   align-items: center;
   gap: 8px;
   row-gap: 2px;
 }
 
 .vp-pt-balken-titel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   color: var(--vp-c-text-muted, #64748b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .vp-pt-balken-spur {
@@ -235,6 +329,16 @@
   border-top: 1.5px dotted var(--vp-c-text-muted, #64748b);
 }
 
+@media (max-width: 720px) {
+  .vp-pt-teppich-unter-lang {
+    display: none;
+  }
+
+  .vp-pt-teppich-unter-kurz {
+    display: inline;
+  }
+}
+
 @media (max-width: 480px) {
   .vp-pt-stunde {
     font-size: 8px;
@@ -242,5 +346,13 @@
 
   .vp-pt-tag-name {
     font-size: 11px;
+  }
+
+  .vp-pt-kwh {
+    font-size: 11px;
+  }
+
+  .vp-pt-zelle {
+    height: 22px;
   }
 }

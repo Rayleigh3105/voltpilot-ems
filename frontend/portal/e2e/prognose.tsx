@@ -20,9 +20,18 @@ import '../src/index.css';
  *  ?fall=mit-speicher      Fahrplan vorhanden: Reiter, Speicher-Streifen, "Ihr Fahrplan"
  *  ?fall=nur-messen-pv     kein Fahrplan, mit PV: eigener Bereich, ohne Speicher-Streifen
  *  ?fall=nur-messen-ohne-pv kein Fahrplan, ohne PV: der Teppich zeigt nur den Verbrauch
+ *  ?fall=captain-november  die Lage des Captains nachgestellt (vp-prognose-teppich-treue):
+ *                          Gewerbe ohne Speicher, November, ≈31 kWh Sonne/Tag, ≈204-214 kWh Verbrauch/Tag
+ *  &luecke=1               ein einzelner Ausblick-Tag (Tag 5) bekommt nur vereinzelte Werte -
+ *                          Datenfehler 2: die Zeile muss "noch keine Vorhersage" zeigen, nicht leer bleiben
+ *  &ohneVorabend=1         kein Abendlauf von gestern (yesterdayExpected leer) - Datenfehler 3: die
+ *                          Legende "am Vorabend erwartet" darf dann nicht erscheinen
  */
 const q = new URLSearchParams(location.search);
 const fall = q.get('fall') ?? 'mit-speicher';
+const captainNovember = fall === 'captain-november';
+const luecke = q.get('luecke') === '1';
+const ohneVorabend = q.get('ohneVorabend') === '1';
 const hatFahrplan = fall === 'mit-speicher';
 const mitPv = fall !== 'nur-messen-ohne-pv';
 
@@ -31,8 +40,13 @@ const mitternacht = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDat
 const STUNDE = 3600_000;
 const VIERTEL = 900_000;
 const TAGE_ANZAHL = 7;
-const AUF = 7 + 40 / 60;
-const UNTER = 18 + 15 / 60;
+/** Novembertag: Sonnenauf-/-untergang deutlich enger als die Grundannahme der anderen Fälle. */
+const AUF = captainNovember ? 7 + 45 / 60 : 7 + 40 / 60;
+const UNTER = captainNovember ? 16 + 15 / 60 : 18 + 15 / 60;
+/** kWp der Anlage - Schreinerei-Maßstab in den übrigen Fällen, kleiner (≈31 kWh/Tag) in der Novemberlage. */
+const KWP = captainNovember ? 10.5 : 9.8;
+/** Skaliert Grundlast + Spitzen auf ≈210 kWh/Tag Gewerbe-Verbrauch in der Novemberlage, sonst unskaliert. */
+const VERBRAUCH_SKALA = captainNovember ? 12.65 : 1;
 
 function interp(a: [number, number][], x: number): number {
   for (let k = 1; k < a.length; k++) {
@@ -47,23 +61,23 @@ function interp(a: [number, number][], x: number): number {
 const klar = (h: number) => (h <= AUF || h >= UNTER ? 0 : 540 * Math.pow(Math.sin((Math.PI * (h - AUF)) / (UNTER - AUF)), 1.3));
 /** Je Tag ein Wolken-Verlauf - sonnig zuerst, danach wechselhafter (nicht gewählt, aber plausibel). */
 const wolkenKurve = (tag: number): [number, number][] => {
-  const basis = 20 + tag * 10;
+  const basis = captainNovember ? 35 + tag * 6 : 20 + tag * 10;
   return [
     [0, basis],
-    [8, Math.max(5, basis - 15)],
-    [13, Math.max(5, basis - 20)],
+    [8, Math.max(5, basis - (captainNovember ? 10 : 15))],
+    [13, Math.max(5, basis - (captainNovember ? 15 : 20))],
     [18, basis],
     [24, basis + 5],
   ];
 };
 const wolkenBei = (d: number, h: number) => interp(wolkenKurve(d), h);
 const ghi = (d: number, h: number) => klar(h) * (1 - 0.8 * Math.pow(wolkenBei(d, h) / 100, 1.8));
-const pvKwBei = (d: number, h: number) => (mitPv ? (9.8 * 1.24 * klar(h) * (1 - 0.85 * Math.pow(wolkenBei(d, h) / 100, 1.8))) / 1000 : 0);
+const pvKwBei = (d: number, h: number) => (mitPv ? (KWP * 1.24 * klar(h) * (1 - 0.85 * Math.pow(wolkenBei(d, h) / 100, 1.8))) / 1000 : 0);
 /** Grundlast 0,3 kW, Morgenspitze 6-9, Abendspitze 17-22 - an jedem Tag gleich (plausibel, nicht gewählt). */
 const verbrauchKwBei = (h: number) => {
   const morgen = h >= 6 && h < 9 ? 1.4 * Math.sin((Math.PI * (h - 6)) / 3) : 0;
   const abend = h >= 17 && h < 22 ? 2.2 * Math.sin((Math.PI * (h - 17)) / 5) : 0;
-  return 0.3 + morgen + abend;
+  return VERBRAUCH_SKALA * (0.3 + morgen + abend);
 };
 
 const weather: WeatherPoint[] = [];
@@ -99,6 +113,21 @@ function stundenWerte(vonTag: number, bisTag: number, fn: (d: number, h: number)
     }
   }
   return out;
+}
+/**
+ * Datenfehler 2 nachgestellt (`&luecke=1`): Tag {@link LUECKE_TAG} bekommt
+ * nur zwei vereinzelte Stunden - unter der 90-%-Deckung aus `prognoseSeite.ts`.
+ * So sieht die Zeile wie der captain-Befund aus ("Mo 16.11. leer, Di 17.11.
+ * nicht"), ohne zu behaupten, dass echte Daten so aussahen.
+ */
+const LUECKE_TAG = 5;
+function mitLuecke(werte: ForecastValue[]): ForecastValue[] {
+  if (!luecke) return werte;
+  return werte.map((w) => {
+    const d = Math.floor((Date.parse(w.ts) - mitternacht) / (24 * STUNDE));
+    const h = new Date(w.ts).getHours();
+    return d === LUECKE_TAG && h !== 10 && h !== 14 ? { ...w, valueKw: null } : w;
+  });
 }
 
 const jetztQ = Math.floor((jetzt.getTime() - mitternacht) / VIERTEL);
@@ -174,16 +203,16 @@ a.forecast = async () => ({
   loadRunAt: forecastRunAt,
   loadKw: werte(jetztQ, 192, (_d, h) => verbrauchKwBei(h)),
   yesterdayExpected: {
-    pvRunAt: forecastRunAt,
-    pvKw: werte(0, jetztQ, (_d, h) => pvKwBei(0, h) * 0.85),
-    loadRunAt: forecastRunAt,
-    loadKw: werte(0, jetztQ, (_d, h) => verbrauchKwBei(h) * 1.1),
+    pvRunAt: ohneVorabend ? null : forecastRunAt,
+    pvKw: ohneVorabend ? [] : werte(0, jetztQ, (_d, h) => pvKwBei(0, h) * 0.85),
+    loadRunAt: ohneVorabend ? null : forecastRunAt,
+    loadKw: ohneVorabend ? [] : werte(0, jetztQ, (_d, h) => verbrauchKwBei(h) * 1.1),
   },
   weekly: {
     pvRunAt: forecastRunAt,
-    pvKw: stundenWerte(2, TAGE_ANZAHL, pvKwBei),
+    pvKw: mitLuecke(stundenWerte(2, TAGE_ANZAHL, pvKwBei)),
     loadRunAt: forecastRunAt,
-    loadKw: stundenWerte(2, TAGE_ANZAHL, (_d, h) => verbrauchKwBei(h)),
+    loadKw: mitLuecke(stundenWerte(2, TAGE_ANZAHL, (_d, h) => verbrauchKwBei(h))),
   },
 });
 // Das Blatt "Rückblick" (S3): sieben Tage "am Vortag erwartet" gegen
@@ -214,21 +243,20 @@ a.rueckblick = async () => ({
   ],
 });
 
-// Der Maßstab des Teppichs misst sich an der Anlage (9,8 kWp - dieselbe
-// Zahl, mit der die Sonnenkurve oben rechnet), nicht an ihrer eigenen
-// Spitze der Woche.
+// Der Maßstab des Teppichs misst sich an der Anlage (dieselbe kWp-Zahl, mit
+// der die Sonnenkurve oben rechnet), nicht an ihrer eigenen Spitze der Woche.
 a.siteAssets = async (): Promise<SiteAsset[]> =>
   mitPv
     ? [
         {
           id: 'e2e-pv', type: 'pv', deviceId: null, capacityKwh: null, maxChargeKw: null, maxDischargeKw: null,
-          roundtripEfficiencyPct: null, speicherschonung: null, pvCapacityKwp: 9.8, moduleCount: 25,
+          roundtripEfficiencyPct: null, speicherschonung: null, pvCapacityKwp: KWP, moduleCount: 25,
           azimuthDeg: null, tiltDeg: null, commissionedOn: null, registry: null, registryUnitId: null, registryFetchedAt: null,
         },
       ]
     : [];
 
-const site = { id: 'help-site', name: 'Sonnenhof', biddingZone: 'DE-LU' } as never;
+const site = { id: 'help-site', name: captainNovember ? 'Metallbau Nordhoff GmbH' : 'Sonnenhof', biddingZone: 'DE-LU' } as never;
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <main className="vp-main" style={{ padding: 16, maxWidth: 1180, margin: '0 auto', background: 'var(--vp-c-bg)' }}>
     <PrognoseSeite site={site} hatFahrplan={hatFahrplan} />

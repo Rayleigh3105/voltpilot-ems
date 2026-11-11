@@ -7,10 +7,10 @@ import { test, expect, type Page } from '@playwright/test';
  * messen ohne PV (Teppich für den Verbrauch). Bei 1440 und 390 px: kein
  * Überlauf, keine Konsolenfehler.
  */
-async function oeffnen(page: Page, width: number, fall: string, uhr: Date) {
+async function oeffnen(page: Page, width: number, fall: string, uhr: Date, zusatz = '') {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
   await page.clock.setFixedTime(uhr);
-  await page.goto(`/e2e/prognose.html?fall=${fall}`);
+  await page.goto(`/e2e/prognose.html?fall=${fall}${zusatz}`);
   await expect(page.locator('.vp-pz-antwort')).toBeVisible();
   await expect(page.locator('.vp-pt-teppich')).toBeVisible();
 }
@@ -123,3 +123,54 @@ for (const width of [390, 1440]) {
     expect(fehler).toEqual([]);
   });
 }
+
+/**
+ * Die Lage des Captains nachgestellt (vp-prognose-teppich-treue, 11.11.2026):
+ * Gewerbe ohne Speicher, November, ≈31 kWh Sonne/Tag, ≈204 kWh
+ * Verbrauch/Tag, 16:06 Uhr - die Regressionsprobe für den Befund.
+ */
+const CAPTAIN_JETZT = new Date(2026, 10, 11, 16, 6);
+
+for (const width of [390, 1440]) {
+  test(`Prognose bei ${width} px · Lage des Captains (Gewerbe, November): Teppich bleibt lesbar, kein Überlauf`, async ({ page }) => {
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error') fehler.push(m.text());
+    });
+    await oeffnen(page, width, 'captain-november', CAPTAIN_JETZT);
+
+    // "Heute" trägt echte Säulen (Datenfehler 1/Maßstab-Befund): mindestens
+    // eine Stunde zeigt eine Säule, nicht nur die leere Spur.
+    await expect(page.locator('.vp-pt-tagzeile').first().locator('.vp-pt-saeule')).not.toHaveCount(0);
+    await expect(page.locator('.vp-pt-teppich .vp-pt-tagzeile')).toHaveCount(7);
+    await expect(page.locator('.vp-pt-jetzt-linie')).toBeVisible();
+    await expect(page.locator('.vp-pt-teppich-leer')).toHaveCount(0);
+
+    await ohneUeberlauf(page);
+    expect(fehler).toEqual([]);
+  });
+}
+
+test('Datenfehler 2 · ein lückenhafter Ausblick-Tag zeigt "noch keine Vorhersage", nicht leer', async ({ page }) => {
+  await oeffnen(page, 1440, 'captain-november', CAPTAIN_JETZT, '&luecke=1');
+
+  await expect(page.getByText('noch keine Vorhersage')).toBeVisible();
+  // Reihenfolge der Zeilen: 0 Heute, 1 Morgen, 2 Fr 13.11., 3 Sa 14.11., 4 So
+  // 15.11., 5 Mo 16.11. (der lückenhafte Tag), 6 Di 17.11. Der Tag davor und
+  // danach bleiben unberührt - nur Mo 16.11. fällt ehrlich aus.
+  const zeilen = page.locator('.vp-pt-teppich .vp-pt-tagzeile');
+  await expect(zeilen).toHaveCount(7);
+  await expect(zeilen.nth(4).locator('.vp-pt-saeule')).not.toHaveCount(0); // So 15.11.
+  await expect(zeilen.nth(5).locator('.vp-pt-teppich-leer')).toBeVisible(); // Mo 16.11.
+  await expect(zeilen.nth(6).locator('.vp-pt-saeule')).not.toHaveCount(0); // Di 17.11.
+});
+
+test('Datenfehler 3 · "am Vorabend erwartet" steht nur in der Legende, wenn wirklich eine Linie gezeichnet wird', async ({ page }) => {
+  await oeffnen(page, 1440, 'captain-november', CAPTAIN_JETZT, '&ohneVorabend=1');
+
+  await expect(page.getByText('am Vorabend erwartet')).toHaveCount(0);
+  // Die übrige Legende bleibt da - nur die Vorabend-Zeile fehlt ehrlich.
+  await expect(page.getByText('gemessen', { exact: true })).toBeVisible();
+  await expect(page.getByText('erwartet', { exact: true })).toBeVisible();
+});
