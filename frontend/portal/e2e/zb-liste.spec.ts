@@ -93,7 +93,13 @@ for (const breite of BREITEN) {
       const tabelle = await oeffne(page, breite);
       // Kein Gruppenkopf mehr - nur noch EINE Gruppe (alles hängt am Netzanschluss), Köpfe stehen erst ab zwei.
       expect(await lesen(tabelle)).toEqual(['Netzanschluss', 'UV Halle', 'UV Keller']);
-      await expect(tabelle.locator('[data-aufbau-geraet="src-netzanschluss"] .vp-auf-t-wert')).toHaveText(`8,1${NBSP}kW Bezug`);
+      const wertZelle = tabelle.locator('[data-aufbau-geraet="src-netzanschluss"] .vp-auf-t-wert');
+      // E3 A: eigener Messwert („8,1 kW Bezug") und darunter klein „im Haus" - ohne Sonne (pvKw 0) ohne Zusatz.
+      await expect(wertZelle.locator('> span').first()).toHaveText(`8,1${NBSP}kW Bezug`);
+      await expect(wertZelle.locator('.vp-auf-t-im-haus')).toHaveText(`8,1${NBSP}kW im Haus`);
+      // Rest je Knoten (§3.1, Board-Beispiel privat): übriger Haushalt = 8,1 − 7,7 − 0,1 = 0,3.
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"]')).toContainText('übriger Haushalt');
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"] .vp-auf-t-wert')).toHaveText(`0,3${NBSP}kW`);
       const geraete = await geraeteMitEbene(tabelle);
       const netz = geraete.find((g) => g.name === 'Netzanschluss');
       const halle = geraete.find((g) => g.name === 'UV Halle');
@@ -118,6 +124,34 @@ for (const breite of BREITEN) {
       expect(fehler).toEqual([]);
     });
 
+    test('mit Erzeugung (Lage des Captains, ASP Automation GmbH): Erzeugung bleibt unberührt, Netz hängt wie immer (R4)', async ({ page }) => {
+      const fehler = konsole(page);
+      const tabelle = await oeffne(page, breite, '?pv=1');
+      expect(await lesen(tabelle)).toEqual([
+        `[Erzeugung, 4 Geräte, zusammen 0,0${NBSP}kW]`,
+        'Wechselrichter 1',
+        'Wechselrichter 2',
+        'Wechselrichter 3',
+        'Wechselrichter 4',
+        '[Netz, 1 Gerät]',
+        'Netzanschluss',
+        'UV Halle',
+        'UV Keller',
+      ]);
+      // R4: Erzeugung hängt immer an der Wurzel selbst - vier Wechselrichter bleiben eine eigene Gruppe, nie
+      // Kinder des Netzanschlusses, auch ohne gesetztes haengtAn.
+      const geraete = await geraeteMitEbene(tabelle);
+      const netz = geraete.find((g) => g.name === 'Netzanschluss');
+      const halle = geraete.find((g) => g.name === 'UV Halle');
+      const wr1 = geraete.find((g) => g.name === 'Wechselrichter 1');
+      expect(wr1?.ebene).toBe(netz?.ebene);
+      expect(halle?.ebene).toBe((netz?.ebene ?? -1) + 1);
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"] .vp-auf-t-wert')).toHaveText(`0,3${NBSP}kW`);
+      await ohneQuerlauf(page, breite);
+      await foto(page, tabelle, `mit-pv-${breite}`);
+      expect(fehler).toEqual([]);
+    });
+
     test('mit Kompressor hinter UV Halle: zwei Ebenen unter dem Netzanschluss, beliebig tief (R1)', async ({ page }) => {
       const fehler = konsole(page);
       const tabelle = await oeffne(page, breite, '?kompressor=1');
@@ -130,6 +164,11 @@ for (const breite of BREITEN) {
       expect(halle?.ebene).toBe((netz?.ebene ?? -1) + 1);
       expect(kompressor?.ebene).toBe((halle?.ebene ?? -1) + 1);
       expect(keller?.ebene).toBe((netz?.ebene ?? -1) + 1);
+      // Rest je Knoten (R1, nur direkte Kinder): UV Halle ohne eigenen Zähler = 7,7 − 3,2 = 4,5; der Rest an der
+      // Wurzel bleibt 0,3 - der Kompressor steckt schon in UV Halles 7,7 kW, kein zweiter Abzug am Haus.
+      await expect(tabelle.locator('[data-aufbau-rest="src-uv-halle::rest"]')).toContainText('ohne eigenen Zähler');
+      await expect(tabelle.locator('[data-aufbau-rest="src-uv-halle::rest"] .vp-auf-t-wert')).toHaveText(`4,5${NBSP}kW`);
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"] .vp-auf-t-wert')).toHaveText(`0,3${NBSP}kW`);
       if (breite < 720) {
         // Telefon: `ebeneKlasse` deckelt die Rail-Klasse auf is-e3, aber der Name muss trotzdem sichtbar tiefer
         // stehen als sein Elternknoten - eine feste statt einer ebenenabhängigen Einrückung (Aufbau.css) ließ den
@@ -168,6 +207,10 @@ for (const breite of BREITEN) {
       const keller = geraete.find((g) => g.name === 'UV Keller');
       expect(halle?.ebene).toBe((netz?.ebene ?? -1) + 1);
       expect(keller?.ebene).toBe((halle?.ebene ?? -1) + 1);
+      // Rest je Knoten, nach dem Umhängen: UV Halle ohne eigenen Zähler = 7,7 − 0,1 = 7,6; die Wurzel bleibt
+      // 0,4 (8,1 − 7,7, nur UV Halle zählt jetzt noch direkt an der Wurzel).
+      await expect(tabelle.locator('[data-aufbau-rest="src-uv-halle::rest"] .vp-auf-t-wert')).toHaveText(`7,6${NBSP}kW`);
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"] .vp-auf-t-wert')).toHaveText(`0,4${NBSP}kW`);
 
       await ohneQuerlauf(page, breite);
       await foto(page, tabelle, `umhaengen-${breite}`);

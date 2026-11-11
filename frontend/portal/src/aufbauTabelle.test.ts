@@ -177,11 +177,14 @@ describe('tabellenZeilen — ohne Suche und Filter', () => {
       'gruppe:b-1::gruppe::erzeugung',
       'geraet:inverter',
       'geraet:heizstab',
+      // Rest je Knoten (§3.1): inverter trägt keinen Haus-Wert (kein `overview` in dieser Eingabe) - "nicht
+      // bestimmbar" (R2) statt einer erfundenen Zahl.
+      'rest:inverter::rest',
       'gruppe:b-1::gruppe::laden',
       'geraet:cp-CP-1',
       'fund:neu:src-7',
     ]);
-    expect(rows.map((r) => r.ebene)).toEqual([0, 1, 2, 2, 3, 2, 2, 2]);
+    expect(rows.map((r) => r.ebene)).toEqual([0, 1, 2, 2, 3, 3, 2, 2, 2]);
   });
 
   it('bietet nur Geräten mit mehreren Komponenten die Unterzeilen an', () => {

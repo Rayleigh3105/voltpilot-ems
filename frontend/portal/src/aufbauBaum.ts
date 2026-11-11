@@ -234,6 +234,15 @@ export interface AufbauAnlage {
   wegeOhneBox: AufbauWeg[];
   /** Angelegte Geräte (ohne Funde); null = für diese Anlage noch nicht geladen. */
   geraeteZahl: number | null;
+  /**
+   * Zählerbaum-Konzept (E3 A): der Haus-Wert der Box am Netzanschluss - Bezug
+   * + Sonne − Speicher (`site.live.loadKw`, dieselbe Zahl wie der Anlagenkopf,
+   * nur ungerundet) -, für die Zeile „… kW im Haus"; null = nicht aktuell oder
+   * unbekannt (nur an der geöffneten Anlage gesetzt).
+   */
+  hausKw: { kw: number; sonneKw: number | null } | null;
+  /** Das Anwendungs-Preset (`site.profil`, UV-4 A) - wählt das Wort des Rests an der Wurzel (`restWort`). */
+  profil: string | null;
 }
 
 export interface AufbauWurzel {
@@ -288,6 +297,8 @@ export interface AufbauEingabe {
   anlagensteuerungen?: Readonly<
     Record<string, { liste: AnlagensteuerungListe | null; werte: Readonly<Record<string, AnlagensteuerungWerte>> } | undefined>
   >;
+  /** Das Anwendungs-Preset der geöffneten Anlage (`site.profil`, UV-4 A); null = unbekannt oder privat. */
+  profil?: string | null;
   now: number;
 }
 
@@ -1086,7 +1097,23 @@ function anlageKnoten(
       karten == null
         ? null
         : geraete.filter((g) => g.art === 'geraet' || g.art === 'ladepunkt').length,
+    hausKw: aktuell ? hausKwVon(site, input.now) : null,
+    profil: aktuell ? (input.profil ?? null) : null,
   };
+}
+
+/**
+ * Zählerbaum-Konzept (E3 A): der Haus-Wert der Box - Bezug + Sonne − Speicher
+ * (`site.live.loadKw`), dieselbe Zeitbasis wie der Anlagenkopf
+ * (`siteLiveFresh`); null = keine Übersicht oder nicht mehr frisch - lieber
+ * keine Zeile als eine veraltete „im Haus"-Zahl.
+ */
+function hausKwVon(site: OverviewSite | null | undefined, now: number): AufbauAnlage['hausKw'] {
+  if (!site || !site.live || !siteLiveFresh(site, new Date(now))) return null;
+  const { loadKw, pvKw } = site.live;
+  if (typeof loadKw !== 'number' || !Number.isFinite(loadKw)) return null;
+  const sonneKw = typeof pvKw === 'number' && Number.isFinite(pvKw) && pvKw > 0 ? pvKw : null;
+  return { kw: loadKw, sonneKw };
 }
 
 /** Der ganze Baum: die geöffnete Anlage zuerst, dann ihre Nachbarn am Standort. */

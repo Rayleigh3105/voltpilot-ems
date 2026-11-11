@@ -876,6 +876,32 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   color: var(--vp-text-gray);
   font-weight: var(--vp-weight-regular);
 }
+/* Zählerbaum-Konzept (E3 A): „… kW im Haus" am Netzanschluss - leise, eine eigene Zeile unter dem Messwert. */
+.vp-auf-t-im-haus {
+  display: block;
+  white-space: normal;
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-regular);
+  color: var(--vp-text-gray);
+}
+/* Die Rest-Zeile (§3.1/§4.1): leise, gestrichelter Platzhalter statt Symbol, Wert in Grau, kein Pfeil. */
+.vp-auf-t-zeile.is-rest {
+  min-height: 38px;
+  color: var(--vp-text-gray);
+}
+.vp-auf-t-zeile.is-rest .vp-auf-t-wert {
+  color: var(--vp-text-gray);
+  font-weight: var(--vp-weight-regular);
+}
+.vp-auf-t-zeile.is-rest .vp-auf-t-wert .is-warn {
+  color: var(--vp-warn-ink);
+  font-weight: var(--vp-weight-medium);
+}
+.vp-auf-sym.is-rest {
+  --c: var(--vp-text-gray);
+  background: var(--vp-surface);
+  border-style: dashed;
+}
 .vp-auf-t-pfeil {
   justify-self: end;
   color: var(--vp-text-gray);
@@ -1146,7 +1172,8 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     color: var(--vp-text-gray);
     font-weight: var(--vp-weight-medium);
   }
-  .vp-auf-t-zeile.is-teil {
+  .vp-auf-t-zeile.is-teil,
+  .vp-auf-t-zeile.is-rest {
     grid-template-areas: 'name wert';
   }
   /* Der Gruppenkopf ist eine Zeile: Name und Anzahl links, Summe rechts. */
@@ -1169,7 +1196,8 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
      Zählerbaum: dieselbe Formel wie `.is-einheit` unten statt der festen 22px einer einzigen Stufe - sonst läge ein
      Kompressor hinter UV Halle (eine Ebene tiefer, beliebig tief möglich) optisch auf derselben Stufe wie UV Halle
      selbst, weil `ebeneKlasse` die Klasse ab Ebene 3 deckelt. */
-  .vp-auf-t-zeile.is-geraet > .vp-auf-t-name {
+  .vp-auf-t-zeile.is-geraet > .vp-auf-t-name,
+  .vp-auf-t-zeile.is-rest > .vp-auf-t-name {
     padding-left: calc(max(var(--ebene, 2) - 2, 0) * 22px);
   }
   /* GE-3: die Wechselrichter unter ihrer Steuerung — hinter einem Gateway eine Stufe tiefer als die Steuerung. */

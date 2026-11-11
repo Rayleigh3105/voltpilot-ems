@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Device, EntityLocalSetup } from './api';
 import { aufbauBaum, aufbauGeraet, type AufbauEingabe, type AufbauGeraet } from './aufbauBaum';
-import { gruppeFuer, gruppenKopf, gruppenZahl, sortiereGeraete, werteFuerGruppe } from './aufbauGruppen';
+import { gruppeFuer, gruppenKopf, gruppenZahl, restEinesKnotens, sortiereGeraete, werteFuerGruppe } from './aufbauGruppen';
 import { LEERER_FILTER, tabellenZeilen, type Aufklappzustand, type TabellenZeile } from './aufbauTabelle';
 import { geraeteArtWort } from './geraetSeite';
 import type { PlantComponent } from './komponenten';
@@ -258,6 +258,66 @@ describe('gruppenKopf - Anzahl und ehrliche Summe (GR-3 A)', () => {
   });
 });
 
+describe('restEinesKnotens - Vertrag §3.1 (R1-R3)', () => {
+  it('rechnet das Beispiel privat (Board §2): Netzanschluss im Haus 8,1, UV Halle 7,7, UV Keller 0,1 -> übriger Haushalt 0,3', () => {
+    const rest = restEinesKnotens(
+      { kw: 8.1, label: 'Netzanschluss' },
+      [{ kw: 7.7, label: 'UV Halle' }, { kw: 0.1, label: 'UV Keller' }],
+    );
+    expect(rest).toEqual({ kw: 0.3, note: null, konflikt: false });
+  });
+
+  it('rechnet UV Halle mit Kompressor dahinter: 7,7 - 3,2 = 4,5 ohne eigenen Zähler - übriger Haushalt bleibt 0,3 (R1, nur direkte Kinder)', () => {
+    const uvHalleRest = restEinesKnotens({ kw: 7.7, label: 'UV Halle' }, [{ kw: 3.2, label: 'Kompressor' }]);
+    expect(uvHalleRest).toEqual({ kw: 4.5, note: null, konflikt: false });
+    const wurzelRest = restEinesKnotens(
+      { kw: 8.1, label: 'Netzanschluss' },
+      [{ kw: 7.7, label: 'UV Halle' }, { kw: 0.1, label: 'UV Keller' }],
+    );
+    expect(wurzelRest.kw).toBe(0.3);
+  });
+
+  it('rechnet das Beispiel Werk Nord (§3.1): drei Unterverteilungen, zwei mit Maschinen dahinter', () => {
+    const werk = restEinesKnotens(
+      { kw: 87.2, label: 'Netzanschluss' },
+      [{ kw: 9.1, label: 'UV Büro' }, { kw: 58.6, label: 'UV Halle 1' }, { kw: 6.3, label: 'UV Halle 2' }],
+    );
+    expect(werk).toEqual({ kw: 13.2, note: null, konflikt: false });
+    const halle1 = restEinesKnotens(
+      { kw: 58.6, label: 'UV Halle 1' },
+      [{ kw: 21.4, label: 'Laserschneidanlage' }, { kw: 9.8, label: 'Abkantpresse' }, { kw: 7.6, label: 'Schraubenkompressor' }],
+    );
+    expect(halle1).toEqual({ kw: 19.8, note: null, konflikt: false });
+    const halle2 = restEinesKnotens({ kw: 6.3, label: 'UV Halle 2' }, [{ kw: 4.1, label: 'Absauganlage' }]);
+    expect(halle2).toEqual({ kw: 2.2, note: null, konflikt: false });
+  });
+
+  it('R2: fehlt der eigene Wert, ist der Rest nicht bestimmbar - mit Namen und Grund', () => {
+    const rest = restEinesKnotens({ kw: null, label: 'Netzanschluss' }, [{ kw: 7.7, label: 'UV Halle' }]);
+    expect(rest).toEqual({ kw: null, note: 'nicht bestimmbar (Netzanschluss meldet sich gerade nicht)', konflikt: false });
+  });
+
+  it('R2: fehlt ein Kind, ist der Rest des Elternknotens nicht bestimmbar - der Elternwert selbst bleibt unangetastet', () => {
+    const rest = restEinesKnotens(
+      { kw: 8.1, label: 'Netzanschluss' },
+      [{ kw: 7.7, label: 'UV Halle' }, { kw: null, label: 'UV Keller' }],
+    );
+    expect(rest).toEqual({ kw: null, note: 'nicht bestimmbar (UV Keller meldet sich gerade nicht)', konflikt: false });
+  });
+
+  it('R3: Kinder über dem Eltern-Wert sagen den Widerspruch, statt auf 0 zu klemmen', () => {
+    const rest = restEinesKnotens({ kw: 7.7, label: 'UV Halle' }, [{ kw: 8.0, label: 'Kompressor' }]);
+    expect(rest.kw).toBeNull();
+    expect(rest.konflikt).toBe(true);
+    expect(rest.note).toBe('Messwerte passen nicht zusammen (−0,3 kW)');
+  });
+
+  it('eine kleine Abweichung unter der Toleranz (0,2 kW) rundet auf 0, kein Widerspruch', () => {
+    const rest = restEinesKnotens({ kw: 7.7, label: 'UV Halle' }, [{ kw: 7.75, label: 'Kompressor' }]);
+    expect(rest).toEqual({ kw: 0, note: null, konflikt: false });
+  });
+});
+
 describe('gruppenZahl', () => {
   it('zählt Gruppen, nicht Geräte - Funde zählen nicht', () => {
     const liste = [pv('1', 'Kaco 1', 1), pv('2', 'Kaco 2', 1), karte({ id: 'neu:x', art: 'neu' })].map((k) => g(k));
@@ -311,7 +371,9 @@ const lesen = (rows: TabellenZeile[]) =>
       ? `[${r.kopf.wort} ${r.kopf.anzahl}${r.kopf.summe ? ` · ${r.kopf.summe.replace(' ', ' ')}` : ''}]`
       : r.typ === 'geraet'
         ? r.geraet.titel
-        : r.typ,
+        : r.typ === 'rest'
+          ? `${r.wort} ${r.kw ?? r.note}`
+          : r.typ,
   );
 
 describe('tabellenZeilen gruppiert - Schramm „Zuhause"', () => {
@@ -329,6 +391,10 @@ describe('tabellenZeilen gruppiert - Schramm „Zuhause"', () => {
       'Netzanschluss',
       'UV Halle',
       'UV Keller',
+      // Rest je Knoten (§3.1): ohne `overview`/`site.live` ist der Haus-Wert der Wurzel unbekannt (R2) - "nicht
+      // bestimmbar" statt einer erfundenen Zahl. Die echte Rechnung prüft `restEinesKnotens` oben exakt gegen
+      // die Beispiele des Berichts.
+      'übriger Haushalt nicht bestimmbar (Netzanschluss meldet sich gerade nicht)',
     ]);
   });
 
@@ -349,7 +415,10 @@ describe('tabellenZeilen gruppiert - Schramm „Zuhause"', () => {
       // UV Halle und UV Keller hängen (ohne gesetztes haengtAn) an der Wurzel - kein eigener Verbrauch-Kopf mehr.
       'UV Halle',
       'Kompressor',
+      // UV Halles eigener Rest (R1, nur direkte Kinder): 7,9 - 3,2 = 4,7.
+      'ohne eigenen Zähler 4.7',
       'UV Keller',
+      'übriger Haushalt nicht bestimmbar (Netzanschluss meldet sich gerade nicht)',
     ]);
     const kompZeile = zeilen.find((z) => z.typ === 'geraet' && z.geraet.titel === 'Kompressor');
     const halleZeile = zeilen.find((z) => z.typ === 'geraet' && z.geraet.titel === 'UV Halle');

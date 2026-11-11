@@ -24,9 +24,19 @@
  * Rein + deterministisch: kein React, kein Netz, keine Uhr. Die Fläche
  * (`components/AufbauTabelle.tsx`) rendert nur, was hier entschieden wird.
  */
-import type { AufbauAnlage, AufbauBaum, AufbauBox, AufbauGeraet, AufbauWeg } from './aufbauBaum';
+import { komponenteAktuell, type AufbauAnlage, type AufbauBaum, type AufbauBox, type AufbauGeraet, type AufbauWeg } from './aufbauBaum';
 import type { PlantComponent } from './komponenten';
-import { gruppenKopf, gruppenZahl, GRUPPEN_ORDNUNG, sortiereGeraete, type GruppenKopf } from './aufbauGruppen';
+import {
+  gruppenKopf,
+  gruppenZahl,
+  istNetzanschluss,
+  restEinesKnotens,
+  GRUPPEN_ORDNUNG,
+  sortiereGeraete,
+  type GruppenKopf,
+  type RestEingabe,
+} from './aufbauGruppen';
+import { restWort } from './verbrauchKomposition';
 import { normalisiereSuche, passt, suchBegriffe } from './picker/suche';
 
 export type FilterSchluessel = 'art' | 'zustand' | 'box' | 'marke';
@@ -144,6 +154,26 @@ export type TabellenZeile =
       /** Hat es mehr als eine Komponente (dann klappen sie als Unterzeilen auf)? */
       teilbar: boolean;
       offen: boolean;
+      /** Nur am Netzanschluss (E3 A): „… kW im Haus"; null = nicht die Wurzel oder kein aktueller Haus-Wert. */
+      imHaus: AufbauAnlage['hausKw'];
+    }
+  /**
+   * Der Rest EINER Ebene (Vertrag §3.1 „Rest je Knoten"): was von einem Zähler mit eigenem Baum übrig bleibt,
+   * nachdem seine direkten Kinder abgezogen sind. Steht unter JEDEM Knoten mit mindestens einem Kind, auf
+   * dessen Ebene - leise, nicht klickbar, nie Teil einer Gruppensumme.
+   */
+  | {
+      typ: 'rest';
+      key: string;
+      ebene: number;
+      anlage: AufbauAnlage;
+      /** „übriger Haushalt" (an der Wurzel, privat) oder „ohne eigenen Zähler" (sonst, `restWort`). */
+      wort: string;
+      kw: number | null;
+      /** Der Grund, wenn `kw` null ist, oder der Widerspruchssatz (R2/R3). */
+      note: string | null;
+      /** Die Kinder liegen über dem eigenen Wert - ein Widerspruch, nie auf 0 geklemmt (R3). */
+      konflikt: boolean;
     }
   /**
    * Der Kopf einer Gerätegruppe (Erzeugung · Speicher · Netz · Verbrauch · Laden, `aufbauGruppen.ts`): Anzahl und
@@ -191,6 +221,10 @@ function geraeteZeilen(
   z: Aufklappzustand,
   einheiten: ReadonlyMap<string, AufbauGeraet[]> = new Map(),
   zaehlerbaumKinder: ReadonlyMap<string, AufbauGeraet[]> = new Map(),
+  // Suche/Filter blenden Geräte aus - `zaehlerbaumKinder` enthält dann nur die TREFFENDEN Kinder, nie alle. Ein
+  // Rest daraus wäre eine Teilsumme (dieselbe Regel wie `gruppenKopf`s `teilmenge`): die Rest-Zeile entfällt
+  // lieber ganz, statt eine Zahl zu zeigen, die eine ausgeblendete Zeile verschweigt.
+  aktiv = false,
 ): void {
   for (const g of geraete) {
     if (g.art === 'neu') {
@@ -199,7 +233,8 @@ function geraeteZeilen(
     }
     const teilbar = g.karte.komponenten.length > 1;
     const offen = teilbar && z.geraete.has(g.id);
-    out.push({ typ: 'geraet', key: g.id, ebene, anlage, box, geraet: g, teilbar, offen });
+    const wurzel = istNetzanschluss(g.karte.komponenten);
+    out.push({ typ: 'geraet', key: g.id, ebene, anlage, box, geraet: g, teilbar, offen, imHaus: wurzel ? anlage.hausKw : null });
     if (offen) {
       for (const c of g.karte.komponenten) {
         out.push({ typ: 'teil', key: `${g.id}::${c.id}`, ebene: ebene + 1, anlage, geraet: g, komponente: c });
@@ -207,16 +242,41 @@ function geraeteZeilen(
     }
     // GE-3: die Einheiten hinter einer Steuerung — Geräte, eine Ebene tiefer, immer sichtbar.
     for (const u of einheiten.get(g.id) ?? []) {
-      out.push({ typ: 'geraet', key: u.id, ebene: ebene + 1, anlage, box, geraet: u, teilbar: false, offen: false });
+      out.push({ typ: 'geraet', key: u.id, ebene: ebene + 1, anlage, box, geraet: u, teilbar: false, offen: false, imHaus: null });
     }
     // Zählerbaum-Konzept (E2 A „Baum in der Liste"): was hinter DIESEM Zähler
     // hängt, eine Ebene tiefer, immer sichtbar (keine Aufklapp-Zeile, wie GE-3) -
     // rekursiv, denn eine Unterverteilung kann selbst wieder Kinder tragen.
     const kinder = zaehlerbaumKinder.get(g.id);
     if (kinder && kinder.length > 0) {
-      geraeteZeilen(out, anlage, box, sortiereGeraete(kinder), ebene + 1, z, einheiten, zaehlerbaumKinder);
+      geraeteZeilen(out, anlage, box, sortiereGeraete(kinder), ebene + 1, z, einheiten, zaehlerbaumKinder, aktiv);
+      // Vertrag §3.1 „Rest je Knoten": eigener Wert (am Netzanschluss die Zeile „im Haus", sonst die eigene
+      // Messung) minus Summe der direkten Kinder - nur DIREKTE Kinder (R1), nie eine Summe über Ebenen hinweg.
+      // Nie unter aktiver Suche/Filter (s. o.): `kinder` wäre dann eine Teilmenge.
+      if (!aktiv) {
+        const eigen: RestEingabe = { kw: wurzel ? (anlage.hausKw?.kw ?? null) : eigeneLeistungKw(g), label: g.titel };
+        const kinderEingabe: RestEingabe[] = kinder.map((k) => ({ kw: eigeneLeistungKw(k), label: k.titel }));
+        const rest = restEinesKnotens(eigen, kinderEingabe);
+        out.push({
+          typ: 'rest',
+          key: `${g.id}::rest`,
+          ebene: ebene + 1,
+          anlage,
+          wort: wurzel ? restWort(anlage.profil) : 'ohne eigenen Zähler',
+          kw: rest.kw,
+          note: rest.note,
+          konflikt: rest.konflikt,
+        });
+      }
     }
   }
+}
+
+/** Die gemessene Leistung EINES Knotens für `restEinesKnotens` (Rolle `consumer`, aktuell); null = kein aktueller Wert. */
+function eigeneLeistungKw(g: AufbauGeraet): number | null {
+  const c = g.karte.komponenten.find((c) => c.role === 'consumer');
+  if (!c || !komponenteAktuell(c) || c.reading?.unit !== 'kW') return null;
+  return c.reading.value;
 }
 
 /**
@@ -283,15 +343,15 @@ function ortZeilen(
       const teilmenge = darin.length !== alleDirekt.filter((g) => g.gruppe === gruppe).length;
       out.push({ typ: 'gruppe', key: `${ort}::gruppe::${gruppe}`, ebene, anlage, box, kopf: gruppenKopf(gruppe, darin, teilmenge) });
     }
-    geraeteZeilen(out, anlage, box, darin, ebene, z, einheiten, zaehlerbaumKinder);
+    geraeteZeilen(out, anlage, box, darin, ebene, z, einheiten, zaehlerbaumKinder, aktiv);
   }
   // Funde und „Nicht mehr verbunden" gehören in keine Gruppe - sie bleiben am Ende der Geräte.
-  geraeteZeilen(out, anlage, box, sortiert.filter((g) => g.gruppe == null), ebene, z, einheiten, zaehlerbaumKinder);
+  geraeteZeilen(out, anlage, box, sortiert.filter((g) => g.gruppe == null), ebene, z, einheiten, zaehlerbaumKinder, aktiv);
   for (const { w, geraete: dahinter } of sichtbar) {
     const offen = aktiv || z.offen(w.id, true);
     out.push({ typ: 'gateway', key: `${ort}::gateway::${w.id}`, ebene, anlage, box, weg: w, offen });
     // Hinter einem Gateway in derselben Reihenfolge, ohne eigene Köpfe.
-    if (offen) geraeteZeilen(out, anlage, box, sortiereGeraete(dahinter), ebene + 1, z, einheiten, zaehlerbaumKinder);
+    if (offen) geraeteZeilen(out, anlage, box, sortiereGeraete(dahinter), ebene + 1, z, einheiten, zaehlerbaumKinder, aktiv);
   }
   for (const w of offene) out.push({ typ: 'anschluss', key: `${ort}::anschluss::${w.id}`, ebene, anlage, box, weg: w });
   // Rekursiv, denn eine Unterverteilung kann selbst wieder Kinder tragen (Zählerbaum, beliebig tief).

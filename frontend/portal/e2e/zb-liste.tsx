@@ -36,6 +36,10 @@ const mitKompressor = frage.get('kompressor') === '1';
 // `?ohneNetz=1`: keine Anlage mit Netzanschluss-Zähler - die Vorgabe (Vertrag
 // §1) hat keine Wurzel zum Anhängen, die heutige flache Anzeige bleibt.
 const ohneNetz = frage.get('ohneNetz') === '1';
+// `?pv=1`: die vom Captain gemeldete Lage mit Erzeugung (ASP Automation GmbH,
+// 11.11.2026, 4 Wechselrichter abends ohne Sonne) - beweist, dass die Gruppe
+// „Erzeugung" von der Zählerbaum-Vorgabe unberührt bleibt (R4).
+const mitPv = frage.get('pv') === '1';
 const jetzt = Date.now();
 const vor = (s: number) => new Date(jetzt - s * 1000).toISOString();
 
@@ -63,13 +67,19 @@ interface Quelle {
   src: string;
   entity: string;
   label: string;
-  rolle: 'grid-meter' | 'consumer';
+  rolle: 'grid-meter' | 'consumer' | 'pv-generation';
   typ: string;
   typLabel: string;
   kw: number;
   haengtAn?: string;
 }
 const QUELLEN: Quelle[] = [
+  ...(mitPv
+    ? (['1', '2', '3', '4'] as const).map((n) => ({
+        src: `src-wr-${n}`, entity: `e-wr-${n}`, label: `Wechselrichter ${n}`, rolle: 'pv-generation' as const,
+        typ: 'producer', typLabel: 'Erzeuger (PV)', kw: 0,
+      }))
+    : []),
   ...(ohneNetz
     ? []
     : [{ src: 'src-netzanschluss', entity: 'e-netz', label: 'Netzanschluss', rolle: 'grid-meter' as const, typ: 'grid-meter', typLabel: 'Netzanschlusszähler', kw: 8.1 }]),
@@ -80,7 +90,8 @@ const QUELLEN: Quelle[] = [
     : []),
 ];
 const istNetz = (q: Quelle) => q.rolle === 'grid-meter';
-const kanal = () => 'power_kw';
+const istPv = (q: Quelle) => q.rolle === 'pv-generation';
+const kanal = (q: Quelle) => (istPv(q) ? 'pv_power_kw' : 'power_kw');
 
 /**
  * Umhängen (Captain-Nachtrag, R5): die Bühne ist kein Standbild mehr - `PUT
@@ -101,10 +112,16 @@ function entities(): SiteEntity[] {
     },
     ...QUELLEN.map((q) => ({
       id: q.entity, entityType: q.typ, typeLabel: q.typLabel, role: q.rolle, label: q.label, control: false,
-      deviceId: istNetz(q) ? BOX_ID : null, capabilities: { measure: [{ unit: 'kW', channel: kanal() }] },
-      guards: { failsafe: { behavior: 'measure-only' } }, syncStatus: 'in_sync',
-      observed: { health: istNetz(q) ? 'ok' : 'never', lastTelemetryAt: istNetz(q) ? vor(16) : null, channels: istNetz(q) ? [kanal()] : null, appliedType: q.typ, reportedAt: vor(0) },
-      edgeSourceId: q.src, orphanedPin: false, capacityKwp: null, sourceKind: 'builtin', certificationStatus: null,
+      deviceId: istNetz(q) ? BOX_ID : null, capabilities: { measure: [{ unit: 'kW', channel: kanal(q) }] },
+      guards: { failsafe: { behavior: istPv(q) ? 'release' : 'measure-only' } }, syncStatus: 'in_sync',
+      observed: {
+        health: istNetz(q) || istPv(q) ? 'ok' : 'never',
+        lastTelemetryAt: istNetz(q) || istPv(q) ? vor(16) : null,
+        channels: istNetz(q) || istPv(q) ? [kanal(q)] : null,
+        appliedType: q.typ,
+        reportedAt: vor(0),
+      },
+      edgeSourceId: q.src, orphanedPin: false, capacityKwp: istPv(q) ? 10 : null, sourceKind: 'builtin', certificationStatus: null,
       haengtAn: haengtAnJetzt.get(q.entity) ?? null,
     })),
   ] as unknown as SiteEntity[];
@@ -118,7 +135,7 @@ const localSetup = QUELLEN.map((q, i) => ({
 
 const sources = QUELLEN.map((q) => ({
   deviceId: BOX_ID, sourceId: q.src, kind: 'source', role: q.rolle, label: q.label, brand: 'shelly', model: 'shelly-pro-3em',
-  pvKw: null, powerKw: istNetz(q) ? q.kw : null, loadKw: !istNetz(q) ? q.kw : null,
+  pvKw: istPv(q) ? q.kw : null, powerKw: istNetz(q) ? q.kw : null, loadKw: !istNetz(q) && !istPv(q) ? q.kw : null,
   health: 'ok', readAt: vor(16), reportedAt: vor(0), bms: null,
 }));
 
@@ -130,10 +147,11 @@ function topology(): SiteTopology {
         capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: true, value: 8.1 }] },
       ...QUELLEN.map((q) => ({
         id: q.entity, entityType: q.typ, typeLabel: q.typLabel, label: q.label,
-        category: istNetz(q) ? 'meter' : 'consumer', health: istNetz(q) ? 'ok' : 'never', connection: null,
+        category: istPv(q) ? 'producer' : istNetz(q) ? 'meter' : 'consumer',
+        health: istNetz(q) || istPv(q) ? 'ok' : 'never', connection: null,
         capabilities: [{
-          channel: kanal(), unit: 'kW', role: istNetz(q) ? 'grid' : 'consumer',
-          primary: istNetz(q), value: istNetz(q) ? q.kw : null, haengt_an: haengtAnJetzt.get(q.entity) ?? undefined,
+          channel: kanal(q), unit: 'kW', role: istPv(q) ? 'pv' : istNetz(q) ? 'grid' : 'consumer',
+          primary: istNetz(q) || istPv(q), value: istNetz(q) || istPv(q) ? q.kw : null, haengt_an: haengtAnJetzt.get(q.entity) ?? undefined,
         }],
       })),
     ],
@@ -147,7 +165,12 @@ const overview = {
     deviceCount: 1, onlineCount: 1, waitingCount: 0, worstStatus: 'online', lastSeenAt: vor(0),
     live: { ts: vor(7), pvKw: 0, loadKw: 8.1, gridKw: ohneNetz ? null : 8.1, socPct: null },
     plannedSavingsTodayEur: null,
-    roleCounts: { pv: 0, storage: 0, consumer: QUELLEN.filter((q) => !istNetz(q)).length, grid: QUELLEN.filter(istNetz).length },
+    roleCounts: {
+      pv: QUELLEN.filter(istPv).length,
+      storage: 0,
+      consumer: QUELLEN.filter((q) => !istNetz(q) && !istPv(q)).length,
+      grid: QUELLEN.filter(istNetz).length,
+    },
     usageProfile: 'private',
     lastPlanGeneratedAt: null, storageCapacityKwh: null, energyToday: null, chargePointCount: 0,
     anwendungen: ['monitoring'], standort: null,

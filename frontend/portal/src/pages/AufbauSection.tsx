@@ -378,9 +378,10 @@ export function AufbauSection({
         datenquellen,
         uemsGeraete,
         anlagensteuerungen,
+        profil: site.profil ?? null,
         now,
       }),
-    [site.id, site.name, standorte, devices, devicesFetchedAt, karten, data, charging, overview, nachbarKarten, datenquellen, uemsGeraete, anlagensteuerungen, now],
+    [site.id, site.name, standorte, devices, devicesFetchedAt, karten, data, charging, overview, nachbarKarten, datenquellen, uemsGeraete, anlagensteuerungen, site.profil, now],
   );
 
   const satz = useMemo(() => (karten ? zentraleSatz(karten) : null), [karten]);

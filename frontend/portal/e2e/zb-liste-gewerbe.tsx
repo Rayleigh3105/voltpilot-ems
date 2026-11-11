@@ -48,6 +48,9 @@ const site: Site = {
   latitude: null,
   longitude: null,
   plantKind: 'eigenverbrauch',
+  // E3 A / UV-4 A: wählt das Wort des Rests an der Wurzel (`restWort`) - "ohne eigenen Zähler", nicht "übriger
+  // Haushalt".
+  profil: 'gewerbe',
   anzulegenderWertCtKwh: null,
   tarifArt: 'ohne',
   tarifParamCtKwh: null,

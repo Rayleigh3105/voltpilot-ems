@@ -35,6 +35,7 @@ import { anlageRoute, hashForRoute } from '../nav';
 import { UEMS_GERAETE_SUCHEN, UEMS_LISTE_DURCHSUCHEN } from '../glossar';
 import { GRUPPE_SYMBOL } from '../aufbauGruppen';
 import { mitStaffel, useStaffel } from '../staffel';
+import { fmtNum } from '../format';
 
 /**
  * Der Reiter „Aufbau" als TABELLE mit Gruppen (Konzept „Aufbau und
@@ -419,6 +420,8 @@ function Zeile({ z, begriffe, p }: { z: TabellenZeile; begriffe: string[]; p: Au
       return <FundZeile z={z} begriffe={begriffe} p={p} />;
     case 'gruppe':
       return <GruppeZeile z={z} />;
+    case 'rest':
+      return <RestZeile z={z} />;
     default:
       return (
         <div className={`vp-auf-t-zeile is-leer${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)}>
@@ -711,6 +714,13 @@ function GeraetZeile({
             –
           </span>
         )}
+        {/* Zählerbaum-Konzept (E3 A): nur am Netzanschluss, zeigt, dass die Kinder zum Inhalt der Wurzel passen. */}
+        {z.imHaus && (
+          <small className="vp-auf-t-im-haus">
+            {fmtNum(z.imHaus.kw, 'kW')} im Haus
+            {z.imHaus.sonneKw != null && ` · mit ${fmtNum(z.imHaus.sonneKw, 'kW')} Sonne`}
+          </small>
+        )}
       </span>
       <span role="cell" className="vp-auf-t-pfeil">
         {mehr.length > 0 && (
@@ -755,6 +765,38 @@ function TeilZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'teil' }>
             –
           </span>
         )}
+      </span>
+      <span role="cell" />
+    </div>
+  );
+}
+
+/**
+ * Der Rest EINER Ebene (Vertrag §3.1/§4.1 „Rest-Zeile"): leise, gestrichelter Platzhalter statt Symbol, Wert in
+ * Grau, kein Pfeil, nicht klickbar. R2/R3 stehen als Begründung statt einer erfundenen Zahl.
+ */
+function RestZeile({ z }: { z: Extract<TabellenZeile, { typ: 'rest' }> }) {
+  return (
+    <div className={`vp-auf-t-zeile is-rest${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-aufbau-rest={z.key}>
+      <span role="cell" className="vp-auf-t-name">
+        <span className="vp-auf-t-auf-platz" />
+        <span className="vp-auf-sym is-rest" aria-hidden="true" />
+        <span className="vp-auf-t-text">
+          <span className="vp-auf-t-titel is-ruhig">
+            <span className="vp-auf-t-kuerze">{z.wort}</span>
+          </span>
+          <small>berechnet</small>
+        </span>
+      </span>
+      <span role="cell" className="vp-auf-t-art" />
+      <span role="cell" className="vp-auf-t-zustand" />
+      <span role="cell" className="vp-auf-t-wert">
+        {z.kw != null ? (
+          <span>{fmtNum(z.kw, 'kW')}</span>
+        ) : (
+          <span className={z.konflikt ? 'is-warn' : 'is-leer'}>{z.konflikt ? z.note : '–'}</span>
+        )}
+        {z.kw == null && !z.konflikt && z.note && <small>{z.note}</small>}
       </span>
       <span role="cell" />
     </div>
