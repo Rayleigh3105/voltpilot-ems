@@ -38,7 +38,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * </ul>
  *
  * <p><b>Plattform-Routen</b>, die einen Kundenbereich im Pfad tragen ({@code /admin/tenants/{id}},
- * {@code /admin/sites/{siteId}}, {@code /admin/devices/{deviceId}}): jeder Schreibweg → 409, außer den Übergängen
+ * {@code /admin/sites/{siteId}}, {@code /admin/devices/{deviceId}}, {@code /admin/geraete/{ref}/loesen}):
+ * jeder Schreibweg → 409, außer den Übergängen
  * selbst (beenden, wiederaufnehmen), dem Löschweg (bleibt in IP-16 unverändert; IP-18 verlangt dort „beendet" und die
  * abgelaufene Frist), dem Aufräumen nach dem Löschen und dem Sperren eines Kontos (schützt, ändert keine Daten).
  * Plattform-Routen ohne Kundenbereich (Vorlagen, Releases, Flotten-Rollouts, vorregistrierte Boxen) sperrt er nicht.
@@ -59,6 +60,8 @@ public class KundenbereichEndeFilter extends OncePerRequestFilter {
     private static final Pattern ADMIN_KUNDENBEREICH = Pattern.compile("^/api/v1/admin/tenants/" + UUID_MUSTER + "(/.*)?$");
     private static final Pattern ADMIN_ANLAGE = Pattern.compile("^/api/v1/admin/sites/" + UUID_MUSTER + "(/.*)?$");
     private static final Pattern ADMIN_BOX = Pattern.compile("^/api/v1/admin/devices/" + UUID_MUSTER + "(/.*)?$");
+    /** Vom Kunden lösen (L1, Vertrag Abschnitt 3.5): die Box über ihre externe Referenz, kein UUID-Pfad. */
+    private static final Pattern ADMIN_BOX_REF = Pattern.compile("^/api/v1/admin/geraete/([^/]+)/loesen$");
 
     /**
      * Plattform-Schreibwege, die im beendeten Kundenbereich bleiben — als Rest hinter {@code /admin/tenants/{id}}.
@@ -156,6 +159,10 @@ public class KundenbereichEndeFilter extends OncePerRequestFilter {
         m = ADMIN_BOX.matcher(pfad);
         if (m.matches()) {
             return repo.kundenbereichDerBox(UUID.fromString(m.group(1)));
+        }
+        m = ADMIN_BOX_REF.matcher(pfad);
+        if (m.matches()) {
+            return repo.kundenbereichDerBoxRef(m.group(1));
         }
         return Optional.empty();
     }
