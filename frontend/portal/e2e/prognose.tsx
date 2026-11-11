@@ -26,10 +26,13 @@ import '../src/index.css';
  *                          Datenfehler 2: die Zeile muss "noch keine Vorhersage" zeigen, nicht leer bleiben
  *  &ohneVorabend=1         kein Abendlauf von gestern (yesterdayExpected leer) - Datenfehler 3: die
  *                          Legende "am Vorabend erwartet" darf dann nicht erscheinen
+ *  ?fall=sommer            Sommer-Lage (Vergleich zum captain-Befund): lange, meist klare Tage,
+ *                          Sonne deutlich über dem Verbrauch (Konzept c-sommer-gewerbe-390-erster.jpg)
  */
 const q = new URLSearchParams(location.search);
 const fall = q.get('fall') ?? 'mit-speicher';
 const captainNovember = fall === 'captain-november';
+const sommer = fall === 'sommer';
 const luecke = q.get('luecke') === '1';
 const ohneVorabend = q.get('ohneVorabend') === '1';
 const hatFahrplan = fall === 'mit-speicher';
@@ -40,13 +43,13 @@ const mitternacht = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDat
 const STUNDE = 3600_000;
 const VIERTEL = 900_000;
 const TAGE_ANZAHL = 7;
-/** Novembertag: Sonnenauf-/-untergang deutlich enger als die Grundannahme der anderen Fälle. */
-const AUF = captainNovember ? 7 + 45 / 60 : 7 + 40 / 60;
-const UNTER = captainNovember ? 16 + 15 / 60 : 18 + 15 / 60;
-/** kWp der Anlage - Schreinerei-Maßstab in den übrigen Fällen, kleiner (≈31 kWh/Tag) in der Novemberlage. */
-const KWP = captainNovember ? 10.5 : 9.8;
-/** Skaliert Grundlast + Spitzen auf ≈210 kWh/Tag Gewerbe-Verbrauch in der Novemberlage, sonst unskaliert. */
-const VERBRAUCH_SKALA = captainNovember ? 12.65 : 1;
+/** Novembertag: Sonnenauf-/-untergang deutlich enger, Sommertag deutlich weiter als die Grundannahme der übrigen Fälle. */
+const AUF = captainNovember ? 7 + 45 / 60 : sommer ? 5 + 30 / 60 : 7 + 40 / 60;
+const UNTER = captainNovember ? 16 + 15 / 60 : sommer ? 20 + 45 / 60 : 18 + 15 / 60;
+/** kWp der Anlage - Schreinerei-Maßstab in den übrigen Fällen, kleiner im November, größer im Sommer-Vergleich. */
+const KWP = captainNovember ? 10.5 : sommer ? 18 : 9.8;
+/** Skaliert Grundlast + Spitzen auf ≈210 kWh/Tag Gewerbe-Verbrauch in der Novemberlage, auf ein glaubwürdiges Gewerbe-Maß im Sommer-Vergleich, sonst unskaliert. */
+const VERBRAUCH_SKALA = captainNovember ? 12.65 : sommer ? 3.3 : 1;
 
 function interp(a: [number, number][], x: number): number {
   for (let k = 1; k < a.length; k++) {
@@ -61,7 +64,7 @@ function interp(a: [number, number][], x: number): number {
 const klar = (h: number) => (h <= AUF || h >= UNTER ? 0 : 540 * Math.pow(Math.sin((Math.PI * (h - AUF)) / (UNTER - AUF)), 1.3));
 /** Je Tag ein Wolken-Verlauf - sonnig zuerst, danach wechselhafter (nicht gewählt, aber plausibel). */
 const wolkenKurve = (tag: number): [number, number][] => {
-  const basis = captainNovember ? 35 + tag * 6 : 20 + tag * 10;
+  const basis = captainNovember ? 35 + tag * 6 : sommer ? 8 + tag * 5 : 20 + tag * 10;
   return [
     [0, basis],
     [8, Math.max(5, basis - (captainNovember ? 10 : 15))],
@@ -86,7 +89,7 @@ for (let d = 0; d < TAGE_ANZAHL; d++) {
     const c = wolkenBei(d, h + 0.5);
     weather.push({
       ts: new Date(mitternacht + (d * 24 + h) * STUNDE).toISOString(),
-      temperatureC: Math.round((10 + 6 * Math.sin((Math.PI * (h - 6)) / 12) - d * 0.6) * 10) / 10,
+      temperatureC: Math.round(((sommer ? 22 : 10) + (sommer ? 10 : 6) * Math.sin((Math.PI * (h - 6)) / 12) - d * 0.6) * 10) / 10,
       cloudCoverPct: Math.round(c),
       ghiWM2: Math.round(ghi(d, h + 0.5)),
       dniWM2: null,

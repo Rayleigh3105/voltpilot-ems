@@ -6,12 +6,17 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .vp-pt-karte-kopf h2 {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .vp-pt-karte-kopf span {
@@ -19,11 +24,12 @@
   font-weight: 700;
   color: var(--vp-c-text-muted, #64748b);
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .vp-pt-kopfzeile-himmel {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
 }
 
@@ -45,16 +51,44 @@
 
 .vp-pt-kopfsatz {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 17px;
-  margin: 2px 0 10px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-pt-kopfsatz b {
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .vp-pt-kopfsatz span {
   color: var(--vp-c-text-muted, #64748b);
   font-size: 14px;
+}
+
+/* Antwort-Karte: links Himmel/Kopfsatz/Tipp, rechts die Balken - ab der
+   Rechner-Breite zweispaltig nebeneinander (Bericht R3.2). */
+.vp-pt-antwort-raster {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .vp-pt-antwort-raster {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 32px;
+    align-items: start;
+  }
+}
+
+.vp-pt-antwort-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
 .vp-pt-teppich {
@@ -222,13 +256,13 @@
 .vp-pt-morgen {
   font-size: 13px;
   color: var(--vp-c-text-muted, #64748b);
-  margin: -4px 0 10px;
+  margin: 0;
 }
 
 .vp-pt-tipp {
   font-size: 13px;
   color: var(--vp-c-text-muted, #64748b);
-  margin: 6px 0 0;
+  margin: 0;
 }
 
 .vp-pt-tipp-telefon {
@@ -240,24 +274,30 @@
 .vp-pt-balken {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 4px 0 2px;
+  gap: 14px;
+  min-width: 0;
 }
 
 .vp-pt-balken-zeile {
-  display: grid;
-  grid-template-columns: 90px 1fr auto;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vp-pt-balken-kopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 8px;
-  row-gap: 2px;
 }
 
 .vp-pt-balken-titel {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  color: var(--vp-c-text-muted, #64748b);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -279,17 +319,22 @@
 }
 
 .vp-pt-balken-zahl {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 22px;
+  font-weight: 700;
   white-space: nowrap;
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-pt-balken-zahl small {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vp-c-text-muted, #64748b);
 }
 
 .vp-pt-balken-sub {
-  grid-column: 2 / span 2;
   font-size: 12px;
   color: var(--vp-c-text-muted, #64748b);
-  margin-top: -2px;
 }
 
 /* -------------------------------------------------------------- Streifen */

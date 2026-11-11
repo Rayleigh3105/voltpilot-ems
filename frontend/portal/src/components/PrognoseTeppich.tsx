@@ -78,10 +78,21 @@ function Balken({
   const pct = (v: number) => Math.min(100, Math.max(0, (v / max) * 100));
   return (
     <div className="vp-pt-balken-zeile">
-      <span className="vp-pt-balken-titel">
-        <Icon name={ico} size={16} />
-        {titel}
-      </span>
+      <div className="vp-pt-balken-kopf">
+        <span className="vp-pt-balken-titel">
+          <Icon name={ico} size={16} />
+          {titel}
+        </span>
+        <span className="vp-pt-balken-zahl">
+          {kwh != null ? (
+            <>
+              ≈ {kwh0(kwh)} <small>kWh</small>
+            </>
+          ) : (
+            '–'
+          )}
+        </span>
+      </div>
       <span className="vp-pt-balken-spur" aria-hidden="true">
         {kwh != null && (
           <i
@@ -97,7 +108,6 @@ function Balken({
           <i className="vp-pt-balken-gemessen" style={{ width: `${pct(bisherKwh)}%`, background: withAlpha(farbe, 0.85) }} />
         )}
       </span>
-      <span className="vp-pt-balken-zahl">{kwh != null ? <>≈ {kwh0(kwh)} kWh</> : '–'}</span>
       {bisherKwh != null && bisherKwh >= 0.5 && <span className="vp-pt-balken-sub">{kwh0(bisherKwh)} {bisherWort}</span>}
     </div>
   );
@@ -132,33 +142,37 @@ export function PrognoseAntwort({
   return (
     <>
       <div className="vp-pz-label">
-        <span>Prognose am Standort · jetzt {uhr(m.jetztMs)}</span>
+        <span>Prognose für heute · jetzt {uhr(m.jetztMs)}</span>
         <InfoKnopf onClick={onInfo} />
       </div>
-      <div className="vp-pt-kopfzeile-himmel">
-        <span className="vp-pt-himmel-kachel" aria-hidden="true">
-          <WetterSymbol art={heute.art} groesse={28} />
-        </span>
-        <div className="vp-pt-kopfsatz">
-          <b>{satz}</b>
-          {mengen && <span>{mengen}</span>}
+      <div className="vp-pt-antwort-raster">
+        <div className="vp-pt-antwort-links">
+          <div className="vp-pt-kopfzeile-himmel">
+            <span className="vp-pt-himmel-kachel" aria-hidden="true">
+              <WetterSymbol art={heute.art} groesse={28} />
+            </span>
+            <div className="vp-pt-kopfsatz">
+              <b>{satz}</b>
+              {mengen && <span>{mengen}</span>}
+            </div>
+          </div>
+          {morgenZeile && <p className="vp-pt-morgen">{morgenZeile}</p>}
+          {tipp && <p className="vp-pt-tipp">{tipp}</p>}
         </div>
-      </div>
-      {morgenZeile && <p className="vp-pt-morgen">{morgenZeile}</p>}
-      {tipp && <p className="vp-pt-tipp">{tipp}</p>}
-      <div className="vp-pt-balken">
-        {m.mitPv && (
-          <Balken titel="Sonne" ico="sun" kwh={heute.sonneKwh} bisherKwh={heute.sonneBisherKwh} bisherWort="schon erzeugt" max={max} farbe={t.pv} />
-        )}
-        <Balken
-          titel="Verbrauch"
-          ico="home"
-          kwh={heute.verbrauchKwh}
-          bisherKwh={heute.verbrauchBisherKwh}
-          bisherWort="schon verbraucht"
-          max={max}
-          farbe={t.consumer}
-        />
+        <div className="vp-pt-balken">
+          {m.mitPv && (
+            <Balken titel="Sonne heute" ico="sun" kwh={heute.sonneKwh} bisherKwh={heute.sonneBisherKwh} bisherWort="schon erzeugt" max={max} farbe={t.pv} />
+          )}
+          <Balken
+            titel="Verbrauch heute"
+            ico="home"
+            kwh={heute.verbrauchKwh}
+            bisherKwh={heute.verbrauchBisherKwh}
+            bisherWort="schon verbraucht"
+            max={max}
+            farbe={t.consumer}
+          />
+        </div>
       </div>
     </>
   );
@@ -253,7 +267,7 @@ export function Teppich({
         <span />
         {spalten.map((h) => (
           <span key={h} className="vp-pt-stunde">
-            {h}
+            {h % 3 === 0 ? h : ''}
           </span>
         ))}
         {m.mitPv && (
@@ -522,9 +536,13 @@ export function PrognoseTagesBild({
   const padR = 6;
   const plotH = breit ? 220 : 140;
   // Himmel + Temperatur über dem Bild brauchen eigenen Platz (Bericht R3.2:
-  // "Im Tagesbild fehlen Himmel/Temperatur oben" - captain-Befund).
+  // "Im Tagesbild fehlen Himmel/Temperatur oben" - captain-Befund). Das
+  // Jetzt-Schild bekommt eine EIGENE Zeile darunter, über der Fläche - sonst
+  // überdeckt es bei manchen Uhrzeiten die Temperatur-Zahl (captain-Befund
+  // Runde 2: "bei 11/12 Uhr steht 2? halb verdeckt").
   const kopfH = 34;
-  const oben = kopfH + 8;
+  const schildH = 22;
+  const oben = kopfH + schildH;
   const basis = oben + plotH;
   const H = basis + 22;
   const schritt = (W - padL - padR) / n;
@@ -624,7 +642,7 @@ export function PrognoseTagesBild({
             const s = himmelJeStunde.get(h);
             if (!s) return null;
             return (
-              <g key={h} transform={`translate(${(mitte(h) - 7).toFixed(1)}, 0)`}>
+              <g key={h} data-testid="vp-pt-himmel-kopf" transform={`translate(${(mitte(h) - 7).toFixed(1)}, 0)`}>
                 <WetterSymbol art={s.art} groesse={14} />
                 {s.temp != null && (
                   <text x={7} y={26} className="vp-pz-achse" textAnchor="middle">
@@ -636,16 +654,18 @@ export function PrognoseTagesBild({
           })}
 
           {jetztX != null && (
-            <g>
+            <g data-testid="vp-pt-jetzt-schild">
               {(() => {
                 const pillW = 68;
+                const pillH = 18;
+                const pillY = kopfH + (schildH - pillH) / 2;
                 const pillX = Math.min(Math.max(jetztX - pillW / 2, padL), W - padR - pillW);
                 return (
                   <>
-                    <rect x={pillX} y={kopfH - 16} width={pillW} height={18} rx={9} fill={t.jetzt} />
+                    <rect x={pillX} y={pillY} width={pillW} height={pillH} rx={9} fill={t.jetzt} />
                     <text
                       x={pillX + pillW / 2}
-                      y={kopfH - 3}
+                      y={pillY + pillH - 5}
                       textAnchor="middle"
                       className="vp-pz-achse"
                       style={{ fill: '#fff', fontWeight: 700 }}

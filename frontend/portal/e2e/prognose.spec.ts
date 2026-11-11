@@ -113,7 +113,7 @@ for (const width of [390, 1440]) {
 
     // Ohne PV: EIN Balken (Verbrauch), keine Sonnen-Zahl.
     await expect(page.locator('.vp-pt-balken-zeile')).toHaveCount(1);
-    await expect(page.locator('.vp-pt-balken-titel')).toHaveText('Verbrauch');
+    await expect(page.locator('.vp-pt-balken-titel')).toHaveText('Verbrauch heute');
     await expect(page.locator('.vp-pt-teppich .vp-pt-tagzeile')).toHaveCount(7);
     await expect(page.getByRole('link', { name: /Ihr Fahrplan/ })).toHaveCount(0);
     // Die Überschrift nennt die Verbrauchsspitze, nicht "Sonne reicht".
@@ -152,6 +152,26 @@ for (const width of [390, 1440]) {
   });
 }
 
+const SOMMER_JETZT = new Date(2026, 6, 28, 10, 45);
+
+for (const width of [390, 1440]) {
+  test(`Prognose bei ${width} px · Sommer-Lage: Sonne deutlich über dem Verbrauch, kein Überlauf`, async ({ page }) => {
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error') fehler.push(m.text());
+    });
+    await oeffnen(page, width, 'sommer', SOMMER_JETZT);
+
+    await expect(page.locator('.vp-pt-tagzeile').first().locator('.vp-pt-saeule')).not.toHaveCount(0);
+    await expect(page.locator('.vp-pt-teppich .vp-pt-tagzeile')).toHaveCount(7);
+    await expect(page.locator('.vp-pt-jetzt-linie')).toBeVisible();
+
+    await ohneUeberlauf(page);
+    expect(fehler).toEqual([]);
+  });
+}
+
 test('Datenfehler 2 · ein lückenhafter Ausblick-Tag zeigt "noch keine Vorhersage", nicht leer', async ({ page }) => {
   await oeffnen(page, 1440, 'captain-november', CAPTAIN_JETZT, '&luecke=1');
 
@@ -174,3 +194,39 @@ test('Datenfehler 3 · "am Vorabend erwartet" steht nur in der Legende, wenn wir
   await expect(page.getByText('gemessen', { exact: true })).toBeVisible();
   await expect(page.getByText('erwartet', { exact: true })).toBeVisible();
 });
+
+// captain-Befund Runde 2: das Jetzt-Schild im Tagesbild überdeckte bei
+// manchen Uhrzeiten die Himmel-/Temperatur-Zeile. Das Schild bekam eine
+// eigene Zeile (Bericht R3.2: "unter der Himmel-Zeile, über der Fläche") -
+// hier geprüft über mehrere Uhrzeiten hinweg, auch an den Rändern (0-2, 22-23 Uhr).
+for (const [stunde, minute] of [
+  [1, 30],
+  [11, 50],
+  [12, 5],
+  [16, 6],
+  [23, 40],
+]) {
+  test(`Jetzt-Schild überdeckt die Himmel-/Temperatur-Zeile nicht, auch nicht um ${stunde}:${String(minute).padStart(2, '0')} Uhr`, async ({ page }) => {
+    const jetzt = new Date(2026, 10, 11, stunde, minute);
+    await oeffnen(page, 1440, 'captain-november', jetzt);
+
+    const schild = page.getByTestId('vp-pt-jetzt-schild').first();
+    await expect(schild).toBeVisible();
+    const schildBox = await schild.boundingBox();
+    expect(schildBox).not.toBeNull();
+
+    const kopfZellen = page.getByTestId('vp-pt-himmel-kopf');
+    const anzahl = await kopfZellen.count();
+    expect(anzahl).toBeGreaterThan(0);
+    for (let i = 0; i < anzahl; i++) {
+      const box = await kopfZellen.nth(i).boundingBox();
+      if (!box || !schildBox) continue;
+      const ueberlappt =
+        schildBox.x < box.x + box.width &&
+        schildBox.x + schildBox.width > box.x &&
+        schildBox.y < box.y + box.height &&
+        schildBox.y + schildBox.height > box.y;
+      expect(ueberlappt).toBe(false);
+    }
+  });
+}

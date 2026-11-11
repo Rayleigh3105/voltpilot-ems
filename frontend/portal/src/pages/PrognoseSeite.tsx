@@ -255,20 +255,18 @@ export function PrognoseSeite({ site, hatFahrplan }: { site: Site; hatFahrplan: 
               <Icon name="chevron-right" size={18} />
             </span>
           </button>
-          {isDesktop && (
-            <button type="button" className="vp-pz-zeile" onClick={() => setBlatt('erklaerung')}>
-              <span className="vp-pz-zeile-ico" aria-hidden="true">
-                <Icon name="info" size={18} />
-              </span>
-              <span className="vp-pz-zeile-text">
-                <b>Woher die Werte kommen</b>
-                <small>Prognose, Wetterdienst, Messung</small>
-              </span>
-              <span className="vp-pz-zeile-pfeil" aria-hidden="true">
-                <Icon name="chevron-right" size={18} />
-              </span>
-            </button>
-          )}
+          <button type="button" className="vp-pz-zeile" onClick={() => setBlatt('erklaerung')}>
+            <span className="vp-pz-zeile-ico" aria-hidden="true">
+              <Icon name="info" size={18} />
+            </span>
+            <span className="vp-pz-zeile-text">
+              <b>Woher die Werte kommen</b>
+              <small>Prognose, Wetterdienst, Messung</small>
+            </span>
+            <span className="vp-pz-zeile-pfeil" aria-hidden="true">
+              <Icon name="chevron-right" size={18} />
+            </span>
+          </button>
         </div>
       </>
     );
