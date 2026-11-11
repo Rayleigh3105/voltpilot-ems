@@ -33,6 +33,9 @@ import '../src/index.css';
  */
 const frage = new URLSearchParams(window.location.search);
 const mitKompressor = frage.get('kompressor') === '1';
+// `?ohneNetz=1`: keine Anlage mit Netzanschluss-Zähler - die Vorgabe (Vertrag
+// §1) hat keine Wurzel zum Anhängen, die heutige flache Anzeige bleibt.
+const ohneNetz = frage.get('ohneNetz') === '1';
 const jetzt = Date.now();
 const vor = (s: number) => new Date(jetzt - s * 1000).toISOString();
 
@@ -67,7 +70,9 @@ interface Quelle {
   haengtAn?: string;
 }
 const QUELLEN: Quelle[] = [
-  { src: 'src-netzanschluss', entity: 'e-netz', label: 'Netzanschluss', rolle: 'grid-meter', typ: 'grid-meter', typLabel: 'Netzanschlusszähler', kw: 8.1 },
+  ...(ohneNetz
+    ? []
+    : [{ src: 'src-netzanschluss', entity: 'e-netz', label: 'Netzanschluss', rolle: 'grid-meter' as const, typ: 'grid-meter', typLabel: 'Netzanschlusszähler', kw: 8.1 }]),
   { src: 'src-uv-halle', entity: 'e-uv-halle', label: 'UV Halle', rolle: 'consumer', typ: 'sub-meter', typLabel: 'Unterzähler', kw: 7.7 },
   { src: 'src-uv-keller', entity: 'e-uv-keller', label: 'UV Keller', rolle: 'consumer', typ: 'sub-meter', typLabel: 'Unterzähler', kw: 0.1 },
   ...(mitKompressor
@@ -140,8 +145,10 @@ const overview = {
   sites: [{
     id: SITE_ID, name: site.name, plantKind: 'eigenverbrauch', netzladenErlaubt: false, batteryWithoutDevice: false,
     deviceCount: 1, onlineCount: 1, waitingCount: 0, worstStatus: 'online', lastSeenAt: vor(0),
-    live: { ts: vor(7), pvKw: 0, loadKw: 8.1, gridKw: 8.1, socPct: null },
-    plannedSavingsTodayEur: null, roleCounts: { pv: 0, storage: 0, consumer: QUELLEN.length - 1, grid: 1 }, usageProfile: 'private',
+    live: { ts: vor(7), pvKw: 0, loadKw: 8.1, gridKw: ohneNetz ? null : 8.1, socPct: null },
+    plannedSavingsTodayEur: null,
+    roleCounts: { pv: 0, storage: 0, consumer: QUELLEN.filter((q) => !istNetz(q)).length, grid: QUELLEN.filter(istNetz).length },
+    usageProfile: 'private',
     lastPlanGeneratedAt: null, storageCapacityKwh: null, energyToday: null, chargePointCount: 0,
     anwendungen: ['monitoring'], standort: null,
   }],

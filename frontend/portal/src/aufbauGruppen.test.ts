@@ -316,6 +316,8 @@ const lesen = (rows: TabellenZeile[]) =>
 
 describe('tabellenZeilen gruppiert - Schramm „Zuhause"', () => {
   it('liest Erzeugung · Netz · Verbrauch mit Köpfen, darin nach Namen, Unterzähler mit Summe', () => {
+    // Zählerbaum-Vorgabe (Vertrag §1): UV Halle und UV Keller haben kein gesetztes haengtAn - sie hängen an
+    // der Wurzel (Netzanschluss) und stehen darum als ihre Kinder, nicht mehr als eigene Verbrauch-Gruppe.
     expect(lesen(tabellenZeilen(aufbauBaum(schramm()), LEERER_FILTER, OFFEN))).toEqual([
       'anlage',
       'box',
@@ -325,7 +327,6 @@ describe('tabellenZeilen gruppiert - Schramm „Zuhause"', () => {
       'Kaco 3',
       '[Netz 1]',
       'Netzanschluss',
-      '[Verbrauch 2 · 8,0 kW]',
       'UV Halle',
       'UV Keller',
     ]);
@@ -345,9 +346,7 @@ describe('tabellenZeilen gruppiert - Schramm „Zuhause"', () => {
       'Kaco 3',
       '[Netz 1]',
       'Netzanschluss',
-      // Nur UV Halle und UV Keller sind Zeilen DIESER Gruppe (2, nicht 3) -
-      // der Kompressor steckt schon in UV Halles 7,9 kW.
-      '[Verbrauch 2 · 8,0 kW]',
+      // UV Halle und UV Keller hängen (ohne gesetztes haengtAn) an der Wurzel - kein eigener Verbrauch-Kopf mehr.
       'UV Halle',
       'Kompressor',
       'UV Keller',
@@ -376,11 +375,13 @@ describe('tabellenZeilen gruppiert - Schramm „Zuhause"', () => {
   });
 
   it('zeigt einen Treffer mit seiner Gruppe, Gruppen ohne Treffer entfallen', () => {
+    // UV Halle hängt (ohne gesetztes haengtAn) an der Wurzel - der Netzanschluss trägt den Treffer mit, auch
+    // ohne selbst zu treffen, und sein Kopf ist jetzt „Netz", nicht mehr „Verbrauch".
     expect(lesen(tabellenZeilen(aufbauBaum(schramm()), { ...LEERER_FILTER, q: 'uv halle' }, OFFEN))).toEqual([
       'anlage',
       'box',
-      // Ein Treffer von zweien: keine Teilsumme.
-      '[Verbrauch 1]',
+      '[Netz 1]',
+      'Netzanschluss',
       'UV Halle',
     ]);
   });
@@ -407,10 +408,10 @@ describe('tabellenZeilen gruppiert - Schramm „Zuhause"', () => {
     );
     const ab = lesen(rows).lastIndexOf('box');
     expect(lesen(rows).slice(ab)).toEqual(['box', 'Ladepunkt 1', 'Ladepunkt 2']);
+    // Kein b-1::gruppe::verbrauch mehr - UV Halle/UV Keller hängen (ohne gesetztes haengtAn) jetzt an der Wurzel.
     expect(rows.filter((r) => r.typ === 'gruppe').map((r) => r.key)).toEqual([
       'b-1::gruppe::erzeugung',
       'b-1::gruppe::netz',
-      'b-1::gruppe::verbrauch',
     ]);
   });
 });

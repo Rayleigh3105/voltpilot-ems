@@ -73,6 +73,7 @@ import { boxSeiteHash } from './nav';
 import { sanitizeSoc } from './plausible';
 import { wertAktuell } from './wertAktuell';
 import { boxLage, type GeraeteKarte, type KartenArt } from './zentraleListe';
+import { effektiveEltern } from './zaehlerbaum';
 
 /** Welche Größe ein Chip zeigt - bestimmt Symbol und Farbe, nie den Wert. */
 export type AufbauWertArt = 'pv' | 'speicher' | 'netz' | 'haus' | 'verbraucher' | 'laden';
@@ -638,6 +639,33 @@ export function aufbauGeraet(
   };
 }
 
+/**
+ * Zählerbaum-Konzept (Vertrag §1, Vorgabe): ein Unterzähler oder ein
+ * Verbraucher mit eigener Messung, der nicht ausdrücklich woanders hängt,
+ * hängt an der Wurzel (dem Netzanschluss der Anlage) - jede Bestandsanlage vor
+ * `komponente_haengt_an` zeigt denselben Baum wie eine, die ihn ausdrücklich
+ * gesetzt hat. Ruft den gemeinsamen Zwilling (`zaehlerbaum.ts`,
+ * `effektiveEltern`) statt die Vorgabe hier nachzubauen - derselbe Java-
+ * Zwilling gilt serverseitig. Gibt es keinen Netzanschluss in dieser Anlage,
+ * bleibt die Liste unverändert (die heutige flache Anzeige).
+ */
+function mitEffektiverHaengtAn(geraete: AufbauGeraet[]): AufbauGeraet[] {
+  const netzanschlussId =
+    geraete.flatMap((g) => g.karte.komponenten).find((c) => c.role === 'grid')?.entityId ?? null;
+  if (netzanschlussId == null) return geraete;
+  return geraete.map((g) => {
+    const komponenten = g.karte.komponenten.map((c) => ({
+      ...c,
+      haengtAn: effektiveEltern({ haengtAn: c.haengtAn, rolle: c.role }, netzanschlussId),
+    }));
+    return {
+      ...g,
+      karte: { ...g.karte, komponenten } as GeraeteKarte,
+      haengtAn: komponenten.find((c) => c.haengtAn != null)?.haengtAn ?? null,
+    };
+  });
+}
+
 /** Lädt die Säule, und mit welcher Leistung? null = kein Stecker gemeldet (unbekannt, nicht „frei"). */
 function ladungVon(c: ChargePoint): AufbauGeraet['ladung'] {
   const stecker = c.connectors ?? [];
@@ -929,9 +957,11 @@ function anlageKnoten(
   const alleBoxen = input.devices ?? [];
   const karten = aktuell ? input.karten : input.nachbarKarten?.[id] ?? null;
   const kontext = aktuell ? { localSetup: input.localSetup, charging: input.charging } : {};
-  const roh = (karten ?? [])
-    .filter((k) => k.art !== 'box')
-    .map((k) => aufbauGeraet(k, kontext));
+  const roh = mitEffektiverHaengtAn(
+    (karten ?? [])
+      .filter((k) => k.art !== 'box')
+      .map((k) => aufbauGeraet(k, kontext)),
+  );
 
   // Die Wege dieser Anlage — nur, wenn Geräte UND Verweise bekannt sind: sonst wäre jeder Weg ein geratener
   // „Anschluss ohne Gerät".

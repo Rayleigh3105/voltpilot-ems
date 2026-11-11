@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { haengtAnPruefen, type ElternKandidat, type Zuordnung } from './zaehlerbaum';
+import { effektiveEltern, haengtAnPruefen, type ElternKandidat, type Zuordnung } from './zaehlerbaum';
 
 /**
  * Die Regeln des Zählerbaums gegen die EINE geteilte Vektor-Datei - dieselbe,
@@ -47,6 +47,23 @@ describe('zaehlerbaum-vectors.json', () => {
       expect(urteil.gueltig).toBe(f.expected.gueltig);
       expect(urteil.grund).toBe(f.expected.grund ?? null);
       expect(urteil.kette).toEqual(f.expected.kette ?? []);
+    });
+  }
+});
+
+describe('zaehlerbaum-vectors.json · effektiveEltern', () => {
+  const faelleEE: Json[] = vectors.cases_effektive_eltern;
+
+  it('hat mindestens sechs Fälle mit eindeutigen Namen', () => {
+    const namen = faelleEE.map((f) => f.name as string);
+    expect(namen.length).toBeGreaterThanOrEqual(6);
+    expect(new Set(namen).size).toBe(namen.length);
+  });
+
+  for (const f of faelleEE) {
+    it(`${f.name}: ${f.note}`, () => {
+      const { komponente, netzanschlussId } = f.input;
+      expect(effektiveEltern(komponente, netzanschlussId ?? null)).toBe(f.expected ?? null);
     });
   }
 });

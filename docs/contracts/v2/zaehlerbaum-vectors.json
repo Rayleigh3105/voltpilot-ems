@@ -115,5 +115,50 @@
       },
       "expected": { "gueltig": true, "grund": null, "kette": [] }
     }
+  ],
+  "_comment_effektive_eltern": [
+    "Shared vectors for ZaehlerbaumRegeln.effektiveEltern (Java/TS, same files",
+    "as above). Each case gives the component (its stored haengtAn and role)",
+    "and the plant's Netzanschluss id (or null); expected is the effective",
+    "parent id a display should use. See docs/contracts/v2/zaehlerbaum.md §1",
+    "'Vorgabe'."
+  ],
+  "cases_effektive_eltern": [
+    {
+      "name": "explizit-gewinnt",
+      "note": "Ein gesetztes haengtAn gewinnt immer, auch wenn es einen Netzanschluss gibt.",
+      "input": { "komponente": { "haengtAn": "uv-halle", "rolle": "consumer" }, "netzanschlussId": "netz-1" },
+      "expected": "uv-halle"
+    },
+    {
+      "name": "unterzaehler-ohne-zuordnung-faellt-an-die-wurzel",
+      "note": "Bestands-Unterzähler ohne ausdrückliches haengtAn: die Vorgabe greift, Wurzel = Netzanschluss.",
+      "input": { "komponente": { "haengtAn": null, "rolle": "consumer" }, "netzanschlussId": "netz-1" },
+      "expected": "netz-1"
+    },
+    {
+      "name": "ohne-netzanschluss-bleibt-flach",
+      "note": "Keine Anlage mit Netzanschluss-Zähler - die Vorgabe hat keine Wurzel zum Anhängen, die heutige flache Anzeige bleibt.",
+      "input": { "komponente": { "haengtAn": null, "rolle": "consumer" }, "netzanschlussId": null },
+      "expected": null
+    },
+    {
+      "name": "netzanschluss-selbst-bleibt-wurzel",
+      "note": "Der Netzanschluss selbst (Rolle grid-meter, nicht consumer) bekommt nie einen Eltern - R6 wurzel_haengt_nirgends gilt auch hier.",
+      "input": { "komponente": { "haengtAn": null, "rolle": "grid-meter" }, "netzanschlussId": "netz-1" },
+      "expected": null
+    },
+    {
+      "name": "erzeugung-wird-nie-umgehaengt",
+      "note": "R4: Erzeugung hängt immer an der Wurzel selbst - die Vorgabe reicht sie nie an den Netzanschluss weiter.",
+      "input": { "komponente": { "haengtAn": null, "rolle": "pv" }, "netzanschlussId": "netz-1" },
+      "expected": null
+    },
+    {
+      "name": "speicher-wird-nie-umgehaengt",
+      "note": "R4: Speicher hängt immer an der Wurzel selbst, wie Erzeugung.",
+      "input": { "komponente": { "haengtAn": null, "rolle": "storage" }, "netzanschlussId": "netz-1" },
+      "expected": null
+    }
   ]
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.components.ZaehlerbaumRegeln.EffektiveElternEingabe;
 import com.voltpilot.api.components.ZaehlerbaumRegeln.ElternKandidat;
 import com.voltpilot.api.components.ZaehlerbaumRegeln.HaengtAnUrteil;
 import com.voltpilot.api.components.ZaehlerbaumRegeln.Zuordnung;
@@ -78,6 +79,35 @@ class ZaehlerbaumRegelnVectorsTest {
                 List<String> ketteErwartet = new ArrayList<>();
                 expected.path("kette").forEach(k -> ketteErwartet.add(k.asText()));
                 assertThat(u.kette()).isEqualTo(ketteErwartet);
+            }));
+        }
+        return tests;
+    }
+
+    private static List<JsonNode> faelleEffektiveEltern() throws Exception {
+        List<JsonNode> out = new ArrayList<>();
+        vectors().path("cases_effektive_eltern").forEach(out::add);
+        assertThat(out).isNotEmpty();
+        return out;
+    }
+
+    @Test
+    void mindestensSechsFaelleEffektiveElternMitEindeutigenNamen() throws Exception {
+        List<String> namen = faelleEffektiveEltern().stream().map(c -> c.path("name").asText()).toList();
+        assertThat(namen).hasSizeGreaterThanOrEqualTo(6).doesNotHaveDuplicates();
+    }
+
+    @TestFactory
+    List<DynamicTest> effektiveEltern() throws Exception {
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode c : faelleEffektiveEltern()) {
+            tests.add(DynamicTest.dynamicTest(c.path("name").asText(), () -> {
+                JsonNode in = c.path("input");
+                JsonNode k = in.path("komponente");
+                EffektiveElternEingabe komponente = new EffektiveElternEingabe(text(k.path("haengtAn")), text(k.path("rolle")));
+                String netzanschlussId = text(in.path("netzanschlussId"));
+                String ergebnis = ZaehlerbaumRegeln.effektiveEltern(komponente, netzanschlussId);
+                assertThat(ergebnis).as(c.path("note").asText()).isEqualTo(text(c.path("expected")));
             }));
         }
         return tests;
