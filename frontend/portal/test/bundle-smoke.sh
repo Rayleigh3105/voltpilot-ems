@@ -67,6 +67,8 @@ cd "$(dirname "$0")/.."
 #   257,73  Bestätigungsseite der Zustellweg-Mail (`ZustellwegBestaetigenScreen`) nur noch als
 #           `lazy` in `main.tsx` - sie braucht allein, wer den Link aus der Mail öffnet. Die Grenze bleibt 258.
 #   243,55  Luft-Auftrag 05.11.2026 (Grenze 258, 14,45 kB Luft) - drei Schnitte, s.u.
+#   257,39  mispel → main am 11.11.2026 (Grenze 258) - `main` 015fdc7be allein: 255,78; die
+#           +1,61 kB sind der MiSpeL-Anteil am Einstieg, 0,61 kB Luft bis zur Grenze.
 #
 # WAS DER LUFT-AUFTRAG HERAUSGENOMMEN HAT (−14,45 kB gz, ohne eine Funktion zu ändern; Belege im PR-Text):
 #   Dreimal hing ein ganzes Fach-Modul im ersten Bild, weil EIN winziger Aufruf an ihm hing (die ersten beiden
