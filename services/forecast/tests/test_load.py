@@ -3,16 +3,33 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from voltpilot_forecast.domain import ForecastKind, Horizon, Observation
+from voltpilot_forecast.holidays import is_german_holiday
 from voltpilot_forecast.load import (
     ProfileLoadForecaster,
     SeasonalPersistenceLoadForecaster,
 )
 
+BERLIN = ZoneInfo("Europe/Berlin")
+
 
 def _slot_of_day(ts: datetime) -> int:
     return (ts.hour * 60 + ts.minute) // 15
+
+
+def _local_slot_of_day(ts: datetime) -> int:
+    """N4: der Tagestyp gehört der Ortszeit - derselbe Test-Zwilling wie
+    `load._slot_of_day`."""
+    local = ts.astimezone(BERLIN)
+    return (local.hour * 60 + local.minute) // 15
+
+
+def _is_weekend_or_holiday_local(ts: datetime) -> bool:
+    """Derselbe Test-Zwilling wie `load._is_weekend`."""
+    local = ts.astimezone(BERLIN)
+    return local.weekday() >= 5 or is_german_holiday(local.date())
 
 
 def _history(start: datetime, end: datetime, value_fn) -> list[Observation]:
@@ -129,11 +146,11 @@ def test_persistence_empty_history_is_flat_zero():
 
 
 def test_profile_reproduces_weekday_and_weekend_shape():
-    run_at = datetime(2026, 6, 15, 0, 0, tzinfo=timezone.utc)  # Monday 00:00
+    run_at = datetime(2026, 6, 15, 0, 0, tzinfo=timezone.utc)  # Monday 00:00 UTC
 
     def value_fn(ts: datetime) -> float:
-        base = _slot_of_day(ts)
-        return base + (1000 if ts.weekday() >= 5 else 0)
+        base = _local_slot_of_day(ts)
+        return base + (1000 if _is_weekend_or_holiday_local(ts) else 0)
 
     # Two full weeks so every (weekend?, slot) bucket is populated.
     history = _history(run_at - timedelta(days=14), run_at, value_fn)
@@ -142,13 +159,62 @@ def test_profile_reproduces_weekday_and_weekend_shape():
     # Forecast a weekday (Mon) - profile averages to the weekday shape.
     weekday = forecaster.forecast("s", "t", history, Horizon.hours(24), run_at)
     for point in weekday.points:
-        assert abs(point.value_kw - _slot_of_day(point.timestamp)) < 1e-6
+        assert abs(point.value_kw - _local_slot_of_day(point.timestamp)) < 1e-6
 
     # Forecast into a weekend (Sat) - profile picks up the +1000 offset.
     sat = datetime(2026, 6, 20, 0, 0, tzinfo=timezone.utc)
     weekend = forecaster.forecast("s", "t", history, Horizon.hours(24), sat)
     for point in weekend.points:
-        assert abs(point.value_kw - (_slot_of_day(point.timestamp) + 1000)) < 1e-6
+        assert abs(point.value_kw - (_local_slot_of_day(point.timestamp) + 1000)) < 1e-6
+
+
+def test_profile_weekend_bucket_follows_local_calendar_not_utc():
+    """N4 (Captain 11.11.2026): Freitag 23:00 UTC ist im Sommer schon Samstag
+    01:00 in Berlin - ein Wochenend-Takt, kein Werktags-Takt. Die frühere
+    UTC-Einordnung (``ts.weekday() >= 5`` auf der rohen UTC-Zeit) hätte diesen
+    Takt als Freitag (Werktag) eingeordnet und nie in den Wochenend-Eimer
+    gelegt - der Vorhersagewert wäre dann der des Gegen-Eimers gewesen."""
+    ziel = datetime(2026, 6, 19, 23, 0, tzinfo=timezone.utc)  # Freitag UTC
+    assert ziel.astimezone(BERLIN).weekday() == 5  # Samstag lokal (Sommerzeit)
+
+    history: list[Observation] = []
+    # Vier vorige Samstage früh (Ortszeit) an derselbe Uhrzeit, hoher Wert.
+    for woche in range(1, 5):
+        history.append(Observation(ziel - timedelta(days=7 * woche), 999.0))
+    # Derselbe Ortszeit-Takt (01:00 Berlin) an einem Werktag - der Gegen-Eimer,
+    # den der frühere UTC-Fehler stattdessen getroffen hätte.
+    werktag = datetime(2026, 6, 16, 23, 0, tzinfo=timezone.utc)  # Dienstag UTC = Mittwoch 01:00 Berlin
+    assert werktag.astimezone(BERLIN).weekday() == 2  # Mittwoch, Werktag
+    for woche in range(1, 5):
+        history.append(Observation(werktag - timedelta(days=7 * woche), 111.0))
+
+    wert = ProfileLoadForecaster().values_at(history, [ziel], slot_minutes=15)[0]
+    assert abs(wert - 999.0) < 1e-6
+
+
+def test_profile_treats_a_holiday_like_a_weekend():
+    """N4: ein Feiertag zählt wie ein Wochenende (dasselbe Vokabular wie das
+    lernende Modell, ``holidays.py``) - 1. Weihnachtstag 2026 fällt auf einen
+    Freitag (nach dem Kalender ein Werktag), der Verbrauch soll trotzdem dem
+    Wochenend-Profil folgen, nicht dem eines gewöhnlichen Freitags."""
+    weihnachten = datetime(2026, 12, 25, 10, 0, tzinfo=timezone.utc)
+    assert weihnachten.astimezone(BERLIN).weekday() == 4  # Freitag - ohne die Feiertagsregel ein Werktag
+
+    history: list[Observation] = []
+    # Vier gewöhnliche Samstage (echtes Wochenende) an derselben Uhrzeit, hoher Wert.
+    samstag = datetime(2026, 11, 28, 10, 0, tzinfo=timezone.utc)
+    assert samstag.astimezone(BERLIN).weekday() == 5
+    for woche in range(4):
+        history.append(Observation(samstag - timedelta(days=7 * woche), 999.0))
+    # Vier gewöhnliche Freitage (kein Feiertag) an derselben Uhrzeit - der
+    # Gegen-Eimer, den die fehlende Feiertagsregel stattdessen getroffen hätte.
+    freitag = datetime(2026, 11, 27, 10, 0, tzinfo=timezone.utc)
+    assert freitag.astimezone(BERLIN).weekday() == 4
+    for woche in range(4):
+        history.append(Observation(freitag - timedelta(days=7 * woche), 111.0))
+
+    wert = ProfileLoadForecaster().values_at(history, [weihnachten], slot_minutes=15)[0]
+    assert abs(wert - 999.0) < 1e-6
 
 
 def test_profile_empty_history_is_flat_zero():

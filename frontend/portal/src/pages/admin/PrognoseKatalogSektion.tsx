@@ -13,6 +13,7 @@ const MODEL_LABELS: Record<ForecastModelId, string> = {
   'load-xgb': 'Lernendes Verbrauchsmodell',
   'pv-residual-xgb': 'Lernende PV-Korrektur',
   'pv-physical-legacy-dni': 'Physikalisches PV-Modell (alte Lesart, nur Vergleich)',
+  'load-profile': 'Verbrauchsprofil je Wochentag',
 };
 
 /**

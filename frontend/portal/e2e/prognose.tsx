@@ -186,6 +186,34 @@ a.forecast = async () => ({
     loadKw: stundenWerte(2, TAGE_ANZAHL, (_d, h) => verbrauchKwBei(h)),
   },
 });
+// Das Blatt "Rückblick" (S3): sieben Tage "am Vortag erwartet" gegen
+// "gemessen", mit genug bewerteten Tagen fürs 0,8-Quantil. Ohne PV bleibt die
+// Art ehrlich unbewertet - eine Anlage ohne Sonne bekommt nie eine Zeile.
+function rueckblickTage(basisKwh: number): { day: string; erwartetKwh: number; gemessenKwh: number }[] {
+  const out: { day: string; erwartetKwh: number; gemessenKwh: number }[] = [];
+  for (let i = 7; i >= 1; i--) {
+    const erwartet = basisKwh * (0.9 + 0.02 * i);
+    const gemessen = erwartet * (0.88 + 0.03 * (i % 3));
+    out.push({
+      day: new Date(mitternacht - i * 24 * STUNDE).toISOString().slice(0, 10),
+      erwartetKwh: Math.round(erwartet * 10) / 10,
+      gemessenKwh: Math.round(gemessen * 10) / 10,
+    });
+  }
+  return out;
+}
+a.rueckblick = async () => ({
+  kinds: [
+    {
+      kind: 'pv', model: 'pv-physical',
+      tage: mitPv ? rueckblickTage(42) : [],
+      abweichungKwh: mitPv ? 3.4 : null,
+      bewerteteTage: mitPv ? 28 : 0,
+    },
+    { kind: 'load', model: 'load-persistence', tage: rueckblickTage(9), abweichungKwh: 1.8, bewerteteTage: 28 },
+  ],
+});
+
 // Der Maßstab des Teppichs misst sich an der Anlage (9,8 kWp - dieselbe
 // Zahl, mit der die Sonnenkurve oben rechnet), nicht an ihrer eigenen
 // Spitze der Woche.

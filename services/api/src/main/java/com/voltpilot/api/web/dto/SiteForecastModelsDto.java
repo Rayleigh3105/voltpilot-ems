@@ -45,6 +45,15 @@ public record SiteForecastModelsDto(
             /** Wann für diese Anlage umgestellt wurde; {@code null} = nie. */
             Instant setAt,
             /** Alle Modelle dieser Art - die wählbare Menge des Schalters. */
-            List<String> selectable) {
+            List<String> selectable,
+            /**
+             * S5 (Bericht R.4): darf die Automatik für diese Anlage und Art
+             * wählen? {@code null} für {@code pv} - die Automatik gilt
+             * ausdrücklich nur dem Verbrauch (die lernende PV-Korrektur bleibt
+             * bei der Wahl von Hand). {@code true}/{@code false} für
+             * {@code load}; eine Wahl von Hand schaltet sie aus, bis ein
+             * ausdrückliches "Automatik wieder einschalten" sie zurücksetzt.
+             */
+            Boolean automatikAktiv) {
     }
 }

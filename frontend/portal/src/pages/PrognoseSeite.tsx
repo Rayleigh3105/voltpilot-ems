@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, ApiError, type ForecastResponse, type History, type ScheduleSlot, type Site, type WeatherForecast } from '../api';
+import {
+  api,
+  ApiError,
+  type ForecastResponse,
+  type History,
+  type RueckblickResponse,
+  type ScheduleSlot,
+  type Site,
+  type WeatherForecast,
+} from '../api';
 import { VerlaufKopf } from '../components/HistorieWelt';
 import {
   PrognoseAntwort,
@@ -14,7 +23,8 @@ import {
 } from '../components/PrognoseTeppich';
 import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
 import { isoDate } from '../periodNav';
-import { prognoseModell } from '../prognoseSeite';
+import { KIND_LABELS } from '../prognose';
+import { prognoseModell, rueckblickSatz, rueckblickZeilen } from '../prognoseSeite';
 import { pvLage } from '../pvLage';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useIsDesktop, useIsPhone } from '../useIsPhone';
@@ -38,7 +48,7 @@ const STUNDE_MS = 3600_000;
 const PROGNOSE_TAKT_MS = 15 * 60_000;
 const MESS_TAKT_MS = 5 * 60_000;
 
-type Blatt = 'erklaerung' | null;
+type Blatt = 'erklaerung' | 'rueckblick' | null;
 
 export function PrognoseSeite({ site, hatFahrplan }: { site: Site; hatFahrplan: boolean }) {
   const isPhone = useIsPhone();
@@ -50,6 +60,7 @@ export function PrognoseSeite({ site, hatFahrplan }: { site: Site; hatFahrplan: 
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [messung, setMessung] = useState<History | null>(null);
   const [schedule, setSchedule] = useState<ScheduleSlot[]>([]);
+  const [rueckblick, setRueckblick] = useState<RueckblickResponse | null>(null);
   const [anlagenleistungKwp, setAnlagenleistungKwp] = useState<number | null>(null);
   const [laedt, setLaedt] = useState(true);
   const [fehler, setFehler] = useState<string | null>(null);
@@ -114,6 +125,20 @@ export function PrognoseSeite({ site, hatFahrplan }: { site: Site; hatFahrplan: 
       aktiv = false;
     };
   }, [site.id]);
+
+  // Der Rückblick (S3) ändert sich nur einmal am Tag (der Abend-Lauf von
+  // 17:45) - kein Viertelstunden-Takt nötig; fail-soft wie das Wetter, das
+  // Blatt zeigt dann ehrlich "noch keine Bewertung" statt eines Fehlers.
+  useEffect(() => {
+    let aktiv = true;
+    api
+      .rueckblick(site.id)
+      .then((r) => aktiv && setRueckblick(r))
+      .catch(() => aktiv && setRueckblick(null));
+    return () => {
+      aktiv = false;
+    };
+  }, [site.id, heute]);
 
   const m = useMemo(
     () =>
@@ -203,6 +228,18 @@ export function PrognoseSeite({ site, hatFahrplan }: { site: Site; hatFahrplan: 
               </span>
             </a>
           )}
+          <button type="button" className="vp-pz-zeile" onClick={() => setBlatt('rueckblick')}>
+            <span className="vp-pz-zeile-ico" aria-hidden="true">
+              <Icon name="history" size={18} />
+            </span>
+            <span className="vp-pz-zeile-text">
+              <b>Rückblick</b>
+              <small>wie gut die Prognose lag</small>
+            </span>
+            <span className="vp-pz-zeile-pfeil" aria-hidden="true">
+              <Icon name="chevron-right" size={18} />
+            </span>
+          </button>
           {isDesktop && (
             <button type="button" className="vp-pz-zeile" onClick={() => setBlatt('erklaerung')}>
               <span className="vp-pz-zeile-ico" aria-hidden="true">
@@ -250,12 +287,55 @@ export function PrognoseSeite({ site, hatFahrplan }: { site: Site; hatFahrplan: 
           <p>Stand: alle 15 Minuten neu.</p>
         </div>
       </Modal>
+      <Modal open={blatt === 'rueckblick'} onClose={() => setBlatt(null)} title="Rückblick" blatt>
+        <div className="vp-pz-rblk">
+          {!rueckblick && <p>Der Rückblick konnte nicht geladen werden.</p>}
+          {rueckblick?.kinds
+            .filter((k) => k.kind !== 'pv' || (m?.mitPv ?? false))
+            .map((k) => {
+              const zeilen = rueckblickZeilen(k);
+              return (
+                <section key={k.kind} className="vp-pz-rblk-art">
+                  <h3>{KIND_LABELS[k.kind]}</h3>
+                  {zeilen.length === 0 ? (
+                    <p>Noch keine Tage - der erste Rückblick folgt morgen.</p>
+                  ) : (
+                    <table className="vp-pz-rblk-tabelle">
+                      <thead>
+                        <tr>
+                          <th scope="col">Tag</th>
+                          <th scope="col">am Vortag erwartet</th>
+                          <th scope="col">gemessen</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {zeilen.map((z) => (
+                          <tr key={z.tagWort}>
+                            <td>{z.tagWort}</td>
+                            <td>{kwhTabelle(z.erwartetKwh)}</td>
+                            <td>{kwhTabelle(z.gemessenKwh)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  <p className="vp-pz-rblk-satz">{rueckblickSatz(k)}</p>
+                </section>
+              );
+            })}
+        </div>
+      </Modal>
     </div>
   );
 }
 
 function uhrDatum(iso: string): string {
   return new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' Uhr';
+}
+
+/** Tagessumme kWh fürs Rückblick-Blatt - 0 Nachkommastellen (UEMS-Zahlenformat, AP-08 E11). */
+function kwhTabelle(v: number): string {
+  return `${Math.round(v).toLocaleString('de-DE')} kWh`;
 }
 
 /** Die Kurzform je aktivem Lastmodell (Bericht 6.1 Baustein 5). */

@@ -562,3 +562,51 @@
 .vp-pz-erklaerung b {
   color: var(--vp-c-fg, #1e293b);
 }
+
+/*
+ * Das Blatt "Rückblick" der Prognoseseite (S3, Bericht Abschnitt 9) -
+ * eigener Klassenstamm `.vp-pz-rblk`, NICHT zu verwechseln mit
+ * `.vp-pz-rueckblick` (PreisSeite, eine andere Fläche derselben Datei).
+ */
+.vp-pz-rblk {
+  display: grid;
+  gap: var(--vp-c-space-4, 16px);
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+}
+
+.vp-pz-rblk-art h3 {
+  margin: 0 0 var(--vp-c-space-2, 8px);
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-600, 600);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-pz-rblk-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--vp-c-fs-14, 14px);
+}
+
+.vp-pz-rblk-tabelle th,
+.vp-pz-rblk-tabelle td {
+  padding: var(--vp-c-space-2, 8px);
+  text-align: right;
+  border-bottom: 1px solid var(--vp-c-border, #e2e8f0);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-pz-rblk-tabelle th {
+  color: var(--vp-c-muted-fg, #475569);
+  font-weight: var(--vp-c-fw-600, 600);
+}
+
+.vp-pz-rblk-tabelle th:first-child,
+.vp-pz-rblk-tabelle td:first-child {
+  text-align: left;
+}
+
+.vp-pz-rblk-satz {
+  margin: var(--vp-c-space-2, 8px) 0 0;
+  color: var(--vp-c-muted-fg, #475569);
+  font-size: var(--vp-c-fs-14, 14px);
+}

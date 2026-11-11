@@ -103,6 +103,7 @@ const WAHL: ModellWahlZustand = {
       setByName: null,
       setAt: null,
       selectable: ['load-persistence', 'load-xgb'],
+      automatikAktiv: true,
     },
     {
       kind: 'pv',
@@ -113,6 +114,7 @@ const WAHL: ModellWahlZustand = {
       setByName: null,
       setAt: null,
       selectable: ['pv-physical', 'pv-residual-xgb'],
+      automatikAktiv: null,
     },
   ],
   history: [],
@@ -263,6 +265,7 @@ describe('Prognosequalität - der Schalter', () => {
         setByName: 'max',
         setAt: '2026-08-18T09:30:00Z',
         selectable: ['load-persistence', 'load-xgb'],
+        automatikAktiv: false,
       },
       WAHL.kinds[1],
     ],

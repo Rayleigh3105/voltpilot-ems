@@ -82,6 +82,19 @@ public class SiteForecastModelController {
                 siteId, req.kind(), req.model(), subject(caller), displayName(caller));
     }
 
+    /**
+     * Schaltet die Automatik (S5) für DIESE Anlage wieder ein - das
+     * Gegenstück zur stillen Abschaltung, die {@link #promote} bei einer Wahl
+     * von Hand auslöst (Bericht R.4 Punkt 2). Wählt selbst kein Modell.
+     */
+    @PostMapping("/automatik")
+    @Recht(value = "prognose.befoerdern", ziel = RechtZiel.ANLAGE)
+    public SiteForecastModelsDto automatikEinschalten(
+            @PathVariable UUID siteId, @AuthenticationPrincipal Jwt caller) {
+        requireSite(siteId);
+        return models.automatikEinschalten(siteId, subject(caller));
+    }
+
     private void requireSite(UUID siteId) {
         geltungsbereich.requireSite(siteId);
     }

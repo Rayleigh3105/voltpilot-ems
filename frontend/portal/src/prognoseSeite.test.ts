@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { ForecastResponse, ForecastValue, HistoryBucket, WeatherPoint } from './api';
+import type { ForecastResponse, ForecastValue, HistoryBucket, RueckblickKind, WeatherPoint } from './api';
 import {
   mengenSatz,
   morgenSatz,
   prognoseModell,
   reichtSatz,
+  rueckblickSatz,
+  rueckblickZeilen,
   uebrigSatz,
   verbrauchsSpitzeSatz,
   type PrognoseEingaben,
@@ -276,5 +278,41 @@ describe('massstab · ein Maßstab, der ehrlich bleibt (Captain-Entscheid, Beric
       anlagenleistungKwp: 10, // bewusst gesetzt, darf ohne PV nichts bewirken
     });
     expect(ohnePv.massstab).toBeCloseTo(2, 5);
+  });
+});
+
+describe('rueckblickZeilen/rueckblickSatz · das Blatt "Rückblick" (S3)', () => {
+  function kind(p: Partial<RueckblickKind>): RueckblickKind {
+    return { kind: 'load', model: 'load-persistence', tage: [], abweichungKwh: null, bewerteteTage: 0, ...p };
+  }
+
+  it('formt die Tage als lesbare Zeilen, älteste zuerst, wie geliefert', () => {
+    const zeilen = rueckblickZeilen(
+      kind({
+        tage: [
+          { day: '2026-11-09', erwartetKwh: 12.5, gemessenKwh: 11.1 },
+          { day: '2026-11-10', erwartetKwh: 13.0, gemessenKwh: 13.8 },
+        ],
+      }),
+    );
+    expect(zeilen).toHaveLength(2);
+    expect(zeilen[0]).toEqual({ tagWort: 'Mo 09.11.', erwartetKwh: 12.5, gemessenKwh: 11.1 });
+    expect(zeilen[1].tagWort).toBe('Di 10.11.');
+  });
+
+  it('bleibt ohne jede Bewertung ehrlich bei "noch keine Bewertung"', () => {
+    expect(rueckblickSatz(kind({ bewerteteTage: 0, abweichungKwh: null }))).toBe('Noch keine Bewertung.');
+  });
+
+  it('nennt unter zehn bewerteten Tagen den Stand, nie eine erfundene Zahl', () => {
+    expect(rueckblickSatz(kind({ bewerteteTage: 4, abweichungKwh: null }))).toBe(
+      'Noch keine Bewertung - erst ab 10 Tagen (bisher 4).',
+    );
+  });
+
+  it('nennt ab zehn bewerteten Tagen den Rückblick-Satz - "8 von 10" ist die feste Redewendung', () => {
+    expect(rueckblickSatz(kind({ bewerteteTage: 12, abweichungKwh: 1.8 }))).toBe(
+      'An 8 von 10 Tagen höchstens 2 kWh daneben.',
+    );
   });
 });

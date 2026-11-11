@@ -451,6 +451,22 @@ def collect_site(
     )
     summary.saved_models.append(registry.LOAD_PERSISTENCE)
 
+    # N4/S5 (Captain 11.11.2026): das Tagestyp-Modell lief bisher nur im
+    # Wochen-Ausblick (S4, weiter unten) - ohne Viertelstunden-Reihen auf dem
+    # regulären Horizont gäbe es für "load-profile" nie eine Tagesbewertung,
+    # auf die sich die Automatik (S5, R.4) stützen könnte. Deterministic wie
+    # `persistence`, läuft darum unabhängig von `ml_available`.
+    load_profile_baseline = ProfileLoadForecaster()
+    forecasts.save(
+        load_profile_baseline.forecast(
+            site.site_id, site.tenant_id, load_history, horizon, now
+        )
+    )
+    quality.upsert_model_state(
+        _baseline_state(site, registry.LOAD_PROFILE, ForecastKind.LOAD, now)
+    )
+    summary.saved_models.append(registry.LOAD_PROFILE)
+
     physical = PhysicalPvForecaster(provider) if provider else PhysicalPvForecaster()
     # PV stops where real weather stops (see :func:`pv_horizon`); LOAD does not.
     pv_hor = pv_horizon(horizon, weather_points, now) if provider else horizon
@@ -694,7 +710,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "serve":
-        from voltpilot_forecast import evaluate  # noqa: PLC0415
+        from voltpilot_forecast import evaluate, rueckblick  # noqa: PLC0415
 
         # Container runtime contract (docs/k8s-readiness.md): SIGTERM-aware
         # sleep, probe endpoint, and a short exponential back-off after a
@@ -712,6 +728,12 @@ def main(argv: list[str] | None = None) -> int:
                     yesterday = evaluate.yesterday_berlin()
                     if last_eval_day != yesterday:
                         evaluate.run_for(dsn, yesterday, days_back=2)
+                        # S3: derselbe Takt, dieselbe Idempotenz - ein eigener
+                        # Fehlschlag darf die Tagesbewertung nicht abreißen.
+                        try:
+                            rueckblick.run_for(dsn, yesterday, days_back=2)
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning("serve.rueckblick_failed: %s", exc)
                         last_eval_day = yesterday
                 runtime.record_success()
             except Exception as exc:  # keep the loop alive across DB blips

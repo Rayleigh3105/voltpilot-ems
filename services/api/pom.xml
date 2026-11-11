@@ -476,6 +476,11 @@
                              in PRODUKTION an. Wer ihn prueft, ruft
                              LadeparkGrenzeLaeufer.lauf() selbst. -->
                         <voltpilot.uems.ladepark-grenze.enabled>false</voltpilot.uems.ladepark-grenze.enabled>
+                        <!-- Die Verbrauchs-Automatik (S5, Konzept vp-prognosen-konzept):
+                             dieselbe @Scheduled-Falle, im Testlauf aus, in PRODUKTION an
+                             (application.yml, matchIfMissing). Wer sie prueft, ruft
+                             AutomatikLaeufer.lauf() bzw. AutomatikLaeufer.entscheide() selbst. -->
+                        <voltpilot.forecast.automatik.enabled>false</voltpilot.forecast.automatik.enabled>
                         <!-- Die Rechte-Bestandsuebernahme (AP-03 IP-2): dieselbe Falle wie
                              die Bestandsuebernahme der Standorte - im Testlauf aus,
                              in PRODUKTION an. Wer sie prueft, ruft
