@@ -383,11 +383,9 @@ def rechne_fall(
     anlage: CheckAnlage, fall: Fall, slots: list[datetime], spot: list[float],
     load_kw: list[float], pv_kw: list[float], monatsmarktwerte: dict[date, float],
     jahresmarktwerte: dict[int, float], max_workers: int = 1,
-    heute_streng: bool = False,
 ) -> dict:
-    """stur / heute / mitMispel für einen Annahmen-Fall. ``heute_streng``:
-    der EEG-Modus heute nach der strengen Ausschließlichkeit (MP-45, wie A1
-    S. 11 sie beschreibt) statt nach FK3."""
+    """stur / heute / mitMispel für einen Annahmen-Fall. Der EEG-Modus heute
+    lädt seit EN-2 A (02.11.2026) nie bei gleichzeitigem Netzbezug (A1 S. 11)."""
     if anlage.formelsatz in PAUSCHAL_FORMELSAETZE:
         return rechne_fall_pauschal(
             anlage, fall, slots, spot, load_kw, pv_kw, jahresmarktwerte, max_workers
@@ -404,7 +402,7 @@ def rechne_fall(
     saldiert = saldierte_bestandteile_eur_mwh(tarif)
     a1 = anlage.formelsatz == "A1"
 
-    # heute: A1 = EEG-Modus (FK3, Monatsmarktwert); A10/A11 = Händler.
+    # heute: A1 = EEG-Modus (FK3 und EN-2 A, Monatsmarktwert); A10/A11 = Händler.
     if a1:
         exp_heute = export_values(tarif, False, spot, slots, monatsmarktwerte)
     else:
@@ -419,7 +417,7 @@ def rechne_fall(
     # Eingabe ergibt unter jeder Last dieselben Beträge.
     heute = run_milp_year(
         heute_data, battery, netzladen=not a1, max_workers=max_workers,
-        export_eur_mwh=exp_heute, strenge=a1 and heute_streng, wiederholbar=True,
+        export_eur_mwh=exp_heute, wiederholbar=True,
     )
     out_heute = evaluate(heute_data, heute, battery)
 
@@ -780,7 +778,6 @@ def mispel_check(
     beginn: tuple[int, int] = (2025, 10),
     monate: int = 12,
     faelle: dict[str, Fall] | None = None,
-    heute_streng: bool = False,
 ) -> dict:
     """Der MiSpeL-Check einer Anlage über ``monate`` Monate ab ``beginn``
     (Jahr, Monat): je Fall stur / heute / mitMispel, die Posten und die
@@ -834,7 +831,7 @@ def mispel_check(
     ergebnisse = {
         name: rechne_fall(
             anlage, fall, slots, spot, load_kw, pv_kw, monatsmw, jahresmw,
-            deps.max_workers, heute_streng,
+            deps.max_workers,
         )
         for name, fall in faelle.items()
     }
@@ -875,12 +872,12 @@ def mispel_check(
         } if anlage.formelsatz in ("A1",) + PAUSCHAL_FORMELSAETZE else None,
         "faelle": ergebnisse,
         "spanne": {name: ergebnisse[name]["differenzEur"] for name in faelle},
-        "annahmen": _annahmen(anlage, faelle, heute_streng),
+        "annahmen": _annahmen(anlage, faelle),
         "hinweis": rueckfall_hinweis(ergebnisse),
     }
 
 
-def _annahmen(anlage: CheckAnlage, faelle: dict[str, Fall], heute_streng: bool) -> list[dict]:
+def _annahmen(anlage: CheckAnlage, faelle: dict[str, Fall]) -> list[dict]:
     def je_fall(attr: str):
         return {name: getattr(f, attr) for name, f in faelle.items()}
 
@@ -909,13 +906,9 @@ def _annahmen(anlage: CheckAnlage, faelle: dict[str, Fall], heute_streng: bool) 
             "Leistungspreis bleibt", "§ 21 EnFG, § 118 Abs. 6 EnWG; Konzept § 8.5 (MP-10)", "belegt"),
     }
     if anlage.formelsatz == "A1":
-        a["Ausschließlichkeitsoption heute"] = (
-            Annahme("streng: kein Laden bei gleichzeitigem Netzbezug (MP-45)",
-                    "A1 S. 11; Konzept § 8.5 W1", "Lesart")
-            if heute_streng
-            else Annahme("EEG-Modus nach FK3: Laden bis zur PV-Erzeugung je Viertelstunde",
-                         "Konzept § 8.5 W1 = D (Produktion bis zur Rechtsantwort)", "belegt")
-        )
+        a["Ausschließlichkeitsoption heute"] = Annahme(
+            "EEG-Modus: kein Laden bei gleichzeitigem Netzbezug, nur aus dem PV-Überschuss",
+            "A1 S. 11; Captain-Entscheid EN-2 A vom 02.11.2026", "belegt")
         a["AW¼"] = Annahme(
             "anzulegender Wert nur in Viertelstunden mit Spot ≥ 0 (ohne ÜNB-Liste)",
             "MP-12 Rückfallregel; Konzept § 8.5 W4", "Näherung")
@@ -997,8 +990,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--monate", type=int, default=12)
     parser.add_argument("--fall", choices=FAELLE, nargs="*", default=list(FAELLE))
     parser.add_argument("--workers", type=int, default=1)
-    parser.add_argument("--heute-streng", action="store_true",
-                        help="EEG-Modus heute nach der strengen Ausschließlichkeit (MP-45)")
     args = parser.parse_args(argv)
 
     docs = []
@@ -1023,7 +1014,6 @@ def main(argv: list[str] | None = None) -> int:
         anlage = KUNDENTYPEN[args.kundentyp]
     result = mispel_check(
         anlage, deps, (jahr, monat), args.monate, faelle,
-        heute_streng=args.heute_streng,
     )
     json.dump(result, sys.stdout, ensure_ascii=False, indent=1)
     sys.stdout.write("\n")

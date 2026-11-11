@@ -54,7 +54,7 @@ func TestMispelDurchstichBoxKlemmtNachFoerderweg(t *testing.T) {
 		if p.Foerderweg != plan.FoerderwegAbgrenzung || p.GridChargeAllowed == nil || !*p.GridChargeAllowed {
 			t.Fatalf("Tag %d: Förderweg %q, grid_charge_allowed %v", tage+1, p.Foerderweg, p.GridChargeAllowed)
 		}
-		if p.SolarOnlyCharge() || p.StrictExclusivityCharge() {
+		if p.SolarOnlyCharge() {
 			t.Fatalf("Tag %d: die Box klemmt trotz Abgrenzungsoption", tage+1)
 		}
 		if len(p.Slots) != len(d.PvKw) || len(p.Slots) != len(d.LastKw) {
@@ -65,7 +65,7 @@ func TestMispelDurchstichBoxKlemmtNachFoerderweg(t *testing.T) {
 		for i, s := range p.Slots {
 			r := guards.Reading{SocPct: guards.Unknown(), PvKw: d.PvKw[i], LoadKw: d.LastKw[i], GridLimitKw: guards.Unknown()}
 			limits := guards.Limits{MaxChargeKw: maxKw, MaxDischargeKw: maxKw, SocMinPct: 0, SocMaxPct: 100,
-				SolarOnlyCharge: p.SolarOnlyCharge(), StrictExclusivity: p.StrictExclusivityCharge()}
+				SolarOnlyCharge: p.SolarOnlyCharge()}
 			kw := guards.Clamp(s.BatterySetpointKw, limits, r)
 			if math.Abs(kw-s.BatterySetpointKw) > 1e-9 {
 				t.Errorf("%s: geplant %.3f kW, die Box fährt %.3f kW", s.Start, s.BatterySetpointKw, kw)

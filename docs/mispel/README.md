@@ -61,7 +61,7 @@ stehen in jeder Antwort daneben. Regeln, Bestand ohne Zeile und Schnittstelle: [
 | Förderweg | Betriebsart des Optimierers | Stand |
 |---|---|---|
 | `einspeiseverguetung` | EEG-Modus (Netzladen ausgeschlossen) | gebaut |
-| `marktpraemie_ausschliesslichkeit` | **EEG-Modus**: FK3-Klemme (Laden bis zur erzeugten PV); die **strenge Variante** „kein Speicherverbrauch bei gleichzeitigem Netzbezug“ (A1 S. 11) ist ein Betreiber-Schalter, Standard aus — [Wegweiser](../agents/root/mispel-strenge-ausschliesslichkeit.md) (MP-45) | gebaut, strenge Variante aus bis zur Rechtsantwort |
+| `marktpraemie_ausschliesslichkeit` | **EEG-Modus**: Laden bis zur erzeugten PV (FK3) und nie bei gleichzeitigem Netzbezug (A1 S. 11; Captain-Entscheid EN-2 A vom 02.11.2026, darin ist der MP-45-Schalter aufgegangen) — [Wegweiser](../agents/root/mispel-strenge-ausschliesslichkeit.md) | gebaut, für jede Anlage mit Netzladen „Verboten“ |
 | `marktpraemie_abgrenzung` (A1, A5, A5-Variante) | **Mischbetrieb**: zwei Ladewege, Buchung nach Speichervorrang, Exportwert je Farbe — [Wegweiser](../agents/root/mispel-optimierer-mischbetrieb.md) (MP-10) | gebaut, mit Monatszustand (MP-11) |
 | `marktpraemie_pauschal` | **Jahreszustand**: Wert der nächsten Einspeise-kWh nach Jahresstand — unter (P1) Prämie, zwischen (P1) und (P4) nichts, darüber Saldierung bis zum Jahres-Netzbezug (nur SP≥0); ohne Jahreslauf über die Spiegel wie vorher — [Wegweiser](../agents/root/mispel-optimierer-mischbetrieb.md#pauschaloption-jahreszustand-mp-26) (MP-26) | gebaut für P1–P3; P4, P4-Variante, P5 offen |
 | `ungefoerdert` | **Händler-Modus** (Export zu blankem Spot) | gebaut |
@@ -71,7 +71,7 @@ stehen in jeder Antwort daneben. Regeln, Bestand ohne Zeile und Schnittstelle: [
   während der Händler-Modus alles zu blankem Spot exportiert.
 - **`dv_konform` ist entfernt (W8, MP-10):** seine Bedeutung trägt der Förderweg `marktpraemie_ausschliesslichkeit`.
 - **Box (MP-14, BK-14 Variante A):** Der Förderweg reist im Plan zur Box (`foerderweg`). Die EEG-Klemme gilt nur noch für
-  Einspeisevergütung und Ausschließlichkeitsoption, streng über MP-45. Abgrenzung, Pauschal und ungefördert laden aus
+  Einspeisevergütung und Ausschließlichkeitsoption, mit der Netzladen-Sperre der Box (EN-1 A). Abgrenzung, Pauschal und ungefördert laden aus
   dem Netz nach der Einstellung des Kunden, innerhalb der Export-, § 14a- und Negativpreis-Wächter. Ohne Feld lädt die Box
   nur mit Sonnenstrom. Die Box zeigt den Förderweg als erste Zeile im „Lade- & Entladeplan“
   ([Wegweiser](../agents/root/mispel-box-foerderweg.md)).
@@ -192,7 +192,7 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 | Wo | Festlegung | Produkt | Warum |
 |---|---|---|---|
 | Formelsätze | Fallkonstellationen A1–A9 (A1 S. 8–9, Übersicht 1) und A10, A11 (A1 S. 94–102) | A1, A5, A5-Variante, A10, A11; A2–A4 für Ladepunkte (MP-32) | deckt die Gewerbe-Kundentypen und bidirektionale Ladepunkte; andere Fälle bekommen „noch nicht unterstützt“ statt einer Näherung |
-| Ausschließlichkeitsoption | kein Speicherverbrauch bei gleichzeitigem Netzbezug (A1 S. 11) | FK3 bleibt Standard, strenge Variante schaltbar (MP-45), Ausmaß misst MP-2 | die Festlegung regelt diese Option nicht neu; die Rechtsfolge klärt die Anfrage im [Katalog](rechtsfragen.md) |
+| Ausschließlichkeitsoption | kein Speicherverbrauch bei gleichzeitigem Netzbezug (A1 S. 11) | seit EN-2 A (02.11.2026) streng für jede Anlage mit Netzladen „Verboten“: Plan und Box laden nicht bei Netzbezug; Ausmaß misst MP-2 | die Festlegung regelt diese Option nicht neu; die Rechtsfolge klärt die Anfrage im [Katalog](rechtsfragen.md) |
 | Vorläufige Mengen | nur eichrechtskonforme Viertelstundenwerte (T S. 28) | Vorschau auf Gerätewerten, Stand „vorläufig“; Nachweis nur endgültig | Steuerung braucht Werte vor Monatsende; die vorläufige Zahl ist keine Mengenbestimmung |
 | Datenformate | Marktkommunikation nicht geregelt (T S. 28, S. 90, S. 92) | CSV und PDF mit denselben Werten | vor EDI@Energy gibt es kein amtliches Format |
 | Prämien-Viertelstunden | AW>0-Liste der ÜNB (A1 S. 17 Fn. 8) | Liste importiert; ohne Liste Rückfall „keine Prämie bei SP¼ < 0“, Monat bleibt „vorläufig“ | der Rückfall hält nur die Steuerung am Laufen |

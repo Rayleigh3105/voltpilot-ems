@@ -323,7 +323,6 @@ def solve_chunk(payload: dict) -> dict:
     warmup_days = payload["warmup_days"]
     commit_days = payload["commit_days"]
     misch = payload.get("mischbetrieb")
-    strenge = payload.get("strenge", False)
     wiederholbar = payload.get("wiederholbar", False)
     pauschal = payload.get("pauschal")
 
@@ -356,8 +355,6 @@ def solve_chunk(payload: dict) -> dict:
             import_price_eur_mwh=imp[window],
             export_value_eur_mwh=exp[window],
         )
-        if strenge:
-            inp = replace(inp, strenge_ausschliesslichkeit=True)
         if wiederholbar:
             inp = replace(inp, wiederholbar=True)
         if misch is not None:
@@ -435,7 +432,6 @@ def chunk_payloads(
     netzladen: bool,
     export_eur_mwh: list[float] | None = None,
     mischbetrieb: dict | None = None,
-    strenge: bool = False,
     wiederholbar: bool = False,
     pauschal: dict | None = None,
 ) -> list[dict]:
@@ -444,7 +440,6 @@ def chunk_payloads(
     ``mischbetrieb`` (MiSpeL-Check, MP-13): ``{"praemie": [EUR/MWh je Slot],
     "saldiert": EUR/MWh}`` switches every solve to the MP-10 Mischbetrieb
     with the MP-11 Monatszustand; ``export_eur_mwh`` must then be bare spot.
-    ``strenge`` plans the EEG mode with the strict Ausschliesslichkeit (MP-45).
     ``wiederholbar`` (MP-33c) ends the Mischbetrieb search at the node limit
     instead of the wall clock: the same input, the same dispatch under any load.
     ``pauschal`` (MiSpeL-Check, MP-29): ``{"praemie": [EUR/MWh je Slot],
@@ -501,8 +496,6 @@ def chunk_payloads(
                 "exp": ext_exp[lo:hi],
             }
         )
-        if strenge:
-            payloads[-1]["strenge"] = True
         if wiederholbar:
             payloads[-1]["wiederholbar"] = True
         if mischbetrieb is not None:
@@ -546,7 +539,6 @@ def run_milp_year(
     export_eur_mwh: list[float] | None = None,
     on_chunk: Callable[[int, int, "Dispatch | None"], None] | None = None,
     mischbetrieb: dict | None = None,
-    strenge: bool = False,
     wiederholbar: bool = False,
     pauschal: dict | None = None,
 ) -> Dispatch:
@@ -557,7 +549,7 @@ def run_milp_year(
     chunk slots hold 0.0) so callers can publish progressive monthly rows.
     """
     payloads = chunk_payloads(
-        data, battery, netzladen, export_eur_mwh, mischbetrieb, strenge, wiederholbar, pauschal
+        data, battery, netzladen, export_eur_mwh, mischbetrieb, wiederholbar, pauschal
     )
     n = len(data.slot_starts)
     dispatch = Dispatch(

@@ -306,27 +306,26 @@ def test_kommandozeile_liest_preise_aus_json(mai_fenster, tmp_path, capsys):
 
 
 @solver
-def test_heute_streng_laedt_nie_bei_gleichzeitigem_netzbezug(mai_fenster, monkeypatch):
-    """Die Lesart der Festlegung (A1 S. 11, MP-45) als Option für „heute“:
-    kein Verbrauch im Speicher, während es gleichzeitig einen Netzbezug gibt."""
+def test_heute_laedt_nie_bei_gleichzeitigem_netzbezug(mai_fenster, monkeypatch):
+    """Der EEG-Modus von „heute“ lädt seit EN-2 A (02.11.2026) nie bei gleichzeitigem Netzbezug - die Lesart
+    der Festlegung (A1 S. 11), ohne Schalter (MP-45 ist darin aufgegangen)."""
     seen = {}
     original = mc.run_milp_year
 
     def spy(data, battery, netzladen, **kw):
         dispatch = original(data, battery, netzladen, **kw)
         if not kw.get("mischbetrieb"):
-            seen["heute"] = (dispatch, kw.get("strenge"))
+            seen["heute"] = dispatch
         return dispatch
 
     monkeypatch.setattr(mc, "run_milp_year", spy)
     anlage = replace(mc.KUNDENTYPEN["a"], jahresverbrauch_kwh=4000.0, speicher_kwh=40.0, speicher_kw=20.0)
-    r = mc.mispel_check(anlage, _deps(), faelle={"mittel": mc.STANDARD_FAELLE["mittel"]}, heute_streng=True)
-    dispatch, strenge = seen["heute"]
-    assert strenge is True
-    for b, g in zip(dispatch.battery_kw, dispatch.grid_kw):
+    r = mc.mispel_check(anlage, _deps(), faelle={"mittel": mc.STANDARD_FAELLE["mittel"]})
+    for b, g in zip(seen["heute"].battery_kw, seen["heute"].grid_kw):
         assert not (b > 1e-3 and g > 1e-3)
     annahme = next(a for a in r["annahmen"] if a["name"] == "Ausschließlichkeitsoption heute")
-    assert annahme["art"] == "Lesart"
+    assert annahme["art"] == "belegt"
+    assert "kein Laden bei gleichzeitigem Netzbezug" in annahme["wert"]
 
 
 # --------------------------------------------------------------------------- Pauschaloption P1 (MP-29)

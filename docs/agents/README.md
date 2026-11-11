@@ -104,6 +104,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [MiSpeL – Einstieg: Fachdoku mit Förderweg, Zählerrollen, Rechenwerk, Monatslauf, Nachweis, Marktdaten](../mispel/README.md)
 - [MiSpeL-Marktdaten: AW>0-Zeiten der ÜNB, SP¼, Jahresmarktwert (MP-7)](root/mispel-marktdaten-aw-sp-jahresmarktwert.md)
 - [MiSpeL-Ausschließlichkeits-Prüfer: Netzstrom im Speicher je Anlage und Monat (MP-2)](root/mispel-ausschliesslichkeits-pruefer.md)
+- [MiSpeL: strenge Ausschließlichkeit (MP-45) – aufgegangen in Netzladen „Verboten“ (EN-1 A, EN-2 A)](root/mispel-strenge-ausschliesslichkeit.md)
 - [MiSpeL: Box liest den Förderweg statt des Netzlade-Bits, Zeile „Förderweg“ im Lade- & Entladeplan (MP-14)](root/mispel-box-foerderweg.md)
 - [MiSpeL: Optimierer Mischbetrieb I – zwei Ladewege, Farben, Spitzenschutz (MP-10); II – Monatszustand (MP-11); Pauschaloption – Jahreszustand (MP-26); Fahrzeug als Speicher (MP-33), auch ohne Hausspeicher A2 mit Messlatte „nur laden“ (MP-33d), Fahrer-Einstellungen und Block `fahrzeug` (MP-33f)](root/mispel-optimierer-mischbetrieb.md)
 - [MiSpeL: Simulator bidirektionales Fahrzeug – Wallbox mit Ladestand, Anstecken/Abstecken, Entladebefehl, Szenario V2H-Abend (MP-34)](root/mispel-simulator-fahrzeug.md)

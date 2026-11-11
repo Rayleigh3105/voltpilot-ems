@@ -9,8 +9,8 @@ package plan
 //   - einspeiseverguetung, marktpraemie_ausschliesslichkeit: grid charging is
 //     excluded - a storage plant is only funded in the Ausschließlichkeitsoption
 //     (§ 19 Abs. 3a EEG), so the box keeps the FK3 clamp (charge <= measured
-//     PV) whatever grid_charge_allowed says; the strict reading on top stays
-//     the operator's switch (strict_exclusivity, MP-45).
+//     PV) whatever grid_charge_allowed says, and with it the Netzladen-Sperre
+//     (EN-1 A, guards.NetzladenSperre: no charging while the site imports).
 //   - marktpraemie_abgrenzung, marktpraemie_pauschal, ungefoerdert: grid
 //     charging is the customer's setting (Festlegung MiSpeL, Tenor Ziff. 1-4,
 //     Anlage 1 and 2), carried as grid_charge_allowed; it stays inside the
@@ -63,10 +63,8 @@ type FoerderwegView struct {
 	// charges only from the measured PV production.
 	SolarOnly bool `json:"solar_only"`
 	// The plan fields behind it, echoed for the technical mode.
-	GridChargeAllowed  *bool    `json:"grid_charge_allowed,omitempty"`
-	StrictExclusivity  bool     `json:"strict_exclusivity"`
-	StrictToleranceKwh *float64 `json:"strict_exclusivity_tolerance_kwh,omitempty"`
-	GridExportLimitKw  *float64 `json:"grid_export_limit_kw,omitempty"`
+	GridChargeAllowed *bool    `json:"grid_charge_allowed,omitempty"`
+	GridExportLimitKw *float64 `json:"grid_export_limit_kw,omitempty"`
 }
 
 // FoerderwegView projects the plan's Förderweg and the resulting clamp.
@@ -78,10 +76,6 @@ func (p *Plan) FoerderwegView() FoerderwegView {
 	v.Foerderweg = p.Foerderweg
 	v.Bekannt = FoerderwegBekannt(p.Foerderweg)
 	v.GridChargeAllowed = p.GridChargeAllowed
-	v.StrictExclusivity = p.StrictExclusivityCharge()
-	if v.StrictExclusivity {
-		v.StrictToleranceKwh = p.StrictExclusivityToleranceKwh
-	}
 	v.GridExportLimitKw = p.GridExportLimitKw
 	return v
 }

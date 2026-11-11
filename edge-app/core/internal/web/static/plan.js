@@ -355,17 +355,8 @@
     var key = JSON.stringify(d);
     if (key === lastFw) return;
     lastFw = key;
-    $("planFw").className = "plan-fw" + (d.streng ? " streng" : "");
     $("planFwTitle").textContent = d.title;
-    var text = $("planFwText");
-    text.textContent = "";
-    if (d.lead) {
-      var b = document.createElement("b");
-      b.textContent = d.lead;
-      text.appendChild(b);
-      text.appendChild(document.createTextNode(" "));
-    }
-    text.appendChild(document.createTextNode(d.text));
+    $("planFwText").textContent = d.text;
     var rows = $("planFwTechRows");
     rows.textContent = "";
     d.tech.forEach(function (r) {

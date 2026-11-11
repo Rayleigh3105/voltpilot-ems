@@ -1694,7 +1694,7 @@ func TestPlanEndpointCarriesFoerderweg(t *testing.T) {
 	}
 	fw := body.Plan.Foerderweg
 	if fw["foerderweg"] != "marktpraemie_abgrenzung" || fw["bekannt"] != true || fw["solar_only"] != false ||
-		fw["grid_charge_allowed"] != true || fw["strict_exclusivity"] != false {
+		fw["grid_charge_allowed"] != true {
 		t.Fatalf("Förderweg verdict not carried: %v", fw)
 	}
 

@@ -75,7 +75,7 @@ func TestFoerderwegPersistedAndInView(t *testing.T) {
 	slot := `{ "start": "2026-10-02T09:00:00Z", "battery_setpoint_kw": 5.0 }`
 	p, err := Parse([]byte(`{"schema_version":"1.0","slot_minutes":15,"generated_at":"2026-10-02T09:00:00Z",`+
 		`"grid_charge_allowed":false,"foerderweg":"marktpraemie_ausschliesslichkeit",`+
-		`"strict_exclusivity":true,"strict_exclusivity_tolerance_kwh":0.25,"grid_export_limit_kw":30,"slots":[`+slot+`]}`),
+		`"grid_export_limit_kw":30,"slots":[`+slot+`]}`),
 		time.Date(2026, 10, 2, 9, 1, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
@@ -96,8 +96,7 @@ func TestFoerderwegPersistedAndInView(t *testing.T) {
 		t.Fatalf("persisted plan lost the Förderweg: %+v", back)
 	}
 	v := back.BuildView(time.Date(2026, 10, 2, 9, 5, 0, 0, time.UTC)).Foerderweg
-	if v.Foerderweg != FoerderwegAusschliesslichkeit || !v.Bekannt || !v.SolarOnly || !v.StrictExclusivity ||
-		v.StrictToleranceKwh == nil || *v.StrictToleranceKwh != 0.25 ||
+	if v.Foerderweg != FoerderwegAusschliesslichkeit || !v.Bekannt || !v.SolarOnly ||
 		v.GridChargeAllowed == nil || *v.GridChargeAllowed || v.GridExportLimitKw == nil || *v.GridExportLimitKw != 30 {
 		t.Fatalf("view: %+v", v)
 	}
