@@ -54,6 +54,16 @@ function site(id: string, name: string): Site {
 }
 const sites: Site[] = [site('s1', 'Werk Nord'), site('s2', 'Halle Süd')];
 
+// Punkt 7 (vp-kundenakte-fremde-personen): eine GEMELDETE Box (nicht lösbar, der Dialog erklärt)
+// und eine NIE gemeldete (lösbar). `geraeteLoesen` nimmt die Box aus der Flotte - der Reload
+// der Akte zeigt sie dann nicht mehr.
+let werkNordBoxen = [
+  { deviceId: 'b1', externalRef: 'VP-AA11', name: 'Box Halle A', fuehrtAnlage: true,
+    lastSeenAt: iso(-8_000), herzschlagAm: iso(-8_000), messwertAm: iso(-12_000), edge: null, update: null },
+  { deviceId: 'b2', externalRef: 'VP-BB22', name: 'Box Halle B', fuehrtAnlage: false,
+    lastSeenAt: null, herzschlagAm: null, messwertAm: null, edge: null, update: null },
+];
+
 const fleetSites: AdminFleetSite[] = [
   {
     siteId: 's1', siteName: 'Werk Nord', tenantId: TENANT_ID, tenantName: tenant.name,
@@ -79,11 +89,25 @@ Object.assign(adminApi, {
   listUsers: async () => konten,
   listSites: async () => sites,
   personensuche: async () => [],
+  geraeteLoesenBefund: async (ref: string) => (ref === 'VP-BB22'
+    ? { loesbar: true, gruende: [],
+        fakten: { verbundenAm: iso(-3 * 86_400_000), herzschlagAm: null, messwertAm: null, meldungAm: null,
+          anmeldung: { zuletztAngefragtAm: null, schluesselAbgeholtAm: null } } }
+    : { loesbar: false, gruende: ['herzschlag', 'messwerte'],
+        fakten: { verbundenAm: iso(-30 * 86_400_000), herzschlagAm: iso(-8_000), messwertAm: iso(-12_000),
+          meldungAm: null, anmeldung: { zuletztAngefragtAm: null, schluesselAbgeholtAm: iso(-30 * 86_400_000) } } }),
+  geraeteLoesen: async (ref: string) => {
+    werkNordBoxen = werkNordBoxen.filter((b) => b.externalRef !== ref);
+    return { externalRef: ref, anlass: 'falsche_kennung' };
+  },
 });
 Object.assign(benutzerApi, { liste: async () => [] });
 Object.assign(fleetApi, {
   fleet: async () => ({
-    sites: fleetSites, releases: [], unterstuetzungBis: {},
+    sites: fleetSites.map((s) => (s.siteId === 's1'
+      ? { ...s, boxes: werkNordBoxen, deviceCount: werkNordBoxen.length }
+      : s)),
+    releases: [], unterstuetzungBis: {},
     unterstuetzungStandorte: sites.map((s) => ({ id: s.id, tenantId: TENANT_ID, name: s.name })),
   }),
 });

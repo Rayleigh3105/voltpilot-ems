@@ -21,6 +21,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * leere Liste verraten einem Partner (oder einer Plattform mit {@code X-Kundenbereich}) ohne wirksame Unterstützung,
  * dass es den Kundenbereich gibt.
  *
+ * <p><b>400 bei zwei verschiedenen Kundenbereichen</b> ({@code X-Tenant-Id} ≠ {@code X-Kundenbereich}, nur die
+ * Plattform kann beide setzen): {@code kundenbereich_widerspruch} statt still einen der beiden zu nehmen — auch auf
+ * {@code /api/v1/me} (Befund vp-kundenakte-fremde-personen).
+ *
  * <p>Kundenroute = alles unter {@code /api/v1/} außer {@code /api/v1/admin/**} (Plattform-Betrieb, unverändert —
  * dort filtert er gar nicht) und {@code /api/v1/me}: die Selbstauskunft antwortet jedem angemeldeten Konto, ohne
  * angenommenen Kundenbereich eben ohne ihn.
@@ -66,6 +70,15 @@ public class ZugriffFilter extends OncePerRequestFilter {
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 return;
             }
+            if (e.widerspruch()) {
+                // Zwei verschiedene Kundenbereiche in EINER Anfrage (X-Tenant-Id ≠ X-Kundenbereich):
+                // keiner wird still genommen - 400 statt der Daten des falschen Kunden (Befund
+                // vp-kundenakte-fremde-personen). Auch /api/v1/me: eine widersprüchliche Anfrage
+                // hat keine ehrliche Selbstauskunft.
+                TenantContext.clear();
+                widerspruch(response);
+                return;
+            }
             boolean selbstauskunft = SELBSTAUSKUNFT.equals(pfad(request));
             if (e.abgewiesen()) {
                 TenantContext.clear();
@@ -85,6 +98,19 @@ public class ZugriffFilter extends OncePerRequestFilter {
         } finally {
             ZugriffContext.clear();
         }
+    }
+
+    /** Der Code und der Satz der 400 bei zwei verschiedenen Kundenbereichen in einer Anfrage. */
+    public static final String WIDERSPRUCH_CODE = "kundenbereich_widerspruch";
+    static final String WIDERSPRUCH_SATZ =
+            "Die Anfrage nennt zwei verschiedene Kundenbereiche. Bitte laden Sie die Seite neu.";
+
+    private static void widerspruch(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.getWriter().write(JSON.writeValueAsString(
+                java.util.Map.of("code", WIDERSPRUCH_CODE, "message", WIDERSPRUCH_SATZ)));
     }
 
     /** 404 — mit dem Grund, wenn der Zugang einmal da war, sonst stumm wie bisher. */

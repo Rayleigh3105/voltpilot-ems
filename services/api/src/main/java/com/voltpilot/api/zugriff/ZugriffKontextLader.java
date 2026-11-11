@@ -74,35 +74,45 @@ public class ZugriffKontextLader {
     }
 
     /**
-     * Ein Zugriff, keiner (kein Kundenbereich im Spiel) oder abgewiesen (404 auf jeder Kundenroute).
+     * Ein Zugriff, keiner (kein Kundenbereich im Spiel), abgewiesen (404 auf jeder Kundenroute) oder ein
+     * WIDERSPRUCH (400 auf jeder Kundenroute).
      *
      * @param beendet gesetzt, wenn die Abweisung ein ENTZUG ist (IP-9): der Aufrufer hatte hier einmal Zugang,
      *     und der ist vorbei. Dann sagt die 404 das auch — {@code zugriff_beendet} mit dem Satz des Vertrags,
      *     statt schweigend die Existenz zu verneinen. Ohne frühere Zuweisung bleibt es bei der stummen 404.
+     * @param widerspruch wahr, wenn die Anfrage ZWEI verschiedene Kundenbereiche nennt ({@code X-Tenant-Id}
+     *     und {@code X-Kundenbereich}): keiner von beiden wird still genommen — lieber 400 als falsche Daten
+     *     (Befund vp-kundenakte-fremde-personen: die Kundenakte eines Kunden zeigte bei offenem Umschalter
+     *     die Personen des ANDEREN Kunden).
      */
-    public record Ergebnis(Zugriff zugriff, boolean abgewiesen, ZugriffBeendet beendet, boolean kontoUngueltig) {
+    public record Ergebnis(Zugriff zugriff, boolean abgewiesen, ZugriffBeendet beendet, boolean kontoUngueltig,
+            boolean widerspruch) {
         static Ergebnis entferntesKonto() {
-            return new Ergebnis(null, true, null, true);
+            return new Ergebnis(null, true, null, true, false);
         }
 
         static Ergebnis keiner() {
-            return new Ergebnis(null, false, null, false);
+            return new Ergebnis(null, false, null, false, false);
         }
 
         static Ergebnis abgewiesenOhneZugriff() {
-            return new Ergebnis(null, true, null, false);
+            return new Ergebnis(null, true, null, false, false);
         }
 
         static Ergebnis abgewiesenWeilBeendet(ZugriffBeendet b) {
-            return new Ergebnis(null, true, b, false);
+            return new Ergebnis(null, true, b, false, false);
+        }
+
+        static Ergebnis widersprochen() {
+            return new Ergebnis(null, true, null, false, true);
         }
 
         static Ergebnis mit(Zugriff z) {
-            return new Ergebnis(z, false, null, false);
+            return new Ergebnis(z, false, null, false, false);
         }
 
         static Ergebnis mit(Zugriff z, ZugriffBeendet b) {
-            return new Ergebnis(z, false, b, false);
+            return new Ergebnis(z, false, b, false, false);
         }
     }
 
@@ -154,6 +164,17 @@ public class ZugriffKontextLader {
                     : Ergebnis.mit(z);
         }
         if (kundenbereichKopf != null && !kundenbereichKopf.isBlank()) {
+            // Widerspruch (Befund vp-kundenakte-fremde-personen): nennt die Anfrage mit X-Tenant-Id
+            // (TenantFilter, nur Plattform) UND X-Kundenbereich ZWEI verschiedene Kundenbereiche, wird
+            // keiner still genommen - vorher gewann der Kopf, und die Kundenakte von Kunde B las bei
+            // offenem Umschalter auf A die Personen von A. Ein Partner kommt hier nie an: für ihn
+            // ignoriert der TenantFilter X-Tenant-Id, sein TenantContext ist leer.
+            UUID ausdruecklich = TenantContext.get();
+            UUID kandidat = alsUuid(kundenbereichKopf.trim());
+            if (ausdruecklich != null && kandidat != null && !kandidat.equals(ausdruecklich)) {
+                zaehle("widerspruch");
+                return Ergebnis.widersprochen();
+            }
             return unterstuetzung(sub, konto, kundenbereichKopf.trim(), jetzt);
         }
         if (konto == Konto.PLATTFORM) {
@@ -172,6 +193,15 @@ public class ZugriffKontextLader {
         }
         zaehle("abgewiesen");
         return Ergebnis.abgewiesenOhneZugriff();
+    }
+
+    /** Der Kopfwert als UUID — {@code null}, wenn er keine ist (das weist {@link #unterstuetzung} ab wie bisher). */
+    private static UUID alsUuid(String wert) {
+        try {
+            return UUID.fromString(wert);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /** Die Kontoart aus {@code KONTO_<code>}; {@code null}, wenn der Konverter keine abgelegt hat. */

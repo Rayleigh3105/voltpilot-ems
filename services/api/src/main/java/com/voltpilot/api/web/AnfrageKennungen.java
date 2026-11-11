@@ -99,10 +99,15 @@ public class AnfrageKennungen {
         }
         Map<String, Object> z = zeilen.get(0);
         if (!fingerabdruck.equals(z.get("fingerabdruck"))) {
-            throw new Abgelehnt(HttpStatus.UNPROCESSABLE_CONTENT, "anfrage_kennung_anders",
-                    "Diese Anfrage wurde schon mit anderen Angaben gesendet. Bitte laden Sie die Seite neu.");
+            throw andereAnfrage();
         }
         return Optional.of(new Gemerkt(((Number) z.get("status")).intValue(), (String) z.get("antwort")));
+    }
+
+    /** Die 422 „dieselbe Kennung mit einer anderen Anfrage" — auch für die Plattform-Variante (admin_anfrage_kennung). */
+    public static Abgelehnt andereAnfrage() {
+        return new Abgelehnt(HttpStatus.UNPROCESSABLE_CONTENT, "anfrage_kennung_anders",
+                "Diese Anfrage wurde schon mit anderen Angaben gesendet. Bitte laden Sie die Seite neu.");
     }
 
     /** Merkt die Antwort (und räumt abgelaufene Kennungen des Kundenbereichs ab). */
@@ -153,7 +158,7 @@ public class AnfrageKennungen {
 
     /** Die Antwort-Form der Ablehnung an den Routen, die eine Kennung annehmen. */
     @RestControllerAdvice(assignableTypes = {SiteController.class, StandortController.class,
-            DeviceController.class, GeraetesucheController.class})
+            DeviceController.class, GeraetesucheController.class, AdminController.class})
     public static class AbgelehntHandler {
         @ExceptionHandler(Abgelehnt.class)
         public ResponseEntity<Map<String, Object>> abgelehnt(Abgelehnt e) {

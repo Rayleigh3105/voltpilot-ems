@@ -53,6 +53,13 @@ let eintraege: BenutzerEintrag[] = [
     zuweisungen: [{ id: 'z-kf', rolle: 'kundenadministrator', standort_id: null, standort_name: null,
       gueltig_ab: iso(-120 * 86_400_000), gueltig_bis: null }] },
 ];
+// Punkt 4 (Befund vp-kundenakte-fremde-personen): `?verwaist=1` legt eine Person OHNE Konto dazu
+// (Spiegel da, Keycloak-Konto weg - eine halb gescheiterte Entfernung). Ihr einziger Weg ist
+// „Löschen"; der Server räumt dann den Eintrag ab (deleteUser-Stummel unten filtert `eintraege`).
+if (new URLSearchParams(window.location.search).get('verwaist') === '1') {
+  eintraege = [...eintraege, { sub: 'verwaist-1', anzeigename: 'Verwaiste Person',
+    email: 'verwaist@example.de', zustand: 'aktiv', zuweisungen: [] }];
+}
 
 let naechsteId = 1;
 function neueSub(): string { return 'sub-' + naechsteId++; }

@@ -134,7 +134,22 @@ public class AdminBenutzerService {
     private KeycloakUser aendern(UUID tenant, String sub, KontoZustand zustand) {
         return imKundenbereich(tenant, akteur -> {
             aenderung.sperreKundenbereich();
-            KeycloakUser konto = keycloak.getUser(sub);
+            KeycloakUser konto;
+            try {
+                konto = keycloak.getUser(sub);
+            } catch (KeycloakAdminClient.KeycloakAdminException e) {
+                // Eine Person OHNE Konto (Spiegel da, Keycloak-Konto weg - etwa ein Entfernen, dessen
+                // Keycloak-Hälfte gelang und dessen Datenbank-Hälfte zurückrollte): das Entfernen räumt
+                // dann den Spiegel ab, mit demselben Protokoll - sonst stünde die Person für immer ohne
+                // Handlung in der Kundenakte. Der Spiegel ist RLS-beschränkt, die Mandantenprüfung ist
+                // also sein Vorhandensein in DIESEM Kundenbereich.
+                if (e.status() != 404 || zustand != KontoZustand.ENTFERNT
+                        || zugriffe.spiegel(sub).isEmpty()) {
+                    throw e;
+                }
+                aenderung.kontoBeenden(sub, true, akteur);
+                return null;
+            }
             if (!tenant.toString().equals(konto.tenantId())) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found in this tenant");
             }

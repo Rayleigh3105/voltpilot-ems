@@ -127,3 +127,33 @@ test('Neues Startpasswort über das Zeilenmenü (N6)', async ({ page }) => {
   await keinUeberlauf(page);
   expect(fehler).toEqual([]);
 });
+
+/**
+ * Punkt 4 (Befund vp-kundenakte-fremde-personen): eine Person OHNE Konto (nur UEMS-Eintrag,
+ * eine halb gescheiterte Entfernung) hatte vorher GAR keine Handlung und stand für immer in der
+ * Akte. Jetzt trägt sie ein Menü mit „Löschen" - mit demselben Bestätigungsdialog, der ehrlich
+ * sagt, dass es kein Konto mehr gibt.
+ */
+for (const breite of [DESKTOP, PHONE]) {
+  test(`Person ohne Konto hat „Löschen" und verschwindet nach dem Bestätigen · ${breite}px`, async ({ page }) => {
+    const fehler = fehlerAufzeichnen(page);
+    await page.setViewportSize({ width: breite, height: breite === PHONE ? 844 : 900 });
+    await page.goto('/e2e/admin-personen.html?verwaist=1');
+    await page.waitForSelector('.vp-kundenakte');
+
+    await expect(page.getByText('Verwaiste Person')).toBeVisible();
+    await page.getByRole('button', { name: 'Aktionen für Verwaiste Person' }).click();
+    // Nur Löschen: Bearbeiten/Startpasswort/Deaktivieren brauchen das Konto, das es nicht mehr gibt.
+    await expect(page.getByRole('menuitem')).toHaveCount(1);
+    await page.getByRole('menuitem', { name: 'Löschen' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Person löschen?' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('ein Konto dazu gibt es nicht mehr');
+    await dialog.getByRole('button', { name: 'Person löschen' }).click();
+    await expect(page.getByText('Verwaiste Person')).toHaveCount(0);
+
+    await keinUeberlauf(page);
+    expect(fehler).toEqual([]);
+  });
+}

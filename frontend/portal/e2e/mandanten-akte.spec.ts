@@ -60,3 +60,50 @@ test('Kundenakte am Rechner (1440 px): Anlagen und Boxen/Vertrag bleiben offene 
   await expect(page.getByText('Werk Nord')).toBeVisible();
   await keinUeberlauf(page);
 });
+
+/**
+ * Punkt 7 (Befund vp-kundenakte-fremde-personen, Zusatz des Captains: „Ich find vom Kunden lösen
+ * nicht"): „Vom Kunden lösen …" steht sichtbar AN jeder Box der Karte „Anlagen und Boxen" - derselbe
+ * Dialog wie in der Geräteakte. Eine nie gemeldete Box ist lösbar (Anlass, Bestätigen, danach weg);
+ * eine gemeldete erklärt ruhig, warum nicht - nie ein toter Knopf.
+ */
+for (const breite of [DESKTOP, PHONE]) {
+  test(`„Vom Kunden lösen" an der Box der Kundenakte: lösbar löst, gemeldet erklärt · ${breite}px`, async ({ page }) => {
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    await page.setViewportSize({ width: breite, height: breite === PHONE ? 844 : 900 });
+    await page.goto('/e2e/mandanten-akte.html');
+    await page.waitForSelector('.vp-kundenakte');
+    if (breite === PHONE) {
+      await page.locator('details', { hasText: 'Anlagen und Boxen' }).locator('summary').click();
+    }
+
+    // Beide Boxen von Werk Nord tragen die sichtbare Handlung; Halle Süd (keine Box) keine.
+    const aktionen = page.getByRole('button', { name: 'Vom Kunden lösen …' });
+    await expect(aktionen).toHaveCount(2);
+
+    // Die GEMELDETE Box (Badge ohne Link): der Dialog erklärt, warum sie nicht lösbar ist -
+    // kein Anlass-Formular, der einzige Knopf ist „Verstanden".
+    await aktionen.first().click();
+    const dialog = page.getByRole('dialog', { name: 'Vom Kunden lösen' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('Hat Daten gespeichert');
+    await expect(dialog).toContainText('Der Kunde entfernt die Box selbst');
+    await expect(dialog.getByLabel('Anlass')).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Verstanden' }).click();
+    await expect(dialog).toBeHidden();
+
+    // Die NIE gemeldete Box: Anlass wählen, bestätigen - danach ist sie aus der Akte verschwunden.
+    await aktionen.nth(1).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('Hat sich nie gemeldet');
+    await dialog.getByLabel('Anlass').click();
+    await page.getByRole('option', { name: 'Doppelt verbunden' }).click();
+    await dialog.getByRole('button', { name: 'Vom Kunden lösen', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Vom Kunden lösen …' })).toHaveCount(1);
+
+    await keinUeberlauf(page);
+    expect(fehler).toEqual([]);
+  });
+}

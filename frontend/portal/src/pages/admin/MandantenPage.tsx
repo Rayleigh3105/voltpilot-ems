@@ -1,5 +1,5 @@
 import { UnterstuetzungAdmin } from './UnterstuetzungAdmin';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -12,7 +12,7 @@ import { StartpasswortAnzeige } from '../../components/StartpasswortAnzeige';
 import { AufklapperKarte } from '../../components/AufklapperKarte';
 import { benutzerApi, benutzerFehler, KUNDENROLLEN, unternehmensrolle, type BenutzerAnlage, type BenutzerEintrag } from '../../benutzer';
 import { ROLLE_BESCHREIBUNG } from '../../components/BenutzerEinladen';
-import { ApiError, api, type SelbstauskunftKundenbereichBeendet, type Site } from '../../api';
+import { ApiError, api, neueAnfrageKennung, type SelbstauskunftKundenbereichBeendet, type Site } from '../../api';
 import {
   anlagenBoxenZeilen,
   datumDe,
@@ -35,6 +35,7 @@ import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
 import { DangerZone } from '../../components/DangerZone';
 import { EmptyState, ErrorState, TableSkeleton, TextSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
+import { BoxLoesenDialog } from './BoxLoesenDialog';
 import { EditUserDrawer, ResetPasswordDialog } from './UserDrawers';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { RowMenu } from '../../components/RowMenu';
@@ -312,6 +313,7 @@ function KundenlisteSeite({
             <tbody>
               {neuOffen && (
                 <NeuerKundeZeile
+                  tenants={tenants}
                   onAbbrechen={() => setNeuOffen(false)}
                   onAngelegt={(t) => {
                     setNeuOffen(false);
@@ -366,11 +368,20 @@ function KundenlisteSeite({
   );
 }
 
-/** Die Eingabezeile „Neuer Kunde" - inline in der Liste statt eines Fensters (E1 = A). */
+/**
+ * Die Eingabezeile „Neuer Kunde" - inline in der Liste statt eines Fensters (E1 = A).
+ *
+ * Doppelter Kunde (Befund vp-kundenakte-fremde-personen, Punkt 5): je Formular EINE Anfrage-Kennung
+ * (B3) - ein Doppelklick oder das Wiederholen nach einem Netzfehler legt nie zweimal an. Ein Name,
+ * den es schon gibt, warnt vor dem Anlegen (Namen sind bewusst nicht eindeutig - zwei Privatkunden
+ * dürfen gleich heißen - aber ein Versehen soll sich nicht wie in der Live-Liste verdoppeln).
+ */
 function NeuerKundeZeile({
+  tenants,
   onAbbrechen,
   onAngelegt,
 }: {
+  tenants: Tenant[];
   onAbbrechen: () => void;
   onAngelegt: (t: Tenant) => void;
 }) {
@@ -378,13 +389,21 @@ function NeuerKundeZeile({
   const [segment, setSegment] = useState('CI');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [kennung] = useState(() => neueAnfrageKennung());
+  const laeuft = useRef(false);
+
+  const gleicherName = useMemo(() => {
+    const n = name.trim().toLowerCase();
+    return n !== '' && tenants.some((t) => t.name.trim().toLowerCase() === n);
+  }, [name, tenants]);
 
   async function anlegen() {
-    if (!name.trim()) return;
+    if (!name.trim() || laeuft.current) return;
+    laeuft.current = true;
     setBusy(true);
     setError(null);
     try {
-      const t = await adminApi.createTenant({ name: name.trim(), segment });
+      const t = await adminApi.createTenant({ name: name.trim(), segment }, kennung);
       onAngelegt(t);
     } catch (e) {
       setError(
@@ -393,6 +412,7 @@ function NeuerKundeZeile({
           : 'Der Kunde konnte nicht angelegt werden. Bitte versuchen Sie es erneut.',
       );
     } finally {
+      laeuft.current = false;
       setBusy(false);
     }
   }
@@ -406,8 +426,16 @@ function NeuerKundeZeile({
           value={name}
           autoFocus
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-          onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter') void anlegen(); if (e.key === 'Escape') onAbbrechen(); }}
+          // Bei gleichem Namen legt nur der ausdrückliche Knopf „Trotzdem anlegen" an -
+          // ein blindes Enter soll die Warnung nicht überspringen.
+          onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' && !gleicherName) void anlegen(); if (e.key === 'Escape') onAbbrechen(); }}
         />
+        {gleicherName && (
+          <p className="vp-note" role="status" style={{ margin: 'var(--vp-space-2) 0 0' }}>
+            Einen Kunden mit diesem Namen gibt es schon. Zwei Kunden dürfen gleich heißen -
+            prüfen Sie aber, ob Sie nicht den vorhandenen meinen.
+          </p>
+        )}
       </td>
       <td colSpan={2}>
         <VpPicker
@@ -424,7 +452,7 @@ function NeuerKundeZeile({
       <td colSpan={2} style={{ textAlign: 'right' }}>
         <Button variant="ghost" size="sm" onClick={onAbbrechen} disabled={busy}>Abbrechen</Button>{' '}
         <Button variant="primary" size="sm" onClick={() => void anlegen()} disabled={busy || !name.trim()}>
-          {busy ? 'Wird angelegt…' : 'Anlegen'}
+          {busy ? 'Wird angelegt…' : gleicherName ? 'Trotzdem anlegen' : 'Anlegen'}
         </Button>
       </td>
       {error && (
@@ -462,8 +490,13 @@ function KundenaktePage({
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
   // N6: der Admin vergibt jetzt selbst ein neues Startpasswort (vorher nur der Kundenadministrator).
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null);
-  const [confirmUser, setConfirmUser] = useState<{ user: AdminUser; kind: 'disable' | 'delete' } | null>(null);
+  // `user` ist `null` für eine Person OHNE Konto (nur UEMS-Eintrag): ihr Löschen räumt den Eintrag
+  // über denselben Server-Weg ab (Spiegel + Protokoll), ein Konto gibt es nicht mehr zu entfernen.
+  const [confirmUser, setConfirmUser] = useState<{ user: AdminUser | null; sub: string; name: string; kind: 'disable' | 'delete' } | null>(null);
   const [siteDrawer, setSiteDrawer] = useState(false);
+  // Punkt 7 (Befund vp-kundenakte-fremde-personen): „Vom Kunden lösen" direkt aus der Karte
+  // „Anlagen und Boxen" - derselbe Dialog wie in der Geräteakte, der Befund kommt vom Server.
+  const [loesenBox, setLoesenBox] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -514,10 +547,12 @@ function KundenaktePage({
   /**
    * Der Löschweg der stillgelegten Benutzer-Seite, wörtlich übernommen - inkl.
    * der Selbst-Sperre des Servers (409: das eigene Konto ist nicht löschbar).
+   * `sub` statt `AdminUser`: auch eine Person OHNE Konto (nur UEMS-Eintrag,
+   * etwa nach einem halb gescheiterten Entfernen) ist darüber löschbar.
    */
-  async function remove(u: AdminUser) {
+  async function remove(sub: string) {
     try {
-      await adminApi.deleteUser(tenant.id, u.id);
+      await adminApi.deleteUser(tenant.id, sub);
       await reload();
     } catch (e) {
       setError(
@@ -762,19 +797,29 @@ function KundenaktePage({
                         <Badge variant={p.ton} dot>{p.zustandText}</Badge>
                       </td>
                       <td data-label="" data-zeile="aktion" style={{ textAlign: 'right' }}>
-                        {p.konto && (
+                        {p.konto ? (
                           <RowMenu
                             label={`Aktionen für ${p.konto.username}`}
                             items={[
                               { label: 'Bearbeiten', icon: 'pencil', onClick: () => setEditUser(p.konto!) },
                               { label: 'Neues Startpasswort', icon: 'refresh-cw', onClick: () => setResetPasswordUser(p.konto!) },
                               p.konto.enabled
-                                ? { label: 'Deaktivieren', icon: 'x', onClick: () => setConfirmUser({ user: p.konto!, kind: 'disable' }) }
+                                ? { label: 'Deaktivieren', icon: 'x', onClick: () => setConfirmUser({ user: p.konto!, sub: p.konto!.id, name: p.konto!.username, kind: 'disable' }) }
                                 : { label: 'Aktivieren', icon: 'check', onClick: () => enable(p.konto!) },
-                              { label: 'Löschen', icon: 'trash', danger: true, onClick: () => setConfirmUser({ user: p.konto!, kind: 'delete' }) },
+                              { label: 'Löschen', icon: 'trash', danger: true, onClick: () => setConfirmUser({ user: p.konto!, sub: p.konto!.id, name: p.konto!.username, kind: 'delete' }) },
                             ]}
                           />
-                        )}
+                        ) : p.eintrag ? (
+                          // Person OHNE Konto (nur UEMS-Eintrag, eine halb gescheiterte Entfernung):
+                          // vorher gab es hier GAR keine Handlung, der Eintrag stand für immer in der
+                          // Akte. Löschen räumt ihn mit Protokoll ab wie jede andere Personen-Aktion.
+                          <RowMenu
+                            label={`Aktionen für ${p.name}`}
+                            items={[
+                              { label: 'Löschen', icon: 'trash', danger: true, onClick: () => setConfirmUser({ user: null, sub: p.eintrag!.sub, name: p.name, kind: 'delete' }) },
+                            ]}
+                          />
+                        ) : null}
                       </td>
                     </tr>
                   ))}
@@ -820,24 +865,43 @@ function KundenaktePage({
                         <b>{z.siteName}</b>
                       </span>
                       {/* B4 = A: je Box „online"/„nie gemeldet" statt nur einer Summe; eine nie
-                          gemeldete Box führt in die Geräteakte ("Vom Kunden lösen" sitzt dort). */}
+                          gemeldete Box führt in die Geräteakte. Punkt 7 (Befund vp-kundenakte-
+                          fremde-personen): „Vom Kunden lösen …" steht sichtbar AN der Box - der
+                          Dialog holt den Befund vom Server und erklärt bei einer gemeldeten Box,
+                          warum sie nicht lösbar ist (nie ein toter Knopf). */}
                       {z.boxen.length > 1 ? (
                         <span className="vp-kundenakte-boxen">
                           {z.boxen.map((b) => (
-                            b.nieGemeldet ? (
-                              <a key={b.deviceId} href={geraeteAkteHash(b.externalRef)}
-                                className="vp-kundenakte-box-link" title={b.label}>
+                            <span key={b.deviceId} className="vp-kundenakte-box">
+                              {b.nieGemeldet ? (
+                                <a href={geraeteAkteHash(b.externalRef)}
+                                  className="vp-kundenakte-box-link" title={b.label}>
+                                  <Badge variant={b.ton} dot>{b.text}</Badge>
+                                </a>
+                              ) : (
                                 <Badge variant={b.ton} dot>{b.text}</Badge>
-                              </a>
-                            ) : (
-                              <Badge key={b.deviceId} variant={b.ton} dot>{b.text}</Badge>
-                            )
+                              )}
+                              <button type="button" className="vp-linklike"
+                                onClick={() => setLoesenBox(b.externalRef)}>
+                                Vom Kunden lösen …
+                              </button>
+                            </span>
                           ))}
                         </span>
-                      ) : z.boxen.length === 1 && z.boxen[0].nieGemeldet ? (
-                        <a href={geraeteAkteHash(z.boxen[0].externalRef)} className="vp-kundenakte-box-link">
-                          <Badge variant={z.boxen[0].ton} dot>{z.boxen[0].text}</Badge>
-                        </a>
+                      ) : z.boxen.length === 1 ? (
+                        <span className="vp-kundenakte-box">
+                          {z.boxen[0].nieGemeldet ? (
+                            <a href={geraeteAkteHash(z.boxen[0].externalRef)} className="vp-kundenakte-box-link">
+                              <Badge variant={z.boxen[0].ton} dot>{z.boxen[0].text}</Badge>
+                            </a>
+                          ) : (
+                            <Badge variant={z.ton} dot>{z.unterzeile}</Badge>
+                          )}
+                          <button type="button" className="vp-linklike"
+                            onClick={() => setLoesenBox(z.boxen[0].externalRef)}>
+                            Vom Kunden lösen …
+                          </button>
+                        </span>
                       ) : (
                         <Badge variant={z.ton} dot>{z.unterzeile}</Badge>
                       )}
@@ -944,17 +1008,22 @@ function KundenaktePage({
         open={confirmUser != null}
         tone="danger"
         title={
-          confirmUser?.kind === 'delete' ? 'Benutzer löschen?' : 'Benutzer deaktivieren?'
+          confirmUser?.kind !== 'delete' ? 'Benutzer deaktivieren?'
+            : confirmUser.user ? 'Benutzer löschen?' : 'Person löschen?'
         }
         intro={
-          confirmUser?.kind === 'delete'
-            ? `Das Konto „${confirmUser?.user.username}" wird endgültig entfernt.`
-            : `„${confirmUser?.user.username}" kann sich danach nicht mehr anmelden.`
+          confirmUser?.kind !== 'delete'
+            ? `„${confirmUser?.name}" kann sich danach nicht mehr anmelden.`
+            : confirmUser.user
+              ? `Das Konto „${confirmUser.name}" wird endgültig entfernt.`
+              : `„${confirmUser.name}" wird aus diesem Kundenbereich entfernt - ein Konto dazu gibt es nicht mehr.`
         }
         consequences={
           confirmUser?.kind === 'delete'
             ? [
-                'Der Zugang wird dauerhaft gelöscht - das lässt sich nicht rückgängig machen.',
+                confirmUser.user
+                  ? 'Der Zugang wird dauerhaft gelöscht - das lässt sich nicht rückgängig machen.'
+                  : 'Der Eintrag und seine Rollen enden dauerhaft - das lässt sich nicht rückgängig machen.',
                 'Die Anlagen und Daten des Kunden bleiben unberührt.',
                 'Ein neuer Zugang für dieselbe Person ist jederzeit wieder anlegbar.',
               ]
@@ -964,13 +1033,13 @@ function KundenaktePage({
                 'Die Anlagen und Daten des Kunden bleiben unberührt.',
               ]
         }
-        confirmLabel={confirmUser?.kind === 'delete' ? 'Benutzer löschen' : 'Deaktivieren'}
+        confirmLabel={confirmUser?.kind === 'delete' ? (confirmUser.user ? 'Benutzer löschen' : 'Person löschen') : 'Deaktivieren'}
         onCancel={() => setConfirmUser(null)}
         onConfirm={() => {
           const c = confirmUser;
           setConfirmUser(null);
           if (!c) return;
-          void (c.kind === 'delete' ? remove(c.user) : disable(c.user));
+          void (c.kind === 'delete' ? remove(c.sub) : c.user ? disable(c.user) : undefined);
         }}
       />
       <CreateSiteDrawer
@@ -980,6 +1049,18 @@ function KundenaktePage({
         onCreated={() => void reload()}
         contextNote={`Wird für den Kunden ${tenant.name} (${tenant.id.slice(0, 8)}) angelegt. Der Kunde sieht sie sofort in seinem Portal.`}
       />
+      {loesenBox != null && (
+        <BoxLoesenDialog
+          open
+          boxRef={loesenBox}
+          jetzt={new Date()}
+          onClose={() => setLoesenBox(null)}
+          onGeloescht={() => {
+            setLoesenBox(null);
+            void reload();
+          }}
+        />
+      )}
     </>
   );
 }
