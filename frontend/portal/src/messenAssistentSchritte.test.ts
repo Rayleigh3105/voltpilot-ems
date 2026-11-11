@@ -105,11 +105,12 @@ describe('Schritt 3 — der Vorschlag für WAGO C-1 (Halle 2)', () => {
     const saetze = hauptzaehlerFehlt(l, ohneHaupt);
     expect([...saetze.keys()]).toEqual([schluessel(C1_IDS.k82), schluessel(C1_IDS.k83), schluessel(C1_IDS.k84)]);
     expect(saetze.get(schluessel(C1_IDS.k82))).toBe(
-      '„Zähler Energiekarte EK-2 (Spritzguss SG07–SG10)“ ist als Unterzähler von MS-0001 vorgeschlagen — übernehmen Sie diesen Hauptzähler mit.',
+      '„Zähler Energiekarte EK-2 (Spritzguss SG07–SG10)“ ist als Unterzähler von MS-0001 vorgeschlagen — übernehmen Sie diesen Zähler mit.',
     );
-    // Derselbe Wortlaut wie die Ablehnung des Servers (422 `bezug_fehlt`) — kein zweiter Satz.
+    // Derselbe Wortlaut wie die Ablehnung des Servers (422 `bezug_fehlt`) — kein zweiter Satz. Seit dem
+    // Zählerbaum (S4, #1832) "Zähler" statt "Hauptzähler" - der Bezug kann jetzt auch ein Unterzähler sein.
     expect(VORSCHLAG_DIENST).toContain('"“ ist als Unterzähler von " + b.messstelle()');
-    expect(VORSCHLAG_DIENST).toContain('" vorgeschlagen — übernehmen Sie diesen Hauptzähler mit."');
+    expect(VORSCHLAG_DIENST).toContain('" vorgeschlagen — übernehmen Sie diesen Zähler mit."');
 
     expect(hauptzaehlerFehlt(l, alleGewaehlt(l)).size).toBe(0);
     expect(hauptzaehlerFehlt(l, new Set()).size).toBe(0);

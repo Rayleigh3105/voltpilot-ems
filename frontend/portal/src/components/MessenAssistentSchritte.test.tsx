@@ -75,7 +75,7 @@ const schritt3 = () => screen.findByRole('heading', { name: 'Was bedeutet jeder 
 const schritt4 = () => screen.findByRole('heading', { name: 'Ist alles da?' });
 const vorschlaege = () => within(assistent()).getByRole('list', { name: 'Vorschläge für Werk Ahrenberg – Halle 2' });
 const SATZ_EK2 =
-  '„Zähler Energiekarte EK-2 (Spritzguss SG07–SG10)“ ist als Unterzähler von MS-0001 vorgeschlagen — übernehmen Sie diesen Hauptzähler mit.';
+  '„Zähler Energiekarte EK-2 (Spritzguss SG07–SG10)“ ist als Unterzähler von MS-0001 vorgeschlagen — übernehmen Sie diesen Zähler mit.';
 
 /** Öffnet den Assistenten so, wie ihn der Entwurf eines Abbruchs in Schritt `schritt` hinterließ. */
 function zeige(schritt: MessenSchritt) {
@@ -130,12 +130,12 @@ describe('MessenAssistent — Schritt 3 · Messstellen (WAGO C-1)', () => {
     await schritt3();
     fireEvent.click(await within(assistent()).findByRole('checkbox', { name: /MS-0001/ }));
     expect(within(assistent()).getByText('3 von 4 Vorschlägen gewählt')).toBeInTheDocument();
-    expect(within(assistent()).getAllByText(/übernehmen Sie diesen Hauptzähler mit\.$/)).toHaveLength(3);
+    expect(within(assistent()).getAllByText(/übernehmen Sie diesen Zähler mit\.$/)).toHaveLength(3);
     klick('Übernehmen');
     expect(await within(assistent()).findByRole('alert')).toHaveTextContent(SATZ_EK2);
     expect(uebernehmen).not.toHaveBeenCalled();
     fireEvent.click(within(assistent()).getByRole('checkbox', { name: /MS-0001/ }));
-    expect(within(assistent()).queryAllByText(/übernehmen Sie diesen Hauptzähler mit\.$/)).toHaveLength(0);
+    expect(within(assistent()).queryAllByText(/übernehmen Sie diesen Zähler mit\.$/)).toHaveLength(0);
   });
 
   it('ein geänderter Vorschlag (409) lädt die Liste neu und nennt den Satz des Servers', async () => {

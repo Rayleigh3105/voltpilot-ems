@@ -30,6 +30,9 @@ public final class ZaehlerbaumRegeln {
     /** Der Entitätstyp eines Unterzählers ({@code ComponentDefaults.TYPE_SUB_METER}) - ein Zähler, kein Netzanschluss. */
     public static final String TYP_UNTERZAEHLER = "sub-meter";
 
+    /** Die Rolle eines gemessenen Verbrauchers ({@code ComponentService.ROLE_CONSUMER}) - dasselbe Wort in beiden Vokabularen. */
+    public static final String ROLLE_VERBRAUCHER = "consumer";
+
     private ZaehlerbaumRegeln() {}
 
     /** Eine Komponente, wie sie heute im Baum hängt (für den Zyklus-Test). */
@@ -100,5 +103,32 @@ public final class ZaehlerbaumRegeln {
             }
         }
         return null;
+    }
+
+    /** Eine Komponente, wie viel {@link #effektiveEltern} über sie wissen muss. */
+    public record EffektiveElternEingabe(String haengtAn, String rolle) {}
+
+    /**
+     * Die EFFEKTIVE Eltern-Komponente (Vertrag §1, Vorgabe: „was nicht
+     * ausdrücklich woanders hängt, hängt an der Wurzel") - das gesetzte
+     * {@code haengtAn}, wenn es eins gibt; sonst, für einen gemessenen
+     * Verbraucher (Unterzähler oder ein Verbraucher mit eigener Messung), der
+     * Netzanschluss der Anlage. Gibt es keinen Netzanschluss, bleibt es bei
+     * {@code null} - die heutige flache Anzeige. Erzeugung und Speicher hängen
+     * nach R4 immer an der Wurzel selbst und werden hier nie umgehängt (ihre
+     * Rolle ist nie {@link #ROLLE_VERBRAUCHER}).
+     *
+     * <p>Schreibt NICHTS fest - keine Migration liest diese Methode; sie
+     * entscheidet nur, was eine Anzeige für eine Komponente OHNE eigene Zeile
+     * in {@code komponente_haengt_an} zeigen soll.
+     */
+    public static String effektiveEltern(EffektiveElternEingabe komponente, String netzanschlussId) {
+        if (komponente.haengtAn() != null) {
+            return komponente.haengtAn();
+        }
+        if (!ROLLE_VERBRAUCHER.equals(komponente.rolle())) {
+            return null;
+        }
+        return netzanschlussId;
     }
 }

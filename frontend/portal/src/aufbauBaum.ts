@@ -73,6 +73,7 @@ import { boxSeiteHash } from './nav';
 import { sanitizeSoc } from './plausible';
 import { wertAktuell } from './wertAktuell';
 import { boxLage, type GeraeteKarte, type KartenArt } from './zentraleListe';
+import { effektiveEltern } from './zaehlerbaum';
 
 /** Welche Größe ein Chip zeigt - bestimmt Symbol und Farbe, nie den Wert. */
 export type AufbauWertArt = 'pv' | 'speicher' | 'netz' | 'haus' | 'verbraucher' | 'laden';
@@ -233,6 +234,15 @@ export interface AufbauAnlage {
   wegeOhneBox: AufbauWeg[];
   /** Angelegte Geräte (ohne Funde); null = für diese Anlage noch nicht geladen. */
   geraeteZahl: number | null;
+  /**
+   * Zählerbaum-Konzept (E3 A): der Haus-Wert der Box am Netzanschluss - Bezug
+   * + Sonne − Speicher (`site.live.loadKw`, dieselbe Zahl wie der Anlagenkopf,
+   * nur ungerundet) -, für die Zeile „… kW im Haus"; null = nicht aktuell oder
+   * unbekannt (nur an der geöffneten Anlage gesetzt).
+   */
+  hausKw: { kw: number; sonneKw: number | null } | null;
+  /** Das Anwendungs-Preset (`site.profil`, UV-4 A) - wählt das Wort des Rests an der Wurzel (`restWort`). */
+  profil: string | null;
 }
 
 export interface AufbauWurzel {
@@ -287,6 +297,8 @@ export interface AufbauEingabe {
   anlagensteuerungen?: Readonly<
     Record<string, { liste: AnlagensteuerungListe | null; werte: Readonly<Record<string, AnlagensteuerungWerte>> } | undefined>
   >;
+  /** Das Anwendungs-Preset der geöffneten Anlage (`site.profil`, UV-4 A); null = unbekannt oder privat. */
+  profil?: string | null;
   now: number;
 }
 
@@ -638,6 +650,33 @@ export function aufbauGeraet(
   };
 }
 
+/**
+ * Zählerbaum-Konzept (Vertrag §1, Vorgabe): ein Unterzähler oder ein
+ * Verbraucher mit eigener Messung, der nicht ausdrücklich woanders hängt,
+ * hängt an der Wurzel (dem Netzanschluss der Anlage) - jede Bestandsanlage vor
+ * `komponente_haengt_an` zeigt denselben Baum wie eine, die ihn ausdrücklich
+ * gesetzt hat. Ruft den gemeinsamen Zwilling (`zaehlerbaum.ts`,
+ * `effektiveEltern`) statt die Vorgabe hier nachzubauen - derselbe Java-
+ * Zwilling gilt serverseitig. Gibt es keinen Netzanschluss in dieser Anlage,
+ * bleibt die Liste unverändert (die heutige flache Anzeige).
+ */
+function mitEffektiverHaengtAn(geraete: AufbauGeraet[]): AufbauGeraet[] {
+  const netzanschlussId =
+    geraete.flatMap((g) => g.karte.komponenten).find((c) => c.role === 'grid')?.entityId ?? null;
+  if (netzanschlussId == null) return geraete;
+  return geraete.map((g) => {
+    const komponenten = g.karte.komponenten.map((c) => ({
+      ...c,
+      haengtAn: effektiveEltern({ haengtAn: c.haengtAn, rolle: c.role }, netzanschlussId),
+    }));
+    return {
+      ...g,
+      karte: { ...g.karte, komponenten } as GeraeteKarte,
+      haengtAn: komponenten.find((c) => c.haengtAn != null)?.haengtAn ?? null,
+    };
+  });
+}
+
 /** Lädt die Säule, und mit welcher Leistung? null = kein Stecker gemeldet (unbekannt, nicht „frei"). */
 function ladungVon(c: ChargePoint): AufbauGeraet['ladung'] {
   const stecker = c.connectors ?? [];
@@ -929,9 +968,11 @@ function anlageKnoten(
   const alleBoxen = input.devices ?? [];
   const karten = aktuell ? input.karten : input.nachbarKarten?.[id] ?? null;
   const kontext = aktuell ? { localSetup: input.localSetup, charging: input.charging } : {};
-  const roh = (karten ?? [])
-    .filter((k) => k.art !== 'box')
-    .map((k) => aufbauGeraet(k, kontext));
+  const roh = mitEffektiverHaengtAn(
+    (karten ?? [])
+      .filter((k) => k.art !== 'box')
+      .map((k) => aufbauGeraet(k, kontext)),
+  );
 
   // Die Wege dieser Anlage — nur, wenn Geräte UND Verweise bekannt sind: sonst wäre jeder Weg ein geratener
   // „Anschluss ohne Gerät".
@@ -1056,7 +1097,23 @@ function anlageKnoten(
       karten == null
         ? null
         : geraete.filter((g) => g.art === 'geraet' || g.art === 'ladepunkt').length,
+    hausKw: aktuell ? hausKwVon(site, input.now) : null,
+    profil: aktuell ? (input.profil ?? null) : null,
   };
+}
+
+/**
+ * Zählerbaum-Konzept (E3 A): der Haus-Wert der Box - Bezug + Sonne − Speicher
+ * (`site.live.loadKw`), dieselbe Zeitbasis wie der Anlagenkopf
+ * (`siteLiveFresh`); null = keine Übersicht oder nicht mehr frisch - lieber
+ * keine Zeile als eine veraltete „im Haus"-Zahl.
+ */
+function hausKwVon(site: OverviewSite | null | undefined, now: number): AufbauAnlage['hausKw'] {
+  if (!site || !site.live || !siteLiveFresh(site, new Date(now))) return null;
+  const { loadKw, pvKw } = site.live;
+  if (typeof loadKw !== 'number' || !Number.isFinite(loadKw)) return null;
+  const sonneKw = typeof pvKw === 'number' && Number.isFinite(pvKw) && pvKw > 0 ? pvKw : null;
+  return { kw: loadKw, sonneKw };
 }
 
 /** Der ganze Baum: die geöffnete Anlage zuerst, dann ihre Nachbarn am Standort. */

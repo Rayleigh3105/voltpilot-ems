@@ -796,7 +796,7 @@ for (const breite of BREITEN) {
 
       // Hauptzähler-Regel: ohne MS-0001 geht keiner seiner Unterzähler.
       await karten.nth(0).getByRole('checkbox').uncheck();
-      await expect(page.getByText(/übernehmen Sie diesen Hauptzähler mit\.$/)).toHaveCount(3);
+      await expect(page.getByText(/übernehmen Sie diesen Zähler mit\.$/)).toHaveCount(3);
       await messeUndFotografiere(page, breite, 'schritt3-regel');
       await page.getByRole('button', { name: 'Übernehmen', exact: true }).click();
       await expect(page.getByRole('alert')).toContainText('ist als Unterzähler von MS-0001 vorgeschlagen');

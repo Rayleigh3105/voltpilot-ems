@@ -16,6 +16,9 @@ export const ROLLE_NETZ = 'grid-meter';
 /** Der Entitätstyp eines Unterzählers - ein Zähler, kein Netzanschluss. */
 export const TYP_UNTERZAEHLER = 'sub-meter';
 
+/** Die Rolle eines gemessenen Verbrauchers (`ComponentService.ROLE_CONSUMER` / Portals `ComponentRole`) - in beiden Vokabularen dasselbe Wort. */
+export const ROLLE_VERBRAUCHER = 'consumer';
+
 /** Eine Komponente, wie sie heute im Baum hängt (für den Zyklus-Test). */
 export interface Zuordnung {
   komponenteId: string;
@@ -89,4 +92,34 @@ export function haengtAnPruefen(
     cur = haengtAnVon(baum, cur);
   }
   return GUELTIG;
+}
+
+/** Eine Komponente, wie viel `effektiveEltern` über sie wissen muss. */
+export interface EffektiveElternEingabe {
+  /** Das gespeicherte `haengtAn`, oder `null` = keine ausdrückliche Zuordnung. */
+  haengtAn: string | null;
+  /** Ihre Rolle (`'consumer'`, `'grid'`/`'grid-meter'`, `'pv'`, `'storage'`, …). */
+  rolle: string | null;
+}
+
+/**
+ * Die EFFEKTIVE Eltern-Komponente (Vertrag §1, Vorgabe: „was nicht ausdrücklich
+ * woanders hängt, hängt an der Wurzel") - das gesetzte `haengtAn`, wenn es
+ * eins gibt; sonst, für einen gemessenen Verbraucher (Unterzähler oder ein
+ * Verbraucher mit eigener Messung), der Netzanschluss der Anlage. Gibt es
+ * keinen Netzanschluss, bleibt es bei `null` - die heutige flache Anzeige.
+ * Erzeugung und Speicher hängen nach R4 immer an der Wurzel selbst und werden
+ * hier nie umgehängt (ihre Rolle ist nie `ROLLE_VERBRAUCHER`).
+ *
+ * Schreibt NICHTS fest - keine Migration liest diese Funktion; sie entscheidet
+ * nur, was eine Anzeige für eine Komponente OHNE eigene Zeile in
+ * `komponente_haengt_an` zeigen soll.
+ */
+export function effektiveEltern(
+  komponente: EffektiveElternEingabe,
+  netzanschlussId: string | null,
+): string | null {
+  if (komponente.haengtAn != null) return komponente.haengtAn;
+  if (komponente.rolle !== ROLLE_VERBRAUCHER) return null;
+  return netzanschlussId;
 }

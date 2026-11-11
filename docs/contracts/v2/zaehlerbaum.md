@@ -18,6 +18,17 @@ Gespeichert wird die Zuordnung am GERÄT im Aufbau (`komponente_haengt_an`, tage
 mit Messen übernimmt derselbe Schreibweg die elektrische Stellung der gebundenen Messstelle
 (§4).
 
+Die Vorgabe selbst schreibt keine Zeile: eine Komponente ohne eigene Zeile in
+`komponente_haengt_an` bekommt keine Migration, die `haengt_an` auf den Netzanschluss setzt. Jede
+Anzeige, die den Baum zeigt, liest stattdessen die EFFEKTIVE Eltern-Komponente -
+`ZaehlerbaumRegeln.effektiveEltern` (Java) / `effektiveEltern` (`zaehlerbaum.ts`), gegen dieselben
+Vektoren (`cases_effektive_eltern` in `zaehlerbaum-vectors.json`): das gesetzte `haengtAn`, wenn es
+eins gibt; sonst, für einen gemessenen Verbraucher (Rolle `consumer` - Unterzähler oder ein
+Verbraucher mit eigener Messung), der Netzanschluss der Anlage; gibt es keinen, bleibt es bei
+`null` (die heutige flache Anzeige). Erzeugung und Speicher sind von dieser Vorgabe nie betroffen
+(R4). Wer eine Anzeige um den Baum erweitert, ruft diese Funktion statt die Vorgabe ein zweites Mal
+nachzubauen.
+
 ## 2. Die Regeln (R1-R6)
 
 1. **R1 Jede Kilowattstunde genau einmal.** Ein Kind steckt im Wert seines Elternknotens. Ein

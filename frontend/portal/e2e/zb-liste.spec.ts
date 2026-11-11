@@ -5,10 +5,18 @@ import { join } from 'node:path';
 /**
  * Zählerbaum-Konzept (E1-E5 = A, 10.11.2026), Option A „Baum in der Liste":
  * die Bühne `e2e/zb-liste.html` zeigt den vom Captain gemeldeten Fall -
- * Netzanschluss 8,1 kW Bezug, UV Halle 7,7 kW, UV Keller 0,1 kW. `?kompressor=1`
- * fügt einen Kompressor (3,2 kW) HINTER UV Halle ein und beweist R1: er steht
- * eine Ebene tiefer, die Gruppe „Verbrauch" zählt ihn nicht ein zweites Mal
- * (2 Geräte, 7,8 kW - nicht 3 Geräte, 11,0 kW wie vor dem Zählerbaum-Konzept).
+ * Netzanschluss 8,1 kW Bezug, UV Halle 7,7 kW, UV Keller 0,1 kW - OHNE ein
+ * einziges gesetztes `haengtAn` (jede Bestandsanlage vor `komponente_haengt_an`).
+ * Die Vorgabe (Vertrag §1: „was nicht ausdrücklich woanders hängt, hängt an
+ * der Wurzel") hängt beide Unterzähler darum an den Netzanschluss, auch ohne
+ * eine einzige Zeile in `komponente_haengt_an` - das war der Captain-Fund:
+ * vor dieser Vorgabe blieben sie flach unter „Verbrauch".
+ *
+ * `?kompressor=1` fügt zusätzlich einen Kompressor (3,2 kW) HINTER UV Halle
+ * ein (R1): er steht eine Ebene tiefer als UV Halle, zwei unter dem
+ * Netzanschluss. Mit nur einer verbleibenden Gerätegruppe (alles hängt am
+ * Netzanschluss) steht kein Gruppenkopf mehr da - „Netz" und „Verbrauch"
+ * waren zwei Köpfe nur, solange ein Teil der Geräte nicht im Baum stand.
  *
  * Je Breite nur die passende Maschine: unter 720 px mobiles WebKit, 1440
  * Desktop-Chromium. Kein Querlauf, keine Elemente über den Rand, keine
@@ -80,38 +88,97 @@ for (const breite of BREITEN) {
       test.skip(!passend, 'je Breite nur die passende Maschine');
     });
 
-    test('ohne Kompressor: Bestand bleibt zeichengleich zu heute', async ({ page }) => {
+    test('ohne gesetztes haengtAn: die Vorgabe hängt beide Unterzähler trotzdem an den Netzanschluss', async ({ page }) => {
       const fehler = konsole(page);
       const tabelle = await oeffne(page, breite);
-      expect(await lesen(tabelle)).toEqual([
-        '[Netz, 1 Gerät]',
-        'Netzanschluss',
-        `[Verbrauch, 2 Geräte, zusammen 7,8${NBSP}kW]`,
-        'UV Halle',
-        'UV Keller',
-      ]);
-      await expect(tabelle.locator('[data-aufbau-geraet="src-netzanschluss"] .vp-auf-t-wert')).toHaveText(`8,1${NBSP}kW Bezug`);
+      // Kein Gruppenkopf mehr - nur noch EINE Gruppe (alles hängt am Netzanschluss), Köpfe stehen erst ab zwei.
+      expect(await lesen(tabelle)).toEqual(['Netzanschluss', 'UV Halle', 'UV Keller']);
+      const wertZelle = tabelle.locator('[data-aufbau-geraet="src-netzanschluss"] .vp-auf-t-wert');
+      // E3 A: eigener Messwert („8,1 kW Bezug") und darunter klein „im Haus" - ohne Sonne (pvKw 0) ohne Zusatz.
+      await expect(wertZelle.locator('> span').first()).toHaveText(`8,1${NBSP}kW Bezug`);
+      await expect(wertZelle.locator('.vp-auf-t-im-haus')).toHaveText(`8,1${NBSP}kW im Haus`);
+      // Rest je Knoten (§3.1, Board-Beispiel privat): übriger Haushalt = 8,1 − 7,7 − 0,1 = 0,3.
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"]')).toContainText('übriger Haushalt');
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"] .vp-auf-t-wert')).toHaveText(`0,3${NBSP}kW`);
+      const geraete = await geraeteMitEbene(tabelle);
+      const netz = geraete.find((g) => g.name === 'Netzanschluss');
+      const halle = geraete.find((g) => g.name === 'UV Halle');
+      const keller = geraete.find((g) => g.name === 'UV Keller');
+      expect(halle?.ebene).toBe((netz?.ebene ?? -1) + 1);
+      expect(keller?.ebene).toBe((netz?.ebene ?? -1) + 1);
       await ohneQuerlauf(page, breite);
       await foto(page, tabelle, `ohne-kompressor-${breite}`);
       expect(fehler).toEqual([]);
     });
 
-    test('mit Kompressor hinter UV Halle: eine Ebene tiefer, Gruppe zählt ihn nicht doppelt (R1)', async ({ page }) => {
+    test('ohne Netzanschluss-Zähler: keine Wurzel zum Anhängen, die Unterzähler bleiben flach (Vertrag §1)', async ({ page }) => {
       const fehler = konsole(page);
-      const tabelle = await oeffne(page, breite, '?kompressor=1');
-      expect(await lesen(tabelle)).toEqual([
-        '[Netz, 1 Gerät]',
-        'Netzanschluss',
-        // Genau 2 Geräte, 7,8 kW - der Kompressor steckt schon in UV Halles 7,7 kW.
-        `[Verbrauch, 2 Geräte, zusammen 7,8${NBSP}kW]`,
-        'UV Halle',
-        'Kompressor',
-        'UV Keller',
-      ]);
+      const tabelle = await oeffne(page, breite, '?ohneNetz=1');
+      expect(await lesen(tabelle)).toEqual(['UV Halle', 'UV Keller']);
       const geraete = await geraeteMitEbene(tabelle);
       const halle = geraete.find((g) => g.name === 'UV Halle');
+      const keller = geraete.find((g) => g.name === 'UV Keller');
+      expect(keller?.ebene).toBe(halle?.ebene ?? -1);
+      await ohneQuerlauf(page, breite);
+      await foto(page, tabelle, `ohne-netzanschluss-${breite}`);
+      expect(fehler).toEqual([]);
+    });
+
+    test('mit Erzeugung (Lage des Captains, ASP Automation GmbH): Erzeugung bleibt unberührt, Netz hängt wie immer (R4)', async ({ page }) => {
+      const fehler = konsole(page);
+      const tabelle = await oeffne(page, breite, '?pv=1');
+      expect(await lesen(tabelle)).toEqual([
+        `[Erzeugung, 4 Geräte, zusammen 0,0${NBSP}kW]`,
+        'Wechselrichter 1',
+        'Wechselrichter 2',
+        'Wechselrichter 3',
+        'Wechselrichter 4',
+        '[Netz, 1 Gerät]',
+        'Netzanschluss',
+        'UV Halle',
+        'UV Keller',
+      ]);
+      // R4: Erzeugung hängt immer an der Wurzel selbst - vier Wechselrichter bleiben eine eigene Gruppe, nie
+      // Kinder des Netzanschlusses, auch ohne gesetztes haengtAn.
+      const geraete = await geraeteMitEbene(tabelle);
+      const netz = geraete.find((g) => g.name === 'Netzanschluss');
+      const halle = geraete.find((g) => g.name === 'UV Halle');
+      const wr1 = geraete.find((g) => g.name === 'Wechselrichter 1');
+      expect(wr1?.ebene).toBe(netz?.ebene);
+      expect(halle?.ebene).toBe((netz?.ebene ?? -1) + 1);
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"] .vp-auf-t-wert')).toHaveText(`0,3${NBSP}kW`);
+      await ohneQuerlauf(page, breite);
+      await foto(page, tabelle, `mit-pv-${breite}`);
+      expect(fehler).toEqual([]);
+    });
+
+    test('mit Kompressor hinter UV Halle: zwei Ebenen unter dem Netzanschluss, beliebig tief (R1)', async ({ page }) => {
+      const fehler = konsole(page);
+      const tabelle = await oeffne(page, breite, '?kompressor=1');
+      expect(await lesen(tabelle)).toEqual(['Netzanschluss', 'UV Halle', 'Kompressor', 'UV Keller']);
+      const geraete = await geraeteMitEbene(tabelle);
+      const netz = geraete.find((g) => g.name === 'Netzanschluss');
+      const halle = geraete.find((g) => g.name === 'UV Halle');
       const kompressor = geraete.find((g) => g.name === 'Kompressor');
+      const keller = geraete.find((g) => g.name === 'UV Keller');
+      expect(halle?.ebene).toBe((netz?.ebene ?? -1) + 1);
       expect(kompressor?.ebene).toBe((halle?.ebene ?? -1) + 1);
+      expect(keller?.ebene).toBe((netz?.ebene ?? -1) + 1);
+      // Rest je Knoten (R1, nur direkte Kinder): UV Halle ohne eigenen Zähler = 7,7 − 3,2 = 4,5; der Rest an der
+      // Wurzel bleibt 0,3 - der Kompressor steckt schon in UV Halles 7,7 kW, kein zweiter Abzug am Haus.
+      await expect(tabelle.locator('[data-aufbau-rest="src-uv-halle::rest"]')).toContainText('ohne eigenen Zähler');
+      await expect(tabelle.locator('[data-aufbau-rest="src-uv-halle::rest"] .vp-auf-t-wert')).toHaveText(`4,5${NBSP}kW`);
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"] .vp-auf-t-wert')).toHaveText(`0,3${NBSP}kW`);
+      if (breite < 720) {
+        // Telefon: `ebeneKlasse` deckelt die Rail-Klasse auf is-e3, aber der Name muss trotzdem sichtbar tiefer
+        // stehen als sein Elternknoten - eine feste statt einer ebenenabhängigen Einrückung (Aufbau.css) ließ den
+        // Kompressor sonst auf derselben Stufe wie UV Halle stehen.
+        const linksVon = async (name: string) => {
+          const box = await tabelle.locator('[data-aufbau-geraet]', { hasText: name }).first().locator('.vp-auf-t-titel').boundingBox();
+          return box!.x;
+        };
+        expect(await linksVon('Kompressor')).toBeGreaterThan(await linksVon('UV Halle'));
+      }
       await ohneQuerlauf(page, breite);
       await foto(page, tabelle, `mit-kompressor-${breite}`);
       expect(fehler).toEqual([]);
@@ -120,14 +187,8 @@ for (const breite of BREITEN) {
     test('Umhängen durchklicken: UV Keller hinter UV Halle, Zahlen danach geprüft', async ({ page }) => {
       const fehler = konsole(page);
       const tabelle = await oeffne(page, breite);
-      // Vorher: UV Halle und UV Keller beide direkt an der Wurzel, 2 Geräte, 7,8 kW.
-      expect(await lesen(tabelle)).toEqual([
-        '[Netz, 1 Gerät]',
-        'Netzanschluss',
-        `[Verbrauch, 2 Geräte, zusammen 7,8${NBSP}kW]`,
-        'UV Halle',
-        'UV Keller',
-      ]);
+      // Vorher: UV Halle und UV Keller beide (ohne gesetztes haengtAn) an der Wurzel, kein Gruppenkopf.
+      expect(await lesen(tabelle)).toEqual(['Netzanschluss', 'UV Halle', 'UV Keller']);
 
       await tabelle.locator('[data-aufbau-geraet="src-uv-keller"]').getByRole('button', { name: /Weitere Aktionen/ }).click();
       await page.getByRole('menuitem', { name: /Woanders anhängen/ }).click();
@@ -138,19 +199,18 @@ for (const breite of BREITEN) {
       await dialog.getByRole('button', { name: 'Übernehmen' }).click();
       await expect(dialog).toBeHidden();
 
-      // Nachher: UV Keller hängt hinter UV Halle - genau wie der Kompressor-Fall, nur über den Dialog erreicht.
-      // Nur EIN Gerät zählt am Verbrauch (UV Halle) - keine Summe ab einem Gerät (dieselbe Regel wie überall).
-      expect(await lesen(tabelle)).toEqual([
-        '[Netz, 1 Gerät]',
-        'Netzanschluss',
-        '[Verbrauch, 1 Gerät]',
-        'UV Halle',
-        'UV Keller',
-      ]);
+      // Nachher: UV Keller hängt ausdrücklich hinter UV Halle - genau wie der Kompressor-Fall, nur über den Dialog erreicht.
+      expect(await lesen(tabelle)).toEqual(['Netzanschluss', 'UV Halle', 'UV Keller']);
       const geraete = await geraeteMitEbene(tabelle);
+      const netz = geraete.find((g) => g.name === 'Netzanschluss');
       const halle = geraete.find((g) => g.name === 'UV Halle');
       const keller = geraete.find((g) => g.name === 'UV Keller');
+      expect(halle?.ebene).toBe((netz?.ebene ?? -1) + 1);
       expect(keller?.ebene).toBe((halle?.ebene ?? -1) + 1);
+      // Rest je Knoten, nach dem Umhängen: UV Halle ohne eigenen Zähler = 7,7 − 0,1 = 7,6; die Wurzel bleibt
+      // 0,4 (8,1 − 7,7, nur UV Halle zählt jetzt noch direkt an der Wurzel).
+      await expect(tabelle.locator('[data-aufbau-rest="src-uv-halle::rest"] .vp-auf-t-wert')).toHaveText(`7,6${NBSP}kW`);
+      await expect(tabelle.locator('[data-aufbau-rest="src-netzanschluss::rest"] .vp-auf-t-wert')).toHaveText(`0,4${NBSP}kW`);
 
       await ohneQuerlauf(page, breite);
       await foto(page, tabelle, `umhaengen-${breite}`);
