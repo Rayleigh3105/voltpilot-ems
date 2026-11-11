@@ -41,8 +41,11 @@ class LogformatTest {
 
     private static final String PROBE = "com.voltpilot.logformat.Probe";
     private static final Logger log = LoggerFactory.getLogger(PROBE);
+    // `XXX` (ISO 8601) schreibt den Offset Null nicht als "+00:00", sondern als "Z" - auf einem Runner
+    // mit UTC-Default-Zeitzone (anders als lokal meist Europe/Berlin) griffe sonst `find()` nie, und
+    // die ganze Textzeile bliebe leer, ohne dass sich am Log-Format wirklich etwas geändert hätte.
     private static final Pattern ZEITSTEMPEL =
-            Pattern.compile("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}[+-]\\d{2}:\\d{2} ");
+            Pattern.compile("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}(?:[+-]\\d{2}:\\d{2}|Z) ");
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String SCHALTER = "voltpilot.logging.format";
     private static final String VORGANG = "0a1b2c3d4e5f60718293a4b5c6d7e8f9";

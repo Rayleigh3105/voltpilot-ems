@@ -48,18 +48,24 @@ jobs:
   test:
     name: Test (${{ matrix.name }})
     runs-on: ubuntu-latest-mo
-    # Gleiche Obergrenze wie im Deploy-Gate (Lauf 2587 sass >2.5 h auf einer
-    # livelocked Suite fest, bevor es diese Grenze gab) - ein nachts
-    # haengender Job darf den einzigen Runner nicht bis zum Morgen blockieren.
-    timeout-minutes: 45
+    # Je Matrixzeile eigene Obergrenze (`matrix.timeout`, Default 45 - dieselbe
+    # Grenze wie im Deploy-Gate, Lauf 2587 sass sonst >2.5 h auf einer
+    # livelocked Suite fest): `api` allein braucht mehr, siehe unten.
+    timeout-minutes: ${{ matrix.timeout || 45 }}
 
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Lief am 09./10./11.11.2026 (Lauf 554/557/560) dreimal in Folge
+          # exakt in die 45-min-Grenze (45:0x min, abgebrochen, nicht fertig
+          # geworden) - die Suite ist seit dem letzten gemessenen Deploy-Gate-
+          # Lauf (09.08.2026, ~20 min) deutlich gewachsen. 90 min mit Reserve,
+          # gemessen am eigenen workflow_dispatch-Lauf dieses PRs (PR-Text).
           - name: api
             type: jvm
             path: services/api
+            timeout: 90
           - name: ingest
             type: jvm
             path: services/ingest
@@ -118,6 +124,20 @@ jobs:
           java-version: "21"
           cache: maven
 
+      # MeasurementEdgeProvenanceTest startet den echten Go-Zwilling aus
+      # edge-app/core (go.mod: go 1.24.0) als Unterprozess - ohne das Werkzeug
+      # auf dem Runner scheitert der Prozessstart selbst (nicht der Test:
+      # "Cannot run program go ... No such file or directory"), seit der
+      # naechtliche Lauf zum ersten Mal wirklich `mvn test` fuer ingest
+      # ausfuehrt (vorher lief hier nie ein Go-Setup, deploy.yaml bringt es
+      # nur fuer sein eigenes ota-release-Werkzeug mit).
+      - name: Set up Go
+        if: matrix.name == 'ingest'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
       - name: Maven test
         if: matrix.type == 'jvm'
         working-directory: ${{ matrix.path }}
@@ -137,6 +157,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install ${{ matrix.pip_install }}
           pytest ${{ matrix.pytest_args }}
+
+      # Diagnose fuer optimization (Lauf 554/557/560: die vier `docker run`-
+      # Wegwerf-Postgres-Fixtures - test_kundenbereich_db.py,
+      # test_ladepunkt_db.py, test_morgen_ueberschuss_db.py,
+      # test_vorsprung_budget_db.py - erhalten nach dem 90-s-Bereitschafts-
+      # Fenster durchgaengig "Connection refused", obwohl `docker run` selbst
+      # ohne Fehler zurueckkehrt und derselbe Aufbau in forecasts
+      # test_kundenbereich_db.py auf demselben Runner gruen ist. `optimization`
+      # laeuft alphabetisch als vorletzte Matrixzeile, nach api/forecast/
+      # frontend/ingest/market-data/marketing-adapter auf demselben Runner
+      # (sequentiell, keine zwei Matrixzeilen gleichzeitig - Lauf 554 zeigt
+      # lueckenlos aneinanderschliessende Start-/Endzeiten) - Verdacht:
+      # Plattenplatz/Docker-Zustand nach den vorherigen, teils Testcontainers-
+      # schweren Zeilen. Gibt nur aus, loest nichts auf - Befund in den naechsten
+      # PR, sobald die Ausgabe vorliegt.
+      - name: "Diagnose (optimization): Docker-/Plattenzustand"
+        if: always() && matrix.name == 'optimization'
+        run: |
+          echo "--- df -h ---"
+          df -h
+          echo "--- docker system df ---"
+          docker system df || true
+          echo "--- docker ps -a ---"
+          docker ps -a || true
+          echo "--- docker images ---"
+          docker images || true
 
       # ---- Frontend (typecheck + Vitest + Build, siehe docs/development.md) -
       - name: Set up Node
