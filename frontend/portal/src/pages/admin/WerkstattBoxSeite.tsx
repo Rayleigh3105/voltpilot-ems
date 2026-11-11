@@ -16,7 +16,7 @@ import { Aufklapper } from '../../components/Aufklapper';
 import { useIsPhone } from '../../useIsPhone';
 import { adminApi } from '../../admin/adminApi';
 import { boxVerbindung, zeitpunkt, type FernwartungBox, type FernwartungUebersicht } from '../../adminFernwartung';
-import { ApiError, ladeWerkstattGehaeuse } from '../../api';
+import { ApiError, ladeWerkstattGehaeuse, ladeWerkstattZubehoer } from '../../api';
 import { Befehl } from '../../components/FernwartungSsh';
 import { mb } from '../../geraeteUpdates';
 import { fernwartungHash } from '../../nav';
@@ -32,6 +32,7 @@ import {
   gehaeuseStand,
   GEHAEUSE_WARTET_SATZ,
   kundenStand,
+  WERKSTATT_ZUBEHOER,
   type EinrichtungZeile,
 } from '../../werkstattEinrichtung';
 import type { GehaeuseAuftragAnsicht } from '../../werkstattBank';
@@ -62,6 +63,31 @@ function GehaeuseDownloadKnopf({ edgeRef }: { edgeRef: string }) {
         {laedt ? 'Lädt …' : 'Box-Druckdatei (3MF) laden'}
       </Button>
       {fehler && <p role="alert" className="vp-alert vp-alert-err" data-testid="ws-gehaeuse-fehler">{fehler}</p>}
+    </div>
+  );
+}
+
+/** Der Download-Knopf eines Zubehörteils (Hutschienen-Clip, Bohrlehre): ohne Kennung, für jede Box gleich. */
+function ZubehoerDownloadKnopf({ teil, name }: { teil: string; name: string }) {
+  const [laedt, setLaedt] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  async function laden() {
+    setLaedt(true);
+    setFehler(null);
+    try {
+      await ladeWerkstattZubehoer(teil);
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : 'Die Zubehör-Druckdatei konnte nicht geladen werden.');
+    } finally {
+      setLaedt(false);
+    }
+  }
+  return (
+    <div data-testid={`ws-zubehoer-knopf-${teil}`}>
+      <Button variant="outline" size="sm" onClick={() => void laden()} disabled={laedt}>
+        {laedt ? 'Lädt …' : `${name} (3MF) laden`}
+      </Button>
+      {fehler && <p role="alert" className="vp-alert vp-alert-err" data-testid={`ws-zubehoer-fehler-${teil}`}>{fehler}</p>}
     </div>
   );
 }
@@ -308,6 +334,24 @@ export function WerkstattBoxSeite({
                 <p className="vp-muted vp-ws-fuss" data-testid="ws-gehaeuse-hinweis">{GEHAEUSE_WARTET_SATZ}</p>
               );
             })()}
+          </Card>
+        )}
+
+        {mango && (
+          <Card padding="md" radius="lg" className="vp-ws-karte vp-ws-breit" data-testid="ws-zubehoer">
+            <h3 className="vp-ws-kartenkopf">Zubehör (3MF)</h3>
+            <ul className="vp-ws-dateien">
+              {WERKSTATT_ZUBEHOER.map((z) => (
+                <li key={z.teil} className="vp-ws-datei" data-testid={`ws-zubehoer-${z.teil}`}>
+                  <div className="vp-ws-spalte">
+                    <strong>{z.name}</strong>
+                    <span>{z.zweck}</span>
+                    <span className="vp-muted">{z.druckhinweis} {z.stand}</span>
+                  </div>
+                  <ZubehoerDownloadKnopf teil={z.teil} name={z.name} />
+                </li>
+              ))}
+            </ul>
           </Card>
         )}
 

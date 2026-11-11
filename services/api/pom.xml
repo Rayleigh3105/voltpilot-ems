@@ -262,6 +262,18 @@
                     <include>measurement-budget-vectors.json</include>
                 </includes>
             </resource>
+            <!-- vp-werkstatt-zubehoer-download: Hutschienen-Clip und Bohrlehre, ohne Kennung,
+                 bleiben die eingecheckten Dateien aus edge-light/gehaeuse - keine Kopie, die
+                 auseinanderlaufen könnte (Dockerfile kopiert sie in die Bau-Stufe,
+                 WerkstattZubehoerDateiTest erzwingt Byte- und Prüfsummen-Gleichheit). -->
+            <resource>
+                <directory>${project.basedir}/../../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck</directory>
+                <targetPath>werkstatt/zubehoer</targetPath>
+                <includes>
+                    <include>hutschienen-clip.3mf</include>
+                    <include>bohrlehre.3mf</include>
+                </includes>
+            </resource>
         </resources>
         <!-- Load the canonical dev realm (single source of truth) onto the test
              classpath so the Keycloak Testcontainer imports the same realm the

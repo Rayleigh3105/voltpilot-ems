@@ -8581,6 +8581,33 @@ export async function ladeWerkstattGehaeuse(edgeRef: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(href), 0);
 }
 
+/**
+ * vp-werkstatt-zubehoer-download: ein Zubehörteil (Hutschienen-Clip, Bohrlehre) herunterladen -
+ * ohne Kennung, für jede Box gleich - derselbe Download-Weg wie {@link ladeWerkstattGehaeuse}.
+ */
+export async function ladeWerkstattZubehoer(teil: string): Promise<void> {
+  const token = await freshToken();
+  const path = `/api/v1/admin/werkstatt/zubehoer/${encodeURIComponent(teil)}`;
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...bereichKopf(path),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined);
+    throw new ApiError(res.status, (body as { message?: string } | undefined)?.message
+      ?? 'Die Zubehör-Druckdatei konnte nicht geladen werden.', body);
+  }
+  const name = /filename=([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]?.trim() ?? `${teil}.3mf`;
+  const href = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
 export interface RegisterInput {
   name: string;
   email: string;

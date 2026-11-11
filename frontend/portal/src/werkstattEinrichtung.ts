@@ -51,6 +51,41 @@ export function gehaeuseFehlerSatz(grund: string | null): string {
   return grund ? `Die Druckdatei konnte nicht erstellt werden: ${grund}` : 'Die Druckdatei konnte nicht erstellt werden.';
 }
 
+/**
+ * Ein Zubehörteil zum Download (vp-werkstatt-zubehoer-download): ohne Kennung, für jede Box
+ * gleich - anders als die Box-Druckdatei des Gehäuses. `teil` ist zugleich das Pfadsegment der
+ * Download-Route (`GET /api/v1/admin/werkstatt/zubehoer/{teil}`); `dateiname` der erwartete Name
+ * im `Content-Disposition`-Kopf der Antwort. Texte aus `edge-light/gehaeuse/glinet-gl-mt300n-v2/
+ * docs/montage.md` und `druck/README.md` - der ehrliche Stand ist nicht erfunden.
+ */
+export interface ZubehoerTeil {
+  teil: 'hutschienen-clip' | 'bohrlehre';
+  dateiname: string;
+  name: string;
+  zweck: string;
+  druckhinweis: string;
+  stand: string;
+}
+
+export const WERKSTATT_ZUBEHOER: readonly ZubehoerTeil[] = [
+  {
+    teil: 'hutschienen-clip',
+    dateiname: 'hutschienen-clip.3mf',
+    name: 'Hutschienen-Clip',
+    zweck: 'Clip für die Hutschiene TH 35, von hinten mit zwei Schrauben 2,5 × 10 mm angeschraubt.',
+    druckhinweis: 'Einfarbig; Material wie in der Druckanleitung.',
+    stand: 'Noch nie gedruckt; Federkraft und Halt an der Schiene sind unerprobt.',
+  },
+  {
+    teil: 'bohrlehre',
+    dateiname: 'bohrlehre.3mf',
+    name: 'Bohrlehre',
+    zweck: 'Bohrlehre für die zwei Wandschrauben.',
+    druckhinweis: 'Einfarbig; Material wie in der Druckanleitung.',
+    stand: 'Noch nie gedruckt; die Wandmontage ist nicht einzeln bestätigt.',
+  },
+];
+
 export interface EinrichtungZeile {
   /** Stabiler Schlüssel, auch für Tests. */
   id: string;

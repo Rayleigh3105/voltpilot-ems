@@ -91,6 +91,11 @@ for (const breite of [1440, 390, 375]) {
     await expect(detail.getByTestId('ws-qr')).toBeVisible();
     await expect(detail.getByTestId('ws-gehaeuse')).toContainText('Box-Druckdatei (3MF) laden');
     await expect(detail.getByTestId('ws-gehaeuse-stand')).toContainText('gehaeuse-edge-5t2dcy6.3mf');
+    await expect(detail.getByTestId('ws-zubehoer')).toContainText('Hutschienen-Clip');
+    await expect(detail.getByTestId('ws-zubehoer')).toContainText('TH 35');
+    await expect(detail.getByTestId('ws-zubehoer')).toContainText('Bohrlehre');
+    await expect(detail.getByTestId('ws-zubehoer')).toContainText('Wandschrauben');
+    await expect(detail.getByTestId('ws-zubehoer')).toContainText('Noch nie gedruckt');
     await passt(page);
     await page.screenshot({ path: test.info().outputPath(`werkstatt-box-${breite}.png`), fullPage: true });
 
@@ -226,6 +231,43 @@ test('Einrichtungs-Detailseite: der 3MF-Download holt GENAU die Box-Druckdatei �
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(createHash('sha256').update(inhalt).digest('hex'));
   expect(fehler).toEqual([]);
 });
+
+/**
+ * vp-werkstatt-zubehoer-download: der Download liefert genau die eingecheckten Dateien aus
+ * edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/ - geprüft gegen die echten Bytes auf der
+ * Festplatte (Prüfsumme), nicht gegen einen erfundenen Platzhalter.
+ */
+for (const z of [
+  { teil: 'hutschienen-clip', dateiname: 'hutschienen-clip.3mf', name: 'Hutschienen-Clip' },
+  { teil: 'bohrlehre', dateiname: 'bohrlehre.3mf', name: 'Bohrlehre' },
+]) {
+  test(`Einrichtungs-Detailseite: ${z.teil} lädt GENAU die eingecheckte Druckdatei`, async ({ page }) => {
+    const fehler = wache(page);
+    const inhalt = readFileSync(new URL(
+      `../../../edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/${z.dateiname}`, import.meta.url));
+    await page.route(`**/api/v1/admin/werkstatt/zubehoer/${z.teil}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'model/3mf',
+        headers: {
+          'Content-Disposition': `attachment; filename=${z.dateiname}`,
+          'Access-Control-Expose-Headers': 'Content-Disposition',
+        },
+        body: inhalt,
+      });
+    });
+    await page.goto('/e2e/werkstatt.html#/werkstatt?box=edge-5t2dcy6');
+    const karte = page.getByTestId('ws-zubehoer');
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      karte.getByRole('button', { name: `${z.name} (3MF) laden` }).click(),
+    ]);
+    expect(download.suggestedFilename()).toBe(z.dateiname);
+    const bytes = readFileSync((await download.path())!);
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(createHash('sha256').update(inhalt).digest('hex'));
+    expect(fehler).toEqual([]);
+  });
+}
 
 test('Werkbank: „Nochmal versuchen“ bei bruecke_weg, dann „Der Dienst versucht es noch einmal“', async ({ page }) => {
   const fehler = wache(page);

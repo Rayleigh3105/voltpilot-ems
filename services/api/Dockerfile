@@ -12,6 +12,8 @@ COPY docs/contracts/v2/rechte-matrix.json /app/docs/contracts/v2/rechte-matrix.j
 COPY docs/contracts/v2/bewertung-vectors.json /app/docs/contracts/v2/bewertung-vectors.json
 COPY docs/contracts/v2/edge-capabilities.json /app/docs/contracts/v2/edge-capabilities.json
 COPY docs/contracts/v2/measurement-budget-vectors.json /app/docs/contracts/v2/measurement-budget-vectors.json
+# Werkstatt-Zubehör (vp-werkstatt-zubehoer-download): pom.xml legt diese Druckdateien ins Jar.
+COPY edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/hutschienen-clip.3mf edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/bohrlehre.3mf /app/edge-light/gehaeuse/glinet-gl-mt300n-v2/druck/
 RUN ./mvnw -B -q clean package -DskipTests
 
 # ---- run ----
