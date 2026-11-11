@@ -1847,8 +1847,9 @@ class AdminApiTest {
         assertThat(load.get("envDefault")).isEqualTo("load-persistence");
         assertThat(load.get("setByName")).isNull();
         assertThat(load.get("setAt")).isNull();
+        // S3+S5 (#1826): die Verbrauchs-Automatik bringt das dritte wählbare Lastmodell „load-profile".
         assertThat(load.get("selectable"))
-                .isEqualTo(List.of("load-persistence", "load-xgb"));
+                .isEqualTo(List.of("load-persistence", "load-xgb", "load-profile"));
         assertThat((List<?>) before.get("history")).isEmpty();
 
         // (2) Der Kunde kommt an die VORGABE nicht heran - weder lesend noch
