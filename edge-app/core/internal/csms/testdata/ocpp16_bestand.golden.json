@@ -6,7 +6,7 @@
       "b1",
       {
         "currentTime": "2026-10-01T12:00:00Z",
-        "interval": 300,
+        "interval": 30,
         "status": "Accepted"
       }
     ],
@@ -89,6 +89,7 @@
     "start_watermarks": {
       "BESTAND-16#1": {
         "at": "2026-10-01T12:00:00Z",
+        "station_at": "2026-10-01T12:00:00Z",
         "meter_start_wh": 1000,
         "tag_ref": "tagref_<pseudonym>"
       }

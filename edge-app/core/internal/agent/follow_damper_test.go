@@ -136,6 +136,7 @@ func runDeyeReplayPosture(t *testing.T, s replayScenario, damped, gridChargeAllo
 		a.currentPlan = &plan.Plan{
 			SlotMinutes: 15, ReceivedAt: s.start, GeneratedAt: s.start,
 			GridChargeAllowed: &gca, // false = EEG site: FK3 clamp + Netzladen-Sperre
+			Foerderweg:        plan.FoerderwegUngefoerdert, // MiSpeL MP-14: the bit decides
 			Slots: []plan.Slot{{
 				Start:                 s.start.Truncate(15 * time.Minute),
 				BatterySetpointKw:     kw,

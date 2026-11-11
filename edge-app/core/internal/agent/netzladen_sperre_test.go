@@ -37,7 +37,10 @@ func sperrePlan(now time.Time, kw float64, gridChargeAllowed *bool, slot plan.Sl
 	return &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
 		GridChargeAllowed: gridChargeAllowed,
-		Slots:             []plan.Slot{slot},
+		// MiSpeL MP-14: the route that leaves grid charging to the bit, so the
+		// bit alone decides here as before.
+		Foerderweg: plan.FoerderwegUngefoerdert,
+		Slots:      []plan.Slot{slot},
 	}
 }
 

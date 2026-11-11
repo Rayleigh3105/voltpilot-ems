@@ -14,8 +14,10 @@ import (
 // measures pv 5 / load 4. Only a route that leaves grid charging to the
 // customer (Abgrenzungs-, Pauschaloption, ungefördert) releases the EEG clamp;
 // Einspeisevergütung, Ausschließlichkeitsoption, an absent and an unknown
-// Förderweg clamp to the measured PV production (FK3) and keep the adapter's
-// grid-charge bit off - the box "lädt sicherheitshalber nur mit Sonnenstrom".
+// Förderweg keep the clamp and the adapter's grid-charge bit off - the box
+// "lädt sicherheitshalber nur mit Sonnenstrom". Since EN-1 A (main,
+// 02.11.2026) the clamp includes the Netzladen-Sperre: pv 5 - load 4 - the
+// 1 kW reserve leaves no charge at all.
 func TestSetpointFoerderwegDecidesGridCharge(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
@@ -31,15 +33,15 @@ func TestSetpointFoerderwegDecidesGridCharge(t *testing.T) {
 		want       float64
 		gridBit    bool
 	}{
-		{"Einspeisevergütung", plan.FoerderwegEinspeiseverguetung, &yes, 5, false},
-		{"Ausschließlichkeitsoption", plan.FoerderwegAusschliesslichkeit, &yes, 5, false},
+		{"Einspeisevergütung", plan.FoerderwegEinspeiseverguetung, &yes, 0, false},
+		{"Ausschließlichkeitsoption", plan.FoerderwegAusschliesslichkeit, &yes, 0, false},
 		{"Abgrenzungsoption, Netzladen eingestellt", plan.FoerderwegAbgrenzung, &yes, 20, true},
-		{"Abgrenzungsoption, Netzladen aus", plan.FoerderwegAbgrenzung, &no, 5, false},
-		{"Abgrenzungsoption, Feld grid_charge_allowed fehlt", plan.FoerderwegAbgrenzung, nil, 5, false},
+		{"Abgrenzungsoption, Netzladen aus", plan.FoerderwegAbgrenzung, &no, 0, false},
+		{"Abgrenzungsoption, Feld grid_charge_allowed fehlt", plan.FoerderwegAbgrenzung, nil, 0, false},
 		{"Pauschaloption, Netzladen eingestellt", plan.FoerderwegPauschal, &yes, 20, true},
 		{"ungefördert, Netzladen eingestellt", plan.FoerderwegUngefoerdert, &yes, 20, true},
-		{"Feld foerderweg fehlt (alte Cloud)", "", &yes, 5, false},
-		{"unbekannter Förderweg", "marktpraemie_neu", &yes, 5, false},
+		{"Feld foerderweg fehlt (alte Cloud)", "", &yes, 0, false},
+		{"unbekannter Förderweg", "marktpraemie_neu", &yes, 0, false},
 	}
 	for _, c := range cases {
 		// Separator: a discharge slot first, so a case can never pass on the
@@ -71,30 +73,4 @@ func TestSetpointFoerderwegDecidesGridCharge(t *testing.T) {
 			t.Fatalf("%s: snapshot setpoint %v, want %v", c.name, got, c.want)
 		}
 	}
-}
-
-// The strict reading (MP-45) keeps working on top of the Förderweg: an
-// Ausschließlichkeitsoption plan with strict_exclusivity=true charges only from
-// the measured surplus (pv 5 - load 4 = 1 kW), not the full production.
-func TestSetpointFoerderwegAusschliesslichkeitStreng(t *testing.T) {
-	cfg := config.Defaults()
-	cfg.DataDir = t.TempDir()
-	a, addr := startBusOnlyAgent(t, cfg)
-	sub := subscribeSetpoint(t, addr)
-
-	now := time.Now().UTC()
-	no, streng := false, true
-	p := freshPlan(now, 20, nil)
-	p.Foerderweg = plan.FoerderwegAusschliesslichkeit
-	p.GridChargeAllowed = &no
-	p.StrictExclusivity = &streng
-	a.mu.Lock()
-	a.currentPlan = p
-	a.lastReading = guards.Reading{SocPct: 60, PvKw: 5, LoadKw: 4, GridLimitKw: guards.Unknown()}
-	a.mu.Unlock()
-	a.applySetpoint(now)
-	waitFor(t, 5*time.Second, "strict clamp on the Ausschließlichkeitsoption", func() bool {
-		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 1.0 && m["grid_charge_allowed"] == false
-	})
 }

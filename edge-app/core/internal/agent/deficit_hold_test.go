@@ -42,7 +42,7 @@ func herzogauChargeSlot(start time.Time, kw float64, trim bool) *plan.Plan {
 	yes := true
 	return &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: start, GeneratedAt: start,
-		EffectiveFloorSocPct: &floor, GridChargeAllowed: &yes,
+		EffectiveFloorSocPct: &floor, GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert,
 		Slots: []plan.Slot{{
 			Start: start, BatterySetpointKw: kw, ChargeFromSurplusOnly: trim,
 		}},

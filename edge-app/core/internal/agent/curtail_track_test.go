@@ -25,7 +25,7 @@ func herzogauCurtailPlan(now time.Time, capKw float64) *plan.Plan {
 	yes, floor, cap := true, 5.0, capKw
 	return &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &floor,
 		Slots: []plan.Slot{{
 			Start: now, BatterySetpointKw: 30, PvLimitKw: &cap,
 		}},

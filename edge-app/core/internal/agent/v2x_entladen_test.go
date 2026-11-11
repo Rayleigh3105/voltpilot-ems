@@ -77,11 +77,11 @@ func TestV2XHaltAusDemHandeingriff(t *testing.T) {
 	if g := v2xHalt(rt, "WB-1", con, jetzt); g != "" {
 		t.Fatalf("ohne Eingriff: %q", g)
 	}
-	rt.boosts.grant("WB-1#1", 7, jetzt, time.Hour, true)
+	rt.boosts.grant("WB-1#1", 7, jetzt, time.Hour, true, false)
 	if g := v2xHalt(rt, "WB-1", con, jetzt); g != entladeschutz.GrundLademodusAus {
 		t.Fatalf("aus: %q", g)
 	}
-	rt.boosts.grant("WB-1#1", 7, jetzt, 0, false) // 0 = the cap (4 h), „nur für diese Ladung“
+	rt.boosts.grant("WB-1#1", 7, jetzt, 0, false, false) // 0 = the cap (4 h), „nur für diese Ladung“
 	if g := v2xHalt(rt, "WB-1", con, jetzt); g != entladeschutz.GrundLademodusSchnell {
 		t.Fatalf("schnell: %q", g)
 	}

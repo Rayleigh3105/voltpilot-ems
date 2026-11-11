@@ -431,7 +431,7 @@ func TestARunningSurplusStoreChargeSurvivesOneFailedReadback(t *testing.T) {
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: slot, GeneratedAt: slot,
-		EffectiveFloorSocPct: &floor, GridChargeAllowed: &yes,
+		EffectiveFloorSocPct: &floor, GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert,
 		Slots: []plan.Slot{{
 			Start: slot, BatterySetpointKw: -2.301, CoverLoadFromBattery: true,
 		}},

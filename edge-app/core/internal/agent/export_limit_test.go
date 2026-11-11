@@ -27,6 +27,7 @@ func exportPlan(now time.Time, kw float64, pvLimit *float64, exportLimit *float6
 	// first (netzladen_sperre_test.go, also under the box's own curtailment).
 	yes := true
 	p.GridChargeAllowed = &yes
+	p.Foerderweg = plan.FoerderwegUngefoerdert // MiSpeL MP-14: the route that leaves the bit to the customer
 	return p
 }
 

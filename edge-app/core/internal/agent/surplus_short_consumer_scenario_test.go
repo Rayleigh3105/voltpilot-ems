@@ -387,7 +387,7 @@ func runBench(t *testing.T, dev benchDevice, sc benchScenario) benchResult {
 		}
 		a.currentPlan = &plan.Plan{
 			SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-			EffectiveFloorSocPct: &floor, GridChargeAllowed: gca,
+			EffectiveFloorSocPct: &floor, GridChargeAllowed: gca, Foerderweg: plan.FoerderwegUngefoerdert,
 			Slots: []plan.Slot{{
 				Start: slot, BatterySetpointKw: sc.planKw,
 				ChargeFromSurplusOnly: sc.surplus, ChargeSurplusToBattery: sc.surplus,

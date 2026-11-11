@@ -260,7 +260,7 @@ var SampledDataLists = []string{
 // own selection - then the box says that the wallbox reports no power rather
 // than guessing one. The Node-RED measurement plan owns the key once it set
 // one (measurement_configuration.go); commissioning never overrides it.
-func (s *Server) configureSampledData(ctx context.Context, t *transport, chargerID string) {
+func (s *Server) configureSampledData(ctx context.Context, t profileLane, chargerID string) {
 	s.mu.Lock()
 	_, planned := s.measurementDesired.Values[KeyMeterValuesSampledData]
 	s.mu.Unlock()

@@ -188,8 +188,9 @@ func TestOCPP201ProfilesSetChangeAndClear(t *testing.T) {
 // TestOCPP201ConnectionLossDuringAProfile: the box goes silent while a 2.0.1
 // station holds a live profile. The station falls back to the TxDefault ON
 // ITS OWN once the 120-second fuse has run out; the box refuses to command
-// the station while it is gone and after it returns until it has been
-// commissioned on the new connection - the same guard as 1.6.
+// the station while it is gone. A reconnect without a reboot keeps the set-up
+// (W-07, the same rule as 1.6): the station still holds its safety profiles,
+// so the box commands it again at once - only a new boot voids it.
 func TestOCPP201ConnectionLossDuringAProfile(t *testing.T) {
 	const id = "WB-201-L"
 	s, endpoint := newServer201(t, t.TempDir(), nil, id)
@@ -226,20 +227,13 @@ func TestOCPP201ConnectionLossDuringAProfile(t *testing.T) {
 	clock.advance(-(csms.TxProfileDuration + time.Second))
 
 	// Back on a new connection (network loss, no reboot: the transaction
-	// runs on): no command before the safety profiles are re-installed on
-	// THIS connection.
+	// runs on): the set-up holds (W-07), the box commands the station again.
 	if err := st.Reconnect(endpoint); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "reconnected", func() bool { c, _ := charger(s, id); return c.Connected })
-	if err := s.ApplyLimit(ctx5(t), id, 1, tx, 9); err == nil {
-		t.Fatal("a reconnected 2.0.1 station was commanded before re-commissioning")
-	}
-	if err := s.Commission(ctx5(t), id, 22, 4.2, csms.DefaultMeterInterval); err != nil {
-		t.Fatal(err)
-	}
 	if err := s.ApplyLimit(ctx5(t), id, 1, tx, 6); err != nil || st.DrawKw(1) != 6 {
-		t.Fatalf("after re-commissioning: %v draw %.3f", err, st.DrawKw(1))
+		t.Fatalf("after a plain reconnect: %v draw %.3f", err, st.DrawKw(1))
 	}
 }
 

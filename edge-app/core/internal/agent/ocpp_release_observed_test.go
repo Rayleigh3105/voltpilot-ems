@@ -202,7 +202,7 @@ func TestTheReleaseCoverNeverWritesAnObservedBattery(t *testing.T) {
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &yes, EffectiveFloorSocPct: &eff, ReleaseMaxDischargeKw: &max,
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &eff, ReleaseMaxDischargeKw: &max,
 		Slots: []plan.Slot{{Start: now, BatterySetpointKw: 3, ReleaseFloorSocPct: &floor}},
 	}
 	a.lastReading = guards.Reading{SocPct: 80, PvKw: 6, LoadKw: 12, GridLimitKw: guards.Unknown()}

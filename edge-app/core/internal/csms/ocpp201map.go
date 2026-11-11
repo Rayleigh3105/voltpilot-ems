@@ -318,15 +318,26 @@ func registerWh(mvs []types.MeterValue) (int, bool) {
 }
 
 func (t *transport201) foldMeterValues(id string, evseID int, mvs []types.MeterValue, txID *int, now time.Time) {
+	// W-09 on this lane too: the message's newest station time anchors the
+	// station clock, and every sample moves onto the box clock - the session
+	// start (openSession) and every freshness rule downstream run on it.
+	var newest time.Time
+	for _, mv := range mvs {
+		if mv.Timestamp.Time.After(newest) {
+			newest = mv.Timestamp.Time
+		}
+	}
+	clock := newStationClock(newest, now)
 	for _, mv := range mvs {
 		samples := mapSamples201(mv.SampledValue)
-		t.srv.emitLiveSampledValues(samples, mv.Timestamp.Time, now)
+		at := clock.boxTime(mv.Timestamp.Time)
+		t.srv.emitLiveSampledValues(samples, at, now)
 		r := ParseMeterValues(samples)
 		if r.Dropped > 0 {
 			t.srv.log.Debug("Messwerte einer Ladesäule teilweise verworfen",
 				"charge_point_id", id, "evse", evseID, "dropped", r.Dropped)
 		}
-		t.srv.onMeterSample(id, evseID, r, mv.Timestamp.Time, now, txID)
+		t.srv.onMeterSample(id, evseID, r, at, now, txID)
 	}
 }
 
