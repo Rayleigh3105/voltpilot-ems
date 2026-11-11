@@ -136,6 +136,19 @@ export const WEG = {
   support: 'Support kontaktieren',
   zuLange: (gedruckt: string, anlage: string) =>
     `Seit 15 Minuten kein Lebenszeichen von der Box, die jetzt zur Anlage „${anlage}“ gehört. Schreiben Sie uns mit der Kennung ${gedruckt}, wir sehen nach.`,
+  /**
+   * Box verbinden S4 ("Andere Kennung", E4 = A): steht die falsche Kennung im Feld (Entscheid 5c-
+   * Fall vom 10.11.), gibt dieser Knopf die nie gemeldete Box frei und verbindet die richtige in
+   * einem Schritt. Entscheiden tut der Server (409 mit Gründen, nichts geändert, wenn die Box sich
+   * inzwischen doch gemeldet hat oder ihren Schlüssel abgeholt hat).
+   */
+  andereKennungFrage: 'Steht oben eine andere Kennung als erwartet?',
+  andereKennungKnopf: 'Andere Kennung',
+  andereKennungAbbrechen: 'Abbrechen',
+  andereKennungSenden: 'Jetzt verbinden',
+  andereKennungHinweis: 'Diese Kennung gibt die Box oben frei und verbindet die neue - wie beim ersten Verbinden.',
+  andereKennungGemeldetFehler:
+    'Diese Box hat sich inzwischen selbst gemeldet - sie lässt sich nicht mehr durch eine andere ersetzen.',
 } as const;
 
 /** M10 · Diese Box gehört schon zu Ihnen. */

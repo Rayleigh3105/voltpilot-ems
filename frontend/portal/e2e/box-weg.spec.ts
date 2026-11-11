@@ -10,6 +10,12 @@ import AxeBuilder from '@axe-core/playwright';
  */
 
 const REF = 'edge-k7m2xq3';
+const URSPRUNG_ID = '20000000-0000-4000-8000-0000000000a1';
+/** S4 ("Andere Kennung"): die richtige Box, die die falsche an der Station „Box startet" ersetzt. */
+const ANDERE_REF = 'edge-x9p4rq2';
+const NEUE_ID = '20000000-0000-4000-8000-0000000000a2';
+/** S4: passiert das Prüfzeichen (keine Fehlermeldung schon beim Tippen), aber der Server kennt sie nicht (422). */
+const TIPPFEHLER_REF = 'edge-q3w8ztg';
 const ANLAGE = {
   id: '10000000-0000-4000-8000-0000000000a1', name: 'Zuhause', biddingZone: 'DE-LU', latitude: 49.1159, longitude: 10.7155,
   plantKind: 'eigenverbrauch', anzulegenderWertCtKwh: null, tarifArt: 'ohne', tarifParamCtKwh: null, netzladenErlaubt: false, maxFeedInKw: null,
@@ -35,15 +41,19 @@ interface Cloud {
   devices: Record<string, unknown>[];
   standorte: unknown[];
   claim: 201 | 409;
-  claims: string[];
+  /** Jede Anfrage an /claim, mit ihrem Körper - S4 prüft darin `ersetzt`. */
+  claims: { externalRef: string; ersetzt?: string }[];
   createdAt: string | null;
   anmeldung: Anmeldung | null;
   lastSeenAt: string | null;
+  /** Die Box, die der Weg gerade verfolgt - ändert sich nach S4 ("Andere Kennung") auf die neue. */
+  id: string;
+  ref: string;
 }
 
 function box(cloud: Cloud) {
   return {
-    id: '20000000-0000-4000-8000-0000000000a1', siteId: ANLAGE.id, externalRef: REF, kind: 'edge', name: null, status: 'claimed',
+    id: cloud.id, siteId: ANLAGE.id, externalRef: cloud.ref, kind: 'edge', name: null, status: 'claimed',
     lastSeenAt: cloud.lastSeenAt, createdAt: cloud.createdAt, anmeldung: cloud.anmeldung,
   };
 }
@@ -90,11 +100,30 @@ async function verdrahte(page: Page, cloud: Cloud) {
     return json(r, sichtbar(cloud.sites));
   });
   await page.route('**/api/v1/devices', (r) => json(r, sichtbar(cloud.devices)));
-  await page.route('**/api/v1/devices/claim', (r) => {
-    const body = r.request().postDataJSON() as { externalRef: string };
-    cloud.claims.push(body.externalRef);
+  await page.route('**/api/v1/devices/claim', async (r) => {
+    const body = r.request().postDataJSON() as { externalRef: string; ersetzt?: string };
+    cloud.claims.push(body);
     if (cloud.claim === 409) return json(r, { message: 'taken' }, 409);
-    cloud.createdAt = new Date().toISOString();
+    // S4: eine Kennung, die das Prüfzeichen besteht, aber dem Server unbekannt ist (422) - die
+    // ersetzte Box bleibt unberührt, weil das Lösen erst NACH einem erfolgreichen Verbinden läuft.
+    if (body.ersetzt && body.externalRef === TIPPFEHLER_REF) {
+      return json(r, { message: 'unknown' }, 422);
+    }
+    // Über die Uhr der Seite (nicht die echte, `page.clock` kann längst vorgelaufen sein) - sonst
+    // stünde eine frisch verbundene Box fälschlich schon in der Prüf-Hilfe.
+    const jetzt = new Date(await page.evaluate(() => Date.now())).toISOString();
+    // S4 ("Andere Kennung"): löst die alte Box und verbindet die neue in einem Schritt - der Weg
+    // verfolgt danach eine andere Geräte-ID, ohne eigenen Herzschlag oder Anmeldung bisher.
+    if (body.ersetzt) {
+      cloud.id = NEUE_ID;
+      cloud.ref = body.externalRef;
+      cloud.createdAt = jetzt;
+      cloud.anmeldung = null;
+      cloud.lastSeenAt = null;
+      cloud.devices = [box(cloud)];
+      return json(r, box(cloud), 201);
+    }
+    cloud.createdAt = jetzt;
     cloud.devices = [box(cloud)];
     return json(r, box(cloud), 201);
   });
@@ -139,7 +168,10 @@ for (const breite of [390, 1440] as const) {
   const hoehe = breite < 720 ? 844 : 900;
 
   test(`Der Weg: alle Phasen und Umschaltpunkte - ${breite}px`, async ({ page }) => {
-    const cloud: Cloud = { sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null, anmeldung: null, lastSeenAt: null };
+    const cloud: Cloud = {
+      sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null, anmeldung: null, lastSeenAt: null,
+      id: URSPRUNG_ID, ref: REF,
+    };
     await verdrahte(page, cloud);
     await page.clock.install();
     await page.setViewportSize({ width: breite, height: hoehe });
@@ -196,8 +228,61 @@ for (const breite of [390, 1440] as const) {
     await ohneQuerlauf(page, breite, 'schritt3-ueberblick');
   });
 
+  test(`Der Weg: "Andere Kennung" (S4) tauscht eine nie gemeldete Box gegen die richtige - ${breite}px`, async ({ page }) => {
+    const cloud: Cloud = {
+      sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null, anmeldung: null, lastSeenAt: null,
+      id: URSPRUNG_ID, ref: REF,
+    };
+    await verdrahte(page, cloud);
+    await page.clock.install();
+    await page.setViewportSize({ width: breite, height: hoehe });
+    await bisZurBox(page);
+    await page.getByRole('button', { name: 'Box verbinden', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();
+
+    // Vor 5:00 (noch kein Problem): "Andere Kennung" erscheint nicht - der Fall ist noch zu früh.
+    await page.clock.runFor(2 * 60_000);
+    await expect(page.getByRole('button', { name: 'Andere Kennung' })).not.toBeVisible();
+
+    // 5:00 - Prüf-Hilfe, mit "Andere Kennung": falsche Kennung im Einrichtungslink (Fall vom 10.11.).
+    await page.clock.runFor(3 * 60_000);
+    await expect(page.getByRole('heading', { name: 'Wir hören noch nichts von Ihrer Box' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Andere Kennung' })).toBeVisible();
+    await ohneQuerlauf(page, breite, 'weg-andere-kennung-knopf');
+
+    await page.getByRole('button', { name: 'Andere Kennung' }).click();
+    await expect(page.getByText('Steht oben eine andere Kennung als erwartet?')).toBeVisible();
+    await ohneQuerlauf(page, breite, 'weg-andere-kennung-formular');
+
+    // Eine Kennung, die der Server nicht kennt (422): nichts geändert, das Formular bleibt offen
+    // mit einem Feldfehler - die ersetzte Box lebt unverändert weiter.
+    await page.getByRole('textbox', { name: 'Kennung' }).fill(TIPPFEHLER_REF);
+    await page.getByRole('button', { name: 'Jetzt verbinden' }).click();
+    await expect(page.getByText(/Diese Kennung kennen wir nicht/)).toBeVisible();
+    expect(cloud.devices[0]).toMatchObject({ id: URSPRUNG_ID, externalRef: REF });
+
+    // Die richtige Kennung: löst die alte Box und verbindet die neue in einem Schritt.
+    await page.getByRole('textbox', { name: 'Kennung' }).fill(ANDERE_REF);
+    await page.getByRole('button', { name: 'Jetzt verbinden' }).click();
+    await expect(page.getByRole('heading', { name: 'Ihre Box startet' })).toBeVisible();
+    expect(cloud.claims.at(-1)).toMatchObject({ externalRef: ANDERE_REF, ersetzt: URSPRUNG_ID });
+    expect(cloud.devices[0]).toMatchObject({ id: NEUE_ID, externalRef: ANDERE_REF });
+    await ohneQuerlauf(page, breite, 'weg-andere-kennung-erledigt');
+
+    // Der Weg verfolgt jetzt die neue Box bis zum Online-Zustand.
+    cloud.lastSeenAt = new Date(await page.evaluate(() => Date.now())).toISOString();
+    cloud.devices = [box(cloud)];
+    await page.clock.runFor(6000);
+    await expect(page.getByRole('heading', { name: 'Ihre Box ist online' })).toBeVisible();
+    await page.getByRole('button', { name: 'Weiter: Ihre Anlage' }).click();
+    await expect(page.getByRole('heading', { name: 'So geht es weiter' })).toBeVisible();
+  });
+
   test(`Der Weg: Prüf-Hilfe ohne laufende Animation bei reduzierter Bewegung - ${breite}px`, async ({ page }) => {
-    const cloud: Cloud = { sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null, anmeldung: null, lastSeenAt: null };
+    const cloud: Cloud = {
+      sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null, anmeldung: null, lastSeenAt: null,
+      id: URSPRUNG_ID, ref: REF,
+    };
     await verdrahte(page, cloud);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.clock.install();
@@ -212,7 +297,10 @@ for (const breite of [390, 1440] as const) {
 }
 
 test('Der Weg: axe-core ohne neue Funde (online und Prüf-Hilfe, 1440px)', async ({ page }) => {
-  const cloud: Cloud = { sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null, anmeldung: null, lastSeenAt: null };
+  const cloud: Cloud = {
+    sites: [], devices: [], standorte: [], claim: 201, claims: [], createdAt: null, anmeldung: null, lastSeenAt: null,
+    id: URSPRUNG_ID, ref: REF,
+  };
   await verdrahte(page, cloud);
   await page.clock.install();
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -224,6 +312,12 @@ test('Der Weg: axe-core ohne neue Funde (online und Prüf-Hilfe, 1440px)', async
   // bekannter Fund (`.vp-healthbadge`) steht schon in `e2e/a11y-scan.spec.ts` OFFEN.
   const pruefen = await new AxeBuilder({ page }).include('.vp-onboarding-step').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   expect(pruefen.violations, JSON.stringify(pruefen.violations, null, 2)).toEqual([]);
+
+  // S4 ("Andere Kennung"): auch das geöffnete Formular.
+  await page.getByRole('button', { name: 'Andere Kennung' }).click();
+  await expect(page.getByText('Steht oben eine andere Kennung als erwartet?')).toBeVisible();
+  const andereKennung = await new AxeBuilder({ page }).include('.vp-onboarding-step').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  expect(andereKennung.violations, JSON.stringify(andereKennung.violations, null, 2)).toEqual([]);
 
   cloud.lastSeenAt = new Date(await page.evaluate(() => Date.now())).toISOString();
   cloud.devices = [box(cloud)];

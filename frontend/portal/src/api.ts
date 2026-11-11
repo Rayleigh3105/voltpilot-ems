@@ -11087,11 +11087,16 @@ export const api = {
   siteDeletionPreview: (siteId: string) =>
     request<SiteDeletionPreview>(`/api/v1/sites/${siteId}/deletion-preview`),
   listDevices: () => request<SichtbareListe<Device>>('/api/v1/devices'),
-  /** `anfrageKennung`: ein Wiederholen nach verlorener Antwort bekommt die erste Antwort (Anlage-Flow a1, Paket 2). */
-  claimDevice: (siteId: string, externalRef: string, anfrageKennung?: string) =>
+  /**
+   * `anfrageKennung`: ein Wiederholen nach verlorener Antwort bekommt die erste Antwort (Anlage-Flow
+   * a1, Paket 2). `ersetzt`: Box verbinden S4 ("Andere Kennung", E4 = A) - die ID einer nie
+   * gemeldeten Box, die der Server in derselben Transaktion löst, bevor er diese Kennung verbindet
+   * (Vertrag Abschnitt 3.5); scheitert das Verbinden, bleibt sie unberührt.
+   */
+  claimDevice: (siteId: string, externalRef: string, anfrageKennung?: string, ersetzt?: string) =>
     request<Device>('/api/v1/devices/claim', {
       method: 'POST',
-      body: JSON.stringify({ siteId, externalRef }),
+      body: JSON.stringify(ersetzt ? { siteId, externalRef, ersetzt } : { siteId, externalRef }),
       ...mitKennung(anfrageKennung),
     }),
   boxTauschen: (newId: string, oldId: string) =>
