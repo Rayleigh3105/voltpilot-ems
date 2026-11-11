@@ -167,7 +167,11 @@ describe('AnlageSetup - F17: was die Anlagen-Daten wissen, fragt die Übernahme 
     expect(screen.queryByLabelText('MaStR-Nummer (optional)')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
     await waitFor(() => expect(adopt).toHaveBeenCalled());
-    expect(adopt.mock.calls[0][1]).toMatchObject({ sourceId: 'pv-1', entityType: 'producer', registryUnitId: 'SEE900000012345' });
+    // S0: die Anlagen-Nummer gehört der Anlage, nicht jedem übernommenen
+    // Erzeuger - sonst trägt bei mehreren Einheiten der falsche Wechselrichter
+    // eine fremde MaStR-Nummer (vp-mastr-mehrere-einheiten-konzept, S0).
+    expect(adopt.mock.calls[0][1]).toMatchObject({ sourceId: 'pv-1', entityType: 'producer' });
+    expect(adopt.mock.calls[0][1].registryUnitId).toBeUndefined();
     expect(adopt.mock.calls[0][1].capacityKwp).toBeUndefined();
   });
 

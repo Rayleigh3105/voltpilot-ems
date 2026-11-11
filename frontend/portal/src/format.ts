@@ -61,6 +61,29 @@ export function deviceKindLabel(kind: string): string {
   return map[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
+/**
+ * The 8 exact Hauptausrichtung bearings MaStR reports (MastrCatalog.java
+ * AZIMUTH_LABEL; `azimuthDeg` on the asset is always one of these when it
+ * came from the register). Any other degree value is a manual entry and has
+ * no compass word - showing it as degrees stays more honest than guessing
+ * the nearest direction.
+ */
+const COMPASS_LABEL: Record<number, string> = {
+  0: 'Nord',
+  45: 'Nord-Ost',
+  90: 'Ost',
+  135: 'Süd-Ost',
+  180: 'Süd',
+  225: 'Süd-West',
+  270: 'West',
+  315: 'Nord-West',
+};
+
+/** "Süd" for an exact register bearing, else null (not one of the 8 compass points). */
+export function compassLabel(deg: number): string | null {
+  return COMPASS_LABEL[deg] ?? null;
+}
+
 /** "52,5200° N · 13,4050° O" - or null when the site has no coordinates. */
 export function fmtCoords(lat: number | null | undefined, lon: number | null | undefined): string | null {
   if (lat == null || lon == null) return null;

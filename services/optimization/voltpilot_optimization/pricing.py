@@ -58,6 +58,7 @@ from voltpilot_optimization.config import (
     FEST_GRID_CHARGE_HURDLE_CT_PER_KWH,
     EegRateBand,
     SOLARSPITZENGESETZ_CUTOFF,
+    SOLARSPITZENGESETZ_KLEINANLAGE_KWP,
     default_supply_components_enabled,
     eeg_rate_schedule,
 )
@@ -476,7 +477,9 @@ def _feste_verguetung_values(
         )
         rate_eur_mwh = tariff.einspeiseverguetung_ct_kwh * CT_PER_KWH_TO_EUR_PER_MWH
         suspend_negative = _solarspitzengesetz_gilt(
-            tariff.commissioned_on, tariff.inbetriebnahme_ab_solarspitzengesetz
+            tariff.commissioned_on,
+            tariff.inbetriebnahme_ab_solarspitzengesetz,
+            tariff.pv_capacity_kwp,
         )
         return [
             0.0 if suspend_negative and price < 0 else rate_eur_mwh
@@ -529,7 +532,9 @@ def _feste_verguetung_values(
         )
         * CT_PER_KWH_TO_EUR_PER_MWH
     )
-    suspend_negative = tariff.commissioned_on >= SOLARSPITZENGESETZ_CUTOFF
+    suspend_negative = _solarspitzengesetz_gilt(
+        tariff.commissioned_on, None, tariff.pv_capacity_kwp
+    )
     return [
         price
         if is_expired
@@ -573,13 +578,20 @@ def feste_verguetung_ct_per_kwh(
 
 
 def _solarspitzengesetz_gilt(
-    commissioned_on: date | None, ab_solarspitzengesetz: bool | None
+    commissioned_on: date | None,
+    ab_solarspitzengesetz: bool | None,
+    pv_capacity_kwp: float | None,
 ) -> bool:
     """Whether §51a EEG (no remuneration in negative-price slots) applies: by
     the commissioning date when it is known - always, even over a stored
     answer - else by the customer's answer "in Betrieb ab dem 25.02.2025"
-    (``None`` = not given = no §51a). Twin of the api's
+    (``None`` = not given = no §51a). §51 Abs. 2 Nr. 1 EEG carves out plants
+    under ``SOLARSPITZENGESETZ_KLEINANLAGE_KWP`` until their smart meter year,
+    which VoltPilot does not track yet (N1): an unknown or sub-threshold
+    capacity never suspends. Twin of the api's
     ``SlotEconomics.solarspitzengesetzGilt``."""
+    if pv_capacity_kwp is None or pv_capacity_kwp < SOLARSPITZENGESETZ_KLEINANLAGE_KWP:
+        return False
     if commissioned_on is not None:
         return commissioned_on >= SOLARSPITZENGESETZ_CUTOFF
     return ab_solarspitzengesetz is True
