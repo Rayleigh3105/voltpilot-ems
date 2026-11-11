@@ -151,7 +151,9 @@ public class BilanzService {
             }
             BilanzDto.Hauptzaehler block = hauptzaehler(x, siteId, x.name() == null ? x.kennzeichen() : x.name(),
                     periode, von, bis, heute, stand, alleReste.get(x.id()), zone);
-            if (!block.abschnitte().isEmpty() || block.vorschlag() != null || block.restMessstelle() != null) {
+            // Der Block hängt an der PERIODE: ohne einen Tag mit Unterzählern (Abschnitt) gäbe es nur
+            // eine leere Hülle - der Vorschlag "Rest anlegen" allein trägt keinen Block.
+            if (!block.abschnitte().isEmpty() || block.restMessstelle() != null) {
                 unterverteilungen.add(block);
             }
         }
