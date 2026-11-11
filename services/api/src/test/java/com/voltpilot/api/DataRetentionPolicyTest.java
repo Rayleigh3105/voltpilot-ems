@@ -92,6 +92,13 @@ class DataRetentionPolicyTest {
                 .as("weather_forecast retention policy").isTrue();
         assertThat(hasJob("policy_retention", "schedule"))
                 .as("schedule retention policy").isTrue();
+        // forecast_weekly (S4, V20261111140000): RLS from day one (not
+        // compressed like forecast - a stale week-ahead outlook is cheap to
+        // drop), 14 days.
+        assertThat(hasJob("policy_retention", "forecast_weekly"))
+                .as("forecast_weekly retention policy").isTrue();
+        assertThat(hasRetentionOf("forecast_weekly", 14))
+                .as("forecast_weekly retention stays exactly 14 days").isTrue();
         assertThat(hasRetentionOf("schedule", 180))
                 .as("schedule retention stays exactly 180 days next to the compaction job").isTrue();
         // Since V20261104133000 the superseded runs of older slots are compacted
@@ -104,8 +111,10 @@ class DataRetentionPolicyTest {
         assertThat(compressionEnabled("weather_forecast"))
                 .as("weather_forecast NOT compressed").isFalse();
         assertThat(compressionEnabled("schedule")).as("schedule NOT compressed").isFalse();
+        assertThat(compressionEnabled("forecast_weekly")).as("forecast_weekly NOT compressed").isFalse();
         assertThat(hasJob("policy_compression", "weather_forecast")).isFalse();
         assertThat(hasJob("policy_compression", "schedule")).isFalse();
+        assertThat(hasJob("policy_compression", "forecast_weekly")).isFalse();
     }
 
     @Test

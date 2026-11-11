@@ -12,6 +12,8 @@ import com.voltpilot.api.optimizer.SchedulePricingService;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.DeviceSourceStatusRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
+import com.voltpilot.api.repo.ForecastRepository;
+import com.voltpilot.api.repo.ForecastWeeklyRepository;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.CockpitLayoutRepository;
 import com.voltpilot.api.repo.ControlStatusRepository;
@@ -33,7 +35,12 @@ import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.uems.StandortRepository;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
+import com.voltpilot.api.web.dto.ForecastDto;
 import com.voltpilot.api.web.dto.ForecastQualityDto;
+import com.voltpilot.api.web.dto.ForecastSeriesDto;
+import com.voltpilot.api.web.dto.ForecastValueDto;
+import com.voltpilot.api.web.dto.WeeklyOutlookDto;
+import com.voltpilot.api.web.dto.YesterdayExpectedDto;
 import com.voltpilot.api.web.dto.HistoryDto;
 import com.voltpilot.api.web.dto.PriceHistoryDto;
 import com.voltpilot.api.web.dto.PricePointDto;
@@ -52,6 +59,7 @@ import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -96,6 +104,10 @@ public class SiteController {
     /** Die Route der Anfrage-Kennung beim Anlegen (Tabelle {@code anfrage_kennung}). */
     static final String ROUTE_ANLEGEN = "POST /api/v1/sites";
     private static final int MAX_PRICE_POINTS = 1000;
+    /** S4's weekly outlook always uses the Tagestyp profile - never the site's
+     * own active-model choice (unregistered, N4: {@code load.py}'s
+     * {@code ProfileLoadForecaster.model_id}). */
+    private static final String WEEKLY_LOAD_MODEL = "load-profile";
 
     private final SiteRepository sites;
     private final Geltungsbereich geltungsbereich;
@@ -104,6 +116,8 @@ public class SiteController {
     private final TelemetryRepository telemetry;
     private final PriceRepository prices;
     private final WeatherRepository weather;
+    private final ForecastRepository forecastRepo;
+    private final ForecastWeeklyRepository forecastWeekly;
     private final ScheduleRepository schedules;
     private final HistoryService history;
     private final ForecastQualityRepository forecastQuality;
@@ -127,6 +141,8 @@ public class SiteController {
             TelemetryRepository telemetry,
             PriceRepository prices,
             WeatherRepository weather,
+            ForecastRepository forecastRepo,
+            ForecastWeeklyRepository forecastWeekly,
             ScheduleRepository schedules,
             HistoryService history,
             ForecastQualityRepository forecastQuality,
@@ -152,6 +168,8 @@ public class SiteController {
         this.telemetry = telemetry;
         this.prices = prices;
         this.weather = weather;
+        this.forecastRepo = forecastRepo;
+        this.forecastWeekly = forecastWeekly;
         this.schedules = schedules;
         this.history = history;
         this.forecastQuality = forecastQuality;
@@ -468,6 +486,64 @@ public class SiteController {
         WeatherForecastDto forecast = weather.latestForSite(siteId);
         // No run stored yet: return an empty (but well-formed) forecast, not 404.
         return forecast != null ? forecast : new WeatherForecastDto(null, List.of());
+    }
+
+    /**
+     * S1 ("der Lesepunkt", report vp-prognosen-konzept section 9): the site's
+     * PV/load forecast of its ACTIVE model (same precedence
+     * {@link #forecastQuality(UUID, int)} resolves) - makes the forecast
+     * available to a site that only measures, independent of whether it has
+     * a Fahrplan. {@code forecast} itself carries no RLS and cannot get one
+     * (see {@link ForecastRepository}); {@code geltungsbereich.requireSite}
+     * is the fence here, exactly like every other site-scoped route - a
+     * foreign site is a 404.
+     *
+     * <p>{@code yesterdayExpected} is the evening run (17:45 ± 15 min Europe/
+     * Berlin) of the PREVIOUS day, restricted to yesterday's own slots - what
+     * VoltPilot expected for yesterday, read back today. {@code weekly} is
+     * the S4 hourly outlook from {@code forecast_weekly} ("übermorgen"
+     * onward): ALWAYS the physical PV model and the Tagestyp load profile,
+     * never the site's own active-model choice - an outlook product, not
+     * shadow-mode forecasting.
+     */
+    @GetMapping("/{siteId}/forecast")
+    public ForecastDto forecast(@PathVariable UUID siteId) {
+        geltungsbereich.requireSite(siteId);
+        Map<String, String> active = forecastModels.activeModels(siteId);
+        String pvModel = active.get(ForecastModels.KIND_PV);
+        String loadModel = active.get(ForecastModels.KIND_LOAD);
+
+        ForecastSeriesDto pv = forecastRepo.latest(siteId, ForecastModels.KIND_PV, pvModel);
+        ForecastSeriesDto load = forecastRepo.latest(siteId, ForecastModels.KIND_LOAD, loadModel);
+
+        LocalDate today = LocalDate.now(HistoryRange.ZONE);
+        LocalDate yesterday = today.minusDays(1);
+        Instant eveningTarget = yesterday.atTime(17, 45).atZone(HistoryRange.ZONE).toInstant();
+        Duration eveningTolerance = Duration.ofMinutes(15);
+        Instant yesterdayStart = yesterday.atStartOfDay(HistoryRange.ZONE).toInstant();
+        Instant yesterdayEnd = today.atStartOfDay(HistoryRange.ZONE).toInstant();
+        ForecastSeriesDto pvYesterday = forecastRepo.evening(
+                siteId, ForecastModels.KIND_PV, pvModel,
+                eveningTarget, eveningTolerance, yesterdayStart, yesterdayEnd);
+        ForecastSeriesDto loadYesterday = forecastRepo.evening(
+                siteId, ForecastModels.KIND_LOAD, loadModel,
+                eveningTarget, eveningTolerance, yesterdayStart, yesterdayEnd);
+
+        ForecastSeriesDto pvWeekly = forecastWeekly.latest(
+                siteId, ForecastModels.KIND_PV, ForecastModels.PV_PHYSICAL);
+        ForecastSeriesDto loadWeekly = forecastWeekly.latest(
+                siteId, ForecastModels.KIND_LOAD, WEEKLY_LOAD_MODEL);
+
+        return new ForecastDto(
+                pvModel, loadModel,
+                pv.runAt(), pv.points(),
+                load.runAt(), load.points(),
+                new YesterdayExpectedDto(
+                        pvYesterday.runAt(), pvYesterday.points(),
+                        loadYesterday.runAt(), loadYesterday.points()),
+                new WeeklyOutlookDto(
+                        pvWeekly.runAt(), pvWeekly.points(),
+                        loadWeekly.runAt(), loadWeekly.points()));
     }
 
     /**

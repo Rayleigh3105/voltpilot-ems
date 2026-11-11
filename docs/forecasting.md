@@ -83,6 +83,20 @@ Die Prognosen liefern keine Quantile. Die [Speicheruntergrenze](verbrauchssteuer
 
 Beide Zahlen wirken nur in die vorsichtige Richtung. Unter sieben auswertbaren Nächten/Tagen gelten dokumentierte Vorgaben (+25 % / −30 %). Gemessen wird die gespeicherte Modellprognose, nicht die Planzeitkorrektur des Nowcasts. Reicht der Fahrplan nicht bis zur nächsten Erzeugung, liest die Untergrenze die frischen gespeicherten Läufe darüber hinaus; sind sie älter als `OPTIMIZER_STORAGE_RELEASE_FORECAST_MAX_AGE_MINUTES` (120), gibt es keine Freigabe.
 
+## Der Lesepunkt (S1) und die Woche je Stunde (S4)
+
+`GET /api/v1/sites/{siteId}/forecast` (report `vp-prognosen-konzept`, Abschnitt 9, E6 von „Preise und Wetter" vom 20.10.2026) ist der einzige Portal-Lesepunkt auf die gespeicherte Prognose - unabhängig davon, ob die Anlage einen Fahrplan hat. Er löst Sonne und Verbrauch je über das AKTIVE Modell dieser Anlage auf (dieselbe Präzedenz wie `/forecast-quality`) und liefert drei Teile:
+
+- die 48-Stunden-Viertelstunden-Reihe des jüngsten Laufs (`pvKw`/`loadKw`, `pvRunAt`/`loadRunAt` - getrennt, nicht eine gemeinsame Zeit, weil ein ausgefallener Collector-Lauf einer Art sich nie in der Zeit der anderen verstecken darf);
+- `yesterdayExpected`: die Reihe des Abendlaufs (17:45 ± 15 min Europe/Berlin) des Vortags, beschränkt auf dessen eigene Viertelstunden - dieselbe Abendlauf-Konvention wie `night_reserve`/`storage_release` (oben);
+- `weekly`: der stündliche Ausblick aus S4, siehe unten.
+
+`forecast` selbst trägt kein RLS (komprimiert, kann keins mehr bekommen - `ForecastTableDisciplineTest`); der Zaun ist `Geltungsbereich.requireSite` VOR der Query (`ForecastRepository.java`), dieselbe Code-Disziplin wie `SeriesRepository`/`EarningsRepository`/`AnteilVerlustRepository` - eine fremde Anlage ist 404.
+
+**S4, die Woche je Stunde.** Ab „übermorgen" (Berlin-Mitternacht, zwei Kalendertage voraus - nicht ein rollendes 48h-Fenster) rechnet der Collector einen stündlichen Ausblick, solange echtes Wetter reicht (`WEATHER_FORECAST_DAYS=7` seit S4; vorher 3). Die Sonne kommt immer vom physikalischen PV-Modell (`pv-physical`, `physical.power_series`), der Verbrauch immer vom Tagestyp-Profil (`load-profile`, `ProfileLoadForecaster.values_at`) - NIE vom gewählten aktiven Modell der Anlage, weil der Ausblick ein eigenes Produkt ist, kein Schattenbetrieb-Kandidat. Gespeichert wird GETRENNT von der Viertelstunden-Prognose in `forecast_weekly` (Migration V20261111140000) - anders als `forecast` trägt diese Tabelle RLS (nicht komprimiert, die `weather_forecast`-Blaupause). `weekly_outlook_timestamps` (`forecast_collect.py`) liefert die Zeitpunkte; eine fehlende Reichweite (noch nicht genug Wetter) ist eine leere Liste, nie eine erfundene Zeile.
+
+Die Kurzfrist-Korrektur bleibt bewusst unverändert: S1 zeigt die gespeicherte Prognose unkorrigiert für jede Anlage (die „einfachere Variante" aus dem Scout-Bericht, Abschnitt „Voraussetzungen und Grenzen" R.2) - dieselben reinen Nowcast-Funktionen (`nowcast.py`/`pv_nowcast.py`/`load_nowcast.py`) an einer Stelle für alle Anlagen anzuwenden bleibt eine spätere Entscheidung, kein Teil dieser Scheibe.
+
 ## Betrieb
 
 [Forecast-Service](../services/forecast/README.md) nennt Start- und Testbefehle. Tabellen und Rechte werden über die API-Migrationen gepflegt. Modellwahl und Kundenauswertung sind mandantengebunden; Backend-Collector haben eigene Schreibzugänge.

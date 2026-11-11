@@ -110,7 +110,7 @@ def _build_source(env: dict[str, str]) -> OpenMeteoWeatherSource:
     return OpenMeteoWeatherSource(
         OpenMeteoConfig(
             base_url=env.get("OPEN_METEO_BASE_URL", OpenMeteoConfig.base_url),
-            forecast_days=int(env.get("WEATHER_FORECAST_DAYS", "3")),
+            forecast_days=int(env.get("WEATHER_FORECAST_DAYS", "7")),
         )
     )
 

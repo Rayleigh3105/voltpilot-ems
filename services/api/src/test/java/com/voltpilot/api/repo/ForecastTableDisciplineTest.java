@@ -71,7 +71,13 @@ class ForecastTableDisciplineTest {
             "SeriesRepository.java", 1,
             // pvPrognose (Verlust-Schätzung, Läufer unter TenantContext): `FROM forecast f JOIN site s ON s.id =
             // f.site_id` im selben Statement, App-Rolle - fremde Anlage = leer (AnteilVerlustSchaetzungApiTest).
-            "AnteilVerlustRepository.java", 1);
+            "AnteilVerlustRepository.java", 1,
+            // S1 (der Lesepunkt, `GET /api/v1/sites/{siteId}/forecast`): `latest`
+            // und `evening` - je zwei `FROM forecast`-Referenzen (Lauf finden, dann
+            // dessen Zeilen lesen) - mit einer `siteId`, die SiteController vorher
+            // über `geltungsbereich.requireSite` aufgelöst hat (fremde Anlage = 404,
+            // bevor die Query läuft) - exakt das SeriesRepository-Muster.
+            "ForecastRepository.java", 4);
 
     /**
      * Nackte {@code "forecast"}-Literale: Datei -> erwartete Zahl + Zaun.

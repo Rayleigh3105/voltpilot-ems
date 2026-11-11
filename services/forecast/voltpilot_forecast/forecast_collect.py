@@ -42,6 +42,8 @@ from voltpilot_forecast import model_choice, registry
 from voltpilot_forecast.anlage import anlage_slot_kw, fuehrende_box
 from voltpilot_forecast.domain import (
     ForecastKind,
+    ForecastPoint,
+    ForecastSeries,
     GeoLocation,
     Horizon,
     Observation,
@@ -49,10 +51,10 @@ from voltpilot_forecast.domain import (
     SiteForecastConfig,
     ensure_utc,
 )
-from voltpilot_forecast.evaluation import BERLIN
+from voltpilot_forecast.evaluation import BERLIN, berlin_day_bounds
 from voltpilot_forecast.features import WeatherHistory
 from voltpilot_forecast.kundenbereich import NICHT_BEENDET
-from voltpilot_forecast.load import SeasonalPersistenceLoadForecaster
+from voltpilot_forecast.load import ProfileLoadForecaster, SeasonalPersistenceLoadForecaster
 from voltpilot_forecast.openmeteo import (
     OpenMeteoWeatherProvider,
     WeatherForecast,
@@ -73,6 +75,10 @@ from voltpilot_forecast.repository import (
     TimescaleForecastRepository,
 )
 from voltpilot_forecast.runtime import ServeRuntime, serve_health
+from voltpilot_forecast.weekly_repository import (
+    TimescaleWeeklyForecastRepository,
+    WeeklyForecastRepository,
+)
 
 logger = logging.getLogger("voltpilot.forecast.collect")
 
@@ -88,6 +94,14 @@ DEFAULT_LOCATION = GeoLocation(latitude=52.52, longitude=13.405)
 #: with reality. Sites without any PV telemetry get no PV plant (zero series).
 CAPACITY_HEADROOM = 1.05
 MIN_CAPACITY_KWP = 0.05
+
+#: S4 (die Woche je Stunde): a safety cap on how far the weekly hourly outlook
+#: reaches beyond "übermorgen", regardless of how much weather the feed
+#: happens to return. ``WEATHER_FORECAST_DAYS`` configures the feed itself
+#: (report `vp-prognosen-konzept` section 9 asks for 7 days); this only bounds
+#: a misconfigured one - the real stop is "no more weather", same as
+#: :func:`pv_horizon`.
+WEEKLY_OUTLOOK_MAX_HOURS = 5 * 24
 
 
 def _ml_available() -> bool:
@@ -116,10 +130,11 @@ class CollectorConfig:
     history_days: int = DEFAULT_HISTORY_DAYS
     #: 48 h since the optimizer plans a 48 h window (Captain-Entscheid
     #: 28.08.2026): a plan made at midday must see the FOLLOWING evening,
-    #: and it may only do so on REAL forecasts. The weather feed already
-    #: reaches ~3 days (``openmeteo`` ``forecast_days=3``), so this asks
-    #: for nothing that is not there; ``pv_horizon`` below still clips the
-    #: PV models to what weather actually covers.
+    #: and it may only do so on REAL forecasts. The weather feed reaches
+    #: ~7 days since S4 (``openmeteo`` ``forecast_days=7``) - well beyond
+    #: this 48h quarter-hour horizon, the rest feeding the separate weekly
+    #: hourly outlook (:func:`weekly_outlook_timestamps`); ``pv_horizon``
+    #: below still clips the PV models to what weather actually covers.
     horizon_hours: float = 48.0
 
     @classmethod
@@ -294,6 +309,37 @@ def pv_horizon(
     return Horizon(slots=covered, slot_minutes=horizon.slot_minutes)
 
 
+def weekly_outlook_timestamps(
+    weather_points: list[WeatherPoint], now: datetime
+) -> list[datetime]:
+    """S4's hourly slot starts: "übermorgen" 00:00 Berlin through the end of
+    what real weather actually covers - the contiguous prefix with a GHI
+    sample, never fabricated past it (:func:`pv_horizon`'s own discipline).
+
+    Today and tomorrow stay the EXISTING quarter-hour 48h forecast; this is
+    purely the day-after-tomorrow-onward hourly extension that
+    :mod:`voltpilot_forecast.weekly_repository` stores separately. An empty
+    result (no weather that far out yet, e.g. ``WEATHER_FORECAST_DAYS`` still
+    at its pre-S4 default) means "nothing to persist this cycle", not an
+    error - the caller simply skips the weekly save.
+    """
+    today = ensure_utc(now).astimezone(BERLIN).date()
+    start, _ = berlin_day_bounds(today + timedelta(days=2))
+    hours = {
+        ensure_utc(p.timestamp).replace(minute=0, second=0, microsecond=0)
+        for p in weather_points
+        if p.ghi_w_m2 is not None
+    }
+    timestamps: list[datetime] = []
+    candidate = start
+    for _ in range(WEEKLY_OUTLOOK_MAX_HOURS):
+        if hour_label_for(candidate) not in hours:
+            break
+        timestamps.append(candidate)
+        candidate += timedelta(hours=1)
+    return timestamps
+
+
 # ---- one site, one cycle ---------------------------------------------------------
 
 @dataclass
@@ -341,6 +387,7 @@ def collect_site(
     cfg: CollectorConfig,
     cache: ChallengerCache,
     ml_available: bool,
+    weekly_forecasts: WeeklyForecastRepository | None = None,
 ) -> SiteSummary:
     """Run every model for one site: baselines always, challengers when gated in."""
     from voltpilot_forecast import ml  # noqa: PLC0415 - safe: pure-Python module
@@ -431,6 +478,48 @@ def collect_site(
         )
         summary.saved_models.append(registry.PV_PHYSICAL_LEGACY_DNI)
 
+    # -- S4: the week ahead, per HOUR, stored separately (forecast_weekly) -----
+    # "ab übermorgen" onward; today/tomorrow stay the quarter-hour forecast
+    # above. Needs real weather (WEATHER_FORECAST_DAYS reaching that far) - a
+    # clear-sky-only week ahead would not be the outlook S4 asks for, so a
+    # site without one simply gets no weekly row this cycle, same stance as
+    # the legacy-DNI candidate above.
+    if weekly_forecasts is not None and provider is not None:
+        weekly_ts = weekly_outlook_timestamps(weather_points, now)
+        if weekly_ts:
+            pv_values = physical.power_series(config, weekly_ts)
+            weekly_forecasts.save(
+                ForecastSeries(
+                    kind=ForecastKind.PV,
+                    site_id=site.site_id,
+                    tenant_id=site.tenant_id,
+                    run_at=now,
+                    method=f"{physical.method}:{provider.name}",
+                    points=[
+                        ForecastPoint(ts, round(kw, 4))
+                        for ts, kw in zip(weekly_ts, pv_values)
+                    ],
+                    model=physical.model_id,
+                )
+            )
+            load_profile = ProfileLoadForecaster()
+            load_values = load_profile.values_at(load_history, weekly_ts, 60)
+            weekly_forecasts.save(
+                ForecastSeries(
+                    kind=ForecastKind.LOAD,
+                    site_id=site.site_id,
+                    tenant_id=site.tenant_id,
+                    run_at=now,
+                    method=load_profile.method,
+                    points=[
+                        ForecastPoint(ts, v) for ts, v in zip(weekly_ts, load_values)
+                    ],
+                    model=load_profile.model_id,
+                )
+            )
+            summary.saved_models.append(f"{physical.model_id}:weekly")
+            summary.saved_models.append(f"{load_profile.model_id}:weekly")
+
     if not ml_available:
         return summary
 
@@ -517,6 +606,7 @@ def run_cycle(
     summaries: list[SiteSummary] = []
     with psycopg.connect(dsn) as conn:
         forecasts = TimescaleForecastRepository(conn)
+        weekly_forecasts = TimescaleWeeklyForecastRepository(conn)
         quality = TimescaleQualityRepository(conn)
         sites = load_sites(conn)
         if not sites:
@@ -525,7 +615,8 @@ def run_cycle(
         for site in sites:
             try:
                 summary = collect_site(
-                    conn, forecasts, quality, site, now, cfg, cache, ml_available
+                    conn, forecasts, quality, site, now, cfg, cache, ml_available,
+                    weekly_forecasts=weekly_forecasts,
                 )
                 summaries.append(summary)
                 parts = [f"models={','.join(summary.saved_models)}"]

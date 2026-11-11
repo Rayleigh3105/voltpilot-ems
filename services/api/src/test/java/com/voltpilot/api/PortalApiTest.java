@@ -1386,6 +1386,97 @@ class PortalApiTest {
     }
 
     @Test
+    void forecastReturnsTheActiveModelsLatestRunAndIsTenantScoped() {
+        // S1 ("der Lesepunkt"): seed one quarter-hour row for each of the shipped
+        // baselines (writer bypasses RLS) - the resolved active models without
+        // any choice configured.
+        exec("INSERT INTO forecast "
+                + "(time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) "
+                + "VALUES (now() + interval '15 minutes', '00000000-0000-0000-0000-000000000001', '"
+                + BERLIN_SITE + "', 'pv', 'pv-physical', 7.75, now(), 15, 'test') "
+                + "ON CONFLICT DO NOTHING");
+        exec("INSERT INTO forecast "
+                + "(time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) "
+                + "VALUES (now() + interval '15 minutes', '00000000-0000-0000-0000-000000000001', '"
+                + BERLIN_SITE + "', 'load', 'load-persistence', 3.5, now(), 15, 'test') "
+                + "ON CONFLICT DO NOTHING");
+
+        ResponseEntity<String> own = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(own.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(own.getBody())
+                .contains("\"activePvModel\":\"pv-physical\"")
+                .contains("\"activeLoadModel\":\"load-persistence\"")
+                .contains("7.75")
+                .contains("3.5");
+
+        // forecast carries no RLS (compressed - cannot get one); the fence is
+        // Geltungsbereich.requireSite before the query, same 404 as /weather.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void forecastYesterdayExpectedPicksTheRunClosestToTheEveningTargetNeverTheNewer() {
+        // "Gestern erwartet": the run closest to 17:45 Europe/Berlin of the
+        // PREVIOUS day wins. BOTH runs below sit inside the ±15 min tolerance
+        // window, so this pins the ORDER BY abs(distance) itself - the run
+        // 14 min off must never beat the one 1 min off, even though it is
+        // NEWER (further inside the window, closer to "now").
+        ZoneId berlin = ZoneId.of("Europe/Berlin");
+        ZonedDateTime target = LocalDate.now(berlin).minusDays(1).atTime(17, 45).atZone(berlin);
+        Instant close = target.toInstant().plusSeconds(60);
+        Instant far = target.toInstant().plusSeconds(14 * 60);
+        Instant slot = LocalDate.now(berlin).minusDays(1).atStartOfDay(berlin).toInstant()
+                .plusSeconds(10 * 3600);
+
+        exec("INSERT INTO forecast "
+                + "(time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) "
+                + "VALUES ('" + slot + "', '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE
+                + "', 'pv', 'pv-physical', 6.25, '" + close + "', 0, 'test') ON CONFLICT DO NOTHING");
+        exec("INSERT INTO forecast "
+                + "(time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) "
+                + "VALUES ('" + slot + "', '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE
+                + "', 'pv', 'pv-physical', 94.0, '" + far + "', 0, 'test') ON CONFLICT DO NOTHING");
+
+        ResponseEntity<String> resp = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        // The "far" run (14 min off, but still inside the ±15 min window) is
+        // also the overall NEWEST run for this model - it rightly wins the
+        // unrelated "latest run" fields, so only the yesterdayExpected
+        // fragment itself is asserted on here, not the whole body.
+        int at = resp.getBody().indexOf("\"yesterdayExpected\"");
+        assertThat(at).as("yesterdayExpected present").isPositive();
+        String yesterdayExpected = resp.getBody().substring(at);
+        assertThat(yesterdayExpected).contains("6.25").doesNotContain("94.0");
+    }
+
+    @Test
+    void forecastWeeklyReadsForecastWeekly() {
+        // S4 ("die Woche je Stunde"): the hourly outlook lives in its OWN
+        // table (forecast_weekly, RLS-scoped unlike forecast - it is not
+        // compressed) and surfaces under the response's "weekly" field.
+        exec("INSERT INTO forecast_weekly "
+                + "(time, tenant_id, site_id, kind, model, value_kw, run_at, method) "
+                + "VALUES (now() + interval '72 hours', '00000000-0000-0000-0000-000000000001', '"
+                + BERLIN_SITE + "', 'pv', 'pv-physical', 4.5, now(), 'test') "
+                + "ON CONFLICT DO NOTHING");
+
+        ResponseEntity<String> own = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(own.getStatusCode()).isEqualTo(HttpStatus.OK);
+        int at = own.getBody().indexOf("\"weekly\"");
+        assertThat(at).as("weekly present").isPositive();
+        assertThat(own.getBody().substring(at)).contains("4.5");
+    }
+
+    @Test
     void scheduleEndpointReturnsLatestPlanTenantScoped() {
         // Seed two optimizer runs for tenant A's Berlin site (the optimizer writes
         // as the trusted backend role, bypassing RLS): an older single-slot run and

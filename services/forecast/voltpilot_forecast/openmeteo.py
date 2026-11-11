@@ -128,7 +128,10 @@ class OpenMeteoConfig:
 
     base_url: str = DEFAULT_BASE_URL
     timeout_seconds: float = 30.0
-    forecast_days: int = 3
+    #: 7 days since S4 ("die Woche je Stunde"): the active 48h quarter-hour
+    #: forecast only needs ~3, the rest feeds the separate hourly week-ahead
+    #: outlook (forecast_collect.weekly_outlook_timestamps).
+    forecast_days: int = 7
 
 
 def _to_float(value) -> float | None:

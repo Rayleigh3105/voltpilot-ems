@@ -186,6 +186,53 @@ class ProfileLoadForecaster(LoadForecaster):
     method = "profile"
     model_id = "load-profile"
 
+    def values_at(
+        self,
+        history: Sequence[Observation],
+        timestamps: Sequence[datetime],
+        slot_minutes: int,
+    ) -> list[float]:
+        """The profile's predicted kW at ARBITRARY timestamps - past or future.
+
+        Extracted from :meth:`forecast` (the S4 week-ahead-outlook pattern
+        mirroring :meth:`~voltpilot_forecast.pv.PhysicalPvForecaster.power_series`)
+        so a caller can ask for timestamps that are not
+        ``horizon.slot_starts(run_at)`` - the weekly hourly outlook predicts
+        slots that start well beyond where the 15-minute forecast's own
+        horizon ends, not immediately after ``run_at``. Semantics are
+        identical to :meth:`forecast`'s own slot-by-slot derivation; a history
+        with no usable slot means yields an all-zero series (never a fabricated
+        last-value), matching an empty-history site.
+        """
+        if not history:
+            return [0.0 for _ in timestamps]
+        # Aggregate to SLOT means FIRST (module docstring), then average those
+        # per (weekend, slot-of-day). Averaging the raw samples instead would
+        # weight each historical day by how many samples it happened to
+        # deliver - an outage day would count less than a chatty one.
+        by_slot = slot_means(history, slot_minutes)
+        keyed: dict[tuple[bool, int], list[float]] = defaultdict(list)
+        per_slot: dict[int, list[float]] = defaultdict(list)
+        for slot_start, value in by_slot.items():
+            slot = _slot_of_day(slot_start, slot_minutes)
+            keyed[(_is_weekend(slot_start), slot)].append(value)
+            per_slot[slot].append(value)
+
+        def _avg(values: list[float]) -> float | None:
+            return sum(values) / len(values) if values else None
+
+        last = by_slot[max(by_slot)]  # the most recent slot mean
+        out: list[float] = []
+        for ts in timestamps:
+            slot = _slot_of_day(ts, slot_minutes)
+            value = _avg(keyed.get((_is_weekend(ts), slot), []))
+            if value is None:
+                value = _avg(per_slot.get(slot, []))
+            if value is None:
+                value = last
+            out.append(round(value, 4))
+        return out
+
     def forecast(
         self,
         site_id: str,
@@ -200,32 +247,9 @@ class ProfileLoadForecaster(LoadForecaster):
                 self.model_id,
             )
 
-        slot_minutes = horizon.slot_minutes
-        # Aggregate to quarter-hour means FIRST (module docstring), then average
-        # those per (weekend, slot-of-day). Averaging the raw samples instead
-        # would weight each historical day by how many samples it happened to
-        # deliver - an outage day would count less than a chatty one.
-        by_slot = slot_means(history, slot_minutes)
-        keyed: dict[tuple[bool, int], list[float]] = defaultdict(list)
-        per_slot: dict[int, list[float]] = defaultdict(list)
-        for slot_start, value in by_slot.items():
-            slot = _slot_of_day(slot_start, slot_minutes)
-            keyed[(_is_weekend(slot_start), slot)].append(value)
-            per_slot[slot].append(value)
-
-        def _avg(values: list[float]) -> float | None:
-            return sum(values) / len(values) if values else None
-
-        last = by_slot[max(by_slot)]  # the most recent slot mean
-        points: list[ForecastPoint] = []
-        for ts in horizon.slot_starts(run_at):
-            slot = _slot_of_day(ts, slot_minutes)
-            value = _avg(keyed.get((_is_weekend(ts), slot), []))
-            if value is None:
-                value = _avg(per_slot.get(slot, []))
-            if value is None:
-                value = last
-            points.append(ForecastPoint(ts, round(value, 4)))
+        timestamps = horizon.slot_starts(run_at)
+        values = self.values_at(history, timestamps, horizon.slot_minutes)
+        points = [ForecastPoint(ts, v) for ts, v in zip(timestamps, values)]
 
         return ForecastSeries(
             kind=ForecastKind.LOAD,

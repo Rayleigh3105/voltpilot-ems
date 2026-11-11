@@ -24,6 +24,7 @@ from voltpilot_forecast.quality_repository import (
     InMemoryQualityRepository,
 )
 from voltpilot_forecast.repository import InMemoryForecastRepository
+from voltpilot_forecast.weekly_repository import InMemoryWeeklyForecastRepository
 
 NOW = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
 SITE = SiteRow(
@@ -400,7 +401,11 @@ def test_sql_column_guards_raise_instead_of_asserting():
 # ---------------------------------------------------------------------------
 
 from voltpilot_forecast.domain import Horizon  # noqa: E402
-from voltpilot_forecast.forecast_collect import pv_horizon  # noqa: E402
+from voltpilot_forecast.evaluation import BERLIN, berlin_day_bounds  # noqa: E402
+from voltpilot_forecast.forecast_collect import (  # noqa: E402
+    pv_horizon,
+    weekly_outlook_timestamps,
+)
 from voltpilot_forecast.openmeteo import (  # noqa: E402
     OpenMeteoWeatherProvider,
     WeatherForecast,
@@ -649,3 +654,149 @@ def test_collect_site_skips_the_legacy_candidate_without_real_weather():
         forecasts.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL_LEGACY_DNI)
         is None
     )
+
+
+# ---- S4: die Woche je Stunde (weekly_outlook_timestamps, forecast_weekly) ---
+
+
+def test_weekly_outlook_starts_at_uebermorgen_midnight_berlin_and_clips_to_weather():
+    """"ab übermorgen" = Berlin midnight, two calendar days out - never a
+    rolling 48h-from-now offset. Clipped to the contiguous prefix real weather
+    covers, same discipline as :func:`pv_horizon`."""
+    today = NOW.astimezone(BERLIN).date()
+    start, _ = berlin_day_bounds(today + timedelta(days=2))
+
+    points = _weather(40)  # plenty of margin past "übermorgen"
+    ts = weekly_outlook_timestamps(points, NOW)
+
+    assert ts
+    assert ts[0] == start
+    assert all(b - a == timedelta(hours=1) for a, b in zip(ts, ts[1:]))
+    # Coverage is checked via hour_label_for (the label is the hour's raw
+    # timestamp PLUS one) - the exact lookup OpenMeteoWeatherProvider itself
+    # uses - so the usable run ends one hour short of the weather series'
+    # own last raw timestamp.
+    assert ts[-1] == points[-1].timestamp - timedelta(hours=1)
+
+
+def test_weekly_outlook_is_empty_without_weather_that_far_out():
+    """Weather only reaching ~10 hours ahead (the pre-S4 WEATHER_FORECAST_DAYS
+    default) never reaches "übermorgen" - no fabricated hourly rows."""
+    points = _weather(10)
+    assert weekly_outlook_timestamps(points, NOW) == []
+
+
+def test_weekly_outlook_is_empty_without_any_weather():
+    assert weekly_outlook_timestamps([], NOW) == []
+
+
+def test_collect_site_persists_the_weekly_outlook_with_weather_that_far_out():
+    """pv-physical (hourly) and load-profile (hourly) land in forecast_weekly,
+    NOT in the quarter-hour forecast table - "getrennt speichern" (S4)."""
+    forecasts = InMemoryForecastRepository()
+    quality = InMemoryQualityRepository()
+    weekly = InMemoryWeeklyForecastRepository()
+    points = _weather(96, ghi=300.0)  # four days of hourly weather
+    rows = [
+        (
+            p.timestamp,
+            p.temperature_c,
+            p.cloud_cover_pct,
+            p.ghi_w_m2,
+            p.dni_w_m2,
+            p.dhi_w_m2,
+            p.dni_normal_w_m2,
+        )
+        for p in points
+    ]
+    summary = collect_site(
+        _FakeConnection(_telemetry_days(21), weather=rows),
+        forecasts,
+        quality,
+        SITE,
+        NOW,
+        CollectorConfig(),
+        ChallengerCache(),
+        ml_available=False,
+        weekly_forecasts=weekly,
+    )
+    assert f"{registry.PV_PHYSICAL}:weekly" in summary.saved_models
+    assert "load-profile:weekly" in summary.saved_models
+
+    weekly_pv = weekly.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL)
+    weekly_load = weekly.latest(SITE.site_id, ForecastKind.LOAD, "load-profile")
+    assert weekly_pv is not None and len(weekly_pv) > 0
+    assert weekly_load is not None and len(weekly_load) == len(weekly_pv)
+    # Hourly, not quarter-hourly.
+    assert weekly_pv.points[1].timestamp - weekly_pv.points[0].timestamp == timedelta(hours=1)
+    # Starts exactly at "übermorgen" (Berlin midnight, two calendar days out) -
+    # a FEW hours may still overlap the quarter-hour forecast's own rolling 48h
+    # window (report section 3.2: that window already reaches "übermorgen bis
+    # zur jetzigen Uhrzeit"); that overlap is the report's own calendar framing,
+    # not something this slice closes.
+    today = NOW.astimezone(BERLIN).date()
+    uebermorgen_start, _ = berlin_day_bounds(today + timedelta(days=2))
+    assert weekly_pv.points[0].timestamp == uebermorgen_start
+
+    # "getrennt speichern": the hourly outlook lives ONLY in the weekly
+    # repository - the quarter-hour baseline is a completely separate object,
+    # never written to by the weekly block.
+    baseline = forecasts.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL)
+    assert baseline is not None
+    assert all(p2.timestamp - p1.timestamp == timedelta(minutes=15)
+               for p1, p2 in zip(baseline.points, baseline.points[1:]))
+
+
+def test_collect_site_skips_the_weekly_outlook_without_weather_that_far_out():
+    """The pre-S4 default (WEATHER_FORECAST_DAYS=3) never reaches "übermorgen" -
+    collect_site must not fabricate a weekly row from short-range weather."""
+    forecasts = InMemoryForecastRepository()
+    quality = InMemoryQualityRepository()
+    weekly = InMemoryWeeklyForecastRepository()
+    points = _weather(30)  # the old ~3-day reach, not the new 7-day one
+    rows = [
+        (
+            p.timestamp, p.temperature_c, p.cloud_cover_pct, p.ghi_w_m2,
+            p.dni_w_m2, p.dhi_w_m2, p.dni_normal_w_m2,
+        )
+        for p in points
+    ]
+    summary = collect_site(
+        _FakeConnection(_telemetry_days(21), weather=rows),
+        forecasts,
+        quality,
+        SITE,
+        NOW,
+        CollectorConfig(),
+        ChallengerCache(),
+        ml_available=False,
+        weekly_forecasts=weekly,
+    )
+    assert not any(m.endswith(":weekly") for m in summary.saved_models)
+    assert weekly.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL) is None
+
+
+def test_collect_site_skips_the_weekly_outlook_without_a_repository():
+    """``weekly_forecasts=None`` (the default) is a complete no-op - every
+    existing call site of ``collect_site`` keeps working unchanged."""
+    forecasts = InMemoryForecastRepository()
+    quality = InMemoryQualityRepository()
+    points = _weather(96, ghi=300.0)
+    rows = [
+        (
+            p.timestamp, p.temperature_c, p.cloud_cover_pct, p.ghi_w_m2,
+            p.dni_w_m2, p.dhi_w_m2, p.dni_normal_w_m2,
+        )
+        for p in points
+    ]
+    summary = collect_site(
+        _FakeConnection(_telemetry_days(21), weather=rows),
+        forecasts,
+        quality,
+        SITE,
+        NOW,
+        CollectorConfig(),
+        ChallengerCache(),
+        ml_available=False,
+    )
+    assert not any(m.endswith(":weekly") for m in summary.saved_models)

@@ -159,6 +159,53 @@ def test_profile_empty_history_is_flat_zero():
     assert set(series.values) == {0.0}
 
 
+def test_profile_values_at_matches_forecast_at_the_same_timestamps():
+    """values_at() is forecast()'s own per-slot derivation, extracted (S4) -
+    calling it directly with horizon.slot_starts() must reproduce forecast()
+    byte-for-byte, not merely approximately."""
+    run_at = datetime(2026, 6, 15, 0, 0, tzinfo=timezone.utc)  # Monday
+
+    def value_fn(ts: datetime) -> float:
+        return _slot_of_day(ts) + (1000 if ts.weekday() >= 5 else 0)
+
+    history = _history(run_at - timedelta(days=14), run_at, value_fn)
+    forecaster = ProfileLoadForecaster()
+    horizon = Horizon.hours(24)
+    series = forecaster.forecast("s", "t", history, horizon, run_at)
+
+    values = forecaster.values_at(history, horizon.slot_starts(run_at), horizon.slot_minutes)
+    assert values == series.values
+
+
+def test_profile_values_at_predicts_hourly_timestamps_beyond_any_horizon():
+    """S4 (die Woche je Stunde): values_at() must answer for HOURLY timestamps
+    that start days after run_at - not ``horizon.slot_starts(run_at)`` at all -
+    exactly the shape the weekly outlook needs from the Tagestyp-profile.
+
+    The value is constant within each HOUR (unlike the 15-min-shaped
+    ``value_fn`` used elsewhere in this file) so the expected hourly mean is
+    trivial to state - the point under test is the arbitrary timestamp/
+    slot_minutes argument, not the averaging arithmetic.
+    """
+
+    def value_fn(ts: datetime) -> float:
+        return ts.hour + (1000 if ts.weekday() >= 5 else 0)
+
+    now = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)  # Monday noon
+    history = _history(now - timedelta(days=14), now, value_fn)
+    forecaster = ProfileLoadForecaster()
+
+    # Hourly timestamps starting FIVE days out (well beyond any 15-min
+    # forecast horizon), landing on a weekend (Saturday) this time.
+    saturday_hour = datetime(2026, 6, 20, 9, 0, tzinfo=timezone.utc)
+    values = forecaster.values_at(history, [saturday_hour], slot_minutes=60)
+    assert abs(values[0] - (9 + 1000)) < 1e-6
+
+
+def test_profile_values_at_empty_history_is_flat_zero():
+    assert ProfileLoadForecaster().values_at([], [datetime(2026, 6, 20, 9, 0, tzinfo=timezone.utc)], 60) == [0.0]
+
+
 def test_forecasters_are_interchangeable_behind_the_interface():
     run_at = datetime(2026, 6, 15, 6, 0, tzinfo=timezone.utc)
     history = _history(run_at - timedelta(days=3), run_at, _slot_of_day)
